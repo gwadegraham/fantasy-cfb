@@ -1,0 +1,35 @@
+GET http://localhost:3000/users
+
+###
+
+GET http://localhost:3000/teams
+
+###
+
+GET http://localhost:3000/users/12
+
+### 
+
+POST http://localhost:3000/users
+Content-Type: application/json
+
+{
+    "firstName": "Garrett",
+    "lastName": "Graham",
+    "teams": ["Arkansas", "Alabama", "Miami"]
+}
+
+###
+
+DELETE http://localhost:3000/users/64d1cebb95ba4eb83d4784ba
+
+
+###
+
+GET https://api.collegefootballdata.com/games?year=2022&week=1&seasonType=regular&team=North%20Texas
+authorization: Bearer aPOq2hdEdmyerYbaokCspuW5+hq1eBVLjJKgXoqCRodC/ftaOQI39sYJCvp+rkrs
+
+
+###
+
+Game.find({ homeTeam: "Georgia State", week: 6});
