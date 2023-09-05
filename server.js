@@ -117,6 +117,6 @@ const job = schedule.scheduleJob('0 3 * * *', async function(){
     }
 });
 
-app.listen(3000, () =>{
+app.listen(process.env.PORT || 3000, () =>{
     console.log('Server Started');
 });
