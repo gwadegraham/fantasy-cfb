@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "devStart": "nodemon server.js",
-    "prodStart": "server.js"
+    "prodStart": "node server.js" 
   },
   "author": "",
   "license": "ISC",
@@ -16,8 +16,10 @@
     "cfb.js": "^4.3.2",
     "express": "^4.18.2",
     "mongoose": "^7.4.2",
+    "netlify-lambda": "^2.0.16",
     "node-schedule": "^2.1.1",
     "save": "^2.9.0",
+    "serverless-http": "^3.2.0",
     "toastify-js": "^1.12.0"
   },
   "devDependencies": {

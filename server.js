@@ -62,25 +62,25 @@ app.post('/games-api', (req, res) => {
         'division': "fbs",
         'team': req.body.team
     };
-    
+
     gamesApi.getGames(year, opts).then(data => res.json(data));
 });
 
 
 
 const job = schedule.scheduleJob('0 3 * * *', async function(){
-    
+
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
     var weekNumber = 1;
     var isPostseason = false;
-    
+
     if (calendar) {
         for (const calendarWeek of calendar) {
             var startDate = new Date(calendarWeek.firstGameStart);
             var endDate = new Date(calendarWeek.lastGameStart);
             var currentDate = new Date();
-    
+
             if ((currentDate > startDate) && (currentDate < endDate)) {
                 weekNumber = calendarWeek.week;
                 if (calendarWeek.seasonType == "postseason") {
@@ -90,7 +90,7 @@ const job = schedule.scheduleJob('0 3 * * *', async function(){
             }
         }
     }
-    
+
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
