@@ -10,7 +10,7 @@ var gamesApi = new cfb.GamesApi();
 module.exports = {
 
     retrieveTeams: async () => {
-        var response = await fetch("http://localhost:3000/users", {
+        var response = await fetch("/users", {
             method: 'GET',
             headers: {
             'Accept': 'application/json',

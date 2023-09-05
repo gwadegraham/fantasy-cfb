@@ -10,7 +10,7 @@ var rankingsApi = new cfb.RankingsApi();
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await fetch("http://localhost:3000/users", {
+        var response = await fetch("/users", {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -36,7 +36,7 @@ module.exports= {
     },
 
     updateScores: async function(season, week) {
-        var response = await fetch("http://localhost:3000/users", {
+        var response = await fetch("/users", {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -205,7 +205,7 @@ async function updateUser(userId, scoreUpdate) {
         "isUpdated": true
         }`;
 
-    const response = await fetch("http://localhost:3000/users/" + userId, {
+    const response = await fetch("/users/" + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -224,7 +224,7 @@ async function updateUser(userId, scoreUpdate) {
 }
 
 async function updateUserCumulativeScore(userId, cumulativeScore) {
-    const response = await fetch("http://localhost:3000/users/" + userId, {
+    const response = await fetch("/users/" + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',

@@ -65,7 +65,7 @@ $(".dropdown-menu a").click(function(){
 });
 
 async function getUsers() {
-    const response = await fetch(`http://localhost:3000/users/league/${leagueCode}`, {
+    const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -80,7 +80,7 @@ async function getUsers() {
 }
 
 
-fetch("http://localhost:3000/teams", {
+fetch("/teams", {
     method: 'GET',
     headers: {
     'Accept': 'application/json',
@@ -148,7 +148,7 @@ if (createForm) {
             }
             );
     
-        const response = await fetch("http://localhost:3000/users", {
+        const response = await fetch("/users", {
             method: 'POST',
             headers: {
             'Accept': 'application/json',
@@ -190,7 +190,7 @@ if (removeForm) {
         const teamDocuments = [];
         const userId = document.querySelector('[user-options]').value;
     
-        const response = await fetch("http://localhost:3000/users/" + userId, {
+        const response = await fetch("/users/" + userId, {
             method: 'DELETE',
             headers: {
             'Accept': 'application/json',

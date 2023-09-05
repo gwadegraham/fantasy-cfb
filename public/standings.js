@@ -26,7 +26,7 @@ $(".dropdown-menu a").click(function(){
 });
 
 async function getUsers() {
-    const response = await fetch(`http://localhost:3000/users/league/${leagueCode}`, {
+    const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -146,7 +146,7 @@ function calculateScore(team, data) {
 async function updateUser(userId, score) {
     console.log("score", score);
 
-    const response = await fetch("http://localhost:3000/users/" + userId, {
+    const response = await fetch("/users/" + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
