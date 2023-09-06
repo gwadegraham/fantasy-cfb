@@ -44,31 +44,7 @@ const gamesRouter = require('./routes/games');
 const { printTeams } = require('./retrieve-games.js');
 app.use('/games', gamesRouter);
 
-app.get('/top-25', (req, res) => {
-    var year = process.env.YEAR;
-    var opts = {
-        'week': 1,
-        'seasonType': "regular", // {String} Season type filter (regular or postseason)
-    };
-
-    rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
-});
-
-app.post('/games-api', (req, res) => {
-    var gamesApi = new cfb.GamesApi();
-    var year = process.env.YEAR;
-    var opts = {
-        'week': 1,
-        'division': "fbs",
-        'team': req.body.team
-    };
-
-    gamesApi.getGames(year, opts).then(data => res.json(data));
-});
-
-
-
-const job = schedule.scheduleJob('30 0 * * *', async function(){
+app.get('/top-25', async (req, res) => {
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
@@ -91,7 +67,52 @@ const job = schedule.scheduleJob('30 0 * * *', async function(){
         }
     }
 
-    weekNumber = 1;
+    var year = process.env.YEAR;
+    var opts = {
+        'week': weekNumber,
+        'seasonType': "regular",
+    };
+
+    rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
+});
+
+app.post('/games-api', (req, res) => {
+    var gamesApi = new cfb.GamesApi();
+    var year = process.env.YEAR;
+    var opts = {
+        'week': 1,
+        'division': "fbs",
+        'team': req.body.team
+    };
+
+    gamesApi.getGames(year, opts).then(data => res.json(data));
+});
+
+
+
+const job = schedule.scheduleJob('34 1 * * *', async function(){
+
+    var gamesApi = new cfb.GamesApi();
+    var calendar = await gamesApi.getCalendar(process.env.YEAR);
+    var weekNumber = 1;
+    var isPostseason = false;
+
+    if (calendar) {
+        for (const calendarWeek of calendar) {
+            var startDate = new Date(calendarWeek.firstGameStart);
+            var endDate = new Date(calendarWeek.lastGameStart);
+            var currentDate = new Date();
+
+            if ((currentDate > startDate) && (currentDate < endDate)) {
+                weekNumber = calendarWeek.week;
+                if (calendarWeek.seasonType == "postseason") {
+                    isPostseason = true;
+                }
+                break;
+            }
+        }
+    }
+
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
