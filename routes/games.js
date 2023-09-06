@@ -24,12 +24,12 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     var seasonType = req.params.seasonType;
     try {
         console.log("seasonType = " + seasonType + " // week = " + week + " // team = " + team);
-        const homeGame = await Game.find({ homeTeam: team, week: week, seasonType: seasonType});
+        const homeGame = await Game.find({ season: process.env.YEAR, homeTeam: team, week: week, seasonType: seasonType});
         //console.log("game: ", game);
 
         if (JSON.stringify(homeGame) === '[]') {
             try {
-                const awayGame = await Game.find({ awayTeam: team, week: week, seasonType: seasonType});
+                const awayGame = await Game.find({ season: process.env.YEAR, awayTeam: team, week: week, seasonType: seasonType});
 
                 if (JSON.stringify(awayGame) === '[]') {
                     res.status(400).json({message: `${team} did not have a game in week ${week}`});

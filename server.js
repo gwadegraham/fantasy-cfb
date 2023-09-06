@@ -68,7 +68,7 @@ app.post('/games-api', (req, res) => {
 
 
 
-const job = schedule.scheduleJob('0 3 * * *', async function(){
+const job = schedule.scheduleJob('30 0 * * *', async function(){
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
@@ -91,6 +91,7 @@ const job = schedule.scheduleJob('0 3 * * *', async function(){
         }
     }
 
+    weekNumber = 1;
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
