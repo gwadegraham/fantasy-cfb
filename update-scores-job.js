@@ -31,7 +31,6 @@ async function updateScores () {
         }
     }
 
-    weekNumber = 1;
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
