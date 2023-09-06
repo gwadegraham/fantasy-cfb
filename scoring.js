@@ -10,7 +10,7 @@ var rankingsApi = new cfb.RankingsApi();
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await fetch("/users", {
+        var response = await fetch(`${process.env.URL}/users`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -36,7 +36,7 @@ module.exports= {
     },
 
     updateScores: async function(season, week) {
-        var response = await fetch("/users", {
+        var response = await fetch(`${process.env.URL}/users`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -48,6 +48,7 @@ module.exports= {
 
         for (const user of userData) {
             var score = 0;
+            var teamScores = new Array();
 
             for (const team of user.teams) {
                 var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
@@ -62,7 +63,15 @@ module.exports= {
     
                 if (game.status == 200) {
                     for (const game of response) {
-                        score += await calculateScore(team.school, game, week);
+                        var teamScore = await calculateScore(team.school, game, week);
+                        score += teamScore;
+
+                        var teamScoreObject = {
+                            "team": team.school,
+                            "score": teamScore
+                        };
+
+                        teamScores.push(teamScoreObject);
                     }
                 } else {
                     console.log(response.message);
@@ -71,7 +80,8 @@ module.exports= {
 
             var scoreObject = {
                 "week": week,
-                "score": score
+                "score": score,
+                "scoreByTeam": teamScores
             };
 
             if ((season == "postseason")) {
@@ -205,7 +215,7 @@ async function updateUser(userId, scoreUpdate) {
         "isUpdated": true
         }`;
 
-    const response = await fetch("/users/" + userId, {
+    const response = await fetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -224,7 +234,7 @@ async function updateUser(userId, scoreUpdate) {
 }
 
 async function updateUserCumulativeScore(userId, cumulativeScore) {
-    const response = await fetch("/users/" + userId, {
+    const response = await fetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',

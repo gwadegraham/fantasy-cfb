@@ -56,6 +56,15 @@ const locationSchema = new mongoose.Schema({
     },
 });
 
+const weeklyTeamScoreSchema = new mongoose.Schema({
+    team: {
+        type: String
+    },
+    score: {
+        type: Number
+    }
+});
+
 const weeklyScoreSchema = new mongoose.Schema({
     week: {
         type: Number,
@@ -64,6 +73,9 @@ const weeklyScoreSchema = new mongoose.Schema({
     score: {
         type: Number,
         required: true
+    },
+    scoreByTeam: {
+        type: [weeklyTeamScoreSchema]
     },
     season: {
         type: String

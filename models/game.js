@@ -75,11 +75,9 @@ const gameSchema = new mongoose.Schema({
     },
     homePregameElo: {
         type: Number,
-        required: true
     },
     homePostgameElo: {
         type: Number,
-        required: true
     },
     awayId: {
         type: Number,
