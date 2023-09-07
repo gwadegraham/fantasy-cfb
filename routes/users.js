@@ -26,8 +26,15 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
 });
 
 //Getting One
-router.get('/:id', (req, res) => {
-    res.send(req.params.id);
+router.get('/:id', async (req, res) => {
+    var userId = req.params.id;
+
+    try {
+        const user = await User.find({_id: userId});
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
 });
 
 //Creating One

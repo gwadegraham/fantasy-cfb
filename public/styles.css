@@ -264,6 +264,10 @@ footer {
     background-color: #fff;
 }
 
+.team-score-header {
+    text-align: left;
+}
+
 .table-wrapper{
     margin: 10px 20px 20px;
     box-shadow: 0px 35px 50px rgba( 0, 0, 0, 0.2 );
@@ -389,7 +393,7 @@ footer {
     .fl-table tr td:nth-child(even) {
         border-right: 1px solid #E6E4E4;
     }
-    .fl-table tbody td {
+    .fl-table tbody td, .sticky-header {
         display: block;
         text-align: center;
     }
