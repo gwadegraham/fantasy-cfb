@@ -264,6 +264,10 @@ footer {
     background-color: #fff;
 }
 
+.team-score-header {
+    text-align: left;
+}
+
 .table-wrapper{
     margin: 10px 20px 20px;
     box-shadow: 0px 35px 50px rgba( 0, 0, 0, 0.2 );

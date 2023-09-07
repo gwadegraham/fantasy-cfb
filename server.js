@@ -9,8 +9,8 @@ const retrieveGamesModule = require('./retrieve-games.js');
 const scoringModule = require('./scoring.js');
 const schedule = require('node-schedule');
 
-
-
+// register the given template engine 
+app.set("view engine", "ejs");
 
 // Configure CFB Data
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -43,6 +43,10 @@ app.use('/teams', teamsRouter);
 const gamesRouter = require('./routes/games');
 const { printTeams } = require('./retrieve-games.js');
 app.use('/games', gamesRouter);
+
+app.get('/userHome', async function(req, res) {
+    res.render('userHome');
+});
 
 app.get('/top-25', async (req, res) => {
 

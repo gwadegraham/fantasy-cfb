@@ -51,7 +51,7 @@ function displayUsers(data) {
     data.forEach( (user, index) => {
         str += '<tr>';
         str += '<th class="sticky-header">' + (index + 1) + '</th>';
-        str += '<th class="sticky-header">' + user.firstName + ' ' + user.lastName + '</th>';
+        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName + '</a></th>';
         
         user.teams.forEach(team => {
             refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
