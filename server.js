@@ -94,7 +94,7 @@ app.post('/games-api', (req, res) => {
 
 
 
-const job = schedule.scheduleJob('34 1 * * *', async function(){
+const job = schedule.scheduleJob('25 11 * * *', async function(){
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
