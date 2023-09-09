@@ -59,6 +59,13 @@ function displayTeams(data) {
         var totalScore = 0;
 
         str += '<tr>';
+        refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
+        refLink = refLink.replace(/\s/g, "-").toLowerCase();
+
+        str += '<th class="team-item sticky-header"><div class="team-score-header">';
+        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
+        str += team.school;
+        str += '</div></th></a>';
         
         data.weeklyScore.forEach(week => {
             console.log("team", team.school);
@@ -66,17 +73,14 @@ function displayTeams(data) {
                 return obj.team == team.school
               });
 
-            console.log("resultTeam", result[0]);
-            refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
-            refLink = refLink.replace(/\s/g, "-").toLowerCase();
+            
 
-            str += '<th class="team-item sticky-header"><div class="team-score-header">';
-            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
-            str += team.school;
-            str += '</div></th></a>';
-
-            str += '<td>' + result[0].score + '</td>'
-            totalScore += result[0].score;
+            if (result[0]) {
+                str += '<td>' + result[0].score + '</td>';
+                totalScore += result[0].score;
+            } else {
+                str += '<td>0</td>';
+            }
         });
 
 
