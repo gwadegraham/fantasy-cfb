@@ -35,6 +35,9 @@ async function updateScores () {
                     isPostseason = true;
                 }
                 break;
+            } else if ((currentDate < startDate)) {
+                weekNumber = calendarWeek.week;
+                break;
             }
         }
     }
