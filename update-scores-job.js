@@ -23,7 +23,13 @@ async function updateScores () {
             var endDate = new Date(calendarWeek.lastGameStart);
             var currentDate = new Date();
 
+            console.log("currentDate", currentDate);
+            console.log("startDate", startDate);
+            console.log("endDate", endDate);
+            console.log("(currentDate > startDate) && (currentDate < endDate)", (currentDate > startDate) && (currentDate < endDate));
+
             if ((currentDate > startDate) && (currentDate < endDate)) {
+                console.log("calendarWeek.week", calendarWeek.week);
                 weekNumber = calendarWeek.week;
                 if (calendarWeek.seasonType == "postseason") {
                     isPostseason = true;
