@@ -15,6 +15,8 @@ async function updateScores () {
     var weekNumber = 1;
     var isPostseason = false;
 
+    console.log("calendar => ", calendar);
+
     if (calendar) {
         for (const calendarWeek of calendar) {
             var startDate = new Date(calendarWeek.firstGameStart);
