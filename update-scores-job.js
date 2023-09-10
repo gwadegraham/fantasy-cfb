@@ -23,10 +23,8 @@ async function updateScores () {
             var endDate = new Date(calendarWeek.lastGameStart);
             var currentDate = new Date();
 
-            console.log("currentDate", currentDate);
-            console.log("startDate", startDate);
-            console.log("endDate", endDate);
             console.log("(currentDate > startDate) && (currentDate < endDate)", (currentDate > startDate) && (currentDate < endDate));
+            console.log("currentDate < startDate", (currentDate < startDate));
 
             if ((currentDate > startDate) && (currentDate < endDate)) {
                 console.log("calendarWeek.week", calendarWeek.week);
@@ -36,7 +34,7 @@ async function updateScores () {
                 }
                 break;
             } else if ((currentDate < startDate)) {
-                weekNumber = calendarWeek.week;
+                weekNumber = parseInt(calendarWeek.week) - 1;
                 break;
             }
         }
