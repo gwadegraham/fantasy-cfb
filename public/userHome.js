@@ -73,11 +73,17 @@ function displayTeams(data) {
                 return obj.team == team.school
               });
 
+            var tableWeeklyScore = 0;
+            if (result.length > 0) {
+                for (const repeatedScore of result) {
+                    tableWeeklyScore += repeatedScore.score;
+                }
+            }
             
 
             if (result[0]) {
-                str += '<td>' + result[0].score + '</td>';
-                totalScore += result[0].score;
+                str += '<td>' + tableWeeklyScore + '</td>';
+                totalScore += tableWeeklyScore;
             } else {
                 str += '<td>0</td>';
             }
