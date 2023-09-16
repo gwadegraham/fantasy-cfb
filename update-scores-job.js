@@ -12,7 +12,7 @@ async function updateScores () {
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
-    var weekNumber = 1;
+    var weekNumber = 2;
     var isPostseason = false;
 
     console.log("calendar => ", calendar);
