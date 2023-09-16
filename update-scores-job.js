@@ -12,33 +12,33 @@ async function updateScores () {
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
-    var weekNumber = 2;
+    var weekNumber = 1;
     var isPostseason = false;
 
     console.log("calendar => ", calendar);
 
-    // if (calendar) {
-    //     for (const calendarWeek of calendar) {
-    //         var startDate = new Date(calendarWeek.firstGameStart);
-    //         var endDate = new Date(calendarWeek.lastGameStart);
-    //         var currentDate = new Date();
+    if (calendar) {
+        for (const calendarWeek of calendar) {
+            var startDate = new Date(calendarWeek.firstGameStart);
+            var endDate = new Date(calendarWeek.lastGameStart);
+            var currentDate = new Date();
 
-    //         console.log("(currentDate > startDate) && (currentDate < endDate)", (currentDate > startDate) && (currentDate < endDate));
-    //         console.log("currentDate < startDate", (currentDate < startDate));
+            console.log("(currentDate > startDate) && (currentDate < endDate)", (currentDate > startDate) && (currentDate < endDate));
+            console.log("currentDate < startDate", (currentDate < startDate));
 
-    //         if ((currentDate > startDate) && (currentDate < endDate)) {
-    //             console.log("calendarWeek.week", calendarWeek.week);
-    //             weekNumber = calendarWeek.week;
-    //             if (calendarWeek.seasonType == "postseason") {
-    //                 isPostseason = true;
-    //             }
-    //             break;
-    //         } else if ((currentDate < startDate)) {
-    //             weekNumber = parseInt(calendarWeek.week) - 1;
-    //             break;
-    //         }
-    //     }
-    // }
+            if ((currentDate > startDate) && (currentDate < endDate)) {
+                console.log("calendarWeek.week", calendarWeek.week);
+                weekNumber = calendarWeek.week;
+                if (calendarWeek.seasonType == "postseason") {
+                    isPostseason = true;
+                }
+                break;
+            } else if ((currentDate < startDate)) {
+                weekNumber = parseInt(calendarWeek.week) - 1;
+                break;
+            }
+        }
+    }
 
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
