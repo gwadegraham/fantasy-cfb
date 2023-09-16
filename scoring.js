@@ -63,7 +63,14 @@ module.exports= {
     
                 if (game.status == 200) {
                     for (const game of response) {
-                        var teamScore = await calculateScore(team.school, game, week);
+                        var teamScore = 0;
+
+                        if (user.league == "claunts-league") {
+                            teamScore = await calculateScoreV1(team.school, game, week);
+                        } else if (user.league == "graham-league") {
+                            teamScore = await calculateScoreV2(team.school, game, week);
+                        }
+
                         score += teamScore;
 
                         var teamScoreObject = {
@@ -148,9 +155,73 @@ module.exports= {
     }
 };
 
+async function calculateScoreV1(team, data, week) {
+    var game = data;
+    var score = 0;
 
+    var year = process.env.YEAR;
+    var opts = {
+        'week': week
+    };
+    var response = await rankingsApi.getRankings(year, opts);
+    var rankings = await response;
 
-async function calculateScore(team, data, week) {
+    var isSemiFinalist = isCFP(game);
+
+    if (isSemiFinalist) {
+        score += 7;
+    } else if (game.homeTeam == team) {
+        if (game.homePoints > game.awayPoints) {
+            var isConfChampion = isConferenceChampion(game);
+            var isBowlWinner = isBowlWin(game);
+            var isNationalChamp = isNationalChampion(game);
+
+            if (isNationalChamp) {
+                score += 10;
+            } else if (isBowlWinner) {
+                score += 6;
+            } else if (isConfChampion) {
+                score += 5;
+            } else {
+                score += 1;
+                var ranked = isRankedV1(game.awayTeam, rankings[0]);
+
+                if (ranked > 0) {
+                    score += ranked;
+                } else {
+                    score = isConference(game) ? (score + 1) : score;
+                }
+            }  
+        }
+    } else if (game.awayTeam == team) {
+        if (game.awayPoints > game.homePoints) {
+            var isConfChampion = isConferenceChampion(game);
+            var isBowlWinner = isBowlWin(game);
+            var isNationalChamp = isNationalChampion(game);
+
+            if (isNationalChamp) {
+                score += 10;
+            } else if (isBowlWinner) {
+                score += 6;
+            } else if (isConfChampion) {
+                score += 5;
+            } else {
+                score += 1;
+                var ranked = isRankedV1(game.homeTeam, rankings[0]);
+
+                if (ranked > 0) {
+                    score += ranked;
+                } else {
+                    score = isConference(game) ? (score + 1) : score;
+                }
+            }
+        }
+    }
+    console.log("team => " + team + " game => " + game.notes + " with score == " + score);
+    return score;
+}
+
+async function calculateScoreV2(team, data, week) {
     var game = data;
     var score = 0;
 
@@ -260,6 +331,25 @@ function isConference(game) {
         return false;
     } else {
         return game.conferenceGame;
+    }
+}
+
+function isRankedV1(team, rankings) {
+    var pollIndex = rankings.polls.findIndex(x => x.poll === 'Playoff Committee Rankings');
+
+    if (pollIndex == -1) {
+        pollIndex = rankings.polls.findIndex(x => x.poll === 'AP Top 25');
+    }
+
+    var rankIndex = rankings.polls[pollIndex].ranks.findIndex(y => y.school === team);
+
+
+    if (rankIndex != -1) {
+        var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
+
+        return 2;
+    } else {
+        return 0;
     }
 }
 
