@@ -138,8 +138,7 @@ body {
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    border-top-left-radius: 5px;
-    border-top-right-radius: 5px;
+    border-radius: 5px;
 }
 
 .header-title {
@@ -403,5 +402,20 @@ footer {
     .fl-table tbody img {
         height: 15px;
         margin-right: 10px
+    }
+    .header-title {
+        font-size: 1.7rem;
+    }
+    .cfb-data {
+        font-size: 1rem;
+    }
+    .content {
+        margin-top: 10px;
+    }
+    .header {
+        height: 50px;
+    }
+    .header-title {
+        padding: 5px;
     }
 }
