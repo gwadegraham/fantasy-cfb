@@ -362,12 +362,12 @@ footer {
         overflow-x: auto;
     }
     .fl-table td, .fl-table th {
-        padding: 20px .625em .625em .625em;
+        padding: 1.5em .625em .625em .625em;
         height: 40px;
         vertical-align: middle;
         box-sizing: border-box;
         overflow-x: hidden;
-        overflow-y: auto;
+        overflow-y: hidden;
         width: 100px;
         font-size: 8px;
         text-overflow: ellipsis;
@@ -378,6 +378,7 @@ footer {
     }
     .fl-table .team-header {
         width: 50px;
+        white-space: pre-wrap;
     }
     .fl-table tbody tr {
         display: table-cell;
