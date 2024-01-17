@@ -7,6 +7,8 @@
     <link href="styles.css" rel="stylesheet">
     <script defer src="standings.js"></script>
     <script src="navbar.js"></script>
+    <script type="module" src="weekByWeek.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
     <title>Fantasy CFB</title>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
 </head>
@@ -41,6 +43,20 @@
                         <tbody user-table-body>
                         <tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="container chart-container">
+        <div class="header">
+            <div class="header-title" poll-name>
+                Path to the Championship
+            </div>
+        </div>
+        <div class="content">
+            <div class="get-users-container" get-users-container>
+                <div class="table-wrapper">
+                    <div style="width: 800px;"><canvas id="week-by-week"></canvas></div>
                 </div>
             </div>
         </div>
