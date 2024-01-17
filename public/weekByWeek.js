@@ -1,27 +1,4 @@
-window.onload = function() {
-    leagueCode = window.localStorage.getItem("leagueCode");
-    const currentSelectedLeague = window.localStorage.getItem("league");
-    if (currentSelectedLeague) {
-        $("#dropdownMenuButton").text(currentSelectedLeague);
-    }
-    getUsers();
-};
-
-async function getUsers() {
-    const response = await fetch(`/users/league/${leagueCode}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
-
-    response.json().then(async data => {
-        setChartData(data);
-    });
-}
-
-function setChartData(data) {
+export function setChartData(data) {
 
     data.sort((a, b) => {
         return b.cumulativeScore - a.cumulativeScore;

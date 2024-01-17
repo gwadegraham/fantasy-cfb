@@ -1,3 +1,5 @@
+import { setChartData } from './weekByWeek.js';
+
 const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
@@ -37,6 +39,7 @@ async function getUsers() {
     response.json().then(async data => {
         //await getScores(data);
         displayUsers(data);
+        setChartData(data);
     });
 }
 
@@ -54,7 +57,7 @@ function displayUsers(data) {
         str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName + '</a></th>';
         
         user.teams.forEach(team => {
-            refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
+            var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
             str += '<td class="team-item"><div>';
