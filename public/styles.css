@@ -127,6 +127,10 @@ body {
     padding: 30px;
 }
 
+.chart-container {
+    margin-top: 20px;
+}
+
 .content {
     /* padding-left: 40px; */
     margin-top: 50px;
