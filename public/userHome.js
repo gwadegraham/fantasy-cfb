@@ -1,6 +1,7 @@
 const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
+var weekCode;
 
 toggleButton.addEventListener('click', () => {
     navbarLinks.classList.toggle('active');
@@ -12,16 +13,33 @@ window.onload = function() {
     if (currentSelectedLeague) {
         $("#dropdownMenuButton").text(currentSelectedLeague);
     }
-    getUser();
-  };
 
-$(".dropdown-menu a").click(function(){
-    $(this).parents(".dropdown").find('.btn').html($(this).text());
-    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+    weekCode = window.localStorage.getItem("weekCode");
+    const currentSelectedWeek = window.localStorage.getItem("week");
+    if (currentSelectedWeek) {
+        $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
+    }
+
+    getUser();
+};
+
+$(".dropdown-menu-right a").click(function(){
+    $(this).parents(".dropdown-nav").find('.btn').html($(this).text());
+    $(this).parents(".dropdown-nav").find('.btn').val($(this).attr('value'));
     var selectedLeague = $("#dropdownMenuButton").text();
     var selectedLeagueCode = $("#dropdownMenuButton").val();
     window.localStorage.setItem("league", selectedLeague);
     window.localStorage.setItem("leagueCode", selectedLeagueCode);
+    window.location.reload();
+});
+
+$(".dropdown-menu-week a").click(function(){
+    $(this).parents(".dropdownWeek").find('.btn').html($(this).text());
+    $(this).parents(".dropdownWeek").find('.btn').val($(this).attr('value'));
+    var selectedWeek = $("#dropdownMenuButtonWeek").text();
+    var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
+    window.localStorage.setItem("week", selectedWeek);
+    window.localStorage.setItem("weekCode", selectedWeekCode);
     window.location.reload();
 });
 
@@ -38,9 +56,9 @@ async function getUser() {
 
     response.json().then(async data => {
         console.log("userData",data);
-        //await getScores(data);
         changeHeader(data[0]);
         displayTeams(data[0]);
+        displaySchedule(data[0]);
     });
 }
 function changeHeader(data) {
@@ -68,7 +86,6 @@ function displayTeams(data) {
         str += '</div></th></a>';
         
         data.weeklyScore.forEach(week => {
-            console.log("team", team.school);
             var result = week.scoreByTeam.filter(obj => {
                 return obj.team == team.school
               });
@@ -79,7 +96,6 @@ function displayTeams(data) {
                     tableWeeklyScore += repeatedScore.score;
                 }
             }
-            
 
             if (result[0]) {
                 str += '<td>' + tableWeeklyScore + '</td>';
@@ -115,4 +131,106 @@ function displayTeams(data) {
     str += '</tr>';
 
     userTableBody.innerHTML = str;
+}
+
+async function getGame(season, week, team) {
+
+    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json'
+        }
+    });
+
+    var game = await gamePromise;
+    var response = await game.json();
+
+    var games = new Array();
+
+
+    if (game.status == 200) {
+        for (const game of response) {
+            games.push(game);
+        }
+    } else {
+        console.log(response.message);
+    }
+
+    return games;
+}
+
+async function displaySchedule(data) {
+    const scheduleContainer = document.querySelector('[schedule-body]');
+    var str = '<tr>';
+
+    for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
+        var week = weekCode.substring(5);
+        var gamesInfo = await getGame("regular", week, data.teams[iterNum]);
+
+        if ((iterNum + 1) == data.teams.length) {
+            str += '</td></tr>'
+        }
+        else if ((iterNum % 3 == 0) && (iterNum > 0)) {
+            console.log("break point for team " + data.teams[iterNum].school + " iterNum: " + iterNum)
+            str += '</tr><tr>';
+        }
+
+        for (const game of gamesInfo) {
+
+            var topData = '';
+            var bottomData = '';
+
+            if (!game.startTimeTbd) {
+                if( game.awayPoints > game.homePoints ) {
+                    topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
+                    bottomData = game.homePoints;
+                } else {
+                    topData = game.awayPoints;
+                    bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
+                }
+            } else {
+
+                var militaryTime = parseInt(game.startDate.substring(11,14));
+                var standardTime = '';
+
+                if (militaryTime < 12) {
+                    standardTime = militaryTime.toString() + "AM";
+                }
+                else if (militaryTime == 12) {
+                    standardTime = militaryTime.toString() + "PM";
+                }
+                else {
+                    standardTime =( militaryTime - 12).toString() + "PM";
+                }
+
+                topData = game.startDate.substring(5,10);
+                bottomData = standardTime;
+            }
+
+            var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+
+            if (data.teams.some(team => team.school === game.awayTeam)) {
+                // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
+                teamTable += '<strong>' + game.awayTeam + '</strong>';
+            } else {
+                teamTable += game.awayTeam;
+            }
+
+            teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+            teamTable += '</td></tr><tr><td style="width: 250px;">';
+            
+            if (data.teams.some(team => team.school === game.homeTeam)) {
+                // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
+                teamTable += '<strong>' + game.homeTeam + '</strong>';
+            } else {
+                teamTable += game.homeTeam;
+            }
+            
+            teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+            teamTable += '</td></tr><tr></tr><tbody></table></td>';
+
+            str += teamTable;
+        }
+        scheduleContainer.innerHTML = str;
+    }
 }

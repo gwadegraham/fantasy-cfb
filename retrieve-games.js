@@ -82,6 +82,31 @@ module.exports = {
         return uniqueGames;
     },
 
+    retrieveGameBySeasonWeekTeam: async (season, week, team) => {
+        var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json'
+            }
+        });
+    
+        var game = await gamePromise;
+        var response = await game.json();
+    
+        var games = new Array();
+    
+    
+        if (game.status == 200) {
+            for (const game of response) {
+                games.push(game);
+            }
+        } else {
+            console.log(response.message);
+        }
+    
+        return games;
+    },
+
     saveGames: async (games) => {
 
         for (const game of games) {

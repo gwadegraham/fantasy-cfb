@@ -67,6 +67,14 @@ body {
     border: none;
 }
 
+#dropdownMenuButtonWeek {
+    background-color: #333 !important;
+}
+
+.dropdown-week {
+    color: white !important;
+}
+
 .toggle-button {
     position: absolute;
     top: .75rem;
@@ -334,6 +342,27 @@ footer {
 
 .fl-table tr:nth-child(even) .sticky-header, .fl-table tr:nth-child(even) .sticky-header-score {
     background: #F8F8F8;
+}
+
+.schedule-table {
+    margin: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.game-table {
+    border: 1px solid black;
+    border-radius: 5px;
+    padding: 15px;
+}
+
+.game-table img {
+    height: 25px;
+    padding: 3px;
+}
+
+.game-table td {
+    padding: 3px;
 }
 
 /* Responsive */
