@@ -69,6 +69,7 @@ body {
 
 #dropdownMenuButtonWeek {
     background-color: #333 !important;
+    margin-top: 10px;
 }
 
 .dropdown-week {
