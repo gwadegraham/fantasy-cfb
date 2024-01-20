@@ -2,6 +2,7 @@ const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
 var weekCode;
+var userData;
 
 toggleButton.addEventListener('click', () => {
     navbarLinks.classList.toggle('active');
@@ -40,7 +41,8 @@ $(".dropdown-menu-week a").click(function(){
     var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
-    window.location.reload();
+
+    displaySchedule(userData);
 });
 
 async function getUser() {
@@ -56,6 +58,7 @@ async function getUser() {
 
     response.json().then(async data => {
         console.log("userData",data);
+        userData = data[0];
         changeHeader(data[0]);
         displayTeams(data[0]);
         displaySchedule(data[0]);
@@ -164,7 +167,7 @@ async function displaySchedule(data) {
     var str = '<tr>';
 
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
-        var week = weekCode.substring(5);
+        var week = window.localStorage.getItem("weekCode").substring(5);
         var gamesInfo = await getGame("regular", week, data.teams[iterNum]);
 
         if ((iterNum + 1) == data.teams.length) {
