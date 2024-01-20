@@ -168,11 +168,15 @@ async function displaySchedule(data) {
 
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
         var week = window.localStorage.getItem("weekCode").substring(5);
+        var gameWeek;
         var seasonType = "regular";
 
         if (week == "16") {
             seasonType = "postseason";
             week = 1;
+            gameWeek = "16"
+        } else {
+            gameWeek = week;
         }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
@@ -209,7 +213,7 @@ async function displaySchedule(data) {
 
                 if( game.awayPoints > game.homePoints ) {
                     if(isAway) {
-                        var weeklyScore = userData.weeklyScore[(parseInt(week) - 1)];
+                        var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
                         var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                             return obj.team == game.awayTeam;
                         });
