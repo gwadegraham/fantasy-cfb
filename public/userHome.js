@@ -172,6 +172,7 @@ async function displaySchedule(data) {
 
         if (week == "16") {
             seasonType = "postseason";
+            week = 1;
         }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
