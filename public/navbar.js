@@ -26,7 +26,7 @@ document.write('\
             <li><a href="./standings.html">Standings</a></li>\
             <li><a href="./top25.html">Top 25</a></li>\
             <li>\
-                <div class="dropdown">\
+                <div class="dropdown dropdown-nav">\
                     <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">\
                         Leagues\
                     </button>\
