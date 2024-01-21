@@ -225,7 +225,7 @@ async function displaySchedule(data) {
                 } else {
 
                     if(!isAway) {
-                        var weeklyScore = userData.weeklyScore[(parseInt(week) - 1)];
+                        var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
                         var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                             return obj.team == game.homeTeam;
                         });
