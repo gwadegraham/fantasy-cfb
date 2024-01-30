@@ -224,7 +224,8 @@ async function displaySchedule(data) {
     
                 if (!game.startTimeTbd) {
     
-                    if (data.teams.some(team => team.school === game.awayTeam)) {
+                    if (game.awayTeam == data.teams[iterNum].school) {
+                    // if (data.teams.some(team => team.school === game.awayTeam)) {
                         // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
@@ -237,7 +238,7 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(isAway) {
+                        if(game.awayTeam == data.teams[iterNum].school) {
                             var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.awayTeam;
