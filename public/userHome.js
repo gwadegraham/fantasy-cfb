@@ -367,8 +367,10 @@ async function displaySchedule(data) {
                     };
 
                     var indexToReplace = gameTables.findIndex(x => x.id == game.id);
+                    console.log("splicing index => " + indexToReplace);
+                    gameTables.splice(indexToReplace, 1);
 
-                    gameTables[indexToReplace] = gameInfo;
+                    gameTables.push(gameInfo);
 
 
                     // gameTables.push(gameInfo);
