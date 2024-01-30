@@ -51,7 +51,9 @@ app.get('/userHome', async function(req, res) {
 app.get('/top-25', async (req, res) => {
 
     var gamesApi = new cfb.GamesApi();
-    var calendar = await gamesApi.getCalendar(process.env.YEAR);
+    // var calendar = await gamesApi.getCalendar(process.env.YEAR);
+    var calendar = false;   //temporary to avoid api call usage
+
     var weekNumber = 1;
     var isPostseason = false;
 
@@ -77,7 +79,8 @@ app.get('/top-25', async (req, res) => {
         'seasonType': "regular",
     };
 
-    rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
+    //temporary to avoid api call usage
+    // rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
 });
 
 app.post('/games-api', (req, res) => {
@@ -89,7 +92,8 @@ app.post('/games-api', (req, res) => {
         'team': req.body.team
     };
 
-    gamesApi.getGames(year, opts).then(data => res.json(data));
+    //temporary to avoid api call usage
+    // gamesApi.getGames(year, opts).then(data => res.json(data));
 });
 
 
