@@ -322,7 +322,7 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(isAway) {
+                        if(game.awayTeam == data.teams[iterNum].school) {
                             shouldReplace = true;
                             var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
@@ -335,7 +335,7 @@ async function displaySchedule(data) {
                         bottomData = game.homePoints;
                     } else {
     
-                        if(!isAway) {
+                        if(game.homeTeam == data.teams[iterNum].school) {
                             shouldReplace = true;
                             var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
