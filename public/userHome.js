@@ -181,8 +181,12 @@ async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
     var gameIds = [];
+    var gameTables = [];
 
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
+
+        var teamInfo = '';
+
         var week = window.localStorage.getItem("weekCode").substring(5);
         var gameWeek;
         var seasonType = "regular";
@@ -196,16 +200,16 @@ async function displaySchedule(data) {
         }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
-        if (isMobile) {
-            str += '</tr><tr>';
-        }
+        // if (isMobile) {
+        //     str += '</tr><tr>';
+        // }
         
-        if ((iterNum + 1) > data.teams.length) {
-            str += '</td></tr>'
-        }
-        else if ((gameIds.length % 3 == 0) && (iterNum > 0)) {
-            str += '</tr><tr>';
-        }
+        // if ((iterNum + 1) > data.teams.length) {
+        //     str += '</td></tr>'
+        // }
+        // else if ((gameIds.length % 3 == 0) && (iterNum > 0)) {
+        //     str += '</tr><tr>';
+        // }
 
         for (const game of gamesInfo) {
             if (gameIds.indexOf(game.id) == -1) {
@@ -286,13 +290,114 @@ async function displaySchedule(data) {
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += '</tr><tr></tr><tbody></table></td>';
     
-                str += teamTable;
+                var gameInfo = {
+                    id: game.id,
+                    table: teamTable,
+                    homeTeam: game.homeTeam,
+                    awayTeam: game.awayTeam
+                };
 
-                if (isMobile) {
-                    str += '</tr><tr>';
+                gameTables.push(gameInfo);
+
+                // str += teamTable;
+
+                // if (isMobile) {
+                //     str += '</tr><tr>';
+                // }
+            } else {
+                if (!game.startTimeTbd) {
+
+                    var shouldReplace = false;
+    
+                    if (data.teams.some(team => team.school === game.awayTeam)) {
+                        // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
+                        awayTeam= '<strong>' + game.awayTeam + '</strong>';
+                        homeTeam = game.homeTeam;
+    
+                        isAway = true;
+                    } else {
+                        awayTeam = game.awayTeam;
+                        homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                    }
+    
+    
+                    if( game.awayPoints > game.homePoints ) {
+                        if(isAway) {
+                            shouldReplace = true;
+                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.team == game.awayTeam;
+                            });
+    
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                        }
+                        topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                        bottomData = game.homePoints;
+                    } else {
+    
+                        if(!isAway) {
+                            shouldReplace = true;
+                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.team == game.homeTeam;
+                            });
+    
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                        }
+    
+                        topData = game.awayPoints;
+                        bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                    }
+
+                    var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+    
+                    teamTable += awayTeam;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                    teamTable += '</tr><tr><td style="width: 250px;">';
+        
+                    teamTable += homeTeam;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</tr><tr></tr><tbody></table></td>';
+        
+                    var gameInfo = {
+                        id: game.id,
+                        table: teamTable,
+                        homeTeam: game.homeTeam,
+                        awayTeam: game.awayTeam
+                    };
+
+                    var indexToReplace = gameTables.findIndex(x => x.id == game.id);
+
+                    gameTables[indexToReplace] = gameInfo;
+
+
+                    // gameTables.push(gameInfo);
+
                 }
             }
         }
-        scheduleContainer.innerHTML = str;
+
+        
     }
+    for(var k = 0; k < gameTables.length; k++) {
+        console.log("// homeTeam = " + gameTables[k].homeTeam)
+        if (isMobile) {
+            str += '</tr><tr>';
+        }
+        
+        if ((k + 1) > gameTables.length) {
+            str += '</td></tr>'
+        }
+        else if (((k) % 3 == 0) && (k > 0)) {
+            console.log("breaking before awayTeam = " + gameTables[k].awayTeam + " // homeTeam = " + gameTables[k].homeTeam)
+            str += '</tr><tr>';
+        }
+
+        str += gameTables[k].table;
+
+        if (isMobile) {
+            str += '</tr><tr>';
+        }
+    }
+    scheduleContainer.innerHTML = str;
 }
