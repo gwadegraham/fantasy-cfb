@@ -3,12 +3,27 @@ const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
 var weekCode;
 var userData;
+var isMobile;
 
 toggleButton.addEventListener('click', () => {
     navbarLinks.classList.toggle('active');
 });
 
+function detectMobile() {
+    if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
+        // true for mobile device
+        isMobile = true;
+        console.log("mobile device");
+    } else{
+        // false for not mobile device
+        isMobile = false;
+        console.log("not mobile device");
+    }
+}
+
 window.onload = function() {
+    detectMobile();
+
     leagueCode = window.localStorage.getItem("leagueCode");
     const currentSelectedLeague = window.localStorage.getItem("league");
     if (currentSelectedLeague) {
@@ -165,6 +180,7 @@ async function getGame(season, week, team) {
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
+    var gameIds = [];
 
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
         var week = window.localStorage.getItem("weekCode").substring(5);
@@ -180,92 +196,102 @@ async function displaySchedule(data) {
         }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
-        if ((iterNum + 1) == data.teams.length) {
+        if (isMobile) {
+            str += '</tr><tr>';
+        }
+        
+        if ((iterNum + 1) > data.teams.length) {
             str += '</td></tr>'
         }
-        else if ((iterNum % 3 == 0) && (iterNum > 0)) {
-            console.log("break point for team " + data.teams[iterNum].school + " iterNum: " + iterNum)
+        else if ((gameIds.length % 3 == 0) && (iterNum > 0)) {
             str += '</tr><tr>';
         }
 
         for (const game of gamesInfo) {
+            if (gameIds.indexOf(game.id) == -1) {
+                gameIds.push(game.id);
 
-            var topData = '';
-            var bottomData = '';
-            var scoreAdded = '<strong style="color: white;">+0<strong>';
-            var awayTeam = '';
-            var homeTeam = '';
-            var isAway = false;
-
-            if (!game.startTimeTbd) {
-
-                if (data.teams.some(team => team.school === game.awayTeam)) {
-                    // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
-                    awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                    homeTeam = game.homeTeam;
-
-                    isAway = true;
-                } else {
-                    awayTeam = game.awayTeam;
-                    homeTeam = '<strong>' + game.homeTeam + '</strong>';
-                }
-
-
-                if( game.awayPoints > game.homePoints ) {
-                    if(isAway) {
-                        var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
-                        var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                            return obj.team == game.awayTeam;
-                        });
-
-                        scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                var topData = '';
+                var bottomData = '';
+                var scoreAdded = '<strong style="color: white;">+0<strong>';
+                var awayTeam = '';
+                var homeTeam = '';
+                var isAway = false;
+    
+                if (!game.startTimeTbd) {
+    
+                    if (data.teams.some(team => team.school === game.awayTeam)) {
+                        // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
+                        awayTeam= '<strong>' + game.awayTeam + '</strong>';
+                        homeTeam = game.homeTeam;
+    
+                        isAway = true;
+                    } else {
+                        awayTeam = game.awayTeam;
+                        homeTeam = '<strong>' + game.homeTeam + '</strong>';
                     }
-                    topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
-                    bottomData = game.homePoints;
-                } else {
-
-                    if(!isAway) {
-                        var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
-                        var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                            return obj.team == game.homeTeam;
-                        });
-
-                        scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+    
+    
+                    if( game.awayPoints > game.homePoints ) {
+                        if(isAway) {
+                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.team == game.awayTeam;
+                            });
+    
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                        }
+                        topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                        bottomData = game.homePoints;
+                    } else {
+    
+                        if(!isAway) {
+                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.team == game.homeTeam;
+                            });
+    
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                        }
+    
+                        topData = game.awayPoints;
+                        bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     }
-
-                    topData = game.awayPoints;
-                    bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                } else {
+    
+                    var militaryTime = parseInt(game.startDate.substring(11,14));
+                    var standardTime = '';
+    
+                    if (militaryTime < 12) {
+                        standardTime = militaryTime.toString() + "AM";
+                    }
+                    else if (militaryTime == 12) {
+                        standardTime = militaryTime.toString() + "PM";
+                    }
+                    else {
+                        standardTime =( militaryTime - 12).toString() + "PM";
+                    }
+    
+                    topData = game.startDate.substring(5,10);
+                    bottomData = standardTime;
                 }
-            } else {
+    
+                var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+    
+                teamTable += awayTeam;
+                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                teamTable += '</tr><tr><td style="width: 250px;">';
+    
+                teamTable += homeTeam;
+                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                teamTable += '</tr><tr></tr><tbody></table></td>';
+    
+                str += teamTable;
 
-                var militaryTime = parseInt(game.startDate.substring(11,14));
-                var standardTime = '';
-
-                if (militaryTime < 12) {
-                    standardTime = militaryTime.toString() + "AM";
+                if (isMobile) {
+                    str += '</tr><tr>';
                 }
-                else if (militaryTime == 12) {
-                    standardTime = militaryTime.toString() + "PM";
-                }
-                else {
-                    standardTime =( militaryTime - 12).toString() + "PM";
-                }
-
-                topData = game.startDate.substring(5,10);
-                bottomData = standardTime;
             }
-
-            var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
-
-            teamTable += awayTeam;
-            teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
-            teamTable += '</tr><tr><td style="width: 250px;">';
-
-            teamTable += homeTeam;
-            teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
-            teamTable += '</tr><tr></tr><tbody></table></td>';
-
-            str += teamTable;
         }
         scheduleContainer.innerHTML = str;
     }
