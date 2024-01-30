@@ -366,13 +366,13 @@ async function displaySchedule(data) {
                         awayTeam: game.awayTeam
                     };
 
-                    var indexToReplace = gameTables.findIndex(x => x.id == game.id);
-                    console.log("splicing index => " + indexToReplace);
-                    gameTables.splice(indexToReplace, 1);
-
-                    gameTables.push(gameInfo);
-
-
+                    if (shouldReplace) {
+                        var indexToReplace = gameTables.findIndex(x => x.id == game.id);
+                        console.log("splicing index => " + indexToReplace);
+                        gameTables.splice(indexToReplace, 1);
+                        gameTables.push(gameInfo);
+                    }
+                
                     // gameTables.push(gameInfo);
 
                 }
