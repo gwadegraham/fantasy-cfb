@@ -310,7 +310,8 @@ async function displaySchedule(data) {
 
                     var shouldReplace = false;
     
-                    if (data.teams.some(team => team.school === game.awayTeam)) {
+                    if (game.awayTeam == data.teams[iterNum].school) {
+                    // if (data.teams.some(team => team.school === game.awayTeam)) {
                         // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
