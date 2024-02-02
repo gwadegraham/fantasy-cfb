@@ -12,9 +12,7 @@ export function setChartData(data) {
     }
 
     data.forEach( (user, index) => {
-        var scoreData = [];
-        var color = generateNewColor();
-        
+        var scoreData = [];        
         var cumulativeScore = 0;
 
         user.weeklyScore.forEach( week => {
@@ -26,8 +24,8 @@ export function setChartData(data) {
             label: user.firstName,
             data: scoreData,
             fill: false,
-            backgroundColor: color,
-            borderColor: color,
+            backgroundColor: user.color,
+            borderColor: user.color,
             tension: 0.1
         };
 
@@ -48,21 +46,4 @@ export function setChartData(data) {
         document.getElementById('week-by-week'),
         config
     );
-}
-
-const hexCharacters = [0,1,2,3,4,5,6,7,8,9,"A","B","C","D","E","F"]
-
-function getCharacter(index) {
-	return hexCharacters[index]
-}
-
-function generateNewColor() {
-	let hexColorRep = "#"
-
-	for (let index = 0; index < 6; index++){
-		const randomPosition = Math.floor ( Math.random() * hexCharacters.length ) 
-    	hexColorRep += getCharacter( randomPosition )
-	}
-	
-	return hexColorRep
 }

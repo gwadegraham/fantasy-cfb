@@ -158,6 +158,9 @@ const userSchema = new mongoose.Schema({
     league: {
         type: String
     },
+    color: {
+        type: String
+    },
     isUpdated: {
         type: Boolean,
         default: false
