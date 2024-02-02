@@ -201,6 +201,10 @@ async function setBiggestWinner(users) {
     var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
     var week = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
 
+    if ((week == 1) && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+        week = "Postseason";
+    }
+
     document.querySelector("[winner-week]").textContent += " in Week " + week;
     document.querySelector("[biggest-winner]").textContent = userName;
     document.querySelector("[biggest-winner-score]").textContent = "+" + userScore;
@@ -213,6 +217,10 @@ async function setBiggestLoser(users) {
     var userName = sortedUsers[0].firstName;
     var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
     var week = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+
+    if ((week == 1) && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+        week = "Postseason";
+    }
 
     document.querySelector("[loser-week]").textContent += " in Week " + week;
     document.querySelector("[biggest-loser]").textContent = userName;
