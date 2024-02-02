@@ -138,6 +138,7 @@ if (createForm) {
     
         const firstName = document.querySelector('[first-name]').value;
         const lastName = document.querySelector('[last-name]').value;
+        const displayColor = document.querySelector('[display-color]').value;
         const teams = [];
         const teamDocuments = [];
         document.querySelectorAll('[team-options]').forEach(
@@ -157,6 +158,7 @@ if (createForm) {
             body: `{
             "firstName": "${firstName}",
             "lastName": "${lastName}",
+            "color": "${displayColor}",
             "teams": ${JSON.stringify(teamDocuments)},
             "league": "${leagueCode}"
             }`,
