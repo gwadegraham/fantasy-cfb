@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -10,8 +11,9 @@
     <script type="module" src="weekByWeek.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
     <title>Fantasy CFB</title>
-    <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
+    <link rel="shortcut icon" type="image/png" href="images/favicon.png" />
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -20,25 +22,78 @@
             </div>
         </div>
         <div class="content">
+            <div class="metrics-container">
+                <table class="schedule-table">
+                    <tbody>
+                        <tr>
+                            <td>
+                                <table class="schedule-table game-table">
+                                    <tbody>
+                                        <tr></tr>
+                                        <tr>
+                                            <td style="width: 300px;"><strong winner-week>Biggest Winner</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 250px; display: flex;" ><p biggest-winner></p><p biggest-winner-score style="padding-left: 10px;color: green;"></p></td>
+                                        </tr>
+                                        <tr></tr>
+                                    </tbody>
+                                    <tbody></tbody>
+                                </table>
+                            </td>
+                            <td>
+                                <table class="schedule-table game-table">
+                                    <tbody>
+                                        <tr></tr>
+                                        <tr>
+                                            <td style="width: 300px;"><strong loser-week>Biggest Loser</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 250px; display: flex;" ><p biggest-loser></p><p biggest-loser-score style="padding-left: 10px;color: red;"></p></td>
+                                        </tr>
+                                        <tr></tr>
+                                    </tbody>
+                                    <tbody></tbody>
+                                </table>
+                            </td>
+                            <td>
+                                <table class="schedule-table game-table">
+                                    <tbody>
+                                        <tr></tr>
+                                        <tr>
+                                            <td style="width: 300px;"><strong>Highest Performing Team</strong></td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width: 250px; display: flex;" ><p best-team></p><p best-team-score style="padding-left: 10px;"></p></td>
+                                        </tr>
+                                        <tr></tr>
+                                    </tbody>
+                                    <tbody></tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
             <div class="get-users-container" get-users-container>
                 <div class="table-wrapper">
                     <table class="fl-table">
                         <thead>
-                        <tr>
-                            <th class="sticky-header team-header">Rank</th>
-                            <th class="sticky-header team-header">Name</th>
-                            <th class="team-header">Team 1</th>
-                            <th class="team-header">Team 2</th>
-                            <th class="team-header">Team 3</th>
-                            <th class="team-header">Team 4</th>
-                            <th class="team-header">Team 5</th>
-                            <th class="team-header">Team 6</th>
-                            <th class="team-header">Team 7</th>
-                            <th class="team-header">Team 8</th>
-                            <th class="team-header">Team 9</th>
-                            <th class="team-header">Team 10</th>
-                            <th class="sticky-header-score team-header">Score</th>
-                        </tr>
+                            <tr>
+                                <th class="sticky-header team-header">Rank</th>
+                                <th class="sticky-header team-header">Name</th>
+                                <th class="team-header">Team 1</th>
+                                <th class="team-header">Team 2</th>
+                                <th class="team-header">Team 3</th>
+                                <th class="team-header">Team 4</th>
+                                <th class="team-header">Team 5</th>
+                                <th class="team-header">Team 6</th>
+                                <th class="team-header">Team 7</th>
+                                <th class="team-header">Team 8</th>
+                                <th class="team-header">Team 9</th>
+                                <th class="team-header">Team 10</th>
+                                <th class="sticky-header-score team-header">Score</th>
+                            </tr>
                         </thead>
                         <tbody user-table-body>
                         <tbody>
@@ -65,4 +120,5 @@
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
     </footer>
 </body>
+
 </html>

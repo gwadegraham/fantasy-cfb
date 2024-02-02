@@ -55,6 +55,8 @@ async function getUsers() {
     response.json().then(async data => {
         //await getScores(data);
         displayUsers(data);
+        setBiggestWinner(data);
+        setBestTeam(data);
 
         if (!isMobile) {
             setChartData(data);
@@ -190,3 +192,70 @@ async function updateUser(userId, score) {
         });
 }
 
+async function setBiggestWinner(users) {
+    var sortedUsers = await users.sort(function(a, b) {
+        return parseFloat(a.weeklyScore[a.weeklyScore.length -1].score) - parseFloat(b.weeklyScore[b.weeklyScore.length -1].score);
+    });
+
+    var userName = sortedUsers[0].firstName;
+    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
+    var week = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+
+    document.querySelector("[winner-week]").textContent += " in Week " + week;
+    document.querySelector("[biggest-winner]").textContent = userName;
+    document.querySelector("[biggest-winner-score]").textContent = "+" + userScore;
+
+    setBiggestLoser(sortedUsers);
+}
+
+async function setBiggestLoser(users) {
+    var sortedUsers = users.reverse();
+    var userName = sortedUsers[0].firstName;
+    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
+    var week = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+
+    document.querySelector("[loser-week]").textContent += " in Week " + week;
+    document.querySelector("[biggest-loser]").textContent = userName;
+    document.querySelector("[biggest-loser-score]").textContent = "+" + userScore;
+}
+
+async function setBestTeam(users) {
+    var teamScores = [];
+
+    users.forEach((user, index) => {
+        user.teams.forEach( (team, index) => {
+            var totalScore = 0;
+            
+            user.weeklyScore.forEach(week => {
+                var result = week.scoreByTeam.filter(obj => {
+                    return obj.team == team.school
+                  });
+    
+                var tableWeeklyScore = 0;
+                if (result.length > 0) {
+                    for (const repeatedScore of result) {
+                        tableWeeklyScore += repeatedScore.score;
+                    }
+                }
+
+                if (result[0]) {
+                    totalScore += tableWeeklyScore;
+                }
+            });
+
+            var teamInfo = {
+                team: team.school,
+                score: totalScore
+            }
+
+            teamScores.push(teamInfo);
+        });
+    });
+
+    var sortedTeamScores = await teamScores.sort(function(a, b) {
+        return parseFloat(b.score) - parseFloat(a.score);
+    });
+
+    document.querySelector("[best-team]").textContent = sortedTeamScores[0].team;
+    document.querySelector("[best-team-score]").textContent = sortedTeamScores[0].score + " points";
+}
