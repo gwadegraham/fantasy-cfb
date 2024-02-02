@@ -1,5 +1,19 @@
 import { setChartData } from './weekByWeek.js';
 
+var isMobile;
+
+function detectMobile() {
+    if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
+        // true for mobile device
+        isMobile = true;
+        console.log("mobile device");
+    } else{
+        // false for not mobile device
+        isMobile = false;
+        console.log("not mobile device");
+    }
+}
+
 const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
@@ -9,6 +23,8 @@ toggleButton.addEventListener('click', () => {
 });
 
 window.onload = function() {
+    detectMobile();
+
     leagueCode = window.localStorage.getItem("leagueCode");
     const currentSelectedLeague = window.localStorage.getItem("league");
     if (currentSelectedLeague) {
@@ -39,7 +55,11 @@ async function getUsers() {
     response.json().then(async data => {
         //await getScores(data);
         displayUsers(data);
-        setChartData(data);
+
+        if (!isMobile) {
+            setChartData(data);
+            document.querySelector('[chart-container]').removeAttribute("style");
+        }
     });
 }
 
