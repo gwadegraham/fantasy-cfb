@@ -193,8 +193,9 @@ async function updateUser(userId, score) {
 }
 
 async function setBiggestWinner(users) {
-    var sortedUsers = await users.sort(function(a, b) {
-        return parseFloat(a.weeklyScore[a.weeklyScore.length -1].score) - parseFloat(b.weeklyScore[b.weeklyScore.length -1].score);
+    var weekIndex = (users[0].weeklyScore.length -1);
+    var sortedUsers = users.toSorted(function(b, a) {
+        return parseFloat(a.weeklyScore[weekIndex].score) - parseFloat(b.weeklyScore[weekIndex].score);
     });
 
     var userName = sortedUsers[0].firstName;
@@ -213,12 +214,12 @@ async function setBiggestWinner(users) {
 }
 
 async function setBiggestLoser(users) {
-    var sortedUsers = users.reverse();
-    var userName = sortedUsers[0].firstName;
-    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
-    var week = "Week " + sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+    var reverseSortedUsers = users.reverse();
+    var userName = reverseSortedUsers[0].firstName;
+    var userScore = reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].score;
+    var week = "Week " + reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].week;
 
-    if ((week == "Week 1") && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+    if ((week == "Week 1") && (reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
