@@ -6,11 +6,9 @@ function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
         // true for mobile device
         isMobile = true;
-        console.log("mobile device");
     } else{
         // false for not mobile device
         isMobile = false;
-        console.log("not mobile device");
     }
 }
 
@@ -53,10 +51,8 @@ async function getUsers() {
     });
 
     response.json().then(async data => {
-        //await getScores(data);
         displayUsers(data);
-        setBiggestWinner(data);
-        setBestTeam(data);
+        displayHighlights(data);
 
         if (!isMobile) {
             setChartData(data);
@@ -95,104 +91,27 @@ function displayUsers(data) {
     userTableBody.innerHTML = str;
 }
 
-function getScores(data) {
+async function displayHighlights(users) {
+    const highlightTableBody = document.querySelector('[highlight-body]');
+    var str = '';
 
-    data.forEach( async (user, index) => {
-        var score = 0;
-
-        if (!user.isUpdated) {
-            
-            const promises = user.teams.map(async (team) => {
-                await fetch('/games-api', {
-                    method: 'POST',
-                    headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                    },
-                    body: `{
-                        "team": "${team.school}"
-                        }`,
-                }).then(res => res.json()).then(data => {
-                    console.log("games data", data);
-                    score += calculateScore(team.school, data);
-                    console.log("updating score", score);
-                });
-
-                return score;
-              });
-
-            const scores = await Promise.all(promises);
-            console.log("scores promises", scores);
-
-            // user.teams.forEach( (team) => {
-            //     console.log("team foreach ", team.school);
-                
-            //     fetch('/games', {
-            //         method: 'POST',
-            //         headers: {
-            //         'Accept': 'application/json',
-            //         'Content-Type': 'application/json'
-            //         },
-            //         body: `{
-            //             "team": "${team.school}"
-            //             }`,
-            //     }).then(res => res.json()).then(data => {
-            //         console.log("games data", data);
-            //         score += calculateScore(team.school, data);
-            //         console.log("updating score", score);
-            //     });
-            // });
-            console.log("sending score to updateUser", score);
-            updateUser(user._id, score);
-        }
-    });
-    
-}
-
-function calculateScore(team, data) {
-    var score = 0;
-    console.log("data[0].homeTeam == team", data[0].homeTeam == team);
-    if (data[0].homeTeam == team) {
-        console.log("data[0].homePoints > data[0].awayPoints", data[0].homePoints > data[0].awayPoints);
-        if (data[0].homePoints > data[0].awayPoints) {
-            score += 2;
-        }
-    } else if (data[0].awayTeam == team) {
-        console.log("data[0].awayTeam == team", data[0].awayTeam == team);
-        console.log("data[0].awayPoints > data[0].homePoints", data[0].awayPoints > data[0].homePoints);
-        if (data[0].awayPoints > data[0].homePoints) {
-            score += 2;
-        }
+    if (isMobile) {
+        str += '<tr>' + await biggestWinner(users) + '</tr>';
+        str += '<tr>' + await biggestLoser(users) + '</tr>';
+        str += '<tr>' + await bestTeam(users) + '</tr>';
+    } else {
+        str += '<tr>';
+        str += await biggestWinner(users);
+        str += await biggestLoser(users);
+        str += await bestTeam(users);
+        str += '</tr>';
     }
 
-    return score;
+    highlightTableBody.innerHTML = str;
 }
 
-async function updateUser(userId, score) {
-    console.log("score", score);
-
-    const response = await fetch("/users/" + userId, {
-            method: 'PATCH',
-            headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-            },
-            body: `{
-            "cumulativeScore": ${score},
-            "isUpdated": true
-            }`,
-        });
-    
-        response.json().then(data => {
-            if (response.status == 200) {
-                console.log(data);
-            } else {
-                console.log(data.message);
-            }
-        });
-}
-
-async function setBiggestWinner(users) {
+async function biggestWinner(users) {
+    var tableContent = '';
     var weekIndex = (users[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(b, a) {
         return parseFloat(a.weeklyScore[weekIndex].score) - parseFloat(b.weeklyScore[weekIndex].score);
@@ -206,29 +125,57 @@ async function setBiggestWinner(users) {
         week = "Postseason";
     }
 
-    document.querySelector("[winner-week]").textContent += " in " + week;
-    document.querySelector("[biggest-winner]").textContent = userName;
-    document.querySelector("[biggest-winner-score]").textContent = "+" + userScore;
+    tableContent = `
+    <td>
+        <table class="schedule-table game-table">
+            <tbody>
+                <tr>
+                    <td style="width: 300px;"><strong>Biggest Winner in ${week}</strong></td>
+                </tr>
+                <tr>
+                    <td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: green;">+${userScore}</p></td>
+                </tr>
+            </tbody>
+        </table>
+    </td>`;
 
-    setBiggestLoser(sortedUsers);
+    return tableContent;
 }
 
-async function setBiggestLoser(users) {
-    var reverseSortedUsers = users.reverse();
-    var userName = reverseSortedUsers[0].firstName;
-    var userScore = reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].score;
-    var week = "Week " + reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].week;
+function biggestLoser(users) {
+    var tableContent = '';
+    var weekIndex = (users[0].weeklyScore.length -1);
+    var sortedUsers = users.toSorted(function(a, b) {
+        return parseFloat(a.weeklyScore[weekIndex].score) - parseFloat(b.weeklyScore[weekIndex].score);
+    });
 
-    if ((week == "Week 1") && (reverseSortedUsers[0].weeklyScore[reverseSortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+    var userName = sortedUsers[0].firstName;
+    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
+    var week = "Week " + sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+
+    if ((week == "Week 1") && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
-    document.querySelector("[loser-week]").textContent += " in " + week;
-    document.querySelector("[biggest-loser]").textContent = userName;
-    document.querySelector("[biggest-loser-score]").textContent = "+" + userScore;
+    tableContent = `
+    <td>
+        <table class="schedule-table game-table">
+            <tbody>
+                <tr>
+                    <td style="width: 300px;"><strong>Biggest Loser in ${week}</strong></td>
+                </tr>
+                <tr>
+                    <td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${userScore}</p></td>
+                </tr>
+            </tbody>
+        </table>
+    </td>`;
+
+    return tableContent;
 }
 
-async function setBestTeam(users) {
+async function bestTeam(users) {
+    var tableContent;
     var teamScores = [];
 
     users.forEach((user, index) => {
@@ -265,6 +212,19 @@ async function setBestTeam(users) {
         return parseFloat(b.score) - parseFloat(a.score);
     });
 
-    document.querySelector("[best-team]").textContent = sortedTeamScores[0].team;
-    document.querySelector("[best-team-score]").textContent = sortedTeamScores[0].score + " points";
+    tableContent = `
+    <td>
+        <table class="schedule-table game-table">
+            <tbody>
+                <tr>
+                    <td style="width: 300px;"><strong>Highest Performing Team</strong></td>
+                </tr>
+                <tr>
+                    <td style="width: 250px; display: flex;"><p>${sortedTeamScores[0].team}</p><p style="padding-left: 10px;">+${sortedTeamScores[0].score} points</p></td>
+                </tr>
+            </tbody>
+        </table>
+    </td>`;
+
+    return tableContent;
 }
