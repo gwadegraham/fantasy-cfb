@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <script defer src="admin.js"></script>
+    <script src="navbar.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <title>Fantasy CFB</title>
+    <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                Admin
+            </div>
+        </div>
+        <div class="content">
+            <div class="get-users-container" get-users-container>
+                <div class="table-wrapper">
+                    <table class="fl-table">
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Team 1</th>
+                            <th>Team 2</th>
+                            <th>Team 3</th>
+                            <th>Team 4</th>
+                            <th>Team 5</th>
+                            <th>Team 6</th>
+                            <th>Team 7</th>
+                            <th>Team 8</th>
+                            <th>Team 9</th>
+                            <th>Team 10</th>
+                        </tr>
+                        </thead>
+                        <tbody user-table-body>
+                        <tbody>
+                    </table>
+                </div>
+                <div class="add-user-container">
+                    <button onclick="displayCreateUserContainer()">+ Add a Player</button>
+                </div>
+            </div>
+            <div class="create-user-container" create-user-container style="display: none">
+                <form id="create-form">
+                    <input type="text" class="first-name" first-name placeholder="First Name">
+                    <input type="text" class="last-name" last-name placeholder="Last Name">
+                    <input type="text" class="display-color" display-color placeholder="Display Color">
+                    <div class="team-container" team-container>
+                        <select class="team-picker" id="team-picker" team-options>
+                        </select>
+                    </div>
+                    <button type="submit">Create Player</button>
+                </form>
+                <hr>
+            </div>
+            <div class="delete-user-container">
+                <button onclick="displayRemoveUserContainer()">- Remove a Player</button>
+            </div>
+            <div class="remove-user-container" remove-user-container style="display: none">
+                <form id="remove-form">
+                    <div class="user-container" user-container>
+                        <select class="user-picker" id="user-picker" user-options>
+                        </select>
+                    </div>
+                    <button type="submit">Remove Player</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <footer>
+        <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
+    </footer>
+</body>
+</html>

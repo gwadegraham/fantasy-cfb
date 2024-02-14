@@ -8,6 +8,27 @@ const app = express();
 const retrieveGamesModule = require('./retrieve-games.js');
 const scoringModule = require('./scoring.js');
 const schedule = require('node-schedule');
+const { auth } = require('express-openid-connect');
+
+const config = {
+  authRequired: false,
+  auth0Logout: true,
+  secret: process.env.AUTH_SECRET,
+  baseURL: process.env.URL,
+  clientID: 'l8SkII7GYssCfwttZw7ynRqVX52BCYo6',
+  issuerBaseURL: 'https://dev-tmg3fj0zvrrlcxly.us.auth0.com'
+};
+
+// auth router attaches /login, /logout, and /callback routes to the baseURL
+app.use(auth(config));
+
+
+
+const { requiresAuth } = require('express-openid-connect');
+
+app.get('/profile', requiresAuth(), (req, res) => {
+  res.send(JSON.stringify(req.oidc.user));
+});
 
 // register the given template engine 
 app.set("view engine", "ejs");
@@ -30,6 +51,31 @@ db.on('open', () => console.log('Connected to Database'));
 // Routing
 const path = require('path')
 
+// req.isAuthenticated is provided from the auth router
+app.get('/', (req, res) => {
+    res.send(req.oidc.isAuthenticated() ? res.redirect("/standings") : res.redirect("/login"));
+});
+
+app.get('/standings', (req, res) => {
+    res.send(req.oidc.isAuthenticated() ? res.render('standings') : res.redirect("/login"));
+});
+
+app.get('/top25', (req, res) => {
+    res.send(req.oidc.isAuthenticated() ? res.render('top25') : res.redirect("/login"));
+});
+
+app.get('/admin', (req, res) => {
+    res.send(req.oidc.isAuthenticated() ? res.render('admin') : res.redirect("/login"));
+});
+
+app.get('/index', (req, res) => {
+    res.send(req.oidc.isAuthenticated() ? res.render('index') : res.redirect("/login"));
+});
+
+app.get('/userHome', async function(req, res) {
+    res.send(req.oidc.isAuthenticated() ? res.render('userHome') : res.redirect("/login"));
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
@@ -43,10 +89,6 @@ app.use('/teams', teamsRouter);
 const gamesRouter = require('./routes/games');
 const { printTeams } = require('./retrieve-games.js');
 app.use('/games', gamesRouter);
-
-app.get('/userHome', async function(req, res) {
-    res.render('userHome');
-});
 
 app.get('/top-25', async (req, res) => {
 
