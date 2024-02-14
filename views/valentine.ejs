@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="../valentine.css">
+
+  <title>will u be my valentine?</title>
+
+</head>
+
+<body>
+
+  <div class="containar">
+
+    <img id="yay1" src="../images/hello.png">
+
+    <p id="yay">Yay!</p>
+
+    <img id="can1" src="../images/yay.png">
+
+    <p id="can">will u be my valentine?</p>
+
+    <button id="yes">Yes</button>
+
+    <button id="no">No</button>
+
+  </div>
+
+  <script>
+    const yesBtn = document.getElementById("yes");
+
+const noBtn = document.getElementById("no");
+
+const yayText = document.getElementById("yay");
+
+const yayText1 = document.getElementById("yay1");
+
+const can1 = document.getElementById("can1");
+
+const can = document.getElementById("can");
+
+noBtn.addEventListener("click", () => {
+  yesBtn.style.width = `${yesBtn.offsetWidth + 40}px`;
+
+  yesBtn.style.height = `${yesBtn.offsetHeight + 40}px`;
+});
+
+yesBtn.addEventListener("click", () => {
+  yayText.style.display = "block";
+
+  yayText1.style.display = "block";
+
+  can.style.display = "none";
+
+  can1.style.display = "none";
+});
+
+  </script>
+
+</body>
+
+</html>
