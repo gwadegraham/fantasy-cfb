@@ -21,21 +21,11 @@ document.write('\
     </a>\
     <div class="navbar-links">\
         <ul>\
-            <li><a href="./index.html">Home</a></li>\
-            <li><a href="./admin.html">Admin</a></li>\
-            <li><a href="./standings.html">Standings</a></li>\
-            <li><a href="./top25.html">Top 25</a></li>\
-            <li>\
-                <div class="dropdown dropdown-nav">\
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">\
-                        Leagues\
-                    </button>\
-                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">\
-                        <a class="dropdown-item" href="#" value="claunts-league">Claunts League</a>\
-                        <a class="dropdown-item selected" href="#" value="graham-league">Graham League</a>\
-                    </div>\
-                </div>\
-            </li>\
+            <li><a href="./index">Home</a></li>\
+            <li><a admin-page href="./admin">Admin</a></li>\
+            <li><a href="./standings">Standings</a></li>\
+            <li><a href="./top25">Top 25</a></li>\
+            <li><a href="./logout">Logout</a></li>\
         </ul>\
     </div>\
 </nav>\

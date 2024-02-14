@@ -20,26 +20,45 @@ toggleButton.addEventListener('click', () => {
     navbarLinks.classList.toggle('active');
 });
 
-window.onload = function() {
+window.onload = async function() {
     detectMobile();
 
-    leagueCode = window.localStorage.getItem("leagueCode");
-    const currentSelectedLeague = window.localStorage.getItem("league");
-    if (currentSelectedLeague) {
-        $("#dropdownMenuButton").text(currentSelectedLeague);
-    }
-    getUsers();
+    const response = await fetch(`/profile`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    response.json().then(async data => {
+        console.log("user metadata", data)
+        var userLeague = data.user_metadata.metadata.league;
+        var userRole = data.user_metadata.roles[0];
+
+        if (userLeague == "gg") {
+            leagueCode = "graham-league";
+        } else {
+            leagueCode = "claunts-league";
+        }
+
+        if (userRole != "Admin") {
+            document.querySelector('[admin-page]').remove();
+        }        
+
+        getUsers();
+    });
   };
 
-$(".dropdown-menu a").click(function(){
-    $(this).parents(".dropdown").find('.btn').html($(this).text());
-    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-    var selectedLeague = $("#dropdownMenuButton").text();
-    var selectedLeagueCode = $("#dropdownMenuButton").val();
-    window.localStorage.setItem("league", selectedLeague);
-    window.localStorage.setItem("leagueCode", selectedLeagueCode);
-    window.location.reload();
-});
+// $(".dropdown-menu a").click(function(){
+//     $(this).parents(".dropdown").find('.btn').html($(this).text());
+//     $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+//     var selectedLeague = $("#dropdownMenuButton").text();
+//     var selectedLeagueCode = $("#dropdownMenuButton").val();
+//     window.localStorage.setItem("league", selectedLeague);
+//     window.localStorage.setItem("leagueCode", selectedLeagueCode);
+//     window.location.reload();
+// });
 
 async function getUsers() {
     const response = await fetch(`/users/league/${leagueCode}`, {
