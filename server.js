@@ -56,6 +56,10 @@ app.get('/', (req, res) => {
     res.send(req.oidc.isAuthenticated() ? res.render("standings") : res.redirect("/login"));
 });
 
+app.get('/valentine', (req, res) => {
+    res.render("valentine");
+});
+
 app.get('/standings', (req, res) => {
     res.send(req.oidc.isAuthenticated() ? res.render('standings') : res.redirect("/login"));
 });
