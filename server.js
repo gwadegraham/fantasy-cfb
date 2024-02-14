@@ -53,7 +53,7 @@ const path = require('path')
 
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.redirect("/standings") : res.redirect("/login"));
+    res.send(req.oidc.isAuthenticated() ? res.render("standings") : res.redirect("/login"));
 });
 
 app.get('/standings', (req, res) => {
