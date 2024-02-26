@@ -177,6 +177,36 @@ async function getGame(season, week, team) {
     return games;
 }
 
+async function getTeamLogos (game) {
+
+    const teams = [game.awayTeam, game.homeTeam];
+
+    const teamsJson = {
+        teams: teams
+    };
+
+    var teamsPromise = await fetch('/teams/teamLogos', {
+        method: 'POST',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(teamsJson),
+    });
+
+    var teamLogos = await teamsPromise;
+    var response = await teamLogos.json();
+
+    if (teamLogos.status == 200) {
+        const awayTeamLogo = response.find((element) => element.school == game.awayTeam).logos[0];
+        const homeTeamLogo = response.find((element) => element.school == game.homeTeam).logos[0];
+        const logoResponse = {awayTeamLogo, homeTeamLogo};
+        return logoResponse;
+    } else {
+        console.log(response.message);
+    }
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
@@ -184,8 +214,6 @@ async function displaySchedule(data) {
     var gameTables = [];
 
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
-
-        var teamInfo = '';
 
         var week = window.localStorage.getItem("weekCode").substring(5);
         var gameWeek;
@@ -200,17 +228,6 @@ async function displaySchedule(data) {
         }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
-        // if (isMobile) {
-        //     str += '</tr><tr>';
-        // }
-        
-        // if ((iterNum + 1) > data.teams.length) {
-        //     str += '</td></tr>'
-        // }
-        // else if ((gameIds.length % 3 == 0) && (iterNum > 0)) {
-        //     str += '</tr><tr>';
-        // }
-
         for (const game of gamesInfo) {
             if (gameIds.indexOf(game.id) == -1) {
                 gameIds.push(game.id);
@@ -221,12 +238,15 @@ async function displaySchedule(data) {
                 var awayTeam = '';
                 var homeTeam = '';
                 var isAway = false;
+                var teamLogos = await getTeamLogos(game);
+                var awayTeamLogo = teamLogos.awayTeamLogo;
+                var awayImg = '<img src="' + awayTeamLogo + '" style="padding-right: 5px;">';
+                var homeTeamLogo = teamLogos.homeTeamLogo;
+                var homeImg = '<img src="' + homeTeamLogo + '" style="padding-right: 5px;">';
     
                 if (!game.startTimeTbd) {
     
                     if (game.awayTeam == data.teams[iterNum].school) {
-                    // if (data.teams.some(team => team.school === game.awayTeam)) {
-                        // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -283,11 +303,11 @@ async function displaySchedule(data) {
     
                 var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
-                teamTable += awayTeam;
+                teamTable += awayImg + awayTeam;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
                 teamTable += '</tr><tr><td style="width: 250px;">';
     
-                teamTable += homeTeam;
+                teamTable += homeImg + homeTeam;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += '</tr><tr></tr><tbody></table></td>';
     
@@ -299,20 +319,12 @@ async function displaySchedule(data) {
                 };
 
                 gameTables.push(gameInfo);
-
-                // str += teamTable;
-
-                // if (isMobile) {
-                //     str += '</tr><tr>';
-                // }
             } else {
                 if (!game.startTimeTbd) {
 
                     var shouldReplace = false;
     
                     if (game.awayTeam == data.teams[iterNum].school) {
-                    // if (data.teams.some(team => team.school === game.awayTeam)) {
-                        // teamTable += '<img src="' + data.teams[iterNum].logos[0] + '" alt="' + data.teams[iterNum].mascot + '">';
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -374,17 +386,11 @@ async function displaySchedule(data) {
                         gameTables.splice(indexToReplace, 1);
                         gameTables.push(gameInfo);
                     }
-                
-                    // gameTables.push(gameInfo);
-
                 }
             }
-        }
-
-        
+        } 
     }
     for(var k = 0; k < gameTables.length; k++) {
-        console.log("// homeTeam = " + gameTables[k].homeTeam)
         if (isMobile) {
             str += '</tr><tr>';
         }
@@ -393,7 +399,6 @@ async function displaySchedule(data) {
             str += '</td></tr>'
         }
         else if (((k) % 3 == 0) && (k > 0)) {
-            console.log("breaking before awayTeam = " + gameTables[k].awayTeam + " // homeTeam = " + gameTables[k].homeTeam)
             str += '</tr><tr>';
         }
 
