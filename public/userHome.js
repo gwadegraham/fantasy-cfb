@@ -57,6 +57,8 @@ $(".dropdown-menu-week a").click(function(){
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
 
+    document.querySelector('.loading-container').style.display = "block";
+    document.querySelector('.schedule-table').style.display = "none";
     displaySchedule(userData);
 });
 
@@ -198,8 +200,21 @@ async function getTeamLogos (game) {
     var response = await teamLogos.json();
 
     if (teamLogos.status == 200) {
-        const awayTeamLogo = response.find((element) => element.school == game.awayTeam).logos[0];
-        const homeTeamLogo = response.find((element) => element.school == game.homeTeam).logos[0];
+        var awayTeamLogo = response.find((element) => element.school == game.awayTeam);
+        var homeTeamLogo = response.find((element) => element.school == game.homeTeam);
+
+        if (awayTeamLogo == null) {
+            awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+        } else {
+            awayTeamLogo = '<img src="' + awayTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+        }
+
+        if (homeTeamLogo == null) {
+            homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+        } else {
+            homeTeamLogo = '<img src="' + homeTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+        }
+
         const logoResponse = {awayTeamLogo, homeTeamLogo};
         return logoResponse;
     } else {
@@ -239,10 +254,8 @@ async function displaySchedule(data) {
                 var homeTeam = '';
                 var isAway = false;
                 var teamLogos = await getTeamLogos(game);
-                var awayTeamLogo = teamLogos.awayTeamLogo;
-                var awayImg = '<img src="' + awayTeamLogo + '" style="padding-right: 5px;">';
-                var homeTeamLogo = teamLogos.homeTeamLogo;
-                var homeImg = '<img src="' + homeTeamLogo + '" style="padding-right: 5px;">';
+                var awayImg = teamLogos.awayTeamLogo;
+                var homeImg = teamLogos.homeTeamLogo;
     
                 if (!game.startTimeTbd) {
     
@@ -363,13 +376,17 @@ async function displaySchedule(data) {
                         bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     }
 
+                    var teamLogos = await getTeamLogos(game);
+                    var awayImg = teamLogos.awayTeamLogo;
+                    var homeImg = teamLogos.homeTeamLogo;
+
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
-                    teamTable += awayTeam;
+                    teamTable += awayImg + awayTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr><tr><td style="width: 250px;">';
         
-                    teamTable += homeTeam;
+                    teamTable += homeImg + homeTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr><tr></tr><tbody></table></td>';
         
@@ -410,4 +427,5 @@ async function displaySchedule(data) {
     }
     scheduleContainer.innerHTML = str;
     document.querySelector('.loading-container').style.display = "none";
+    document.querySelector('.schedule-table').style.display = "flex";
 }
