@@ -409,4 +409,5 @@ async function displaySchedule(data) {
         }
     }
     scheduleContainer.innerHTML = str;
+    document.querySelector('.loading-container').style.display = "none";
 }
