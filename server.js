@@ -77,7 +77,11 @@ app.get('/index', (req, res) => {
 });
 
 app.get('/userHome', async function(req, res) {
-    res.send(req.oidc.isAuthenticated() ? res.render('userHome') : res.redirect("/login"));
+    if (req.oidc.isAuthenticated()) {
+        res.render('userHome');
+    } else {
+        res.redirect("/login");
+    }
 });
 
 app.use(express.json());

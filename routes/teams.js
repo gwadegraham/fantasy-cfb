@@ -12,6 +12,22 @@ router.get('/', async (req, res) => {
     }
 });
 
+//Getting Multiple Logos
+router.post('/teamLogos', async (req, res) => {
+    try {
+        const teamLogos = await Team.find({school: {$in: req.body.teams}}, "school logos");
+
+        if (JSON.stringify(teamLogos) === '[]') {
+            res.status(400).json({message: `No teams found with names ${req.body.teams}`});
+        } else {
+            res.status(200).json(teamLogos);
+        }
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Getting One
 // router.get('/:id', (req, res) => {
 //     res.send(req.params.id);
