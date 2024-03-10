@@ -116,6 +116,62 @@ module.exports= {
             
         }
     },
+
+    calculateTeamScores: async function (teamId, teamName) {
+
+        var cumulativeScoreV1 = 0;
+        var cumulativeScoreV2 = 0;
+        var weeklyScores = [];
+
+        var gamesPromise = await fetch(process.env.URL + `/games/season/${process.env.YEAR}/team/${teamName}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json'
+            }
+        });
+
+        var games = await gamesPromise;
+        var response = await games.json();
+
+        if (games.status == 200) {
+            console.log("games response", response.length)
+            for (const game of response) {
+                var gameScoreV1 = 0;
+                var gameScoreV2 = 0;
+
+                gameScoreV1 = await calculateScoreV1(teamName, game, game.week);
+                gameScoreV2 = await calculateScoreV2(teamName, game, game.week);
+
+                cumulativeScoreV1 += gameScoreV1;
+                cumulativeScoreV2 += gameScoreV2;
+
+                var weekScoreObject = {
+                    "week": game.week,
+                    "seasonType": game.seasonType,
+                    "scoreV1": gameScoreV1,
+                    "scoreV2": gameScoreV2
+                };
+
+                weeklyScores.push(weekScoreObject);
+            }
+        } else {
+            console.log(response.message);
+        }
+
+        weeklyScores.sort((a, b) => b.seasonType.localeCompare(a.seasonType) || a.week - b.week);
+
+        var scoreUpdateObject = {
+            "weeklyScore": weeklyScores,
+            "cumulativeScoreV1": cumulativeScoreV1,
+            "cumulativeScoreV2": cumulativeScoreV2
+        };
+
+        var response = await updateTeamScores(teamId, scoreUpdateObject);
+
+        if (response.status == 200) {
+            return response;
+        }
+    },
     
     getScores: async function (data) {
 
@@ -144,9 +200,7 @@ module.exports= {
                   });
     
                 const scores = await Promise.all(promises);
-                console.log("scores promises", scores);
     
-                console.log("sending score to updateUser", score);
                 var newWeeklyScore = user.weeklyScore.push(score);
                 updateUser(user._id, newWeeklyScore);
             }
@@ -163,8 +217,18 @@ async function calculateScoreV1(team, data, week) {
     var opts = {
         'week': week
     };
-    var response = await rankingsApi.getRankings(year, opts);
-    var rankings = await response;
+
+    // var response = await rankingsApi.getRankings(year, opts);
+    // var rankings = await response;
+    var response = await fetch(`${process.env.URL}/rankings/${week}/${game.seasonType}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response.json();
 
     var isSemiFinalist = isCFP(game);
 
@@ -229,8 +293,18 @@ async function calculateScoreV2(team, data, week) {
     var opts = {
         'week': week
     };
-    var response = await rankingsApi.getRankings(year, opts);
-    var rankings = await response;
+
+    // var response = await rankingsApi.getRankings(year, opts);
+    // var rankings = await response;
+    var response = await fetch(`${process.env.URL}/rankings/${week}/${game.seasonType}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response.json();
 
     var isSemiFinalist = isCFP(game);
 
@@ -324,6 +398,34 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
                 console.log(data.message);
             }
         });
+}
+
+async function updateTeamScores(teamId, scoreUpdate) {
+    
+    var requestBody = {
+        "weeklyScore": scoreUpdate.weeklyScore,
+        "cumulativeScoreV1": scoreUpdate.cumulativeScoreV1,
+        "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
+        };
+
+    const response = await fetch(`${process.env.URL}/teams/${teamId}`, {
+        method: 'PATCH',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+    });
+
+    return response.json().then(data => {
+        if (response.status == 200) {
+            var updatedTeam = {status: response.status, updatedTeam: data};
+            console.log("response *****", response)
+            return updatedTeam;
+        } else {
+            console.log(data.message);
+        }
+    });
 }
 
 function isConference(game) {

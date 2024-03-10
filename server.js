@@ -53,7 +53,11 @@ const path = require('path')
 
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.render("standings") : res.redirect("/login"));
+    if (req.oidc.isAuthenticated()) {
+        res.render('standings');
+    } else {
+        res.redirect("/login");
+    }
 });
 
 app.get('/valentine', (req, res) => {
@@ -61,19 +65,35 @@ app.get('/valentine', (req, res) => {
 });
 
 app.get('/standings', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.render('standings') : res.redirect("/login"));
+    if (req.oidc.isAuthenticated()) {
+        res.render('standings');
+    } else {
+        res.redirect("/login");
+    }
 });
 
-app.get('/top25', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.render('top25') : res.redirect("/login"));
+app.get('/teams-page', (req, res) => {
+    if (req.oidc.isAuthenticated()) {
+        res.render('teams');
+    } else {
+        res.redirect("/login");
+    }
 });
 
 app.get('/admin', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.render('admin') : res.redirect("/login"));
+    if (req.oidc.isAuthenticated()) {
+        res.render('admin');
+    } else {
+        res.redirect("/login");
+    }
 });
 
 app.get('/index', (req, res) => {
-    res.send(req.oidc.isAuthenticated() ? res.render('index') : res.redirect("/login"));
+    if (req.oidc.isAuthenticated()) {
+        res.render('index');
+    } else {
+        res.redirect("/login");
+    }
 });
 
 app.get('/userHome', async function(req, res) {
@@ -97,6 +117,9 @@ app.use('/teams', teamsRouter);
 const gamesRouter = require('./routes/games');
 const { printTeams } = require('./retrieve-games.js');
 app.use('/games', gamesRouter);
+
+const rankingsRouter = require('./routes/rankings');
+app.use('/rankings', rankingsRouter);
 
 app.get('/top-25', async (req, res) => {
 
@@ -131,6 +154,16 @@ app.get('/top-25', async (req, res) => {
 
     //temporary to avoid api call usage
     // rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
+});
+
+app.get('/calculate-team-score/:teamId/:teamName', async (req, res) => {
+    var response = await scoringModule.calculateTeamScores(req.params.teamId, req.params.teamName);
+
+    if (response.status == 200) {
+        res.status(200).json(response.updatedTeam);
+    } else {
+        res.status(400).json("Bad Request");
+    }
 });
 
 app.post('/games-api', (req, res) => {
