@@ -179,6 +179,25 @@ async function getGame(season, week, team) {
     return games;
 }
 
+async function getRankings (week, seasonType) {
+    var pollName = "Playoff Committee Rankings";
+
+    if (week < 10) {
+        pollName = "AP Top 25";
+    }
+    var response = await fetch(`/rankings/${week}/${seasonType}/${pollName}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response.json();
+    var rankingsArray = rankings[0].polls[0].ranks;
+    return rankingsArray;
+}
+
 async function getTeamLogos (game) {
 
     const teams = [game.awayTeam, game.homeTeam];
@@ -228,22 +247,42 @@ async function displaySchedule(data) {
     var gameIds = [];
     var gameTables = [];
 
+    var week = window.localStorage.getItem("weekCode").substring(5);
+    var gameWeek;
+    var seasonType = "regular";
+
+    if (week == "16") {
+        seasonType = "postseason";
+        week = 1;
+        gameWeek = "16"
+    } else {
+        gameWeek = week;
+    }
+
+    var rankingsInfo = await getRankings(week, seasonType);
+
     for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
 
-        var week = window.localStorage.getItem("weekCode").substring(5);
-        var gameWeek;
-        var seasonType = "regular";
-
-        if (week == "16") {
-            seasonType = "postseason";
-            week = 1;
-            gameWeek = "16"
-        } else {
-            gameWeek = week;
-        }
         var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
 
         for (const game of gamesInfo) {
+
+            var awayRank = '';
+            var homeRank = '';
+
+            var awayIndex = rankingsInfo.findIndex(e => e.school === game.awayTeam);
+            if (awayIndex > -1) {
+                awayRank = rankingsInfo[awayIndex].rank;
+            }
+
+            var homeIndex = rankingsInfo.findIndex(e => e.school === game.homeTeam);
+            if (homeIndex > -1) {
+                homeRank = rankingsInfo[homeIndex].rank;
+            }
+
+            awayRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${awayRank}</p>`;
+            homeRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${homeRank}</p>`;
+
             if (gameIds.indexOf(game.id) == -1) {
                 gameIds.push(game.id);
 
@@ -316,11 +355,11 @@ async function displaySchedule(data) {
     
                 var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
-                teamTable += awayImg + awayTeam;
+                teamTable += awayImg + awayRank + awayTeam;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
                 teamTable += '</tr><tr><td style="width: 250px;">';
     
-                teamTable += homeImg + homeTeam;
+                teamTable += homeImg + homeRank + homeTeam;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += '</tr><tr></tr><tbody></table></td>';
     
@@ -382,11 +421,11 @@ async function displaySchedule(data) {
 
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
-                    teamTable += awayImg + awayTeam;
+                    teamTable += awayImg + awayRank + awayTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr><tr><td style="width: 250px;">';
         
-                    teamTable += homeImg + homeTeam;
+                    teamTable += homeImg + homeRank + homeTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr><tr></tr><tbody></table></td>';
         
@@ -399,7 +438,6 @@ async function displaySchedule(data) {
 
                     if (shouldReplace) {
                         var indexToReplace = gameTables.findIndex(x => x.id == game.id);
-                        console.log("splicing index => " + indexToReplace);
                         gameTables.splice(indexToReplace, 1);
                         gameTables.push(gameInfo);
                     }
