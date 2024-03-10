@@ -22,8 +22,7 @@ const locationSchema = new mongoose.Schema({
         required: true
     },
     country_code: {
-        type: String,
-        required: true
+        type: String
     },
     timezone: {
         type: String,
@@ -40,20 +39,36 @@ const locationSchema = new mongoose.Schema({
         type: String,
     },
     capacity: {
-        type: Number,
-        required: true
+        type: Number
     },
     year_constructed: {
         type: Number,
     },
     grass: {
-        type: Boolean,
-        required: true
+        type: Boolean
     },
     dome: {
-        type: Boolean,
+        type: Boolean
+    },
+});
+
+const weeklyScoreSchema = new mongoose.Schema({
+    week: {
+        type: Number,
         required: true
     },
+    seasonType: {
+        type: String,
+        required: true
+    },
+    scoreV1: {
+        type: Number,
+        required: true
+    },
+    scoreV2: {
+        type: Number,
+        required: true
+    }
 });
 
 const teamSchema = new mongoose.Schema({
@@ -74,24 +89,20 @@ const teamSchema = new mongoose.Schema({
         required: true
     },
     alt_name1: {
-        type: String,
-        required: true
+        type: String
     },
     alt_name2: {
-        type: String,
-        required: true
+        type: String
     },
     alt_name3: {
-        type: String,
-        required: true
+        type: String
     },
     conference: {
         type: String,
         required: true
     },
     division: {
-        type: String,
-        required: true
+        type: String
     },
     color: {
         type: String,
@@ -110,6 +121,15 @@ const teamSchema = new mongoose.Schema({
     location: {
         type: locationSchema,
         required: true
+    },
+    weeklyScore: {
+        type: [weeklyScoreSchema]
+    },
+    cumulativeScoreV1: {
+        type: Number
+    },
+    cumulativeScoreV2: {
+        type: Number
     }
 });
 

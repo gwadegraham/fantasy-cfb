@@ -7,6 +7,7 @@
     <link href="styles.css" rel="stylesheet">
     <script defer src="script.js"></script>
     <script src="navbar.js"></script>
+    <script src="sorttable.js"></script>
     <title>Fantasy CFB</title>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet"/>
@@ -15,11 +16,30 @@
     <div class="container">
         <div class="header">
             <div class="header-title" poll-name>
-                Top 25
+                Teams
             </div>
         </div>
         <div class="content">
+            <input 
+                type="text" 
+                id="myInput" 
+                onkeyup="myFunction()" 
+                placeholder="Team or Conference" 
+                title="Type in a team name or conference"
+                style="margin-left: 1%; padding: 5px;">
             <div class="team-list-container" team-list-container>
+                
+                <table class="fl-table sortable">
+                    <thead>
+                    <tr class="headerRow">
+                        <th class="sticky-header team-header" style="cursor: pointer;">Team</th>
+                        <th class="sticky-header team-header" style="cursor: pointer;">Conference</th>
+                        <th class="sticky-header team-header sorttable_numeric" style="cursor: pointer;">Previous Season Score</th>
+                    </tr>
+                    </thead>
+                    <tbody user-table-body>
+                    <tbody>
+                </table>
             </div>
         </div>
     </div>
