@@ -75,6 +75,10 @@ function setTeamOptions(data) {
     teamList = data;
     var str = '<option value="" disabled selected>Select A Team</option>';
 
+    data.sort((a, b) => {
+        return a.school.localeCompare(b.school)
+    });
+
     data.forEach( team => {
         str += '<option value="';
         str += team.id;
