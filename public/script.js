@@ -1,4 +1,3 @@
-const teamList = document.querySelector('[team-list-container]');
 const pollName = document.querySelector('[poll-name]');
 const pollForm = document.getElementById('get-poll-form');
 
