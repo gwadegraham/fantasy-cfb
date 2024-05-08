@@ -203,3 +203,17 @@ const displayTeamLogo = (row,value) => {
 
     row[0].innerHTML = '<img style="padding-left: 10px; width: 40px;" src="' + result[0].logos[0] + '" alt="' + result[0].mascot + '">';
 };
+
+var previous;
+
+$("select").on('focus', function() {
+    previous = this.value;
+
+}).on("change", function(){
+
+    if (previous != "") {
+        $("select").find("option[value=" + previous + "]").show();
+    }
+    
+    $("select").not(this).find("option[value=" + $(this).val() + "]").hide();
+});
