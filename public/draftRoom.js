@@ -1,12 +1,21 @@
-const teamOptionList = document.querySelectorAll('[team-options]');
-
-const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-const listOfTeams = [];
+const toggleButton = document.getElementsByClassName('toggle-button')[0];
+toggleButton.addEventListener('click', () => {
+    navbarLinks.classList.toggle('active');
+});
+
 var leagueVersion;
 var leagueCode;
 var isMobile;
+var teamOptionList;
 var teamList = [];
+const listOfTeams = [];
+
+window.onload = async function() {
+    detectMobile();
+    await getUserProfile();
+    await getTeams();
+};
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
@@ -16,80 +25,6 @@ function detectMobile() {
         // false for not mobile device
         isMobile = false;
     }
-}
-
-var successToast = Toastify({
-    text: "",
-    duration: 4000,
-    close: true,
-    gravity: "top", // `top` or `bottom`
-    position: "left", // `left`, `center` or `right`
-    stopOnFocus: true, // Prevents dismissing of toast on hover
-    style: {
-      background: "#71d28d",
-      color: "#222"
-    },
-    offset: {
-        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
-    },
-});
-
-var failToast = Toastify({
-    text: "",
-    duration: 3000,
-    close: true,
-    gravity: "top", // `top` or `bottom`
-    position: "left", // `left`, `center` or `right`
-    stopOnFocus: true, // Prevents dismissing of toast on hover
-    style: {
-      background: "#71d28d",
-      color: "#222"
-    },
-    offset: {
-        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
-    },
-});
-
-async function getTeams() {
-    fetch("/teams", {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    }).then(res => res.json()).then(data => {
-        setTeamOptions(data);
-        displayTeams(data);
-    });
-}
-
-function multiplyNode(node, count, deep) {
-    for (var i = 0, copy; i < count - 1; i++) {
-        copy = node.cloneNode(deep);
-        node.parentNode.insertBefore(copy, node);
-    }
-}
-
-function setTeamOptions(data) {
-    teamList = data;
-    var str = '<option value="" disabled selected>Select A Team</option>';
-
-    data.sort((a, b) => {
-        return a.school.localeCompare(b.school)
-    });
-
-    data.forEach( team => {
-        str += '<option value="';
-        str += team.id;
-        str += '">' + team.school;
-        str += '</option>';
-    });
-
-    teamOptionList.forEach(selector => {
-        selector.innerHTML = str;
-    });
-
-    multiplyNode(document.querySelector('.draft-team-container'), 1, true);
 }
 
 async function getUserProfile() {
@@ -116,21 +51,124 @@ async function getUserProfile() {
 
         if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
-        }        
+        }
+        
+        getUsers();
     });
 }
 
+async function getUsers() {
 
+    const response = await fetch(`/users/league/${leagueCode}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
 
-toggleButton.addEventListener('click', () => {
-    navbarLinks.classList.toggle('active');
-});
+    response.json().then(async data => {
+        displayUsers(data);
+    });
+}
 
-window.onload = async function() {
-    detectMobile();
-    getUserProfile();
-    getTeams();
-};
+function displayUsers(data) {
+    const draftTableBody = document.querySelector('[draft-body]');
+    var str = '<tr>';
+
+    data.sort((a, b) => {
+        return a.cumulativeScore - b.cumulativeScore;
+    });
+
+    data.forEach( (user, index) => {
+        str += `<td>\
+            <table class="live-draft-table draft-team-table">\
+                <tbody>\
+                    <tr></tr>\
+                    <tr>\
+                        <td style="width: 300px;"><strong>${user.firstName}</strong></td>\
+                    </tr>\
+                    <tr>`;
+
+        for(var i = 1; i < 11; i++) {
+            str += `<td style="width: 250px; height: 35px; display: flex;" >\
+                        <table style="margin-left: 5px;">\
+                            <tr style="display: flex;">\
+                                <td style="min-width: 30px;"><p style="padding-left: 5%;">${i}.</p></td>\
+                                <td><div class="draft-team-container" draft-team-container>\
+                                    <select class="team-picker" id="team-picker" team-options onchange="_displayTeamLogo(this,value)">\
+                                    </select>\
+                                </div></td>\
+                                <td team-logo>\
+                                </td>\
+                            </tr>\
+                        </table>\
+                    </td>`;
+        }
+
+        str += '</tr>\
+                </tbody>\
+                </table>\
+                </td>';
+
+        if (((index + 1) % 3) == 0) {
+            str += '</tr><tr>';
+        }
+    });
+
+    str += '</tr>';
+
+    draftTableBody.innerHTML = str;
+
+    var previous;
+
+    $("select").on('focus', function() {
+        previous = this.value;
+
+    }).on("change", function(){
+        if (previous != "") {
+            $("select").find("option[value=" + previous + "]").show();
+        }
+        
+        $("select").not(this).find("option[value=" + $(this).val() + "]").hide();
+    });
+}
+
+async function getTeams() {
+    fetch("/teams", {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    }).then(res => res.json()).then(data => {
+        setTeamOptions(data);
+        displayTeams(data);
+    });
+}
+
+function setTeamOptions(data) {
+    teamOptionList = document.querySelectorAll('[team-options]');
+    teamList = data;
+    var str = '<option value="" disabled selected>Select A Team</option>';
+
+    data.sort((a, b) => {
+        return a.school.localeCompare(b.school)
+    });
+
+    data.forEach( team => {
+        str += '<option value="';
+        str += team.id;
+        str += '">' + team.school;
+        str += '</option>';
+    });
+
+    teamOptionList.forEach(selector => {
+        selector.innerHTML = str;
+    });
+
+    _multiplyNode(document.querySelector('.draft-team-container'), 1, true);
+}
 
 async function displayTeams(data) {
     const userTableBody = document.querySelector('[user-table-body]');
@@ -176,7 +214,18 @@ async function displayTeams(data) {
     userTableBody.innerHTML = str;
 }
 
-const filterFunction = () => {
+/////////////////////////////////////////////////////
+//////////////////Helper Functions///////////////////
+/////////////////////////////////////////////////////
+
+function _multiplyNode(node, count, deep) {
+    for (var i = 0, copy; i < count - 1; i++) {
+        copy = node.cloneNode(deep);
+        node.parentNode.insertBefore(copy, node);
+    }
+}
+
+const _filterFunction = () => {
     const columns = [
       { name: 'Team', index: 0, isFilter: true },
       { name: 'Conference', index: 1, isFilter: true }
@@ -196,24 +245,44 @@ const filterFunction = () => {
     trs.forEach(setTrStyleDisplay)
 };
 
-const displayTeamLogo = (row,value) => {
+const _displayTeamLogo = (row,value) => {
     var result = teamList.filter(obj => {
         return obj.id == value
-      })
+    });
 
-    row[0].innerHTML = '<img style="padding-left: 10px; width: 40px;" src="' + result[0].logos[0] + '" alt="' + result[0].mascot + '">';
+    var thisRow = $(row).closest("tr").find("[team-logo]");
+
+    thisRow[0].innerHTML = '<img style="padding-left: 10px; width: 40px;" src="' + result[0].logos[0] + '" alt="' + result[0].mascot + '">';
 };
 
-var previous;
+var successToast = Toastify({
+    text: "",
+    duration: 4000,
+    close: true,
+    gravity: "top", // `top` or `bottom`
+    position: "left", // `left`, `center` or `right`
+    stopOnFocus: true, // Prevents dismissing of toast on hover
+    style: {
+      background: "#71d28d",
+      color: "#222"
+    },
+    offset: {
+        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
+    },
+});
 
-$("select").on('focus', function() {
-    previous = this.value;
-
-}).on("change", function(){
-
-    if (previous != "") {
-        $("select").find("option[value=" + previous + "]").show();
-    }
-    
-    $("select").not(this).find("option[value=" + $(this).val() + "]").hide();
+var failToast = Toastify({
+    text: "",
+    duration: 3000,
+    close: true,
+    gravity: "top", // `top` or `bottom`
+    position: "left", // `left`, `center` or `right`
+    stopOnFocus: true, // Prevents dismissing of toast on hover
+    style: {
+      background: "#71d28d",
+      color: "#222"
+    },
+    offset: {
+        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
+    },
 });
