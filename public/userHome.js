@@ -91,9 +91,9 @@ function displayTeams(data) {
     const userTableBody = document.querySelector('[user-table-body]');
     var str = '';
 
-    var currentWeeksLength = data.weeklyScore.length;
+    var currentWeeksLength = data.seasons[0].weeklyScore.length;
 
-    data.teams.forEach( (team, index) => {
+    data.seasons[0].teams.forEach( (team, index) => {
         var totalScore = 0;
 
         str += '<tr>';
@@ -105,7 +105,7 @@ function displayTeams(data) {
         str += team.school;
         str += '</div></th></a>';
         
-        data.weeklyScore.forEach(week => {
+        data.seasons[0].weeklyScore.forEach(week => {
             var result = week.scoreByTeam.filter(obj => {
                 return obj.team == team.school
               });
@@ -139,7 +139,7 @@ function displayTeams(data) {
     str += 'Cumulative Score';
     str += '</div></th>';
 
-    data.weeklyScore.forEach(week => {
+    data.seasons[0].weeklyScore.forEach(week => {
         str += '<td>' + week.score + '</td>'
     });
 
@@ -147,7 +147,7 @@ function displayTeams(data) {
         str += '<td>0</td>';
     }
 
-    str += '<th class="sticky-header-score">' + data.cumulativeScore + '</th>';
+    str += '<th class="sticky-header-score">' + data.seasons[0].cumulativeScore + '</th>';
     str += '</tr>';
 
     userTableBody.innerHTML = str;
@@ -261,9 +261,9 @@ async function displaySchedule(data) {
 
     var rankingsInfo = await getRankings(week, seasonType);
 
-    for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
+    for (var iterNum = 0; iterNum < data.seasons[0].teams.length; iterNum++) {
 
-        var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
+        var gamesInfo = await getGame(seasonType, week, data.seasons[0].teams[iterNum]);
 
         for (const game of gamesInfo) {
 
@@ -298,7 +298,7 @@ async function displaySchedule(data) {
     
                 if (!game.startTimeTbd) {
     
-                    if (game.awayTeam == data.teams[iterNum].school) {
+                    if (game.awayTeam == data.seasons[0].teams[iterNum].school) {
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -310,8 +310,8 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.teams[iterNum].school) {
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                        if(game.awayTeam == data.seasons[0].teams[iterNum].school) {
+                            var weeklyScore = userData.seasons[0].weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.awayTeam;
                             });
@@ -323,7 +323,7 @@ async function displaySchedule(data) {
                     } else {
     
                         if(!isAway) {
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons[0].weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.homeTeam;
                             });
@@ -376,7 +376,7 @@ async function displaySchedule(data) {
 
                     var shouldReplace = false;
     
-                    if (game.awayTeam == data.teams[iterNum].school) {
+                    if (game.awayTeam == data.seasons[0].teams[iterNum].school) {
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -388,9 +388,9 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.teams[iterNum].school) {
+                        if(game.awayTeam == data.seasons[0].teams[iterNum].school) {
                             shouldReplace = true;
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons[0].weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.awayTeam;
                             });
@@ -401,9 +401,9 @@ async function displaySchedule(data) {
                         bottomData = game.homePoints;
                     } else {
     
-                        if(game.homeTeam == data.teams[iterNum].school) {
+                        if(game.homeTeam == data.seasons[0].teams[iterNum].school) {
                             shouldReplace = true;
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons[0].weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.homeTeam;
                             });

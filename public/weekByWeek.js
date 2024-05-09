@@ -1,13 +1,13 @@
 export function setChartData(data) {
 
     data.sort((a, b) => {
-        return b.cumulativeScore - a.cumulativeScore;
+        return b.seasons[0].cumulativeScore - a.seasons[0].cumulativeScore;
     });
 
     const labels = [];
     const dataset = [];
 
-    for (var i = 1; (i-1) < data[0].weeklyScore.length; i++) {
+    for (var i = 1; (i-1) < data[0].seasons[0].weeklyScore.length; i++) {
         labels.push("Week " + i);
     }
 
@@ -15,7 +15,7 @@ export function setChartData(data) {
         var scoreData = [];        
         var cumulativeScore = 0;
 
-        user.weeklyScore.forEach( week => {
+        user.seasons[0].weeklyScore.forEach( week => {
             cumulativeScore += week.score; 
             scoreData.push(cumulativeScore);
         });

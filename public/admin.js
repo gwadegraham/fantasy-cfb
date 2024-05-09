@@ -133,7 +133,7 @@ function displayUsers(data) {
         str += '<tr>';
         str += '<td class="team-item">' + user.firstName + ' ' + user.lastName + '</td>';
         
-        user.teams.forEach(team => {
+        user.seasons[0].teams.forEach(team => {
             refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
@@ -218,7 +218,12 @@ if (createForm) {
             "firstName": "${firstName}",
             "lastName": "${lastName}",
             "color": "${displayColor}",
-            "teams": ${JSON.stringify(teamDocuments)},
+            "seasons": [
+                {
+                    "season": ${new Date().getFullYear()},
+                    "teams": ${JSON.stringify(teamDocuments)}
+                }
+            ],
             "league": "${leagueCode}"
             }`,
         });
@@ -246,9 +251,7 @@ const removeForm = document.getElementById('remove-form');
 if (removeForm) {
     removeForm.addEventListener('submit', async function(event) {
         event.preventDefault();
-    
-        const teams = [];
-        const teamDocuments = [];
+
         const userId = document.querySelector('[user-options]').value;
     
         const response = await fetch("/users/" + userId, {
