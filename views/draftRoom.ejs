@@ -5,25 +5,34 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="styles.css" rel="stylesheet">
-    <script defer src="script.js"></script>
+    <script defer src="draftRoom.js"></script>
     <script src="navbar.js"></script>
     <script src="sorttable.js"></script>
     <title>Fantasy CFB</title>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <div class="header-title" poll-name>
-                Teams
+                Draft Room
             </div>
+        </div>
+        <div>
+            <table class="live-draft-table">
+                <tbody draft-body>
+                </tbody>
+            </table>
         </div>
         <div class="content">
             <input 
                 type="text" 
                 id="myInput" 
-                onkeyup="myFunction()" 
+                onkeyup="_filterFunction()" 
                 placeholder="Team or Conference" 
                 title="Type in a team name or conference"
                 style="margin-left: 1%; padding: 5px;">

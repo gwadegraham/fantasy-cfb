@@ -24,7 +24,7 @@ document.write('\
             <li><a href="./index">Home</a></li>\
             <li><a admin-page href="./admin">Admin</a></li>\
             <li><a href="./standings">Standings</a></li>\
-            <li><a href="./teams-page">Teams</a></li>\
+            <li><a href="./draft-room">Draft Room</a></li>\
             <li><a href="./logout">Logout</a></li>\
         </ul>\
     </div>\

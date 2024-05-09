@@ -72,9 +72,9 @@ app.get('/standings', (req, res) => {
     }
 });
 
-app.get('/teams-page', (req, res) => {
+app.get('/draft-room', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        res.render('teams');
+        res.render('draftRoom');
     } else {
         res.redirect("/login");
     }
