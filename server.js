@@ -121,6 +121,9 @@ app.use('/games', gamesRouter);
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', rankingsRouter);
 
+const recruitingRouter = require('./routes/recruiting');
+app.use('/recruiting', recruitingRouter);
+
 app.get('/top-25', async (req, res) => {
 
     var gamesApi = new cfb.GamesApi();
@@ -232,4 +235,16 @@ const job = schedule.scheduleJob('50 00 * * *', async function(){
 
 app.listen(process.env.PORT || 3000, () =>{
     console.log('Server Started');
+
+    //Test Code to get Team Records Info (***Want Expected Wins for Draft***)
+    // var gamesApi = new cfb.GamesApi();
+    // var opts = { 
+    //     'year': 2024, // Number | Year filter
+    //     'team': "Georgia" // String | Team filter
+    //   };
+    //   gamesApi.getTeamRecords(opts).then(function(data) {
+    //     console.log('API called successfully. Returned data: ',data);
+    //   }, function(error) {
+    //     console.error(error);
+    //   });
 });

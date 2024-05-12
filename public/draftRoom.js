@@ -15,6 +15,7 @@ window.onload = async function() {
     detectMobile();
     await getUserProfile();
     await getTeams();
+    setRecruitingHeader();
 };
 
 function detectMobile() {
@@ -170,7 +171,27 @@ function setTeamOptions(data) {
     _multiplyNode(document.querySelector('.draft-team-container'), 1, true);
 }
 
+function setRecruitingHeader() {
+    document.querySelector('[recruiting-ranking]').innerHTML = `${new Date().getFullYear()} Recruiting`;
+}
+
+async function getRecruitingRankings() {
+    var response = await fetch(`/recruiting/${new Date().getFullYear()}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var recruitingRankings = await response.json();
+
+    return recruitingRankings;
+}
+
 async function displayTeams(data) {
+    var recruitingRankings = await getRecruitingRankings();
+
     const userTableBody = document.querySelector('[user-table-body]');
     var str = '';
 
@@ -201,13 +222,18 @@ async function displayTeams(data) {
 
         str += '<td>' + team.conference + '</td>';
 
+        var teamRecruiting = recruitingRankings.filter(obj => {
+            return obj.team == team.school
+        })[0];
+
+        str += '<td>' + teamRecruiting.rank + '</td>';
+
         if (leagueVersion == "V1") {
             str += '<td>' + (team.cumulativeScoreV1 || "0") + '</td>';
         } else {
             str += '<td>' + (team.cumulativeScoreV2 || "0") + '</td>';
         }
         
-
         str += '</tr>';
     });
 
