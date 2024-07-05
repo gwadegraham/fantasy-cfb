@@ -10,7 +10,7 @@ var rankingsApi = new cfb.RankingsApi();
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await fetch(`${process.env.URL}/users`, {
+        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -30,13 +30,13 @@ module.exports= {
               }
               
               
-            var totalScore = user.weeklyScore.map(score).reduce(sum);
+            var totalScore = user.seasons[0].weeklyScore.map(score).reduce(sum);
             updateUserCumulativeScore(user._id, totalScore);
         }
     },
 
     updateScores: async function(season, week) {
-        var response = await fetch(`${process.env.URL}/users`, {
+        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -50,7 +50,7 @@ module.exports= {
             var score = 0;
             var teamScores = new Array();
 
-            for (const team of user.teams) {
+            for (const team of user.seasons[0].teams) {
                 var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
                     method: 'GET',
                     headers: {
@@ -94,23 +94,23 @@ module.exports= {
             if ((season == "postseason")) {
                 scoreObject["season"] = season;
 
-                if (await user.weeklyScore.some(e => e.season === scoreObject.season)) {
-                    var spliceIndex = user.weeklyScore.findIndex(x => x.season === scoreObject.season);
-                    user.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                    await updateUser(user._id, user.weeklyScore);
+                if (await user.seasons[0].weeklyScore.some(e => e.season === scoreObject.season)) {
+                    var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season === scoreObject.season);
+                    user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
+                    await updateUser(user._id, user.seasons[0].weeklyScore);
                 } else {
-                    user.weeklyScore.push(scoreObject);
-                    await updateUser(user._id, user.weeklyScore);
+                    user.seasons[0].weeklyScore.push(scoreObject);
+                    await updateUser(user._id, user.seasons[0].weeklyScore);
                 }
-            } else if (await user.weeklyScore.some(e => e.week === scoreObject.week)) {
-                var spliceIndex = user.weeklyScore.findIndex(x => x.week === scoreObject.week);
-                user.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                await updateUser(user._id, user.weeklyScore);
-            } else if (user.weeklyScore.length == 0){
+            } else if (await user.seasons[0].weeklyScore.some(e => e.week === scoreObject.week)) {
+                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.week === scoreObject.week);
+                user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
+                await updateUser(user._id, user.seasons[0].weeklyScore);
+            } else if (user.seasons[0].weeklyScore.length == 0){
                 await updateUser(user._id, scoreObject);
             } else {
-                user.weeklyScore.push(scoreObject);
-                await updateUser(user._id, user.weeklyScore);
+                user.seasons[0].weeklyScore.push(scoreObject);
+                await updateUser(user._id, user.seasons[0].weeklyScore);
             }
 
             
@@ -180,7 +180,7 @@ module.exports= {
     
             if (!user.isUpdated) {
                 
-                const promises = user.teams.map(async (team) => {
+                const promises = user.seasons[0].teams.map(async (team) => {
                     await fetch(process.env.URL + '/games-api', {
                         method: 'POST',
                         headers: {
@@ -201,7 +201,7 @@ module.exports= {
     
                 const scores = await Promise.all(promises);
     
-                var newWeeklyScore = user.weeklyScore.push(score);
+                var newWeeklyScore = user.seasons[0].weeklyScore.push(score);
                 updateUser(user._id, newWeeklyScore);
             }
         });
@@ -371,7 +371,7 @@ async function updateUser(userId, scoreUpdate) {
     
         response.json().then(data => {
             if (response.status == 200) {
-                console.log(`Update User ${userId} with new weeklyScore:`, data.weeklyScore);
+                console.log(`Update User ${userId} with new weeklyScore:`, data.seasons[0].weeklyScore);
             } else {
                 console.log(data.message);
             }
@@ -420,7 +420,6 @@ async function updateTeamScores(teamId, scoreUpdate) {
     return response.json().then(data => {
         if (response.status == 200) {
             var updatedTeam = {status: response.status, updatedTeam: data};
-            console.log("response *****", response)
             return updatedTeam;
         } else {
             console.log(data.message);
@@ -479,7 +478,7 @@ function isRanked(team, rankings) {
 }
 
 function isPowerFive(teamConf, oppConf) {
-    var powerFive = new Array("ACC", "Big 12", "Big Ten", "SEC", "Pac-12");
+    var powerFive = new Array("ACC", "Big 12", "Big Ten", "SEC");
 
     if ((!powerFive.includes(teamConf)) && (powerFive.includes(oppConf))) {
         return true;

@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="draftTable.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
+    <script src="confetti.js"></script>
     <script defer src="draftRoom.js"></script>
     <script src="navbar.js"></script>
     <script src="sorttable.js"></script>
@@ -13,6 +15,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet"/>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
 </head>
 <body>
@@ -22,11 +25,83 @@
                 Draft Room
             </div>
         </div>
-        <div>
-            <table class="live-draft-table">
-                <tbody draft-body>
-                </tbody>
-            </table>
+        <div class="temp-draft-table">
+            <div id="draft-board" style="overflow-x: auto;">
+        
+                <table id="draft-table">
+                    <thead>
+                        <tr>
+                            <th>Teams</th>
+                            <th>1</th>
+                            <th>2</th>
+                            <th>3</th>
+                            <th>4</th>
+                            <th>5</th>
+                            <th>6</th>
+                            <th>7</th>
+                            <th>8</th>
+                            <th>9</th>
+                            <th>10</th>
+                        </tr>
+                    </thead>
+                    <tbody draft-table-body>
+                    </tbody>
+                </table>
+            </div>
+        
+            <div id="add-team">
+            <form id="team-form">
+                <select id="team" team-options name="team">
+                </select>
+                <button type="submit" disabled="disabled">Add Team</button>
+            </form>
+            <p id="current-team"></p>
+            <p id="current-round"></p>
+            </div>
+        </div>
+        <div id="submit-draft" class="submit-draft-container" hidden>
+            <button type="button" data-toggle="modal" data-target="#exampleModal">Submit Draft</button>
+        </div>
+        <!-- Modal -->
+        <div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLabel">Draft Confirmation</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    Are you ready to lock in this year's draft?
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="submitDraft()">&#128548;</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        <!-- Change Team Modal -->
+        <div class="modal fade" id="changeTeamModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLabel">Team Selection Change</h5>
+                <button type="button" class="close" onclick="$('#changeTeamModal').modal('hide');" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    <p></p>
+                    <select team-options></select>
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="$('#changeTeamModal').modal('hide');">Close</button>
+                <button type="button" class="btn btn-primary" onclick="confirmNewTeam()">Confirm</button>
+                </div>
+            </div>
+            </div>
         </div>
         <div class="content">
             <input 

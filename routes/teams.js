@@ -47,17 +47,19 @@ router.get('/:id', async (req, res) => {
 //Updating One
 router.patch('/:id', getTeam, async (req, res) => {
 
+    var index = res.team.seasons.findIndex(x => x.season == process.env.YEAR);
+
     if (req.body.weeklyScore != null) {
-        res.team.weeklyScore = req.body.weeklyScore;
+        res.team.seasons[index].weeklyScore = req.body.weeklyScore;
     } 
 
 
     if (req.body.cumulativeScoreV1 != null) {
-        res.team.cumulativeScoreV1 = req.body.cumulativeScoreV1;
+        res.team.seasons[index].cumulativeScoreV1 = req.body.cumulativeScoreV1;
     }
     
     if (req.body.cumulativeScoreV2 != null) {
-        res.team.cumulativeScoreV2 = req.body.cumulativeScoreV2;
+        res.team.seasons[index].cumulativeScoreV2 = req.body.cumulativeScoreV2;
     }
 
     try {

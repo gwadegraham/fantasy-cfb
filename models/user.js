@@ -22,8 +22,7 @@ const locationSchema = new mongoose.Schema({
         required: true
     },
     country_code: {
-        type: String,
-        required: true
+        type: String
     },
     timezone: {
         type: String,

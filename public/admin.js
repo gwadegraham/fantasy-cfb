@@ -44,7 +44,7 @@ var failToast = Toastify({
     position: "left", // `left`, `center` or `right`
     stopOnFocus: true, // Prevents dismissing of toast on hover
     style: {
-      background: "#71d28d",
+      background: "#d27171",
       color: "#222"
     },
     offset: {

@@ -13,6 +13,17 @@ router.get('/', async (req, res) => {
     }
 });
 
+//Getting All By Season
+router.get('/season/:seasonYear', async (req, res) => {
+    try {
+        const users = await User.find({"seasons.season": {"$eq": req.params.seasonYear}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": req.params.seasonYear}}}});
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Getting All By League
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
@@ -26,12 +37,26 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     }
 });
 
-//Getting One
+//Getting One By Id
 router.get('/:id', async (req, res) => {
     var userId = req.params.id;
 
     try {
         const user = await User.find({_id: userId});
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
+//Getting One By Season
+router.get('/:id/season', async (req, res) => {
+    var userId = req.params.id;
+    var year = process.env.YEAR;
+
+    try {
+        const user = await User.find({_id: userId, "seasons.season": {"$eq": year}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
         res.json(user);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -63,20 +88,44 @@ router.post('/', async (req, res) => {
 //Updating One
 router.patch('/:id', getUser, async (req, res) => {
 
-    // var keys = Object.keys(req.body);
-    //console.log("req.body.weeklyScore", req.body.weeklyScore);
-    //console.log("req.body", req.body);
-
-    if (req.body.season.cumulativeScore != null) {
-        res.user.season.cumulativeScore = req.body.season.cumulativeScore;
+    if (req.body.cumulativeScore != null) {
+        res.user.seasons[0].cumulativeScore = req.body.cumulativeScore;
     } 
 
     else {
-        res.user.season.weeklyScore = req.body.season.weeklyScore;
+        res.user.seasons[0].weeklyScore = req.body.weeklyScore;
     }
     if (req.body.isUpdated != null) {
         res.user.isUpdated = req.body.isUpdated;
     }
+    try {
+        const updatedUser = await res.user.save();
+        res.status(200).json(updatedUser);
+    } catch (err) {
+        res.status(400).json({message: err.message});
+    }
+});
+
+//Updating new Season & Teams for One
+router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
+
+    var newSeason = {
+        "season": req.body.season,
+        "teams": req.body.teams
+    };
+
+    console.log("res.user", res.user)
+
+    if (req.body.season != null && req.body.teams != null) {
+        var seasonExist = res.user.seasons.findIndex(x => x.season == newSeason.season);
+
+        if (seasonExist > -1) {
+            res.user.seasons[seasonExist] = newSeason;
+        } else {
+            res.user.seasons.push(newSeason);
+        }
+    }
+
     try {
         const updatedUser = await res.user.save();
         res.status(200).json(updatedUser);
@@ -98,7 +147,25 @@ router.delete('/:id', getUser, async (req, res) => {
 async function getUser(req, res, next) {
     let user;
     try {
-        user = await User.findById(req.params.id);
+        // user = await User.findById(req.params.id);
+        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": 2024}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": 2024}}}});
+        if (user == null) {
+            return res.status(404).json({message: 'Cannot find user'});
+        }
+    } catch (err) {
+        return res.status(500).json({message: err.message});
+    }
+    res.user = user;
+    next();
+}
+
+async function getUserNewSeason(req, res, next) {
+    let user;
+    try {
+        // user = await User.findById(req.params.id);
+        user = await User.findOne({_id: req.params.id},
+                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": 1});
         if (user == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }

@@ -1,0 +1,116 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: antiquewhite;
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    text-align: center;
+}
+
+#draft-board {
+    margin: 20px auto;
+    width: 95%;
+    max-width: 900px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#draft-table th {
+    text-align: center;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 12px;
+    text-align: center;
+}
+
+#draft-table td:not(:first-child) {
+    background-color: #b0b0b08f;
+}
+
+th {
+    background-color: #f4f4f4;
+}
+
+#add-team {
+    margin: 20px auto;
+    width: 90%;
+    max-width: 300px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    padding: 20px;
+    background-color: #f4f4f4;
+}
+
+#add-team form {
+    display: flex;
+    flex-direction: column;
+}
+
+#add-team label {
+    margin-bottom: 5px;
+}
+
+#add-team select, #add-team button {
+    margin-bottom: 10px;
+    padding: 10px;
+    font-size: 16px;
+}
+
+#current-team, #current-round {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+
+#draft-table img {
+    width: 40px;
+    height: auto;
+    cursor: pointer;
+}
+
+.submit-draft-container {
+    text-align: center;
+}
+
+.submit-draft-container button {
+    border-radius: 5px;
+    background-color: #444;
+    color: white;
+    border: none;
+    box-shadow: 0px 0px 2px 2px #444;
+    margin-top: 10px;
+    width: 27%;
+    padding: 10px;
+    min-height: 30px;
+    min-width: 120px;
+    cursor: pointer;
+}
+
+.submit-draft-container button:hover {
+    transition: 0.7s;
+    background-color: #999;
+}
+
+.submit-draft-container button:disabled {
+    background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3));
+    color: light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3));
+    border-color: light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3));
+}
+
+.submit-draft-container button:disabled:hover {
+    cursor: auto;
+    background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3));
+    color: light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3));
+    border-color: light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3));
+}

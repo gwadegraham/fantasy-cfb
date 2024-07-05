@@ -9,7 +9,12 @@ var leagueCode;
 var isMobile;
 var teamOptionList;
 var teamList = [];
-const listOfTeams = [];
+var users = [];
+var currentTeamIndex = 0;
+var currentRound = 1;
+var draftDirection = 1;
+const totalRounds = 10;
+const userTeams = [];
 
 window.onload = async function() {
     detectMobile();
@@ -17,6 +22,10 @@ window.onload = async function() {
     await getTeams();
     setRecruitingHeader();
 };
+
+$('#myModal').on('shown.bs.modal', function () {
+    $('#myInput').trigger('focus')
+})
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
@@ -74,52 +83,50 @@ async function getUsers() {
 }
 
 function displayUsers(data) {
-    const draftTableBody = document.querySelector('[draft-body]');
-    var str = '<tr>';
+    const draftTableBody = document.querySelector('[draft-table-body]');
+    var str = '';
 
     data.sort((a, b) => {
         return a.cumulativeScore - b.cumulativeScore;
     });
 
+    users = data;
+
     data.forEach( (user, index) => {
-        str += `<td>\
-            <table class="live-draft-table draft-team-table">\
-                <tbody>\
-                    <tr></tr>\
-                    <tr>\
-                        <td style="width: 300px;"><strong>${user.firstName}</strong></td>\
-                    </tr>\
-                    <tr>`;
+        userTeams.push(user.firstName);
+
+        str += '<tr>';
+        str += `<td>${user.firstName} ${user.lastName.substring(0,1)}.</td>`;
 
         for(var i = 1; i < 11; i++) {
-            str += `<td style="width: 250px; height: 35px; display: flex;" >\
-                        <table style="margin-left: 5px;">\
-                            <tr style="display: flex;">\
-                                <td style="min-width: 30px;"><p style="padding-left: 5%;">${i}.</p></td>\
-                                <td><div class="draft-team-container" draft-team-container>\
-                                    <select class="team-picker" id="team-picker" team-options onchange="_displayTeamLogo(this,value)">\
-                                    </select>\
-                                </div></td>\
-                                <td team-logo>\
-                                </td>\
-                            </tr>\
-                        </table>\
-                    </td>`;
+            str += `<td id="${user._id}-round${i}"></td>`;
         }
 
-        str += '</tr>\
-                </tbody>\
-                </table>\
-                </td>';
-
-        if (((index + 1) % 3) == 0) {
-            str += '</tr><tr>';
-        }
+        str += '</tr>';
     });
 
-    str += '</tr>';
-
     draftTableBody.innerHTML = str;
+
+    document.querySelectorAll('td[id*="-round"]').forEach(cell => {
+        cell.addEventListener('click', function() {
+            const currentTeamName = cell.children[0].alt;
+    
+            $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
+    
+            $('#changeTeamModal').attr("cell-id", cell.id);
+            $('#changeTeamModal').attr("previous-school", currentTeamName);
+            $('#changeTeamModal').attr("previous-value", cell.children[0].title);
+            $('#changeTeamModal').modal('show');
+        });
+    });
+
+    $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
+        $(this).css('background-color', 'white');
+    });
+
+    // Initialize the current user and round display
+    document.getElementById('current-team').textContent = `Current Team: ${userTeams[currentTeamIndex].charAt(0).toUpperCase() + userTeams[currentTeamIndex].slice(1)}`;
+    document.getElementById('current-round').textContent = `Round ${currentRound}`;
 
     var previous;
 
@@ -127,6 +134,8 @@ function displayUsers(data) {
         previous = this.value;
 
     }).on("change", function(){
+        $('#team-form button').attr('disabled', false);
+
         if (previous != "") {
             $("select").find("option[value=" + previous + "]").show();
         }
@@ -152,7 +161,7 @@ function setTeamOptions(data) {
     teamOptionList = document.querySelectorAll('[team-options]');
     teamList = data;
     var str = '<option value="" disabled selected>Select A Team</option>';
-
+    
     data.sort((a, b) => {
         return a.school.localeCompare(b.school)
     });
@@ -197,22 +206,19 @@ async function displayTeams(data) {
 
     data.sort((a, b) => {
         if (leagueVersion == "V1") {
-            var aScore = a.cumulativeScoreV1 || 0;
-            var bScore = b.cumulativeScoreV1 || 0;
+            var aScore = a.seasons[0].cumulativeScoreV1 || 0;
+            var bScore = b.seasons[0].cumulativeScoreV1 || 0;
         } else {
-            var aScore = a.cumulativeScoreV2 || 0;
-            var bScore = b.cumulativeScoreV2 || 0;
+            var aScore = a.seasons[0].cumulativeScoreV2 || 0;
+            var bScore = b.seasons[0].cumulativeScoreV2 || 0;
         }
         
         return bScore - aScore;
     });
 
-    var currentWeeksLength = 16;
-
     data.forEach( (team, index) => {
-        var totalScore = 0;
 
-        str += '<tr><td style="text-align: left; wi">';
+        str += '<tr><td style="text-align: left;">';
         refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
         refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
@@ -220,7 +226,7 @@ async function displayTeams(data) {
         str += team.school;
         str += '</td>';
 
-        str += '<td>' + team.conference + '</td>';
+        str += '<td>' + team.seasons[0].conference + '</td>';
 
         var teamRecruiting = recruitingRankings.filter(obj => {
             return obj.team == team.school
@@ -229,9 +235,9 @@ async function displayTeams(data) {
         str += '<td>' + teamRecruiting.rank + '</td>';
 
         if (leagueVersion == "V1") {
-            str += '<td>' + (team.cumulativeScoreV1 || "0") + '</td>';
+            str += '<td>' + (team.seasons[0].cumulativeScoreV1 || "0") + '</td>';
         } else {
-            str += '<td>' + (team.cumulativeScoreV2 || "0") + '</td>';
+            str += '<td>' + (team.seasons[0].cumulativeScoreV2 || "0") + '</td>';
         }
         
         str += '</tr>';
@@ -239,6 +245,188 @@ async function displayTeams(data) {
 
     userTableBody.innerHTML = str;
 }
+
+async function submitDraft() {
+
+    var userBodies = [];
+
+    users.forEach(
+        user => {
+            var userId = user._id;
+            var userTeamSelections = $(`*[id*=${user._id}]`).toArray();
+
+            const teamDocuments = [];
+            userTeamSelections.forEach(
+                team => {
+                    var teamId = team.children[0].getAttribute("title");
+                    var teamObj = teamList.find((element) => element.id == teamId);
+                    teamDocuments.push(teamObj);
+                }
+            );
+
+            var userBody = {
+                "userId": userId,
+                "teams": teamDocuments
+            };
+
+            userBodies.push(userBody);
+        }
+    );
+    console.log("userBodies", userBodies)
+
+    var isSuccess = [];
+
+    for (let user of userBodies) {
+        var userUpdated = await updateUser(user.userId, user.teams);
+        isSuccess.push(userUpdated);
+    }
+
+    if (isSuccess.includes(false)) {
+        failToast.options.text = "Some users could not be updated for the new season";
+        failToast.showToast();
+    } else {
+        successToast.options.text = "Draft submitted successfully";
+        successToast.showToast();
+        startConfetti();
+        $('#submit-draft button').attr('disabled', true)
+    }
+}
+
+async function updateUser(userId, teams) {
+    
+    var requestBody = `{
+        "season": ${new Date().getFullYear()},
+        "teams": ${JSON.stringify(teams)}
+        }`;
+
+    const response = await fetch(`/users/draft/` + userId, {
+        method: 'PATCH',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        },
+        body: requestBody,
+    });
+        
+    var updateSuccessful = response.json().then(data => {
+        if (response.status == 200) {
+            return true;
+        } else {
+            return false;
+        }
+    });
+
+    return updateSuccessful;
+}
+
+function updateDraftOrder() {
+
+    if ((currentTeamIndex == (userTeams.length - 1)) && (draftDirection == 1)){
+        draftDirection = -1;
+        currentRound++;
+    } else if ((currentTeamIndex == 0) && (draftDirection == -1)) {
+        draftDirection = 1;
+        currentRound++;
+    } else if (draftDirection === 1) {
+        currentTeamIndex++;
+    } else {
+        currentTeamIndex--;
+    }
+
+    if (currentRound > 10) {
+        $("#submit-draft").removeAttr("hidden");
+        $('#team').attr('disabled', true)
+        $('#team-form button').attr('disabled', true)
+
+        document.getElementById('team-form').removeEventListener('submit', this);
+    } else {
+        document.getElementById('current-team').textContent = `Current Team: ${userTeams[currentTeamIndex].charAt(0).toUpperCase() + userTeams[currentTeamIndex].slice(1)}`;
+        document.getElementById('current-round').textContent = `Round ${currentRound}`;
+        $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
+            $(this).css('background-color', 'white');
+        });
+    }
+}
+
+function confirmNewTeam(){
+    
+    const newTeamValue = $('#changeTeamModal select').val();
+
+    $('#changeTeamModal').modal('hide');
+    var teamObject = teamList.filter(obj => {
+        return obj.id == newTeamValue
+    })[0];
+
+    if (newTeamValue) {
+        const currentTeamName = $('#changeTeamModal').attr("previous-school");
+        const currentTeamValue = $('#changeTeamModal').attr("previous-value");
+        const teamIndex = userTeams.findIndex(team => team === currentTeamName);
+        const cellId = $('#changeTeamModal').attr("cell-id");
+        const newCell = document.getElementById(cellId); // Use original cell ID to retrieve newCell
+
+        if (newCell) {
+            const img = document.createElement('img');
+            img.src = teamObject.logos[0];
+            img.alt = teamObject.school;
+            img.title = teamObject.id;
+            newCell.innerHTML = '';
+            newCell.appendChild(img);
+            userTeams[teamIndex] = newTeamValue;
+
+            $("select").find("option[value=" + currentTeamValue + "]").show();
+        }
+    }
+}
+
+//Event Listener for Add Team Event
+document.getElementById('team-form').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    $('#team-form button').attr('disabled', true);
+
+    $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
+        $(this).css('background-color', '#b0b0b08f');
+    });
+
+    const teamName = document.getElementById('team').value;
+    const team = users[currentTeamIndex]._id;
+    const round = `round${currentRound}`;
+
+    var teamObject = teamList.filter(obj => {
+        return obj.id == teamName
+    })[0];
+    
+    const cellId = `${team}-${round}`;
+    const cell = document.getElementById(cellId);
+    
+    if (cell) {
+        const img = document.createElement('img');
+        img.src = teamObject.logos[0];
+        img.alt = teamObject.school;
+        img.title = teamObject.id
+        cell.innerHTML = '';
+        cell.appendChild(img);
+        document.getElementById('team-form').reset();
+        updateDraftOrder();
+
+    } else {
+        alert('Error: Invalid team or round selection');
+    }
+    $("select").find("option[value=" + teamName + "]").hide();
+});
+
+// Event listener for team logo click
+document.querySelectorAll('td[id*="-round"]').forEach(cell => {
+    cell.addEventListener('click', function() {
+        const currentTeamName = cell.children[0].alt;
+
+        $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
+        $('#changeTeamModal').attr("cell-id", cell.id);
+        $('#changeTeamModal').attr("previous-school", currentTeamName);
+        $('#changeTeamModal').attr("previous-value", cell.children[0].title);
+        $('#changeTeamModal').modal('show');
+    });
+});
 
 /////////////////////////////////////////////////////
 //////////////////Helper Functions///////////////////
@@ -271,16 +459,6 @@ const _filterFunction = () => {
     trs.forEach(setTrStyleDisplay)
 };
 
-const _displayTeamLogo = (row,value) => {
-    var result = teamList.filter(obj => {
-        return obj.id == value
-    });
-
-    var thisRow = $(row).closest("tr").find("[team-logo]");
-
-    thisRow[0].innerHTML = '<img style="padding-left: 10px; width: 40px;" src="' + result[0].logos[0] + '" alt="' + result[0].mascot + '">';
-};
-
 var successToast = Toastify({
     text: "",
     duration: 4000,
@@ -305,7 +483,7 @@ var failToast = Toastify({
     position: "left", // `left`, `center` or `right`
     stopOnFocus: true, // Prevents dismissing of toast on hover
     style: {
-      background: "#71d28d",
+      background: "#d27171",
       color: "#222"
     },
     offset: {
