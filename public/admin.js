@@ -363,6 +363,44 @@ if (calculateForm) {
     });
 }
 
+const calculateAllForm = document.getElementById('all-score-form')
+
+if (calculateAllForm) {
+    calculateAllForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        await fetch('/teams', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        }).then(res => res.json()).then(data => {
+            console.log("Number of teams: " + data.length)
+            data.forEach(async (team) => {
+                console.log(team.id + " | " + team.school);
+                var response = await fetch(`/calculate-team-score/${team.id}/${team.school}`, {
+                    method: 'GET',
+                    headers: {
+                    'Accept': 'application/json'
+                    }
+                });
+
+                response.json().then(data => {
+                    if (response.status == 200) {
+                        console.log(data);
+                        successToast.options.text = "Score successfully calculated for " + data.school;
+                        successToast.showToast();
+                    } else {
+                        failToast.options.text = response.status + " Team score could not be calculated";
+                        failToast.showToast();
+                    }
+                });
+            })
+        });
+    });
+}
+
 const rankingsForm = document.getElementById('rankings-form');
 
 if (rankingsForm) {
@@ -436,11 +474,18 @@ function displayRemoveUserContainer() {
 
 function displayTeamContainer() {
     var removeUserContainer = document.querySelector('[calculate-team-score-container]');
+    var calcAllContainer = document.querySelector('[calculate-team-score-all-container]');
 
     if (removeUserContainer.style.display == 'block' || removeUserContainer.style.display=='') {
         removeUserContainer.style.display = 'none';
     } else {
         removeUserContainer.style.display = 'block';
+    }
+    
+    if (calcAllContainer.style.display == 'block' || calcAllContainer.style.display=='') {
+        calcAllContainer.style.display = 'none';
+    } else {
+        calcAllContainer.style.display = 'block';
     }
 }
 
