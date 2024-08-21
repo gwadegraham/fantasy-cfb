@@ -49,7 +49,7 @@ router.patch('/:id', getTeam, async (req, res) => {
 
     var index = res.team.seasons.findIndex(x => x.season == process.env.YEAR);
 
-    if (index = -1) {
+    if (index == -1) {
         var newSeasonObject = {
             season: process.env.YEAR,
             conference: res.team.conference,
