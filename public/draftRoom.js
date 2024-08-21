@@ -205,18 +205,40 @@ async function displayTeams(data) {
     var str = '';
 
     data.sort((a, b) => {
-        if (leagueVersion == "V1") {
-            var aScore = a.seasons[0].cumulativeScoreV1 || 0;
-            var bScore = b.seasons[0].cumulativeScoreV1 || 0;
-        } else {
-            var aScore = a.seasons[0].cumulativeScoreV2 || 0;
-            var bScore = b.seasons[0].cumulativeScoreV2 || 0;
+        var aScore = 0;
+        var bScore = 0;
+
+        if (a.seasons.length > 0) {
+            if (leagueVersion == "V1") {
+                aScore = a.seasons[0].cumulativeScoreV1 || 0;
+            } else {
+                aScore = a.seasons[0].cumulativeScoreV2 || 0;
+            }
+        }
+
+        if (b.seasons.length > 0) {
+            if (leagueVersion == "V1") {
+                bScore = b.seasons[0].cumulativeScoreV1 || 0;
+            } else {
+                bScore = b.seasons[0].cumulativeScoreV2 || 0;
+            }
         }
         
         return bScore - aScore;
     });
 
     data.forEach( (team, index) => {
+        var conference = "-";
+        var cumulScoreV1 = 0;
+        var cumulScoreV2 = 0;
+        var expectedWins = 0;
+
+        if (team.seasons.length > 0) {
+            conference = team.seasons[0].conference;
+            cumulScoreV1 = team.seasons[0].cumulativeScoreV1;
+            cumulScoreV2 = team.seasons[0].cumulativeScoreV2;
+            expectedWins = (team.seasons[0].expectedWins || 0);
+        }
 
         str += '<tr><td style="text-align: left;">';
         refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
@@ -226,7 +248,7 @@ async function displayTeams(data) {
         str += team.school;
         str += '</td>';
 
-        str += '<td>' + team.seasons[0].conference + '</td>';
+        str += '<td>' + conference + '</td>';
 
         var teamRecruiting = recruitingRankings.filter(obj => {
             return obj.team == team.school
@@ -235,12 +257,12 @@ async function displayTeams(data) {
         str += '<td>' + teamRecruiting.rank + '</td>';
 
         if (leagueVersion == "V1") {
-            str += '<td>' + (team.seasons[0].cumulativeScoreV1 || "0") + '</td>';
+            str += '<td>' + cumulScoreV1 + '</td>';
         } else {
-            str += '<td>' + (team.seasons[0].cumulativeScoreV2 || "0") + '</td>';
+            str += '<td>' + cumulScoreV2 + '</td>';
         }
 
-        str += '<td>O/U ' + (team.seasons[0].expectedWins || "0") + '</td>'
+        str += '<td>O/U ' + expectedWins + '</td>'
         
         str += '</tr>';
     });
