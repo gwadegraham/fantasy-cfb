@@ -90,7 +90,7 @@ app.get('/admin', (req, res) => {
 
 app.get('/index', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        res.render('index');
+        res.render('standings');
     } else {
         res.redirect("/login");
     }
@@ -120,6 +120,9 @@ app.use('/games', gamesRouter);
 
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', rankingsRouter);
+
+const recruitingRouter = require('./routes/recruiting');
+app.use('/recruiting', recruitingRouter);
 
 app.get('/top-25', async (req, res) => {
 
@@ -181,7 +184,7 @@ app.post('/games-api', (req, res) => {
 
 
 
-const job = schedule.scheduleJob('50 00 * * *', async function(){
+const job = schedule.scheduleJob('58 02 * * *', async function(){
 
     var gamesApi = new cfb.GamesApi();
     var calendar = await gamesApi.getCalendar(process.env.YEAR);
@@ -200,12 +203,63 @@ const job = schedule.scheduleJob('50 00 * * *', async function(){
                     isPostseason = true;
                 }
                 break;
+            } else if ((currentDate < startDate) && (calendarWeek.week == 1)) {
+                weekNumber = 1;
+                break;
+            } else if ((currentDate < startDate) && (calendarWeek.week > 1)) {
+                weekNumber = (calendarWeek.week - 1);
             }
         }
     }
 
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
+
+    const season = process.env.YEAR;
+    var seasonType = '';
+    var week = weekNumber;
+
+    if (!isPostseason) {
+        seasonType = "regular";
+    } else {
+        seasonType = "postseason";
+        week = 1;
+    }
+
+    var response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${seasonType}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response;
+
+    if (rankings.status == 200) {
+        console.log(`Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`);
+    } else {
+        const response = await fetch(`${process.env.URL}/rankings/retrieveRankings`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "season": "${season}",
+            "seasonType": "${seasonType}",
+            "week": "${week}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Rankings", data);
+            } else {
+                console.log(response.status + " Rankings could not be retrieved");
+            }
+        });
+    }
 
     if (isPostseason) {
         var teams = await retrieveGamesModule.retrieveTeams();
@@ -221,10 +275,11 @@ const job = schedule.scheduleJob('50 00 * * *', async function(){
         var teams = await retrieveGamesModule.retrieveTeams();
         console.log("number of returned teams", teams.length);
 
-        var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
-        console.log("number of returned games", games.length);
+        // var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
+        var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
+        console.log("number of returned games", games);
 
-        await retrieveGamesModule.saveGames(games);
+        // await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();
     }

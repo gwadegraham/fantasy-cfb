@@ -50,16 +50,6 @@ window.onload = async function() {
     });
   };
 
-// $(".dropdown-menu a").click(function(){
-//     $(this).parents(".dropdown").find('.btn').html($(this).text());
-//     $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-//     var selectedLeague = $("#dropdownMenuButton").text();
-//     var selectedLeagueCode = $("#dropdownMenuButton").val();
-//     window.localStorage.setItem("league", selectedLeague);
-//     window.localStorage.setItem("leagueCode", selectedLeagueCode);
-//     window.location.reload();
-// });
-
 async function getUsers() {
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
@@ -85,15 +75,16 @@ function displayUsers(data) {
     var str = '';
 
     data.sort((a, b) => {
-        return b.cumulativeScore - a.cumulativeScore;
+        return b.seasons[0].cumulativeScore - a.seasons[0].cumulativeScore;
     });
 
     data.forEach( (user, index) => {
+        var userSeason = user.seasons[0];
         str += '<tr>';
         str += '<th class="sticky-header">' + (index + 1) + '</th>';
         str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName + '</a></th>';
         
-        user.teams.forEach(team => {
+        userSeason.teams.forEach(team => {
             var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
@@ -103,7 +94,7 @@ function displayUsers(data) {
             str += '</div></td></a>';
         })
 
-        str += '<th class="sticky-header-score">' + (user.cumulativeScore ? user.cumulativeScore : 0) + '</th>';
+        str += '<th class="sticky-header-score">' + (userSeason.cumulativeScore ? userSeason.cumulativeScore : 0) + '</th>';
         str += '</tr>';
     });
 
@@ -131,16 +122,19 @@ async function displayHighlights(users) {
 
 async function biggestWinner(users) {
     var tableContent = '';
-    var weekIndex = (users[0].weeklyScore.length -1);
+    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(b, a) {
-        return parseFloat(a.weeklyScore[weekIndex].score) - parseFloat(b.weeklyScore[weekIndex].score);
+        var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+        var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+
+        return parseFloat(aScore.score) - parseFloat(bScore.score);
     });
 
     var userName = sortedUsers[0].firstName;
-    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
-    var week = "Week " + sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+    var userScore = sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score;
+    var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
 
-    if ((week == "Week 1") && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+    if ((week == "Week 1") && (sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
@@ -163,16 +157,27 @@ async function biggestWinner(users) {
 
 function biggestLoser(users) {
     var tableContent = '';
-    var weekIndex = (users[0].weeklyScore.length -1);
+    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(a, b) {
-        return parseFloat(a.weeklyScore[weekIndex].score) - parseFloat(b.weeklyScore[weekIndex].score);
+        var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+        var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+
+        return parseFloat(aScore.score) - parseFloat(bScore.score);
+
+        return parseFloat(a.seasons[0].weeklyScore[weekIndex].score) - parseFloat(b.seasons[0].weeklyScore[weekIndex].score);
     });
 
     var userName = sortedUsers[0].firstName;
-    var userScore = sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].score;
-    var week = "Week " + sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].week;
+    var userScore;
+    if(sortedUsers[0].seasons[0].weeklyScore.length == 0) {
+        userScore = 0;
+    } else {
+        userScore = sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score;
+    }
 
-    if ((week == "Week 1") && (sortedUsers[0].weeklyScore[sortedUsers[0].weeklyScore.length - 1].season == "postseason")) {
+    var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
+
+    if ((week == "Week 1") && (sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
@@ -198,10 +203,10 @@ async function bestTeam(users) {
     var teamScores = [];
 
     users.forEach((user, index) => {
-        user.teams.forEach( (team, index) => {
+        user.seasons[0].teams.forEach( (team, index) => {
             var totalScore = 0;
             
-            user.weeklyScore.forEach(week => {
+            user.seasons[0].weeklyScore.forEach(week => {
                 var result = week.scoreByTeam.filter(obj => {
                     return obj.team == team.school
                   });

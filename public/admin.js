@@ -44,7 +44,7 @@ var failToast = Toastify({
     position: "left", // `left`, `center` or `right`
     stopOnFocus: true, // Prevents dismissing of toast on hover
     style: {
-      background: "#71d28d",
+      background: "#d27171",
       color: "#222"
     },
     offset: {
@@ -133,7 +133,7 @@ function displayUsers(data) {
         str += '<tr>';
         str += '<td class="team-item">' + user.firstName + ' ' + user.lastName + '</td>';
         
-        user.teams.forEach(team => {
+        user.seasons[0].teams.forEach(team => {
             refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
@@ -218,7 +218,12 @@ if (createForm) {
             "firstName": "${firstName}",
             "lastName": "${lastName}",
             "color": "${displayColor}",
-            "teams": ${JSON.stringify(teamDocuments)},
+            "seasons": [
+                {
+                    "season": ${new Date().getFullYear()},
+                    "teams": ${JSON.stringify(teamDocuments)}
+                }
+            ],
             "league": "${leagueCode}"
             }`,
         });
@@ -246,9 +251,7 @@ const removeForm = document.getElementById('remove-form');
 if (removeForm) {
     removeForm.addEventListener('submit', async function(event) {
         event.preventDefault();
-    
-        const teams = [];
-        const teamDocuments = [];
+
         const userId = document.querySelector('[user-options]').value;
     
         const response = await fetch("/users/" + userId, {
@@ -360,6 +363,57 @@ if (calculateForm) {
     });
 }
 
+const rankingsForm = document.getElementById('rankings-form');
+
+if (rankingsForm) {
+    rankingsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const season = document.querySelector('[season]').value;
+        const seasonType = document.querySelector('[season-type]').value.toLowerCase();
+        const week = document.querySelector('[week]').value;
+
+        var response = await fetch(`/rankings/${season}/${week}/${seasonType}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var rankings = await response;
+
+        if (rankings.status == 200) {
+            successToast.options.text = `Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
+            successToast.showToast();
+        } else {
+            const response = await fetch("/rankings/retrieveRankings", {
+                method: 'POST',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                },
+                body: `{
+                "season": "${season}",
+                "seasonType": "${seasonType}",
+                "week": "${week}"
+                }`,
+            });
+
+            response.json().then(data => {
+                if (response.status == 201) {
+                    console.log("New Rankings", data);
+                    successToast.options.text = `New rankings retrieved for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
+                    successToast.showToast();
+                } else {
+                    failToast.options.text = response.status + " Rankings could not be retrieved";
+                    failToast.showToast();
+                }
+            });
+        }
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -387,5 +441,15 @@ function displayTeamContainer() {
         removeUserContainer.style.display = 'none';
     } else {
         removeUserContainer.style.display = 'block';
+    }
+}
+
+function displayRankingsContainer() {
+    var rankingsContainer = document.querySelector('[rankings-container]');
+
+    if (rankingsContainer.style.display == 'block' || rankingsContainer.style.display=='') {
+        rankingsContainer.style.display = 'none';
+    } else {
+        rankingsContainer.style.display = 'block';
     }
 }

@@ -71,6 +71,27 @@ const weeklyScoreSchema = new mongoose.Schema({
     }
 });
 
+const seasonSchema = new mongoose.Schema({
+    season: {
+        type: Number
+    },
+    conference: {
+        type: String
+    },
+    cumulativeScoreV1: {
+        type: Number
+    },
+    cumulativeScoreV2: {
+        type: Number
+    },
+    weeklyScore: {
+        type: [weeklyScoreSchema]
+    },
+    expectedWins: {
+        type: Number
+    }
+});
+
 const teamSchema = new mongoose.Schema({
     id: {
         type: Number,
@@ -130,6 +151,9 @@ const teamSchema = new mongoose.Schema({
     },
     cumulativeScoreV2: {
         type: Number
+    },
+    seasons: {
+        type: [seasonSchema]
     }
 });
 

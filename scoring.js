@@ -10,7 +10,7 @@ var rankingsApi = new cfb.RankingsApi();
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await fetch(`${process.env.URL}/users`, {
+        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -30,13 +30,13 @@ module.exports= {
               }
               
               
-            var totalScore = user.weeklyScore.map(score).reduce(sum);
+            var totalScore = user.seasons[0].weeklyScore.map(score).reduce(sum);
             updateUserCumulativeScore(user._id, totalScore);
         }
     },
 
     updateScores: async function(season, week) {
-        var response = await fetch(`${process.env.URL}/users`, {
+        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -50,7 +50,7 @@ module.exports= {
             var score = 0;
             var teamScores = new Array();
 
-            for (const team of user.teams) {
+            for (const team of user.seasons[0].teams) {
                 var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
                     method: 'GET',
                     headers: {
@@ -66,9 +66,9 @@ module.exports= {
                         var teamScore = 0;
 
                         if (user.league == "claunts-league") {
-                            teamScore = await calculateScoreV1(team.school, game, week);
+                            teamScore = await module.exports.calculateScoreV1(team.school, game, week);
                         } else if (user.league == "graham-league") {
-                            teamScore = await calculateScoreV2(team.school, game, week);
+                            teamScore = await module.exports.calculateScoreV2(team.school, game, week);
                         }
 
                         score += teamScore;
@@ -94,23 +94,23 @@ module.exports= {
             if ((season == "postseason")) {
                 scoreObject["season"] = season;
 
-                if (await user.weeklyScore.some(e => e.season === scoreObject.season)) {
-                    var spliceIndex = user.weeklyScore.findIndex(x => x.season === scoreObject.season);
-                    user.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                    await updateUser(user._id, user.weeklyScore);
+                if (await user.seasons[0].weeklyScore.some(e => e.season === scoreObject.season)) {
+                    var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season === scoreObject.season);
+                    user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
+                    await updateUser(user._id, user.seasons[0].weeklyScore);
                 } else {
-                    user.weeklyScore.push(scoreObject);
-                    await updateUser(user._id, user.weeklyScore);
+                    user.seasons[0].weeklyScore.push(scoreObject);
+                    await updateUser(user._id, user.seasons[0].weeklyScore);
                 }
-            } else if (await user.weeklyScore.some(e => e.week === scoreObject.week)) {
-                var spliceIndex = user.weeklyScore.findIndex(x => x.week === scoreObject.week);
-                user.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                await updateUser(user._id, user.weeklyScore);
-            } else if (user.weeklyScore.length == 0){
+            } else if (await user.seasons[0].weeklyScore.some(e => e.week === scoreObject.week)) {
+                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.week === scoreObject.week);
+                user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
+                await updateUser(user._id, user.seasons[0].weeklyScore);
+            } else if (user.seasons[0].weeklyScore.length == 0){
                 await updateUser(user._id, scoreObject);
             } else {
-                user.weeklyScore.push(scoreObject);
-                await updateUser(user._id, user.weeklyScore);
+                user.seasons[0].weeklyScore.push(scoreObject);
+                await updateUser(user._id, user.seasons[0].weeklyScore);
             }
 
             
@@ -134,13 +134,13 @@ module.exports= {
         var response = await games.json();
 
         if (games.status == 200) {
-            console.log("games response", response.length)
+            // console.log("games response", response.length)
             for (const game of response) {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
 
-                gameScoreV1 = await calculateScoreV1(teamName, game, game.week);
-                gameScoreV2 = await calculateScoreV2(teamName, game, game.week);
+                gameScoreV1 = await module.exports.calculateScoreV1(teamName, game, game.week);
+                gameScoreV2 = await module.exports.calculateScoreV2(teamName, game, game.week);
 
                 cumulativeScoreV1 += gameScoreV1;
                 cumulativeScoreV2 += gameScoreV2;
@@ -166,13 +166,14 @@ module.exports= {
             "cumulativeScoreV2": cumulativeScoreV2
         };
 
-        var response = await updateTeamScores(teamId, scoreUpdateObject);
+        var response = await module.exports.updateTeamScores(teamId, scoreUpdateObject);
 
         if (response.status == 200) {
             return response;
         }
     },
     
+    //TODO: Decide if this can be archived
     getScores: async function (data) {
 
         data.forEach( async (user, index) => {
@@ -180,7 +181,7 @@ module.exports= {
     
             if (!user.isUpdated) {
                 
-                const promises = user.teams.map(async (team) => {
+                const promises = user.seasons[0].teams.map(async (team) => {
                     await fetch(process.env.URL + '/games-api', {
                         method: 'POST',
                         headers: {
@@ -191,9 +192,9 @@ module.exports= {
                             "team": "${team.school}"
                             }`,
                     }).then(res => res.json()).then(data => {
-                        console.log("games data", data);
+                        // console.log("games data", data);
                         score += calculateScore(team.school, data, 1);
-                        console.log("updating score", score);
+                        // console.log("updating score", score);
                     });
     
                     return score;
@@ -201,157 +202,185 @@ module.exports= {
     
                 const scores = await Promise.all(promises);
     
-                var newWeeklyScore = user.weeklyScore.push(score);
+                var newWeeklyScore = user.seasons[0].weeklyScore.push(score);
                 updateUser(user._id, newWeeklyScore);
             }
         });
         
+    },
+
+    calculateScoreV1: async function (team, data, week) {
+        var game = data;
+        var score = 0;
+    
+        var year = process.env.YEAR;
+        var opts = {
+            'week': week
+        };
+    
+        // var response = await rankingsApi.getRankings(year, opts);
+        // var rankings = await response;
+        var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var rankings = await response.json();
+
+    
+        var isSemiFinalist = isCFP(game);
+    
+        if (isSemiFinalist) {
+            score += 7;
+        } else if (game.homeTeam == team) {
+            if (game.homePoints > game.awayPoints) {
+                var isConfChampion = isConferenceChampion(game);
+                var isBowlWinner = isBowlWin(game);
+                var isNationalChamp = isNationalChampion(game);
+    
+                if (isNationalChamp) {
+                    score += 10;
+                } else if (isBowlWinner) {
+                    score += 6;
+                } else if (isConfChampion) {
+                    score += 5;
+                } else {
+                    score += 1;
+                    var ranked = isRankedV1(game.awayTeam, rankings);
+    
+                    if (ranked > 0) {
+                        score += ranked;
+                    } else {
+                        score = isConference(game) ? (score + 1) : score;
+                    }
+                }  
+            }
+        } else if (game.awayTeam == team) {
+            if (game.awayPoints > game.homePoints) {
+                var isConfChampion = isConferenceChampion(game);
+                var isBowlWinner = isBowlWin(game);
+                var isNationalChamp = isNationalChampion(game);
+    
+                if (isNationalChamp) {
+                    score += 10;
+                } else if (isBowlWinner) {
+                    score += 6;
+                } else if (isConfChampion) {
+                    score += 5;
+                } else {
+                    score += 1;
+                    var ranked = isRankedV1(game.homeTeam, rankings);
+    
+                    if (ranked > 0) {
+                        score += ranked;
+                    } else {
+                        score = isConference(game) ? (score + 1) : score;
+                    }
+                }
+            }
+        }
+        // console.log("team => " + team + " game => " + game.notes + " with score == " + score);
+        return score;
+    },
+
+    calculateScoreV2: async function (team, data, week) {
+        var game = data;
+        var score = 0;
+    
+        var year = process.env.YEAR;
+        var opts = {
+            'week': week
+        };
+    
+        // var response = await rankingsApi.getRankings(year, opts);
+        // var rankings = await response;
+        var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var rankings = await response.json();
+    
+        var isSemiFinalist = isCFP(game);
+    
+        if (isSemiFinalist) {
+            score += 7;
+        } else if (game.homeTeam == team) {
+            if (game.homePoints > game.awayPoints) {
+                var isConfChampion = isConferenceChampion(game);
+                var isBowlWinner = isBowlWin(game);
+                var isNationalChamp = isNationalChampion(game);
+    
+                if (isNationalChamp) {
+                    score += 10;
+                } else if (isBowlWinner) {
+                    score += 6;
+                } else if (isConfChampion) {
+                    score += 5;
+                } else {
+                    score += 1;
+                    score = isConference(game) ? (score + 1) : score;
+                    score += isRanked(game.awayTeam, rankings);
+                    score = isPowerFive(game.homeConference, game.awayConference) ? (score + 2) : score;
+                }  
+            }
+        } else if (game.awayTeam == team) {
+            if (game.awayPoints > game.homePoints) {
+                var isConfChampion = isConferenceChampion(game);
+                var isBowlWinner = isBowlWin(game);
+                var isNationalChamp = isNationalChampion(game);
+    
+                if (isNationalChamp) {
+                    score += 10;
+                } else if (isBowlWinner) {
+                    score += 6;
+                } else if (isConfChampion) {
+                    score += 5;
+                } else {
+                    score += 1;
+                    score = isConference(game) ? (score + 1) : score;
+                    score += isRanked(game.homeTeam, rankings);
+                    score = isPowerFive(game.awayConference, game.homeConference) ? (score + 2) : score;
+                }
+            }
+        }
+        // console.log("team => " + team + " game => " + game.notes + " with score == " + score);
+        return score;
+    },
+
+    updateTeamScores: async function (teamId, scoreUpdate) {
+    
+        var requestBody = {
+            "weeklyScore": scoreUpdate.weeklyScore,
+            "cumulativeScoreV1": scoreUpdate.cumulativeScoreV1,
+            "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
+            };
+    
+        const response = await fetch(`${process.env.URL}/teams/${teamId}`, {
+            method: 'PATCH',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody),
+        });
+    
+        return response.json().then(data => {
+            if (response.status == 200) {
+                var updatedTeam = {status: response.status, updatedTeam: data};
+                return updatedTeam;
+            } else {
+                console.log(data.message);
+            }
+        });
     }
 };
-
-async function calculateScoreV1(team, data, week) {
-    var game = data;
-    var score = 0;
-
-    var year = process.env.YEAR;
-    var opts = {
-        'week': week
-    };
-
-    // var response = await rankingsApi.getRankings(year, opts);
-    // var rankings = await response;
-    var response = await fetch(`${process.env.URL}/rankings/${week}/${game.seasonType}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
-
-    var rankings = await response.json();
-
-    var isSemiFinalist = isCFP(game);
-
-    if (isSemiFinalist) {
-        score += 7;
-    } else if (game.homeTeam == team) {
-        if (game.homePoints > game.awayPoints) {
-            var isConfChampion = isConferenceChampion(game);
-            var isBowlWinner = isBowlWin(game);
-            var isNationalChamp = isNationalChampion(game);
-
-            if (isNationalChamp) {
-                score += 10;
-            } else if (isBowlWinner) {
-                score += 6;
-            } else if (isConfChampion) {
-                score += 5;
-            } else {
-                score += 1;
-                var ranked = isRankedV1(game.awayTeam, rankings[0]);
-
-                if (ranked > 0) {
-                    score += ranked;
-                } else {
-                    score = isConference(game) ? (score + 1) : score;
-                }
-            }  
-        }
-    } else if (game.awayTeam == team) {
-        if (game.awayPoints > game.homePoints) {
-            var isConfChampion = isConferenceChampion(game);
-            var isBowlWinner = isBowlWin(game);
-            var isNationalChamp = isNationalChampion(game);
-
-            if (isNationalChamp) {
-                score += 10;
-            } else if (isBowlWinner) {
-                score += 6;
-            } else if (isConfChampion) {
-                score += 5;
-            } else {
-                score += 1;
-                var ranked = isRankedV1(game.homeTeam, rankings[0]);
-
-                if (ranked > 0) {
-                    score += ranked;
-                } else {
-                    score = isConference(game) ? (score + 1) : score;
-                }
-            }
-        }
-    }
-    console.log("team => " + team + " game => " + game.notes + " with score == " + score);
-    return score;
-}
-
-async function calculateScoreV2(team, data, week) {
-    var game = data;
-    var score = 0;
-
-    var year = process.env.YEAR;
-    var opts = {
-        'week': week
-    };
-
-    // var response = await rankingsApi.getRankings(year, opts);
-    // var rankings = await response;
-    var response = await fetch(`${process.env.URL}/rankings/${week}/${game.seasonType}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
-
-    var rankings = await response.json();
-
-    var isSemiFinalist = isCFP(game);
-
-    if (isSemiFinalist) {
-        score += 7;
-    } else if (game.homeTeam == team) {
-        if (game.homePoints > game.awayPoints) {
-            var isConfChampion = isConferenceChampion(game);
-            var isBowlWinner = isBowlWin(game);
-            var isNationalChamp = isNationalChampion(game);
-
-            if (isNationalChamp) {
-                score += 10;
-            } else if (isBowlWinner) {
-                score += 6;
-            } else if (isConfChampion) {
-                score += 5;
-            } else {
-                score += 1;
-                score = isConference(game) ? (score + 1) : score;
-                score += isRanked(game.awayTeam, rankings[0]);
-                score = isPowerFive(game.homeConference, game.awayConference) ? (score + 2) : score;
-            }  
-        }
-    } else if (game.awayTeam == team) {
-        if (game.awayPoints > game.homePoints) {
-            var isConfChampion = isConferenceChampion(game);
-            var isBowlWinner = isBowlWin(game);
-            var isNationalChamp = isNationalChampion(game);
-
-            if (isNationalChamp) {
-                score += 10;
-            } else if (isBowlWinner) {
-                score += 6;
-            } else if (isConfChampion) {
-                score += 5;
-            } else {
-                score += 1;
-                score = isConference(game) ? (score + 1) : score;
-                score += isRanked(game.homeTeam, rankings[0]);
-                score = isPowerFive(game.awayConference, game.homeConference) ? (score + 2) : score;
-            }
-        }
-    }
-    console.log("team => " + team + " game => " + game.notes + " with score == " + score);
-    return score;
-}
 
 async function updateUser(userId, scoreUpdate) {
     
@@ -371,7 +400,7 @@ async function updateUser(userId, scoreUpdate) {
     
         response.json().then(data => {
             if (response.status == 200) {
-                console.log(`Update User ${userId} with new weeklyScore:`, data.weeklyScore);
+                console.log(`Update User ${userId} with new weeklyScore:`, data.seasons[0].weeklyScore);
             } else {
                 console.log(data.message);
             }
@@ -400,33 +429,7 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
         });
 }
 
-async function updateTeamScores(teamId, scoreUpdate) {
-    
-    var requestBody = {
-        "weeklyScore": scoreUpdate.weeklyScore,
-        "cumulativeScoreV1": scoreUpdate.cumulativeScoreV1,
-        "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
-        };
 
-    const response = await fetch(`${process.env.URL}/teams/${teamId}`, {
-        method: 'PATCH',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody),
-    });
-
-    return response.json().then(data => {
-        if (response.status == 200) {
-            var updatedTeam = {status: response.status, updatedTeam: data};
-            console.log("response *****", response)
-            return updatedTeam;
-        } else {
-            console.log(data.message);
-        }
-    });
-}
 
 function isConference(game) {
     if ((game.homeConference == "FBS Independents") || (game.awayConference == "FBS Independents")) {
@@ -479,7 +482,7 @@ function isRanked(team, rankings) {
 }
 
 function isPowerFive(teamConf, oppConf) {
-    var powerFive = new Array("ACC", "Big 12", "Big Ten", "SEC", "Pac-12");
+    var powerFive = new Array("ACC", "Big 12", "Big Ten", "SEC");
 
     if ((!powerFive.includes(teamConf)) && (powerFive.includes(oppConf))) {
         return true;

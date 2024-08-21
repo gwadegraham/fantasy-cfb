@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
     <script defer src="admin.js"></script>
     <script src="navbar.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
@@ -43,14 +44,20 @@
                     </table>
                 </div>
                 <div class="add-user-container">
-                    <button onclick="displayCreateUserContainer()">+ Add a Player</button>
+                    <button onclick="displayCreateUserContainer()">
+                        <i class="fa-solid fa-plus" style="padding-right: 5px;"></i>
+                        Add a Player
+                    </button>
                 </div>
             </div>
             <div class="create-user-container" create-user-container style="display: none">
                 <form id="create-form">
                     <input type="text" class="first-name" first-name placeholder="First Name">
                     <input type="text" class="last-name" last-name placeholder="Last Name">
-                    <input type="text" class="display-color" display-color placeholder="Display Color">
+                    <div style="padding-top: 5px;">
+                        <label style="padding-right: 5px;">Display Color</label>
+                        <input style="border-radius: 5px;" type="color" class="display-color" display-color>
+                    </div>
                     <div class="team-container" team-container>
                         <select class="team-picker" id="team-picker" team-options>
                         </select>
@@ -60,7 +67,10 @@
                 <hr>
             </div>
             <div class="delete-user-container">
-                <button onclick="displayRemoveUserContainer()">- Remove a Player</button>
+                <button onclick="displayRemoveUserContainer()">
+                    <i class="fa-solid fa-minus" style="padding-right: 5px;"></i>
+                    Remove a Player
+                </button>
             </div>
             <div class="remove-user-container" remove-user-container style="display: none">
                 <form id="remove-form">
@@ -72,7 +82,10 @@
                 </form>
             </div>
             <div class="calculate-team-container">
-                <button onclick="displayTeamContainer()">% Calculate Team Score</button>
+                <button onclick="displayTeamContainer()">
+                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                    Calculate Team Score
+                </button>
             </div>
             <div class="calculate-team-score-container" calculate-team-score-container style="display: none">
                 <form id="score-form">
@@ -81,6 +94,20 @@
                         </select>
                     </div>
                     <button type="submit">Calculate Score</button>
+                </form>
+            </div>
+            <div class="calculate-team-container">
+                <button onclick="displayRankingsContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Rankings
+                </button>
+            </div>
+            <div class="rankings-container" rankings-container style="display: none">
+                <form id="rankings-form">
+                    <input type="number" season placeholder="Season">
+                    <input type="text" season-type placeholder="Season Type">
+                    <input type="number" week placeholder="Week">
+                    <button type="submit">Retrieve Rankings</button>
                 </form>
             </div>
         </div>

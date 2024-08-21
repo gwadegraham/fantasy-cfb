@@ -22,8 +22,7 @@ const locationSchema = new mongoose.Schema({
         required: true
     },
     country_code: {
-        type: String,
-        required: true
+        type: String
     },
     timezone: {
         type: String,
@@ -137,14 +136,9 @@ const teamSchema = new mongoose.Schema({
     }
 });
 
-const userSchema = new mongoose.Schema({
-    firstName: {
-        type: String,
-        required: true
-    },
-    lastName: {
-        type: String,
-        required: true
+const seasonSchema = new mongoose.Schema({
+    season: {
+        type: Number
     },
     teams: {
         type: [teamSchema]
@@ -154,6 +148,20 @@ const userSchema = new mongoose.Schema({
     },
     weeklyScore: {
         type: [weeklyScoreSchema]
+    }
+});
+
+const userSchema = new mongoose.Schema({
+    firstName: {
+        type: String,
+        required: true
+    },
+    lastName: {
+        type: String,
+        required: true
+    },
+    seasons: {
+        type: [seasonSchema]
     },
     league: {
         type: String

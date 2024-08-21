@@ -91,9 +91,9 @@ function displayTeams(data) {
     const userTableBody = document.querySelector('[user-table-body]');
     var str = '';
 
-    var currentWeeksLength = data.weeklyScore.length;
+    var currentWeeksLength = data.seasons.at(-1).weeklyScore.length;
 
-    data.teams.forEach( (team, index) => {
+    data.seasons.at(-1).teams.forEach( (team, index) => {
         var totalScore = 0;
 
         str += '<tr>';
@@ -105,7 +105,7 @@ function displayTeams(data) {
         str += team.school;
         str += '</div></th></a>';
         
-        data.weeklyScore.forEach(week => {
+        data.seasons.at(-1).weeklyScore.forEach(week => {
             var result = week.scoreByTeam.filter(obj => {
                 return obj.team == team.school
               });
@@ -139,7 +139,7 @@ function displayTeams(data) {
     str += 'Cumulative Score';
     str += '</div></th>';
 
-    data.weeklyScore.forEach(week => {
+    data.seasons.at(-1).weeklyScore.forEach(week => {
         str += '<td>' + week.score + '</td>'
     });
 
@@ -147,7 +147,7 @@ function displayTeams(data) {
         str += '<td>0</td>';
     }
 
-    str += '<th class="sticky-header-score">' + data.cumulativeScore + '</th>';
+    str += '<th class="sticky-header-score">' + (data.seasons.at(-1).cumulativeScore || 0) + '</th>';
     str += '</tr>';
 
     userTableBody.innerHTML = str;
@@ -185,7 +185,8 @@ async function getRankings (week, seasonType) {
     if (week < 10) {
         pollName = "AP Top 25";
     }
-    var response = await fetch(`/rankings/${week}/${seasonType}/${pollName}`, {
+
+    var response = await fetch(`/rankings/${week}/${seasonType}/poll/${pollName}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -194,7 +195,15 @@ async function getRankings (week, seasonType) {
     });
 
     var rankings = await response.json();
-    var rankingsArray = rankings[0].polls[0].ranks;
+    var rankingsArray = [];
+
+    if (rankings.length > 0) {
+        rankingsArray = rankings[0].polls[0].ranks;
+    } else {
+        console.log(rankings.message);
+    }
+
+    console.log(rankingsArray)
     return rankingsArray;
 }
 
@@ -261,11 +270,11 @@ async function displaySchedule(data) {
 
     var rankingsInfo = await getRankings(week, seasonType);
 
-    for (var iterNum = 0; iterNum < data.teams.length; iterNum++) {
+    for (var iterNum = 0; iterNum < data.seasons.at(-1).teams.length; iterNum++) {
 
-        var gamesInfo = await getGame(seasonType, week, data.teams[iterNum]);
+        var gamesInfo = await getGame(seasonType, week, data.seasons.at(-1).teams[iterNum]);
 
-        for (const game of gamesInfo) {
+        for (const [i, game] of gamesInfo.entries()) {
 
             var awayRank = '';
             var homeRank = '';
@@ -295,61 +304,94 @@ async function displaySchedule(data) {
                 var teamLogos = await getTeamLogos(game);
                 var awayImg = teamLogos.awayTeamLogo;
                 var homeImg = teamLogos.homeTeamLogo;
+
+                if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                    awayTeam= '<strong>' + game.awayTeam + '</strong>';
+                    homeTeam = game.homeTeam;
+
+                    isAway = true;
+                } else {
+                    awayTeam = game.awayTeam;
+                    homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                }
     
-                if (!game.startTimeTbd) {
+                if (game.completed) {
     
-                    if (game.awayTeam == data.teams[iterNum].school) {
-                        awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                        homeTeam = game.homeTeam;
+                    // if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                    //     awayTeam= '<strong>' + game.awayTeam + '</strong>';
+                    //     homeTeam = game.homeTeam;
     
-                        isAway = true;
-                    } else {
-                        awayTeam = game.awayTeam;
-                        homeTeam = '<strong>' + game.homeTeam + '</strong>';
-                    }
+                    //     isAway = true;
+                    // } else {
+                    //     awayTeam = game.awayTeam;
+                    //     homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                    // }
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.teams[iterNum].school) {
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.awayTeam;
                             });
     
-                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
                         }
-                        topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
-                        bottomData = game.homePoints;
-                    } else {
+                        topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                        bottomData = (game.homePoints || '-');
+                    } else if (game.homePoints > game.awayPoints) {
     
                         if(!isAway) {
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.homeTeam;
                             });
     
-                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
                         }
     
-                        topData = game.awayPoints;
-                        bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                        topData = (game.awayPoints || '-');
+                        bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                    } else {
+                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.team == game.awayTeam;
+                            });
+    
+                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                        }
+                        topData = (game.awayPoints || '-');
+                        bottomData = (game.homePoints || '-');
                     }
                 } else {
     
-                    var militaryTime = parseInt(game.startDate.substring(11,14));
+                    // var militaryTime = parseInt(game.startDate.substring(11,14));
+                    var centralDate = new Date(game.startDate);
+                    var militaryTime = centralDate.toString().substring(16,21);
+                    var time = militaryTime.split(':');
+                    var hours = parseInt(time[0]);
+                    var minutes = time[1];
+
+                    // if (militaryTime == 0) {
+                    //     militaryTime = (24-5);
+                    // } else {
+                    //     militaryTime = (militaryTime - 5);
+                    // }
                     var standardTime = '';
     
-                    if (militaryTime < 12) {
-                        standardTime = militaryTime.toString() + "AM";
+                    if (hours < 12) {
+                        standardTime = hours.toString() + ":" + minutes +  "AM";
                     }
-                    else if (militaryTime == 12) {
-                        standardTime = militaryTime.toString() + "PM";
+                    else if (hours == 12) {
+                        standardTime = hours.toString() + ":" + minutes + "PM";
                     }
                     else {
-                        standardTime =( militaryTime - 12).toString() + "PM";
+                        standardTime =( hours - 12).toString() + ":" + minutes + "PM";
                     }
     
-                    topData = game.startDate.substring(5,10);
+                    // topData = game.startDate.substring(5,10);
+                    topData = centralDate.toString().substring(4,10);
                     bottomData = standardTime;
                 }
     
@@ -376,7 +418,7 @@ async function displaySchedule(data) {
 
                     var shouldReplace = false;
     
-                    if (game.awayTeam == data.teams[iterNum].school) {
+                    if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -388,22 +430,22 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.teams[iterNum].school) {
+                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
                             shouldReplace = true;
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.awayTeam;
                             });
     
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
                         }
-                        topData = game.awayPoints + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
-                        bottomData = game.homePoints;
+                        topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                        bottomData = (game.homePoints || '-');
                     } else {
     
-                        if(game.homeTeam == data.teams[iterNum].school) {
+                        if(game.homeTeam == data.seasons.at(-1).teams[iterNum].school) {
                             shouldReplace = true;
-                            var weeklyScore = userData.weeklyScore[(parseInt(gameWeek) - 1)];
+                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.team == game.homeTeam;
                             });
@@ -411,8 +453,8 @@ async function displaySchedule(data) {
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
                         }
     
-                        topData = game.awayPoints;
-                        bottomData = game.homePoints+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                        topData = (game.awayPoints || '-');
+                        bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     }
 
                     var teamLogos = await getTeamLogos(game);
@@ -463,6 +505,11 @@ async function displaySchedule(data) {
             str += '</tr><tr>';
         }
     }
+
+    if (gameTables.length == 0) {
+        str += '<i class="fa-solid fa-sad-cry" style="padding-right: 10px;"></i>no college football games?!<i class="fa-solid fa-sad-cry" style="padding-left: 5px;"></i>'
+    }
+
     scheduleContainer.innerHTML = str;
     document.querySelector('.loading-container').style.display = "none";
     document.querySelector('.schedule-table').style.display = "flex";
