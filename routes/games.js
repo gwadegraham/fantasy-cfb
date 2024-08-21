@@ -148,11 +148,6 @@ router.post('/week/mass-create', async (req, res) => {
         } else {
             var filter = {id: game.id};
             delete game.id;
-            game.notes = "yay now the game is updated";
-            game.homePoints = 30;
-            game.awayPoints = 27;
-            game.completed = true;
-            // const newGame = new Game(game);
             try {
                 var updatedGame = await Game.findOneAndUpdate(filter, game, {new: true});
                 allExistingGames.push(updatedGame);

@@ -10,6 +10,7 @@
     <script defer src="admin.js"></script>
     <script src="navbar.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <title>Fantasy CFB</title>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
 </head>
@@ -113,6 +114,19 @@
                     <input type="text" season-type placeholder="Season Type">
                     <input type="number" week placeholder="Week">
                     <button type="submit">Retrieve Rankings</button>
+                </form>
+            </div>
+            <div class="retrieve-games-container">
+                <button onclick="displayGamesContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Game Information
+                </button>
+            </div>
+            <div class="games-container" games-container style="display: none">
+                <form id="games-form">
+                    <input type="number" game-week placeholder="Week">
+                    <input type="text" game-season-type placeholder="Season Type">
+                    <button type="submit">Retrieve Games</button>
                 </form>
             </div>
         </div>
