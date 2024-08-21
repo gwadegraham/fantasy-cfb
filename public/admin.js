@@ -452,6 +452,42 @@ if (rankingsForm) {
     });
 }
 
+const gamesForm = document.getElementById('games-form');
+
+if (gamesForm) {
+    gamesForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        block_screen();
+
+        const week = document.querySelector('[game-week]').value;
+        const seasonType = document.querySelector('[game-season-type]').value.toLowerCase();
+
+        const response = await fetch(`/games/week/mass-create`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "week": "${week}",
+            "seasonType": "${seasonType}"
+            }`
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Games Successfully Saved");
+                successToast.options.text = `Games retrieved for  Week: ${week}, Season Type: ${seasonType}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + "| Games could not be retrieved";
+                failToast.showToast();            }
+        });
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -497,4 +533,28 @@ function displayRankingsContainer() {
     } else {
         rankingsContainer.style.display = 'block';
     }
+}
+
+function displayGamesContainer() {
+    var gamesContainer = document.querySelector('[games-container]');
+
+    if (gamesContainer.style.display == 'block' || gamesContainer.style.display=='') {
+        gamesContainer.style.display = 'none';
+    } else {
+        gamesContainer.style.display = 'block';
+    }
+}
+
+function block_screen() {
+    console.log("running block screen")
+    $('<div id="screenBlock"></div>').appendTo('body');
+    $('#screenBlock').css( { opacity: 0, width: $(document).width(), height: $(document).height() } );
+    $('#screenBlock').addClass('blockDiv');
+    $('#screenBlock').animate({opacity: 0.7}, 200);
+}
+
+function unblock_screen() {
+$('#screenBlock').animate({opacity: 0}, 200, function() {
+    $('#screenBlock').remove();
+});
 }

@@ -184,12 +184,12 @@ body {
     padding-left: 5px;
 }
 
-.create-user-container, .remove-user-container, .calculate-team-score-container, .rankings-container {
+.create-user-container, .remove-user-container, .calculate-team-score-container, .rankings-container, .games-container {
     margin-left: 20px;
     width: 35%;
 }
 
-.rankings-container input {
+.rankings-container input, .games-container input {
     border-top: none;
     border-left: none;
     border-right: none;
@@ -201,11 +201,11 @@ body {
     border-right: none;
 }
 
-.create-user-container input:focus, select:focus, .remove-user-container input:focus, select:focus, .rankings-container input:focus, select:focus {
+.create-user-container input:focus, select:focus, .remove-user-container input:focus, select:focus, .rankings-container input:focus, select:focus, .games-container input:focus, select:focus {
     outline: none;
 }
 
-.create-user-container button, .remove-user-container button, .calculate-team-score-container button, .rankings-container button {
+.create-user-container button, .remove-user-container button, .calculate-team-score-container button, .rankings-container button, .games-container button {
     border-radius: 5px;
     background-color: #444;
     color: white;
@@ -229,11 +229,11 @@ body {
     color: #222;
 }
 
-.calculate-team-score-container button, .rankings-container button {
+.calculate-team-score-container button, .rankings-container button, .games-container button {
     background-color: #4686ec;
 }
 
-.create-user-container button:hover, .remove-user-container button:hover, .calculate-team-score-container button:hover, .rankings-container button:hover {
+.create-user-container button:hover, .remove-user-container button:hover, .calculate-team-score-container button:hover, .rankings-container button:hover, .retrieve-games-container button:hover {
     transition: 0.7s;
     background-color: #999;
 }
@@ -257,11 +257,11 @@ footer {
     font-size: 1.5rem;
 }
 
-.add-user-container, .delete-user-container, .calculate-team-container {
+.add-user-container, .delete-user-container, .calculate-team-container, .retrieve-games-container {
     margin: 20px 20px;
 }
 
-.add-user-container button, .delete-user-container button, .calculate-team-container button {
+.add-user-container button, .delete-user-container button, .calculate-team-container button, .retrieve-games-container button {
     border-radius: 5px;
     background-color: #444;
     color: white;
@@ -273,9 +273,19 @@ footer {
     cursor: pointer;
 }
 
-.add-user-container button:hover, .delete-user-container  button:hover, .calculate-team-container button:hover {
+.add-user-container button:hover, .delete-user-container  button:hover, .calculate-team-container button:hover, .retrieve-games-container button:hover {
     transition: 0.7s;
     background-color: #999;
+}
+
+.blockDiv {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    background-color: #FFF;
+    width: 0px;
+    height: 0px;
+    z-index: 10;
 }
 
 /* Table Styles */
