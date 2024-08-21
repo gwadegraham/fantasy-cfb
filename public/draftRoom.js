@@ -234,10 +234,10 @@ async function displayTeams(data) {
         var expectedWins = 0;
 
         if (team.seasons.length > 0) {
-            conference = team.seasons[0].conference;
+            conference = team.seasons.at(-1).conference;
             cumulScoreV1 = team.seasons[0].cumulativeScoreV1;
             cumulScoreV2 = team.seasons[0].cumulativeScoreV2;
-            expectedWins = (team.seasons[0].expectedWins || 0);
+            expectedWins = (team.seasons.at(-1).expectedWins || 0);
         }
 
         str += '<tr><td style="text-align: left;">';
