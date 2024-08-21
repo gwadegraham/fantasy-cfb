@@ -61,6 +61,7 @@ async function getUserProfile() {
 
         if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
+            document.querySelector('[draft-board]').remove();
         }
         
         getUsers();
