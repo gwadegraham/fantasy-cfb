@@ -239,6 +239,8 @@ async function displayTeams(data) {
         } else {
             str += '<td>' + (team.seasons[0].cumulativeScoreV2 || "0") + '</td>';
         }
+
+        str += '<td>O/U ' + (team.seasons[0].expectedWins || "0") + '</td>'
         
         str += '</tr>';
     });

@@ -363,6 +363,57 @@ if (calculateForm) {
     });
 }
 
+const rankingsForm = document.getElementById('rankings-form');
+
+if (rankingsForm) {
+    rankingsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        const season = document.querySelector('[season]').value;
+        const seasonType = document.querySelector('[season-type]').value.toLowerCase();
+        const week = document.querySelector('[week]').value;
+
+        var response = await fetch(`/rankings/${season}/${week}/${seasonType}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var rankings = await response;
+
+        if (rankings.status == 200) {
+            successToast.options.text = `Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
+            successToast.showToast();
+        } else {
+            const response = await fetch("/rankings/retrieveRankings", {
+                method: 'POST',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                },
+                body: `{
+                "season": "${season}",
+                "seasonType": "${seasonType}",
+                "week": "${week}"
+                }`,
+            });
+
+            response.json().then(data => {
+                if (response.status == 201) {
+                    console.log("New Rankings", data);
+                    successToast.options.text = `New rankings retrieved for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
+                    successToast.showToast();
+                } else {
+                    failToast.options.text = response.status + " Rankings could not be retrieved";
+                    failToast.showToast();
+                }
+            });
+        }
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -390,5 +441,15 @@ function displayTeamContainer() {
         removeUserContainer.style.display = 'none';
     } else {
         removeUserContainer.style.display = 'block';
+    }
+}
+
+function displayRankingsContainer() {
+    var rankingsContainer = document.querySelector('[rankings-container]');
+
+    if (rankingsContainer.style.display == 'block' || rankingsContainer.style.display=='') {
+        rankingsContainer.style.display = 'none';
+    } else {
+        rankingsContainer.style.display = 'block';
     }
 }

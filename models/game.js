@@ -40,12 +40,10 @@ const gameSchema = new mongoose.Schema({
         type: Boolean,
     },
     venueId: {
-        type: Number,
-        required: true
+        type: Number
     },
     venue: {
-        type: String,
-        required: true
+        type: String
     },
     homeId: {
         type: Number,
@@ -63,12 +61,10 @@ const gameSchema = new mongoose.Schema({
         type: String,
     },
     homePoints: {
-        type: Number,
-        required: true
+        type: Number
     },
     homeLineScores: {
-        type: [Number],
-        required: true
+        type: [Number]
     },
     homePostWinProb: {
         type: String,
@@ -88,19 +84,16 @@ const gameSchema = new mongoose.Schema({
         required: true
     },
     awayConference: {
-        type: String,
-        required: true
+        type: String
     },
     awayDivision: {
         type: String,
     },
     awayPoints: {
-        type: Number,
-        required: true
+        type: Number
     },
     awayLineScores: {
-        type: [Number],
-        required: true
+        type: [Number]
     },
     awayPostWinProb: {
         type: String,

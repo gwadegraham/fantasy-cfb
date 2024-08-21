@@ -10,7 +10,7 @@ var gamesApi = new cfb.GamesApi();
 module.exports = {
 
     retrieveTeams: async () => {
-        var response = await fetch(`${process.env.URL}/users`, {
+        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -23,7 +23,7 @@ module.exports = {
         var userData = await response.json();
 
         for (const user of userData) {
-            for (const team of user.teams) {
+            for (const team of user.seasons[0].teams) {
                 allTeams.push(team.school);
             }
         }
@@ -55,6 +55,30 @@ module.exports = {
 
         uniqueGames = [...new Set(allGameData)];
         return uniqueGames;
+    },
+    
+    massRetrieveGames: async (week, seasonType) => {
+
+        const response = await fetch(`${process.env.URL}/games/week/mass-create`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "week": "${week}",
+            "seasonType": "${seasonType}"
+            }`
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Games Successfully Saved");
+                return data;
+            } else {
+                console.log("Failed to save new games");
+            }
+        });
     },
 
     retrievePostseasonGames: async (teams, week) => {

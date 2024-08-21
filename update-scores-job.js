@@ -15,33 +15,76 @@ async function updateScores () {
     var weekNumber = 1;
     var isPostseason = false;
 
-    console.log("calendar => ", calendar);
-
     if (calendar) {
         for (const calendarWeek of calendar) {
             var startDate = new Date(calendarWeek.firstGameStart);
             var endDate = new Date(calendarWeek.lastGameStart);
             var currentDate = new Date();
 
-            console.log("(currentDate > startDate) && (currentDate < endDate)", (currentDate > startDate) && (currentDate < endDate));
-            console.log("currentDate < startDate", (currentDate < startDate));
 
             if ((currentDate > startDate) && (currentDate < endDate)) {
-                console.log("calendarWeek.week", calendarWeek.week);
                 weekNumber = calendarWeek.week;
                 if (calendarWeek.seasonType == "postseason") {
                     isPostseason = true;
                 }
                 break;
-            } else if ((currentDate < startDate)) {
-                weekNumber = parseInt(calendarWeek.week) - 1;
+            } else if ((currentDate < startDate) && (calendarWeek.week == 1)) {
+                weekNumber = 1;
                 break;
+            } else if ((currentDate < startDate) && (calendarWeek.week > 1)) {
+                weekNumber = (calendarWeek.week - 1);
             }
         }
     }
 
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
+
+    const season = process.env.YEAR;
+    var seasonType = '';
+    var week = weekNumber;
+
+    if (!isPostseason) {
+        seasonType = "regular";
+    } else {
+        seasonType = "postseason";
+        week = 1;
+    }
+
+    var response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${seasonType}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response;
+
+    if (rankings.status == 200) {
+        console.log(`Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`);
+    } else {
+        const response = await fetch(`${process.env.URL}/rankings/retrieveRankings`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "season": "${season}",
+            "seasonType": "${seasonType}",
+            "week": "${week}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Rankings", data);
+            } else {
+                console.log(response.status + " Rankings could not be retrieved");
+            }
+        });
+    }
 
     if (isPostseason) {
         var teams = await retrieveGamesModule.retrieveTeams();
@@ -57,10 +100,11 @@ async function updateScores () {
         var teams = await retrieveGamesModule.retrieveTeams();
         console.log("number of returned teams", teams.length);
 
-        var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
+        // var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
+        var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
         console.log("number of returned games", games.length);
 
-        await retrieveGamesModule.saveGames(games);
+        // await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();
     }

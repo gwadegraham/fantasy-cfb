@@ -86,6 +86,9 @@ const seasonSchema = new mongoose.Schema({
     },
     weeklyScore: {
         type: [weeklyScoreSchema]
+    },
+    expectedWins: {
+        type: Number
     }
 });
 

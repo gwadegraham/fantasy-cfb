@@ -184,9 +184,15 @@ body {
     padding-left: 5px;
 }
 
-.create-user-container, .remove-user-container, .calculate-team-score-container {
+.create-user-container, .remove-user-container, .calculate-team-score-container, .rankings-container {
     margin-left: 20px;
     width: 35%;
+}
+
+.rankings-container input {
+    border-top: none;
+    border-left: none;
+    border-right: none;
 }
 
 .create-user-container input, select {
@@ -195,11 +201,11 @@ body {
     border-right: none;
 }
 
-.create-user-container input:focus, select:focus, .remove-user-container input:focus, select:focus {
+.create-user-container input:focus, select:focus, .remove-user-container input:focus, select:focus, .rankings-container input:focus, select:focus {
     outline: none;
 }
 
-.create-user-container button, .remove-user-container button, .calculate-team-score-container button {
+.create-user-container button, .remove-user-container button, .calculate-team-score-container button, .rankings-container button {
     border-radius: 5px;
     background-color: #444;
     color: white;
@@ -223,11 +229,11 @@ body {
     color: #222;
 }
 
-.calculate-team-score-container button {
+.calculate-team-score-container button, .rankings-container button {
     background-color: #4686ec;
 }
 
-.create-user-container button:hover, .remove-user-container button:hover {
+.create-user-container button:hover, .remove-user-container button:hover, .calculate-team-score-container button:hover, .rankings-container button:hover {
     transition: 0.7s;
     background-color: #999;
 }
