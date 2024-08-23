@@ -33,18 +33,28 @@ window.onload = async function() {
 
     response.json().then(async data => {
         console.log("user metadata", data)
-        var userLeague = data.user_metadata.metadata.league;
-        var userRole = data.user_metadata.roles[0];
 
-        if (userLeague == "gg") {
-            leagueCode = "graham-league";
+        leagueCode = window.sessionStorage.getItem("leagueCode");
+
+        if (leagueCode && (leagueCode != "undefined")) {
+            const currentSelectedLeague = window.sessionStorage.getItem("league");
+            if (currentSelectedLeague) {
+                $("#dropdownMenuButton").text(currentSelectedLeague);
+            }
         } else {
-            leagueCode = "claunts-league";
+            var userLeague = data.user_metadata.metadata.league;
+            if (userLeague == "gg") {
+                leagueCode = "graham-league";
+            } else {
+                leagueCode = "claunts-league";
+            }
         }
-
+        
+        var userRole = data.user_metadata.roles[0];
         if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
-        }        
+            document.querySelector('[league-selector]').remove();
+        }
 
         getUsers();
     });
@@ -252,3 +262,13 @@ async function bestTeam(users) {
 
     return tableContent;
 }
+
+$(".dropdown-menu a").click(function(){
+    $(this).parents(".dropdown").find('.btn').html($(this).text());
+    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+    var selectedLeague = $("#dropdownMenuButton").text();
+    var selectedLeagueCode = $("#dropdownMenuButton").val();
+    window.sessionStorage.setItem("league", selectedLeague);
+    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
+    window.location.reload();
+});

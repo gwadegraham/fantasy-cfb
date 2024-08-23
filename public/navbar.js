@@ -23,6 +23,17 @@ document.write('\
         <ul>\
             <li><a href="./index">Home</a></li>\
             <li><a admin-page href="./admin">Admin</a></li>\
+            <li league-selector>\
+                <div class="dropdown dropdown-nav">\
+                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">\
+                        Leagues\
+                    </button>\
+                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">\
+                        <a class="dropdown-item" href="#" value="claunts-league">Claunts League</a>\
+                        <a class="dropdown-item selected" href="#" value="graham-league">Graham League</a>\
+                    </div>\
+                </div>\
+            </li>\
             <li><a href="./standings">Standings</a></li>\
             <li><a href="./draft-room">Draft Room</a></li>\
             <li><a href="./logout">Logout</a></li>\
