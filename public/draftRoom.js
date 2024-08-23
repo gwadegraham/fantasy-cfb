@@ -48,19 +48,30 @@ async function getUserProfile() {
 
     response.json().then(async data => {
         console.log("user metadata", data)
-        var userLeague = data.user_metadata.metadata.league;
-        var userRole = data.user_metadata.roles[0];
 
-        if (userLeague == "gg") {
-            leagueCode = "graham-league";
-            leagueVersion = "V2";
+        leagueCode = window.sessionStorage.getItem("leagueCode");
+
+        if (leagueCode && (leagueCode != "undefined")) {
+            const currentSelectedLeague = window.sessionStorage.getItem("league");
+            if (currentSelectedLeague) {
+                $("#dropdownMenuButton").text(currentSelectedLeague);
+            }
         } else {
-            leagueCode = "claunts-league";
-            leagueVersion = "V1";
+            var userLeague = data.user_metadata.metadata.league;
+            if (userLeague == "gg") {
+                leagueCode = "graham-league";
+                leagueVersion = "V2";
+            } else {
+                leagueCode = "claunts-league";
+                leagueVersion = "V1";
+            }
         }
+        
+        var userRole = data.user_metadata.roles[0];
 
         if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
+            document.querySelector('[league-selector]').remove();
             document.querySelector('[draft-board]').remove();
         }
         
@@ -514,4 +525,14 @@ var failToast = Toastify({
     offset: {
         y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
     },
+});
+
+$(".dropdown-menu a").click(function(){
+    $(this).parents(".dropdown").find('.btn').html($(this).text());
+    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+    var selectedLeague = $("#dropdownMenuButton").text();
+    var selectedLeagueCode = $("#dropdownMenuButton").val();
+    window.sessionStorage.setItem("league", selectedLeague);
+    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
+    window.location.reload();
 });

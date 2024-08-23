@@ -21,21 +21,53 @@ function detectMobile() {
     }
 }
 
+async function getUserProfile() {
+    const response = await fetch(`/profile`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    response.json().then(async data => {
+        console.log("user metadata", data)
+
+        weekCode = window.localStorage.getItem("weekCode");
+        const currentSelectedWeek = window.localStorage.getItem("week");
+        if (currentSelectedWeek) {
+            $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
+        }
+
+        leagueCode = window.sessionStorage.getItem("leagueCode");
+
+        if (leagueCode && (leagueCode != "undefined")) {
+            const currentSelectedLeague = window.sessionStorage.getItem("league");
+            if (currentSelectedLeague) {
+                $("#dropdownMenuButton").text(currentSelectedLeague);
+            }
+        } else {
+            var userLeague = data.user_metadata.metadata.league;
+            if (userLeague == "gg") {
+                leagueCode = "graham-league";
+            } else {
+                leagueCode = "claunts-league";
+            }
+        }
+        
+        var userRole = data.user_metadata.roles[0];
+        if (userRole != "Admin") {
+            document.querySelector('[admin-page]').remove();
+            document.querySelector('[league-selector]').remove();
+        }        
+
+        getUsers();
+    });
+}
+
 window.onload = function() {
     detectMobile();
-
-    leagueCode = window.localStorage.getItem("leagueCode");
-    const currentSelectedLeague = window.localStorage.getItem("league");
-    if (currentSelectedLeague) {
-        $("#dropdownMenuButton").text(currentSelectedLeague);
-    }
-
-    weekCode = window.localStorage.getItem("weekCode");
-    const currentSelectedWeek = window.localStorage.getItem("week");
-    if (currentSelectedWeek) {
-        $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
-    }
-
+    getUserProfile();
     getUser();
 };
 
@@ -514,3 +546,13 @@ async function displaySchedule(data) {
     document.querySelector('.loading-container').style.display = "none";
     document.querySelector('.schedule-table').style.display = "flex";
 }
+
+$(".dropdown-menu a").click(function(){
+    $(this).parents(".dropdown").find('.btn').html($(this).text());
+    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+    var selectedLeague = $("#dropdownMenuButton").text();
+    var selectedLeagueCode = $("#dropdownMenuButton").val();
+    window.sessionStorage.setItem("league", selectedLeague);
+    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
+    window.location.reload();
+});
