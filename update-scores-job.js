@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config()
+}
+
 // Configure CFB Data
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -102,8 +106,9 @@ async function updateScores () {
 
         // var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
         var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
-        console.log("number of returned games", games.length);
-
+        console.log("number of returned new games", games.newGames.length);
+        console.log("number of returned existing games", games.existingGames.length);
+        
         // await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();

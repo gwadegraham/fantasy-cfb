@@ -175,7 +175,13 @@ router.post('/week/mass-create', async (req, res) => {
         try {
             console.log("all new games length", allNewGames.length);
             const newGames = await Game.insertMany(allNewGames);
-            return res.status(201).json(newGames);
+
+            var returnedGames = {
+                newGames: newGames,
+                existingGames: allExistingGames
+            };
+
+            return res.status(201).json(returnedGames);
         } catch (err) {
             console.log("Error saving games: ", err.message)
             res.status(400).json({message: err.message});
