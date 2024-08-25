@@ -71,14 +71,18 @@ module.exports = {
             }`
         });
 
-        response.json().then(data => {
+        var dataToReturn;
+
+        await response.json().then(data => {
             if (response.status == 201) {
                 console.log("New Games Successfully Saved");
-                return data;
+                dataToReturn = data;
             } else {
                 console.log("Failed to save new games");
             }
         });
+
+        return dataToReturn;
     },
 
     retrievePostseasonGames: async (teams, week) => {

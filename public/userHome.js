@@ -61,7 +61,7 @@ async function getUserProfile() {
             document.querySelector('[league-selector]').remove();
         }        
 
-        getUsers();
+        getUser();
     });
 }
 
