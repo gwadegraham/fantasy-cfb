@@ -69,7 +69,10 @@ async function getUserProfile() {
         
         var userRole = data.user_metadata.roles[0];
 
-        if (userRole != "Admin") {
+        if (userRole == "League Manager") {
+            document.querySelector('[admin-page]').remove();
+            document.querySelector('[league-selector]').remove();
+        } else if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
             document.querySelector('[league-selector]').remove();
             document.querySelector('[draft-board]').remove();
