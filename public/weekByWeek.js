@@ -1,4 +1,5 @@
 export function setChartData(data) {
+    var chartMax = 100;
 
     data.sort((a, b) => {
         return b.seasons[0].cumulativeScore - a.seasons[0].cumulativeScore;
@@ -11,9 +12,11 @@ export function setChartData(data) {
         labels.push("Week " + i);
     }
 
-    data.forEach( (user, index) => {
+    data.forEach( (user) => {
         var scoreData = [0];        
         var cumulativeScore = 0;
+
+        chartMax = (user.seasons[0].weeklyScore.length * 10);
 
         user.seasons[0].weeklyScore.forEach( week => {
             cumulativeScore += week.score; 
@@ -40,6 +43,18 @@ export function setChartData(data) {
     const config = {
         type: 'line',
         data: chartData,
+        options: {
+            scales: {
+              y: {
+                beginAtZero: true,
+                min: 0,
+                max: chartMax,
+                ticks: {
+                    stepSize : (chartMax / 5)
+                }
+              }
+            }
+        }
     };
 
     new Chart(
