@@ -251,8 +251,8 @@ module.exports= {
                     score += 1;
                     var ranked = isRankedV1(game.awayTeam, rankings);
     
-                    if (ranked > 0) {
-                        score += ranked;
+                    if (ranked) {
+                        score = 3;
                     } else {
                         score = isConference(game) ? (score + 1) : score;
                     }
@@ -274,8 +274,8 @@ module.exports= {
                     score += 1;
                     var ranked = isRankedV1(game.homeTeam, rankings);
     
-                    if (ranked > 0) {
-                        score += ranked;
+                    if (ranked) {
+                        score = 3;
                     } else {
                         score = isConference(game) ? (score + 1) : score;
                     }
@@ -450,11 +450,12 @@ function isRankedV1(team, rankings) {
 
 
     if (rankIndex != -1) {
-        var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
-
-        return 2;
+        // var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
+        // return 2;
+        return true;
     } else {
-        return 0;
+        // return 0;
+        return false;
     }
 }
 
