@@ -129,6 +129,19 @@
                     <button type="submit">Retrieve Games</button>
                 </form>
             </div>
+            <div class="update-scores-container">
+                <button onclick="displayScoresContainer()">
+                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                    Update Scores
+                </button>
+            </div>
+            <div class="scores-container" scores-container style="display: none">
+                <form id="scores-form">
+                    <input type="text" score-season-type placeholder="Season Type">
+                    <input type="number" score-week placeholder="Week">
+                    <button type="submit">Update Scores</button>
+                </form>
+            </div>
         </div>
     </div>
     <footer>

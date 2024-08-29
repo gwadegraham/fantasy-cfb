@@ -495,6 +495,43 @@ if (gamesForm) {
     });
 }
 
+const scoresForm = document.getElementById('scores-form');
+
+if (scoresForm) {
+    scoresForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        block_screen();
+
+        const seasonType = document.querySelector('[score-season-type]').value.toLowerCase();
+        const week = document.querySelector('[score-week]').value;
+
+        const response = await fetch(`/scores/update`, {
+            method: 'POST',
+            signal: AbortSignal.timeout(100000),
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "seasonType": "${seasonType}",
+            "week": "${week}"
+            }`
+        });
+
+        response.json().then(data => {
+            if (response.status == 200) {
+                console.log("Scores Successfully Updated");
+                successToast.options.text = `Scores updated for Season Type: ${seasonType}, Week: ${week}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + "| Scores could not be updated";
+                failToast.showToast();            }
+        });
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -549,6 +586,16 @@ function displayGamesContainer() {
         gamesContainer.style.display = 'none';
     } else {
         gamesContainer.style.display = 'block';
+    }
+}
+
+function displayScoresContainer() {
+    var scoresContainer = document.querySelector('[scores-container]');
+
+    if (scoresContainer.style.display == 'block' || scoresContainer.style.display=='') {
+        scoresContainer.style.display = 'none';
+    } else {
+        scoresContainer.style.display = 'block';
     }
 }
 

@@ -121,6 +121,9 @@ app.use('/games', gamesRouter);
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', rankingsRouter);
 
+const scoresRouter = require('./routes/scores');
+app.use('/scores', scoresRouter);
+
 const recruitingRouter = require('./routes/recruiting');
 app.use('/recruiting', recruitingRouter);
 
