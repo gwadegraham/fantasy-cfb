@@ -102,8 +102,8 @@ module.exports= {
                     user.seasons[0].weeklyScore.push(scoreObject);
                     await updateUser(user._id, user.seasons[0].weeklyScore);
                 }
-            } else if (await user.seasons[0].weeklyScore.some(e => e.week === scoreObject.week)) {
-                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.week === scoreObject.week);
+            } else if (await user.seasons[0].weeklyScore.some(e => e.week === parseInt(scoreObject.week))) {
+                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.week === parseInt(scoreObject.week));
                 user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
                 await updateUser(user._id, user.seasons[0].weeklyScore);
             } else if (user.seasons[0].weeklyScore.length == 0){
