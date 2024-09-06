@@ -1,6 +1,8 @@
 import { setChartData } from './weekByWeek.js';
 
 var isMobile;
+var weekCode;
+var usersData;
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
@@ -33,6 +35,12 @@ window.onload = async function() {
 
     response.json().then(async data => {
         console.log("user metadata", data)
+
+        weekCode = window.localStorage.getItem("weekCode");
+        const currentSelectedWeek = window.localStorage.getItem("week");
+        if (currentSelectedWeek) {
+            $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
+        }
 
         leagueCode = window.sessionStorage.getItem("leagueCode");
 
@@ -72,6 +80,8 @@ async function getUsers() {
     response.json().then(async data => {
         displayUsers(data);
         displayHighlights(data);
+        displaySchedule(data);
+        usersData = data;
 
         if (!isMobile) {
             setChartData(data);
@@ -262,6 +272,521 @@ async function bestTeam(users) {
 
     return tableContent;
 }
+
+async function getGame(season, week, team) {
+
+    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json'
+        }
+    });
+
+    var game = await gamePromise;
+    var response = await game.json();
+
+    var games = new Array();
+
+
+    if (game.status == 200) {
+        for (const game of response) {
+            games.push(game);
+        }
+    } else {
+        console.log(response.message);
+    }
+
+    return games;
+}
+
+async function getRankings (week, seasonType) {
+    var pollName = "Playoff Committee Rankings";
+
+    if (week < 10) {
+        pollName = "AP Top 25";
+    }
+
+    var response = await fetch(`/rankings/${week}/${seasonType}/poll/${pollName}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response.json();
+    var rankingsArray = [];
+
+    if (rankings.length > 0) {
+        rankingsArray = rankings[0].polls[0].ranks;
+    } else {
+        console.log(rankings.message);
+    }
+
+    // console.log(rankingsArray)
+    return rankingsArray;
+}
+
+async function getTeamLogos (game) {
+
+    const teams = [game.awayTeam, game.homeTeam];
+
+    const teamsJson = {
+        teams: teams
+    };
+
+    var teamsPromise = await fetch('/teams/teamLogos', {
+        method: 'POST',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(teamsJson),
+    });
+
+    var teamLogos = await teamsPromise;
+    var response = await teamLogos.json();
+
+    if (teamLogos.status == 200) {
+        var awayTeamLogo = response.find((element) => element.school == game.awayTeam);
+        var homeTeamLogo = response.find((element) => element.school == game.homeTeam);
+
+        if (awayTeamLogo == null) {
+            awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+        } else {
+            awayTeamLogo = '<img src="' + awayTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+        }
+
+        if (homeTeamLogo == null) {
+            homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+        } else {
+            homeTeamLogo = '<img src="' + homeTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+        }
+
+        const logoResponse = {awayTeamLogo, homeTeamLogo};
+        return logoResponse;
+    } else {
+        console.log(response.message);
+    }
+}
+
+async function displaySchedule(data) {
+
+    var usersAndTeams = [];
+
+    for(var i = 0; i < data.length; i++) {
+
+        var user = data[i];
+        var userTeams = user.seasons[0].teams;
+        var userTeamObject = {
+            userName: user.firstName, 
+            teams: userTeams
+        };
+
+        usersAndTeams.push(userTeamObject);
+    }
+
+    // console.log("usersAndTeams", usersAndTeams);
+
+    const scheduleContainer = document.querySelector('[schedule-body]');
+    var str = '<tr>';
+    var gameIds = [];
+    var gameTables = [];
+    var headToHeadGames = [];
+
+    var week = window.localStorage.getItem("weekCode").substring(5);
+    var gameWeek;
+    var seasonType = "regular";
+
+    if (week == "16") {
+        seasonType = "postseason";
+        week = 1;
+        gameWeek = "16"
+    } else {
+        gameWeek = week;
+    }
+
+    var rankingsInfo = await getRankings(week, seasonType);
+
+    for (var iterUsers = 0; iterUsers < data.length; iterUsers++) {
+
+        var userData = data[iterUsers];
+        // console.log("User Name", userData.firstName);
+
+        for (var iterNum = 0; iterNum < userData.seasons.at(-1).teams.length; iterNum++) {
+
+            var teamName = userData.seasons.at(-1).teams[iterNum].school;
+            var otherUsers = usersAndTeams.toSpliced(iterUsers, 1);
+            // console.log("teamName", teamName);
+            // console.log("otherUsers", otherUsers);
+
+            var gamesInfo = await getGame(seasonType, week, userData.seasons.at(-1).teams[iterNum]);
+
+            for (const [i, game] of gamesInfo.entries()) {
+
+                var awayRank = '';
+                var homeRank = '';
+
+                var awayIndex = rankingsInfo.findIndex(e => e.school === game.awayTeam);
+                if (awayIndex > -1) {
+                    awayRank = rankingsInfo[awayIndex].rank;
+                }
+
+                var homeIndex = rankingsInfo.findIndex(e => e.school === game.homeTeam);
+                if (homeIndex > -1) {
+                    homeRank = rankingsInfo[homeIndex].rank;
+                }
+
+                awayRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${awayRank}</p>`;
+                homeRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${homeRank}</p>`;
+
+                function exists(arr, search) {
+                    var doesExist = false;
+                    var name = '';
+
+                    arr.some(row => {
+                        row.teams.some(team => {
+                            if (team.school == search) {
+                                doesExist = true;
+                                name = row.userName;
+                            }
+                        })
+                    });
+
+                    return {
+                        doesExist: doesExist,
+                        name: name
+                    };
+                }
+
+                var awayUser = '';
+                var homeUser = '';
+
+                if (gameIds.indexOf(game.id) == -1) {
+                    var isHeadToHead = false;
+                    var oppName = '';
+                    gameIds.push(game.id);
+
+                    var topData = '';
+                    var bottomData = '';
+                    var scoreAdded = '<strong style="color: white;">+0<strong>';
+                    var awayTeam = '';
+                    var homeTeam = '';
+                    var isAway = false;
+                    var teamLogos = await getTeamLogos(game);
+                    var awayImg = teamLogos.awayTeamLogo;
+                    var homeImg = teamLogos.homeTeamLogo;
+
+                    
+
+                    if (game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                        var existObject = exists(otherUsers, game.homeTeam);
+                        var doesExist = existObject.doesExist;
+                        oppName = existObject.name;
+
+                        awayUser = userData.firstName;
+                        awayTeam= game.awayTeam;
+
+                        homeUser = oppName;
+                        homeTeam = game.homeTeam;
+                        isAway = true;
+
+                        if (doesExist) {
+                            // console.log("awayTeam", awayTeam);
+                            // console.log("homeTeam", homeTeam);
+                            // console.log("awayUser", awayUser);
+                            isHeadToHead = true;
+                        }
+
+                    } else {
+                        var existObject = exists(otherUsers, game.awayTeam);
+                        var doesExist = existObject.doesExist;
+                        oppName = existObject.name;
+
+                        awayUser = oppName;
+                        awayTeam = game.awayTeam;
+
+                        homeUser = userData.firstName;
+                        homeTeam = game.homeTeam;
+
+                        if (doesExist) {
+                            // console.log("awayTeam", awayTeam);
+                            // console.log("homeTeam", homeTeam);
+                            // console.log("awayUser", awayUser);
+                            isHeadToHead = true;
+                        }
+                    }
+        
+                    if (game.completed) {   
+                                
+                        if( game.awayPoints > game.homePoints ) {
+                            if(game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                                var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                                var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                    return obj.team == game.awayTeam;
+                                });
+        
+                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            }
+                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                            bottomData = (game.homePoints || '-');
+                        } else if (game.homePoints > game.awayPoints) {
+        
+                            if(!isAway) {
+                                var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                                var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                    return obj.team == game.homeTeam;
+                                });
+        
+                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            }
+        
+                            topData = (game.awayPoints || '-');
+                            bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                        } else {
+                            if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                                var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                                var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                    return obj.team == game.awayTeam;
+                                });
+        
+                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            }
+                            topData = (game.awayPoints || '-');
+                            bottomData = (game.homePoints || '-');
+                        }
+                    } else {
+        
+                        // var militaryTime = parseInt(game.startDate.substring(11,14));
+                        var centralDate = new Date(game.startDate);
+                        var militaryTime = centralDate.toString().substring(16,21);
+                        var time = militaryTime.split(':');
+                        var hours = parseInt(time[0]);
+                        var minutes = time[1];
+
+                        // if (militaryTime == 0) {
+                        //     militaryTime = (24-5);
+                        // } else {
+                        //     militaryTime = (militaryTime - 5);
+                        // }
+                        var standardTime = '';
+        
+                        if (hours < 12) {
+                            standardTime = hours.toString() + ":" + minutes +  "AM";
+                        }
+                        else if (hours == 12) {
+                            standardTime = hours.toString() + ":" + minutes + "PM";
+                        }
+                        else {
+                            standardTime =( hours - 12).toString() + ":" + minutes + "PM";
+                        }
+        
+                        // topData = game.startDate.substring(5,10);
+                        topData = centralDate.toString().substring(4,10);
+                        bottomData = standardTime;
+                    }
+        
+                    var teamTable = '<td><table class="schedule-table game-table"><tbody><tr firstRow></tr>';
+                    teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
+
+                    teamTable += '<tr><td style="width: 250px;">';
+        
+                    teamTable += awayImg + awayRank + awayTeam;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                    teamTable += '</tr>';
+        
+                    teamTable += '<tr><td style="width: 250px;">';
+                    teamTable += homeImg + homeRank + homeTeam;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</tr>';
+                    teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
+                    teamTable += '<tr></tr><tbody></table></td>';
+
+        
+                    var gameInfo = {
+                        id: game.id,
+                        table: teamTable,
+                        homeTeam: game.homeTeam,
+                        awayTeam: game.awayTeam
+                    };
+
+                    if (isHeadToHead) {
+                        gameTables.push(gameInfo);
+                    }
+                } else {
+                    if (!game.startTimeTbd) {
+
+                        var shouldReplace = false;
+        
+                        if (game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                            var existObject = exists(otherUsers, game.homeTeam);
+                            var doesExist = existObject.doesExist;
+                            oppName = existObject.name;
+
+                            awayUser = userData.firstName;
+                            awayTeam= game.awayTeam + ` ${userData.firstName}`;
+
+                            homeUser = oppName;
+                            homeTeam = game.homeTeam + ` ${oppName}`;
+                            isAway = true;
+
+                            if (doesExist) {
+                                // console.log("awayTeam", awayTeam);
+                                // console.log("homeTeam", homeTeam);
+                                // console.log("awayUser", awayUser);
+                                isHeadToHead = true;
+                            }
+                        } else {
+                            var existObject = exists(otherUsers, game.awayTeam);
+                            var doesExist = existObject.doesExist;
+                            oppName = existObject.name;
+
+                            awayUser = oppName;
+                            awayTeam = game.awayTeam + ` ${oppName}`;
+
+                            homeUser = userData.firstName;
+                            homeTeam = game.homeTeam + ` ${userData.firstName}`;
+
+                            if (doesExist) {
+                                // console.log("awayTeam", awayTeam);
+                                // console.log("homeTeam", homeTeam);
+                                // console.log("awayUser", awayUser);
+                                isHeadToHead = true;
+                            }
+                        }
+        
+        
+                        if (game.completed) {
+                            if( game.awayPoints > game.homePoints ) {
+                                if(game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                                    shouldReplace = true;
+                                    var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                                    var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                        return obj.team == game.awayTeam;
+                                    });
+            
+                                    scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                }
+                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                                bottomData = (game.homePoints || '-');
+                            } else {
+            
+                                if(game.homeTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                                    shouldReplace = true;
+                                    var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
+                                    var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                        return obj.team == game.homeTeam;
+                                    });
+            
+                                    scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                }
+            
+                                topData = (game.awayPoints || '-');
+                                bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                            }
+                        }
+                        
+
+                        var teamLogos = await getTeamLogos(game);
+                        var awayImg = teamLogos.awayTeamLogo;
+                        var homeImg = teamLogos.homeTeamLogo;
+
+                        var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
+                        // console.log("*********awayUser", awayUser);
+
+                        teamTable += `<tr>${awayUser}</tr>`;
+    
+                        teamTable += '<tr><td style="width: 250px;">';
+            
+                        teamTable += awayImg + awayRank + awayTeam;
+                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                        teamTable += '</tr>';
+            
+                        teamTable += `<tr>${homeUser}</tr>`;
+                        teamTable += '<tr><td style="width: 250px;">';
+                        teamTable += homeImg + homeRank + homeTeam;
+                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                        teamTable += '</tr><tr></tr><tbody></table></td>';
+
+
+
+
+
+                        ///////////////////////////////
+                        // var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
+                        // teamTable += `<tr>${awayUser}</tr>`;
+    
+                        // teamTable += '<tr><td style="width: 250px;">';
+            
+                        // teamTable += awayImg + awayRank + awayTeam;
+                        // teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                        // teamTable += '</tr>';
+            
+                        // teamTable += `<tr>${homeUser}</tr>`;
+                        // teamTable += '<tr><td style="width: 250px;">';
+                        // teamTable += homeImg + homeRank + homeTeam;
+                        // teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                        // teamTable += '</tr><tr></tr><tbody></table></td>';
+                        ///////////////////
+            
+                        var gameInfo = {
+                            id: game.id,
+                            table: teamTable,
+                            homeTeam: game.homeTeam,
+                            awayTeam: game.awayTeam
+                        };
+
+                        if (shouldReplace) {
+                            var indexToReplace = gameTables.findIndex(x => x.id == game.id);
+                            gameTables.splice(indexToReplace, 1);
+                            gameTables.push(gameInfo);
+                        }
+                    }
+                }
+            } 
+        }
+    }
+
+    for(var k = 0; k < gameTables.length; k++) {
+        if (isMobile) {
+            str += '</tr><tr>';
+        }
+        
+        if ((k + 1) > gameTables.length) {
+            str += '</td></tr>'
+        }
+        else if (((k) % 3 == 0) && (k > 0)) {
+            str += '</tr><tr>';
+        }
+
+        str += gameTables[k].table;
+
+        if (isMobile) {
+            str += '</tr><tr>';
+        }
+    }
+
+    if (gameTables.length == 0) {
+        str += '<i class="fa-solid fa-sad-cry" style="padding-right: 10px;"></i>no college football games?!<i class="fa-solid fa-sad-cry" style="padding-left: 5px;"></i>'
+    }
+
+    scheduleContainer.innerHTML = str;
+    document.querySelector('.loading-container').style.display = "none";
+    document.querySelector('.schedule-table').style.display = "flex";
+}
+
+$(".dropdown-menu-week a").click(function(){
+    $(this).parents(".dropdownWeek").find('.btn').html($(this).text());
+    $(this).parents(".dropdownWeek").find('.btn').val($(this).attr('value'));
+    var selectedWeek = $("#dropdownMenuButtonWeek").text();
+    var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
+    window.localStorage.setItem("week", selectedWeek);
+    window.localStorage.setItem("weekCode", selectedWeekCode);
+
+    document.querySelector('.loading-container').style.display = "block";
+    document.querySelector('.schedule-table').style.display = "none";
+    displaySchedule(usersData);
+});
 
 $(".dropdown-menu a").click(function(){
     $(this).parents(".dropdown").find('.btn').html($(this).text());
