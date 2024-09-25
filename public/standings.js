@@ -369,8 +369,8 @@ async function getTeamLogos (game) {
     var response = await teamLogos.json();
 
     if (teamLogos.status == 200) {
-        var awayTeamLogo = response.find((element) => element.school == game.awayTeam);
-        var homeTeamLogo = response.find((element) => element.school == game.homeTeam);
+        var awayTeamLogo = response.find((element) => element.id == game.awayId);
+        var homeTeamLogo = response.find((element) => element.id == game.homeId);
 
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
@@ -714,7 +714,7 @@ async function displaySchedule(data) {
 
                         var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
                         teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
-                        
+
                         teamTable += '<tr><td style="width: 250px;">';
                         teamTable += awayImg + awayRank + awayTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
