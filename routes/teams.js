@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
 //Getting Multiple Logos
 router.post('/teamLogos', async (req, res) => {
     try {
-        const teamLogos = await Team.find({school: {$in: req.body.teams}}, "school logos");
+        const teamLogos = await Team.find({id: {$in: req.body.teams}}, "id school logos");
 
         if (JSON.stringify(teamLogos) === '[]') {
             res.status(400).json({message: `No teams found with names ${req.body.teams}`});

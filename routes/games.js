@@ -30,16 +30,16 @@ router.get('/', async (req, res) => {
 //Getting One By Team & Week
 router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) => {
     var week = req.params.weekNum;
-    var team = req.params.team;
+    var teamId = req.params.team;
     var seasonType = req.params.seasonType;
     try {
         // console.log("seasonType = " + seasonType + " // week = " + week + " // team = " + team);
-        const game = await Game.find({$and: [ { $or: [{"homeTeam":team}, {"awayTeam":team}]}, {"season":process.env.YEAR}, {seasonType: seasonType}, {week: week}]});
+        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":process.env.YEAR}, {seasonType: seasonType}, {week: week}]});
 
         if (JSON.stringify(game) != '[]') {
             res.status(200).json(game);
         } else{
-            res.status(400).json({message: `${team} did not have a game in week ${week}`});
+            return res.status(400).json({message: `${teamId} did not have a game in week ${week}`});
         }
 
     } catch (err) {
@@ -141,6 +141,10 @@ router.post('/week/mass-create', async (req, res) => {
         game.awayPregameElo = game.away_pregame_elo;
         game.awayPostgameElo = game.away_postgame_elo;
         game.excitementIndex = game.excitement_index;
+
+        var date = new Date();
+        var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
+        game.lastUpdated = centralTime;
 
         if (alreadyExists.length == 0) {
             const newGame = new Game(game);

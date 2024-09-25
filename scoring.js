@@ -51,7 +51,7 @@ module.exports= {
             var teamScores = new Array();
 
             for (const team of user.seasons[0].teams) {
-                var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+                var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'
@@ -66,15 +66,16 @@ module.exports= {
                         var teamScore = 0;
 
                         if (user.league == "claunts-league") {
-                            teamScore = await module.exports.calculateScoreV1(team.school, game, week);
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week);
                         } else if (user.league == "graham-league") {
-                            teamScore = await module.exports.calculateScoreV2(team.school, game, week);
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week);
                         }
 
                         score += teamScore;
 
                         var teamScoreObject = {
                             "team": team.school,
+                            "teamId": team.id,
                             "score": teamScore
                         };
 
@@ -235,7 +236,7 @@ module.exports= {
     
         if (isSemiFinalist) {
             score += 7;
-        } else if (game.homeTeam == team) {
+        } else if (game.homeId == team) {
             if (game.homePoints > game.awayPoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
@@ -258,7 +259,7 @@ module.exports= {
                     }
                 }  
             }
-        } else if (game.awayTeam == team) {
+        } else if (game.awayId == team) {
             if (game.awayPoints > game.homePoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
@@ -282,7 +283,6 @@ module.exports= {
                 }
             }
         }
-        // console.log("team => " + team + " game => " + game.notes + " with score == " + score);
         return score;
     },
 
@@ -294,9 +294,7 @@ module.exports= {
         var opts = {
             'week': week
         };
-    
-        // var response = await rankingsApi.getRankings(year, opts);
-        // var rankings = await response;
+
         var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
             method: 'GET',
             headers: {
@@ -311,7 +309,7 @@ module.exports= {
     
         if (isSemiFinalist) {
             score += 7;
-        } else if (game.homeTeam == team) {
+        } else if (game.homeId == team) {
             if (game.homePoints > game.awayPoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
@@ -330,7 +328,7 @@ module.exports= {
                     score = isPowerFive(game.homeConference, game.awayConference) ? (score + 2) : score;
                 }  
             }
-        } else if (game.awayTeam == team) {
+        } else if (game.awayId == team) {
             if (game.awayPoints > game.homePoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
@@ -350,7 +348,6 @@ module.exports= {
                 }
             }
         }
-        // console.log("team => " + team + " game => " + game.notes + " with score == " + score);
         return score;
     },
 
