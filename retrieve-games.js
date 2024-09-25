@@ -111,7 +111,7 @@ module.exports = {
     },
 
     retrieveGameBySeasonWeekTeam: async (season, week, team) => {
-        var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+        var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'

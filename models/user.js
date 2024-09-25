@@ -59,6 +59,9 @@ const weeklyTeamScoreSchema = new mongoose.Schema({
     team: {
         type: String
     },
+    teamId: {
+        type: Number
+    },
     score: {
         type: Number
     }

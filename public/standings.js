@@ -256,17 +256,38 @@ async function bestTeam(users) {
         return parseFloat(b.score) - parseFloat(a.score);
     });
 
+    var resultScores = [sortedTeamScores[0]];
+
+
+    for (var y = 1; y < sortedTeamScores.length; y++) {
+        if (sortedTeamScores[y].score == sortedTeamScores[(y - 1)].score) {
+            resultScores.push(sortedTeamScores[y]);
+        } else {
+            break;
+        }
+    }
+
+    var bestTitle = "Best Team of the Season";
+
+    if (resultScores.length > 1) {
+        bestTitle = "Best Teams of the Season";
+    }
+
     tableContent = `
     <td>
         <table class="schedule-table game-table">
             <tbody>
                 <tr>
-                    <td style="width: 300px;"><strong>Highest Performing Team</strong></td>
-                </tr>
-                <tr>
-                    <td style="width: 250px; display: flex;"><p>${sortedTeamScores[0].team}</p><p style="padding-left: 10px;">+${sortedTeamScores[0].score} points</p></td>
-                </tr>
-            </tbody>
+                    <td style="width: 300px;"><strong>${bestTitle}</strong></td>
+                </tr>`;
+
+    resultScores.forEach( teamName => {
+        tableContent += `<tr>
+                    <td style="width: 250px; display: flex;"><p>${teamName.team}</p><p style="padding-left: 10px;">+${teamName.score} points</p></td>
+                </tr>`;
+    })
+
+    tableContent += `</tbody>
         </table>
     </td>`;
 
@@ -275,7 +296,7 @@ async function bestTeam(users) {
 
 async function getGame(season, week, team) {
 
-    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json'
@@ -293,7 +314,7 @@ async function getGame(season, week, team) {
             games.push(game);
         }
     } else {
-        console.log(response.message);
+        console.log(`${response.message} | ${team.school}`);
     }
 
     return games;
@@ -329,7 +350,7 @@ async function getRankings (week, seasonType) {
 
 async function getTeamLogos (game) {
 
-    const teams = [game.awayTeam, game.homeTeam];
+    const teams = [game.awayId, game.homeId];
 
     const teamsJson = {
         teams: teams
@@ -446,7 +467,7 @@ async function displaySchedule(data) {
 
                     arr.some(row => {
                         row.teams.some(team => {
-                            if (team.school == search) {
+                            if (team.id == search) {
                                 doesExist = true;
                                 name = row.userName;
                             }
@@ -479,8 +500,8 @@ async function displaySchedule(data) {
 
                     
 
-                    if (game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
-                        var existObject = exists(otherUsers, game.homeTeam);
+                    if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
+                        var existObject = exists(otherUsers, game.homeId);
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;
 
@@ -499,7 +520,7 @@ async function displaySchedule(data) {
                         }
 
                     } else {
-                        var existObject = exists(otherUsers, game.awayTeam);
+                        var existObject = exists(otherUsers, game.awayId);
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;
 
@@ -520,10 +541,10 @@ async function displaySchedule(data) {
                     if (game.completed) {   
                                 
                         if( game.awayPoints > game.homePoints ) {
-                            if(game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                            if(game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
                                 var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                                 var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                    return obj.team == game.awayTeam;
+                                    return obj.teamId == game.awayId;
                                 });
         
                                 scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
@@ -535,7 +556,7 @@ async function displaySchedule(data) {
                             if(!isAway) {
                                 var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                                 var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                    return obj.team == game.homeTeam;
+                                    return obj.teamId == game.homeId;
                                 });
         
                                 scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
@@ -544,10 +565,10 @@ async function displaySchedule(data) {
                             topData = (game.awayPoints || '-');
                             bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                         } else {
-                            if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                            if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                                 var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                                 var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                    return obj.team == game.awayTeam;
+                                    return obj.teamId == game.awayId;
                                 });
         
                                 scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
@@ -618,16 +639,16 @@ async function displaySchedule(data) {
 
                         var shouldReplace = false;
         
-                        if (game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
-                            var existObject = exists(otherUsers, game.homeTeam);
+                        if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
+                            var existObject = exists(otherUsers, game.homeId);
                             var doesExist = existObject.doesExist;
                             oppName = existObject.name;
 
                             awayUser = userData.firstName;
-                            awayTeam= game.awayTeam + ` ${userData.firstName}`;
+                            awayTeam= game.awayTeam;
 
                             homeUser = oppName;
-                            homeTeam = game.homeTeam + ` ${oppName}`;
+                            homeTeam = game.homeTeam;
                             isAway = true;
 
                             if (doesExist) {
@@ -637,15 +658,15 @@ async function displaySchedule(data) {
                                 isHeadToHead = true;
                             }
                         } else {
-                            var existObject = exists(otherUsers, game.awayTeam);
+                            var existObject = exists(otherUsers, game.awayId);
                             var doesExist = existObject.doesExist;
                             oppName = existObject.name;
 
                             awayUser = oppName;
-                            awayTeam = game.awayTeam + ` ${oppName}`;
+                            awayTeam = game.awayTeam;
 
                             homeUser = userData.firstName;
-                            homeTeam = game.homeTeam + ` ${userData.firstName}`;
+                            homeTeam = game.homeTeam;
 
                             if (doesExist) {
                                 // console.log("awayTeam", awayTeam);
@@ -658,11 +679,11 @@ async function displaySchedule(data) {
         
                         if (game.completed) {
                             if( game.awayPoints > game.homePoints ) {
-                                if(game.awayTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                                if(game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
                                     shouldReplace = true;
                                     var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                                     var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                        return obj.team == game.awayTeam;
+                                        return obj.teamId == game.awayId;
                                     });
             
                                     scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
@@ -671,11 +692,11 @@ async function displaySchedule(data) {
                                 bottomData = (game.homePoints || '-');
                             } else {
             
-                                if(game.homeTeam == userData.seasons.at(-1).teams[iterNum].school) {
+                                if(game.homeId == userData.seasons.at(-1).teams[iterNum].id) {
                                     shouldReplace = true;
                                     var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                                     var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                        return obj.team == game.homeTeam;
+                                        return obj.teamId == game.homeId;
                                     });
             
                                     scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
@@ -692,42 +713,18 @@ async function displaySchedule(data) {
                         var homeImg = teamLogos.homeTeamLogo;
 
                         var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
-                        // console.log("*********awayUser", awayUser);
-
-                        teamTable += `<tr>${awayUser}</tr>`;
-    
+                        teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
+                        
                         teamTable += '<tr><td style="width: 250px;">';
-            
                         teamTable += awayImg + awayRank + awayTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
                         teamTable += '</tr>';
             
-                        teamTable += `<tr>${homeUser}</tr>`;
                         teamTable += '<tr><td style="width: 250px;">';
                         teamTable += homeImg + homeRank + homeTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                        teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
                         teamTable += '</tr><tr></tr><tbody></table></td>';
-
-
-
-
-
-                        ///////////////////////////////
-                        // var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
-                        // teamTable += `<tr>${awayUser}</tr>`;
-    
-                        // teamTable += '<tr><td style="width: 250px;">';
-            
-                        // teamTable += awayImg + awayRank + awayTeam;
-                        // teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
-                        // teamTable += '</tr>';
-            
-                        // teamTable += `<tr>${homeUser}</tr>`;
-                        // teamTable += '<tr><td style="width: 250px;">';
-                        // teamTable += homeImg + homeRank + homeTeam;
-                        // teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
-                        // teamTable += '</tr><tr></tr><tbody></table></td>';
-                        ///////////////////
             
                         var gameInfo = {
                             id: game.id,

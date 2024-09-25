@@ -113,6 +113,9 @@ const gameSchema = new mongoose.Schema({
     notes: {
         type: String,
     },
+    lastUpdated: {
+        type: String
+    },
 });
 
 module.exports = mongoose.model('Game', gameSchema);

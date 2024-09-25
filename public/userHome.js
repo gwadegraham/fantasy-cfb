@@ -187,7 +187,7 @@ function displayTeams(data) {
 
 async function getGame(season, week, team) {
 
-    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.school}`, {
+    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json'
@@ -241,7 +241,7 @@ async function getRankings (week, seasonType) {
 
 async function getTeamLogos (game) {
 
-    const teams = [game.awayTeam, game.homeTeam];
+    const teams = [game.awayId, game.homeId];
 
     const teamsJson = {
         teams: teams
@@ -260,8 +260,8 @@ async function getTeamLogos (game) {
     var response = await teamLogos.json();
 
     if (teamLogos.status == 200) {
-        var awayTeamLogo = response.find((element) => element.school == game.awayTeam);
-        var homeTeamLogo = response.find((element) => element.school == game.homeTeam);
+        var awayTeamLogo = response.find((element) => element.id == game.awayId);
+        var homeTeamLogo = response.find((element) => element.id == game.homeId);
 
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
@@ -337,7 +337,7 @@ async function displaySchedule(data) {
                 var awayImg = teamLogos.awayTeamLogo;
                 var homeImg = teamLogos.homeTeamLogo;
 
-                if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                     awayTeam= '<strong>' + game.awayTeam + '</strong>';
                     homeTeam = game.homeTeam;
 
@@ -361,40 +361,43 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                        if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.team == game.awayTeam;
+                                console.log("obj", obj);
+                                console.log("game.awayTeam", game.awayTeam);
+                                return obj.teamId == game.awayId;
                             });
     
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
                         }
-                        topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
-                        bottomData = (game.homePoints || '-');
+                        topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                        bottomData = (game.homePoints || '0');
                     } else if (game.homePoints > game.awayPoints) {
     
                         if(!isAway) {
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.team == game.homeTeam;
+                                return obj.teamId == game.homeId;
                             });
     
-                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            var teamObjectScore = (teamScoreObject[i].score || 0);
+                            scoreAdded = '<strong style="color: green;">+' + teamObjectScore + '<strong>';
                         }
     
-                        topData = (game.awayPoints || '-');
-                        bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
+                        topData = (game.awayPoints || '0');
+                        bottomData = (game.homePoints || '0')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     } else {
-                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                        if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.team == game.awayTeam;
+                                return obj.teamId == game.awayId;
                             });
     
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
                         }
-                        topData = (game.awayPoints || '-');
-                        bottomData = (game.homePoints || '-');
+                        topData = (game.awayPoints || '0');
+                        bottomData = (game.homePoints || '0');
                     }
                 } else {
     
@@ -450,7 +453,7 @@ async function displaySchedule(data) {
 
                     var shouldReplace = false;
     
-                    if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                    if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                         awayTeam= '<strong>' + game.awayTeam + '</strong>';
                         homeTeam = game.homeTeam;
     
@@ -462,11 +465,11 @@ async function displaySchedule(data) {
     
     
                     if( game.awayPoints > game.homePoints ) {
-                        if(game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
+                        if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                             shouldReplace = true;
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.team == game.awayTeam;
+                                return obj.teamId == game.awayId;
                             });
     
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
@@ -475,11 +478,11 @@ async function displaySchedule(data) {
                         bottomData = (game.homePoints || '-');
                     } else {
     
-                        if(game.homeTeam == data.seasons.at(-1).teams[iterNum].school) {
+                        if(game.homeId == data.seasons.at(-1).teams[iterNum].id) {
                             shouldReplace = true;
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
                             var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.team == game.homeTeam;
+                                return obj.teamId == game.homeId;
                             });
     
                             scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
