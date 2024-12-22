@@ -40,7 +40,7 @@ router.get('/:week/:seasonType', async (req, res) => {
 // Getting One By Year & Week & Season Type
 router.get('/:season/:week/:seasonType', async (req, res) => {
     try {
-        const ranking = await Ranking.findOne({season: req.params.season, week: req.params.week, seasonType: req.params.seasonType});
+        const ranking = await Ranking.findOne({season: req.params.season, week: req.params.week, seasonType: "regular"});
 
         if (JSON.stringify(ranking) == "null") {
             res.status(400).json({message: `No rankings found for season ${req.params.season} & week ${req.params.week} & seasonType ${req.params.seasonType}`});
@@ -87,7 +87,7 @@ router.post('/retrieveRankings', async (req, res) => {
 // Getting One By Week & Season Type & Poll
 router.get('/:week/:seasonType/poll/:pollName', async (req, res) => {
     try {
-        const ranking = await Ranking.find({ $and: [ {season: process.env.YEAR}, { seasonType: req.params.seasonType}, { week: req.params.week}, {polls: {$elemMatch: {"poll": req.params.pollName}}}]}, {"polls.ranks.$":1});
+        const ranking = await Ranking.find({ $and: [ {season: process.env.YEAR}, { seasonType: "regular"}, { week: req.params.week}, {polls: {$elemMatch: {"poll": req.params.pollName}}}]}, {"polls.ranks.$":1});
 
         if (JSON.stringify(ranking) === '[]') {
             res.status(400).json({message: `No rankings found for week ${req.params.week} & seasonType ${req.params.seasonType}`});

@@ -94,7 +94,7 @@ async function displayTeams(data) {
     });
 
     // console.log(temp)
-    var currentWeeksLength = 16;
+    var currentWeeksLength = 17;
 
     // data.sort((a, b) => a.cumulativeScoreV2 - b.cumulativeScoreV2);
 
