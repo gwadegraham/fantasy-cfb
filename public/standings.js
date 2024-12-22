@@ -150,7 +150,8 @@ async function biggestWinner(users) {
         return parseFloat(aScore.score) - parseFloat(bScore.score);
     });
 
-    var userName = sortedUsers[0].firstName;
+    var userName = sortedUsers[0].firstName + " " + sortedUsers[0].lastName.substring(-1,1) + ".";
+
     var userScore = sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score;
     var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
 
@@ -187,7 +188,7 @@ function biggestLoser(users) {
         return parseFloat(a.seasons[0].weeklyScore[weekIndex].score) - parseFloat(b.seasons[0].weeklyScore[weekIndex].score);
     });
 
-    var userName = sortedUsers[0].firstName;
+    var userName = sortedUsers[0].firstName + " " + sortedUsers[0].lastName.substring(-1,1) + ".";
     var userScore;
     if(sortedUsers[0].seasons[0].weeklyScore.length == 0) {
         userScore = 0;
@@ -551,9 +552,15 @@ async function displaySchedule(data) {
                             var homeTeamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
                                 return obj.teamId == game.homeId;
                             });
+
+                            var awayTeamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
+                                return obj.teamId == game.homeId;
+                            });
+
+                            var scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
     
-                            var awayScoreAdded = '<strong style="color: green;">+' + homeTeamScoreObject[0].score + '<strong>';
-                            var homeScoreAdded = '<strong style="color: green;">+' + homeTeamScoreObject[0].score + '<strong>';
+                            var awayScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
+                            var homeScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
