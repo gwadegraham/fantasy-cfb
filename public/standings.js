@@ -558,8 +558,9 @@ async function displaySchedule(data) {
                             });
 
                             var scoreDisplay = 0;
-                            if ((homeTeamScoreObject[0].score != null) || (awayTeamScoreObject[0].score != null)) {
-                                scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
+                            if ((homeTeamScoreObject.length > 0) || (awayTeamScoreObject.length > 0)) {
+                                var scoreObject = (homeTeamScoreObject || awayTeamScoreObject);
+                                scoreDisplay = scoreObject[0].score;
                             }
                             // var scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
 
