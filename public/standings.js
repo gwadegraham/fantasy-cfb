@@ -557,7 +557,13 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.homeId;
                             });
 
-                            var scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
+                            var scoreDisplay = 0;
+                            if ((homeTeamScoreObject[0].score != null) || (awayTeamScoreObject[0].score != null)) {
+                                scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
+                            }
+                            // var scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
+
+                            
     
                             var awayScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
                             var homeScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
