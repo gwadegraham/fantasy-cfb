@@ -16,7 +16,7 @@ export function setChartData(data) {
         var scoreData = [0];        
         var cumulativeScore = 0;
 
-        chartMax = (user.seasons[0].weeklyScore.length * 12);
+        chartMax = (user.seasons[0].weeklyScore.length * 17);
 
         user.seasons[0].weeklyScore.forEach( week => {
             cumulativeScore += week.score; 
