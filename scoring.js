@@ -210,6 +210,7 @@ module.exports= {
         
     },
 
+    //Scoring for Claunts League
     calculateScoreV1: async function (team, data, week) {
         var game = data;
         var score = 0;
@@ -218,37 +219,63 @@ module.exports= {
         var opts = {
             'week': week
         };
-    
-        // var response = await rankingsApi.getRankings(year, opts);
-        // var rankings = await response;
-        var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
-            method: 'GET',
-            headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-            }
-        });
-    
-        var rankings = await response.json();
 
+        var postseasonRankingType = "";
+        var postseasonWeek = 1;
+        var response;
+
+        if ((game.seasonType == "postseason")) {
+            postseasonRankingType = "regular";
+            postseasonWeek = 1;
+
+            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${postseasonWeek}/${postseasonRankingType}`, {
+                method: 'GET',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                }
+            });
+        } else {
+            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+                method: 'GET',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                }
+            });
+        }
     
-        var isSemiFinalist = isCFP(game);
+        var rankings = await response.json();        
     
-        if (isSemiFinalist) {
-            score += 7;
+        if (isQuarterFinalist(game)) {
+            score += 15;
+        } else if (isSemiFinalist(game)) {
+            score += 9;
+        } else if (isFinalist(game)) {
+            score += 10;
         } else if (game.homeId == team) {
+
+            var isBowlTeam = isBowlParticipant(game);
+            if (isBowlTeam) {
+                score += 4;
+            }
+
             if (game.homePoints > game.awayPoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isNationalChampion(game);
+                var isNationalChamp = isFinalist(game);
     
                 if (isNationalChamp) {
                     score += 10;
                 } else if (isBowlWinner) {
-                    score += 6;
-                } else if (isConfChampion) {
                     score += 5;
-                } else {
+                } else if (isConfChampion) {
+                    score += 6;
+                } 
+                // else if (isFirstRound(game)) {
+                //     score += 7;
+                // } 
+                else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.awayTeam, rankings);
     
@@ -258,20 +285,32 @@ module.exports= {
                         score = isConference(game) ? (score + 1) : score;
                     }
                 }  
+            } else if (isFirstRound(game)) {
+                score += 7;
             }
         } else if (game.awayId == team) {
+
+            var isBowlTeam = isBowlParticipant(game);
+            if (isBowlTeam) {
+                score += 4;
+            }
+
             if (game.awayPoints > game.homePoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isNationalChampion(game);
+                var isNationalChamp = isFinalist(game);
     
                 if (isNationalChamp) {
                     score += 10;
                 } else if (isBowlWinner) {
-                    score += 6;
-                } else if (isConfChampion) {
                     score += 5;
-                } else {
+                } else if (isConfChampion) {
+                    score += 6;
+                } 
+                // else if (isFirstRound(game)) {
+                //     score += 7;
+                // } 
+                else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.homeTeam, rankings);
     
@@ -281,39 +320,71 @@ module.exports= {
                         score = isConference(game) ? (score + 1) : score;
                     }
                 }
+            } else if (isFirstRound(game)) {
+                score += 7;
             }
         }
+
         return score;
     },
 
+    //Scoring for Graham League
     calculateScoreV2: async function (team, data, week) {
         var game = data;
         var score = 0;
-    
-        var year = process.env.YEAR;
-        var opts = {
-            'week': week
-        };
 
-        var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
-            method: 'GET',
-            headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-            }
-        });
+        var postseasonRankingType = "";
+        var postseasonWeek = 1;
+        var response;
+
+        if ((game.seasonType == "postseason")) {
+            postseasonRankingType = "regular";
+            postseasonWeek = 1;
+
+            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${postseasonWeek}/${postseasonRankingType}`, {
+                method: 'GET',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                }
+            });
+        } else {
+            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+                method: 'GET',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                }
+            });
+        }
+
+        // var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+        //     method: 'GET',
+        //     headers: {
+        //     'Accept': 'application/json',
+        //     'Content-Type': 'application/json'
+        //     }
+        // });
     
         var rankings = await response.json();
     
-        var isSemiFinalist = isCFP(game);
-    
-        if (isSemiFinalist) {
-            score += 7;
+        // var isSemiFinalist = isSemiFinalist(game);
+        
+        if (isFirstRound(game)) {
+            score += 6;
+        } else if (isQuarterFinalist(game)) {
+            if (isTop4Seed(game, team)) {
+                score += 6;
+            }
+
+            score += 6;
+        } else if (isSemiFinalist(game)) {
+            score += 6;
         } else if (game.homeId == team) {
             if (game.homePoints > game.awayPoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isNationalChampion(game);
+                var isNationalChamp = isFinalist(game);
     
                 if (isNationalChamp) {
                     score += 10;
@@ -332,7 +403,7 @@ module.exports= {
             if (game.awayPoints > game.homePoints) {
                 var isConfChampion = isConferenceChampion(game);
                 var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isNationalChampion(game);
+                var isNationalChamp = isFinalist(game);
     
                 if (isNationalChamp) {
                     score += 10;
@@ -504,7 +575,7 @@ function isConferenceChampion(game) {
 
 function isBowlWin(game) {
     if (game.notes) {
-        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("cfp") && (game.seasonType == "postseason")) {
+        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("playoff") && (game.seasonType == "postseason")) {
             return true;
         } else {
             return false;
@@ -515,9 +586,21 @@ function isBowlWin(game) {
     }
 }
 
-function isCFP(game) {
+function isBowlParticipant(game) {
     if (game.notes) {
-        if (game.notes.toLowerCase().includes("cfp semifinal") && (game.seasonType == "postseason")) {
+        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("playoff") && (game.seasonType == "postseason")) {
+            return true;
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+}
+
+function isFirstRound(game) {
+    if (game.notes) {
+        if (game.notes.toLowerCase().includes("first round") && (game.seasonType == "postseason")) {
             return true;
         } else {
             return false;
@@ -528,9 +611,48 @@ function isCFP(game) {
     }
 }
 
-function isNationalChampion(game) {
+function isTop4Seed(game, teamId) {
     if (game.notes) {
-        if (game.notes.toLowerCase().includes("cfp national championship") && (game.seasonType == "postseason")) {
+        if (game.notes.toLowerCase().includes("quarterfinal") && (game.seasonType == "postseason") && (game.homeId == teamId)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+     else {
+        return false;
+    }
+}
+
+function isQuarterFinalist(game) {
+    if (game.notes) {
+        if (game.notes.toLowerCase().includes("quarterfinal") && (game.seasonType == "postseason")) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+     else {
+        return false;
+    }
+}
+
+function isSemiFinalist(game) {
+    if (game.notes) {
+        if (game.notes.toLowerCase().includes("semifinal") && (game.seasonType == "postseason")) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+     else {
+        return false;
+    }
+}
+
+function isFinalist(game) {
+    if (game.notes) {
+        if (game.notes.toLowerCase().includes("national championship") && (game.seasonType == "postseason")) {
             return true;
         } else {
             return false;
