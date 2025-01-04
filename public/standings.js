@@ -178,6 +178,7 @@ async function biggestWinner(users) {
 
 function biggestLoser(users) {
     var tableContent = '';
+    var loserUsers = [];
     var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(a, b) {
         var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
@@ -188,18 +189,41 @@ function biggestLoser(users) {
         return parseFloat(a.seasons[0].weeklyScore[weekIndex].score) - parseFloat(b.seasons[0].weeklyScore[weekIndex].score);
     });
 
-    var userName = sortedUsers[0].firstName + " " + sortedUsers[0].lastName.substring(-1,1) + ".";
-    var userScore;
-    if(sortedUsers[0].seasons[0].weeklyScore.length == 0) {
-        userScore = 0;
-    } else {
-        userScore = sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score;
+    loserUsers.push({
+        firstName: sortedUsers[0].firstName,
+        lastName: sortedUsers[0].lastName,
+        score: sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score
+    });
+
+    for (var x = 1; x < sortedUsers.length; x++) {
+        if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1].score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1].score) {
+            loserUsers.push({
+                firstName: sortedUsers[x].firstName,
+                lastName: sortedUsers[x].lastName,
+                score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1].score
+            });
+        }
     }
 
+    var userName = '';
     var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
 
     if ((week == "Week 1") && (sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
+    }
+
+    var userContent = '';
+    var isMultipleLosers = 'Loser';
+    if (loserUsers.length > 1) {
+        isMultipleLosers = 'Losers';
+        
+        loserUsers.forEach((user) => {
+            userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";
+            userContent += `<td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${user.score}</p></td>`
+        })
+    } else {
+        userName = loserUsers[0].firstName + " " + loserUsers[0].lastName.substring(-1,1) + ".";
+        userContent += `<td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${loserUsers[0].score}</p></td>`
     }
 
     tableContent = `
@@ -207,10 +231,10 @@ function biggestLoser(users) {
         <table class="schedule-table game-table">
             <tbody>
                 <tr>
-                    <td style="width: 300px;"><strong>Biggest Loser in ${week}</strong></td>
+                    <td style="width: 300px;"><strong>Biggest ${isMultipleLosers} in ${week}</strong></td>
                 </tr>
                 <tr>
-                    <td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${userScore}</p></td>
+                    ${userContent}
                 </tr>
             </tbody>
         </table>

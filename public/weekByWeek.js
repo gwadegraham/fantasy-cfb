@@ -24,7 +24,7 @@ export function setChartData(data) {
         });
 
         var userData = {
-            label: user.firstName,
+            label: user.firstName + " " + user.lastName.substring(-1,1),
             data: scoreData,
             fill: false,
             backgroundColor: user.color,
