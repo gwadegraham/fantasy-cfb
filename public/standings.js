@@ -578,20 +578,17 @@ async function displaySchedule(data) {
                             });
 
                             var awayTeamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.homeId;
+                                return obj.teamId == game.awayId;
                             });
 
                             var scoreDisplay = 0;
                             if ((homeTeamScoreObject.length > 0) || (awayTeamScoreObject.length > 0)) {
-                                var scoreObject = (homeTeamScoreObject || awayTeamScoreObject);
+                                var scoreObject = ( homeTeamScoreObject.length > 0 ) ? homeTeamScoreObject : awayTeamScoreObject;
                                 scoreDisplay = scoreObject[0].score;
                             }
-                            // var scoreDisplay = (homeTeamScoreObject[0].score || awayTeamScoreObject[0].score);
-
-                            
     
-                            var awayScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
-                            var homeScoreAdded = '<strong style="color: green;">+' + scoreDisplay + '<strong>';
+                            var awayScoreAdded = '<strong style="color: goldenrod;">+' + scoreDisplay + '<strong>';
+                            var homeScoreAdded = '<strong style="color: goldenrod;">+' + scoreDisplay + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
@@ -794,7 +791,7 @@ async function displaySchedule(data) {
                             awayTeam: game.awayTeam
                         };
 
-                        if (shouldReplace) {
+                        if (shouldReplace && isHeadToHead) {
                             var indexToReplace = gameTables.findIndex(x => x.id == game.id);
                             gameTables.splice(indexToReplace, 1);
                             gameTables.push(gameInfo);
