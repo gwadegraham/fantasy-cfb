@@ -25,12 +25,12 @@ let transporter = nodemailer.createTransport({
   }
 });
 
-var emailMessage = "<h2>" + dayText + "</h2><br><p>Today's Date is: " + todayDate.toLocaleString() + "</p>";
+var emailMessage = "<h3>" + dayText + "</h3><br><p>Today's Date is: " + todayDate.toLocaleString() + "</p>";
 
 let mailOptions = {
   from: 'gwadegraham@gmail.com',
   to: 'garrett_graham@icloud.com',
-  subject: 'Campus Clash | Every 10 Min Test Job',
+  subject: 'Campus Clash | Daily Test Job',
   html: emailMessage
 };
 
