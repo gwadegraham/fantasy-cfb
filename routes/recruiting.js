@@ -39,4 +39,5 @@ router.get('/:year/:team', async (req, res) => {
     }
 });
 
+//TODO: Add route to retrieve all rankings for a given year
 module.exports = router;
