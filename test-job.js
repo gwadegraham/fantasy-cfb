@@ -30,7 +30,7 @@ let transporter = nodemailer.createTransport({
   }
 });
 
-var emailMessage = "<h3>" + dayText + "</h3><br><p>Today's First Date is: " + todayDate.toLocaleString() + "</p><br><p>Today's Converted Date is: " + convertDate + "</p>";
+var emailMessage = "<h3>" + dayText + "</h3><br><p>Today's First Date is: " + todayDate.toLocaleString() + "</p><br><p>Today's Converted Date is: " + convertDate.toLocaleString() + "</p>";
 
 let mailOptions = {
   from: 'gwadegraham@gmail.com',
