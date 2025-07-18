@@ -3,16 +3,21 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const todayDate = new Date();
+var convertDate = new Date();
+convertDate.setHours(convertDate.getHours() - 5);
+
 var dayText = "";
 
 if (todayDate.getDay() == 0) {
     dayText = "Today is Sunday, so games & scores are being updated.";
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString())
+    console.log("Convert Date", convertDate.toLocaleString())
 } else {
     dayText = "Today is not Sunday, so games & scores are NOT being updated.";
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString())
+    console.log("Convert Date", convertDate.toLocaleString())
 }
 
 let nodemailer = require('nodemailer');
@@ -25,7 +30,7 @@ let transporter = nodemailer.createTransport({
   }
 });
 
-var emailMessage = "<h3>" + dayText + "</h3><br><p>Today's First Date is: " + todayDate.toLocaleString() + "</p><br><p>Today's Second Date is: " + todayDate + "</p>";
+var emailMessage = "<h3>" + dayText + "</h3><br><p>Today's First Date is: " + todayDate.toLocaleString() + "</p><br><p>Today's Converted Date is: " + convertDate + "</p>";
 
 let mailOptions = {
   from: 'gwadegraham@gmail.com',
