@@ -39,9 +39,9 @@ if (todayDate.getDay() == 0) {
         console.log('Email sent: ' + info.response);
       }
     });
-  } else {
-      dayText = "Today is not Sunday, so games & scores are NOT being updated.";
-      console.log(dayText);
-      console.log("Current Date", todayDate.toLocaleString());
   }
+} else {
+    dayText = "Today is not Sunday, so games & scores are NOT being updated.";
+    console.log(dayText);
+    console.log("Current Date", todayDate.toLocaleString());
 }
