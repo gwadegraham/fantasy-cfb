@@ -265,9 +265,21 @@ async function displayTeams(data) {
 
         str += '<td>' + conference + '</td>';
 
-        var teamRecruiting = recruitingRankings.filter(obj => {
-            return obj.team == team.school
-        })[0];
+        var teamRecruiting;
+
+        if (recruitingRankings.length > 0) {
+            teamRecruiting = recruitingRankings.filter(obj => {
+                return (obj.team == team.school || obj.team == team.alt_name1 || obj.team == team.alt_name2 || obj.team == team.alt_name3)
+            })[0];
+        } else {
+            teamRecruiting = {
+                rank: "-"
+            }
+        }
+
+        if (teamRecruiting == null) {
+            console.log("team", team)
+        }
 
         str += '<td>' + teamRecruiting.rank + '</td>';
 

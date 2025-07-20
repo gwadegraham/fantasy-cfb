@@ -5,6 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="admin.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
     <script defer src="admin.js"></script>
@@ -110,10 +111,22 @@
             </div>
             <div class="rankings-container" rankings-container style="display: none">
                 <form id="rankings-form">
-                    <input type="number" season placeholder="Season">
-                    <input type="text" season-type placeholder="Season Type">
-                    <input type="number" week placeholder="Week">
-                    <button type="submit">Retrieve Rankings</button>
+                    <div><select season-options></select></div>
+                    <div><select season-type-options></select></div>
+                    <div><select week-options></select></div>
+                    <div><button type="submit">Retrieve Rankings</button></div>
+                </form>
+            </div>
+            <div class="button-container">
+                <button onclick="displayRecruitRankingsContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Recruiting Rankings
+                </button>
+            </div>
+            <div class="sub-container" recruit-rankings-container style="display: none">
+                <form id="recruit-rankings-form">
+                    <div><select recruiting-season season-options></select></div>
+                    <div><button type="submit">Retrieve Recruiting Rankings</button></div>
                 </form>
             </div>
             <div class="retrieve-games-container">
@@ -124,9 +137,9 @@
             </div>
             <div class="games-container" games-container style="display: none">
                 <form id="games-form">
-                    <input type="number" game-week placeholder="Week">
-                    <input type="text" game-season-type placeholder="Season Type">
-                    <button type="submit">Retrieve Games</button>
+                    <div><select game-week week-options></select></div>
+                    <div><select game-season-type season-type-options></select></div>
+                    <div><button type="submit">Retrieve Games</button></div>
                 </form>
             </div>
             <div class="update-scores-container">
@@ -137,9 +150,9 @@
             </div>
             <div class="scores-container" scores-container style="display: none">
                 <form id="scores-form">
-                    <input type="text" score-season-type placeholder="Season Type">
-                    <input type="number" score-week placeholder="Week">
-                    <button type="submit">Update Scores</button>
+                    <div><select score-week week-options></select></div>
+                    <div><select score-season-type season-type-options></select></div>
+                    <div><button type="submit">Update Scores</button></div>
                 </form>
             </div>
         </div>
@@ -149,5 +162,3 @@
     </footer>
 </body>
 </html>
-<!-- //TODO: Add button to retrieve and save rankings -->
-<!-- //TODO: Configure dropdowns for relevant fields on the page -->
