@@ -117,6 +117,18 @@
                     <div><button type="submit">Retrieve Rankings</button></div>
                 </form>
             </div>
+            <div class="button-container">
+                <button onclick="displayRecruitRankingsContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Recruiting Rankings
+                </button>
+            </div>
+            <div class="sub-container" recruit-rankings-container style="display: none">
+                <form id="recruit-rankings-form">
+                    <div><select recruiting-season season-options></select></div>
+                    <div><button type="submit">Retrieve Recruiting Rankings</button></div>
+                </form>
+            </div>
             <div class="retrieve-games-container">
                 <button onclick="displayGamesContainer()">
                     <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
@@ -150,4 +162,3 @@
     </footer>
 </body>
 </html>
-<!-- //TODO: Add button to retrieve and save rankings -->

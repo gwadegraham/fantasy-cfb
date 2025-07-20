@@ -525,6 +525,56 @@ if (rankingsForm) {
     });
 }
 
+const recruitRankingsForm = document.getElementById('recruit-rankings-form');
+
+if (recruitRankingsForm) {
+    recruitRankingsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[recruiting-season]').value;
+
+        var response = await fetch(`/recruiting/${season}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var recruitingRankings = await response;
+
+        if (recruitingRankings.status == 200) {
+            successToast.options.text = `Recruiting Rankings already in system for Season: ${season}`;
+            successToast.showToast();
+        } else {
+            const response = await fetch(`/recruiting/new/${season}`, {
+                method: 'POST',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                },
+                body: `{
+                "season": "${season}"
+                }`,
+            });
+
+            response.json().then(data => {
+                if (response.status == 201) {
+                    console.log("New Recruiting Rankings", data);
+                    successToast.options.text = `New recruiting rankings retrieved for Season: ${season}`;
+                    successToast.showToast();
+                    unblock_screen();
+                } else {
+                    failToast.options.text = response.status + " Recruiting Rankings could not be retrieved";
+                    failToast.showToast();
+                }
+            });
+        }
+    });
+}
+
 const gamesForm = document.getElementById('games-form');
 
 if (gamesForm) {
@@ -642,6 +692,16 @@ function displayRankingsContainer() {
         rankingsContainer.style.display = 'none';
     } else {
         rankingsContainer.style.display = 'block';
+    }
+}
+
+function displayRecruitRankingsContainer() {
+    var recruitRankingsContainer = document.querySelector('[recruit-rankings-container]');
+
+    if (recruitRankingsContainer.style.display == 'block' || recruitRankingsContainer.style.display=='') {
+        recruitRankingsContainer.style.display = 'none';
+    } else {
+        recruitRankingsContainer.style.display = 'block';
     }
 }
 
