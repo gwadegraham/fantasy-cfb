@@ -82,38 +82,90 @@ router.patch('/:id', getTeam, async (req, res) => {
     }
 });
 
-// //Creating One
-// router.post('/', async (req, res) => {
+//Refreshing All
+router.post('/refresh', async (req, res) => {
+    try {
+        const response = await fetch(`https://api.collegefootballdata.com/teams/fbs?year=${req.body.year}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Authorization': process.env.CFBD_API_KEY
+            }
+        });
 
-//     console.log("teams", req.body.teams);
-//     const user = new User({
-//         firstName: req.body.firstName,
-//         lastName: req.body.lastName,
-//         teams: req.body.teams
-//     });
+        var allTeams = await response.json();
 
-//     try {
-//         const newUser = await user.save();
-//         res.status(201).json(newUser);
-//     } catch (err) {
-//         res.status(400).json({message: err.message});
-//     }
-// });
+        var refreshedTeams = [];
+        var newTeams = [];
+        for (const team of allTeams) {
+            var existingTeam = await Team.findOne({id: team.id});
 
-// //Updating One
-// router.patch('/:id', (req, res) => {
+            if (existingTeam != null) {
+               
+                existingTeam.school = team.school;
+                existingTeam.mascot = team.mascot;
+                existingTeam.abbreviation = team.abbreviation;
+                existingTeam.alternateNames = team.alternateNames;
+                existingTeam.color = team.color;
+                existingTeam.alt_color = team.alt_color;
+                existingTeam.logos = team.logos;
+                existingTeam.twitter = team.twitter;
+                existingTeam.location = team.location;
 
-// });
+                var seasonIndex = existingTeam.seasons.findIndex(x => x.season == req.body.year);
+                if (seasonIndex >= 0) {
+                    existingTeam.seasons[seasonIndex].conference = team.conference;
+                } else {
+                    var newSeasonObject = {
+                        season: req.body.year,
+                        conference: team.conference
+                    };
 
-//Deleting One
-// router.delete('/:id', (req, res) => {
+                    existingTeam.seasons.push(newSeasonObject);
+                }
 
-// });
+                var filter = {id: existingTeam.id};
+                try {
+                    var updatedTeam = await Team.findOneAndUpdate(filter, existingTeam, {new: true});
+                    refreshedTeams.push(updatedTeam);
+                } catch (err) {
+                    console.log("Error updating team with id:", existingTeam.id);
+                    console.log("Update error:", err.message);
+                } 
+
+            } else {
+                var newSeasonObject = {
+                    season: req.body.year,
+                    conference: team.conference
+                };
+                team.seasons = [];
+                team.seasons.push(newSeasonObject);
+                newTeams.push(team)
+            }
+        }
+
+        try {
+            console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams");
+            const newCreatedTeams = await Team.insertMany(newTeams);
+
+            var returnedTeams = {
+                newTeams: newCreatedTeams,
+                refreshedTeams: refreshedTeams
+            };
+
+            return res.status(201).json(returnedTeams);
+        } catch (err) {
+            console.log("Error refreshing teams: " + err.message);
+            res.status(400).json({message: err.message});
+        }
+    } catch (err) {
+        res.status(400).json({message: err.message});
+    }
+});
 
 async function getTeam(req, res, next) {
     let team;
     try {
-        // team = await Team.findById(req.params.id);
         team = await Team.findOne({id: req.params.id});
         if (team == null) {
             return res.status(404).json({message: 'Cannot find team'});

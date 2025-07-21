@@ -2,8 +2,10 @@ const mongoose = require('mongoose');
 
 const locationSchema = new mongoose.Schema({
     venue_id: {
-        type: Number,
-        required: true
+        type: Number
+    },
+    id: {
+        type: Number
     },
     name: {
         type: String,
@@ -117,6 +119,9 @@ const teamSchema = new mongoose.Schema({
     },
     alt_name3: {
         type: String
+    },
+    alternateNames: {
+        type: [String]
     },
     conference: {
         type: String,
