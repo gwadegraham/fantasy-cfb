@@ -20,7 +20,7 @@ window.onload = async function() {
     detectMobile();
     await getUserProfile();
     await getTeams();
-    setRecruitingHeader();
+    setDynamicYearHeaders();
 };
 
 $('#myModal').on('shown.bs.modal', function () {
@@ -195,8 +195,9 @@ function setTeamOptions(data) {
     _multiplyNode(document.querySelector('.draft-team-container'), 1, true);
 }
 
-function setRecruitingHeader() {
+function setDynamicYearHeaders() {
     document.querySelector('[recruiting-ranking]').innerHTML = `${new Date().getFullYear()} Recruiting`;
+    document.querySelector('[expected-wins]').innerHTML = `${new Date().getFullYear()} xWins`;
 }
 
 async function getRecruitingRankings() {
@@ -250,8 +251,8 @@ async function displayTeams(data) {
 
         if (team.seasons.length > 0) {
             conference = team.seasons.at(-1).conference;
-            cumulScoreV1 = team.seasons[0].cumulativeScoreV1;
-            cumulScoreV2 = team.seasons[0].cumulativeScoreV2;
+            cumulScoreV1 = team.seasons[0].cumulativeScoreV1 || "-";
+            cumulScoreV2 = team.seasons[0].cumulativeScoreV2 || "-";
             expectedWins = (team.seasons.at(-1).expectedWins || 0);
         }
 
@@ -269,7 +270,7 @@ async function displayTeams(data) {
 
         if (recruitingRankings.length > 0) {
             teamRecruiting = recruitingRankings.filter(obj => {
-                return (obj.team == team.school || obj.team == team.alt_name1 || obj.team == team.alt_name2 || obj.team == team.alt_name3)
+                return (obj.team == team.school || team.alternateNames.includes(obj.team))
             })[0];
         } else {
             teamRecruiting = {

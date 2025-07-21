@@ -575,6 +575,41 @@ if (recruitRankingsForm) {
     });
 }
 
+const refreshTeamsForm = document.getElementById('refresh-teams-form');
+
+if (refreshTeamsForm) {
+    refreshTeamsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[refresh-season]').value;
+
+        const response = await fetch(`/teams/refresh`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "year": "${season}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("Refreshed Teams", data);
+                successToast.options.text = `Teams refreshed for Season: ${season}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " Teams could not be refreshed";
+                failToast.showToast();
+            }
+        });
+    });
+}
+
 const gamesForm = document.getElementById('games-form');
 
 if (gamesForm) {
@@ -702,6 +737,16 @@ function displayRecruitRankingsContainer() {
         recruitRankingsContainer.style.display = 'none';
     } else {
         recruitRankingsContainer.style.display = 'block';
+    }
+}
+
+function displayRefreshTeamsContainer() {
+    var refreshTeamsContainer = document.querySelector('[refresh-teams-container]');
+
+    if (refreshTeamsContainer.style.display == 'block' || refreshTeamsContainer.style.display=='') {
+        refreshTeamsContainer.style.display = 'none';
+    } else {
+        refreshTeamsContainer.style.display = 'block';
     }
 }
 

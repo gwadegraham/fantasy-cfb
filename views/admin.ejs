@@ -155,6 +155,18 @@
                     <div><button type="submit">Update Scores</button></div>
                 </form>
             </div>
+            <div class="button-container">
+                <button onclick="displayRefreshTeamsContainer()">
+                    <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
+                    Refresh Teams
+                </button>
+            </div>
+            <div class="sub-container" refresh-teams-container style="display: none">
+                <form id="refresh-teams-form">
+                    <div><select refresh-season season-options></select></div>
+                    <div><button type="submit">Refresh Teams</button></div>
+                </form>
+            </div>
         </div>
     </div>
     <footer>
