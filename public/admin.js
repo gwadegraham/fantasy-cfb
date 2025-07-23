@@ -358,10 +358,11 @@ if (calculateForm) {
     calculateForm.addEventListener('submit', async function(event) {
         event.preventDefault();
     
-        const team = document.querySelector('[calculate-team-options]').value;
+        const teamId = document.querySelector('[calculate-team-options]').value;
+        const season = document.querySelector('[team-score-season]').value;
         var teamName = "";
 
-        var teamPromise = await fetch(`/teams/${team}`, {
+        var teamPromise = await fetch(`/teams/${teamId}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -377,46 +378,7 @@ if (calculateForm) {
             console.log(response.message);
         }        
 
-        // await fetch(`/calculate-team-score/${team}/${teamName}`, {
-        //     method: 'GET',
-        //     headers: {
-        //     'Accept': 'application/json'
-        //     }
-        // }).then(res => res.json()).then(data => {
-        //     console.log("calculation successful.  response = " + res.status)
-        // });
-
-        // await fetch('/teams', {
-        //     method: 'GET',
-        //     headers: {
-        //         'Content-Type': 'application/json',
-        //         'Accept': 'application/json'
-        //     }
-        // }).then(res => res.json()).then(data => {
-        //     console.log("Number of teams: " + data.length)
-        //     data.forEach(async (team) => {
-        //         console.log(team.id + " | " + team.school);
-        //         var response = await fetch(`/calculate-team-score/${team.id}/${team.school}`, {
-        //             method: 'GET',
-        //             headers: {
-        //             'Accept': 'application/json'
-        //             }
-        //         });
-
-        //         response.json().then(data => {
-        //             if (response.status == 200) {
-        //                 console.log(data);
-        //                 successToast.options.text = "Score successfully calculated for " + data.school;
-        //                 successToast.showToast();
-        //             } else {
-        //                 failToast.options.text = response.status + " Team score could not be calculated";
-        //                 failToast.showToast();
-        //             }
-        //         });
-        //     })
-        // });
-
-        var response = await fetch(`/calculate-team-score/${team}/${teamName}`, {
+        var response = await fetch(`/calculate-team-score/${season}/${teamId}/${teamName}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -437,10 +399,11 @@ if (calculateForm) {
 }
 
 const calculateAllForm = document.getElementById('all-score-form')
-
 if (calculateAllForm) {
     calculateAllForm.addEventListener('submit', async function(event) {
         event.preventDefault();
+
+        const season = document.querySelector('[team-score-season]').value;
 
         await fetch('/teams', {
             method: 'GET',
@@ -451,8 +414,7 @@ if (calculateAllForm) {
         }).then(res => res.json()).then(data => {
             console.log("Number of teams: " + data.length)
             data.forEach(async (team) => {
-                console.log(team.id + " | " + team.school);
-                var response = await fetch(`/calculate-team-score/${team.id}/${team.school}`, {
+                var response = await fetch(`/calculate-team-score/${season}/${team.id}/${team.school}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'
