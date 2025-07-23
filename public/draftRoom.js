@@ -258,7 +258,7 @@ async function displayTeams(data) {
             conference = team.seasons.at(-1).conference;
             cumulScoreV1 = season != null ? season.cumulativeScoreV1 : "-";
             cumulScoreV2 = season != null ? season.cumulativeScoreV2 : "-";
-            expectedWins = (team.seasons.at(-1).expectedWins || 0);
+            expectedWins = (team.seasons.find((season) => season.season == (new Date().getFullYear())).expectedWins || 0);
         }
 
         str += '<tr><td style="text-align: left;">';
