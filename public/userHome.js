@@ -357,16 +357,6 @@ async function displaySchedule(data) {
     
                 if (game.completed) {
     
-                    // if (game.awayTeam == data.seasons.at(-1).teams[iterNum].school) {
-                    //     awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                    //     homeTeam = game.homeTeam;
-    
-                    //     isAway = true;
-                    // } else {
-                    //     awayTeam = game.awayTeam;
-                    //     homeTeam = '<strong>' + game.homeTeam + '</strong>';
-                    // }
-    
                     if( game.awayPoints > game.homePoints ) {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                             var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
@@ -413,18 +403,11 @@ async function displaySchedule(data) {
                     }
                 } else {
     
-                    // var militaryTime = parseInt(game.startDate.substring(11,14));
                     var centralDate = new Date(game.startDate);
                     var militaryTime = centralDate.toString().substring(16,21);
                     var time = militaryTime.split(':');
                     var hours = parseInt(time[0]);
                     var minutes = time[1];
-
-                    // if (militaryTime == 0) {
-                    //     militaryTime = (24-5);
-                    // } else {
-                    //     militaryTime = (militaryTime - 5);
-                    // }
                     var standardTime = '';
     
                     if (hours < 12) {
@@ -437,7 +420,6 @@ async function displaySchedule(data) {
                         standardTime =( hours - 12).toString() + ":" + minutes + "PM";
                     }
     
-                    // topData = game.startDate.substring(5,10);
                     topData = centralDate.toString().substring(4,10);
                     bottomData = standardTime;
                 }
@@ -532,18 +514,11 @@ async function displaySchedule(data) {
                             bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                         }
                     } else {
-                        // var militaryTime = parseInt(game.startDate.substring(11,14));
                         var centralDate = new Date(game.startDate);
                         var militaryTime = centralDate.toString().substring(16,21);
                         var time = militaryTime.split(':');
                         var hours = parseInt(time[0]);
                         var minutes = time[1];
-
-                        // if (militaryTime == 0) {
-                        //     militaryTime = (24-5);
-                        // } else {
-                        //     militaryTime = (militaryTime - 5);
-                        // }
                         var standardTime = '';
         
                         if (hours < 12) {
@@ -556,7 +531,6 @@ async function displaySchedule(data) {
                             standardTime =( hours - 12).toString() + ":" + minutes + "PM";
                         }
         
-                        // topData = game.startDate.substring(5,10);
                         topData = centralDate.toString().substring(4,10);
                         bottomData = standardTime;
                     }
