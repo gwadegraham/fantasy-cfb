@@ -111,7 +111,7 @@ let mailOptions = {
   html: emailMessage
 };
 
-if (todayDate.getDay() == 1) {
+if (todayDate.getDay() == 0) {
   if ((todayDate.getHours() == 3) || (todayDate.getHours() == 6)) {
     dayText = "Today is Sunday, so games & scores are being updated during the 3AM & 6AM windows.";
     console.log(dayText);

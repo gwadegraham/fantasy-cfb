@@ -79,7 +79,6 @@ router.get('/:id/season', async (req, res) => {
 //Creating One
 router.post('/', async (req, res) => {
 
-    //console.log("teams", req.body.teams);
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
@@ -90,8 +89,6 @@ router.post('/', async (req, res) => {
 
     try {
         const newUser = await user.save();
-        //scoring.getScores([newUser]);
-
         res.status(201).json(newUser);
     } catch (err) {
         res.status(400).json({message: err.message});
@@ -160,7 +157,6 @@ router.delete('/:id', getUser, async (req, res) => {
 async function getUser(req, res, next) {
     let user;
     try {
-        // user = await User.findById(req.params.id);
         user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": 2024}},
                     {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": 2024}}}});
         if (user == null) {
@@ -176,7 +172,6 @@ async function getUser(req, res, next) {
 async function getUserNewSeason(req, res, next) {
     let user;
     try {
-        // user = await User.findById(req.params.id);
         user = await User.findOne({_id: req.params.id},
                     {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": 1});
         if (user == null) {

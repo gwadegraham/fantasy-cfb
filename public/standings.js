@@ -185,8 +185,6 @@ function biggestLoser(users) {
         var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
 
         return parseFloat(aScore.score) - parseFloat(bScore.score);
-
-        return parseFloat(a.seasons[0].weeklyScore[weekIndex].score) - parseFloat(b.seasons[0].weeklyScore[weekIndex].score);
     });
 
     loserUsers.push({
@@ -369,7 +367,6 @@ async function getRankings (week, seasonType) {
         console.log(rankings.message);
     }
 
-    // console.log(rankingsArray)
     return rankingsArray;
 }
 
@@ -432,13 +429,10 @@ async function displaySchedule(data) {
         usersAndTeams.push(userTeamObject);
     }
 
-    // console.log("usersAndTeams", usersAndTeams);
-
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
     var gameIds = [];
     var gameTables = [];
-    var headToHeadGames = [];
 
     var week = window.localStorage.getItem("weekCode").substring(5);
     var gameWeek;
@@ -456,19 +450,13 @@ async function displaySchedule(data) {
         rankingsInfo = await getRankings(week, seasonType);
     }
 
-    // var rankingsInfo = await getRankings(week, seasonType);
-
     for (var iterUsers = 0; iterUsers < data.length; iterUsers++) {
 
         var userData = data[iterUsers];
-        // console.log("User Name", userData.firstName);
 
         for (var iterNum = 0; iterNum < userData.seasons.at(-1).teams.length; iterNum++) {
 
-            var teamName = userData.seasons.at(-1).teams[iterNum].school;
             var otherUsers = usersAndTeams.toSpliced(iterUsers, 1);
-            // console.log("teamName", teamName);
-            // console.log("otherUsers", otherUsers);
 
             var gamesInfo = await getGame(seasonType, week, userData.seasons.at(-1).teams[iterNum]);
 
@@ -527,8 +515,6 @@ async function displaySchedule(data) {
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
 
-                    
-
                     if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
                         var existObject = exists(otherUsers, game.homeId);
                         var doesExist = existObject.doesExist;
@@ -542,9 +528,6 @@ async function displaySchedule(data) {
                         isAway = true;
 
                         if (doesExist) {
-                            // console.log("awayTeam", awayTeam);
-                            // console.log("homeTeam", homeTeam);
-                            // console.log("awayUser", awayUser);
                             isHeadToHead = true;
                         }
 
@@ -560,9 +543,6 @@ async function displaySchedule(data) {
                         homeTeam = game.homeTeam;
 
                         if (doesExist) {
-                            // console.log("awayTeam", awayTeam);
-                            // console.log("homeTeam", homeTeam);
-                            // console.log("awayUser", awayUser);
                             isHeadToHead = true;
                         }
                     }
@@ -636,18 +616,11 @@ async function displaySchedule(data) {
                         }
                     } else {
         
-                        // var militaryTime = parseInt(game.startDate.substring(11,14));
                         var centralDate = new Date(game.startDate);
                         var militaryTime = centralDate.toString().substring(16,21);
                         var time = militaryTime.split(':');
                         var hours = parseInt(time[0]);
                         var minutes = time[1];
-
-                        // if (militaryTime == 0) {
-                        //     militaryTime = (24-5);
-                        // } else {
-                        //     militaryTime = (militaryTime - 5);
-                        // }
                         var standardTime = '';
         
                         if (hours < 12) {
@@ -660,7 +633,6 @@ async function displaySchedule(data) {
                             standardTime =( hours - 12).toString() + ":" + minutes + "PM";
                         }
         
-                        // topData = game.startDate.substring(5,10);
                         topData = centralDate.toString().substring(4,10);
                         bottomData = standardTime;
                     }
@@ -681,7 +653,6 @@ async function displaySchedule(data) {
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
                     teamTable += '<tr></tr><tbody></table></td>';
 
-        
                     var gameInfo = {
                         id: game.id,
                         table: teamTable,
@@ -710,9 +681,6 @@ async function displaySchedule(data) {
                             isAway = true;
 
                             if (doesExist) {
-                                // console.log("awayTeam", awayTeam);
-                                // console.log("homeTeam", homeTeam);
-                                // console.log("awayUser", awayUser);
                                 isHeadToHead = true;
                             }
                         } else {
@@ -727,13 +695,9 @@ async function displaySchedule(data) {
                             homeTeam = game.homeTeam;
 
                             if (doesExist) {
-                                // console.log("awayTeam", awayTeam);
-                                // console.log("homeTeam", homeTeam);
-                                // console.log("awayUser", awayUser);
                                 isHeadToHead = true;
                             }
                         }
-        
         
                         if (game.completed) {
                             if( game.awayPoints > game.homePoints ) {
@@ -765,7 +729,6 @@ async function displaySchedule(data) {
                             }
                         }
                         
-
                         var teamLogos = await getTeamLogos(game);
                         var awayImg = teamLogos.awayTeamLogo;
                         var homeImg = teamLogos.homeTeamLogo;
@@ -837,7 +800,6 @@ $(".dropdown-menu-week a").click(function(){
     var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
-
     document.querySelector('.loading-container').style.display = "block";
     document.querySelector('.schedule-table').style.display = "none";
     displaySchedule(usersData);

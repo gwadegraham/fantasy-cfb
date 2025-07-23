@@ -104,12 +104,10 @@ async function updateScores () {
         var teams = await retrieveGamesModule.retrieveTeams();
         console.log("number of returned teams", teams.length);
 
-        // var games = await retrieveGamesModule.retrieveGames(teams, weekNumber);
         var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
         console.log("number of returned new games", games.newGames.length);
         console.log("number of returned existing games", games.existingGames.length);
         
-        // await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();
     }

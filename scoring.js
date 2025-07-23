@@ -135,7 +135,6 @@ module.exports= {
         var response = await games.json();
 
         if (games.status == 200) {
-            // console.log("games response", response.length)
             for (const game of response) {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
@@ -172,42 +171,6 @@ module.exports= {
         if (response.status == 200) {
             return response;
         }
-    },
-    
-    //TODO: Decide if this can be archived
-    getScores: async function (data) {
-
-        data.forEach( async (user, index) => {
-            var score = 0;
-    
-            if (!user.isUpdated) {
-                
-                const promises = user.seasons[0].teams.map(async (team) => {
-                    await fetch(process.env.URL + '/games-api', {
-                        method: 'POST',
-                        headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                        },
-                        body: `{
-                            "team": "${team.school}"
-                            }`,
-                    }).then(res => res.json()).then(data => {
-                        // console.log("games data", data);
-                        score += calculateScore(team.school, data, 1);
-                        // console.log("updating score", score);
-                    });
-    
-                    return score;
-                  });
-    
-                const scores = await Promise.all(promises);
-    
-                var newWeeklyScore = user.seasons[0].weeklyScore.push(score);
-                updateUser(user._id, newWeeklyScore);
-            }
-        });
-        
     },
 
     //Scoring for Claunts League
@@ -271,11 +234,7 @@ module.exports= {
                     score += 5;
                 } else if (isConfChampion) {
                     score += 6;
-                } 
-                // else if (isFirstRound(game)) {
-                //     score += 7;
-                // } 
-                else if (!isBowlTeam && !isFirstRound(game)) {
+                } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.awayTeam, rankings);
     
@@ -306,11 +265,7 @@ module.exports= {
                     score += 5;
                 } else if (isConfChampion) {
                     score += 6;
-                } 
-                // else if (isFirstRound(game)) {
-                //     score += 7;
-                // } 
-                else if (!isBowlTeam && !isFirstRound(game)) {
+                } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.homeTeam, rankings);
     
@@ -535,11 +490,8 @@ function isRankedV1(team, rankings) {
 
 
     if (rankIndex != -1) {
-        // var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
-        // return 2;
         return true;
     } else {
-        // return 0;
         return false;
     }
 }
