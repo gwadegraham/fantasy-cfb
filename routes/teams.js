@@ -82,6 +82,43 @@ router.patch('/:id', getTeam, async (req, res) => {
     }
 });
 
+//Updating One With Season
+router.patch('/:id/:season', getTeam, async (req, res) => {
+
+    var index = res.team.seasons.findIndex(x => x.season == req.params.season);
+
+    if (index == -1) {
+        var newSeasonObject = {
+            season: req.params.season,
+            conference: res.team.conference,
+            weeklyScore: req.body.weeklyScore,
+            cumulativeScoreV1: req.body.cumulativeScoreV1,
+            cumulativeScoreV2: req.body.cumulativeScoreV2
+        };
+
+        res.team.seasons.push(newSeasonObject);
+    } else {
+        if (req.body.weeklyScore != null) {
+            res.team.seasons[index].weeklyScore = req.body.weeklyScore;
+        } 
+    
+        if (req.body.cumulativeScoreV1 != null) {
+            res.team.seasons[index].cumulativeScoreV1 = req.body.cumulativeScoreV1;
+        }
+        
+        if (req.body.cumulativeScoreV2 != null) {
+            res.team.seasons[index].cumulativeScoreV2 = req.body.cumulativeScoreV2;
+        }
+    }
+
+    try {
+        const updatedTeam = await res.team.save();
+        res.status(200).json(updatedTeam);
+    } catch (err) {
+        res.status(400).json({message: err.message});
+    }
+});
+
 //Refreshing All
 router.post('/refresh', async (req, res) => {
     try {

@@ -162,8 +162,8 @@ app.get('/top-25', async (req, res) => {
     // rankingsApi.getRankings(year, opts).then(data => res.json(data[0].polls[0]));
 });
 
-app.get('/calculate-team-score/:teamId/:teamName', async (req, res) => {
-    var response = await scoringModule.calculateTeamScores(req.params.teamId, req.params.teamName);
+app.get('/calculate-team-score/:season/:teamId/:teamName', async (req, res) => {
+    var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
     if (response.status == 200) {
         res.status(200).json(response.updatedTeam);
