@@ -119,6 +119,25 @@ router.patch('/:id/:season', getTeam, async (req, res) => {
     }
 });
 
+//Updating Expected Wins for One With Season
+router.patch('/:team/:season/expectedWins', getTeamByName, async (req, res) => {
+
+    var index = res.team.seasons.findIndex(x => x.season == req.params.season);
+
+    if (index > -1) {
+        if (req.body.expectedWins != null) {
+            res.team.seasons[index].expectedWins = req.body.expectedWins;
+        } 
+    }
+
+    try {
+        const updatedTeam = await res.team.save();
+        res.status(200).json(updatedTeam);
+    } catch (err) {
+        res.status(400).json({message: err.message});
+    }
+});
+
 //Refreshing All
 router.post('/refresh', async (req, res) => {
     try {
@@ -206,6 +225,20 @@ async function getTeam(req, res, next) {
         team = await Team.findOne({id: req.params.id});
         if (team == null) {
             return res.status(404).json({message: 'Cannot find team'});
+        }
+    } catch (err) {
+        return res.status(500).json({message: err.message});
+    }
+    res.team = team;
+    next();
+}
+
+async function getTeamByName(req, res, next) {
+    let team;
+    try {
+        team = await Team.findOne( { $or: [{"school": req.params.team}, {"alternateNames": req.params.team}]});
+        if (team == null) {
+            return res.status(404).json({message: 'Cannot find team ' + req.params.team});
         }
     } catch (err) {
         return res.status(500).json({message: err.message});
