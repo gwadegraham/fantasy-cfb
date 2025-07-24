@@ -10,8 +10,6 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
-var gamesApi = new cfb.GamesApi();
-
 //Getting All
 router.get('/', async (req, res) => {
     try {
@@ -22,18 +20,12 @@ router.get('/', async (req, res) => {
     }
 });
 
-//Getting One By Id
-// router.get('/:id', (req, res) => {
-//     res.send(req.params.id);
-// });
-
 //Getting One By Team & Week
 router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) => {
     var week = req.params.weekNum;
     var teamId = req.params.team;
     var seasonType = req.params.seasonType;
     try {
-        // console.log("seasonType = " + seasonType + " // week = " + week + " // team = " + team);
         const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":process.env.YEAR}, {seasonType: seasonType}, {week: week}]});
 
         if (JSON.stringify(game) != '[]') {
@@ -98,7 +90,6 @@ router.post('/week/mass-create', async (req, res) => {
         'division': 'fbs'
     };
 
-    console.log("opts", opts);
     const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}&week=${req.body.week}&seasonType=${req.body.seasonType}&division=fbs`, {
         method: 'GET',
         headers: {
@@ -107,15 +98,11 @@ router.post('/week/mass-create', async (req, res) => {
         }
     });
 
-    // var response = await gamesApi.getGames(year, opts);
     var gameData = await response.json();
-
-    // console.log("gameData", gameData);
         
     for (const game of gameData) {
-        // console.log("loop for game", game)
         var alreadyExists = await Game.find({ id: game.id });
-        // console.log("alreadyExists", alreadyExists)
+
         game.seasonType = game.season_type;
         game.startDate = game.start_date;
         game.startTimeTbd = game.start_time_tbd;
@@ -164,18 +151,7 @@ router.post('/week/mass-create', async (req, res) => {
 
     console.log("Total number of existing games: ", allExistingGames.length);
 
-    // let existingGame;
     try {
-        // existingGame = await Game.find({ id: req.body.id });
-
-        // if (req.body.homePoints == null) {
-        //     return res.status(400).json({message: `Game with id ${req.body.id} is not complete`});
-        // }
-        // else if (existingGame.length != 0) {
-        //     return res.status(400).json({message: `Game with id ${existingGame[0]["id"]} already exists`});
-        // } else {
-        //     const game = new Game(req.body);
-        
         try {
             console.log("all new games length", allNewGames.length);
             const newGames = await Game.insertMany(allNewGames);
@@ -190,20 +166,9 @@ router.post('/week/mass-create', async (req, res) => {
             console.log("Error saving games: ", err.message)
             res.status(400).json({message: err.message});
         }
-        // }
     } catch (err) {
         res.status(400).json({message: err.message});
     }
 });
-
-// //Updating One
-// router.patch('/:id', (req, res) => {
-
-// });
-
-//Deleting One
-// router.delete('/:id', (req, res) => {
-
-// });
 
 module.exports = router;

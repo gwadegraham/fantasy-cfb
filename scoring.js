@@ -118,13 +118,13 @@ module.exports= {
         }
     },
 
-    calculateTeamScores: async function (teamId, teamName) {
+    calculateTeamScores: async function (season, teamId, teamName) {
 
         var cumulativeScoreV1 = 0;
         var cumulativeScoreV2 = 0;
         var weeklyScores = [];
 
-        var gamesPromise = await fetch(process.env.URL + `/games/season/${process.env.YEAR}/team/${teamName}`, {
+        var gamesPromise = await fetch(process.env.URL + `/games/season/${season}/team/${teamName}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -135,13 +135,12 @@ module.exports= {
         var response = await games.json();
 
         if (games.status == 200) {
-            // console.log("games response", response.length)
             for (const game of response) {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
 
-                gameScoreV1 = await module.exports.calculateScoreV1(teamName, game, game.week);
-                gameScoreV2 = await module.exports.calculateScoreV2(teamName, game, game.week);
+                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season);
+                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season);
 
                 cumulativeScoreV1 += gameScoreV1;
                 cumulativeScoreV2 += gameScoreV2;
@@ -167,55 +166,19 @@ module.exports= {
             "cumulativeScoreV2": cumulativeScoreV2
         };
 
-        var response = await module.exports.updateTeamScores(teamId, scoreUpdateObject);
+        var response = await module.exports.updateTeamScoresWithYear(season, teamId, scoreUpdateObject);
 
         if (response.status == 200) {
             return response;
         }
     },
-    
-    //TODO: Decide if this can be archived
-    getScores: async function (data) {
-
-        data.forEach( async (user, index) => {
-            var score = 0;
-    
-            if (!user.isUpdated) {
-                
-                const promises = user.seasons[0].teams.map(async (team) => {
-                    await fetch(process.env.URL + '/games-api', {
-                        method: 'POST',
-                        headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                        },
-                        body: `{
-                            "team": "${team.school}"
-                            }`,
-                    }).then(res => res.json()).then(data => {
-                        // console.log("games data", data);
-                        score += calculateScore(team.school, data, 1);
-                        // console.log("updating score", score);
-                    });
-    
-                    return score;
-                  });
-    
-                const scores = await Promise.all(promises);
-    
-                var newWeeklyScore = user.seasons[0].weeklyScore.push(score);
-                updateUser(user._id, newWeeklyScore);
-            }
-        });
-        
-    },
 
     //Scoring for Claunts League
-    calculateScoreV1: async function (team, data, week) {
+    calculateScoreV1: async function (team, data, week, season = process.env.YEAR) {
         var game = data;
         var score = 0;
     
-        var year = process.env.YEAR;
+        var year = season;
         var opts = {
             'week': week
         };
@@ -228,7 +191,7 @@ module.exports= {
             postseasonRankingType = "regular";
             postseasonWeek = 1;
 
-            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${postseasonWeek}/${postseasonRankingType}`, {
+            response = await fetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -236,7 +199,7 @@ module.exports= {
                 }
             });
         } else {
-            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+            response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -271,11 +234,7 @@ module.exports= {
                     score += 5;
                 } else if (isConfChampion) {
                     score += 6;
-                } 
-                // else if (isFirstRound(game)) {
-                //     score += 7;
-                // } 
-                else if (!isBowlTeam && !isFirstRound(game)) {
+                } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.awayTeam, rankings);
     
@@ -306,11 +265,7 @@ module.exports= {
                     score += 5;
                 } else if (isConfChampion) {
                     score += 6;
-                } 
-                // else if (isFirstRound(game)) {
-                //     score += 7;
-                // } 
-                else if (!isBowlTeam && !isFirstRound(game)) {
+                } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
                     var ranked = isRankedV1(game.homeTeam, rankings);
     
@@ -329,7 +284,7 @@ module.exports= {
     },
 
     //Scoring for Graham League
-    calculateScoreV2: async function (team, data, week) {
+    calculateScoreV2: async function (team, data, week, season = process.env.YEAR) {
         var game = data;
         var score = 0;
 
@@ -341,7 +296,7 @@ module.exports= {
             postseasonRankingType = "regular";
             postseasonWeek = 1;
 
-            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${postseasonWeek}/${postseasonRankingType}`, {
+            response = await fetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -349,7 +304,7 @@ module.exports= {
                 }
             });
         } else {
-            response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
+            response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -357,19 +312,9 @@ module.exports= {
                 }
             });
         }
-
-        // var response = await fetch(`${process.env.URL}/rankings/${process.env.YEAR}/${week}/${game.seasonType}`, {
-        //     method: 'GET',
-        //     headers: {
-        //     'Accept': 'application/json',
-        //     'Content-Type': 'application/json'
-        //     }
-        // });
     
         var rankings = await response.json();
-    
-        // var isSemiFinalist = isSemiFinalist(game);
-        
+            
         if (isFirstRound(game)) {
             score += 6;
         } else if (isQuarterFinalist(game)) {
@@ -431,6 +376,33 @@ module.exports= {
             };
     
         const response = await fetch(`${process.env.URL}/teams/${teamId}`, {
+            method: 'PATCH',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody),
+        });
+    
+        return response.json().then(data => {
+            if (response.status == 200) {
+                var updatedTeam = {status: response.status, updatedTeam: data};
+                return updatedTeam;
+            } else {
+                console.log(data.message);
+            }
+        });
+    },
+    
+    updateTeamScoresWithYear: async function (season, teamId, scoreUpdate) {
+    
+        var requestBody = {
+            "weeklyScore": scoreUpdate.weeklyScore,
+            "cumulativeScoreV1": scoreUpdate.cumulativeScoreV1,
+            "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
+            };
+    
+        const response = await fetch(`${process.env.URL}/teams/${teamId}/${season}`, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -518,11 +490,8 @@ function isRankedV1(team, rankings) {
 
 
     if (rankIndex != -1) {
-        // var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
-        // return 2;
         return true;
     } else {
-        // return 0;
         return false;
     }
 }

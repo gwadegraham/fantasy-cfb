@@ -20,7 +20,7 @@ window.onload = async function() {
     detectMobile();
     await getUserProfile();
     await getTeams();
-    setRecruitingHeader();
+    setDynamicYearHeaders();
 };
 
 $('#myModal').on('shown.bs.modal', function () {
@@ -195,8 +195,9 @@ function setTeamOptions(data) {
     _multiplyNode(document.querySelector('.draft-team-container'), 1, true);
 }
 
-function setRecruitingHeader() {
+function setDynamicYearHeaders() {
     document.querySelector('[recruiting-ranking]').innerHTML = `${new Date().getFullYear()} Recruiting`;
+    document.querySelector('[expected-wins]').innerHTML = `${new Date().getFullYear()} xWins`;
 }
 
 async function getRecruitingRankings() {
@@ -224,18 +225,22 @@ async function displayTeams(data) {
         var bScore = 0;
 
         if (a.seasons.length > 0) {
+            var aSeason = a.seasons.find((season) => season.season == (new Date().getFullYear() - 1));
+
             if (leagueVersion == "V1") {
-                aScore = a.seasons[0].cumulativeScoreV1 || 0;
+                aScore = aSeason != null ? aSeason.cumulativeScoreV1 : 0;
             } else {
-                aScore = a.seasons[0].cumulativeScoreV2 || 0;
+                aScore = aSeason != null ? aSeason.cumulativeScoreV2 : 0;
             }
         }
 
         if (b.seasons.length > 0) {
+            var bSeason = b.seasons.find((season) => season.season == (new Date().getFullYear() - 1));
+
             if (leagueVersion == "V1") {
-                bScore = b.seasons[0].cumulativeScoreV1 || 0;
+                bScore = bSeason != null ? bSeason.cumulativeScoreV1 : 0;
             } else {
-                bScore = b.seasons[0].cumulativeScoreV2 || 0;
+                bScore = bSeason != null ? bSeason.cumulativeScoreV2 : 0;
             }
         }
         
@@ -249,10 +254,12 @@ async function displayTeams(data) {
         var expectedWins = 0;
 
         if (team.seasons.length > 0) {
+            var season = team.seasons.find((season) => season.season == (new Date().getFullYear() - 1));
+            var currentSeason = team.seasons.find((season) => season.season == (new Date().getFullYear()));
             conference = team.seasons.at(-1).conference;
-            cumulScoreV1 = team.seasons[0].cumulativeScoreV1;
-            cumulScoreV2 = team.seasons[0].cumulativeScoreV2;
-            expectedWins = (team.seasons.at(-1).expectedWins || 0);
+            cumulScoreV1 = season != null ? season.cumulativeScoreV1 : "-";
+            cumulScoreV2 = season != null ? season.cumulativeScoreV2 : "-";
+            expectedWins = currentSeason != null ? currentSeason.expectedWins : 0;
         }
 
         str += '<tr><td style="text-align: left;">';
@@ -265,9 +272,21 @@ async function displayTeams(data) {
 
         str += '<td>' + conference + '</td>';
 
-        var teamRecruiting = recruitingRankings.filter(obj => {
-            return obj.team == team.school
-        })[0];
+        var teamRecruiting;
+
+        if (recruitingRankings.length > 0) {
+            teamRecruiting = recruitingRankings.filter(obj => {
+                return (obj.team == team.school || team.alternateNames.includes(obj.team))
+            })[0];
+        } else {
+            teamRecruiting = {
+                rank: "-"
+            }
+        }
+
+        if (teamRecruiting == null) {
+            console.log("team", team)
+        }
 
         str += '<td>' + teamRecruiting.rank + '</td>';
 

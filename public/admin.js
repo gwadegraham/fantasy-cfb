@@ -2,6 +2,9 @@ const userList = document.querySelector('[user-list-container]');
 const teamOptionList = document.querySelectorAll('[team-options]');
 const calculateTeamOption = document.querySelector('[calculate-team-options]');
 const userOptionList = document.querySelectorAll('[user-options]');
+const seasonOptionList = document.querySelectorAll('[season-options]');
+const seasonTypeOptionList = document.querySelectorAll('[season-type-options]');
+const weekOptionList = document.querySelectorAll('[week-options]');
 
 const toggleButton = document.getElementsByClassName('toggle-button')[0];
 const navbarLinks = document.getElementsByClassName('navbar-links')[0];
@@ -92,6 +95,66 @@ function setTeamOptions(data) {
     calculateTeamOption.innerHTML = str;
 
     multiplyNode(document.querySelector('.team-container'), 10, true);
+}
+
+function setSeasonOptions() {
+    var currentYear = new Date().getFullYear();
+    var years = [];
+
+    for (let year = currentYear; year >= 2000; year--) {
+        years.push(year);
+    }
+
+    var str = '<option value="" disabled selected>Season</option>';
+
+    years.forEach( year => {
+        str += '<option value="';
+        str += year;
+        str += '">' + year;
+        str += '</option>';
+    });
+
+    seasonOptionList.forEach(selector => {
+        selector.innerHTML = str;
+    });
+}
+
+function setSeasonTypeOptions() {
+    var seasonTypes = ["Regular", "Postseason"];
+
+    var str = '<option value="" disabled selected>Season Type</option>';
+
+    seasonTypes.forEach( type => {
+        str += '<option value="';
+        str += type;
+        str += '">' + type;
+        str += '</option>';
+    });
+
+    seasonTypeOptionList.forEach(selector => {
+        selector.innerHTML = str;
+    });
+}
+
+function setWeekOptions() {
+    var weeks = [];
+
+    for (let week = 1; week <=15; week++) {
+        weeks.push(week);
+    }
+
+    var str = '<option value="" disabled selected>Week</option>';
+
+    weeks.forEach( week => {
+        str += '<option value="';
+        str += week;
+        str += '">' + week;
+        str += '</option>';
+    });
+
+    weekOptionList.forEach(selector => {
+        selector.innerHTML = str;
+    });
 }
 
 function setUserOptions(data) {
@@ -194,6 +257,9 @@ window.onload = async function() {
     detectMobile();
     getUserProfile();
     getTeams();
+    setSeasonOptions();
+    setSeasonTypeOptions();
+    setWeekOptions();
 };
 
 const createForm = document.getElementById('create-form')
@@ -292,10 +358,11 @@ if (calculateForm) {
     calculateForm.addEventListener('submit', async function(event) {
         event.preventDefault();
     
-        const team = document.querySelector('[calculate-team-options]').value;
+        const teamId = document.querySelector('[calculate-team-options]').value;
+        const season = document.querySelector('[team-score-season]').value;
         var teamName = "";
 
-        var teamPromise = await fetch(`/teams/${team}`, {
+        var teamPromise = await fetch(`/teams/${teamId}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -311,46 +378,7 @@ if (calculateForm) {
             console.log(response.message);
         }        
 
-        // await fetch(`/calculate-team-score/${team}/${teamName}`, {
-        //     method: 'GET',
-        //     headers: {
-        //     'Accept': 'application/json'
-        //     }
-        // }).then(res => res.json()).then(data => {
-        //     console.log("calculation successful.  response = " + res.status)
-        // });
-
-        // await fetch('/teams', {
-        //     method: 'GET',
-        //     headers: {
-        //         'Content-Type': 'application/json',
-        //         'Accept': 'application/json'
-        //     }
-        // }).then(res => res.json()).then(data => {
-        //     console.log("Number of teams: " + data.length)
-        //     data.forEach(async (team) => {
-        //         console.log(team.id + " | " + team.school);
-        //         var response = await fetch(`/calculate-team-score/${team.id}/${team.school}`, {
-        //             method: 'GET',
-        //             headers: {
-        //             'Accept': 'application/json'
-        //             }
-        //         });
-
-        //         response.json().then(data => {
-        //             if (response.status == 200) {
-        //                 console.log(data);
-        //                 successToast.options.text = "Score successfully calculated for " + data.school;
-        //                 successToast.showToast();
-        //             } else {
-        //                 failToast.options.text = response.status + " Team score could not be calculated";
-        //                 failToast.showToast();
-        //             }
-        //         });
-        //     })
-        // });
-
-        var response = await fetch(`/calculate-team-score/${team}/${teamName}`, {
+        var response = await fetch(`/calculate-team-score/${season}/${teamId}/${teamName}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -371,10 +399,11 @@ if (calculateForm) {
 }
 
 const calculateAllForm = document.getElementById('all-score-form')
-
 if (calculateAllForm) {
     calculateAllForm.addEventListener('submit', async function(event) {
         event.preventDefault();
+
+        const season = document.querySelector('[team-score-season]').value;
 
         await fetch('/teams', {
             method: 'GET',
@@ -385,8 +414,7 @@ if (calculateAllForm) {
         }).then(res => res.json()).then(data => {
             console.log("Number of teams: " + data.length)
             data.forEach(async (team) => {
-                console.log(team.id + " | " + team.school);
-                var response = await fetch(`/calculate-team-score/${team.id}/${team.school}`, {
+                var response = await fetch(`/calculate-team-score/${season}/${team.id}/${team.school}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'
@@ -414,9 +442,9 @@ if (rankingsForm) {
     rankingsForm.addEventListener('submit', async function(event) {
         event.preventDefault();
 
-        const season = document.querySelector('[season]').value;
-        const seasonType = document.querySelector('[season-type]').value.toLowerCase();
-        const week = document.querySelector('[week]').value;
+        const season = document.querySelector('[season-options]').value;
+        const seasonType = document.querySelector('[season-type-options]').value.toLowerCase();
+        const week = document.querySelector('[week-options]').value;
 
         var response = await fetch(`/rankings/${season}/${week}/${seasonType}`, {
             method: 'GET',
@@ -456,6 +484,91 @@ if (rankingsForm) {
                 }
             });
         }
+    });
+}
+
+const recruitRankingsForm = document.getElementById('recruit-rankings-form');
+
+if (recruitRankingsForm) {
+    recruitRankingsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[recruiting-season]').value;
+
+        var response = await fetch(`/recruiting/${season}`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+    
+        var recruitingRankings = await response;
+
+        if (recruitingRankings.status == 200) {
+            successToast.options.text = `Recruiting Rankings already in system for Season: ${season}`;
+            successToast.showToast();
+        } else {
+            const response = await fetch(`/recruiting/new/${season}`, {
+                method: 'POST',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                },
+                body: `{
+                "season": "${season}"
+                }`,
+            });
+
+            response.json().then(data => {
+                if (response.status == 201) {
+                    console.log("New Recruiting Rankings", data);
+                    successToast.options.text = `New recruiting rankings retrieved for Season: ${season}`;
+                    successToast.showToast();
+                    unblock_screen();
+                } else {
+                    failToast.options.text = response.status + " Recruiting Rankings could not be retrieved";
+                    failToast.showToast();
+                }
+            });
+        }
+    });
+}
+
+const refreshTeamsForm = document.getElementById('refresh-teams-form');
+
+if (refreshTeamsForm) {
+    refreshTeamsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[refresh-season]').value;
+
+        const response = await fetch(`/teams/refresh`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "year": "${season}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("Refreshed Teams", data);
+                successToast.options.text = `Teams refreshed for Season: ${season}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " Teams could not be refreshed";
+                failToast.showToast();
+            }
+        });
     });
 }
 
@@ -503,8 +616,8 @@ if (scoresForm) {
         
         block_screen();
 
-        const seasonType = document.querySelector('[score-season-type]').value.toLowerCase();
         const week = document.querySelector('[score-week]').value;
+        const seasonType = document.querySelector('[score-season-type]').value.toLowerCase();
 
         const response = await fetch(`/scores/update`, {
             method: 'POST',
@@ -576,6 +689,26 @@ function displayRankingsContainer() {
         rankingsContainer.style.display = 'none';
     } else {
         rankingsContainer.style.display = 'block';
+    }
+}
+
+function displayRecruitRankingsContainer() {
+    var recruitRankingsContainer = document.querySelector('[recruit-rankings-container]');
+
+    if (recruitRankingsContainer.style.display == 'block' || recruitRankingsContainer.style.display=='') {
+        recruitRankingsContainer.style.display = 'none';
+    } else {
+        recruitRankingsContainer.style.display = 'block';
+    }
+}
+
+function displayRefreshTeamsContainer() {
+    var refreshTeamsContainer = document.querySelector('[refresh-teams-container]');
+
+    if (refreshTeamsContainer.style.display == 'block' || refreshTeamsContainer.style.display=='') {
+        refreshTeamsContainer.style.display = 'none';
+    } else {
+        refreshTeamsContainer.style.display = 'block';
     }
 }
 
