@@ -5,7 +5,11 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="styles.css" rel="stylesheet">
+    <link href="userHome.css" rel="stylesheet">
     <link href="loading.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <script defer src="userHome.js"></script>
     <script src="navbar.js"></script>
     <title>Campus Clash</title>
@@ -13,90 +17,86 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-title" poll-name>
-                User Home
-            </div>
+    <div class="header">
+        <div class="header-title" poll-name>
+            User Home
         </div>
-        <div class="content">
-            <div class="get-users-container" get-users-container>
-                <div class="table-wrapper">
-                    <table class="fl-table">
-                        <thead>
-                        <tr>
-                            <th class="sticky-header team-header">Team</th>
-                            <th class="team-header">Week 1</th>
-                            <th class="team-header">Week 2</th>
-                            <th class="team-header">Week 3</th>
-                            <th class="team-header">Week 4</th>
-                            <th class="team-header">Week 5</th>
-                            <th class="team-header">Week 6</th>
-                            <th class="team-header">Week 7</th>
-                            <th class="team-header">Week 8</th>
-                            <th class="team-header">Week 9</th>
-                            <th class="team-header">Week 10</th>
-                            <th class="team-header">Week 11</th>
-                            <th class="team-header">Week 12</th>
-                            <th class="team-header">Week 13</th>
-                            <th class="team-header">Week 14</th>
-                            <th class="team-header">Week 15</th>
-                            <th class="team-header">Week 16</th>
-                            <th class="team-header">Post&shy;season</th>
-                            <th class="sticky-header-score team-header">Team Score</th>
-                        </tr>
-                        </thead>
-                        <tbody user-table-body>
-                        <tbody>
-                    </table>
-                </div>
+    </div>
+    <div class="content">
+        <div class="get-users-container" get-users-container>
+            <div class="table-wrapper">
+                <table class="fl-table">
+                    <thead>
+                    <tr>
+                        <th class="sticky-header team-header">Team</th>
+                        <th class="team-header">1</th>
+                        <th class="team-header">2</th>
+                        <th class="team-header">3</th>
+                        <th class="team-header">4</th>
+                        <th class="team-header">5</th>
+                        <th class="team-header">6</th>
+                        <th class="team-header">7</th>
+                        <th class="team-header">8</th>
+                        <th class="team-header">9</th>
+                        <th class="team-header">10</th>
+                        <th class="team-header">11</th>
+                        <th class="team-header">12</th>
+                        <th class="team-header">13</th>
+                        <th class="team-header">14</th>
+                        <th class="team-header">15</th>
+                        <th class="team-header">16</th>
+                        <th class="team-header">Post&shy;season</th>
+                        <th class="sticky-header-score team-header">Team Score</th>
+                    </tr>
+                    </thead>
+                    <tbody user-table-body>
+                    <tbody>
+                </table>
             </div>
         </div>
     </div>
-    <div class="container" style="margin-top: 20px;">
-        <div class="header">
-            <div class="header-title" poll-name>
-                Games
-            </div>
+    <hr class="hr-subtle">
+    <div class="header">
+        <div class="header-title" poll-name>
+            Games
         </div>
-        <div class="dropdown dropdownWeek">
-            <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButtonWeek" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-              Week X
-            </button>
-            <div class="dropdown-menu dropdown-menu-week" aria-labelledby="dropdownMenuButton">
-              <a class="dropdown-item dropdown-week selected" value="week-1">Week 1</a>
-              <a class="dropdown-item dropdown-week" value="week-2">Week 2</a>
-              <a class="dropdown-item dropdown-week" value="week-3">Week 3</a>
-              <a class="dropdown-item dropdown-week" value="week-4">Week 4</a>
-              <a class="dropdown-item dropdown-week" value="week-5">Week 5</a>
-              <a class="dropdown-item dropdown-week" value="week-6">Week 6</a>
-              <a class="dropdown-item dropdown-week" value="week-7">Week 7</a>
-              <a class="dropdown-item dropdown-week" value="week-8">Week 8</a>
-              <a class="dropdown-item dropdown-week" value="week-9">Week 9</a>
-              <a class="dropdown-item dropdown-week" value="week-10">Week 10</a>
-              <a class="dropdown-item dropdown-week" value="week-11">Week 11</a>
-              <a class="dropdown-item dropdown-week" value="week-12">Week 12</a>
-              <a class="dropdown-item dropdown-week" value="week-13">Week 13</a>
-              <a class="dropdown-item dropdown-week" value="week-14">Week 14</a>
-              <a class="dropdown-item dropdown-week" value="week-15">Week 15</a>
-              <a class="dropdown-item dropdown-week" value="week-16">Week 16</a>
-              <a class="dropdown-item dropdown-week" value="week-17">Postseason</a>
-            </div>
-          </div>
-        <div class="game-content">
-            <div class="loading-container">
-                <h4>LOADING</h4>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            <div class="get-users-container">
-                <div class="schedule-wrapper" schedule-container>
-                    <table class="schedule-table">
-                        <tbody schedule-body>
-                        <tbody>
-                    </table>
-                </div>
+    </div>
+    <div class="dropdown dropdownWeek">
+        <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButtonWeek" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+            Week X
+        </button>
+        <div class="dropdown-menu dropdown-menu-week" aria-labelledby="dropdownMenuButton">
+            <a class="dropdown-item dropdown-week selected" value="week-1">Week 1</a>
+            <a class="dropdown-item dropdown-week" value="week-2">Week 2</a>
+            <a class="dropdown-item dropdown-week" value="week-3">Week 3</a>
+            <a class="dropdown-item dropdown-week" value="week-4">Week 4</a>
+            <a class="dropdown-item dropdown-week" value="week-5">Week 5</a>
+            <a class="dropdown-item dropdown-week" value="week-6">Week 6</a>
+            <a class="dropdown-item dropdown-week" value="week-7">Week 7</a>
+            <a class="dropdown-item dropdown-week" value="week-8">Week 8</a>
+            <a class="dropdown-item dropdown-week" value="week-9">Week 9</a>
+            <a class="dropdown-item dropdown-week" value="week-10">Week 10</a>
+            <a class="dropdown-item dropdown-week" value="week-11">Week 11</a>
+            <a class="dropdown-item dropdown-week" value="week-12">Week 12</a>
+            <a class="dropdown-item dropdown-week" value="week-13">Week 13</a>
+            <a class="dropdown-item dropdown-week" value="week-14">Week 14</a>
+            <a class="dropdown-item dropdown-week" value="week-15">Week 15</a>
+            <a class="dropdown-item dropdown-week" value="week-16">Week 16</a>
+            <a class="dropdown-item dropdown-week" value="week-17">Postseason</a>
+        </div>
+        </div>
+    <div class="game-content">
+        <div class="football-loader">
+            <div class="football-icon">🏈</div>
+            <p class="loading-text">Scouting for games...</p>
+        </div>
+        <div class="get-users-container">
+            <div class="schedule-wrapper" schedule-container>
+                <table class="schedule-table">
+                    <tbody schedule-body>
+                        <div id="no-games-container"></div>
+                    <tbody>
+                </table>
             </div>
         </div>
     </div>

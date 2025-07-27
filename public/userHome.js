@@ -89,7 +89,7 @@ $(".dropdown-menu-week a").click(function(){
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
 
-    document.querySelector('.loading-container').style.display = "block";
+    document.querySelector('.football-loader').style.display = "block";
     document.querySelector('.schedule-table').style.display = "none";
     displaySchedule(userData);
 });
@@ -133,7 +133,7 @@ function displayTeams(data) {
         refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
         str += '<th class="team-item sticky-header"><div class="team-score-header">';
-        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
+        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         str += '</div></th></a>';
         
@@ -235,7 +235,6 @@ async function getRankings (week, seasonType) {
         console.log(rankings.message);
     }
 
-    console.log(rankingsArray)
     return rankingsArray;
 }
 
@@ -266,13 +265,13 @@ async function getTeamLogos (game) {
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            awayTeamLogo = '<img src="' + awayTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+            awayTeamLogo = '<img src="' + awayTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
         }
 
         if (homeTeamLogo == null) {
             homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            homeTeamLogo = '<img src="' + homeTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+            homeTeamLogo = '<img src="' + homeTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
         }
 
         const logoResponse = {awayTeamLogo, homeTeamLogo};
@@ -323,8 +322,8 @@ async function displaySchedule(data) {
                 homeRank = rankingsInfo[homeIndex].rank;
             }
 
-            awayRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${awayRank}</p>`;
-            homeRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${homeRank}</p>`;
+            awayRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${awayRank}</p>`;
+            homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
             if (gameIds.indexOf(game.id) == -1) {
                 gameIds.push(game.id);
@@ -364,15 +363,15 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.awayId;
                             });
     
-                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
                         }
 
                         if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
-                            scoreAdded = '<strong style="color: green;">+4<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+4<strong>';
                             topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>';
-                            bottomData = (game.homePoints || '0') + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                            bottomData = (game.homePoints || '0') + '<td class="score-added">' + scoreAdded + '</td>';
                         } else {
-                            topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                            topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '0');
                         }
                     } else if (game.homePoints > game.awayPoints) {
@@ -384,7 +383,7 @@ async function displaySchedule(data) {
                             });
     
                             var teamObjectScore = (teamScoreObject[i].score || 0);
-                            scoreAdded = '<strong style="color: green;">+' + teamObjectScore + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamObjectScore + '<strong>';
                         }
     
                         topData = (game.awayPoints || '0');
@@ -396,7 +395,7 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.awayId;
                             });
     
-                            scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
                         }
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0');
@@ -427,11 +426,11 @@ async function displaySchedule(data) {
                 var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
                 teamTable += awayImg + awayRank + awayTeam;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                 teamTable += '</tr><tr><td style="width: 250px;">';
     
                 teamTable += homeImg + homeRank + homeTeam;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += '</tr><tr></tr><tbody></table></td>';
     
                 var gameInfo = {
@@ -475,14 +474,14 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.homeId;
                             });
     
-                            awayScoreAdded = '<strong style="color: green;">+' + awayTeamScoreObject[0].score + '<strong>';
-                            homeScoreAdded = '<strong style="color: green;">+' + homeTeamScoreObject[0].score + '<strong>';
+                            awayScoreAdded = '<strong style="color: #22C37A;">+' + awayTeamScoreObject[0].score + '<strong>';
+                            homeScoreAdded = '<strong style="color: #22C37A;">+' + homeTeamScoreObject[0].score + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
-                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
+                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-') + '<td class="score-added">' + homeScoreAdded + '</td>';
                             } else {
-                                topData = (game.awayPoints || '-') + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
+                                topData = (game.awayPoints || '-') + '<td class="score-added">' + awayScoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + homeScoreAdded + '</td>';
                             }
 
@@ -494,9 +493,9 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
                             }
-                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
                         } else {
         
@@ -507,7 +506,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.homeId;
                                 });
         
-                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -543,11 +542,11 @@ async function displaySchedule(data) {
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
                     teamTable += awayImg + awayRank + awayTeam;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr><tr><td style="width: 250px;">';
         
                     teamTable += homeImg + homeRank + homeTeam;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr><tr></tr><tbody></table></td>';
         
                     var gameInfo = {
@@ -586,11 +585,11 @@ async function displaySchedule(data) {
     }
 
     if (gameTables.length == 0) {
-        str += '<i class="fa-solid fa-sad-cry" style="padding-right: 10px;"></i>no college football games?!<i class="fa-solid fa-sad-cry" style="padding-left: 5px;"></i>'
+        showRandomNoGamesMessage();
     }
 
     scheduleContainer.innerHTML = str;
-    document.querySelector('.loading-container').style.display = "none";
+    document.querySelector('.football-loader').style.display = "none";
     document.querySelector('.schedule-table').style.display = "flex";
 }
 
@@ -612,4 +611,37 @@ function isBowlParticipant(game) {
     } else {
         return false;
     }
+}
+
+const noGamesMessages = [
+  `
+  <div class="no-games-message lights-out">
+    <div class="stadium-icon">🏟️</div>
+    <h3>Field's Closed</h3>
+    <p>Looks like the stadium lights are off. No games today.</p>
+    <p class="suggestion">Try screaming at a referee in your backyard to stay in shape.</p>
+  </div>
+  `,
+  `
+  <div class="no-games-message mascot-strike">
+    <div class="tiger-icon">🐯</div>
+    <h3>Mascots on Strike</h3>
+    <p>No games this week. Demanding more glitter cannons and fewer kickoffs.</p>
+    <p class="suggestion">Solidarity forever. But fantasy points never.</p>
+  </div>
+  `,
+  `
+  <div class="no-games-message smoke-time">
+    <div class="football-icon">🏈</div>
+    <h3>Fantasy Engine Cooling Down</h3>
+    <p>No games today. Even algorithms need a water break.</p>
+    <p class="suggestion">Maybe check your lineup. Or don't. We’re not your coach.</p>
+  </div>
+  `
+];
+
+function showRandomNoGamesMessage() {
+  const container = document.getElementById("no-games-container");
+  const randomIndex = Math.floor(Math.random() * noGamesMessages.length);
+  container.innerHTML = noGamesMessages[randomIndex];
 }
