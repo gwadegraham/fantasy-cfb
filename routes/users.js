@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
 router.get('/season/:seasonYear', async (req, res) => {
     try {
         const users = await User.find({"seasons.season": {"$eq": req.params.seasonYear}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": req.params.seasonYear}}}});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": req.params.seasonYear}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -30,7 +30,7 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     try {
         console.log("finding all users in league", leagueCode);
         const users = await User.find({"seasons.season": {"$eq": process.env.YEAR}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -43,7 +43,7 @@ router.get('/league/:leagueCodeReq/previous', async (req, res) => {
     try {
         console.log("finding user in league", leagueCode);
         const users = await User.find({"seasons.season": {"$eq": (process.env.YEAR - 1)}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": (process.env.YEAR - 1)}}}});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": (process.env.YEAR - 1)}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -69,7 +69,7 @@ router.get('/:id/season', async (req, res) => {
 
     try {
         const user = await User.find({_id: userId, "seasons.season": {"$eq": year}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
         res.json(user);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -79,12 +79,16 @@ router.get('/:id/season', async (req, res) => {
 //Creating One
 router.post('/', async (req, res) => {
 
+    var date = new Date();
+    var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
+
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
         seasons: req.body.seasons,
         color: req.body.color,
-        league: req.body.league
+        league: req.body.league,
+        lastUpdated: centralTime
     });
 
     try {
@@ -97,6 +101,10 @@ router.post('/', async (req, res) => {
 
 //Updating One
 router.patch('/:id', getUser, async (req, res) => {
+
+    var date = new Date();
+    var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
+    res.user.lastUpdated = centralTime;
 
     if (req.body.cumulativeScore != null) {
         res.user.seasons[0].cumulativeScore = req.body.cumulativeScore;
@@ -123,6 +131,10 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
         "season": req.body.season,
         "teams": req.body.teams
     };
+
+    var date = new Date();
+    var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
+    res.user.lastUpdated = centralTime;
 
     console.log("res.user", res.user)
 
@@ -158,7 +170,7 @@ async function getUser(req, res, next) {
     let user;
     try {
         user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": 2024}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": 2024}}}});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": 2024}}}});
         if (user == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }
@@ -173,7 +185,7 @@ async function getUserNewSeason(req, res, next) {
     let user;
     try {
         user = await User.findOne({_id: req.params.id},
-                    {"firstName": 1, "lastName": 1, "league": 1, "color": 1, "seasons": 1});
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": 1});
         if (user == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }

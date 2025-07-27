@@ -175,7 +175,10 @@ const userSchema = new mongoose.Schema({
     isUpdated: {
         type: Boolean,
         default: false
-    }
+    },
+    lastUpdated: {
+        type: String
+    },
 });
 
 module.exports = mongoose.model('User', userSchema);

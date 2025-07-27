@@ -1,6 +1,10 @@
 * {
     box-sizing: border-box;
-    font-family: Verdana, sans-serif;
+    /* font-family: Verdana, sans-serif; */
+    font-family: "Poppins", sans-serif;
+    /* font-weight: 500; */
+    font-style: normal;
+    color: #F4F6FB;
 }
 
 .fas, .fa {
@@ -16,7 +20,7 @@
 }
 
 body {
-    background: linear-gradient(to right bottom, #4686ec, #ecac46);
+    background-color: #101322 !important;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -31,9 +35,8 @@ body {
     width: 100vw;
     justify-content: space-between;
     align-items: center;
-    background-color: #333;
-    color: white;
-    margin-bottom: 50px;
+    background-color: #101322;
+    color: #F4F6FB;
 }
 
 .brand-title {
@@ -53,13 +56,13 @@ body {
 
 .navbar-links li a {
     text-decoration: none;
-    color: white;
+    color: #F4F6FB;
     padding: 1rem;
     display: block;
 }
 
 .navbar-links li:hover {
-    background-color: #555;
+    background-color: #ed5858;
 }
 
 .dropdown {
@@ -67,17 +70,17 @@ body {
 }
 
 .dropdown-menu, #dropdownMenuButton {
-    background-color: #333  !important;
+    background-color: #101322  !important;
     border: none;
 }
 
 #dropdownMenuButtonWeek {
-    background-color: #333 !important;
+    background-color: #101322 !important;
     margin-top: 10px;
 }
 
 .dropdown-week {
-    color: white !important;
+    color: #F4F6FB !important;
 }
 
 .toggle-button {
@@ -94,7 +97,7 @@ body {
 .toggle-button .bar {
     height: 3px;
     width: 100%;
-    background-color: white;
+    background-color: #F4F6FB;
     border-radius: 10px;
 }
 
@@ -134,7 +137,7 @@ body {
 .container {
     max-width: 90%;
     width: 1200px;
-    background-color: white;
+    background-color: #F4F6FB;
     box-shadow: 0 5px 10px black;
     border-radius: 5px;
     padding: 30px;
@@ -150,16 +153,13 @@ body {
 }
 
 .header {
-    background-color: #222;
-    height: 120px;
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    border-radius: 5px;
 }
 
 .header-title {
-    color: white;
+    color: #F4F6FB;
     justify-content: center;
     padding: 35px;
     font-size: 3rem;
@@ -173,6 +173,7 @@ body {
 
 .team-item {
     padding: 5px;
+    display: flex;
 }
 
 .team-container {
@@ -208,7 +209,7 @@ body {
 .create-user-container button, .remove-user-container button, .calculate-team-score-container button, .rankings-container button, .games-container button, .scores-container button {
     border-radius: 5px;
     background-color: #444;
-    color: white;
+    color: #F4F6FB;
     border: none;
     box-shadow: 0px 0px 2px 2px #444;
     margin-top: 10px;
@@ -253,7 +254,7 @@ footer {
 }
 
 .cfb-data {
-    color: #333;
+    color: #ed5858;
     font-size: 1.5rem;
 }
 
@@ -264,7 +265,7 @@ footer {
 .add-user-container button, .delete-user-container button, .calculate-team-container button, .retrieve-games-container button, .update-scores-container button {
     border-radius: 5px;
     background-color: #444;
-    color: white;
+    color: #F4F6FB;
     border: none;
     box-shadow: 0px 0px 2px 2px #444;
     padding: 10px;
@@ -294,14 +295,14 @@ footer {
     position: sticky;
     left: 0;
     z-index: 2;
-    background-color: #fff;
+    background-color: #101322;
 }
 
 .sticky-header-score {
     position: sticky;
     right: 0;
     z-index: 2;
-    background-color: #fff;
+    background-color: #101322;
 }
 
 .team-score-header {
@@ -323,7 +324,7 @@ footer {
     width: 100%;
     max-width: 100%;
     white-space: nowrap;
-    background-color: white;
+    /* background-color: #F4F6FB; */
 }
 
 .fl-table td, .fl-table th {
@@ -332,7 +333,7 @@ footer {
 }
 
 .fl-table td {
-    border-right: 1px solid #f8f8f8;
+    /* border-right: 1px solid #f8f8f8; */
     font-size: 12px;
     position: relative;
 }
@@ -356,21 +357,21 @@ footer {
 
 .fl-table thead th {
     color: #ffffff;
-    background: #999;
+    /* background: #999; */
 }
 
 
 .fl-table thead th:nth-child(odd) {
     color: #ffffff;
-    background: #444;
+    /* background: #444; */
 }
 
 .fl-table tr:nth-child(even) {
-    background: #F8F8F8;
+    background: #171b31;
 }
 
 .fl-table tr:nth-child(even) .sticky-header, .fl-table tr:nth-child(even) .sticky-header-score {
-    background: #F8F8F8;
+    background: #171b31;
 }
 
 .schedule-table {
@@ -392,9 +393,11 @@ footer {
 }
 
 .game-table {
-    border: 1px solid black;
-    border-radius: 5px;
-    padding: 15px;
+    background-color: #1A1F33;
+    padding: 1em;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border: 1px solid #2A2E42;
 }
 
 .game-table img {
@@ -430,25 +433,25 @@ footer {
 
 @media (max-width: 767px) {
     .fl-table {
-        display: block;
+        /* display: block; */
         width: 100%;
     }
     .table-wrapper:before{
-        content: "Scroll horizontally >";
-        display: block;
+        /* content: "Scroll horizontally >"; */
+        /* display: block; */
         text-align: right;
         font-size: 11px;
-        color: white;
+        color: #F4F6FB;
         padding: 0 0 10px;
     }
     .fl-table thead, .fl-table tbody, .fl-table thead th {
-        display: block;
+        /* display: block; */
     }
     .fl-table thead th:last-child{
         border-bottom: none;
     }
     .fl-table thead {
-        float: left;
+        /* float: left; */
     }
     .fl-table tbody {
         width: auto;
@@ -462,44 +465,43 @@ footer {
         box-sizing: border-box;
         overflow-x: hidden;
         overflow-y: hidden;
-        width: 100px;
+        /* width: 100px; */
         font-size: 8px;
         text-overflow: ellipsis;
     }
     .fl-table thead th {
         text-align: left;
-        border-bottom: 1px solid #f7f7f9;
+        /* border-bottom: 1px solid #f7f7f9; */
     }
     .fl-table .team-header {
         width: 50px;
         white-space: pre-wrap;
     }
     .fl-table tbody tr {
-        display: table-cell;
+        /* display: table-cell; */
     }
     .fl-table tbody tr:nth-child(odd) {
         background: none;
     }
     .fl-table tr:nth-child(even) {
-        background: transparent;
+        /* background: transparent; */
+        background: #171b31;
+
     }
     .fl-table tr td:nth-child(odd) {
-        background: #F8F8F8;
-        border-right: 1px solid #E6E4E4;
+        /* background: #F8F8F8; */
+        /* border-right: 1px solid #E6E4E4; */
     }
     .fl-table tr td:nth-child(even) {
-        border-right: 1px solid #E6E4E4;
+        /* border-right: 1px solid #E6E4E4; */
     }
     .fl-table tbody td, .sticky-header {
-        display: block;
+        /* display: block; */
         text-align: center;
     }
     .fl-table tbody img {
         height: 15px;
         margin-right: 10px
-    }
-    .header-title {
-        font-size: 1.7rem;
     }
     .cfb-data {
         font-size: 1rem;
@@ -512,8 +514,8 @@ footer {
     }
     .header-title {
         padding: 5px;
+        font-size: 1.7rem;
     }
-
     .game-table {
         padding: 5px;
     }

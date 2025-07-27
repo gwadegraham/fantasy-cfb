@@ -62,6 +62,8 @@ window.onload = async function() {
         if (userRole != "Admin") {
             document.querySelector('[admin-page]').remove();
             document.querySelector('[league-selector]').remove();
+        } else if (userRole == "Admin") {
+            document.querySelector('.maintenance-container').style.display = 'none';
         }
 
         getUsers();
@@ -79,6 +81,7 @@ async function getUsers() {
 
     response.json().then(async data => {
         displayUsers(data);
+        displayLastUpdated(data);
         displayHighlights(data);
         displaySchedule(data);
         usersData = data;
@@ -102,18 +105,20 @@ function displayUsers(data) {
         var userSeason = user.seasons[0];
         str += '<tr>';
         str += '<th class="sticky-header">' + (index + 1) + '</th>';
-        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName + '</a></th>';
-        
-        userSeason.teams.forEach(team => {
+        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName.substring(0,1) + '.</a></th>';
+        str += '<td class="team-item">';
+
+        for (var i = 0; i < userSeason.teams.length; i++) {
+            var team = userSeason.teams[i];
             var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
-            str += '<td class="team-item"><div>';
-            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
-            str += team.mascot;
-            str += '</div></td></a>';
-        })
+            str += '<div>';
+            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '</div></a>';
+        }
 
+        str += '</td>';
         str += '<th class="sticky-header-score">' + (userSeason.cumulativeScore ? userSeason.cumulativeScore : 0) + '</th>';
         str += '</tr>';
     });
@@ -121,27 +126,32 @@ function displayUsers(data) {
     userTableBody.innerHTML = str;
 }
 
-async function displayHighlights(users) {
-    const highlightTableBody = document.querySelector('[highlight-body]');
-    var str = '';
+function displayLastUpdated(data) {
+    var lastUpdatedTime = new Date(data[0].lastUpdated);
 
-    if (isMobile) {
-        str += '<tr>' + await biggestWinner(users) + '</tr>';
-        str += '<tr>' + await biggestLoser(users) + '</tr>';
-        str += '<tr>' + await bestTeam(users) + '</tr>';
-    } else {
-        str += '<tr>';
-        str += await biggestWinner(users);
-        str += await biggestLoser(users);
-        str += await bestTeam(users);
-        str += '</tr>';
+    if (lastUpdatedTime != "Invalid Date") {
+        var hours = lastUpdatedTime.getHours() % 12;
+        hours = hours ? hours : 12;
+
+        var minutes = lastUpdatedTime.getMinutes();
+        minutes = minutes < 10 ? ("0" + minutes) : minutes;
+
+        var amPm = lastUpdatedTime.getHours() >= 12 ? 'PM' : 'AM';
+        var formatTime = `${lastUpdatedTime.getMonth()+1}/${lastUpdatedTime.getDate()} at ${hours}:${minutes} ${amPm}`;
+
+        const lastUpdated = document.querySelector('[last-updated]');
+        lastUpdated.innerHTML = `Last Updated ${formatTime}`;
     }
+}
 
-    highlightTableBody.innerHTML = str;
+async function displayHighlights(users) {
+    await biggestWinner(users);
+    await biggestLoser(users);
+    await bestTeam(users);
+    await hotTeam(users);
 }
 
 async function biggestWinner(users) {
-    var tableContent = '';
     var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(b, a) {
         var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
@@ -159,25 +169,16 @@ async function biggestWinner(users) {
         week = "Postseason";
     }
 
-    tableContent = `
-    <td>
-        <table class="schedule-table game-table">
-            <tbody>
-                <tr>
-                    <td style="width: 300px;"><strong>Biggest Winner in ${week}</strong></td>
-                </tr>
-                <tr>
-                    <td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: green;">+${userScore}</p></td>
-                </tr>
-            </tbody>
-        </table>
-    </td>`;
+    const winnerWeek = document.querySelector('[winner-week]');
+    const winner = document.querySelector('[biggest-winner]');
+    const winnerScore = document.querySelector('[biggest-winner-score]');
 
-    return tableContent;
+    winnerWeek.innerHTML = ` in ${week}`;
+    winner.innerHTML = userName;
+    winnerScore.innerHTML = `+${userScore}`;
 }
 
 function biggestLoser(users) {
-    var tableContent = '';
     var loserUsers = [];
     var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(a, b) {
@@ -210,39 +211,30 @@ function biggestLoser(users) {
         week = "Postseason";
     }
 
-    var userContent = '';
-    var isMultipleLosers = 'Loser';
+    const loserWeek = document.querySelector('[loser-week]');
+    const loser = document.querySelector('[biggest-loser]');
+    const loserScore = document.querySelector('[biggest-loser-score]');
+
     if (loserUsers.length > 1) {
-        isMultipleLosers = 'Losers';
-        
+        loserWeek.innerHTML = `in ${week}`;
+        var htmlString = '';
+
         loserUsers.forEach((user) => {
-            userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";
-            userContent += `<td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${user.score}</p></td>`
-        })
+            userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
+            htmlString += `<span biggest-loser>${userName}</span><br>`;
+            loserScore.innerHTML = `+${user.score}`;
+        });
+
+        loser.outerHTML = htmlString;
     } else {
         userName = loserUsers[0].firstName + " " + loserUsers[0].lastName.substring(-1,1) + ".";
-        userContent += `<td style="width: 250px; display: flex;"><p>${userName}</p><p style="padding-left: 10px;color: red;">+${loserUsers[0].score}</p></td>`
+        loserWeek.innerHTML = `in ${week}`;
+        loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
+        loserScore.innerHTML = `+${loserUsers[0].score}`;
     }
-
-    tableContent = `
-    <td>
-        <table class="schedule-table game-table">
-            <tbody>
-                <tr>
-                    <td style="width: 300px;"><strong>Biggest ${isMultipleLosers} in ${week}</strong></td>
-                </tr>
-                <tr>
-                    ${userContent}
-                </tr>
-            </tbody>
-        </table>
-    </td>`;
-
-    return tableContent;
 }
 
 async function bestTeam(users) {
-    var tableContent;
     var teamScores = [];
 
     users.forEach((user, index) => {
@@ -267,8 +259,9 @@ async function bestTeam(users) {
             });
 
             var teamInfo = {
-                team: team.school,
-                score: totalScore
+                team: team.mascot,
+                score: totalScore,
+                logo: team.logos.at(-1)
             }
 
             teamScores.push(teamInfo);
@@ -290,31 +283,56 @@ async function bestTeam(users) {
         }
     }
 
-    var bestTitle = "Best Team of the Season";
 
-    if (resultScores.length > 1) {
-        bestTitle = "Best Teams of the Season";
-    }
-
-    tableContent = `
-    <td>
-        <table class="schedule-table game-table">
-            <tbody>
-                <tr>
-                    <td style="width: 300px;"><strong>${bestTitle}</strong></td>
-                </tr>`;
-
-    resultScores.forEach( teamName => {
-        tableContent += `<tr>
-                    <td style="width: 250px; display: flex;"><p>${teamName.team}</p><p style="padding-left: 10px;">+${teamName.score} points</p></td>
-                </tr>`;
+    const bestWeek = document.querySelector('[best-week]');
+    const best = document.querySelector('[best-team]');
+    const bestScore = document.querySelector('[best-team-score]');
+    var htmlString = '';
+    
+    resultScores.forEach( teamName => {        
+        htmlString += `<span best-team><img src="${teamName.logo}" style="padding-right: 5px;max-height: 0.85rem;">${teamName.team}</span><br>`;
+        bestScore.innerHTML = `+${teamName.score}`;
     })
 
-    tableContent += `</tbody>
-        </table>
-    </td>`;
+    best.outerHTML = htmlString;
+    bestWeek.innerHTML = ' this season';
+}
 
-    return tableContent;
+async function hotTeam(users) {
+    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
+
+    const scoredUsers = await Promise.all(users.map(async (user) => {
+        const hotStreakScore = await getPreviousThreeSum(user.seasons[0].weeklyScore, weekIndex);
+        return {
+            ...user,
+            hotStreakScore: parseFloat(hotStreakScore) || 0
+        };
+    }));
+
+    const sortedUsers = scoredUsers.toSorted((a, b) => { 
+        return b.hotStreakScore - a.hotStreakScore;
+    });
+
+    const topScore = sortedUsers[0]?.hotStreakScore ?? 0;
+    const topUsers = sortedUsers.filter(user => user.hotStreakScore === topScore);
+
+    const hotTeam = document.querySelector('[hot-team]');
+    const hotTeamScore = document.querySelector('[hot-team-score]');
+    var htmlString = '';
+
+    topUsers.forEach( user => {
+        htmlString += `<span hot-team>${user.firstName} ${user.lastName.substring(-1,1)}.</span><br>`;
+    });
+
+    hotTeam.outerHTML = htmlString;
+    hotTeamScore.innerHTML = `+${topScore} over 2 weeks`;
+}
+
+async function getPreviousThreeSum(arr, currentIndex) {
+    const startIndex = Math.max(0, currentIndex - 2);
+    var elements = arr.slice(startIndex+1, currentIndex+1);
+    elements = elements.map(week => week.score);
+    return elements.reduce((a, b) => a + b, 0);
 }
 
 async function getGame(season, week, team) {
@@ -397,13 +415,13 @@ async function getTeamLogos (game) {
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            awayTeamLogo = '<img src="' + awayTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+            awayTeamLogo = '<img src="' + awayTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
         }
 
         if (homeTeamLogo == null) {
             homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            homeTeamLogo = '<img src="' + homeTeamLogo.logos[0] + '" style="padding-right: 5px;">';
+            homeTeamLogo = '<img src="' + homeTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
         }
 
         const logoResponse = {awayTeamLogo, homeTeamLogo};
@@ -475,8 +493,8 @@ async function displaySchedule(data) {
                     homeRank = rankingsInfo[homeIndex].rank;
                 }
 
-                awayRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${awayRank}</p>`;
-                homeRank = `<p style="display: inline; padding-right: 5px; color: #787878;">${homeRank}</p>`;
+                awayRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${awayRank}</p>`;
+                homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
                 function exists(arr, search) {
                     var doesExist = false;
@@ -567,14 +585,14 @@ async function displaySchedule(data) {
                                 scoreDisplay = scoreObject[0].score;
                             }
     
-                            var awayScoreAdded = '<strong style="color: goldenrod;">+' + scoreDisplay + '<strong>';
-                            var homeScoreAdded = '<strong style="color: goldenrod;">+' + scoreDisplay + '<strong>';
+                            var awayScoreAdded = '<strong style="color: #F2A93B;">+' + scoreDisplay + '<strong>';
+                            var homeScoreAdded = '<strong style="color: #F2A93B;">+' + scoreDisplay + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
-                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
+                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-') + '<td class="score-added">' + homeScoreAdded + '</td>';
                             } else {
-                                topData = (game.awayPoints || '-') + '<td class="score-added"><strong>' + awayScoreAdded + '<strong></td>';
+                                topData = (game.awayPoints || '-') + '<td class="score-added">' + awayScoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + homeScoreAdded + '</td>';
                             }
 
@@ -585,9 +603,9 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
                             }
-                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
                         } else if (game.homePoints > game.awayPoints) {
         
@@ -597,7 +615,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.homeId;
                                 });
         
-                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -609,7 +627,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: green;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
                             }
                             topData = (game.awayPoints || '-');
                             bottomData = (game.homePoints || '-');
@@ -643,12 +661,12 @@ async function displaySchedule(data) {
                     teamTable += '<tr><td style="width: 250px;">';
         
                     teamTable += awayImg + awayRank + awayTeam;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr>';
         
                     teamTable += '<tr><td style="width: 250px;">';
                     teamTable += homeImg + homeRank + homeTeam;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
                     teamTable += '<tr></tr><tbody></table></td>';
@@ -708,9 +726,9 @@ async function displaySchedule(data) {
                                         return obj.teamId == game.awayId;
                                     });
             
-                                    scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
                                 }
-                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added"><strong>' + scoreAdded + '<strong></td>';
+                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-');
                             } else {
             
@@ -721,7 +739,7 @@ async function displaySchedule(data) {
                                         return obj.teamId == game.homeId;
                                     });
             
-                                    scoreAdded = '<strong style="color: green;">+' + teamScoreObject[0].score + '<strong>';
+                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
                                 }
             
                                 topData = (game.awayPoints || '-');
@@ -738,12 +756,12 @@ async function displaySchedule(data) {
 
                         teamTable += '<tr><td style="width: 250px;">';
                         teamTable += awayImg + awayRank + awayTeam;
-                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 70px;">' + topData;
+                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                         teamTable += '</tr>';
             
                         teamTable += '<tr><td style="width: 250px;">';
                         teamTable += homeImg + homeRank + homeTeam;
-                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid black;"></td><td style="width: 100px;">' + bottomData;
+                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                         teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
                         teamTable += '</tr><tr></tr><tbody></table></td>';
             
@@ -789,7 +807,7 @@ async function displaySchedule(data) {
     }
 
     scheduleContainer.innerHTML = str;
-    document.querySelector('.loading-container').style.display = "none";
+    document.querySelector('.football-loader').style.display = "none";
     document.querySelector('.schedule-table').style.display = "flex";
 }
 
@@ -800,7 +818,7 @@ $(".dropdown-menu-week a").click(function(){
     var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
-    document.querySelector('.loading-container').style.display = "block";
+    document.querySelector('.football-loader').style.display = "block";
     document.querySelector('.schedule-table').style.display = "none";
     displaySchedule(usersData);
 });

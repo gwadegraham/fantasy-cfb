@@ -1,14 +1,10 @@
 <!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-  <title>Sign In with Auth0</title>
+  <title>Sign into Campus Clash</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-  <!-- <link href="https://unpkg.com/tailwindcss@^1.0/dist/tailwind.min.css" rel="stylesheet" /> -->
-  <!-- <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" /> -->
-  <!-- <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" /> -->
   <style>
     body {
       font-family: "Inter", sans-serif;
@@ -18,29 +14,13 @@
 </head>
 
 <body style="background-color: black;" class="min-h-screen bg-gray-100 text-gray-900 flex justify-center">
-  
   <div class="box">
     <div id="login-container2" class="auth"></div>
     <div class="image">
-      <div>
-        <img class="image-one" style="width: 100%;" src="https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash.png" />
+      <div style="display: flex;">
+        <img class="image-one" src="https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash-v2.png" />
       </div>
     </div>
-    <!-- <table style="width: 80%; height: 100%; margin: 0 auto; 
-    display: grid; overflow: hidden; border:1px solid #b4b4b4; border-radius: 30px;">
-      <tbody style="background-color: #242424;">
-        <tr>
-          <td style="width: 50%;">
-            <div id="login-container2" style="margin-left: 50%; display: contents;">
-              Hello World
-            </div>
-          </td>
-          <td style="max-width: 50%; max-height: 100%;">
-            <img style="width: 400px; margin-left: -50px;" src="https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash.png" />
-          </td>
-        </tr>
-      </tbody>
-    </table> -->
   </div>
 
   <script src="https://cdn.auth0.com/js/lock/12.4/lock.min.js"></script>
@@ -90,7 +70,7 @@
       languageBaseUrl: config.languageBaseUrl,
       languageDictionary: languageDictionary,
       theme: {
-        logo: 'https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash.png',
+        logo: 'https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash-v2.png',
         primaryColor: colors.primary ? colors.primary : 'green'
       },
       prefill: loginHint ? { email: loginHint, username: loginHint } : null,
@@ -115,6 +95,7 @@
 
   <style>
     .box {
+      height: 800px;
       margin: 50px;
       display: flex;
       background-color: #242424;
@@ -130,10 +111,19 @@
       flex: 1 1 auto;
       display: flex;
       margin: auto;
+      max-height: 100%;
     }
 
     .image-one {
       flex: 1 1 auto;
+      height: 700px;
+      width: auto;
+    }
+
+    .pacifico-regular {
+      font-family: "Pacifico", cursive;
+      font-weight: 400;
+      font-style: normal;
     }
 
     /* mobile css */
@@ -149,9 +139,13 @@
         .box {
             margin: 25px;
             padding: 15px;
+            height: calc(var(--vh, 1vh) * 90);
+        }
+
+        .auth0-lock.auth0-lock .auth0-lock-cred-pane-internal-wrapper {
+            height: calc(var(--vh, 1vh) * 90);
         }
     }
   </style>
 </body>
-
 </html>
