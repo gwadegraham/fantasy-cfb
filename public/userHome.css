@@ -3,7 +3,8 @@
     .get-users-container {
         width: 95%;
         max-width: 100vw;
-        overflow-x: hidden;
+        /* overflow-x: hidden; */
+        overflow-x: visible !important;
     }
     .header {
         display: flex;
