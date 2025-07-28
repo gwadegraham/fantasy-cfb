@@ -51,6 +51,14 @@
 
     .sticky-header {
         /* TODO: Make this sticky */
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+    }
+
+    .sticky-header a {
+        display: inline-flex;
+        align-items: center;
+        padding-left: 1em;
     }
 
     .sticky-header-score {
