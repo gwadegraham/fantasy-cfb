@@ -27,6 +27,8 @@
 
     .team-item {
         align-items: center;
+        min-width: 4em;
+        width: 11em;
     }
 
     .table-wrapper {
