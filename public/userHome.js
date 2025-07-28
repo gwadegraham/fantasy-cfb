@@ -133,10 +133,10 @@ function displayTeams(data) {
         refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
         str += '<th class="team-header sticky-header">';
-        // str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
-        // str += '</a></th>';
-        str += '</th>';
+        str += '</a></th>';
+        // str += '</th>';
         
         data.seasons.at(-1).weeklyScore.forEach(week => {
             var result = week.scoreByTeam.filter(obj => {
