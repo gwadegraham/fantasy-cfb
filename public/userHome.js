@@ -132,7 +132,7 @@ function displayTeams(data) {
         refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
         refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
-        str += '<th class="team-item sticky-header">';
+        str += '<th class="team-header sticky-header">';
         // str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         // str += '</a></th>';
@@ -168,7 +168,7 @@ function displayTeams(data) {
     });
 
     str += '<tr>';
-    str += '<th class="team-item sticky-header">';
+    str += '<th class="team-header sticky-header">';
     str += 'Cumulative Score';
     str += '</th>';
 
