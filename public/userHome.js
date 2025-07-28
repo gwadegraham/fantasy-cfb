@@ -167,7 +167,7 @@ function displayTeams(data) {
     });
 
     str += '<tr>';
-    str += '<th class="team-item sticky-header">';
+    str += '<th class="team-item sticky-header team-header">';
     str += 'Cumulative Score';
     str += '</th>';
 
