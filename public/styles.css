@@ -308,6 +308,11 @@ footer {
 .team-score-header {
     position: sticky;
     text-align: left;
+    left: 0;
+}
+
+.team-score-header a {
+    position: sticky;
 }
 
 .table-wrapper{
