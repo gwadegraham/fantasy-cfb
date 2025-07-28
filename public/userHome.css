@@ -30,7 +30,7 @@
     }
 
     .table-wrapper {
-        overflow-x: auto;
+        overflow-x: scroll;
         width: 100%;
     }
 
