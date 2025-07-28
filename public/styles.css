@@ -292,9 +292,10 @@ footer {
 /* Table Styles */
 
 .sticky-header {
+    position: -webkit-sticky;
     position: sticky;
     left: 0;
-    z-index: 2;
+    z-index: 3;
     background-color: #101322;
 }
 
