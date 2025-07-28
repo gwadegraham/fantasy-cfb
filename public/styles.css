@@ -292,10 +292,6 @@ footer {
 /* Table Styles */
 
 .sticky-header {
-    position: -webkit-sticky;
-    position: -moz-sticky;
-    position: -ms-sticky;
-    position: -o-sticky;
     position: sticky;
     left: 0;
     z-index: 2;
@@ -310,6 +306,7 @@ footer {
 }
 
 .team-score-header {
+    position: sticky;
     text-align: left;
 }
 
