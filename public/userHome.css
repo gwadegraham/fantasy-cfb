@@ -48,6 +48,10 @@
         min-width: 4em;
     }
 
+    .sticky-header {
+        /* TODO: Make this sticky */
+    }
+
     .sticky-header-score {
         right: 1.2rem;
     }
