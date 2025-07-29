@@ -290,7 +290,7 @@ async function bestTeam(users) {
     var htmlString = '';
     
     resultScores.forEach( teamName => {        
-        htmlString += `<span best-team><img src="${teamName.logo}" style="padding-right: 5px;max-height: 0.85rem;">${teamName.team}</span><br>`;
+        htmlString += `<span best-team><img src="${teamName.logo}">${teamName.team}</span><br>`;
         bestScore.innerHTML = `+${teamName.score}`;
     })
 

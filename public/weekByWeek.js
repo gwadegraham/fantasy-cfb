@@ -45,15 +45,28 @@ export function setChartData(data) {
         data: chartData,
         options: {
             scales: {
-              y: {
-                beginAtZero: true,
-                min: 0,
-                max: chartMax,
-                ticks: {
-                    stepSize : Math.round(chartMax / 7)
+                x: {
+                    ticks: {
+                        color: '#F4F6FB',
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    min: 0,
+                    max: chartMax,
+                    ticks: {
+                        color: '#F4F6FB',
+                        stepSize : Math.round(chartMax / 7)
+                    },
                 }
-              }
-            }
+            },
+            plugins: {  // 'legend' now within object 'plugins {}'
+                legend: {
+                    labels: {
+                        color: '#F4F6FB',
+                    }
+                }
+            },
         }
     };
 

@@ -63,6 +63,7 @@ body {
 
 .navbar-links li:hover {
     background-color: #ed5858;
+    border-radius: 5px;
 }
 
 .dropdown {
@@ -143,9 +144,7 @@ body {
     padding: 30px;
 }
 
-.chart-container {
-    margin-top: 20px;
-}
+
 
 .content {
     /* padding-left: 40px; */

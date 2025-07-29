@@ -71,6 +71,11 @@
         line-height: 1.4;
     }
 
+    .highlight-info img {
+        padding-right: 5px;
+        max-height: 0.85rem;
+    }
+
     .highlight-info p {
         margin-bottom: 0.5em;
     } 
@@ -146,7 +151,72 @@
 }
 
 @media only screen and (min-width: 64em) {
+
+    .brand-title {
+        font-size: 2rem;
+    }
+
+    .header-title {
+        font-size: 3.4rem;
+    }
+
+    .last-updated {
+        font-size: 1rem;
+        margin-right: 0rem;
+    }
+
+    .fl-table {
+        font-size: 1em;
+        line-height: 4em;
+    }
+
+    .team-item {
+        justify-content: space-between;
+    }
+
+    .team-item img {
+        height: 35px !important;
+    }
+
     .highlights-container {
-        flex-direction: row;
+        grid-template-columns: repeat(2, 1fr); /* 2x2 grid */
+        display: grid;
+        gap: 2em;
+        padding: 2em;
+        width: 95%;
+    }
+
+    .highlight-title {
+        font-size: 2rem;
+    }
+
+    .highlights-header {
+        font-size: 3.4rem;
+    }
+
+    .highlight-info span{
+        font-size: 1.7rem;
+    }
+
+    .highlight-info img {
+        padding-right: 10px;
+        max-height: 1.7rem;
+    }
+
+    .hr-subtle {
+        height: 2px;
+    }
+
+    .dropdownWeek {
+        margin-left: 1em;
+        margin-right: auto;
+    }
+
+    .dropdownWeek button {
+        font-size: 2rem;
+    }
+
+    .dropdown-item {
+        font-size: 1.5rem;
     }
 }

@@ -53,7 +53,6 @@
     }
 
     .sticky-header {
-        /* TODO: Make this sticky */
         overflow-x: visible !important;
         overflow-y: visible !important;
         white-space: nowrap !important;
