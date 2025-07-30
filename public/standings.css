@@ -158,6 +158,7 @@
 
     .header-title {
         font-size: 3.4rem;
+        padding: 35px 35px 35px 0px;
     }
 
     .last-updated {
@@ -218,5 +219,9 @@
 
     .dropdown-item {
         font-size: 1.5rem;
+    }
+
+    .game-table {
+        font-size: 1.2rem;
     }
 }
