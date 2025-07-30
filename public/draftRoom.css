@@ -1,0 +1,192 @@
+@media only screen and (min-width: 64em) {
+    .brand-title {
+        font-size: 2rem;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
+    .header-title {
+        font-size: 3.4rem;
+    }
+
+    .temp-draft-table {
+        width: 95%;
+    }
+
+    #draft-board {
+        margin: 20px auto;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    #draft-table th {
+        text-align: center;
+    }
+
+    [draft-table-body] td:not(:first-child):not(:last-child):hover {
+        cursor: pointer;
+        border: 1px solid #F4F6FB;
+    }
+
+    th, td {
+        padding: 12px;
+        text-align: center;
+    }
+
+    #draft-table td:not(:first-child) {
+        background-color: #2A2E42;
+    }
+
+    #add-team {
+        margin: 20px auto;
+        width: 90%;
+        max-width: 300px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+    }
+
+    #add-team form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #add-team label {
+        margin-bottom: 5px;
+    }
+
+    #add-team select {
+        color: #1A1F33;
+    }
+
+    #add-team button {
+        color: #F4F6FB;
+        background-color: #2A2E42;
+    }
+
+    #add-team select, #add-team button {
+        margin-bottom: 10px;
+        padding: 10px;
+        font-size: 16px;
+    }
+
+    #current-team, #current-round {
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+        margin-top: 20px;
+    }
+
+    #draft-table img {
+        width: 40px;
+        height: auto;
+        cursor: pointer;
+    }
+
+    .modal-content {
+        background-color: #1A1F33 !important;
+    }
+
+    .close {
+        opacity: 1 !important;
+    }
+
+    .modal-body select {
+        color: #1A1F33;
+    }
+
+    .modal-footer .btn-primary, .modal-footer .btn-primary:active {
+        color: #F4F6FB !important;
+        background-color: #ed5858 !important;
+        border-color: #2A2E42 !important;
+    }
+
+    .modal-footer .btn-primary:hover {
+        color: #F4F6FB;
+        background-color: #ac3e3e;
+        border-color: #2A2E42;
+    }
+
+    .modal-footer .btn-primary:disabled {
+        background-color: #ed5858;
+    }
+
+    .modal-footer .btn-secondary {
+        color: #F4F6FB;
+        background-color: #2A2E42;
+    }
+
+    .modal-footer .btn-secondary:hover {
+        color: #F4F6FB;
+        background-color: #181b26;
+    }
+
+    .submit-draft-container {
+        text-align: center;
+        width: 95%;
+    }
+
+    .submit-draft-container button {
+        font-size: 1.5em;
+        font-weight: 800;
+        border-radius: 5px;
+        background-color: #ed5858;
+        color: #1A1F33;
+        border: none;
+        box-shadow: 0px 0px 2px 2px #444;
+        width: 50%;
+        padding: 1em;
+        cursor: pointer;
+    }
+
+    .submit-draft-container button:hover {
+        transition: 0.7s;
+        color: #F4F6FB;
+        background-color: #ac3e3e;
+    }
+
+    .submit-draft-container button:disabled {
+        background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3));
+        color: light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3));
+        border-color: light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3));
+    }
+
+    .submit-draft-container button:disabled:hover {
+        cursor: auto;
+        background-color: light-dark(rgba(239, 239, 239, 0.3), rgba(19, 1, 1, 0.3));
+        color: light-dark(rgba(16, 16, 16, 0.3), rgba(255, 255, 255, 0.3));
+        border-color: light-dark(rgba(118, 118, 118, 0.3), rgba(195, 195, 195, 0.3));
+    }
+
+    .content {
+        width: 95%;
+    }
+
+    .content #myInput {
+        color: #1A1F33;
+        padding: 0.5em;
+        margin-left: 1%;
+    }
+
+    .sticky-header {
+        background-color: #ed5858;
+    }
+
+    .fl-table, .fl-table td {
+        font-size: 1em;
+    }
+
+    footer {
+        text-align: center;
+        padding: 2em 1em 1em;
+    }
+}

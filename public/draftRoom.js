@@ -136,7 +136,7 @@ function displayUsers(data) {
     });
 
     $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
-        $(this).css('background-color', 'white');
+        $(this).css('background-color', '#ed5858');
     });
 
     // Initialize the current user and round display
@@ -266,7 +266,7 @@ async function displayTeams(data) {
         refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
         refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
-        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
+        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         str += '</td>';
 
@@ -401,7 +401,7 @@ function updateDraftOrder() {
         document.getElementById('current-team').textContent = `Current Team: ${userTeams[currentTeamIndex].charAt(0).toUpperCase() + userTeams[currentTeamIndex].slice(1)}`;
         document.getElementById('current-round').textContent = `Round ${currentRound}`;
         $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
-            $(this).css('background-color', 'white');
+            $(this).css('background-color', '#ed5858');
         });
     }
 }
@@ -424,7 +424,7 @@ function confirmNewTeam(){
 
         if (newCell) {
             const img = document.createElement('img');
-            img.src = teamObject.logos[0];
+            img.src = teamObject.logos.at(-1);
             img.alt = teamObject.school;
             img.title = teamObject.id;
             newCell.innerHTML = '';
@@ -432,8 +432,15 @@ function confirmNewTeam(){
             userTeams[teamIndex] = newTeamValue;
 
             $("select").find("option[value=" + currentTeamValue + "]").show();
+            $('#changeTeamModal select').val('');
         }
     }
+}
+
+function closeChangeTeamModal() {
+    $('#changeTeamModal').modal('hide');
+    $('#changeTeamModal select').val('');
+    $('#changeTeamModal .btn-primary').prop('disabled', true);
 }
 
 //Event Listener for Add Team Event
@@ -443,7 +450,7 @@ document.getElementById('team-form').addEventListener('submit', function(event) 
     $('#team-form button').attr('disabled', true);
 
     $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
-        $(this).css('background-color', '#b0b0b08f');
+        $(this).css('background-color', '#2A2E42');
     });
 
     const teamName = document.getElementById('team').value;
@@ -459,7 +466,7 @@ document.getElementById('team-form').addEventListener('submit', function(event) 
     
     if (cell) {
         const img = document.createElement('img');
-        img.src = teamObject.logos[0];
+        img.src = teamObject.logos.at(-1);
         img.alt = teamObject.school;
         img.title = teamObject.id
         cell.innerHTML = '';
@@ -557,4 +564,13 @@ $(".dropdown-menu a").click(function(){
     window.sessionStorage.setItem("league", selectedLeague);
     window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
     window.location.reload();
+});
+
+$(document).ready(function() {
+    $('#changeTeamModal .btn-primary').prop('disabled', true);
+        $('#changeTeamModal select').change(function() {
+            if($(this).val() != '') {
+                $('#changeTeamModal .btn-primary').prop('disabled', false);
+            }
+    });
 });
