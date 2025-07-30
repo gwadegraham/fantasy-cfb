@@ -199,7 +199,52 @@
 }
 
 @media only screen and (min-width: 64em) {
-    .highlights-container {
-        flex-direction: row;
+
+    .content {
+        margin-top: 0px;
+    }
+
+    .brand-title {
+        font-size: 2rem;
+    }
+
+    .header-title {
+        font-size: 3.4rem;
+        padding: 35px 35px 35px 0px;
+    }
+
+    .get-users-container {
+        width: 95%;
+        margin-left: 2.5%;
+    }
+
+    .table-wrapper {
+        width: auto;
+    }
+
+    .fl-table {
+        font-size: 1em;
+        line-height: 3em;
+    }
+
+    .hr-subtle {
+        height: 2px;
+    }
+
+    .dropdownWeek {
+        margin-left: 1em;
+        margin-right: auto;
+    }
+
+    .dropdownWeek button {
+        font-size: 2rem;
+    }
+
+    .dropdown-item {
+        font-size: 1.5rem;
+    }
+
+    .game-table {
+        font-size: 1.2rem;
     }
 }
