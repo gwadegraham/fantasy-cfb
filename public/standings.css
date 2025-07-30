@@ -224,4 +224,8 @@
     .game-table {
         font-size: 1.2rem;
     }
+
+    .game-table img {
+        height: 2rem;
+    }
 }
