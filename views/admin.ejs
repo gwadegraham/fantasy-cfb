@@ -19,158 +19,146 @@
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-title">
-                Admin
-            </div>
+    <div class="header">
+        <div class="header-title">
+            Admin
         </div>
-        <div class="content">
-            <div class="get-users-container" get-users-container>
-                <div class="table-wrapper">
-                    <table class="fl-table">
-                        <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Team 1</th>
-                            <th>Team 2</th>
-                            <th>Team 3</th>
-                            <th>Team 4</th>
-                            <th>Team 5</th>
-                            <th>Team 6</th>
-                            <th>Team 7</th>
-                            <th>Team 8</th>
-                            <th>Team 9</th>
-                            <th>Team 10</th>
-                        </tr>
-                        </thead>
-                        <tbody user-table-body>
-                        <tbody>
-                    </table>
+    </div>
+    <div class="get-users-container" get-users-container>
+        <div class="table-wrapper">
+            <table class="fl-table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Teams</th>
+                </tr>
+                </thead>
+                <tbody user-table-body>
+                <tbody>
+            </table>
+        </div>
+    </div>
+    <div class="admin-functions">
+        <div class="button-container">
+            <button onclick="displayCreateUserContainer()">
+                <i class="fa-solid fa-user-plus" style="padding-right: 5px;"></i>
+                Add a Player
+            </button>
+        </div>
+        <div class="button-container">
+            <button onclick="displayRemoveUserContainer()">
+                <i class="fa-solid fa-user-minus" style="padding-right: 5px;"></i>
+                Remove a Player
+            </button>
+        </div>
+        <div class="sub-container" create-user-container style="display: none">
+            <form id="create-form">
+                <input type="text" class="first-name" first-name placeholder="First Name">
+                <input type="text" class="last-name" last-name placeholder="Last Name">
+                <div style="padding-top: 5px;">
+                    <label style="padding-right: 5px;">Display Color</label>
+                    <input style="border-radius: 5px;" type="color" class="display-color" display-color>
                 </div>
-                <div class="add-user-container">
-                    <button onclick="displayCreateUserContainer()">
-                        <i class="fa-solid fa-plus" style="padding-right: 5px;"></i>
-                        Add a Player
-                    </button>
+                <div class="team-container" team-container>
+                    <select class="team-picker" id="team-picker" team-options>
+                    </select>
                 </div>
-            </div>
-            <div class="create-user-container" create-user-container style="display: none">
-                <form id="create-form">
-                    <input type="text" class="first-name" first-name placeholder="First Name">
-                    <input type="text" class="last-name" last-name placeholder="Last Name">
-                    <div style="padding-top: 5px;">
-                        <label style="padding-right: 5px;">Display Color</label>
-                        <input style="border-radius: 5px;" type="color" class="display-color" display-color>
-                    </div>
-                    <div class="team-container" team-container>
-                        <select class="team-picker" id="team-picker" team-options>
-                        </select>
-                    </div>
-                    <button type="submit">Create Player</button>
-                </form>
-                <hr>
-            </div>
-            <div class="delete-user-container">
-                <button onclick="displayRemoveUserContainer()">
-                    <i class="fa-solid fa-minus" style="padding-right: 5px;"></i>
-                    Remove a Player
-                </button>
-            </div>
-            <div class="remove-user-container" remove-user-container style="display: none">
-                <form id="remove-form">
-                    <div class="user-container" user-container>
-                        <select class="user-picker" id="user-picker" user-options>
-                        </select>
-                    </div>
-                    <button type="submit">Remove Player</button>
-                </form>
-            </div>
-            <div class="calculate-team-container">
-                <button onclick="displayTeamContainer()">
-                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
-                    Calculate Team Score
-                </button>
-            </div>
-            <div class="calculate-team-score-container" calculate-team-score-container style="display: none">
-                <form id="score-form">
-                    <div class="team-picker-container" team-picker-container>
-                        <select class="calculate-team-picker" id="calculate-team-picker" calculate-team-options>
-                        </select>
-                    </div>
-                    <div><select team-score-season season-options></select></div>
-                    <div><button type="submit">Calculate Score</button></div>
-                </form>
-            </div>
-            <div class="calculate-team-score-container" calculate-team-score-all-container style="display: none">
-                <form id="all-score-form">
-                    <button type="submit">Calculate Scores for all teams</button>
-                </form>
-            </div>
-            <div class="calculate-team-container">
-                <button onclick="displayRankingsContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Rankings
-                </button>
-            </div>
-            <div class="rankings-container" rankings-container style="display: none">
-                <form id="rankings-form">
-                    <div><select season-options></select></div>
-                    <div><select season-type-options></select></div>
-                    <div><select week-options></select></div>
-                    <div><button type="submit">Retrieve Rankings</button></div>
-                </form>
-            </div>
-            <div class="button-container">
-                <button onclick="displayRecruitRankingsContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Recruiting Rankings
-                </button>
-            </div>
-            <div class="sub-container" recruit-rankings-container style="display: none">
-                <form id="recruit-rankings-form">
-                    <div><select recruiting-season season-options></select></div>
-                    <div><button type="submit">Retrieve Recruiting Rankings</button></div>
-                </form>
-            </div>
-            <div class="retrieve-games-container">
-                <button onclick="displayGamesContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Game Information
-                </button>
-            </div>
-            <div class="games-container" games-container style="display: none">
-                <form id="games-form">
-                    <div><select game-week week-options></select></div>
-                    <div><select game-season-type season-type-options></select></div>
-                    <div><button type="submit">Retrieve Games</button></div>
-                </form>
-            </div>
-            <div class="update-scores-container">
-                <button onclick="displayScoresContainer()">
-                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
-                    Update Scores
-                </button>
-            </div>
-            <div class="scores-container" scores-container style="display: none">
-                <form id="scores-form">
-                    <div><select score-week week-options></select></div>
-                    <div><select score-season-type season-type-options></select></div>
-                    <div><button type="submit">Update Scores</button></div>
-                </form>
-            </div>
-            <div class="button-container">
-                <button onclick="displayRefreshTeamsContainer()">
-                    <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
-                    Refresh Teams
-                </button>
-            </div>
-            <div class="sub-container" refresh-teams-container style="display: none">
-                <form id="refresh-teams-form">
-                    <div><select refresh-season season-options></select></div>
-                    <div><button type="submit">Refresh Teams</button></div>
-                </form>
-            </div>
+                <button type="submit">Create Player</button>
+            </form>
+            <hr>
+        </div>
+        <div class="sub-container" remove-user-container style="display: none">
+            <form id="remove-form">
+                <div class="user-container" user-container>
+                    <select class="user-picker" id="user-picker" user-options>
+                    </select>
+                </div>
+                <button type="submit">Remove Player</button>
+            </form>
+        </div>
+        <div class="button-container">
+            <button onclick="displayTeamContainer()">
+                <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                Calculate Team Score
+            </button>
+        </div>
+        
+        <div class="button-container">
+            <button onclick="displayRankingsContainer()">
+                <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                Retrieve Rankings
+            </button>
+        </div>
+        <div class="sub-container" calculate-team-score-container style="display: none">
+            <form id="score-form">
+                <div class="team-picker-container" team-picker-container>
+                    <select class="calculate-team-picker" id="calculate-team-picker" calculate-team-options>
+                    </select>
+                </div>
+                <div><select team-score-season season-options></select></div>
+                <div><button type="submit">Calculate Score</button></div>
+            </form>
+            <form id="all-score-form">
+                <button type="submit">Calculate Scores for all teams</button>
+            </form>
+        </div>
+        <div class="sub-container" rankings-container style="display: none">
+            <form id="rankings-form">
+                <div><select season-options></select></div>
+                <div><select season-type-options></select></div>
+                <div><select week-options></select></div>
+                <div><button type="submit">Retrieve Rankings</button></div>
+            </form>
+        </div>
+        <div class="button-container">
+            <button onclick="displayRecruitRankingsContainer()">
+                <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                Retrieve Recruiting Rankings
+            </button>
+        </div>
+        <div class="button-container">
+            <button onclick="displayGamesContainer()">
+                <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                Retrieve Game Information
+            </button>
+        </div>
+        <div class="sub-container" recruit-rankings-container style="display: none">
+            <form id="recruit-rankings-form">
+                <div><select recruiting-season season-options></select></div>
+                <div><button type="submit">Retrieve Recruiting Rankings</button></div>
+            </form>
+        </div>
+        <div class="sub-container" games-container style="display: none">
+            <form id="games-form">
+                <div><select game-week week-options></select></div>
+                <div><select game-season-type season-type-options></select></div>
+                <div><button type="submit">Retrieve Games</button></div>
+            </form>
+        </div>
+        <div class="button-container">
+            <button onclick="displayScoresContainer()">
+                <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                Update Scores
+            </button>
+        </div>
+        <div class="button-container">
+            <button onclick="displayRefreshTeamsContainer()">
+                <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
+                Refresh Teams
+            </button>
+        </div>
+        <div class="sub-container" scores-container style="display: none">
+            <form id="scores-form">
+                <div><select score-week week-options></select></div>
+                <div><select score-season-type season-type-options></select></div>
+                <div><button type="submit">Update Scores</button></div>
+            </form>
+        </div>
+        <div class="sub-container" refresh-teams-container style="display: none">
+            <form id="refresh-teams-form">
+                <div><select refresh-season season-options></select></div>
+                <div><button type="submit">Refresh Teams</button></div>
+            </form>
         </div>
     </div>
     <footer>

@@ -193,20 +193,21 @@ function displayUsers(data) {
     var str = '';
 
     data.forEach( user => {
+        var userSeason = user.seasons[0];
         str += '<tr>';
-        str += '<td class="team-item">' + user.firstName + ' ' + user.lastName + '</td>';
+        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName.substring(0,1) + '.</a></th>';
+        str += '<td class="team-item">';
         
-        user.seasons[0].teams.forEach(team => {
-            refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
+        for (var i = 0; i < user.seasons[0].teams.length; i++) {
+            var team = userSeason.teams[i];
+            var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
             refLink = refLink.replace(/\s/g, "-").toLowerCase();
 
-            str += '<td class="team-item"><div>';
-            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos[0] + '" alt="' + team.mascot + '">'
-            str += team.mascot;
-            str += '</div></td></a>';
-
-        })
-        str += '</tr>';
+            str += '<div>';
+            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '</div></a>';
+        }
+        str += '</td></tr>';
     });
 
     userTableBody.innerHTML = str;
@@ -648,87 +649,80 @@ if (scoresForm) {
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
-    if (createUserContainer.style.display == 'block' || createUserContainer.style.display=='') {
+    if (createUserContainer.style.display == 'flex' || createUserContainer.style.display=='') {
         createUserContainer.style.display = 'none';
     } else {
-        createUserContainer.style.display = 'block';
+        createUserContainer.style.display = 'flex';
     }
 }
 
 function displayRemoveUserContainer() {
     var removeUserContainer = document.querySelector('[remove-user-container]');
 
-    if (removeUserContainer.style.display == 'block' || removeUserContainer.style.display=='') {
+    if (removeUserContainer.style.display == 'flex' || removeUserContainer.style.display=='') {
         removeUserContainer.style.display = 'none';
     } else {
-        removeUserContainer.style.display = 'block';
+        removeUserContainer.style.display = 'flex';
     }
 }
 
 function displayTeamContainer() {
-    var removeUserContainer = document.querySelector('[calculate-team-score-container]');
-    var calcAllContainer = document.querySelector('[calculate-team-score-all-container]');
+    var teamScoreContainer = document.querySelector('[calculate-team-score-container]');
 
-    if (removeUserContainer.style.display == 'block' || removeUserContainer.style.display=='') {
-        removeUserContainer.style.display = 'none';
+    if (teamScoreContainer.style.display == 'flex' || teamScoreContainer.style.display=='') {
+        teamScoreContainer.style.display = 'none';
     } else {
-        removeUserContainer.style.display = 'block';
-    }
-    
-    if (calcAllContainer.style.display == 'block' || calcAllContainer.style.display=='') {
-        calcAllContainer.style.display = 'none';
-    } else {
-        calcAllContainer.style.display = 'block';
+        teamScoreContainer.style.display = 'flex';
     }
 }
 
 function displayRankingsContainer() {
     var rankingsContainer = document.querySelector('[rankings-container]');
 
-    if (rankingsContainer.style.display == 'block' || rankingsContainer.style.display=='') {
+    if (rankingsContainer.style.display == 'flex' || rankingsContainer.style.display=='') {
         rankingsContainer.style.display = 'none';
     } else {
-        rankingsContainer.style.display = 'block';
+        rankingsContainer.style.display = 'flex';
     }
 }
 
 function displayRecruitRankingsContainer() {
     var recruitRankingsContainer = document.querySelector('[recruit-rankings-container]');
 
-    if (recruitRankingsContainer.style.display == 'block' || recruitRankingsContainer.style.display=='') {
+    if (recruitRankingsContainer.style.display == 'flex' || recruitRankingsContainer.style.display=='') {
         recruitRankingsContainer.style.display = 'none';
     } else {
-        recruitRankingsContainer.style.display = 'block';
+        recruitRankingsContainer.style.display = 'flex';
     }
 }
 
 function displayRefreshTeamsContainer() {
     var refreshTeamsContainer = document.querySelector('[refresh-teams-container]');
 
-    if (refreshTeamsContainer.style.display == 'block' || refreshTeamsContainer.style.display=='') {
+    if (refreshTeamsContainer.style.display == 'flex' || refreshTeamsContainer.style.display=='') {
         refreshTeamsContainer.style.display = 'none';
     } else {
-        refreshTeamsContainer.style.display = 'block';
+        refreshTeamsContainer.style.display = 'flex';
     }
 }
 
 function displayGamesContainer() {
     var gamesContainer = document.querySelector('[games-container]');
 
-    if (gamesContainer.style.display == 'block' || gamesContainer.style.display=='') {
+    if (gamesContainer.style.display == 'flex' || gamesContainer.style.display=='') {
         gamesContainer.style.display = 'none';
     } else {
-        gamesContainer.style.display = 'block';
+        gamesContainer.style.display = 'flex';
     }
 }
 
 function displayScoresContainer() {
     var scoresContainer = document.querySelector('[scores-container]');
 
-    if (scoresContainer.style.display == 'block' || scoresContainer.style.display=='') {
+    if (scoresContainer.style.display == 'flex' || scoresContainer.style.display=='') {
         scoresContainer.style.display = 'none';
     } else {
-        scoresContainer.style.display = 'block';
+        scoresContainer.style.display = 'flex';
     }
 }
 
