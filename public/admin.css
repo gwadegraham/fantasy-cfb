@@ -1,54 +1,150 @@
-.button-container {
-    margin: 20px 20px;
+@media only screen and (min-width: 0em) {
+
+    .admin-functions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .button-container {
+        width: 90%;
+        margin: 0.5em 0.5em;
+        display: flex;
+    }
+
+    .button-container button {
+        border-radius: 5px;
+        background-color: #1A1F33;
+        color: #F4F6FB;
+        border: none;
+        box-shadow: 0px 0px 2px 2px #1A1F33;
+        padding: 10px;
+        width: 100%;
+        min-height: 30px;
+        cursor: pointer;
+    }
+
+    .button-container button:hover, .sub-container button:hover {
+        transition: 0.7s;
+        background-color: #2A2E42;
+    }
+
+    .sub-container {
+        display: flex;
+        width: 90%;
+    }
+
+    .team-container {
+        padding-bottom: 1em;
+    }
+
+    .sub-container input {
+        color: #F4F6FB;
+        background-color: #101322;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+    }
+
+    .sub-container select {
+        color: #F4F6FB;
+        background-color: #101322;
+        border: none;
+        border-bottom: 1px solid #F4F6FB;
+        width: 45%;
+        margin-bottom: 0.25em;
+        margin-top: 0.25em;
+    }
+
+    .sub-container input:focus, select:focus {
+        outline: none;
+    }
+
+    .sub-container button {
+        border-radius: 5px;
+        background-color: #ed5858;
+        color: #F4F6FB;
+        border: none;
+        box-shadow: 0px 0px 2px 2px #444;
+        margin-top: 10px;
+        width: 100%;
+        padding: 10px;
+        cursor: pointer;
+        margin-bottom: 1em;
+    }
+
+    .display-color {
+        background-color: #101322;
+    }
+
+    .header {
+        align-self: flex-start;
+        margin-left: 1em;
+    }
+
+    .get-users-container {
+        width: 100%;
+    }
+
+    .team-item {
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .fl-table th {
+        padding: 0;
+    }
+
+    .fl-table td {
+        padding: 0em 0em 0em 0.5em;
+    }
+
+    footer {
+        text-align: center;
+        padding: 2em 1em 1em;
+    }
 }
 
-.button-container button {
-    border-radius: 5px;
-    background-color: #444;
-    color: white;
-    border: none;
-    box-shadow: 0px 0px 2px 2px #444;
-    padding: 10px;
-    min-height: 30px;
-    min-width: 120px;
-    cursor: pointer;
-}
+@media only screen and (min-width: 64em) {
 
-.button-container button:hover, .sub-container button:hover {
-    transition: 0.7s;
-    background-color: #999;
-}
+    .admin-functions {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
 
-.sub-container {
-    margin-left: 20px;
-    width: 35%;
-}
+    .button-container, .sub-container {
+        width: 40%;
+    }
 
-.sub-container input {
-    border-top: none;
-    border-left: none;
-    border-right: none;
-}
+    .sub-container {
+        flex-direction: column;
+    }
 
-.sub-container input:focus, select:focus {
-    outline: none;
-}
+    .sub-container select {
+        width: 100%;
+    }
 
-.sub-container button {
-    border-radius: 5px;
-    background-color: #4686ec;
-    color: white;
-    border: none;
-    box-shadow: 0px 0px 2px 2px #444;
-    margin-top: 10px;
-    width: 100%;
-    padding: 10px;
-    min-height: 30px;
-    min-width: 120px;
-    cursor: pointer;
-}
+    .brand-title {
+        font-size: 2rem;
+    }
 
-div select {
-    margin-top: 2%;
-    width: 50%;
+    .header-title {
+        font-size: 3.4rem;
+        padding: 35px 35px 35px 0px;
+    }
+
+    .fl-table {
+        font-size: 1em;
+        line-height: 4em;
+    }
+
+    .team-item {
+        justify-content: space-between;
+    }
+
+    .team-item img {
+        height: 35px !important;
+    }
 }

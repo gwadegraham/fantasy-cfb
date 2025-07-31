@@ -1,8 +1,6 @@
 * {
     box-sizing: border-box;
-    /* font-family: Verdana, sans-serif; */
     font-family: "Poppins", sans-serif;
-    /* font-weight: 500; */
     font-style: normal;
     color: #F4F6FB;
 }
@@ -26,7 +24,6 @@ body {
     align-items: center;
     min-height: 100vh;
     margin: 0;
-    /* padding: 50px; */
     flex-direction: column;
 }
 
@@ -145,7 +142,6 @@ body {
 }
 
 .content {
-    /* padding-left: 40px; */
     margin-top: 50px;
 }
 
@@ -162,87 +158,13 @@ body {
     font-size: 3rem;
 }
 
-.team-list-container {
-    display: flex;
-    align-items: center;
-    padding: 10px;
-}
-
 .team-item {
     padding: 5px;
     display: flex;
 }
 
-.team-container {
-    display: block;
-    padding: 10px;
-}
-
 .draft-team-container {
     padding-left: 5px;
-}
-
-.create-user-container, .remove-user-container, .calculate-team-score-container, .rankings-container, .games-container, .scores-container {
-    margin-left: 20px;
-    width: 35%;
-}
-
-.rankings-container input, .games-container input, .scores-container input {
-    border-top: none;
-    border-left: none;
-    border-right: none;
-}
-
-.create-user-container input, select {
-    border-top: none;
-    border-left: none;
-    border-right: none;
-}
-
-.create-user-container input:focus, select:focus, .remove-user-container input:focus, select:focus, .rankings-container input:focus, select:focus, .games-container input:focus, select:focus, .scores-container input:focus, select:focus {
-    outline: none;
-}
-
-.create-user-container button, .remove-user-container button, .calculate-team-score-container button, .rankings-container button, .games-container button, .scores-container button {
-    border-radius: 5px;
-    background-color: #444;
-    color: #F4F6FB;
-    border: none;
-    box-shadow: 0px 0px 2px 2px #444;
-    margin-top: 10px;
-    width: 100%;
-    padding: 10px;
-    min-height: 30px;
-    min-width: 120px;
-    cursor: pointer;
-}
-
-.create-user-container button {
-    background-color: #71d28d;
-    color: #222;
-}
-
-.remove-user-container button {
-    background-color: #d27171;
-    color: #222;
-}
-
-.calculate-team-score-container button, .rankings-container button, .games-container button, .scores-container button {
-    background-color: #4686ec;
-}
-
-.create-user-container button:hover, .remove-user-container button:hover, .calculate-team-score-container button:hover, .rankings-container button:hover, .retrieve-games-container button:hover, .scores-container button:hover {
-    transition: 0.7s;
-    background-color: #999;
-}
-
-.create-user-container hr {
-    margin-top: 20px;
-}
-
-.user-container {
-    margin-top: 10px;
-    margin-bottom: 10px;
 }
 
 footer {
@@ -253,27 +175,6 @@ footer {
 .cfb-data {
     color: #ed5858;
     font-size: 1.5rem;
-}
-
-.add-user-container, .delete-user-container, .calculate-team-container, .retrieve-games-container, .update-scores-container {
-    margin: 20px 20px;
-}
-
-.add-user-container button, .delete-user-container button, .calculate-team-container button, .retrieve-games-container button, .update-scores-container button {
-    border-radius: 5px;
-    background-color: #444;
-    color: #F4F6FB;
-    border: none;
-    box-shadow: 0px 0px 2px 2px #444;
-    padding: 10px;
-    min-height: 30px;
-    min-width: 120px;
-    cursor: pointer;
-}
-
-.add-user-container button:hover, .delete-user-container  button:hover, .calculate-team-container button:hover, .retrieve-games-container button:hover, .update-scores-container button:hover {
-    transition: 0.7s;
-    background-color: #999;
 }
 
 .blockDiv {
@@ -313,7 +214,7 @@ footer {
     position: sticky;
 }
 
-.table-wrapper{
+.table-wrapper {
     margin: 10px 20px 20px;
     box-shadow: 0px 35px 50px rgba( 0, 0, 0, 0.2 );
     overflow-x: scroll;
@@ -328,7 +229,6 @@ footer {
     width: 100%;
     max-width: 100%;
     white-space: nowrap;
-    /* background-color: #F4F6FB; */
 }
 
 .fl-table td, .fl-table th {
@@ -337,7 +237,6 @@ footer {
 }
 
 .fl-table td {
-    /* border-right: 1px solid #f8f8f8; */
     font-size: 12px;
     position: relative;
 }
@@ -361,13 +260,11 @@ footer {
 
 .fl-table thead th {
     color: #ffffff;
-    /* background: #999; */
 }
 
 
 .fl-table thead th:nth-child(odd) {
     color: #ffffff;
-    /* background: #444; */
 }
 
 .fl-table tr:nth-child(even) {
@@ -437,31 +334,26 @@ footer {
 
 @media (max-width: 767px) {
     .fl-table {
-        /* display: block; */
         width: 100%;
     }
+
     .table-wrapper:before{
-        /* content: "Scroll horizontally >"; */
-        /* display: block; */
         text-align: right;
         font-size: 11px;
         color: #F4F6FB;
         padding: 0 0 10px;
     }
-    .fl-table thead, .fl-table tbody, .fl-table thead th {
-        /* display: block; */
-    }
+
     .fl-table thead th:last-child{
         border-bottom: none;
     }
-    .fl-table thead {
-        /* float: left; */
-    }
+
     .fl-table tbody {
         width: auto;
         position: relative;
         overflow-x: auto;
     }
+
     .fl-table td, .fl-table th {
         padding: 1.5em .625em .625em .625em;
         height: 40px;
@@ -469,57 +361,53 @@ footer {
         box-sizing: border-box;
         overflow-x: hidden;
         overflow-y: hidden;
-        /* width: 100px; */
         font-size: 8px;
         text-overflow: ellipsis;
     }
+
     .fl-table thead th {
         text-align: left;
-        /* border-bottom: 1px solid #f7f7f9; */
     }
+
     .fl-table .team-header {
         width: 50px;
         white-space: pre-wrap;
     }
-    .fl-table tbody tr {
-        /* display: table-cell; */
-    }
+
     .fl-table tbody tr:nth-child(odd) {
         background: none;
     }
-    .fl-table tr:nth-child(even) {
-        /* background: transparent; */
-        background: #171b31;
 
+    .fl-table tr:nth-child(even) {
+        background: #171b31;
     }
-    .fl-table tr td:nth-child(odd) {
-        /* background: #F8F8F8; */
-        /* border-right: 1px solid #E6E4E4; */
-    }
-    .fl-table tr td:nth-child(even) {
-        /* border-right: 1px solid #E6E4E4; */
-    }
+
     .fl-table tbody td, .sticky-header {
-        /* display: block; */
         text-align: center;
     }
+
     .fl-table tbody img {
         height: 15px;
         margin-right: 10px
     }
+
     .cfb-data {
         font-size: 1rem;
     }
+
     .content {
         margin-top: 10px;
     }
+
     .header {
         height: 50px;
     }
+
     .header-title {
         padding: 5px;
         font-size: 1.7rem;
     }
+
     .game-table {
         padding: 5px;
     }
