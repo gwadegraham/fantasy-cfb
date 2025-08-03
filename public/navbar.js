@@ -27,7 +27,6 @@ document.write('\
     </a>\
     <div class="navbar-links">\
         <ul>\
-            <li><a href="./index">Home</a></li>\
             <li><a admin-page href="./admin">Admin</a></li>\
             <li league-selector>\
                 <div class="dropdown dropdown-nav">\
@@ -41,6 +40,7 @@ document.write('\
                 </div>\
             </li>\
             <li><a href="./standings">Standings</a></li>\
+            <li><a href="./rules">Scoring</a></li>\
             <li><a href="./draft-room">Draft Room</a></li>\
             <li><a href="./logout">Logout</a></li>\
         </ul>\

@@ -1,0 +1,85 @@
+@media only screen and (min-width: 0em) {
+
+    .rules-container {
+        max-width: 800px;
+        margin: auto;
+        padding: 2rem 1rem;
+    }
+
+    .header-title {
+        font-size: 1.7rem;
+        text-align: center;
+        margin-bottom: 1em;
+    }
+
+    .rules-section {
+        background-color: #1A1F33;
+        border: 1px solid #2A2E42;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .rule-header {
+        color: #ed5858;
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .rules-section ul {
+        font-size: 0.75em;
+        list-style-type: none;
+        padding: 0em;
+    }
+
+    .rules-section li {
+        margin-bottom: 0.75rem;
+    }
+
+    .rules-section li i {
+        color: #F4F6FB;
+        margin-right: 0.6rem;
+        min-width: 1rem;
+    }
+
+    p {
+        font-size: 0.75rem;
+    }
+
+    footer {
+        padding: 0 0 40px 0;
+    }
+}
+
+@media only screen and (min-width: 64em) {
+
+    .brand-title {
+        font-size: 2rem;
+    }
+
+    .header-title {
+        font-size: 3.4rem;
+    }
+
+    .rules-section ul {
+        font-size: 1.2em;
+    }
+
+    .rule-header {
+        font-size: 2.2rem;
+    }
+
+    .rules-container {
+        width: 75%;
+        max-width: none;
+    }
+
+    .scoring-list-indent {
+        margin-left: 10px;
+    }
+
+    p {
+        font-size: 1.2rem;
+    }
+}
