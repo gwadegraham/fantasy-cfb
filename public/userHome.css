@@ -64,58 +64,16 @@
         padding-left: 1em;
     }
 
-    .sticky-header-score {
-        /* right: 1.2rem; */
-    }
-
     .fl-table td {
         padding: 0em 0em 0em 0.5em;
         min-width: 4em;
     }
 
-    .highlights-container {
-        grid-template-columns: repeat(2, 1fr); /* 2x2 grid */
-        display: grid;
-        gap: 1em;
-        padding: 1em;
-    }
-
-    .sub-highlight-container {
-        background-color: #1A1F33;
-        padding: 1em;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        border: 1px solid #2A2E42;
-    }
-
-    .highlight-title {
-        font-weight: 700;
-        font-size: 1rem;
-        margin-bottom: 0.5em;
-        color: #F4F6FB;
-    }
-
-    .highlights-header {
-        font-size: 1.7rem;
-        color: #F4F6FB;
-        margin: 1em 1em 0.5em;
-        text-align: center;
-    }
-
-    .highlight-title p {
-        margin-bottom: 0;
-    }
-
-    .highlight-info span{
-        font-size: 0.85rem;
+    .game-notes {
+        font-size: 0.75em;
         color: #A4A9C2;
-        line-height: 1.4;
+        padding-left: 0.5em !important;
     }
-
-    .highlight-info p {
-        margin-bottom: 0.5em;
-    } 
 
     .hr-subtle {
         border: none;
@@ -195,7 +153,6 @@
             opacity: 0.3;
         }
     }
-
 }
 
 @media only screen and (min-width: 64em) {
