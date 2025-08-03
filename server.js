@@ -70,6 +70,14 @@ app.get('/standings', (req, res) => {
     }
 });
 
+app.get('/rules', (req, res) => {
+    if (req.oidc.isAuthenticated()) {
+        res.render('scoringRules' + req.oidc.user.user_metadata.metadata.league);
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.get('/draft-room', (req, res) => {
     if (req.oidc.isAuthenticated()) {
         res.render('draftRoom');
