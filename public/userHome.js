@@ -136,7 +136,6 @@ function displayTeams(data) {
         str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         str += '</a></th>';
-        // str += '</th>';
         
         data.seasons.at(-1).weeklyScore.forEach(week => {
             var result = week.scoreByTeam.filter(obj => {
@@ -432,7 +431,9 @@ async function displaySchedule(data) {
     
                 teamTable += homeImg + homeRank + homeTeam;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
-                teamTable += '</tr><tr></tr><tbody></table></td>';
+                teamTable += `</tr><tr><td class="game-notes">`;
+                teamTable += game.notes || '';
+                teamTable += '</td></tr><tbody></table></td>';
     
                 var gameInfo = {
                     id: game.id,
@@ -548,7 +549,9 @@ async function displaySchedule(data) {
         
                     teamTable += homeImg + homeRank + homeTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
-                    teamTable += '</tr><tr></tr><tbody></table></td>';
+                    teamTable += `</tr><tr><td class="game-notes">`;
+                    teamTable += game.notes || '';
+                    teamTable += '</td></tr><tbody></table></td>';
         
                     var gameInfo = {
                         id: game.id,

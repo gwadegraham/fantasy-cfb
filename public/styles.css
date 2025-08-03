@@ -5,6 +5,10 @@
     color: #F4F6FB;
 }
 
+button {
+    cursor: pointer;
+}
+
 .fas, .fa {
     font-family: "Font Awesome 5 Free" !important;
     padding-left: 0.5rem;

@@ -669,7 +669,9 @@ async function displaySchedule(data) {
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                    teamTable += '<tr></tr><tbody></table></td>';
+                    teamTable += `</tr><tr><td class="game-notes">`;
+                    teamTable += game.notes || '';
+                    teamTable += '</td></tr><tbody></table></td>';
 
                     var gameInfo = {
                         id: game.id,
@@ -763,7 +765,9 @@ async function displaySchedule(data) {
                         teamTable += homeImg + homeRank + homeTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                         teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                        teamTable += '</tr><tr></tr><tbody></table></td>';
+                        teamTable += `</tr><tr><td class="game-notes">`;
+                        teamTable += game.notes || '';
+                        teamTable += '</td></tr><tbody></table></td>';
             
                         var gameInfo = {
                             id: game.id,
@@ -803,7 +807,7 @@ async function displaySchedule(data) {
     }
 
     if (gameTables.length == 0) {
-        str += '<i class="fa-solid fa-sad-cry" style="padding-right: 10px;"></i>no college football games?!<i class="fa-solid fa-sad-cry" style="padding-left: 5px;"></i>'
+        showRandomNoGamesMessage();
     }
 
     scheduleContainer.innerHTML = str;
@@ -832,3 +836,44 @@ $(".dropdown-menu a").click(function(){
     window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
     window.location.reload();
 });
+
+const noGamesMessages = [
+  `
+    <div class="no-matchups-message trash-talk">
+        <div class="emoji wiggle">🧢</div>
+        <h3>Trash Talk Saturday Canceled</h3>
+        <p>No head-to-heads this week. The group chat is unusually calm.</p>
+        <p class="suggestion">Use this time to cook up excuses for next week.</p>
+    </div>
+  `,
+  `
+    <div class="no-matchups-message no-smoke">
+        <div class="emoji fade-pulse">🫥</div>
+        <h3>Nobody Wanted the Smoke</h3>
+        <p>No matchups on the board. Everyone’s ducking this week.</p>
+        <p class="suggestion">Feel free to flex your record anyway.</p>
+    </div>
+  `,
+  `
+    <div class="no-matchups-message gods-away">
+        <div class="emoji blink">👀</div>
+        <h3>The Matchup Gods Looked Away</h3>
+        <p>No battles this week. It’s just punts and vibes.</p>
+        <p class="suggestion">Enjoy the peace. Chaos returns soon.</p>
+    </div>
+  `,
+  `
+    <div class="no-matchups-message grudge-week">
+        <div class="emoji spin">🧼</div>
+        <h3>No Grudge Games This Time</h3>
+        <p>Clean week. No friends will become enemies just yet.</p>
+        <p class="suggestion">Talk your talk anyway — it's fantasy.</p>
+    </div>
+`
+];
+
+function showRandomNoGamesMessage() {
+  const container = document.getElementById("no-games-container");
+  const randomIndex = Math.floor(Math.random() * noGamesMessages.length);
+  container.innerHTML = noGamesMessages[randomIndex];
+}
