@@ -102,22 +102,23 @@ const teamSchema = new mongoose.Schema({
         required: true
     },
     alt_name1: {
-        type: String,
+        type: String
     },
     alt_name2: {
-        type: String,
-        required: true
+        type: String
     },
     alt_name3: {
-        type: String,
-        required: true
+        type: String
+    },
+    alternateNames: {
+        type: [String]
     },
     conference: {
         type: String,
         required: true
     },
     division: {
-        type: String,
+        type: String
     },
     color: {
         type: String,
