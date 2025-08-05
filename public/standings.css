@@ -94,6 +94,10 @@
         width: 100%;
     }
 
+    .dropdown-item {
+        cursor: pointer;
+    }
+
     /* No Games CSS */
     #no-games-container {
         margin: 1em;
