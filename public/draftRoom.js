@@ -318,6 +318,8 @@ async function submitDraft() {
                 team => {
                     var teamId = team.children[0].getAttribute("title");
                     var teamObj = teamList.find((element) => element.id == teamId);
+                    teamObj.location.venue_id = teamObj.location.id;
+                    delete teamObj.location.id;
                     teamDocuments.push(teamObj);
                 }
             );
