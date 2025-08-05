@@ -40,6 +40,9 @@ window.onload = async function() {
         const currentSelectedWeek = window.localStorage.getItem("week");
         if (currentSelectedWeek) {
             $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
+        } else {
+            $("#dropdownMenuButtonWeek").text("Week 1");
+            weekCode = window.localStorage.setItem("weekCode", "week-1");
         }
 
         leagueCode = window.sessionStorage.getItem("leagueCode");
