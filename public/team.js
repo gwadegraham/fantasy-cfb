@@ -237,56 +237,65 @@ function renderConferenceStandings(data, teamData) {
             return b.total.wins - a.total.wins;
         });
 
-    // Build table HTML
-    let html = `
-        <h2>${data[0].conference} Standings</h2>
-        <table class="standings-table">
-            <thead>
+    if (standings.length > 0 && teamData.conference != 'FBS Independents') {
+        // Build table HTML
+        let html = `
+            <h2>${data[0].conference} Standings</h2>
+            <table class="standings-table">
+                <thead>
+                    <tr>
+                        <th class="standingColumn">Rank</th>
+                        <th class="standingColumn">Team</th>
+                        <th class="standingColumn">Conf</th>
+                        <th class="standingColumn">Overall</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        standings.forEach((team, index) => {
+            var rankHtml = index + 1;
+            var teamHtml = team.team;
+            var confHtml = team.conferenceGames.wins + '-' + team.conferenceGames.losses;
+            var ovrHtml = team.total.wins + '-' + team.total.losses;
+
+            if (team.team == teamData.school) {
+                rankHtml = `<strong class="boldTeam">${index + 1}</strong>`;
+                teamHtml = `<strong class="boldTeam">${team.team}</strong>`;
+                confHtml = `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`;
+                ovrHtml = `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`;
+            }
+
+            html += `
                 <tr>
-                    <th class="standingColumn">Rank</th>
-                    <th class="standingColumn">Team</th>
-                    <th class="standingColumn">Conf</th>
-                    <th class="standingColumn">Overall</th>
+                    <td class="standingColumn">${rankHtml}</td>
+                    <td class="standingColumn">${teamHtml}</td>
+                    <td class="standingColumn">${confHtml}</td>
+                    <td class="standingColumn">${ovrHtml}</td>
                 </tr>
-            </thead>
-            <tbody>
-    `;
-
-    standings.forEach((team, index) => {
-        var rankHtml = index + 1;
-        var teamHtml = team.team;
-        var confHtml = team.conferenceGames.wins + '-' + team.conferenceGames.losses;
-        var ovrHtml = team.total.wins + '-' + team.total.losses;
-
-        if (team.team == teamData.school) {
-            rankHtml = `<strong class="boldTeam">${index + 1}</strong>`;
-            teamHtml = `<strong class="boldTeam">${team.team}</strong>`;
-            confHtml = `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`;
-            ovrHtml = `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`;
-        }
+            `;
+        });
 
         html += `
-            <tr>
-                <td class="standingColumn">${rankHtml}</td>
-                <td class="standingColumn">${teamHtml}</td>
-                <td class="standingColumn">${confHtml}</td>
-                <td class="standingColumn">${ovrHtml}</td>
-            </tr>
+                </tbody>
+            </table>
         `;
-    });
 
-    html += `
-            </tbody>
-        </table>
-    `;
-
-    // Render to DOM
-    const container = document.getElementById('conference-standings');
-    if (container) {
-        container.innerHTML = html;
+        // Render to DOM
+        const container = document.getElementById('conference-standings');
+        if (container) {
+            container.innerHTML = html;
+        } else {
+            console.warn("Missing container with id 'conference-standings'");
+        }
     } else {
-        console.warn("Missing container with id 'conference-standings'");
+        const container = document.getElementById('conference-standings');
+        container.style.display = 'none';
+
+        const scheduleContainer = document.getElementById('schedule-container');
+        scheduleContainer.style.width = '100%';
     }
+    
 }
 
 // Helper: Format the date to readable format
