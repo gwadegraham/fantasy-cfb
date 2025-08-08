@@ -52,6 +52,19 @@ router.get('/season/:season/team/:team', async (req, res) => {
     }
 });
 
+//Getting All By Team ID
+router.get('/season/:season/teamId/:teamId', async (req, res) => {
+    var teamId = req.params.teamId;
+    var season = req.params.season;
+    try {
+        const games = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":season}]});
+        res.status(200).json(games);
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Creating One
 router.post('/', async (req, res) => {
     let existingGame;
@@ -103,31 +116,31 @@ router.post('/week/mass-create', async (req, res) => {
     for (const game of gameData) {
         var alreadyExists = await Game.find({ id: game.id });
 
-        game.seasonType = game.season_type;
-        game.startDate = game.start_date;
-        game.startTimeTbd = game.start_time_tbd;
-        game.neutralSite = game.neutral_site;
-        game.conferenceGame = game.conference_game;
-        game.venueId = game.venue_id;
-        game.homeId = game.home_id;
-        game.homeTeam = game.home_team;
-        game.homeConference = game.home_conference;
-        game.homeDivision = game.home_division;
-        game.homePoints = game.home_points;
-        game.homeLineScores = game.home_line_scores;
-        game.homePostWinProb = game.home_post_win_prob;
-        game.homePregameElo = game.home_pregame_elo;
-        game.homePostgameElo = game.home_postgame_elo;
-        game.awayId = game.away_id;
-        game.awayTeam = game.away_team;
-        game.awayConference = game.away_conference;
-        game.awayDivision = game.away_division;
-        game.awayPoints = game.away_points;
-        game.awayLineScores = game.away_line_scores;
-        game.awayPostWinProb = game.away_post_win_prob;
-        game.awayPregameElo = game.away_pregame_elo;
-        game.awayPostgameElo = game.away_postgame_elo;
-        game.excitementIndex = game.excitement_index;
+        game.seasonType = game.seasonType;
+        game.startDate = game.startDate;
+        game.startTimeTbd = game.startTimeTBD;
+        game.neutralSite = game.neutralSite;
+        game.conferenceGame = game.conferenceGame;
+        game.venueId = game.venueId;
+        game.homeId = game.homeId;
+        game.homeTeam = game.homeTeam;
+        game.homeConference = game.homeConference;
+        game.homeDivision = game.homeDivision;
+        game.homePoints = game.homePoints;
+        game.homeLineScores = game.homeLineScores;
+        game.homePostWinProb = game.homePostWinProb;
+        game.homePregameElo = game.homePregameElo;
+        game.homePostgameElo = game.homePostgameElo;
+        game.awayId = game.awayId;
+        game.awayTeam = game.awayTeam;
+        game.awayConference = game.awayConference;
+        game.awayDivision = game.awayDivision;
+        game.awayPoints = game.awayPoints;
+        game.awayLineScores = game.awayLineScores;
+        game.awayPostWinProb = game.awayPostWinProb;
+        game.awayPregameElo = game.awayPregameElo;
+        game.awayPostgameElo = game.awayPostgameElo;
+        game.excitementIndex = game.excitementIndex;
 
         var date = new Date();
         var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});

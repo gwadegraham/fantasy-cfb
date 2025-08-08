@@ -263,10 +263,9 @@ async function displayTeams(data) {
         }
 
         str += '<tr><td style="text-align: left;">';
-        refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
-        refLink = refLink.replace(/\s/g, "-").toLowerCase();
+        refLink = `/team?team=${team.id}`;
 
-        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+        str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         str += '</td>';
 

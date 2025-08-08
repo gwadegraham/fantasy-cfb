@@ -129,11 +129,10 @@ function displayTeams(data) {
         var totalScore = 0;
 
         str += '<tr>';
-        refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
-        refLink = refLink.replace(/\s/g, "-").toLowerCase();
+        var refLink = `/team?team=${team.id}`;
 
         str += '<th class="team-header sticky-header">';
-        str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+        str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
         str += team.school;
         str += '</a></th>';
         
