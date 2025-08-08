@@ -22,6 +22,10 @@
     gap: 1em;
     }
 
+    .team-details p, .team-details small {
+        color: #ed5858;
+    }
+
     .team-logo {
     width: 80px;
     height: 80px;
@@ -113,6 +117,31 @@
     .standings-container {
         display: flex;
         flex-direction: column;
+        width: 100%;
+    }
+
+    .schedule-head, .standing-head {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    .standings-table {
+        display: none;
+    }
+
+    .standings-table.active {
+        display: block;
+    }
+
+    .fa-solid {
+        font-size: 1.5em;
+        cursor: pointer;
+    }
+
+    .fa-rank-stand {
+        font-size: 1em;
+        padding-right: 0.5em;
     }
 
     .standingColumn {
@@ -129,11 +158,14 @@
 
     .schedule h2 {
       font-size: 1.4rem;
-      color: #ed5858;
       margin-bottom: 1rem;
     }
 
     .games-container {
+        display: none;
+    }
+
+    .games-container.active {
         display: flex;
         flex-direction: column;
         flex-wrap: wrap;
@@ -149,10 +181,6 @@
       justify-content: space-between;
       align-items: center;
       transition: background 0.3s;
-    }
-
-    .game-row:hover {
-      background-color: #1e233a;
     }
 
     .team-row {
@@ -187,9 +215,23 @@
         font-size: 2rem;
     }
 
+    .games-container {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: wrap;
+    }
+
     .standings-container {
         flex-direction: row;
         max-width: 75%;
+    }
+
+    .standings-table {
+        display: block;
+    }
+
+    .drop {
+        display: none !important;
     }
 
     .schedule {
@@ -199,6 +241,10 @@
 
     .team-card {
         width: 75%;
+    }
+
+    .fa-solid {
+        cursor: auto;
     }
 }
 

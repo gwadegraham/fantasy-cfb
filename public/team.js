@@ -79,7 +79,6 @@ async function getTeam() {
     const teamData = data[0];
     const teamRecordInfo = await getRecord(teamData);
     const conferenceRecords = await getConferenceRecords(teamData);
-    console.log("conferenceRecords", conferenceRecords)
 
     renderConferenceStandings(conferenceRecords, teamData);
     renderTeamInfo(teamData, teamRecordInfo);
@@ -105,7 +104,7 @@ async function getConferenceRecords(teamData) {
     var currentYear = new Date().getFullYear();
     currentYear = 2024;
 
-    const response = await fetch(`/records/${currentYear}/conference/${teamData.conference}`, {
+    const response = await fetch(`/records/${currentYear}/conference/${teamData.seasons.at(-1).conference}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -119,8 +118,10 @@ async function getConferenceRecords(teamData) {
 
 async function getSchedule() {
     const urlParams = new URLSearchParams(window.location.search);
+    var seasonYear = new Date().getFullYear();
+    seasonYear = 2024;
 
-    const response = await fetch(`/games/season/${2024}/teamId/${urlParams.get('team')}`, {
+    const response = await fetch(`/games/season/${seasonYear}/teamId/${urlParams.get('team')}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -130,7 +131,7 @@ async function getSchedule() {
 
     response.json().then(async data => {
         var scheduleData = data;
-        renderTeamScheduleInfo(scheduleData);
+        renderTeamScheduleInfo(scheduleData, seasonYear);
     });
 }
 
@@ -156,7 +157,7 @@ function renderTeamInfo(team, record) {
 
     <div class="team-details">
         <div>
-            <h4>${team.seasons.at(-1).season} Record</h4>
+            <h4>${team.seasons.at(-2).season} Record</h4>
             <p class="score">${record.total.wins}-${record.total.losses}    Overall</p>
             <p class="score">${record.conferenceGames.wins}-${record.conferenceGames.losses}    Conference</p>
         </div>
@@ -176,12 +177,14 @@ function renderTeamInfo(team, record) {
 }
 
 // Render schedule info
-function renderTeamScheduleInfo(schedule) {
-    console.log("schedule", schedule)
+function renderTeamScheduleInfo(schedule, year) {
     const container = document.getElementById("schedule-container");
 
     var html = `
-        <h2>🗓 2025 Schedule</h2>
+        <div class="schedule-head">
+            <h2><i class="fa-solid fa-calendar-days fa-rank-stand"></i>${year} Schedule</h2>
+            <i class="fa-solid fa-caret-down drop"></i>
+        </div>
         <div class="games-container">
     `;
 
@@ -221,6 +224,26 @@ function renderTeamScheduleInfo(schedule) {
     
     html += '</div>';
     container.innerHTML = html;
+
+    const scheduleButton = document.querySelector('#schedule-container .schedule-head');
+
+    if (scheduleButton && document.querySelector('.drop').checkVisibility()) {
+        //Listener to open/close schedule
+        const toggle = document.querySelector('#schedule-container .schedule-head');
+        const content = document.querySelector('.games-container');
+
+        toggle.addEventListener('click', () => {
+            content.classList.toggle('active');
+
+            if (content.classList.contains('active')) {
+                document.querySelector('#schedule-container .drop').classList.add('fa-caret-up');
+                document.querySelector('#schedule-container .drop').classList.remove('fa-caret-down');
+            } else {
+                document.querySelector('#schedule-container .drop').classList.add('fa-caret-down');
+                document.querySelector('#schedule-container .drop').classList.remove('fa-caret-up');
+            }
+        });
+    }
 }
 
 function renderConferenceStandings(data, teamData) {
@@ -240,7 +263,10 @@ function renderConferenceStandings(data, teamData) {
     if (standings.length > 0 && teamData.conference != 'FBS Independents') {
         // Build table HTML
         let html = `
-            <h2>${data[0].conference} Standings</h2>
+            <div class="standing-head">
+                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0].conference} Standings</h2>
+                <i class="fa-solid fa-caret-down drop"></i>
+            </div>
             <table class="standings-table">
                 <thead>
                     <tr>
@@ -285,6 +311,26 @@ function renderConferenceStandings(data, teamData) {
         const container = document.getElementById('conference-standings');
         if (container) {
             container.innerHTML = html;
+
+            const standingsButton = document.querySelector('#conference-standings .standing-head');
+
+            if (standingsButton) {
+                //Listener to open/close standings
+                const toggle = document.querySelector('#conference-standings .standing-head');
+                const content = document.querySelector('.standings-table');
+
+                toggle.addEventListener('click', () => {
+                    content.classList.toggle('active');
+
+                    if (content.classList.contains('active')) {
+                        document.querySelector('#conference-standings .drop').classList.add('fa-caret-up');
+                        document.querySelector('#conference-standings .drop').classList.remove('fa-caret-down');
+                    } else {
+                        document.querySelector('#conference-standings .drop').classList.add('fa-caret-down');
+                        document.querySelector('#conference-standings .drop').classList.remove('fa-caret-up');
+                    }
+                });
+            }
         } else {
             console.warn("Missing container with id 'conference-standings'");
         }
