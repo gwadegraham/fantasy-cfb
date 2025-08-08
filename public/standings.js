@@ -113,11 +113,10 @@ function displayUsers(data) {
 
         for (var i = 0; i < userSeason.teams.length; i++) {
             var team = userSeason.teams[i];
-            var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
-            refLink = refLink.replace(/\s/g, "-").toLowerCase();
+            var refLink = `/team?team=${team.id}`;
 
             str += '<div>';
-            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
             str += '</div></a>';
         }
 

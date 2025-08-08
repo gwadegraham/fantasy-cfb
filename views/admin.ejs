@@ -176,6 +176,20 @@
                 </form>
             </div>
         </div>
+        <div class="function-container">
+            <div class="button-container">
+                <button onclick="displayTeamRecordsContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Team Records
+                </button>
+            </div>
+            <div class="sub-container" team-records-container style="display: none">
+                <form id="team-records-form">
+                    <div><select record-season season-options></select></div>
+                    <div><button type="submit">Retrieve Team Records</button></div>
+                </form>
+            </div>
+        </div>
     </div>
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>

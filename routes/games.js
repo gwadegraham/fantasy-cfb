@@ -52,6 +52,19 @@ router.get('/season/:season/team/:team', async (req, res) => {
     }
 });
 
+//Getting All By Team ID
+router.get('/season/:season/teamId/:teamId', async (req, res) => {
+    var teamId = req.params.teamId;
+    var season = req.params.season;
+    try {
+        const games = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":season}]});
+        res.status(200).json(games);
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Creating One
 router.post('/', async (req, res) => {
     let existingGame;

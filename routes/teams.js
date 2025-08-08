@@ -44,6 +44,22 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Getting All Info for One
+router.get('/info/:id', async (req, res) => {
+    try {
+        const teamName = await Team.find({id: req.params.id});
+
+        if (JSON.stringify(teamName) === '[]') {
+            res.status(400).json({message: `No teams found with id ${req.body.id}`});
+        } else {
+            res.status(200).json(teamName);
+        }
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Updating One
 router.patch('/:id', getTeam, async (req, res) => {
 

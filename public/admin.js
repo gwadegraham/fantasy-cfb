@@ -200,11 +200,10 @@ function displayUsers(data) {
         
         for (var i = 0; i < user.seasons[0].teams.length; i++) {
             var team = userSeason.teams[i];
-            var refLink = "https://www.sports-reference.com/cfb/schools/" + team.school;
-            refLink = refLink.replace(/\s/g, "-").toLowerCase();
+            var refLink = `/team?team=${team.id}`;
 
             str += '<div>';
-            str += '<a target="_blank" href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
             str += '</div></a>';
         }
         str += '</td></tr>';
@@ -538,6 +537,41 @@ if (recruitRankingsForm) {
     });
 }
 
+const teamRecordsForm = document.getElementById('team-records-form');
+
+if (teamRecordsForm) {
+    teamRecordsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[record-season]').value;
+
+        const response = await fetch(`/records/new/${season}`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "season": "${season}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Team Records", data);
+                successToast.options.text = `New team records retrieved for Season: ${season}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " Team Records could not be retrieved";
+                failToast.showToast();
+            }
+        });
+    });
+}
+
 const refreshTeamsForm = document.getElementById('refresh-teams-form');
 
 if (refreshTeamsForm) {
@@ -693,6 +727,16 @@ function displayRecruitRankingsContainer() {
         recruitRankingsContainer.style.display = 'none';
     } else {
         recruitRankingsContainer.style.display = 'flex';
+    }
+}
+
+function displayTeamRecordsContainer() {
+    var teamRecordsContainer = document.querySelector('[team-records-container]');
+
+    if (teamRecordsContainer.style.display == 'flex' || teamRecordsContainer.style.display=='') {
+        teamRecordsContainer.style.display = 'none';
+    } else {
+        teamRecordsContainer.style.display = 'flex';
     }
 }
 

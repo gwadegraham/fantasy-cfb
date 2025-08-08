@@ -110,6 +110,14 @@ app.get('/userHome', async function(req, res) {
     }
 });
 
+app.get('/team', async function(req, res) {
+    if (req.oidc.isAuthenticated()) {
+        res.render('team');
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
@@ -132,6 +140,9 @@ app.use('/scores', scoresRouter);
 
 const recruitingRouter = require('./routes/recruiting');
 app.use('/recruiting', recruitingRouter);
+
+const recordRouter = require('./routes/records');
+app.use('/records', recordRouter);
 
 app.get('/calculate-team-score/:season/:teamId/:teamName', async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
