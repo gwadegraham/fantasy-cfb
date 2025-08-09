@@ -79,8 +79,9 @@ async function getTeam() {
     const teamData = data[0];
     const teamRecordInfo = await getRecord(teamData);
     const conferenceRecords = await getConferenceRecords(teamData);
+    const allTeamLogos = await getTeamLogos(conferenceRecords);
 
-    renderConferenceStandings(conferenceRecords, teamData);
+    renderConferenceStandings(conferenceRecords, teamData, allTeamLogos);
     renderTeamInfo(teamData, teamRecordInfo);
 }
 
@@ -131,8 +132,51 @@ async function getSchedule() {
 
     response.json().then(async data => {
         var scheduleData = data;
-        renderTeamScheduleInfo(scheduleData, seasonYear);
+        const allTeamLogos = await getTeamLogos(data);
+        renderTeamScheduleInfo(scheduleData, allTeamLogos, seasonYear);
     });
+}
+
+async function getTeamLogos (games) {
+
+    var allTeamIds = [];
+    games.forEach(game => {
+        if (game.homeId) {
+            if (allTeamIds.indexOf(game.homeId) < 0) {
+                allTeamIds.push(game.homeId);
+            }
+
+            if (allTeamIds.indexOf(game.awayId) < 0) {
+                allTeamIds.push(game.awayId);
+            }
+        } else {
+            if (allTeamIds.indexOf(game.teamId) < 0) {
+                allTeamIds.push(game.teamId);
+            }
+        }
+    });
+
+    const teamsJson = {
+        teams: allTeamIds
+    };
+
+    var teamsPromise = await fetch('/teams/teamLogos', {
+        method: 'POST',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(teamsJson),
+    });
+
+    var teamLogos = await teamsPromise;
+    var response = await teamLogos.json();
+
+    if (teamLogos.status == 200) {
+        return response;
+    } else {
+        console.log(response.message);
+    }
 }
 
 // Render team info
@@ -177,7 +221,7 @@ function renderTeamInfo(team, record) {
 }
 
 // Render schedule info
-function renderTeamScheduleInfo(schedule, year) {
+function renderTeamScheduleInfo(schedule, logos, year) {
     const container = document.getElementById("schedule-container");
 
     var html = `
@@ -197,6 +241,12 @@ function renderTeamScheduleInfo(schedule, year) {
             var homePoints = '';
             var awayPoints = '';
 
+            var homeLogo = logos.find((team) => team.id == game.homeId)?.logos.at(-1);
+            homeLogo = homeLogo ? `<img src="${homeLogo}" alt="${game.homeTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+
+            var awayLogo = logos.find((team) => team.id == game.awayId)?.logos.at(-1);
+            awayLogo = awayLogo ? `<img src="${awayLogo}" alt="${game.awayTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+
             if (game.completed) {
                 homePoints = game.homePoints || '0';
                 awayPoints = game.awayPoints || '0';
@@ -206,11 +256,13 @@ function renderTeamScheduleInfo(schedule, year) {
                 <div class="game-row">
                     <div class="game-info">
                         <div class="team-row">
-                            <span class="team-vs">${game.awayTeam}</span>
+                            <span class="team-vs"><a href="/team?team=${game.awayId}">${awayLogo}</a>
+                            ${game.awayTeam}</span>
                             <span class="team-score">${awayPoints ? awayPoints : ''}</span>
                         </div>
                         <div class="team-row">
-                            <span class="team-vs">${game.neutralSite ? game.homeTeam : '@ ' + game.homeTeam}</span>
+                            <span class="team-vs"><a href="/team?team=${game.homeId}">${homeLogo}</a>
+                            ${game.neutralSite ? game.homeTeam : '@ ' + game.homeTeam}</span>
                             <span class="team-score">${homePoints ? homePoints : ''}</span>
                         </div>
                         <span class="game-date">${formatDate(game.startDate)}</span>
@@ -246,7 +298,7 @@ function renderTeamScheduleInfo(schedule, year) {
     }
 }
 
-function renderConferenceStandings(data, teamData) {
+function renderConferenceStandings(data, teamData, logos) {
     // Filter for specified conference
     const standings = data
         .sort((a, b) => {
@@ -280,14 +332,18 @@ function renderConferenceStandings(data, teamData) {
         `;
 
         standings.forEach((team, index) => {
+            var teamLogo = logos.find((logo) => logo.id == team.teamId)?.logos.at(-1);
+            teamLogo = teamLogo ? `<img src="${teamLogo}" alt="${team.mascot}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+
             var rankHtml = index + 1;
-            var teamHtml = team.team;
+            var teamHtml = teamLogo + ' ' + team.team;
             var confHtml = team.conferenceGames.wins + '-' + team.conferenceGames.losses;
             var ovrHtml = team.total.wins + '-' + team.total.losses;
 
+
             if (team.team == teamData.school) {
                 rankHtml = `<strong class="boldTeam">${index + 1}</strong>`;
-                teamHtml = `<strong class="boldTeam">${team.team}</strong>`;
+                teamHtml = `<strong class="boldTeam">${teamLogo} ${team.team}</strong>`;
                 confHtml = `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`;
                 ovrHtml = `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`;
             }

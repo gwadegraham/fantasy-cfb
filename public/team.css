@@ -204,6 +204,10 @@
       font-weight: 500;
     }
 
+    .team-vs img, .team-vs i, .standings-table img, .standings-table i {
+        height: 1.5em;
+    }
+
     footer {
         text-align: center;
         padding: 2em 1em 1em;
