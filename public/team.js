@@ -256,13 +256,13 @@ function renderTeamScheduleInfo(schedule, logos, year) {
                 <div class="game-row">
                     <div class="game-info">
                         <div class="team-row">
-                            <span class="team-vs"><a href="/team?team=${game.awayId}">${awayLogo}</a>
-                            ${game.awayTeam}</span>
+                            <span class="team-vs"><a href="/team?team=${game.awayId}">${awayLogo}
+                            ${game.awayTeam}</a></span>
                             <span class="team-score">${awayPoints ? awayPoints : ''}</span>
                         </div>
                         <div class="team-row">
-                            <span class="team-vs"><a href="/team?team=${game.homeId}">${homeLogo}</a>
-                            ${game.neutralSite ? game.homeTeam : '@ ' + game.homeTeam}</span>
+                            <span class="team-vs"><a href="/team?team=${game.homeId}">${homeLogo}
+                            ${game.neutralSite ? game.homeTeam : '@ ' + game.homeTeam}</a></span>
                             <span class="team-score">${homePoints ? homePoints : ''}</span>
                         </div>
                         <span class="game-date">${formatDate(game.startDate)}</span>
@@ -351,7 +351,7 @@ function renderConferenceStandings(data, teamData, logos) {
             html += `
                 <tr>
                     <td class="standingColumn">${rankHtml}</td>
-                    <td class="standingColumn">${teamHtml}</td>
+                    <td class="standingColumn"><a href="/team?team=${team.teamId}">${teamHtml}</a></td>
                     <td class="standingColumn">${confHtml}</td>
                     <td class="standingColumn">${ovrHtml}</td>
                 </tr>

@@ -120,6 +120,11 @@
         width: 100%;
     }
 
+    .standings-container a, .games-container a {
+        color: #F4F6FB !important;
+        text-decoration: none !important;
+    }
+
     .schedule-head, .standing-head {
         display: flex;
         flex-direction: row;
