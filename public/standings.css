@@ -25,12 +25,12 @@
 
     .fl-table th {
         height: 4em;
-        font-size: 1em !important;
+        font-size: 0.9em !important;
         padding: 0;
     }
 
     .fl-table td {
-        font-size: 1em !important;
+        font-size: 0.9em !important;
         padding: 0em 0em 0em 0.5em;
     }
 
