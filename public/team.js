@@ -417,7 +417,7 @@ function getConferenceLogo(conference) {
     var allLogos = [
         {
             confName: "ACC",
-            url: "https://content.sportslogos.net/logos/153/4659/full/atlantic_coast_conference_logo_primary_20146189.png"
+            url: "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/acc.sidearmsports.com/images/responsive_2024/footer_logo_acc-white.svg"
         },
         {
             confName: "American Athletic",
@@ -429,11 +429,11 @@ function getConferenceLogo(conference) {
         },
         {
             confName: "Big Ten",
-            url: "https://content.sportslogos.net/logos/153/4661/full/big_ten_conference_logo_primary_20115933.png"
+            url: "https://cdn.brandfetch.io/idzgo3Vrw2/theme/dark/logo.svg?c=1bxid64Mup7aczewSAYMX&t=1712244113805"
         },
         {
             confName: "Conference USA",
-            url: "https://content.sportslogos.net/logos/153/4663/full/conference_usa_logo_primary_2023_sportslogosnet-4562.png"
+            url: "../images/logo-cusa.png"
         },
         {
             confName: "FBS Independents",
