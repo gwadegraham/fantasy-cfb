@@ -53,6 +53,22 @@ router.get('/:season/:week/:seasonType', async (req, res) => {
     }
 });
 
+// Getting All By Year
+router.get('/:season/', async (req, res) => {
+    try {
+        const ranking = await Ranking.find({season: req.params.season});
+
+        if (JSON.stringify(ranking) == "null") {
+            res.status(400).json({message: `No rankings found for season ${req.params.season}`});
+        } else {
+            res.status(200).json(ranking);
+        }
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 // Retrieving new rankings and saving to database || By Year & Week & Season Type
 router.post('/retrieveRankings', async (req, res) => {
     try {
