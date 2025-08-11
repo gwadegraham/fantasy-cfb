@@ -133,7 +133,8 @@ async function getSchedule() {
     response.json().then(async data => {
         var scheduleData = data;
         const allTeamLogos = await getTeamLogos(data);
-        renderTeamScheduleInfo(scheduleData, allTeamLogos, seasonYear);
+        const allRankings = await getRankings(seasonYear);
+        renderTeamScheduleInfo(scheduleData, allTeamLogos, allRankings, seasonYear);
     });
 }
 
@@ -221,7 +222,7 @@ function renderTeamInfo(team, record) {
 }
 
 // Render schedule info
-function renderTeamScheduleInfo(schedule, logos, year) {
+function renderTeamScheduleInfo(schedule, logos, rankings, year) {
     const container = document.getElementById("schedule-container");
 
     var html = `
@@ -247,23 +248,59 @@ function renderTeamScheduleInfo(schedule, logos, year) {
             var awayLogo = logos.find((team) => team.id == game.awayId)?.logos.at(-1);
             awayLogo = awayLogo ? `<img src="${awayLogo}" alt="${game.awayTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
+            var pollName = 'Playoff Committee Rankings';
+            if (!rankings.find(r => r.week == game.week)?.polls?.find(p => p.poll == "Playoff Committee Rankings") && game.seasonType != "postseason" ) {
+                pollName = "AP Top 25";
+            }
+            
+            var weekRankings;
+            if (game.seasonType == 'regular') {
+                weekRankings = rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+            } else {
+                weekRankings = rankings.find(r => r.week == '16' && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+            }
+            const homeRank = weekRankings.find(w => w.school == game.homeTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.homeTeam)?.rank}</span>` : '';
+            const awayRank = weekRankings.find(w => w.school == game.awayTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.awayTeam)?.rank}</span>` : '';
+
             if (game.completed) {
                 homePoints = game.homePoints || '0';
                 awayPoints = game.awayPoints || '0';
             }
 
+            // Winner logic
+            const homeIsWinner = game.completed && homePoints > awayPoints;
+            const awayIsWinner = game.completed && awayPoints > homePoints;
+
+            const awayTeamHTML = `
+                ${awayIsWinner ? '<strong class="game-winner">' : ''}
+               <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
+                ${awayIsWinner ? '</strong>' : ''}
+                </span><span class="team-score">
+                ${awayIsWinner ? '<strong class="game-winner">' : ''}
+                ${awayPoints ? awayPoints : ''}
+                ${awayIsWinner ? '</strong>' : ''}
+                </span>
+            `;
+
+            const homeTeamHTML = `
+                ${homeIsWinner ? '<strong class="game-winner">' : ''}
+               <a href="/team?team=${game.homeId}">${homeLogo}${homeRank}${game.homeTeam}</a>
+                ${homeIsWinner ? '</strong>' : ''}
+                </span><span class="team-score">
+                ${homeIsWinner ? '<strong class="game-winner">' : ''}
+                ${homePoints ? homePoints : ''}
+                ${homeIsWinner ? '</strong>' : ''}
+                </span>
+            `;
+
             html += `
                 <div class="game-row">
                     <div class="game-info">
                         <div class="team-row">
-                            <span class="team-vs"><a href="/team?team=${game.awayId}">${awayLogo}
-                            ${game.awayTeam}</a></span>
-                            <span class="team-score">${awayPoints ? awayPoints : ''}</span>
+                            <span class="team-vs">${awayTeamHTML}
                         </div>
                         <div class="team-row">
-                            <span class="team-vs"><a href="/team?team=${game.homeId}">${homeLogo}
-                            ${game.neutralSite ? game.homeTeam : '@ ' + game.homeTeam}</a></span>
-                            <span class="team-score">${homePoints ? homePoints : ''}</span>
+                            <span class="team-vs">${homeTeamHTML}
                         </div>
                         <span class="game-date">${formatDate(game.startDate)}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
@@ -400,19 +437,6 @@ function renderConferenceStandings(data, teamData, logos) {
     
 }
 
-// Helper: Format the date to readable format
-function formatDate(dateStr) {
-  const date = new Date(dateStr);
-  return date.toLocaleString(undefined, {
-    month: 'numeric',
-    day: 'numeric',
-    day: 'numeric',         // "30"
-    hour: 'numeric',        // "1"
-    minute: '2-digit',      // "00"
-    hour12: true            // AM/PM
-  });
-}
-
 function getConferenceLogo(conference) {
     var allLogos = [
         {
@@ -463,4 +487,35 @@ function getConferenceLogo(conference) {
 
     const logoObj = allLogos.find(logo => logo.confName == conference);
     return logoObj.url;
+}
+
+async function getRankings (season) {
+    var response = await fetch(`/rankings/${season}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var rankings = await response.json();
+
+    if (rankings.length < 0) {
+        console.log(rankings.message);
+    }
+
+    return rankings;
+}
+
+// Helper: Format the date to readable format
+function formatDate(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    day: 'numeric',         // "30"
+    hour: 'numeric',        // "1"
+    minute: '2-digit',      // "00"
+    hour12: true            // AM/PM
+  });
 }
