@@ -101,6 +101,11 @@
         cursor: pointer;
     }
 
+    .schedule-table a, .schedule-table a:hover {
+        color: #F4F6FB;
+        text-decoration: none;
+    }
+
     /* No Games CSS */
     #no-games-container {
         margin: 1em;

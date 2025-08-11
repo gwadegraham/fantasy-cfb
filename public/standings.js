@@ -541,10 +541,10 @@ async function displaySchedule(data) {
                         oppName = existObject.name;
 
                         awayUser = userData.firstName;
-                        awayTeam= game.awayTeam;
+                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
 
                         homeUser = oppName;
-                        homeTeam = game.homeTeam;
+                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
                         isAway = true;
 
                         if (doesExist) {
@@ -557,10 +557,10 @@ async function displaySchedule(data) {
                         oppName = existObject.name;
 
                         awayUser = oppName;
-                        awayTeam = game.awayTeam;
+                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
 
                         homeUser = userData.firstName;
-                        homeTeam = game.homeTeam;
+                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
 
                         if (doesExist) {
                             isHeadToHead = true;
@@ -696,10 +696,10 @@ async function displaySchedule(data) {
                             oppName = existObject.name;
 
                             awayUser = userData.firstName;
-                            awayTeam= game.awayTeam;
+                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
 
                             homeUser = oppName;
-                            homeTeam = game.homeTeam;
+                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
                             isAway = true;
 
                             if (doesExist) {
@@ -711,10 +711,10 @@ async function displaySchedule(data) {
                             oppName = existObject.name;
 
                             awayUser = oppName;
-                            awayTeam = game.awayTeam;
+                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
 
                             homeUser = userData.firstName;
-                            homeTeam = game.homeTeam;
+                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
 
                             if (doesExist) {
                                 isHeadToHead = true;
