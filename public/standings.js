@@ -390,29 +390,10 @@ async function getRankings (week, seasonType) {
     return rankingsArray;
 }
 
-async function getTeamLogos (game) {
+async function parseTeamLogos (game, allTeamLogos) {
 
-    const teams = [game.awayId, game.homeId];
-
-    const teamsJson = {
-        teams: teams
-    };
-
-    var teamsPromise = await fetch('/teams/teamLogos', {
-        method: 'POST',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(teamsJson),
-    });
-
-    var teamLogos = await teamsPromise;
-    var response = await teamLogos.json();
-
-    if (teamLogos.status == 200) {
-        var awayTeamLogo = response.find((element) => element.id == game.awayId);
-        var homeTeamLogo = response.find((element) => element.id == game.homeId);
+        var awayTeamLogo = allTeamLogos.find((element) => element.id == game.awayId);
+        var homeTeamLogo = allTeamLogos.find((element) => element.id == game.homeId);
 
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
@@ -428,13 +409,29 @@ async function getTeamLogos (game) {
 
         const logoResponse = {awayTeamLogo, homeTeamLogo};
         return logoResponse;
+}
+
+async function getAllTeamLogos () {
+    var teamsPromise = await fetch('/teams/teamLogos/all', {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var teamLogos = await teamsPromise;
+    var response = await teamLogos.json();
+
+    if (teamLogos.status == 200) {
+        return response;
     } else {
         console.log(response.message);
     }
 }
 
 async function displaySchedule(data) {
-
+    const scheduleStart = new Date();
     var usersAndTeams = [];
 
     for(var i = 0; i < data.length; i++) {
@@ -469,6 +466,8 @@ async function displaySchedule(data) {
         gameWeek = week;
         rankingsInfo = await getRankings(week, seasonType);
     }
+
+    var allTeamLogos = await getAllTeamLogos();
 
     for (var iterUsers = 0; iterUsers < data.length; iterUsers++) {
 
@@ -531,7 +530,7 @@ async function displaySchedule(data) {
                     var awayTeam = '';
                     var homeTeam = '';
                     var isAway = false;
-                    var teamLogos = await getTeamLogos(game);
+                    var teamLogos = await parseTeamLogos(game, allTeamLogos);
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
 
@@ -751,7 +750,7 @@ async function displaySchedule(data) {
                             }
                         }
                         
-                        var teamLogos = await getTeamLogos(game);
+                        var teamLogos = await parseTeamLogos(game, allTeamLogos);
                         var awayImg = teamLogos.awayTeamLogo;
                         var homeImg = teamLogos.homeTeamLogo;
 
@@ -811,7 +810,8 @@ async function displaySchedule(data) {
     if (gameTables.length == 0) {
         showRandomNoGamesMessage();
     }
-
+    const scheduleFinish = new Date();
+    console.log("Time To Render", scheduleFinish - scheduleStart)
     scheduleContainer.innerHTML = str;
     document.querySelector('.football-loader').style.display = "none";
     document.querySelector('.schedule-table').style.display = "flex";

@@ -28,6 +28,22 @@ router.post('/teamLogos', async (req, res) => {
     }
 });
 
+//Getting All Logos
+router.get('/teamLogos/all', async (req,res) => {
+    try {
+        const teamLogos = await Team.find({}, "id logos");
+
+        if (JSON.stringify(teamLogos) === '[]') {
+            res.status(400).json({message: `Couldn't get all logos for all teams`});
+        } else {
+            res.status(200).json(teamLogos);
+        }
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 // Getting One
 router.get('/:id', async (req, res) => {
     try {
