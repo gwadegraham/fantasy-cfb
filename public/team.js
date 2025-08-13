@@ -243,12 +243,13 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             var homePoints = '';
             var awayPoints = '';
 
-            var bettingLineObj = bettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam).lines;
-            var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+            var bettingLineObj = bettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
+
             var awayLine = '';
             var homeLine = '';
 
-            if (bettingLine) {
+            if(bettingLineObj?.length > 0 && bettingLineObj != null) {
+                var bettingLine = (bettingLineObj?.find(line => line.provider == "DraftKings") ? bettingLineObj?.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
                 awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
                 homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
             }
