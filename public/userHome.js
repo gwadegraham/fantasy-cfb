@@ -280,6 +280,28 @@ async function getTeamLogos (game) {
     }
 }
 
+async function getAllBettingLines () {
+    // const seasonYear = new Date().getFullYear();
+    const seasonYear = 2024;
+
+    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var bettingLines = await bettingPromise;
+    var response = await bettingLines.json();
+
+    if (bettingLines.status == 200) {
+        return response;
+    } else {
+        console.log(response.message);
+    }
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
@@ -301,6 +323,8 @@ async function displaySchedule(data) {
         gameWeek = week;
         rankingsInfo = await getRankings(week, seasonType);
     }
+
+    var allBettingLines = await getAllBettingLines();
 
     for (var iterNum = 0; iterNum < data.seasons.at(-1).teams.length; iterNum++) {
 
@@ -324,6 +348,16 @@ async function displaySchedule(data) {
             awayRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${awayRank}</p>`;
             homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
+            var bettingLineObj = allBettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
+            var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+            var awayLine = '';
+            var homeLine = '';
+
+            if (bettingLine) {
+                awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
+                homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
+            }
+
             if (gameIds.indexOf(game.id) == -1) {
                 gameIds.push(game.id);
 
@@ -340,17 +374,17 @@ async function displaySchedule(data) {
                 if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
 
                     if (await data.seasons.at(-1).teams.some(e => e.id === game.homeId)) {
-                        awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                        homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                        awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
+                        homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
                     } else {
-                        awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                        homeTeam = game.homeTeam;
+                        awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
+                        homeTeam = `<a href="/team?team=${game.homeId}">` + game.homeTeam + '</a>';
                     }
 
                     isAway = true;
                 } else {
-                    awayTeam = game.awayTeam;
-                    homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                    awayTeam = `<a href="/team?team=${game.awayId}">` + game.awayTeam + '</a>';
+                    homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
                 }
     
                 if (game.completed) {
@@ -423,12 +457,15 @@ async function displaySchedule(data) {
                 }
     
                 var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+
+                var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
+                var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
     
-                teamTable += awayImg + awayRank + awayTeam;
+                teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                 teamTable += '</tr><tr><td style="width: 250px;">';
     
-                teamTable += homeImg + homeRank + homeTeam;
+                teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += `</tr><tr><td class="game-notes">`;
                 teamTable += game.notes || '';
@@ -438,7 +475,8 @@ async function displaySchedule(data) {
                     id: game.id,
                     table: teamTable,
                     homeTeam: game.homeTeam,
-                    awayTeam: game.awayTeam
+                    awayTeam: game.awayTeam,
+                    startDate: game.startDate || ''
                 };
 
                 gameTables.push(gameInfo);
@@ -450,17 +488,17 @@ async function displaySchedule(data) {
     
                         if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                             if (await data.seasons.at(-1).teams.some(e => e.id === game.homeId)) {
-                                awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                                homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                                awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
+                                homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
                             } else {
-                                awayTeam= '<strong>' + game.awayTeam + '</strong>';
-                                homeTeam = game.homeTeam;
+                                awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
+                                homeTeam = `<a href="/team?team=${game.homeId}">` + game.homeTeam + '</a>';
                             }
         
                             isAway = true;
                         } else {
-                            awayTeam = game.awayTeam;
-                            homeTeam = '<strong>' + game.homeTeam + '</strong>';
+                            awayTeam = `<a href="/team?team=${game.awayId}">` + game.awayTeam + '</a>';
+                            homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
                         }
         
         
@@ -539,14 +577,16 @@ async function displaySchedule(data) {
                     var teamLogos = await getTeamLogos(game);
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
+                    var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
+                    var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
 
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
     
-                    teamTable += awayImg + awayRank + awayTeam;
+                    teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr><tr><td style="width: 250px;">';
         
-                    teamTable += homeImg + homeRank + homeTeam;
+                    teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += `</tr><tr><td class="game-notes">`;
                     teamTable += game.notes || '';
@@ -556,7 +596,8 @@ async function displaySchedule(data) {
                         id: game.id,
                         table: teamTable,
                         homeTeam: game.homeTeam,
-                        awayTeam: game.awayTeam
+                        awayTeam: game.awayTeam,
+                        startDate: game.startDate || ''
                     };
 
                     if (shouldReplace) {
@@ -568,6 +609,11 @@ async function displaySchedule(data) {
             }
         } 
     }
+
+    gameTables.sort((a, b) => {
+        return new Date(b.startDate) - new Date(a.startDate);
+    });
+
     for(var k = 0; k < gameTables.length; k++) {
         if (isMobile) {
             str += '</tr><tr>';

@@ -129,7 +129,7 @@ function displayUsers(data) {
 }
 
 function displayLastUpdated(data) {
-    var lastUpdatedTime = new Date(data[0].lastUpdated);
+    var lastUpdatedTime = new Date(data[0]?.lastUpdated);
 
     if (lastUpdatedTime != "Invalid Date") {
         var hours = lastUpdatedTime.getHours() % 12;
@@ -154,7 +154,7 @@ async function displayHighlights(users) {
 }
 
 async function biggestWinner(users) {
-    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
+    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(b, a) {
         var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
         var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
@@ -162,12 +162,12 @@ async function biggestWinner(users) {
         return parseFloat(aScore.score) - parseFloat(bScore.score);
     });
 
-    var userName = sortedUsers[0].firstName + " " + sortedUsers[0].lastName.substring(-1,1) + ".";
+    var userName = sortedUsers[0]?.firstName + " " + sortedUsers[0]?.lastName.substring(-1,1) + ".";
 
-    var userScore = sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score;
-    var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
+    var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score;
+    var week = "Week " + sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week;
 
-    if ((week == "Week 1") && (sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
+    if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
@@ -182,7 +182,7 @@ async function biggestWinner(users) {
 
 function biggestLoser(users) {
     var loserUsers = [];
-    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
+    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
     var sortedUsers = users.toSorted(function(a, b) {
         var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
         var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
@@ -191,25 +191,25 @@ function biggestLoser(users) {
     });
 
     loserUsers.push({
-        firstName: sortedUsers[0].firstName,
-        lastName: sortedUsers[0].lastName,
-        score: sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].score
+        firstName: sortedUsers[0]?.firstName,
+        lastName: sortedUsers[0]?.lastName,
+        score: sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.score
     });
 
     for (var x = 1; x < sortedUsers.length; x++) {
-        if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1].score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1].score) {
+        if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1]?.score) {
             loserUsers.push({
                 firstName: sortedUsers[x].firstName,
                 lastName: sortedUsers[x].lastName,
-                score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1].score
+                score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score
             });
         }
     }
 
     var userName = '';
-    var week = "Week " + sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].week;
+    var week = "Week " + sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week;
 
-    if ((week == "Week 1") && (sortedUsers[0].seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
+    if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
     }
 
@@ -229,10 +229,10 @@ function biggestLoser(users) {
 
         loser.outerHTML = htmlString;
     } else {
-        userName = loserUsers[0].firstName + " " + loserUsers[0].lastName.substring(-1,1) + ".";
+        userName = loserUsers[0]?.firstName + " " + loserUsers[0]?.lastName?.substring(-1,1) + ".";
         loserWeek.innerHTML = `in ${week}`;
         loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
-        loserScore.innerHTML = `+${loserUsers[0].score}`;
+        loserScore.innerHTML = `+${loserUsers[0]?.score}`;
     }
 }
 
@@ -292,8 +292,8 @@ async function bestTeam(users) {
     var htmlString = '';
     
     resultScores.forEach( teamName => {        
-        htmlString += `<span best-team><img src="${teamName.logo}">${teamName.team}</span><br>`;
-        bestScore.innerHTML = `+${teamName.score}`;
+        htmlString += `<span best-team><img src="${teamName?.logo}">${teamName?.team}</span><br>`;
+        bestScore.innerHTML = `+${teamName?.score}`;
     })
 
     best.outerHTML = htmlString;
@@ -301,7 +301,7 @@ async function bestTeam(users) {
 }
 
 async function hotTeam(users) {
-    var weekIndex = (users[0].seasons[0].weeklyScore.length -1);
+    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
 
     const scoredUsers = await Promise.all(users.map(async (user) => {
         const hotStreakScore = await getPreviousThreeSum(user.seasons[0].weeklyScore, weekIndex);
@@ -430,6 +430,28 @@ async function getAllTeamLogos () {
     }
 }
 
+async function getAllBettingLines () {
+    // const seasonYear = new Date().getFullYear();
+    const seasonYear = 2024;
+
+    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var bettingLines = await bettingPromise;
+    var response = await bettingLines.json();
+
+    if (bettingLines.status == 200) {
+        return response;
+    } else {
+        console.log(response.message);
+    }
+}
+
 async function displaySchedule(data) {
     const scheduleStart = new Date();
     var usersAndTeams = [];
@@ -468,6 +490,7 @@ async function displaySchedule(data) {
     }
 
     var allTeamLogos = await getAllTeamLogos();
+    var allBettingLines = await getAllBettingLines();
 
     for (var iterUsers = 0; iterUsers < data.length; iterUsers++) {
 
@@ -483,6 +506,16 @@ async function displaySchedule(data) {
 
                 var awayRank = '';
                 var homeRank = '';
+                
+                var bettingLineObj = allBettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
+                var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+                var awayLine = '';
+                var homeLine = '';
+
+                if (bettingLine) {
+                    awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
+                    homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
+                }
 
                 var awayIndex = rankingsInfo.findIndex(e => e.school === game.awayTeam);
                 if (awayIndex > -1) {
@@ -540,10 +573,10 @@ async function displaySchedule(data) {
                         oppName = existObject.name;
 
                         awayUser = userData.firstName;
-                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
+                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                         homeUser = oppName;
-                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
+                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
                         isAway = true;
 
                         if (doesExist) {
@@ -556,10 +589,10 @@ async function displaySchedule(data) {
                         oppName = existObject.name;
 
                         awayUser = oppName;
-                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
+                        awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                         homeUser = userData.firstName;
-                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
+                        homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
 
                         if (doesExist) {
                             isHeadToHead = true;
@@ -678,7 +711,8 @@ async function displaySchedule(data) {
                         id: game.id,
                         table: teamTable,
                         homeTeam: game.homeTeam,
-                        awayTeam: game.awayTeam
+                        awayTeam: game.awayTeam,
+                        startDate: game.startDate || ''
                     };
 
                     if (isHeadToHead) {
@@ -695,10 +729,10 @@ async function displaySchedule(data) {
                             oppName = existObject.name;
 
                             awayUser = userData.firstName;
-                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
+                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                             homeUser = oppName;
-                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
+                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
                             isAway = true;
 
                             if (doesExist) {
@@ -710,10 +744,10 @@ async function displaySchedule(data) {
                             oppName = existObject.name;
 
                             awayUser = oppName;
-                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}</a>`;
+                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                             homeUser = userData.firstName;
-                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}</a>`;
+                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
 
                             if (doesExist) {
                                 isHeadToHead = true;
@@ -774,7 +808,8 @@ async function displaySchedule(data) {
                             id: game.id,
                             table: teamTable,
                             homeTeam: game.homeTeam,
-                            awayTeam: game.awayTeam
+                            awayTeam: game.awayTeam,
+                            startDate: game.startDate || ''
                         };
 
                         if (shouldReplace && isHeadToHead) {
@@ -787,6 +822,10 @@ async function displaySchedule(data) {
             } 
         }
     }
+
+    gameTables.sort((a, b) => {
+        return new Date(b.startDate) - new Date(a.startDate);
+    });
 
     for(var k = 0; k < gameTables.length; k++) {
         if (isMobile) {

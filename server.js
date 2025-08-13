@@ -144,6 +144,9 @@ app.use('/recruiting', recruitingRouter);
 const recordRouter = require('./routes/records');
 app.use('/records', recordRouter);
 
+const bettingRouter = require('./routes/betting');
+app.use('/betting', bettingRouter);
+
 app.get('/calculate-team-score/:season/:teamId/:teamName', async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
