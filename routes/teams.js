@@ -76,6 +76,27 @@ router.get('/info/:id', async (req, res) => {
     }
 });
 
+// Getting All Teams from One Conference
+router.get('/conference/:conference', async (req, res) => {
+    try {
+        const teamName = await Team.find({seasons: {
+            $elemMatch: {
+                season: process.env.YEAR,
+                conference: req.params.conference
+            }
+        }});
+
+        if (JSON.stringify(teamName) === '[]') {
+            res.status(400).json({message: `No teams found with id ${req.body.id}`});
+        } else {
+            res.status(200).json(teamName);
+        }
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Updating One
 router.patch('/:id', getTeam, async (req, res) => {
 

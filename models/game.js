@@ -54,8 +54,7 @@ const gameSchema = new mongoose.Schema({
         required: true
     },
     homeConference: {
-        type: String,
-        required: true
+        type: String
     },
     homeDivision: {
         type: String,

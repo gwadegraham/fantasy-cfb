@@ -140,36 +140,13 @@ async function getSchedule() {
     });
 }
 
-async function getTeamLogos (games) {
-
-    var allTeamIds = [];
-    games.forEach(game => {
-        if (game.homeId) {
-            if (allTeamIds.indexOf(game.homeId) < 0) {
-                allTeamIds.push(game.homeId);
-            }
-
-            if (allTeamIds.indexOf(game.awayId) < 0) {
-                allTeamIds.push(game.awayId);
-            }
-        } else {
-            if (allTeamIds.indexOf(game.teamId) < 0) {
-                allTeamIds.push(game.teamId);
-            }
-        }
-    });
-
-    const teamsJson = {
-        teams: allTeamIds
-    };
-
-    var teamsPromise = await fetch('/teams/teamLogos', {
-        method: 'POST',
+async function getTeamLogos () {
+    var teamsPromise = await fetch('/teams/teamLogos/all', {
+        method: 'GET',
         headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(teamsJson),
+        }
     });
 
     var teamLogos = await teamsPromise;
@@ -183,8 +160,8 @@ async function getTeamLogos (games) {
 }
 
 async function getAllBettingLines () {
-    // const seasonYear = new Date().getFullYear();
-    const seasonYear = 2024;
+    var seasonYear = new Date().getFullYear();
+    seasonYear = 2024;
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
@@ -208,8 +185,8 @@ async function getAllBettingLines () {
 function renderTeamInfo(team, record) {
   const container = document.getElementById("team-container");
   var scoreCode = (leagueCode == 'gg') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-  var formatConference = team.seasons.at(-2).conference;
-  var confLogo = getConferenceLogo(team.seasons.at(-2).conference);
+  var formatConference = team.seasons.at(-1).conference;
+  var confLogo = getConferenceLogo(team.seasons.at(-1).conference);
 
   const html = `
     
@@ -226,13 +203,13 @@ function renderTeamInfo(team, record) {
 
     <div class="team-details">
         <div>
-            <h4>${team.seasons.at(-2).season} Record</h4>
-            <p class="score">${record.total.wins}-${record.total.losses}    Overall</p>
-            <p class="score">${record.conferenceGames.wins}-${record.conferenceGames.losses}    Conference</p>
+            <h4>${team.seasons.at(-1).season} Record</h4>
+            <p class="score">${record?.total.wins || 0}-${record?.total.losses || 0}    Overall</p>
+            <p class="score">${record?.conferenceGames.wins || 0}-${record?.conferenceGames.losses || 0}    Conference</p>
         </div>
         <div>
-            <h4>📈 ${team.seasons.at(-2).season} Season Score</h4>
-            <p class="score">${team.seasons.at(-2)[scoreCode] || 0} Points</p>
+            <h4>📈 ${team.seasons.at(-1).season} Season Score</h4>
+            <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
         </div>
         <div>
             <h4>🏟 Stadium</h4>
@@ -286,15 +263,25 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             if (!rankings.find(r => r.week == game.week)?.polls?.find(p => p.poll == "Playoff Committee Rankings") && game.seasonType != "postseason" ) {
                 pollName = "AP Top 25";
             }
+
+            rankings.sort((a, b) => {
+                return b.week - a.week;
+            });
             
             var weekRankings;
             if (game.seasonType == 'regular') {
-                weekRankings = rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+                weekRankings = rankings.find(r => r.week == game.week && r.season == year) ? rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
             } else {
                 weekRankings = rankings.find(r => r.week == '16' && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks || {};
             }
-            const homeRank = weekRankings.find(w => w.school == game.homeTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.homeTeam)?.rank}</span>` : '';
-            const awayRank = weekRankings.find(w => w.school == game.awayTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.awayTeam)?.rank}</span>` : '';
+
+            var homeRank = '';
+            var awayRank = '';
+            if (weekRankings.length > 0) {
+                homeRank = weekRankings.find(w => w.school == game.homeTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.homeTeam)?.rank}</span>` : '';
+                awayRank = weekRankings.find(w => w.school == game.awayTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.awayTeam)?.rank}</span>` : '';
+            }
+            
 
             if (game.completed) {
                 homePoints = game.homePoints || '0';
@@ -336,7 +323,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startDate)}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -369,25 +356,52 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
     }
 }
 
-function renderConferenceStandings(data, teamData, logos) {
+async function renderConferenceStandings(data, teamData, logos) {
     // Filter for specified conference
-    const standings = data
-        .sort((a, b) => {
-            // Sort by conference wins DESC, then losses ASC, then total wins DESC
-            if (b.conferenceGames.wins !== a.conferenceGames.wins) {
-                return b.conferenceGames.wins - a.conferenceGames.wins;
-            }
-            if (a.conferenceGames.losses !== b.conferenceGames.losses) {
-                return a.conferenceGames.losses - b.conferenceGames.losses;
-            }
-            return b.total.wins - a.total.wins;
+    var standings = [];
+    if (data.message?.startsWith("No conference records")){
+        var conferenceTeams = await getConferenceTeams(teamData.seasons.at(-1).conference);
+        conferenceTeams.sort((a,b) => {
+            return a.school.toLowerCase().localeCompare(b.school.toLowerCase());
         });
+
+        standings = conferenceTeams.map(team => ({
+            ...team,
+            team: team.school,
+            teamId: team.id,
+            conferenceGames: {
+                games: 0,
+                wins: 0,
+                losses: 0,
+                ties: 0,
+            },
+            total: {
+                games: 0,
+                wins: 0,
+                losses: 0,
+                ties: 0,
+            }
+        }));
+
+    } else {
+        standings = data
+            .sort((a, b) => {
+                // Sort by conference wins DESC, then losses ASC, then total wins DESC
+                if (b.conferenceGames.wins !== a.conferenceGames.wins) {
+                    return b.conferenceGames.wins - a.conferenceGames.wins;
+                }
+                if (a.conferenceGames.losses !== b.conferenceGames.losses) {
+                    return a.conferenceGames.losses - b.conferenceGames.losses;
+                }
+                return b.total.wins - a.total.wins;
+            });
+    }
 
     if (standings.length > 0 && teamData.conference != 'FBS Independents') {
         // Build table HTML
         let html = `
             <div class="standing-head">
-                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0].conference} Standings</h2>
+                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0]?.conference || standings[0].seasons.at(-1).conference} Standings</h2>
                 <i class="fa-solid fa-caret-down drop"></i>
             </div>
             <table class="standings-table">
@@ -467,8 +481,7 @@ function renderConferenceStandings(data, teamData, logos) {
 
         const scheduleContainer = document.getElementById('schedule-container');
         scheduleContainer.style.width = '100%';
-    }
-    
+    } 
 }
 
 function getConferenceLogo(conference) {
@@ -541,15 +554,42 @@ async function getRankings (season) {
     return rankings;
 }
 
+async function getConferenceTeams (conference) {
+    var response = await fetch(`/teams/conference/${conference}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var conferences = await response.json();
+
+    if (conferences.length < 0) {
+        console.log(conferences.message);
+    }
+
+    return conferences;
+}
+
 // Helper: Format the date to readable format
-function formatDate(dateStr) {
+function formatDate(isTbd, dateStr) {
   const date = new Date(dateStr);
-  return date.toLocaleString(undefined, {
-    month: 'numeric',
-    day: 'numeric',
-    day: 'numeric',         // "30"
-    hour: 'numeric',        // "1"
-    minute: '2-digit',      // "00"
-    hour12: true            // AM/PM
-  });
+
+  if (isTbd) {
+    var formatDate = date.toLocaleString(undefined, {
+        month: 'numeric',
+        day: 'numeric',         // "30"
+    });
+
+    return formatDate + " TBD";
+  } else {
+    return date.toLocaleString(undefined, {
+        month: 'numeric',
+        day: 'numeric',         // "30"
+        hour: 'numeric',        // "1"
+        minute: '2-digit',      // "00"
+        hour12: true            // AM/PM
+    });
+  }
 }

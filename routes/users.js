@@ -169,8 +169,8 @@ router.delete('/:id', getUser, async (req, res) => {
 async function getUser(req, res, next) {
     let user;
     try {
-        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": 2024}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": 2024}}}});
+        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": process.env.YEAR}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
         if (user == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }
