@@ -76,6 +76,26 @@
         padding-left: 0.5em !important;
     }
 
+    .game-table a {
+        color: #F4F6FB;
+    }
+
+    .game-table a:hover {
+        color: #F4F6FB;
+        text-decoration: none;
+    }
+
+    .game-table strong {
+        color: #ed5858;
+    }
+
+    .betting-line {
+        font-size: 0.75em;
+        color: #A4A9C2;
+        padding-left: 1em;
+        align-content: center;
+    }
+
     .hr-subtle {
         border: none;
         height: 1px;

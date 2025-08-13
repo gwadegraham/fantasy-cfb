@@ -205,6 +205,14 @@
       color: #A4A9C2;
     }
 
+
+    .betting-line {
+        font-size: 0.75em;
+        color: #A4A9C2;
+        padding-left: 1em;
+        align-content: center;
+    }
+
     .game-winner, .game-winner a {
         color: #ed5858 !important;
     }

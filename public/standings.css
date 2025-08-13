@@ -106,6 +106,13 @@
         text-decoration: none;
     }
 
+    .betting-line {
+        font-size: 0.75em;
+        color: #A4A9C2;
+        padding-left: 1em;
+        align-content: center;
+    }
+
     /* No Games CSS */
     #no-games-container {
         margin: 1em;

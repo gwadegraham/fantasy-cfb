@@ -111,7 +111,7 @@
             </div>
             <div class="sub-container" rankings-container style="display: none">
                 <form id="rankings-form">
-                    <div><select season-options></select></div>
+                    <div><select rankings-season season-options></select></div>
                     <div><select season-type-options></select></div>
                     <div><select week-options></select></div>
                     <div><button type="submit">Retrieve Rankings</button></div>
@@ -187,6 +187,20 @@
                 <form id="team-records-form">
                     <div><select record-season season-options></select></div>
                     <div><button type="submit">Retrieve Team Records</button></div>
+                </form>
+            </div>
+        </div>
+        <div class="function-container">
+            <div class="button-container">
+                <button onclick="displayBettingLinesContainer()">
+                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                    Retrieve Betting Lines
+                </button>
+            </div>
+            <div class="sub-container" betting-lines-container style="display: none">
+                <form id="betting-lines-form">
+                    <div><select betting-season season-options></select></div>
+                    <div><button type="submit">Retrieve Betting Lines</button></div>
                 </form>
             </div>
         </div>

@@ -134,7 +134,9 @@ async function getSchedule() {
         var scheduleData = data;
         const allTeamLogos = await getTeamLogos(data);
         const allRankings = await getRankings(seasonYear);
-        renderTeamScheduleInfo(scheduleData, allTeamLogos, allRankings, seasonYear);
+        const allBettingLines = await getAllBettingLines();
+
+        renderTeamScheduleInfo(scheduleData, allTeamLogos, allRankings, allBettingLines, seasonYear);
     });
 }
 
@@ -174,6 +176,28 @@ async function getTeamLogos (games) {
     var response = await teamLogos.json();
 
     if (teamLogos.status == 200) {
+        return response;
+    } else {
+        console.log(response.message);
+    }
+}
+
+async function getAllBettingLines () {
+    // const seasonYear = new Date().getFullYear();
+    const seasonYear = 2024;
+
+    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var bettingLines = await bettingPromise;
+    var response = await bettingLines.json();
+
+    if (bettingLines.status == 200) {
         return response;
     } else {
         console.log(response.message);
@@ -222,7 +246,7 @@ function renderTeamInfo(team, record) {
 }
 
 // Render schedule info
-function renderTeamScheduleInfo(schedule, logos, rankings, year) {
+function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
     const container = document.getElementById("schedule-container");
 
     var html = `
@@ -241,6 +265,16 @@ function renderTeamScheduleInfo(schedule, logos, rankings, year) {
         schedule.forEach(game => {
             var homePoints = '';
             var awayPoints = '';
+
+            var bettingLineObj = bettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam).lines;
+            var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+            var awayLine = '';
+            var homeLine = '';
+
+            if (bettingLine) {
+                awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
+                homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
+            }
 
             var homeLogo = logos.find((team) => team.id == game.homeId)?.logos.at(-1);
             homeLogo = homeLogo ? `<img src="${homeLogo}" alt="${game.homeTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
@@ -275,7 +309,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, year) {
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
                <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
                 ${awayIsWinner ? '</strong>' : ''}
-                </span><span class="team-score">
+                </span><span class="betting-line">${awayLine ? '-' + awayLine : ''}</span><span class="team-score">
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
                 ${awayPoints ? awayPoints : ''}
                 ${awayIsWinner ? '</strong>' : ''}
@@ -286,7 +320,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, year) {
                 ${homeIsWinner ? '<strong class="game-winner">' : ''}
                <a href="/team?team=${game.homeId}">${homeLogo}${homeRank}${game.homeTeam}</a>
                 ${homeIsWinner ? '</strong>' : ''}
-                </span><span class="team-score">
+                </span><span class="betting-line">${homeLine ? '-' + homeLine : ''}</span><span class="team-score">
                 ${homeIsWinner ? '<strong class="game-winner">' : ''}
                 ${homePoints ? homePoints : ''}
                 ${homeIsWinner ? '</strong>' : ''}

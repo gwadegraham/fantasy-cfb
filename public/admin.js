@@ -442,7 +442,7 @@ if (rankingsForm) {
     rankingsForm.addEventListener('submit', async function(event) {
         event.preventDefault();
 
-        const season = document.querySelector('[season-options]').value;
+        const season = document.querySelector('[rankings-season]').value;
         const seasonType = document.querySelector('[season-type-options]').value.toLowerCase();
         const week = document.querySelector('[week-options]').value;
 
@@ -680,6 +680,41 @@ if (scoresForm) {
     });
 }
 
+const bettingLinesForm = document.getElementById('betting-lines-form');
+
+if (bettingLinesForm) {
+    bettingLinesForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[betting-season]').value;
+
+        const response = await fetch(`/betting/new/${season}`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: `{
+            "season": "${season}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 201) {
+                console.log("New Betting Records", data);
+                successToast.options.text = `New betting records retrieved for Season: ${season}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " Betting Records could not be retrieved";
+                failToast.showToast();
+            }
+        });
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -767,6 +802,16 @@ function displayScoresContainer() {
         scoresContainer.style.display = 'none';
     } else {
         scoresContainer.style.display = 'flex';
+    }
+}
+
+function displayBettingLinesContainer() {
+    var bettingContainer = document.querySelector('[betting-lines-container]');
+
+    if (bettingContainer.style.display == 'flex' || bettingContainer.style.display=='') {
+        bettingContainer.style.display = 'none';
+    } else {
+        bettingContainer.style.display = 'flex';
     }
 }
 
