@@ -164,8 +164,8 @@ async function biggestWinner(users) {
 
     var userName = sortedUsers[0]?.firstName + " " + sortedUsers[0]?.lastName.substring(-1,1) + ".";
 
-    var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score;
-    var week = "Week " + sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week;
+    var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score || 0;
+    var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || '0');
 
     if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
@@ -175,9 +175,9 @@ async function biggestWinner(users) {
     const winner = document.querySelector('[biggest-winner]');
     const winnerScore = document.querySelector('[biggest-winner-score]');
 
-    winnerWeek.innerHTML = ` in ${week}`;
     winner.innerHTML = userName;
     winnerScore.innerHTML = `+${userScore}`;
+    winnerWeek.innerHTML = ` in ${week}`;
 }
 
 function biggestLoser(users) {
@@ -207,7 +207,7 @@ function biggestLoser(users) {
     }
 
     var userName = '';
-    var week = "Week " + sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week;
+    var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || "0");
 
     if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
         week = "Postseason";
@@ -224,7 +224,7 @@ function biggestLoser(users) {
         loserUsers.forEach((user) => {
             userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
             htmlString += `<span biggest-loser>${userName}</span><br>`;
-            loserScore.innerHTML = `+${user.score}`;
+            loserScore.innerHTML = `+${user.score || 0}`;
         });
 
         loser.outerHTML = htmlString;
@@ -232,72 +232,77 @@ function biggestLoser(users) {
         userName = loserUsers[0]?.firstName + " " + loserUsers[0]?.lastName?.substring(-1,1) + ".";
         loserWeek.innerHTML = `in ${week}`;
         loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
-        loserScore.innerHTML = `+${loserUsers[0]?.score}`;
+        loserScore.innerHTML = `+${loserUsers[0]?.score || 0}`;
     }
 }
 
 async function bestTeam(users) {
     var teamScores = [];
 
-    users.forEach((user, index) => {
-        user.seasons[0].teams.forEach( (team, index) => {
-            var totalScore = 0;
-            
-            user.seasons[0].weeklyScore.forEach(week => {
-                var result = week.scoreByTeam.filter(obj => {
-                    return obj.team == team.school
-                  });
-    
-                var tableWeeklyScore = 0;
-                if (result.length > 0) {
-                    for (const repeatedScore of result) {
-                        tableWeeklyScore += repeatedScore.score;
+    if (users[0].seasons.at(-1).weeklyScore.length > 0) {
+        users.forEach((user) => {
+            user.seasons[0].teams.forEach( (team) => {
+                var totalScore = 0;
+                
+                user.seasons[0].weeklyScore.forEach(week => {
+                    var result = week.scoreByTeam.filter(obj => {
+                        return obj.team == team.school
+                    });
+        
+                    var tableWeeklyScore = 0;
+                    if (result.length > 0) {
+                        for (const repeatedScore of result) {
+                            tableWeeklyScore += repeatedScore.score;
+                        }
                     }
+
+                    if (result[0]) {
+                        totalScore += tableWeeklyScore;
+                    }
+                });
+
+                var teamInfo = {
+                    team: team.mascot,
+                    score: totalScore,
+                    logo: team.logos.at(-1)
                 }
 
-                if (result[0]) {
-                    totalScore += tableWeeklyScore;
-                }
+                teamScores.push(teamInfo);
             });
-
-            var teamInfo = {
-                team: team.mascot,
-                score: totalScore,
-                logo: team.logos.at(-1)
-            }
-
-            teamScores.push(teamInfo);
         });
-    });
 
-    var sortedTeamScores = await teamScores.sort(function(a, b) {
-        return parseFloat(b.score) - parseFloat(a.score);
-    });
+        var sortedTeamScores = await teamScores.sort(function(a, b) {
+            return parseFloat(b.score) - parseFloat(a.score);
+        });
 
-    var resultScores = [sortedTeamScores[0]];
+        var resultScores = [sortedTeamScores[0]];
 
 
-    for (var y = 1; y < sortedTeamScores.length; y++) {
-        if (sortedTeamScores[y].score == sortedTeamScores[(y - 1)].score) {
-            resultScores.push(sortedTeamScores[y]);
-        } else {
-            break;
+        for (var y = 1; y < sortedTeamScores.length; y++) {
+            if (sortedTeamScores[y].score == sortedTeamScores[(y - 1)].score) {
+                resultScores.push(sortedTeamScores[y]);
+            } else {
+                break;
+            }
         }
+
+
+        const bestWeek = document.querySelector('[best-week]');
+        const best = document.querySelector('[best-team]');
+        const bestScore = document.querySelector('[best-team-score]');
+        var htmlString = '';
+        
+        resultScores.forEach( teamName => {        
+            htmlString += `<span best-team><img src="${teamName?.logo}">${teamName?.team}</span><br>`;
+            bestScore.innerHTML = `+${teamName?.score}`;
+        })
+
+        best.outerHTML = htmlString;
+        bestWeek.innerHTML = ' this season';
+    } else {
+        const best = document.querySelector('[best-team]');
+        best.innerHTML = 'let the games begin';
     }
-
-
-    const bestWeek = document.querySelector('[best-week]');
-    const best = document.querySelector('[best-team]');
-    const bestScore = document.querySelector('[best-team-score]');
-    var htmlString = '';
-    
-    resultScores.forEach( teamName => {        
-        htmlString += `<span best-team><img src="${teamName?.logo}">${teamName?.team}</span><br>`;
-        bestScore.innerHTML = `+${teamName?.score}`;
-    })
-
-    best.outerHTML = htmlString;
-    bestWeek.innerHTML = ' this season';
 }
 
 async function hotTeam(users) {
@@ -431,8 +436,8 @@ async function getAllTeamLogos () {
 }
 
 async function getAllBettingLines () {
-    // const seasonYear = new Date().getFullYear();
-    const seasonYear = 2024;
+    var seasonYear = new Date().getFullYear();
+    seasonYear = 2024;
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
