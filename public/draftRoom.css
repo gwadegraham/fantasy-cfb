@@ -1,3 +1,25 @@
+@media only screen and (min-width: 0em) {
+    .content #myInput {
+        color: #1A1F33;
+        margin: 1em 0 1em 0;
+        font-size: 0.75em;
+        padding: 0.5em;
+        width: 12em;
+    }
+    
+    .content #myInput:focus-visible {
+        outline: #171b31 auto 1px;
+    }
+
+    .headerRow {
+        background-color: #ed5858;
+    }
+
+    .sticky-header {
+        background-color: #ed5858;
+    }
+}
+
 @media only screen and (min-width: 64em) {
     .brand-title {
         font-size: 2rem;
@@ -172,7 +194,7 @@
     }
 
     .content #myInput {
-        color: #1A1F33;
+        font-size: inherit;
         padding: 0.5em;
         margin-bottom: 1em;
     }

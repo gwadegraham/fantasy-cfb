@@ -83,11 +83,24 @@ async function getUsers() {
     });
 
     response.json().then(async data => {
-        displayUsers(data);
-        displayLastUpdated(data);
-        displayHighlights(data);
-        displaySchedule(data);
+        
         usersData = data;
+
+        if (data.length == 0) {
+            document.querySelector('.no-data-message').removeAttribute('style');
+            document.querySelector('.get-users-container').setAttribute('style', 'display: none;');
+            document.querySelector('.highlights-header').setAttribute('style', 'display: none;');
+            document.querySelector('.highlights-container').setAttribute('style', 'display: none;');
+            document.querySelector('[poll-name]').setAttribute('style', 'display: none;');
+            document.querySelector('.dropdownWeek').setAttribute('style', 'display: none;');
+            document.querySelectorAll('.hr-subtle').forEach(x => x.setAttribute('style', 'display: none;'));
+            document.querySelector('.game-content').setAttribute('style', 'display: none;');
+        } else {
+            displayUsers(data);
+            displayLastUpdated(data);
+            displayHighlights(data);
+            displaySchedule(data);
+        }
 
         if (!isMobile) {
             setChartData(data);
@@ -437,7 +450,7 @@ async function getAllTeamLogos () {
 
 async function getAllBettingLines () {
     var seasonYear = new Date().getFullYear();
-    seasonYear = 2024;
+    // seasonYear = 2024;
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
@@ -513,7 +526,11 @@ async function displaySchedule(data) {
                 var homeRank = '';
                 
                 var bettingLineObj = allBettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
-                var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+                var bettingLine;
+
+                if (bettingLineObj) {
+                    bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+                }
                 var awayLine = '';
                 var homeLine = '';
 

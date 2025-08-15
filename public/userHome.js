@@ -282,7 +282,7 @@ async function getTeamLogos (game) {
 
 async function getAllBettingLines () {
     var seasonYear = new Date().getFullYear();
-    seasonYear = 2024;
+    // seasonYear = 2024;
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',

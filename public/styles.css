@@ -133,6 +133,7 @@ body {
 
     .navbar-links.active {
         display: flex;
+        box-shadow: 0px 8px 10px -7px rgba(0, 0, 0, 0.5);
     }
 }
 
