@@ -80,14 +80,15 @@ async function getTeam() {
     const teamRecordInfo = await getRecord(teamData);
     const conferenceRecords = await getConferenceRecords(teamData);
     const allTeamLogos = await getTeamLogos(conferenceRecords);
+    const recruiting = await getRecruitingRankings(teamData.school);
 
     renderConferenceStandings(conferenceRecords, teamData, allTeamLogos);
-    renderTeamInfo(teamData, teamRecordInfo);
+    renderTeamInfo(teamData, teamRecordInfo, recruiting);
 }
 
 async function getRecord(teamData) {
     var currentYear = new Date().getFullYear();
-    currentYear = 2024;
+    // currentYear = 2024;
 
     const response = await fetch(`/records/${currentYear}/${teamData.school}`, {
         method: 'GET',
@@ -103,7 +104,7 @@ async function getRecord(teamData) {
 
 async function getConferenceRecords(teamData) {
     var currentYear = new Date().getFullYear();
-    currentYear = 2024;
+    // currentYear = 2024;
 
     const response = await fetch(`/records/${currentYear}/conference/${teamData.seasons.at(-1).conference}`, {
         method: 'GET',
@@ -120,7 +121,7 @@ async function getConferenceRecords(teamData) {
 async function getSchedule() {
     const urlParams = new URLSearchParams(window.location.search);
     var seasonYear = new Date().getFullYear();
-    seasonYear = 2024;
+    // seasonYear = 2024;
 
     const response = await fetch(`/games/season/${seasonYear}/teamId/${urlParams.get('team')}`, {
         method: 'GET',
@@ -161,7 +162,7 @@ async function getTeamLogos () {
 
 async function getAllBettingLines () {
     var seasonYear = new Date().getFullYear();
-    seasonYear = 2024;
+    // seasonYear = 2024;
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
@@ -182,7 +183,7 @@ async function getAllBettingLines () {
 }
 
 // Render team info
-function renderTeamInfo(team, record) {
+function renderTeamInfo(team, record, recruiting) {
   const container = document.getElementById("team-container");
   var scoreCode = (leagueCode == 'gg') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
   var formatConference = team.seasons.at(-1).conference;
@@ -208,8 +209,10 @@ function renderTeamInfo(team, record) {
             <p class="score">${record?.conferenceGames.wins || 0}-${record?.conferenceGames.losses || 0}    Conference</p>
         </div>
         <div>
-            <h4>📈 ${team.seasons.at(-1).season} Season Score</h4>
+            <h4>📈 Season Score</h4>
             <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
+            <h4>Recruiting Rank</h4>
+            <p class="score">#${recruiting.rank || 0}</p>
         </div>
         <div>
             <h4>🏟 Stadium</h4>
@@ -571,6 +574,23 @@ async function getConferenceTeams (conference) {
     }
 
     return conferences;
+}
+
+async function getRecruitingRankings(team) {
+    var seasonYear = new Date().getFullYear();
+    // seasonYear = 2024;
+
+    var response = await fetch(`/recruiting/${seasonYear}/${team}`, {
+        method: 'GET',
+        headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+        }
+    });
+
+    var recruitingRankings = await response.json();
+
+    return recruitingRankings[0];
 }
 
 // Helper: Format the date to readable format

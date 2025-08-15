@@ -76,6 +76,8 @@ async function getUserProfile() {
             document.querySelector('[admin-page]').remove();
             document.querySelector('[league-selector]').remove();
             document.querySelector('[draft-board]').remove();
+        } else if (isMobile) {
+            document.querySelector('[draft-board]').remove();
         }
         
         getUsers();

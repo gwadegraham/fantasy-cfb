@@ -48,7 +48,6 @@ router.post('/new/:year', async (req, res) => {
 
             if (existingBettingLine != null) {
                 
-                existingBettingLine.id = bettingLine.id;
                 existingBettingLine.season = bettingLine.season;
                 existingBettingLine.seasonType = bettingLine.seasonType;
                 existingBettingLine.week = bettingLine.week;

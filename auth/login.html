@@ -11,6 +11,7 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.js" defer></script>
+  <link rel="shortcut icon" type="image/png" href="https://campusclash.io/images/favicon.png"/>
 </head>
 
 <body style="background-color: #101322;" class="min-h-screen bg-gray-100 text-gray-900 flex justify-center">
@@ -82,7 +83,11 @@
     if (colors.page_background) {
       var css = '.auth0-lock-header-logo { display: none !important; } .auth0-lock.auth0-lock .auth0-lock-overlay { background: ' +
         colors.page_background +
-        ' }';
+        ' } .auth0-lock-header-bg-solid {background-color: #101322 !important; opacity: 1 !important;} .auth0-lock-name {color: #F4F6FB;}' + 
+        ' .auth0-lock-content-wrapper, .auth0-lock-tabs {background-color: #101322 !important;} .auth0-lock-content-wrapper a, .auth0-lock-content-wrapper p {color: #F4F6FB !important;}'+ 
+        '.auth0-lock-tabs li.auth0-lock-tabs-current span {color: #ed5858 !important;} .auth0-lock-tabs li.auth0-lock-tabs-current {box-shadow: 0 1px 0 0 #ed5858 !important;}' + 
+        '.auth0-lock-header-bg-blur {background-color: #101322 !important; background-position: unset !important;}' + 
+        '.auth0-lock-header-bg {background-color: #101322 !important;}';
       var style = document.createElement('style');
 
       style.appendChild(document.createTextNode(css));
@@ -123,6 +128,10 @@
       font-family: "Pacifico", cursive;
       font-weight: 400;
       font-style: normal;
+    }
+
+    .auth0-lock-header-bg {
+      background-color: #101322 !important;
     }
 
     /* mobile css */
