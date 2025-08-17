@@ -20,8 +20,7 @@ const locationSchema = new mongoose.Schema({
         required: true
     },
     zip: {
-        type: String,
-        required: true
+        type: String
     },
     country_code: {
         type: String
@@ -30,12 +29,10 @@ const locationSchema = new mongoose.Schema({
         type: String,
     },
     latitude: {
-        type: Number,
-        required: true
+        type: Number
     },
     longitude: {
-        type: Number,
-        required: true
+        type: Number
     },
     elevation: {
         type: String,
