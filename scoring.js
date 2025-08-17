@@ -124,7 +124,7 @@ module.exports= {
         var cumulativeScoreV2 = 0;
         var weeklyScores = [];
 
-        var gamesPromise = await fetch(process.env.URL + `/games/season/${season}/team/${teamName}`, {
+        var gamesPromise = await fetch(process.env.URL + `/games/season/${season}/teamId/${teamId}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
