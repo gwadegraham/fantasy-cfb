@@ -190,7 +190,7 @@
 
     /* site maintenance css */
     .maintenance-container {
-        display: flex;
+        display: none;
         background-color: #2A2E42;
         position: fixed;
         width: 100%;
