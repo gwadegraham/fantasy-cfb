@@ -715,6 +715,41 @@ if (bettingLinesForm) {
     });
 }
 
+const expectedWinsForm = document.getElementById('expected-wins-form');
+
+if (expectedWinsForm) {
+    expectedWinsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[expected-wins-season]').value;
+
+        const response = await fetch(`/teams/${season}/expectedWins`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: `{
+            "season": "${season}"
+            }`,
+        });
+
+        response.json().then(data => {
+            if (response.status == 200) {
+                console.log("Updated team records", data);
+                successToast.options.text = `Team expected wins updated for Season: ${season}`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " Team expected wins could not be updated";
+                failToast.showToast();
+            }
+        });
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -812,6 +847,16 @@ function displayBettingLinesContainer() {
         bettingContainer.style.display = 'none';
     } else {
         bettingContainer.style.display = 'flex';
+    }
+}
+
+function displayExpectedWinsContainer() {
+    var expectedWinsContainer = document.querySelector('[expected-wins-container]');
+
+    if (expectedWinsContainer.style.display == 'flex' || expectedWinsContainer.style.display=='') {
+        expectedWinsContainer.style.display = 'none';
+    } else {
+        expectedWinsContainer.style.display = 'flex';
     }
 }
 

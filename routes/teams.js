@@ -173,22 +173,32 @@ router.patch('/:id/:season', getTeam, async (req, res) => {
 });
 
 //Updating Expected Wins for One With Season
-router.patch('/:team/:season/expectedWins', getTeamByName, async (req, res) => {
+router.post('/:season/expectedWins', async (req, res) => {
 
-    var index = res.team.seasons.findIndex(x => x.season == req.params.season);
+    var teamJsonData = require(`../json/expectedWins${req.params.season}.json`);
+    var updatedTeams = [];
 
-    if (index > -1) {
-        if (req.body.expectedWins != null) {
-            res.team.seasons[index].expectedWins = req.body.expectedWins;
-        } 
+    for (team of teamJsonData) {
+
+        var team = await getTeamByName(team.team);
+
+        var index = team.seasons.findIndex(x => x.season == req.params.season);
+
+        if (index > -1) {
+            if (team.expectedWins != null) {
+                team.seasons[index].expectedWins = team.expectedWins;
+            } 
+        }
+
+        try {
+            const updatedTeam = await team.save();
+            updatedTeams.push(updatedTeam);
+        } catch (err) {
+            res.status(400).json({message: err.message});
+        }
     }
 
-    try {
-        const updatedTeam = await res.team.save();
-        res.status(200).json(updatedTeam);
-    } catch (err) {
-        res.status(400).json({message: err.message});
-    }
+    res.status(200).json(updatedTeams);
 });
 
 //Refreshing All
@@ -286,18 +296,17 @@ async function getTeam(req, res, next) {
     next();
 }
 
-async function getTeamByName(req, res, next) {
+async function getTeamByName(teamName) {
     let team;
     try {
-        team = await Team.findOne( { $or: [{"school": req.params.team}, {"alternateNames": req.params.team}]});
+        team = await Team.findOne( { $or: [{"school": teamName}, {"alternateNames": teamName}]});
         if (team == null) {
-            return res.status(404).json({message: 'Cannot find team ' + req.params.team});
+            return res.status(404).json({message: 'Cannot find expected team ' + teamName});
         }
     } catch (err) {
         return res.status(500).json({message: err.message});
     }
-    res.team = team;
-    next();
+    return team;
 }
 
 module.exports = router;
