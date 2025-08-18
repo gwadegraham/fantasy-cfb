@@ -178,15 +178,15 @@ router.post('/:season/expectedWins', async (req, res) => {
     var teamJsonData = require(`../json/expectedWins${req.params.season}.json`);
     var updatedTeams = [];
 
-    for (team of teamJsonData) {
+    for (teamJson of teamJsonData) {
 
-        var team = await getTeamByName(team.team);
+        var team = await getTeamByName(teamJson.team);
 
         var index = team.seasons.findIndex(x => x.season == req.params.season);
 
         if (index > -1) {
-            if (team.expectedWins != null) {
-                team.seasons[index].expectedWins = team.expectedWins;
+            if (teamJson.expectedWins != null) {
+                team.seasons[index].expectedWins = teamJson.expectedWins;
             } 
         }
 
