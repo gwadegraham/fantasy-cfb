@@ -167,86 +167,98 @@ async function displayHighlights(users) {
 }
 
 async function biggestWinner(users) {
-    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
-    var sortedUsers = users.toSorted(function(b, a) {
-        var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
-        var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+    if (users[0].seasons.at(-1).weeklyScore.length > 0) {
+        var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
+        var sortedUsers = users.toSorted(function(b, a) {
+            var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+            var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
 
-        return parseFloat(aScore.score) - parseFloat(bScore.score);
-    });
+            return parseFloat(aScore.score) - parseFloat(bScore.score);
+        });
 
-    var userName = sortedUsers[0]?.firstName + " " + sortedUsers[0]?.lastName.substring(-1,1) + ".";
+        var userName = sortedUsers[0]?.firstName + " " + sortedUsers[0]?.lastName.substring(-1,1) + ".";
 
-    var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score || 0;
-    var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || '0');
+        var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score || 0;
+        var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || '0');
 
-    if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
-        week = "Postseason";
+        if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
+            week = "Postseason";
+        }
+
+        const winnerWeek = document.querySelector('[winner-week]');
+        const winner = document.querySelector('[biggest-winner]');
+        const winnerScore = document.querySelector('[biggest-winner-score]');
+
+        winner.innerHTML = userName;
+        winnerScore.innerHTML = `+${userScore}`;
+        winnerWeek.innerHTML = ` in ${week}`;
+    } else {
+        const winner = document.querySelector('[biggest-winner]');
+        winner.innerHTML = '"The beaver, we&#39;ll see how long that beaver can hold his breath"';
     }
-
-    const winnerWeek = document.querySelector('[winner-week]');
-    const winner = document.querySelector('[biggest-winner]');
-    const winnerScore = document.querySelector('[biggest-winner-score]');
-
-    winner.innerHTML = userName;
-    winnerScore.innerHTML = `+${userScore}`;
-    winnerWeek.innerHTML = ` in ${week}`;
+    
 }
 
 function biggestLoser(users) {
-    var loserUsers = [];
-    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
-    var sortedUsers = users.toSorted(function(a, b) {
-        var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
-        var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+    if (users[0].seasons.at(-1).weeklyScore.length > 0) {
+        var loserUsers = [];
+        var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
+        var sortedUsers = users.toSorted(function(a, b) {
+            var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
+            var bScore = b.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
 
-        return parseFloat(aScore.score) - parseFloat(bScore.score);
-    });
-
-    loserUsers.push({
-        firstName: sortedUsers[0]?.firstName,
-        lastName: sortedUsers[0]?.lastName,
-        score: sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.score
-    });
-
-    for (var x = 1; x < sortedUsers.length; x++) {
-        if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1]?.score) {
-            loserUsers.push({
-                firstName: sortedUsers[x].firstName,
-                lastName: sortedUsers[x].lastName,
-                score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score
-            });
-        }
-    }
-
-    var userName = '';
-    var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || "0");
-
-    if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
-        week = "Postseason";
-    }
-
-    const loserWeek = document.querySelector('[loser-week]');
-    const loser = document.querySelector('[biggest-loser]');
-    const loserScore = document.querySelector('[biggest-loser-score]');
-
-    if (loserUsers.length > 1) {
-        loserWeek.innerHTML = `in ${week}`;
-        var htmlString = '';
-
-        loserUsers.forEach((user) => {
-            userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
-            htmlString += `<span biggest-loser>${userName}</span><br>`;
-            loserScore.innerHTML = `+${user.score || 0}`;
+            return parseFloat(aScore.score) - parseFloat(bScore.score);
         });
 
-        loser.outerHTML = htmlString;
+        loserUsers.push({
+            firstName: sortedUsers[0]?.firstName,
+            lastName: sortedUsers[0]?.lastName,
+            score: sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.score
+        });
+
+        for (var x = 1; x < sortedUsers.length; x++) {
+            if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1]?.score) {
+                loserUsers.push({
+                    firstName: sortedUsers[x].firstName,
+                    lastName: sortedUsers[x].lastName,
+                    score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score
+                });
+            }
+        }
+
+        var userName = '';
+        var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || "0");
+
+        if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
+            week = "Postseason";
+        }
+
+        const loserWeek = document.querySelector('[loser-week]');
+        const loser = document.querySelector('[biggest-loser]');
+        const loserScore = document.querySelector('[biggest-loser-score]');
+
+        if (loserUsers.length > 1) {
+            loserWeek.innerHTML = `in ${week}`;
+            var htmlString = '';
+
+            loserUsers.forEach((user) => {
+                userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
+                htmlString += `<span biggest-loser>${userName}</span><br>`;
+                loserScore.innerHTML = `+${user.score || 0}`;
+            });
+
+            loser.outerHTML = htmlString;
+        } else {
+            userName = loserUsers[0]?.firstName + " " + loserUsers[0]?.lastName?.substring(-1,1) + ".";
+            loserWeek.innerHTML = `in ${week}`;
+            loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
+            loserScore.innerHTML = `+${loserUsers[0]?.score || 0}`;
+        }    
     } else {
-        userName = loserUsers[0]?.firstName + " " + loserUsers[0]?.lastName?.substring(-1,1) + ".";
-        loserWeek.innerHTML = `in ${week}`;
-        loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
-        loserScore.innerHTML = `+${loserUsers[0]?.score || 0}`;
+        const loser = document.querySelector('[biggest-loser]');
+        loser.innerHTML = '"It&#39;s like Woodstock, except everyone&#39;s got their clothes on"';
     }
+    
 }
 
 async function bestTeam(users) {
@@ -314,38 +326,44 @@ async function bestTeam(users) {
         bestWeek.innerHTML = ' this season';
     } else {
         const best = document.querySelector('[best-team]');
-        best.innerHTML = 'let the games begin';
+        best.innerHTML = '“You&#39;d have to get some of those Harry Potter activists to read up on how you kill a Sun Devil because there&#39;s a lot of outside stuff there”';
     }
 }
 
 async function hotTeam(users) {
-    var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
+    if (users[0].seasons.at(-1).weeklyScore.length > 0) {
+        var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
 
-    const scoredUsers = await Promise.all(users.map(async (user) => {
-        const hotStreakScore = await getPreviousThreeSum(user.seasons[0].weeklyScore, weekIndex);
-        return {
-            ...user,
-            hotStreakScore: parseFloat(hotStreakScore) || 0
-        };
-    }));
+        const scoredUsers = await Promise.all(users.map(async (user) => {
+            const hotStreakScore = await getPreviousThreeSum(user.seasons[0].weeklyScore, weekIndex);
+            return {
+                ...user,
+                hotStreakScore: parseFloat(hotStreakScore) || 0
+            };
+        }));
 
-    const sortedUsers = scoredUsers.toSorted((a, b) => { 
-        return b.hotStreakScore - a.hotStreakScore;
-    });
+        const sortedUsers = scoredUsers.toSorted((a, b) => { 
+            return b.hotStreakScore - a.hotStreakScore;
+        });
 
-    const topScore = sortedUsers[0]?.hotStreakScore ?? 0;
-    const topUsers = sortedUsers.filter(user => user.hotStreakScore === topScore);
+        const topScore = sortedUsers[0]?.hotStreakScore ?? 0;
+        const topUsers = sortedUsers.filter(user => user.hotStreakScore === topScore);
 
-    const hotTeam = document.querySelector('[hot-team]');
-    const hotTeamScore = document.querySelector('[hot-team-score]');
-    var htmlString = '';
+        const hotTeam = document.querySelector('[hot-team]');
+        const hotTeamScore = document.querySelector('[hot-team-score]');
+        var htmlString = '';
 
-    topUsers.forEach( user => {
-        htmlString += `<span hot-team>${user.firstName} ${user.lastName.substring(-1,1)}.</span><br>`;
-    });
+        topUsers.forEach( user => {
+            htmlString += `<span hot-team>${user.firstName} ${user.lastName.substring(-1,1)}.</span><br>`;
+        });
 
-    hotTeam.outerHTML = htmlString;
-    hotTeamScore.innerHTML = `+${topScore} over 2 weeks`;
+        hotTeam.outerHTML = htmlString;
+        hotTeamScore.innerHTML = `+${topScore} over 2 weeks`;
+    } else {
+        const hotTeam = document.querySelector('[hot-team]');
+        hotTeam.innerHTML = '“I mean, I completely hate Candy Corn”';
+    }
+    
 }
 
 async function getPreviousThreeSum(arr, currentIndex) {

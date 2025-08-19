@@ -279,7 +279,23 @@ if (createForm) {
                 var temp = teamList.find((element) => element.id == team.value);
                 teamDocuments.push(temp);
             }
-            );
+        );
+
+        var userBody = {
+            firstName: firstName,
+            lastName: lastName,
+            color: displayColor,
+            seasons: [
+                {
+                    season: new Date().getFullYear()
+                }
+            ],
+            league: leagueCode
+        };
+
+        if (teamDocuments[0] != null) {
+            userBody.seasons[0].teams = JSON.stringify(teamDocuments);
+        }
     
         const response = await fetch("/users", {
             method: 'POST',
@@ -287,18 +303,7 @@ if (createForm) {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
             },
-            body: `{
-            "firstName": "${firstName}",
-            "lastName": "${lastName}",
-            "color": "${displayColor}",
-            "seasons": [
-                {
-                    "season": ${new Date().getFullYear()},
-                    "teams": ${JSON.stringify(teamDocuments)}
-                }
-            ],
-            "league": "${leagueCode}"
-            }`,
+            body: JSON.stringify(userBody),
         });
     
        
