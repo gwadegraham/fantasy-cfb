@@ -25,6 +25,18 @@ router.get('/season/:seasonYear', async (req, res) => {
 });
 
 //Getting All By League
+router.get('/league/:leagueCodeReq/all', async (req, res) => {
+    var leagueCode = req.params.leagueCodeReq;
+    try {
+        console.log("finding all users in league", leagueCode);
+        const users = await User.find({"league": leagueCode});
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
+//Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
     try {

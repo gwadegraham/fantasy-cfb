@@ -86,7 +86,7 @@ async function getUserProfile() {
 
 async function getUsers() {
 
-    const response = await fetch(`/users/league/${leagueCode}/previous`, {
+    const response = await fetch(`/users/league/${leagueCode}/all`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -104,7 +104,7 @@ function displayUsers(data) {
     var str = '';
 
     data.sort((a, b) => {
-        return a.seasons[0].cumulativeScore - b.seasons[0].cumulativeScore;
+        return (a.seasons.at(-1).cumulativeScore || 1000) - (b.seasons.at(-1).cumulativeScore || 1000);
     });
 
     users = data;
