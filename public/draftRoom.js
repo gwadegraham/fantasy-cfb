@@ -104,7 +104,7 @@ function displayUsers(data) {
     var str = '';
 
     data.sort((a, b) => {
-        return (a.seasons.at(-1).cumulativeScore || 1000) - (b.seasons.at(-1).cumulativeScore || 1000);
+        return (a.seasons.at(-1)?.cumulativeScore || 1000) - (b.seasons.at(-1)?.cumulativeScore || 1000);
     });
 
     users = data;
