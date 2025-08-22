@@ -144,6 +144,9 @@ const seasonSchema = new mongoose.Schema({
     season: {
         type: Number
     },
+    draftPosition: {
+        type: Number
+    },
     teams: {
         type: [teamSchema]
     },

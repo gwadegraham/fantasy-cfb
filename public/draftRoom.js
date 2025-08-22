@@ -103,9 +103,16 @@ function displayUsers(data) {
     const draftTableBody = document.querySelector('[draft-table-body]');
     var str = '';
 
-    data.sort((a, b) => {
-        return (a.seasons.at(-1)?.cumulativeScore || 1000) - (b.seasons.at(-1)?.cumulativeScore || 1000);
-    });
+    if ((data[0].seasons.at(-1).draftPosition != null) && (data[0].seasons.at(-1).draftPosition != '')) {
+        data.sort((a, b) => {
+            return (a.seasons.at(-1).draftPosition) - (b.seasons.at(-1).draftPosition);
+        });
+    } else {
+        data.sort((a, b) => {
+            return (a.seasons.at(-2)?.cumulativeScore || 1000) - (b.seasons.at(-2)?.cumulativeScore || 1000);
+        });
+    }
+
 
     users = data;
 
