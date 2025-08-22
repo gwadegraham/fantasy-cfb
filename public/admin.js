@@ -6,10 +6,9 @@ const seasonOptionList = document.querySelectorAll('[season-options]');
 const seasonTypeOptionList = document.querySelectorAll('[season-type-options]');
 const weekOptionList = document.querySelectorAll('[week-options]');
 
-const toggleButton = document.getElementsByClassName('toggle-button')[0];
-const navbarLinks = document.getElementsByClassName('navbar-links')[0];
 var leagueCode;
 var isMobile;
+var userMetadata;
 var teamList = [];
 var userListSelect = [];
 
@@ -174,6 +173,7 @@ function setUserOptions(data) {
 }
 
 async function getUsers() {
+    const leagueCode = window.localStorage.getItem("leagueCode");
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
@@ -185,6 +185,7 @@ async function getUsers() {
     response.json().then(data => {
         displayUsers(data);
         setUserOptions(data);
+        setNavbarUserId(userMetadata, data);
     });
 }
 
@@ -223,20 +224,20 @@ async function getUserProfile() {
 
     response.json().then(async data => {
         console.log("user metadata", data)
+        userMetadata = data;
 
-        leagueCode = window.sessionStorage.getItem("leagueCode");
+        // Only set leagueCode from metaData if it's not already stored
+        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
+            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+            window.localStorage.setItem("leagueCode", newLeagueCode);
+        }
+
+        const leagueCode = window.localStorage.getItem("leagueCode");
 
         if (leagueCode && (leagueCode != "undefined")) {
             const currentSelectedLeague = window.sessionStorage.getItem("league");
             if (currentSelectedLeague) {
                 $("#dropdownMenuButton").text(currentSelectedLeague);
-            }
-        } else {
-            var userLeague = data.user_metadata.metadata.league;
-            if (userLeague == "gg") {
-                leagueCode = "graham-league";
-            } else {
-                leagueCode = "claunts-league";
             }
         }
         
@@ -249,11 +250,13 @@ async function getUserProfile() {
     });
 }
 
-toggleButton.addEventListener('click', () => {
-    navbarLinks.classList.toggle('active');
-});
-
 window.onload = async function() {
+    const toggleButton = document.getElementsByClassName('toggle-button')[0];
+    const navbarLinks = document.getElementsByClassName('navbar-links')[0];
+    toggleButton.addEventListener('click', () => {
+        navbarLinks.classList.toggle('active');
+    });
+
     detectMobile();
     getUserProfile();
     getTeams();
@@ -879,12 +882,27 @@ $('#screenBlock').animate({opacity: 0}, 200, function() {
 });
 }
 
-$(".dropdown-menu a").click(function(){
-    $(this).parents(".dropdown").find('.btn').html($(this).text());
-    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-    var selectedLeague = $("#dropdownMenuButton").text();
-    var selectedLeagueCode = $("#dropdownMenuButton").val();
-    window.sessionStorage.setItem("league", selectedLeague);
-    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
-    window.location.reload();
-});
+setTimeout(() => {
+    $("[league-selector] a").click(function(){
+        $(this).parents(".dropdown").find('.btn').html($(this).text());
+        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+        var selectedLeague = $("#dropdownMenuButton").text();
+        var selectedLeagueCode = $("#dropdownMenuButton").val();
+        window.sessionStorage.setItem("league", selectedLeague);
+        window.localStorage.setItem("leagueCode", selectedLeagueCode);
+        window.location.reload();
+    });
+}, "200");
+
+function setNavbarUserId(metaData, usersData) {
+    if (!metaData || !metaData.email || !Array.isArray(usersData)) {
+        return null;
+    }
+
+    const email = metaData.email.toLowerCase();
+    const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
+    const userId = user ? user._id : null;
+    
+    const myLink = document.querySelector('[user-home]');
+    myLink.href = `/userHome?user=${userId}`;
+}

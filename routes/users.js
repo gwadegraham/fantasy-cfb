@@ -42,7 +42,7 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     try {
         console.log("finding all users in league", leagueCode);
         const users = await User.find({"seasons.season": {"$eq": process.env.YEAR}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
+                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});

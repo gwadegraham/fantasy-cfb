@@ -62,6 +62,10 @@ body {
     display: block;
 }
 
+.navbar-links li a[user-home] i {
+    font-size: 1.2rem;
+}
+
 .navbar-links li:hover {
     background-color: #ed5858;
     border-radius: 5px;

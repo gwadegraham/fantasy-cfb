@@ -1,9 +1,3 @@
-const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-const toggleButton = document.getElementsByClassName('toggle-button')[0];
-toggleButton.addEventListener('click', () => {
-    navbarLinks.classList.toggle('active');
-});
-
 var leagueVersion;
 var leagueCode;
 var isMobile;
@@ -18,6 +12,13 @@ const userTeams = [];
 
 window.onload = async function() {
     detectMobile();
+
+    const navbarLinks = document.getElementsByClassName('navbar-links')[0];
+    const toggleButton = document.getElementsByClassName('toggle-button')[0];
+    toggleButton.addEventListener('click', () => {
+        navbarLinks.classList.toggle('active');
+    });
+
     await getUserProfile();
     await getTeams();
     setDynamicYearHeaders();
@@ -49,21 +50,18 @@ async function getUserProfile() {
     response.json().then(async data => {
         console.log("user metadata", data)
 
-        leagueCode = window.sessionStorage.getItem("leagueCode");
+        // Only set leagueCode from metaData if it's not already stored
+        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
+            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+            window.localStorage.setItem("leagueCode", newLeagueCode);
+        }
+
+        const leagueCode = window.localStorage.getItem("leagueCode");
 
         if (leagueCode && (leagueCode != "undefined")) {
             const currentSelectedLeague = window.sessionStorage.getItem("league");
             if (currentSelectedLeague) {
                 $("#dropdownMenuButton").text(currentSelectedLeague);
-            }
-        } else {
-            var userLeague = data.user_metadata.metadata.league;
-            if (userLeague == "gg") {
-                leagueCode = "graham-league";
-                leagueVersion = "V2";
-            } else {
-                leagueCode = "claunts-league";
-                leagueVersion = "V1";
             }
         }
         
@@ -85,6 +83,7 @@ async function getUserProfile() {
 }
 
 async function getUsers() {
+    const leagueCode = window.localStorage.getItem("leagueCode");
 
     const response = await fetch(`/users/league/${leagueCode}/all`, {
         method: 'GET',
@@ -96,6 +95,7 @@ async function getUsers() {
 
     response.json().then(async data => {
         displayUsers(data);
+        setNavbarUserId();
     });
 }
 
@@ -559,15 +559,24 @@ var failToast = Toastify({
     },
 });
 
-$(".dropdown-menu a").click(function(){
-    $(this).parents(".dropdown").find('.btn').html($(this).text());
-    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-    var selectedLeague = $("#dropdownMenuButton").text();
-    var selectedLeagueCode = $("#dropdownMenuButton").val();
-    window.sessionStorage.setItem("league", selectedLeague);
-    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
-    window.location.reload();
-});
+setTimeout(() => {
+    $("[league-selector] a").click(function(){
+        $(this).parents(".dropdown").find('.btn').html($(this).text());
+        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+        var selectedLeague = $("#dropdownMenuButton").text();
+        var selectedLeagueCode = $("#dropdownMenuButton").val();
+        window.sessionStorage.setItem("league", selectedLeague);
+        window.localStorage.setItem("leagueCode", selectedLeagueCode);
+        window.location.reload();
+    });
+}, "200");
+
+function setNavbarUserId() {
+    const userId = window.localStorage.getItem("userId");
+
+    const myLink = document.querySelector('[user-home]');
+    myLink.href = `/userHome?user=${userId}`;
+}
 
 $(document).ready(function() {
     $('#changeTeamModal .btn-primary').prop('disabled', true);

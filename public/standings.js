@@ -3,6 +3,7 @@ import { setChartData } from './weekByWeek.js';
 var isMobile;
 var weekCode;
 var usersData;
+var userMetadata;
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
@@ -14,16 +15,14 @@ function detectMobile() {
     }
 }
 
-const toggleButton = document.getElementsByClassName('toggle-button')[0];
-const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-var leagueCode;
-
-toggleButton.addEventListener('click', () => {
-    navbarLinks.classList.toggle('active');
-});
-
 window.onload = async function() {
     detectMobile();
+
+    const toggleButton = document.getElementsByClassName('toggle-button')[0];
+    const navbarLinks = document.getElementsByClassName('navbar-links')[0];
+    toggleButton.addEventListener('click', () => {
+        navbarLinks.classList.toggle('active');
+    });
 
     const response = await fetch(`/profile`, {
         method: 'GET',
@@ -35,6 +34,7 @@ window.onload = async function() {
 
     response.json().then(async data => {
         console.log("user metadata", data)
+        userMetadata = data;
 
         weekCode = window.localStorage.getItem("weekCode");
         const currentSelectedWeek = window.localStorage.getItem("week");
@@ -45,19 +45,18 @@ window.onload = async function() {
             weekCode = window.localStorage.setItem("weekCode", "week-1");
         }
 
-        leagueCode = window.sessionStorage.getItem("leagueCode");
+        // Only set leagueCode from metaData if it's not already stored
+        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
+            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+            window.localStorage.setItem("leagueCode", newLeagueCode);
+        }
+
+        const leagueCode = window.localStorage.getItem("leagueCode");
 
         if (leagueCode && (leagueCode != "undefined")) {
             const currentSelectedLeague = window.sessionStorage.getItem("league");
             if (currentSelectedLeague) {
                 $("#dropdownMenuButton").text(currentSelectedLeague);
-            }
-        } else {
-            var userLeague = data.user_metadata.metadata.league;
-            if (userLeague == "gg") {
-                leagueCode = "graham-league";
-            } else {
-                leagueCode = "claunts-league";
             }
         }
         
@@ -74,6 +73,7 @@ window.onload = async function() {
   };
 
 async function getUsers() {
+    const leagueCode = window.localStorage.getItem("leagueCode");
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
@@ -100,6 +100,7 @@ async function getUsers() {
             displayLastUpdated(data);
             displayHighlights(data);
             displaySchedule(data);
+            setNavbarUserId(userMetadata, usersData);
         }
 
         if (!isMobile) {
@@ -903,20 +904,23 @@ $(".dropdown-menu-week a").click(function(){
     var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
     window.localStorage.setItem("week", selectedWeek);
     window.localStorage.setItem("weekCode", selectedWeekCode);
-    document.querySelector('.football-loader').style.display = "block";
+    document.querySelector('.football-loader').style.display = "flex";
     document.querySelector('.schedule-table').style.display = "none";
     displaySchedule(usersData);
 });
 
-$(".dropdown-menu a").click(function(){
-    $(this).parents(".dropdown").find('.btn').html($(this).text());
-    $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-    var selectedLeague = $("#dropdownMenuButton").text();
-    var selectedLeagueCode = $("#dropdownMenuButton").val();
-    window.sessionStorage.setItem("league", selectedLeague);
-    window.sessionStorage.setItem("leagueCode", selectedLeagueCode);
-    window.location.reload();
-});
+setTimeout(() => {
+    $("[league-selector] a").click(function(){
+        $(this).parents(".dropdown").find('.btn').html($(this).text());
+        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+        var selectedLeague = $("#dropdownMenuButton").text();
+        var selectedLeagueCode = $("#dropdownMenuButton").val();
+        window.sessionStorage.setItem("league", selectedLeague);
+        window.localStorage.setItem("leagueCode", selectedLeagueCode);
+        window.location.reload();
+    });
+}, "200");
+
 
 const noGamesMessages = [
   `
@@ -957,4 +961,19 @@ function showRandomNoGamesMessage() {
   const container = document.getElementById("no-games-container");
   const randomIndex = Math.floor(Math.random() * noGamesMessages.length);
   container.innerHTML = noGamesMessages[randomIndex];
+}
+
+function setNavbarUserId(metaData, usersData) {
+    if (!metaData || !metaData.email || !Array.isArray(usersData)) {
+        return null;
+    }
+
+    const email = metaData.email.toLowerCase();
+    const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
+    const userId = user ? user._id : null;
+
+    window.localStorage.setItem("userId", userId);
+    
+    const myLink = document.querySelector('[user-home]');
+    myLink.href = `/userHome?user=${userId}`;
 }
