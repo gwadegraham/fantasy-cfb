@@ -18,13 +18,23 @@ function detectMobile() {
 window.onload = async function() {
     detectMobile();
 
-    const toggleButton = document.getElementsByClassName('toggle-button')[0];
-    const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-    setTimeout(() => {
-        toggleButton.addEventListener('click', () => {
-            navbarLinks.classList.toggle('active');
-        });
-    }, "500");
+    function initNavbarToggle() {
+        const toggleButton = document.querySelector('.toggle-button');
+        const navbarLinks = document.querySelector('.navbar-links');
+
+        if (toggleButton && navbarLinks) {
+            toggleButton.addEventListener('click', () => {
+                navbarLinks.classList.toggle('active');
+            });
+            console.log("✅ Navbar toggle initialized");
+        } else {
+            // Retry after 500ms if elements aren't in the DOM yet
+            console.log("⏳ Navbar elements not found, retrying...");
+            setTimeout(initNavbarToggle, 500);
+        }
+    }
+
+    initNavbarToggle();
     
 
     const response = await fetch(`/profile`, {
