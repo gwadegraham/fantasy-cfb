@@ -1,11 +1,3 @@
-const toggleButton = document.getElementsByClassName('toggle-button')[0];
-const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-var leagueCode;
-
-toggleButton.addEventListener('click', () => {
-    navbarLinks.classList.toggle('active');
-});
-
 async function getUserProfile() {
     const response = await fetch(`/profile`, {
         method: 'GET',
@@ -24,19 +16,18 @@ async function getUserProfile() {
             $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
         }
 
-        leagueCode = window.sessionStorage.getItem("leagueCode");
+        // Only set leagueCode from metaData if it's not already stored
+        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
+            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+            window.localStorage.setItem("leagueCode", newLeagueCode);
+        }
+
+        const leagueCode = window.localStorage.getItem("leagueCode");
 
         if (leagueCode && (leagueCode != "undefined")) {
             const currentSelectedLeague = window.sessionStorage.getItem("league");
             if (currentSelectedLeague) {
                 $("#dropdownMenuButton").text(currentSelectedLeague);
-            }
-        } else {
-            var userLeague = data.user_metadata.metadata.league;
-            if (userLeague == "gg") {
-                leagueCode = "graham-league";
-            } else {
-                leagueCode = "claunts-league";
             }
         }
         
@@ -49,20 +40,29 @@ async function getUserProfile() {
 }
 
 window.onload = function() {
+    const toggleButton = document.getElementsByClassName('toggle-button')[0];
+    const navbarLinks = document.getElementsByClassName('navbar-links')[0];
+    toggleButton.addEventListener('click', () => {
+        navbarLinks.classList.toggle('active');
+    });
+
     getUserProfile();
     getTeam();
     getSchedule();
+    setNavbarUserId();
 };
 
-$(".dropdown-menu-right a").click(function(){
-    $(this).parents(".dropdown-nav").find('.btn').html($(this).text());
-    $(this).parents(".dropdown-nav").find('.btn').val($(this).attr('value'));
-    var selectedLeague = $("#dropdownMenuButton").text();
-    var selectedLeagueCode = $("#dropdownMenuButton").val();
-    window.localStorage.setItem("league", selectedLeague);
-    window.localStorage.setItem("leagueCode", selectedLeagueCode);
-    window.location.reload();
-});
+setTimeout(() => {
+    $("[league-selector] a").click(function(){
+        $(this).parents(".dropdown").find('.btn').html($(this).text());
+        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+        var selectedLeague = $("#dropdownMenuButton").text();
+        var selectedLeagueCode = $("#dropdownMenuButton").val();
+        window.sessionStorage.setItem("league", selectedLeague);
+        window.localStorage.setItem("leagueCode", selectedLeagueCode);
+        window.location.reload();
+    });
+}, "200");
 
 async function getTeam() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -184,45 +184,46 @@ async function getAllBettingLines () {
 
 // Render team info
 function renderTeamInfo(team, record, recruiting) {
-  const container = document.getElementById("team-container");
-  var scoreCode = (leagueCode == 'gg') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-  var formatConference = team.seasons.at(-1).conference;
-  var confLogo = getConferenceLogo(team.seasons.at(-1).conference);
+    const leagueCode = window.localStorage.getItem("leagueCode");
+    const container = document.getElementById("team-container");
+    var scoreCode = (leagueCode == 'gg') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
+    var formatConference = team.seasons.at(-1).conference;
+    var confLogo = getConferenceLogo(team.seasons.at(-1).conference);
 
-  const html = `
-    
-    <div class="team-header">
-        <img class="team-logo" src="${team.logos.at(-1)}" alt="${team.school}" />
-        <div class="team-meta">
-        <h2 class="team-name">${team.school} ${team.mascot}</h2>
-        <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
-        <a class="team-twitter" href="https://twitter.com/${team.twitter}" target="_blank">${team.twitter}</a>
+    const html = `
+        
+        <div class="team-header">
+            <img class="team-logo" src="${team.logos.at(-1)}" alt="${team.school}" />
+            <div class="team-meta">
+            <h2 class="team-name">${team.school} ${team.mascot}</h2>
+            <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
+            <a class="team-twitter" href="https://twitter.com/${team.twitter}" target="_blank">${team.twitter}</a>
+            </div>
         </div>
-    </div>
 
-    <hr class="divider" />
+        <hr class="divider" />
 
-    <div class="team-details">
-        <div>
-            <h4>${team.seasons.at(-1).season} Record</h4>
-            <p class="score">${record?.total.wins || 0}-${record?.total.losses || 0}    Overall</p>
-            <p class="score">${record?.conferenceGames.wins || 0}-${record?.conferenceGames.losses || 0}    Conference</p>
+        <div class="team-details">
+            <div>
+                <h4>${team.seasons.at(-1).season} Record</h4>
+                <p class="score">${record?.total.wins || 0}-${record?.total.losses || 0}    Overall</p>
+                <p class="score">${record?.conferenceGames.wins || 0}-${record?.conferenceGames.losses || 0}    Conference</p>
+            </div>
+            <div>
+                <h4>📈 Season Score</h4>
+                <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
+                <h4>Recruiting Rank</h4>
+                <p class="score">#${recruiting.rank || 0}</p>
+            </div>
+            <div>
+                <h4>🏟 Stadium</h4>
+                <p>${team.location.name}</p>
+                <p><small>${team.location.city}, ${team.location.state} — Capacity: ${team.location.capacity.toLocaleString()}</small></p>
+            </div>
         </div>
-        <div>
-            <h4>📈 Season Score</h4>
-            <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
-            <h4>Recruiting Rank</h4>
-            <p class="score">#${recruiting.rank || 0}</p>
-        </div>
-        <div>
-            <h4>🏟 Stadium</h4>
-            <p>${team.location.name}</p>
-            <p><small>${team.location.city}, ${team.location.state} — Capacity: ${team.location.capacity.toLocaleString()}</small></p>
-        </div>
-    </div>
-  `;
+    `;
 
-  container.innerHTML = html;
+    container.innerHTML = html;
 }
 
 // Render schedule info
@@ -613,4 +614,11 @@ function formatDate(isTbd, dateStr) {
         hour12: true            // AM/PM
     });
   }
+}
+
+function setNavbarUserId() {
+    const userId = window.localStorage.getItem("userId");
+
+    const myLink = document.querySelector('[user-home]');
+    myLink.href = `/userHome?user=${userId}`;
 }

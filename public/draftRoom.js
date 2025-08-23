@@ -1,5 +1,4 @@
 var leagueVersion;
-var leagueCode;
 var isMobile;
 var teamOptionList;
 var teamList = [];
@@ -78,11 +77,11 @@ async function getUserProfile() {
             document.querySelector('[draft-board]').remove();
         }
         
-        getUsers();
+        getUsers(userRole);
     });
 }
 
-async function getUsers() {
+async function getUsers(userRole) {
     const leagueCode = window.localStorage.getItem("leagueCode");
 
     const response = await fetch(`/users/league/${leagueCode}/all`, {
@@ -94,7 +93,7 @@ async function getUsers() {
     });
 
     response.json().then(async data => {
-        displayUsers(data);
+        ((userRole == 'Admin' || userRole == 'League Manager') && !isMobile) ? displayUsers(data) : '';
         setNavbarUserId();
     });
 }
