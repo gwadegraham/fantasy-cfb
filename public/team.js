@@ -364,13 +364,11 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
 async function renderConferenceStandings(data, teamData, logos) {
     // Filter for specified conference
     var standings = [];
-    if (data.message?.startsWith("No conference records")){
-        var conferenceTeams = await getConferenceTeams(teamData.seasons.at(-1).conference);
-        conferenceTeams.sort((a,b) => {
-            return a.school.toLowerCase().localeCompare(b.school.toLowerCase());
-        });
-
-        standings = conferenceTeams.map(team => ({
+    var conferenceTeams = await getConferenceTeams(teamData.seasons.at(-1).conference);
+    conferenceTeams.sort((a,b) => {
+        return a.school.toLowerCase().localeCompare(b.school.toLowerCase());
+    });
+    standings = conferenceTeams.map(team => ({
             ...team,
             team: team.school,
             teamId: team.id,
@@ -387,19 +385,42 @@ async function renderConferenceStandings(data, teamData, logos) {
                 ties: 0,
             }
         }));
+    if (data.message?.startsWith("No conference records")){
 
     } else {
-        standings = data
-            .sort((a, b) => {
-                // Sort by conference wins DESC, then losses ASC, then total wins DESC
-                if (b.conferenceGames.wins !== a.conferenceGames.wins) {
-                    return b.conferenceGames.wins - a.conferenceGames.wins;
-                }
-                if (a.conferenceGames.losses !== b.conferenceGames.losses) {
-                    return a.conferenceGames.losses - b.conferenceGames.losses;
-                }
-                return b.total.wins - a.total.wins;
-            });
+
+        // Create a map for quick lookup by teamId
+        const dataMap = new Map(data.map(item => [item.teamId, item]));
+
+        // Replace matching objects in standings
+        const updatedStandings = standings.map(team => {
+            return dataMap.get(team.teamId) || team; 
+        });
+
+        // Sort: conference wins → overall wins → overall losses
+        updatedStandings.sort((a, b) => {
+            if (b.conferenceGames.wins !== a.conferenceGames.wins) {
+            return b.conferenceGames.wins - a.conferenceGames.wins;
+            }
+            if (b.total.wins !== a.total.wins) {
+            return b.total.wins - a.total.wins;
+            }
+            return a.total.losses - b.total.losses;
+        });
+        console.log("updatedStandings", updatedStandings)
+
+        standings = updatedStandings;
+        // standings = data
+        //     .sort((a, b) => {
+        //         // Sort by conference wins DESC, then losses ASC, then total wins DESC
+        //         if (b.conferenceGames.wins !== a.conferenceGames.wins) {
+        //             return b.conferenceGames.wins - a.conferenceGames.wins;
+        //         }
+        //         if (a.conferenceGames.losses !== b.conferenceGames.losses) {
+        //             return a.conferenceGames.losses - b.conferenceGames.losses;
+        //         }
+        //         return b.total.wins - a.total.wins;
+        //     });
     }
 
     if (standings.length > 0 && teamData.conference != 'FBS Independents') {

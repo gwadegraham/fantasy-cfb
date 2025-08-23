@@ -199,6 +199,7 @@ async function getGame(season, week, team) {
     return games;
 }
 
+//TODO: change this function to get current week rankings or most recent rankings
 async function getRankings (week, seasonType) {
     var pollName = "Playoff Committee Rankings";
 
@@ -522,7 +523,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' +  teamScoreObject.find((item) => item.score != 0).score + '<strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
@@ -601,7 +602,7 @@ async function displaySchedule(data) {
     }
 
     gameTables.sort((a, b) => {
-        return new Date(b.startDate) - new Date(a.startDate);
+        return new Date(a.startDate) - new Date(b.startDate);
     });
 
     for(var k = 0; k < gameTables.length; k++) {

@@ -336,7 +336,7 @@ async function hotTeam(users) {
         var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
 
         const scoredUsers = await Promise.all(users.map(async (user) => {
-            const hotStreakScore = await getPreviousThreeSum(user.seasons[0].weeklyScore, weekIndex);
+            const hotStreakScore = await getPreviousTwoSum(user.seasons[0].weeklyScore, weekIndex);
             return {
                 ...user,
                 hotStreakScore: parseFloat(hotStreakScore) || 0
@@ -367,11 +367,18 @@ async function hotTeam(users) {
     
 }
 
-async function getPreviousThreeSum(arr, currentIndex) {
+async function getPreviousTwoSum(arr, currentIndex) {
     const startIndex = Math.max(0, currentIndex - 2);
-    var elements = arr.slice(startIndex+1, currentIndex+1);
-    elements = elements.map(week => week.score);
-    return elements.reduce((a, b) => a + b, 0);
+
+    if (startIndex == 0) {
+        var elements = arr.slice(startIndex, currentIndex+1);
+        elements = elements.map(week => week.score);
+        return elements.reduce((a, b) => a + b, 0);
+    } else{
+        var elements = arr.slice(startIndex+1, currentIndex+1);
+        elements = elements.map(week => week.score);
+        return elements.reduce((a, b) => a + b, 0);
+    }
 }
 
 async function getGame(season, week, team) {
@@ -400,6 +407,7 @@ async function getGame(season, week, team) {
     return games;
 }
 
+//TODO: change this function to get current week rankings or most recent rankings
 async function getRankings (week, seasonType) {
     var pollName = "Playoff Committee Rankings";
 
@@ -865,7 +873,7 @@ async function displaySchedule(data) {
     }
 
     gameTables.sort((a, b) => {
-        return new Date(b.startDate) - new Date(a.startDate);
+        return new Date(a.startDate) - new Date(b.startDate);
     });
 
     for(var k = 0; k < gameTables.length; k++) {
