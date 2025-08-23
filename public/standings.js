@@ -995,6 +995,16 @@ function setNavbarUserId(metaData, usersData) {
 
     window.localStorage.setItem("userId", userId);
     
+    const toggleButton = document.querySelector('.toggle-button');
+    const navbarLinks = document.querySelector('.navbar-links');
     const myLink = document.querySelector('[user-home]');
-    myLink.href = `/userHome?user=${userId}`;
+
+    if (toggleButton && navbarLinks && myLink) {
+        myLink.href = `/userHome?user=${userId}`;
+        console.log("✅ user profile link initialized");
+    } else {
+        // Retry after 500ms if elements aren't in the DOM yet
+        console.log("⏳ Navbar elements not found, retrying...");
+        setTimeout(setNavbarUserId, 500);
+    }
 }
