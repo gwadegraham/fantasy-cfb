@@ -42,9 +42,11 @@ async function getUserProfile() {
 window.onload = function() {
     const toggleButton = document.getElementsByClassName('toggle-button')[0];
     const navbarLinks = document.getElementsByClassName('navbar-links')[0];
-    toggleButton.addEventListener('click', () => {
-        navbarLinks.classList.toggle('active');
-    });
+    setTimeout(() => {
+        toggleButton.addEventListener('click', () => {
+            navbarLinks.classList.toggle('active');
+        });
+    }, "500");
 
     getUserProfile();
     getTeam();

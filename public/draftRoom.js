@@ -14,9 +14,11 @@ window.onload = async function() {
 
     const navbarLinks = document.getElementsByClassName('navbar-links')[0];
     const toggleButton = document.getElementsByClassName('toggle-button')[0];
-    toggleButton.addEventListener('click', () => {
-        navbarLinks.classList.toggle('active');
-    });
+    setTimeout(() => {
+        toggleButton.addEventListener('click', () => {
+            navbarLinks.classList.toggle('active');
+        });
+    }, "500");
 
     await getUserProfile();
     await getTeams();
