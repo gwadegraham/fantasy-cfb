@@ -593,6 +593,8 @@ async function displaySchedule(data) {
                 homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
                 function exists(arr, search) {
+                    console.log("exists function arr", arr);
+                    console.log("exists function search", search);
                     var doesExist = false;
                     var name = '';
 
@@ -777,7 +779,11 @@ async function displaySchedule(data) {
                         startDate: game.startDate || ''
                     };
 
+                    console.log("gameInfo line 780", gameInfo);
+
                     if (isHeadToHead) {
+                        console.log("isHeadToHead", isHeadToHead);
+                        console.log("gameInfo isHeadToHead", gameInfo);
                         gameTables.push(gameInfo);
                     }
                 } else {
@@ -888,6 +894,8 @@ async function displaySchedule(data) {
     gameTables.sort((a, b) => {
         return new Date(a.startDate) - new Date(b.startDate);
     });
+
+    console.log("gameTables", gameTables);
 
     for(var k = 0; k < gameTables.length; k++) {
         if (isMobile) {
