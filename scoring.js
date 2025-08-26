@@ -76,6 +76,7 @@ module.exports= {
                         var teamScoreObject = {
                             "team": team.school,
                             "teamId": team.id,
+                            "gameId": game.id,
                             "score": teamScore
                         };
 
