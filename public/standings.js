@@ -593,8 +593,6 @@ async function displaySchedule(data) {
                 homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
                 function exists(arr, search) {
-                    console.log("exists function arr", arr);
-                    console.log("exists function search", search);
                     var doesExist = false;
                     var name = '';
 
@@ -680,7 +678,7 @@ async function displaySchedule(data) {
                             var scoreDisplay = 0;
                             if ((homeTeamScoreObject.length > 0) || (awayTeamScoreObject.length > 0)) {
                                 var scoreObject = ( homeTeamScoreObject.length > 0 ) ? homeTeamScoreObject : awayTeamScoreObject;
-                                scoreDisplay = scoreObject[0].score;
+                                scoreDisplay = scoreObject.find((item) => item.gameId == game.id).score;
                             }
     
                             var awayScoreAdded = '<strong style="color: #F2A93B;">+' + scoreDisplay + '<strong>';
@@ -701,7 +699,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
@@ -713,7 +711,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.homeId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -725,7 +723,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                             }
                             topData = (game.awayPoints || '-');
                             bottomData = (game.homePoints || '-');
@@ -779,14 +777,11 @@ async function displaySchedule(data) {
                         startDate: game.startDate || ''
                     };
 
-                    console.log("gameInfo line 780", gameInfo);
-
                     if (isHeadToHead) {
-                        console.log("isHeadToHead", isHeadToHead);
-                        console.log("gameInfo isHeadToHead", gameInfo);
                         gameTables.push(gameInfo);
                     }
                 } else {
+                    var isHeadToHead = false;
                     if (!game.startTimeTbd) {
 
                         var shouldReplace = false;
@@ -831,7 +826,7 @@ async function displaySchedule(data) {
                                         return obj.teamId == game.awayId;
                                     });
             
-                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
+                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                                 }
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                                 bottomData = (game.homePoints || '-');
@@ -844,7 +839,7 @@ async function displaySchedule(data) {
                                         return obj.teamId == game.homeId;
                                     });
             
-                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
+                                    scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                                 }
             
                                 topData = (game.awayPoints || '-');
@@ -894,8 +889,6 @@ async function displaySchedule(data) {
     gameTables.sort((a, b) => {
         return new Date(a.startDate) - new Date(b.startDate);
     });
-
-    console.log("gameTables", gameTables);
 
     for(var k = 0; k < gameTables.length; k++) {
         if (isMobile) {

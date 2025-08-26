@@ -185,7 +185,7 @@ async function getUsers() {
     response.json().then(data => {
         displayUsers(data);
         setUserOptions(data);
-        setNavbarUserId(userMetadata, data);
+        setNavbarUserId();
     });
 }
 
@@ -906,15 +906,19 @@ setTimeout(() => {
     });
 }, "200");
 
-function setNavbarUserId(metaData, usersData) {
-    if (!metaData || !metaData.email || !Array.isArray(usersData)) {
-        return null;
-    }
+function setNavbarUserId() {
+    const userId = window.localStorage.getItem("userId");
 
-    const email = metaData.email.toLowerCase();
-    const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
-    const userId = user ? user._id : null;
-    
+    const toggleButton = document.querySelector('.toggle-button');
+    const navbarLinks = document.querySelector('.navbar-links');
     const myLink = document.querySelector('[user-home]');
-    myLink.href = `/userHome?user=${userId}`;
+
+    if (toggleButton && navbarLinks && myLink) {
+        myLink.href = `/userHome?user=${userId}`;
+        console.log("✅ user profile link initialized");
+    } else {
+        // Retry after 500ms if elements aren't in the DOM yet
+        console.log("⏳ Navbar elements not found, retrying...");
+        setTimeout(setNavbarUserId, 500);
+    }
 }

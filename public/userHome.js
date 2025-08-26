@@ -78,7 +78,6 @@ window.onload = function() {
 
     detectMobile();
     getUserProfile();
-    getUser();
     setNavbarUserId();
 };
 
@@ -399,7 +398,7 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.awayId;
                             });
     
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                         }
 
                         if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
@@ -418,7 +417,7 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.homeId;
                             });
     
-                            var teamObjectScore = (teamScoreObject[i].score || 0);
+                            var teamObjectScore = (teamScoreObject.find((item) => item.gameId == game.id).score || 0);
                             scoreAdded = '<strong style="color: #22C37A;">+' + teamObjectScore + '<strong>';
                         }
     
@@ -431,7 +430,7 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.awayId;
                             });
     
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[i].score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                         }
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0');
@@ -516,8 +515,8 @@ async function displaySchedule(data) {
                                 return obj.teamId == game.homeId;
                             });
     
-                            awayScoreAdded = '<strong style="color: #22C37A;">+' + awayTeamScoreObject[0].score + '<strong>';
-                            homeScoreAdded = '<strong style="color: #22C37A;">+' + homeTeamScoreObject[0].score + '<strong>';
+                            awayScoreAdded = '<strong style="color: #22C37A;">+' + awayTeamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                            homeScoreAdded = '<strong style="color: #22C37A;">+' + homeTeamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
@@ -535,7 +534,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.awayId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' +  teamScoreObject.find((item) => item.score != 0).score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' +  teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
@@ -548,7 +547,7 @@ async function displaySchedule(data) {
                                     return obj.teamId == game.homeId;
                                 });
         
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject[0].score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -704,6 +703,16 @@ function showRandomNoGamesMessage() {
 function setNavbarUserId() {
     const userId = window.localStorage.getItem("userId");
 
+    const toggleButton = document.querySelector('.toggle-button');
+    const navbarLinks = document.querySelector('.navbar-links');
     const myLink = document.querySelector('[user-home]');
-    myLink.href = `/userHome?user=${userId}`;
+
+    if (toggleButton && navbarLinks && myLink) {
+        myLink.href = `/userHome?user=${userId}`;
+        console.log("✅ user profile link initialized");
+    } else {
+        // Retry after 500ms if elements aren't in the DOM yet
+        console.log("⏳ Navbar elements not found, retrying...");
+        setTimeout(setNavbarUserId, 500);
+    }
 }
