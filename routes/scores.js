@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const scoringModule = require('../scoring.js');
+const scoringModule = require('../modules/scoring.js');
 
 // Recalculating & Updating Scores
 router.post('/update', async (req, res) => {

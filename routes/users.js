@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/user');
-const scoring = require('../scoring');
+const scoring = require('../modules/scoring');
 
 //Getting All
 router.get('/', async (req, res) => {
