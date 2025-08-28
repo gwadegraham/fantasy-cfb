@@ -9,8 +9,10 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
-const retrieveGamesModule = require('./retrieve-games.js');
-const scoringModule = require('./scoring.js');
+const retrieveGamesModule = require('./modules/retrieve-games.js');
+const scoringModule = require('./modules/scoring.js');
+const teamScoringModule = require('./modules/team-scoring.js');
+const recordsModule = require('./modules/records.js');
 
 async function updateScores () {
 
@@ -100,6 +102,8 @@ async function updateScores () {
         await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("postseason", 1);
         await scoringModule.updateCumulativeScores();
+        await teamScoringModule.updateAllTeamScores();
+        await recordsModule.updateAllTeamRecords();
     } else {
         var teams = await retrieveGamesModule.retrieveTeams();
         console.log("number of returned teams", teams.length);
@@ -110,6 +114,8 @@ async function updateScores () {
         
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();
+        await teamScoringModule.updateAllTeamScores();
+        await recordsModule.updateAllTeamRecords();
     }
 }
 

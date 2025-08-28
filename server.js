@@ -5,8 +5,8 @@ if (process.env.NODE_ENV !== 'production') {
 const { default: axios } = require('axios');
 const express = require('express');
 const app = express();
-const retrieveGamesModule = require('./retrieve-games.js');
-const scoringModule = require('./scoring.js');
+const retrieveGamesModule = require('./modules/retrieve-games.js');
+const scoringModule = require('./modules/scoring.js');
 const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
 
@@ -198,7 +198,6 @@ const teamsRouter = require('./routes/teams');
 app.use('/teams', teamsRouter);
 
 const gamesRouter = require('./routes/games');
-const { printTeams } = require('./retrieve-games.js');
 app.use('/games', gamesRouter);
 
 const rankingsRouter = require('./routes/rankings');

@@ -441,7 +441,7 @@ async function updateUser(userId, scoreUpdate) {
     
         response.json().then(data => {
             if (response.status == 200) {
-                console.log(`Update User ${userId} with new weeklyScore:`, data.seasons[0].weeklyScore);
+                console.log(`✅ Successfully updated User ${userId} with new weeklyScore`);
             } else {
                 console.log(data.message);
             }

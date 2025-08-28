@@ -1,4 +1,4 @@
-const scoringModule = require('../scoring.js');
+const scoringModule = require('../modules/scoring.js');;
 
 describe('Claunts Scoring Test Suite', () => {
     it('Non-Conference Unranked Game Loss', async () => {
