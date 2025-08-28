@@ -228,7 +228,7 @@ let mailOptions = {
   html: emailMessage
 };
 
-if ((todayDate.getHours() == 15) || (todayDate.getHours() == 18) || (todayDate.getHours() == 22)) {
+if ((todayDate.getDay() == 6) && ((todayDate.getHours() == 15) || (todayDate.getHours() == 18) || (todayDate.getHours() == 22))) {
     dayText = "Today is Saturday, so games & scores are being updated during the 3PM, 6PM, and 10PM windows.";
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString());
