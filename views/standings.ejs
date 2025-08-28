@@ -23,14 +23,12 @@
 </head>
 
 <body>
-    <!--Navigation bar-->
-    <div id="nav-placeholder"></div>
-    <script>
-        $(function(){
-            $("#nav-placeholder").load("navbar.html");
-        });
-    </script>
-    <!--end of Navigation bar-->
+    <%- include('partials/navbar') %>
+    <% if (userState) { %>
+        <script>
+            var userState = JSON.parse('<%- userState %>');
+        </script>
+    <% } %>
 
     <div class="header">
         <div class="header-title">
@@ -59,7 +57,7 @@
                     </tr>
                 </thead>
                 <tbody user-table-body>
-                <tbody>
+                </tbody>
             </table>
         </div>
     </div>
@@ -144,7 +142,7 @@
                 <table class="schedule-table">
                     <tbody schedule-body>
                         <div id="no-games-container"></div>
-                    <tbody>
+                    </tbody>
                 </table>
             </div>
         </div>
@@ -166,6 +164,7 @@
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
     </footer>
+    <% if (user && user.isMaintenance) { %>
     <div class="maintenance-container">
         <div class="maintenance-icon">
             <i class="fas fa-hard-hat"></i>
@@ -177,5 +176,6 @@
         </div>
         <div class="footer-note">Thanks for your patience</div>
   </div>
+  <% } %>
 </body>
 </html>

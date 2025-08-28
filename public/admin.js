@@ -173,7 +173,12 @@ function setUserOptions(data) {
 }
 
 async function getUsers() {
-    const leagueCode = window.localStorage.getItem("leagueCode");
+    var leagueCode = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+
+    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
+        leagueCode = window.localStorage.getItem("leagueCode");
+    }
+
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
@@ -232,19 +237,16 @@ async function getUserProfile() {
             window.localStorage.setItem("leagueCode", newLeagueCode);
         }
 
-        const leagueCode = window.localStorage.getItem("leagueCode");
+        if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
+            const leagueCode = window.localStorage.getItem("leagueCode");
 
-        if (leagueCode && (leagueCode != "undefined")) {
-            const currentSelectedLeague = window.sessionStorage.getItem("league");
-            if (currentSelectedLeague) {
-                $("#dropdownMenuButton").text(currentSelectedLeague);
+            if (leagueCode && (leagueCode != "undefined")) {
+                const currentSelectedLeague = window.sessionStorage.getItem("league");
+                if (currentSelectedLeague) {
+                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                }
             }
-        }
-        
-        var userRole = data.user_metadata.roles[0];
-        if (userRole != "Admin") {
-            document.querySelector('[admin-page]').remove();
-        }        
+        }     
 
         getUsers();
     });
@@ -894,20 +896,26 @@ $('#screenBlock').animate({opacity: 0}, 200, function() {
 });
 }
 
-setTimeout(() => {
-    $("[league-selector] a").click(function(){
-        $(this).parents(".dropdown").find('.btn').html($(this).text());
-        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-        var selectedLeague = $("#dropdownMenuButton").text();
-        var selectedLeagueCode = $("#dropdownMenuButton").val();
-        window.sessionStorage.setItem("league", selectedLeague);
-        window.localStorage.setItem("leagueCode", selectedLeagueCode);
-        window.location.reload();
-    });
-}, "200");
+if ($("[league-selector]")) {
+    setTimeout(() => {
+        $("[league-selector] a").click(function(){
+            $(this).parents(".dropdown").find('.btn').html($(this).text());
+            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+            var selectedLeague = $("#dropdownMenuButton").text();
+            var selectedLeagueCode = $("#dropdownMenuButton").val();
+            window.sessionStorage.setItem("league", selectedLeague);
+            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+            window.location.reload();
+        });
+    }, "200");
+}
 
 function setNavbarUserId() {
-    const userId = window.localStorage.getItem("userId");
+    var userId = userState.user_metadata.metadata.userId || null;
+
+    if (userId == null) {
+        userId = window.localStorage.getItem("userId");
+    }
 
     const toggleButton = document.querySelector('.toggle-button');
     const navbarLinks = document.querySelector('.navbar-links');
