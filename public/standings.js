@@ -419,15 +419,10 @@ async function getGame(season, week, team) {
     return games;
 }
 
-//TODO: change this function to get current week rankings or most recent rankings
 async function getRankings (week, seasonType) {
-    var pollName = "Playoff Committee Rankings";
+    var seasonYear = new Date().getFullYear();
 
-    if (week < 10) {
-        pollName = "AP Top 25";
-    }
-
-    var response = await fetch(`/rankings/${week}/${seasonType}/poll/${pollName}`, {
+    var response = await fetch(`/rankings/${seasonYear}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -436,15 +431,24 @@ async function getRankings (week, seasonType) {
     });
 
     var rankings = await response.json();
-    var rankingsArray = [];
 
-    if (rankings.length > 0) {
-        rankingsArray = rankings[0].polls[0].ranks;
-    } else {
-        console.log(rankings.message);
+    var pollName = 'Playoff Committee Rankings';
+    if (!rankings.find(r => r.week == week)?.polls?.find(p => p.poll == "Playoff Committee Rankings") && seasonType != "postseason" ) {
+        pollName = "AP Top 25";
     }
 
-    return rankingsArray;
+    rankings.sort((a, b) => {
+        return b.week - a.week;
+    });
+    
+    var weekRankings;
+    if (seasonType == 'regular') {
+        weekRankings = rankings.find(r => r.week == week && r.season == seasonYear) ? rankings.find(r => r.week == week && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
+    } else {
+        weekRankings = rankings.find(r => r.week == '16' && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+    }
+
+    return weekRankings;
 }
 
 async function parseTeamLogos (game, allTeamLogos) {
