@@ -67,35 +67,23 @@ async function getUserProfile() {
             window.localStorage.setItem("leagueCode", newLeagueCode);
         }
 
-        const leagueCode = window.localStorage.getItem("leagueCode");
+        if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
+            const leagueCode = window.localStorage.getItem("leagueCode");
 
-        if (leagueCode && (leagueCode != "undefined")) {
-            const currentSelectedLeague = window.sessionStorage.getItem("league");
-            if (currentSelectedLeague) {
-                $("#dropdownMenuButton").text(currentSelectedLeague);
+            if (leagueCode && (leagueCode != "undefined")) {
+                const currentSelectedLeague = window.sessionStorage.getItem("league");
+                if (currentSelectedLeague) {
+                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                }
             }
         }
         
-        var userRole = data.user_metadata.roles[0];
-
-        if (userRole == "League Manager") {
-            document.querySelector('[admin-page]').remove();
-            document.querySelector('[league-selector]').remove();
-        } else if (userRole != "Admin") {
-            document.querySelector('[admin-page]').remove();
-            document.querySelector('[league-selector]').remove();
-            document.querySelector('[draft-board]').remove();
-        } else if (isMobile) {
-            document.querySelector('[draft-board]').remove();
-        }
-        
-        getUsers(userRole);
+        getUsers();
     });
 }
 
-async function getUsers(userRole) {
-    const leagueCode = window.localStorage.getItem("leagueCode");
-
+async function getUsers() {
+    var leagueCode = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
     const response = await fetch(`/users/league/${leagueCode}/all`, {
         method: 'GET',
         headers: {
@@ -105,78 +93,79 @@ async function getUsers(userRole) {
     });
 
     response.json().then(async data => {
-        ((userRole == 'Admin' || userRole == 'League Manager') && !isMobile) ? displayUsers(data) : '';
+        if (!isMobile) displayUsers(data);
         setNavbarUserId();
     });
 }
 
 function displayUsers(data) {
-    const draftTableBody = document.querySelector('[draft-table-body]');
-    var str = '';
+    if (document.querySelector('[draft-table-body]')) {
+        const draftTableBody = document.querySelector('[draft-table-body]');
+        var str = '';
 
-    if ((data[0].seasons.at(-1).draftPosition != null) && (data[0].seasons.at(-1).draftPosition != '')) {
-        data.sort((a, b) => {
-            return (a.seasons.at(-1).draftPosition) - (b.seasons.at(-1).draftPosition);
+        if ((data[0].seasons.at(-1).draftPosition != null) && (data[0].seasons.at(-1).draftPosition != '')) {
+            data.sort((a, b) => {
+                return (a.seasons.at(-1).draftPosition) - (b.seasons.at(-1).draftPosition);
+            });
+        } else {
+            data.sort((a, b) => {
+                return (a.seasons.at(-2)?.cumulativeScore || 1000) - (b.seasons.at(-2)?.cumulativeScore || 1000);
+            });
+        }
+
+        users = data;
+
+        data.forEach( (user, index) => {
+            userTeams.push(user.firstName);
+
+            str += '<tr>';
+            str += `<td>${user.firstName} ${user.lastName.substring(0,1)}.</td>`;
+
+            for(var i = 1; i < 11; i++) {
+                str += `<td id="${user._id}-round${i}"></td>`;
+            }
+
+            str += '</tr>';
         });
-    } else {
-        data.sort((a, b) => {
-            return (a.seasons.at(-2)?.cumulativeScore || 1000) - (b.seasons.at(-2)?.cumulativeScore || 1000);
+
+        draftTableBody.innerHTML = str;
+
+        document.querySelectorAll('td[id*="-round"]').forEach(cell => {
+            cell.addEventListener('click', function() {
+                const currentTeamName = cell.children[0].alt;
+        
+                $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
+        
+                $('#changeTeamModal').attr("cell-id", cell.id);
+                $('#changeTeamModal').attr("previous-school", currentTeamName);
+                $('#changeTeamModal').attr("previous-value", cell.children[0].title);
+                $('#changeTeamModal').modal('show');
+            });
+        });
+
+        $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
+            $(this).css('background-color', '#ed5858');
+        });
+
+        // Initialize the current user and round display
+        document.getElementById('current-team').textContent = `Current Team: ${userTeams[currentTeamIndex].charAt(0).toUpperCase() + userTeams[currentTeamIndex].slice(1)}`;
+        document.getElementById('current-round').textContent = `Round ${currentRound}`;
+
+        var previous;
+
+        $("select").on('focus', function() {
+            previous = this.value;
+
+        }).on("change", function(){
+            $('#team-form button').attr('disabled', false);
+
+            if (previous != "") {
+                $("select").find("option[value=" + previous + "]").show();
+            }
+            
+            $("select").not(this).find("option[value=" + $(this).val() + "]").hide();
         });
     }
-
-
-    users = data;
-
-    data.forEach( (user, index) => {
-        userTeams.push(user.firstName);
-
-        str += '<tr>';
-        str += `<td>${user.firstName} ${user.lastName.substring(0,1)}.</td>`;
-
-        for(var i = 1; i < 11; i++) {
-            str += `<td id="${user._id}-round${i}"></td>`;
-        }
-
-        str += '</tr>';
-    });
-
-    draftTableBody.innerHTML = str;
-
-    document.querySelectorAll('td[id*="-round"]').forEach(cell => {
-        cell.addEventListener('click', function() {
-            const currentTeamName = cell.children[0].alt;
-    
-            $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
-    
-            $('#changeTeamModal').attr("cell-id", cell.id);
-            $('#changeTeamModal').attr("previous-school", currentTeamName);
-            $('#changeTeamModal').attr("previous-value", cell.children[0].title);
-            $('#changeTeamModal').modal('show');
-        });
-    });
-
-    $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
-        $(this).css('background-color', '#ed5858');
-    });
-
-    // Initialize the current user and round display
-    document.getElementById('current-team').textContent = `Current Team: ${userTeams[currentTeamIndex].charAt(0).toUpperCase() + userTeams[currentTeamIndex].slice(1)}`;
-    document.getElementById('current-round').textContent = `Round ${currentRound}`;
-
-    var previous;
-
-    $("select").on('focus', function() {
-        previous = this.value;
-
-    }).on("change", function(){
-        $('#team-form button').attr('disabled', false);
-
-        if (previous != "") {
-            $("select").find("option[value=" + previous + "]").show();
-        }
-        
-        $("select").not(this).find("option[value=" + $(this).val() + "]").hide();
-    });
 }
 
 async function getTeams() {
@@ -465,54 +454,58 @@ function closeChangeTeamModal() {
 }
 
 //Event Listener for Add Team Event
-document.getElementById('team-form').addEventListener('submit', function(event) {
-    event.preventDefault();
+if (document.getElementById('team-form')) {
+    document.getElementById('team-form').addEventListener('submit', function(event) {
+        event.preventDefault();
 
-    $('#team-form button').attr('disabled', true);
+        $('#team-form button').attr('disabled', true);
 
-    $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
-        $(this).css('background-color', '#2A2E42');
+        $(`*[id*=${users[currentTeamIndex]._id}]:visible`).each(function() {
+            $(this).css('background-color', '#2A2E42');
+        });
+
+        const teamName = document.getElementById('team').value;
+        const team = users[currentTeamIndex]._id;
+        const round = `round${currentRound}`;
+
+        var teamObject = teamList.filter(obj => {
+            return obj.id == teamName
+        })[0];
+        
+        const cellId = `${team}-${round}`;
+        const cell = document.getElementById(cellId);
+        
+        if (cell) {
+            const img = document.createElement('img');
+            img.src = teamObject.logos.at(-1);
+            img.alt = teamObject.school;
+            img.title = teamObject.id
+            cell.innerHTML = '';
+            cell.appendChild(img);
+            document.getElementById('team-form').reset();
+            updateDraftOrder();
+
+        } else {
+            alert('Error: Invalid team or round selection');
+        }
+        $("select").find("option[value=" + teamName + "]").hide();
     });
-
-    const teamName = document.getElementById('team').value;
-    const team = users[currentTeamIndex]._id;
-    const round = `round${currentRound}`;
-
-    var teamObject = teamList.filter(obj => {
-        return obj.id == teamName
-    })[0];
-    
-    const cellId = `${team}-${round}`;
-    const cell = document.getElementById(cellId);
-    
-    if (cell) {
-        const img = document.createElement('img');
-        img.src = teamObject.logos.at(-1);
-        img.alt = teamObject.school;
-        img.title = teamObject.id
-        cell.innerHTML = '';
-        cell.appendChild(img);
-        document.getElementById('team-form').reset();
-        updateDraftOrder();
-
-    } else {
-        alert('Error: Invalid team or round selection');
-    }
-    $("select").find("option[value=" + teamName + "]").hide();
-});
+}
 
 // Event listener for team logo click
-document.querySelectorAll('td[id*="-round"]').forEach(cell => {
-    cell.addEventListener('click', function() {
-        const currentTeamName = cell.children[0].alt;
+if (document.querySelectorAll('td[id*="-round"]')) {
+    document.querySelectorAll('td[id*="-round"]').forEach(cell => {
+        cell.addEventListener('click', function() {
+            const currentTeamName = cell.children[0].alt;
 
-        $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
-        $('#changeTeamModal').attr("cell-id", cell.id);
-        $('#changeTeamModal').attr("previous-school", currentTeamName);
-        $('#changeTeamModal').attr("previous-value", cell.children[0].title);
-        $('#changeTeamModal').modal('show');
+            $('#changeTeamModal p:first').text(`Which team do you want to select instead of ${currentTeamName}?`);
+            $('#changeTeamModal').attr("cell-id", cell.id);
+            $('#changeTeamModal').attr("previous-school", currentTeamName);
+            $('#changeTeamModal').attr("previous-value", cell.children[0].title);
+            $('#changeTeamModal').modal('show');
+        });
     });
-});
+}
 
 /////////////////////////////////////////////////////
 //////////////////Helper Functions///////////////////
@@ -577,20 +570,26 @@ var failToast = Toastify({
     },
 });
 
-setTimeout(() => {
-    $("[league-selector] a").click(function(){
-        $(this).parents(".dropdown").find('.btn').html($(this).text());
-        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-        var selectedLeague = $("#dropdownMenuButton").text();
-        var selectedLeagueCode = $("#dropdownMenuButton").val();
-        window.sessionStorage.setItem("league", selectedLeague);
-        window.localStorage.setItem("leagueCode", selectedLeagueCode);
-        window.location.reload();
-    });
-}, "200");
+if ($("[league-selector]")) {
+    setTimeout(() => {
+        $("[league-selector] a").click(function(){
+            $(this).parents(".dropdown").find('.btn').html($(this).text());
+            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+            var selectedLeague = $("#dropdownMenuButton").text();
+            var selectedLeagueCode = $("#dropdownMenuButton").val();
+            window.sessionStorage.setItem("league", selectedLeague);
+            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+            window.location.reload();
+        });
+    }, "200");
+}
 
 function setNavbarUserId() {
-    const userId = window.localStorage.getItem("userId");
+    var userId = userState.user_metadata.metadata.userId || null;
+
+    if (userId == null) {
+        userId = window.localStorage.getItem("userId");
+    }
 
     const toggleButton = document.querySelector('.toggle-button');
     const navbarLinks = document.querySelector('.navbar-links');

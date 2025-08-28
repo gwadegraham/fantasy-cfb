@@ -38,20 +38,16 @@ async function getUserProfile() {
             window.localStorage.setItem("leagueCode", newLeagueCode);
         }
 
-        const leagueCode = window.localStorage.getItem("leagueCode");
+        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
+            const leagueCode = window.localStorage.getItem("leagueCode");
 
-        if (leagueCode && (leagueCode != "undefined")) {
-            const currentSelectedLeague = window.sessionStorage.getItem("league");
-            if (currentSelectedLeague) {
-                $("#dropdownMenuButton").text(currentSelectedLeague);
+            if (leagueCode && (leagueCode != "undefined")) {
+                const currentSelectedLeague = window.sessionStorage.getItem("league");
+                if (currentSelectedLeague) {
+                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                }
             }
-        }
-        
-        var userRole = data.user_metadata.roles[0];
-        if (userRole != "Admin") {
-            document.querySelector('[admin-page]').remove();
-            document.querySelector('[league-selector]').remove();
-        }        
+        }    
 
         getUser();
     });
@@ -81,18 +77,20 @@ window.onload = function() {
     setNavbarUserId();
 };
 
-$(".dropdown-menu-week a").click(function(){
-    $(this).parents(".dropdownWeek").find('.btn').html($(this).text());
-    $(this).parents(".dropdownWeek").find('.btn').val($(this).attr('value'));
-    var selectedWeek = $("#dropdownMenuButtonWeek").text();
-    var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
-    window.localStorage.setItem("week", selectedWeek);
-    window.localStorage.setItem("weekCode", selectedWeekCode);
+if ($(".dropdown-menu-week")) {
+    $(".dropdown-menu-week a").click(function(){
+        $(this).parents(".dropdownWeek").find('.btn').html($(this).text());
+        $(this).parents(".dropdownWeek").find('.btn').val($(this).attr('value'));
+        var selectedWeek = $("#dropdownMenuButtonWeek").text();
+        var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
+        window.localStorage.setItem("week", selectedWeek);
+        window.localStorage.setItem("weekCode", selectedWeekCode);
 
-    document.querySelector('.football-loader').style.display = "flex";
-    document.querySelector('.schedule-table').style.display = "none";
-    displaySchedule(userData);
-});
+        document.querySelector('.football-loader').style.display = "flex";
+        document.querySelector('.schedule-table').style.display = "none";
+        displaySchedule(userData);
+    });
+}
 
 async function getUser() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -644,17 +642,19 @@ async function displaySchedule(data) {
     document.querySelector('.schedule-table').style.display = "flex";
 }
 
-setTimeout(() => {
-    $("[league-selector] a").click(function(){
-        $(this).parents(".dropdown").find('.btn').html($(this).text());
-        $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-        var selectedLeague = $("#dropdownMenuButton").text();
-        var selectedLeagueCode = $("#dropdownMenuButton").val();
-        window.sessionStorage.setItem("league", selectedLeague);
-        window.localStorage.setItem("leagueCode", selectedLeagueCode);
-        window.location.reload();
-    });
-}, "200");
+if ($("[league-selector]")) {
+    setTimeout(() => {
+        $("[league-selector] a").click(function(){
+            $(this).parents(".dropdown").find('.btn').html($(this).text());
+            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
+            var selectedLeague = $("#dropdownMenuButton").text();
+            var selectedLeagueCode = $("#dropdownMenuButton").val();
+            window.sessionStorage.setItem("league", selectedLeague);
+            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+            window.location.reload();
+        });
+    }, "200");
+}
 
 function isBowlParticipant(game) {
     if (game.notes) {
@@ -701,8 +701,12 @@ function showRandomNoGamesMessage() {
 
 
 function setNavbarUserId() {
-    const userId = window.localStorage.getItem("userId");
+    var userId = userState.user_metadata.metadata.userId || null;
 
+    if (userId == null) {
+        userId = window.localStorage.getItem("userId");
+    }
+    
     const toggleButton = document.querySelector('.toggle-button');
     const navbarLinks = document.querySelector('.navbar-links');
     const myLink = document.querySelector('[user-home]');

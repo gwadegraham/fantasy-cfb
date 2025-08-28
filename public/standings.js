@@ -64,21 +64,15 @@ window.onload = async function() {
             window.localStorage.setItem("leagueCode", newLeagueCode);
         }
 
-        const leagueCode = window.localStorage.getItem("leagueCode");
+        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
+            const leagueCode = window.localStorage.getItem("leagueCode");
 
-        if (leagueCode && (leagueCode != "undefined")) {
-            const currentSelectedLeague = window.sessionStorage.getItem("league");
-            if (currentSelectedLeague) {
-                $("#dropdownMenuButton").text(currentSelectedLeague);
+            if (leagueCode && (leagueCode != "undefined")) {
+                const currentSelectedLeague = window.sessionStorage.getItem("league");
+                if (currentSelectedLeague) {
+                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                }
             }
-        }
-        
-        var userRole = data.user_metadata.roles[0];
-        if (userRole != "Admin") {
-            document.querySelector('[admin-page]').remove();
-            document.querySelector('[league-selector]').remove();
-        } else if (userRole == "Admin") {
-            document.querySelector('.maintenance-container').style.display = 'none';
         }
 
         getUsers();
@@ -86,7 +80,12 @@ window.onload = async function() {
   };
 
 async function getUsers() {
-    const leagueCode = window.localStorage.getItem("leagueCode");
+    var leagueCode = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+
+    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
+        leagueCode = window.localStorage.getItem("leagueCode");
+    }
+
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
         headers: {
@@ -986,13 +985,17 @@ function showRandomNoGamesMessage() {
 }
 
 function setNavbarUserId(metaData, usersData) {
-    if (!metaData || !metaData.email || !Array.isArray(usersData)) {
-        return null;
-    }
+    var userId = userState.user_metadata.metadata.userId || null;
 
-    const email = metaData.email.toLowerCase();
-    const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
-    const userId = user ? user._id : null;
+    if (userId == null) {
+        if (!metaData || !metaData.email || !Array.isArray(usersData)) {
+            return null;
+        }
+
+        const email = metaData.email.toLowerCase();
+        const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
+        userId = user ? user._id : null;
+    }
 
     window.localStorage.setItem("userId", userId);
     

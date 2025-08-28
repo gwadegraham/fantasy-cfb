@@ -22,20 +22,19 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
 </head>
 <body>
-    <!--Navigation bar-->
-    <div id="nav-placeholder"></div>
-    <script>
-        $(function(){
-            $("#nav-placeholder").load("navbar.html");
-        });
-    </script>
-    <!--end of Navigation bar-->
+    <%- include('partials/navbar') %>
+    <% if (userState) { %>
+        <script>
+            var userState = JSON.parse('<%- userState %>');
+        </script>
+    <% } %>
 
     <div class="header">
         <div class="header-title" poll-name>
             Draft Room
         </div>
     </div>
+    <% if (user && (user.role == "Admin" || user.role == "League Manager") && user.isDraft) { %>
     <div draft-board class="temp-draft-table">
         <div id="draft-board" style="overflow-x: auto;">
     
@@ -114,6 +113,7 @@
         </div>
         </div>
     </div>
+    <% } %>
     <div class="content">
         <input 
             type="text" 

@@ -1,7 +1,7 @@
 <head>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet"/>
-    <link  href="/../main.css">
+    <!-- <link rel="stylesheet" href="/../main.css"> -->
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.1/css/bootstrap.min.css" integrity="sha512-T584yQ/tdRR5QwOpfvDfVQUidzfgc2339Lc8uBDtcp/wYu80d7jwBgAxbyMh0a9YM9F8N3tdErpFI8iaGx6x5g==" crossorigin="anonymous" referrerpolicy="no-referrer">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,6 +26,7 @@
     </a>
     <div class="navbar-links">
         <ul>
+            <% if (user && user.role == "Admin") { %>
             <li><a admin-page href="./admin">Admin</a></li>
             <li league-selector>
                 <div class="dropdown dropdown-nav">
@@ -38,10 +39,13 @@
                     </div>
                 </div>
             </li>
+            <% } %>
             <li><a href="./standings">Standings</a></li>
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
+            <% if (user && user.userId) { %>
             <li><a user-home href=""><i class="fa-solid fa-circle-user"></i></a></li>
+            <% } %>
             <li><a href="./logout">Logout</a></li>
         </ul>
     </div>
