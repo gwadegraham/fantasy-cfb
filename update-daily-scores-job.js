@@ -231,7 +231,7 @@ let mailOptions = {
   html: emailMessage
 };
 
-if ((todayDate.getHours() == 19)) {
+if ((todayDate.getHours() == 23)) {
     dayText = "Daily Update at 11PM";
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString());
