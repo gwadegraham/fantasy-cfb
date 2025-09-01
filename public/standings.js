@@ -181,6 +181,7 @@ async function displayHighlights(users) {
 
 async function biggestWinner(users) {
     if (users[0].seasons.at(-1).weeklyScore.length > 0) {
+        var winnerUsers = [];
         var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
         var sortedUsers = users.toSorted(function(b, a) {
             var aScore = a.seasons[0].weeklyScore[weekIndex] ?? {score: 0};
@@ -190,9 +191,24 @@ async function biggestWinner(users) {
         });
 
         var userName = sortedUsers[0]?.firstName + " " + sortedUsers[0]?.lastName.substring(-1,1) + ".";
+        winnerUsers.push({
+            firstName: sortedUsers[0]?.firstName,
+            lastName: sortedUsers[0]?.lastName,
+            score: sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.score
+        });
 
-        var userScore = sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0]?.seasons[0].weeklyScore.length - 1]?.score || 0;
-        var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || '0');
+        for (var x = 1; x < sortedUsers.length; x++) {
+            if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(0)].seasons[0].weeklyScore[sortedUsers[(0)].seasons[0].weeklyScore.length - 1]?.score) {
+                winnerUsers.push({
+                    firstName: sortedUsers[x].firstName,
+                    lastName: sortedUsers[x].lastName,
+                    score: sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score
+                });
+            }
+        }
+
+        var userName = '';
+        var week = "Week " + (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1]?.week || "0");
 
         if ((week == "Week 1") && (sortedUsers[0]?.seasons[0].weeklyScore[sortedUsers[0].seasons[0].weeklyScore.length - 1].season == "postseason")) {
             week = "Postseason";
@@ -202,14 +218,27 @@ async function biggestWinner(users) {
         const winner = document.querySelector('[biggest-winner]');
         const winnerScore = document.querySelector('[biggest-winner-score]');
 
-        winner.innerHTML = userName;
-        winnerScore.innerHTML = `+${userScore}`;
-        winnerWeek.innerHTML = ` in ${week}`;
+        if (winnerUsers.length > 1) {
+            winnerWeek.innerHTML = `in ${week}`;
+            var htmlString = '';
+
+            winnerUsers.forEach((user) => {
+                userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
+                htmlString += `<span biggest-winner>${userName}</span><br>`;
+                winnerScore.innerHTML = `+${user.score || 0}`;
+            });
+
+            winner.outerHTML = htmlString;
+        } else {
+            userName = winnerUsers[0]?.firstName + " " + winnerUsers[0]?.lastName?.substring(-1,1) + ".";
+            winnerWeek.innerHTML = `in ${week}`;
+            winner.outerHTML = `<span biggest-winner>${userName}</span><br>`;
+            winnerScore.innerHTML = `+${winnerUsers[0]?.score || 0}`;
+        }
     } else {
         const winner = document.querySelector('[biggest-winner]');
         winner.innerHTML = '"The beaver, we&#39;ll see how long that beaver can hold his breath"';
     }
-    
 }
 
 function biggestLoser(users) {
