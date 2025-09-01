@@ -230,7 +230,7 @@ function biggestLoser(users) {
         });
 
         for (var x = 1; x < sortedUsers.length; x++) {
-            if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(x-1)].seasons[0].weeklyScore[sortedUsers[(x-1)].seasons[0].weeklyScore.length - 1]?.score) {
+            if (sortedUsers[x].seasons[0].weeklyScore[sortedUsers[x].seasons[0].weeklyScore.length - 1]?.score == sortedUsers[(0)].seasons[0].weeklyScore[sortedUsers[(0)].seasons[0].weeklyScore.length - 1]?.score) {
                 loserUsers.push({
                     firstName: sortedUsers[x].firstName,
                     lastName: sortedUsers[x].lastName,
