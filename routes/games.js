@@ -65,6 +65,25 @@ router.get('/season/:season/teamId/:teamId', async (req, res) => {
     }
 });
 
+//Getting API Calls Info
+router.get('/info', async (req, res) => {
+    try {
+        const response = await fetch(`https://api.collegefootballdata.com/info`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Authorization': process.env.CFBD_API_KEY
+            }
+        });
+
+        var apiInfo = await response.json();
+        res.status(200).json(apiInfo);
+
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 //Creating One
 router.post('/', async (req, res) => {
     let existingGame;

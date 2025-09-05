@@ -772,6 +772,37 @@ if (expectedWinsForm) {
     });
 }
 
+const apiCallsForm = document.getElementById('api-calls-form');
+
+if (apiCallsForm) {
+    apiCallsForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const response = await fetch(`/games/info`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
+
+        response.json().then(data => {
+            if (response.status == 200) {
+                var remainingCalls = data.remainingCalls;
+                document.querySelector('[api-calls-remaining]').innerHTML = remainingCalls;
+                successToast.options.text = `api calls`;
+                successToast.showToast();
+                unblock_screen();
+            } else {
+                failToast.options.text = response.status + " API calls remaining could not be retrieved";
+                failToast.showToast();
+            }
+        });
+    });
+}
+
 function displayCreateUserContainer() {
     var createUserContainer = document.querySelector('[create-user-container]');
 
@@ -879,6 +910,16 @@ function displayExpectedWinsContainer() {
         expectedWinsContainer.style.display = 'none';
     } else {
         expectedWinsContainer.style.display = 'flex';
+    }
+}
+
+function displayApiCallsContainer() {
+    var apiCallsContainer = document.querySelector('[api-calls-container]');
+
+    if (apiCallsContainer.style.display == 'flex' || apiCallsContainer.style.display=='') {
+        apiCallsContainer.style.display = 'none';
+    } else {
+        apiCallsContainer.style.display = 'flex';
     }
 }
 
