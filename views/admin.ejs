@@ -224,6 +224,20 @@
                 </form>
             </div>
         </div>
+        <div class="function-container">
+            <div class="button-container">
+                <button onclick="displayApiCallsContainer()">
+                    <i class="fa-solid fa-eye" style="padding-right: 5px;"></i>
+                    View API calls this month
+                </button>
+            </div>
+            <div class="sub-container" api-calls-container style="display: none">
+                <form id="api-calls-form">
+                    <div><button type="submit">View API calls remaining</button></div>
+                    <div class="api-info"><p class="api-info" api-calls-remaining></p></div>
+                </form>
+            </div>
+        </div>
     </div>
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
