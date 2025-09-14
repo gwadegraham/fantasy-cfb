@@ -374,7 +374,7 @@ async function bestTeam(users) {
 
 async function hotTeam(users) {
     if (users[0].seasons.at(-1).weeklyScore.length > 0) {
-        var weekIndex = (users[0]?.seasons[0].weeklyScore.length -1);
+        var weekIndex = (users[0]?.seasons[0].weeklyScore.length);
 
         const scoredUsers = await Promise.all(users.map(async (user) => {
             const hotStreakScore = await getPreviousTwoSum(user.seasons[0].weeklyScore, weekIndex);
@@ -416,7 +416,7 @@ async function getPreviousTwoSum(arr, currentIndex) {
         elements = elements.map(week => week.score);
         return elements.reduce((a, b) => a + b, 0);
     } else{
-        var elements = arr.slice(startIndex+1, currentIndex+1);
+        var elements = arr.slice(startIndex, currentIndex);
         elements = elements.map(week => week.score);
         return elements.reduce((a, b) => a + b, 0);
     }
