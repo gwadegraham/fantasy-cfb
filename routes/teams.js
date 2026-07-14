@@ -175,7 +175,18 @@ router.patch('/:id/:season', getTeam, async (req, res) => {
 //Updating Expected Wins for One With Season
 router.post('/:season/expectedWins', async (req, res) => {
 
-    var teamJsonData = require(`../json/expectedWins${req.params.season}.json`);
+    // Validate season is a 4-digit year before using it in a require path,
+    // otherwise a value like "../../server" is a local file inclusion vector.
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({message: 'Invalid season'});
+    }
+
+    var teamJsonData;
+    try {
+        teamJsonData = require(`../json/expectedWins${req.params.season}.json`);
+    } catch (err) {
+        return res.status(404).json({message: `No expected wins data for season ${req.params.season}`});
+    }
     var updatedTeams = [];
 
     for (teamJson of teamJsonData) {

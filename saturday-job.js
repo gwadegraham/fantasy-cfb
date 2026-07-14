@@ -12,8 +12,8 @@ let nodemailer = require('nodemailer');
 let transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'gwadegraham@gmail.com',
-    pass: 'flgb pbdh dewn lhmw'
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD
   }
 });
 
@@ -105,7 +105,7 @@ var emailMessage = `<!DOCTYPE html>
 `;
 
 let mailOptions = {
-  from: 'gwadegraham@gmail.com',
+  from: process.env.GMAIL_USER,
   to: 'garrett_graham@icloud.com',
   subject: 'Campus Clash | Saturday Update',
   html: emailMessage

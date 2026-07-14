@@ -1,3 +1,4 @@
+const { internalFetch } = require('./internal-api');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -10,7 +11,7 @@ var gamesApi = new cfb.GamesApi();
 module.exports = {
 
     retrieveTeams: async () => {
-        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -59,7 +60,7 @@ module.exports = {
     
     massRetrieveGames: async (week, seasonType) => {
 
-        const response = await fetch(`${process.env.URL}/games/week/mass-create`, {
+        const response = await internalFetch(`${process.env.URL}/games/week/mass-create`, {
             method: 'POST',
             headers: {
             'Accept': 'application/json',
@@ -111,7 +112,7 @@ module.exports = {
     },
 
     retrieveGameBySeasonWeekTeam: async (season, week, team) => {
-        var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
+        var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -138,7 +139,7 @@ module.exports = {
     saveGames: async (games) => {
 
         for (const game of games) {
-            var savedGamePromise = await fetch(process.env.URL + "/games", {
+            var savedGamePromise = await internalFetch(process.env.URL + "/games", {
                 method: 'POST',
                 headers: {
                 'Accept': 'application/json',

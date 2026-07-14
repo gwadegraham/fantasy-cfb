@@ -2,13 +2,24 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
 
-const { default: axios } = require('axios');
 const express = require('express');
 const app = express();
 const retrieveGamesModule = require('./modules/retrieve-games.js');
 const scoringModule = require('./modules/scoring.js');
 const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
+const requireAuthOrToken = require('./modules/require-auth');
+
+// Serializes an object to JSON that is safe to embed inside an inline <script>
+// tag. Escapes the characters that could break out of the script context
+// (e.g. "</script>") or the JS string (U+2028 / U+2029 line separators).
+function safeJson(obj) {
+    var lineSeps = String.fromCharCode(0x2028) + String.fromCharCode(0x2029);
+    var unsafe = new RegExp('[<>&' + lineSeps + ']', 'g');
+    return JSON.stringify(obj).replace(unsafe, function (c) {
+        return '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0');
+    });
+}
 
 // Routing
 const path = require('path')
@@ -62,7 +73,7 @@ app.get('/', (req, res) => {
             isMaintenance: false
         };
 
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('standings', {user, userState});
     } else {
@@ -82,7 +93,7 @@ app.get('/standings', (req, res) => {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('standings', {user, userState});
     } else {
@@ -98,7 +109,7 @@ app.get('/rules', (req, res) => {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('scoringRules' + req.oidc.user.user_metadata.metadata.league, {user, userState});
     } else {
@@ -115,7 +126,7 @@ app.get('/draft-room', (req, res) => {
             isMaintenance: false,
             isDraft: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('draftRoom', {user, userState});
     } else {
@@ -131,7 +142,7 @@ app.get('/admin', (req, res) => {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('admin', {user, userState});
     } else {
@@ -147,7 +158,7 @@ app.get('/index', (req, res) => {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('standings', {user, userState});
     } else {
@@ -163,7 +174,7 @@ app.get('/userHome', async function(req, res) {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('userHome', {user, userState});
     } else {
@@ -179,7 +190,7 @@ app.get('/team', async function(req, res) {
             userId: req.oidc.user.user_metadata.metadata.userId,
             isMaintenance: false
         };
-        const userState = JSON.stringify(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
 
         res.render('team', {user, userState});
     } else {
@@ -192,30 +203,30 @@ app.use(express.static('public'));
 app.use('/images',  express.static('images'));
 
 const usersRouter = require('./routes/users');
-app.use('/users', usersRouter);
+app.use('/users', requireAuthOrToken, usersRouter);
 
 const teamsRouter = require('./routes/teams');
-app.use('/teams', teamsRouter);
+app.use('/teams', requireAuthOrToken, teamsRouter);
 
 const gamesRouter = require('./routes/games');
-app.use('/games', gamesRouter);
+app.use('/games', requireAuthOrToken, gamesRouter);
 
 const rankingsRouter = require('./routes/rankings');
-app.use('/rankings', rankingsRouter);
+app.use('/rankings', requireAuthOrToken, rankingsRouter);
 
 const scoresRouter = require('./routes/scores');
-app.use('/scores', scoresRouter);
+app.use('/scores', requireAuthOrToken, scoresRouter);
 
 const recruitingRouter = require('./routes/recruiting');
-app.use('/recruiting', recruitingRouter);
+app.use('/recruiting', requireAuthOrToken, recruitingRouter);
 
 const recordRouter = require('./routes/records');
-app.use('/records', recordRouter);
+app.use('/records', requireAuthOrToken, recordRouter);
 
 const bettingRouter = require('./routes/betting');
-app.use('/betting', bettingRouter);
+app.use('/betting', requireAuthOrToken, bettingRouter);
 
-app.get('/calculate-team-score/:season/:teamId/:teamName', async (req, res) => {
+app.get('/calculate-team-score/:season/:teamId/:teamName', requireAuthOrToken, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
     if (response.status == 200) {

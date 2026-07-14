@@ -1,3 +1,4 @@
+const { internalFetch } = require('./modules/internal-api');
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
@@ -57,7 +58,7 @@ async function updateScores () {
         week = 1;
     }
 
-    var response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${seasonType}`, {
+    var response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${seasonType}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -70,7 +71,7 @@ async function updateScores () {
     if (rankings.status == 200) {
         console.log(`Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`);
     } else {
-        const response = await fetch(`${process.env.URL}/rankings/retrieveRankings`, {
+        const response = await internalFetch(`${process.env.URL}/rankings/retrieveRankings`, {
             method: 'POST',
             headers: {
             'Accept': 'application/json',
@@ -129,8 +130,8 @@ let nodemailer = require('nodemailer');
 let transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'gwadegraham@gmail.com',
-    pass: 'flgb pbdh dewn lhmw'
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD
   }
 });
 
@@ -222,7 +223,7 @@ var emailMessage = `<!DOCTYPE html>
 `;
 
 let mailOptions = {
-  from: 'gwadegraham@gmail.com',
+  from: process.env.GMAIL_USER,
   to: 'gwadegraham@gmail.com',
   subject: 'Campus Clash | Sunday Update',
   html: emailMessage

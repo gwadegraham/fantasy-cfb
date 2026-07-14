@@ -1,3 +1,4 @@
+const { internalFetch } = require('./internal-api');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -10,7 +11,7 @@ var rankingsApi = new cfb.RankingsApi();
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -36,7 +37,7 @@ module.exports= {
     },
 
     updateScores: async function(season, week) {
-        var response = await fetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -51,7 +52,7 @@ module.exports= {
             var teamScores = new Array();
 
             for (const team of user.seasons[0].teams) {
-                var gamePromise = await fetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
+                var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'
@@ -125,7 +126,7 @@ module.exports= {
         var cumulativeScoreV2 = 0;
         var weeklyScores = [];
 
-        var gamesPromise = await fetch(process.env.URL + `/games/season/${season}/teamId/${teamId}`, {
+        var gamesPromise = await internalFetch(process.env.URL + `/games/season/${season}/teamId/${teamId}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json'
@@ -192,7 +193,7 @@ module.exports= {
             postseasonRankingType = "regular";
             postseasonWeek = 1;
 
-            response = await fetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
+            response = await internalFetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -200,7 +201,7 @@ module.exports= {
                 }
             });
         } else {
-            response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
+            response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -297,7 +298,7 @@ module.exports= {
             postseasonRankingType = "regular";
             postseasonWeek = 1;
 
-            response = await fetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
+            response = await internalFetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -305,7 +306,7 @@ module.exports= {
                 }
             });
         } else {
-            response = await fetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
+            response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
                 method: 'GET',
                 headers: {
                 'Accept': 'application/json',
@@ -376,7 +377,7 @@ module.exports= {
             "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
             };
     
-        const response = await fetch(`${process.env.URL}/teams/${teamId}`, {
+        const response = await internalFetch(`${process.env.URL}/teams/${teamId}`, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -403,7 +404,7 @@ module.exports= {
             "cumulativeScoreV2": scoreUpdate.cumulativeScoreV2,
             };
     
-        const response = await fetch(`${process.env.URL}/teams/${teamId}/${season}`, {
+        const response = await internalFetch(`${process.env.URL}/teams/${teamId}/${season}`, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -430,7 +431,7 @@ async function updateUser(userId, scoreUpdate) {
         "isUpdated": true
         }`;
 
-    const response = await fetch(`${process.env.URL}/users/` + userId, {
+    const response = await internalFetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
@@ -449,7 +450,7 @@ async function updateUser(userId, scoreUpdate) {
 }
 
 async function updateUserCumulativeScore(userId, cumulativeScore) {
-    const response = await fetch(`${process.env.URL}/users/` + userId, {
+    const response = await internalFetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',

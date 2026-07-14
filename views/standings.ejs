@@ -26,7 +26,7 @@
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>
-            var userState = JSON.parse('<%- userState %>');
+            var userState = <%- userState %>;
         </script>
     <% } %>
 
