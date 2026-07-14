@@ -1,0 +1,554 @@
+[
+  {
+    "team": "Air Force",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Akron",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Alabama",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "App State",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Arizona",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Arizona State",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Arkansas",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Arkansas State",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Army",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Auburn",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Ball State",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Baylor",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Boise State",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Boston College",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Bowling Green",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Buffalo",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "BYU",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "California",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Central Michigan",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Charlotte",
+    "expectedWins": 2.5
+  },
+  {
+    "team": "Cincinnati",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Clemson",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Coastal Carolina",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Colorado",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Colorado State",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Delaware",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Duke",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "East Carolina",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Eastern Michigan",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Florida",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Florida Atlantic",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Florida International",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Florida State",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Fresno State",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Georgia",
+    "expectedWins": 9.5
+  },
+  {
+    "team": "Georgia Southern",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Georgia State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Georgia Tech",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Hawai'i",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Houston",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Illinois",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Indiana",
+    "expectedWins": 10.5
+  },
+  {
+    "team": "Iowa",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Iowa State",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Jacksonville State",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "James Madison",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Kansas",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Kansas State",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Kennesaw State",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Kent State",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Kentucky",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Liberty",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Louisiana",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Louisiana Tech",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Louisville",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "LSU",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Marshall",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Maryland",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Massachusetts",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Memphis",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Miami",
+    "expectedWins": 10.5
+  },
+  {
+    "team": "Miami (OH)",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Michigan",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Michigan State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Middle Tennessee",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Minnesota",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Mississippi State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Missouri",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Missouri State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Navy",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "NC State",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Nebraska",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Nevada",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "New Mexico",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "New Mexico State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "North Carolina",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "North Dakota State",
+    "expectedWins": 9.5
+  },
+  {
+    "team": "North Texas",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Northern Illinois",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Northwestern",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Notre Dame",
+    "expectedWins": 11.5
+  },
+  {
+    "team": "Ohio",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Ohio State",
+    "expectedWins": 9.5
+  },
+  {
+    "team": "Oklahoma",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Oklahoma State",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Old Dominion",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Ole Miss",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Oregon",
+    "expectedWins": 10.5
+  },
+  {
+    "team": "Oregon State",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Penn State",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Pittsburgh",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Purdue",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Rice",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Rutgers",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Sacramento State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Sam Houston",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "San Diego State",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "San José State",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "SMU",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "South Alabama",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "South Carolina",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "South Florida",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Southern Miss",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "Stanford",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "Syracuse",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "TCU",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Temple",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Tennessee",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Texas",
+    "expectedWins": 9.5
+  },
+  {
+    "team": "Texas A&M",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Texas State",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Texas Tech",
+    "expectedWins": 10.5
+  },
+  {
+    "team": "Toledo",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Troy",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Tulane",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Tulsa",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "UAB",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "UCF",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "UCLA",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "UConn",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "UL Monroe",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "UNLV",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "USC",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Utah",
+    "expectedWins": 8.5
+  },
+  {
+    "team": "Utah State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "UTEP",
+    "expectedWins": 3.5
+  },
+  {
+    "team": "UTSA",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Vanderbilt",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Virginia",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Virginia Tech",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Wake Forest",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Washington",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Washington State",
+    "expectedWins": 4.5
+  },
+  {
+    "team": "West Virginia",
+    "expectedWins": 5.5
+  },
+  {
+    "team": "Western Kentucky",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Western Michigan",
+    "expectedWins": 7.5
+  },
+  {
+    "team": "Wisconsin",
+    "expectedWins": 6.5
+  },
+  {
+    "team": "Wyoming",
+    "expectedWins": 5.5
+  }
+]

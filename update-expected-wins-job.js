@@ -4,11 +4,13 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 async function updateExpectedWins() {
-  var jsonData = require('./json/expectedWins2025.json');
+  // Season from CLI arg (e.g. `node update-expected-wins-job.js 2026`),
+  // falling back to YEAR. Loads json/expectedWins{season}.json.
+  const season = parseInt(process.argv[2], 10) || parseInt(process.env.YEAR, 10);
+  var jsonData = require(`./json/expectedWins${season}.json`);
   var updatedTeams = [];
-  const season = 2025;
 
-  for (team of jsonData) {
+  for (const team of jsonData) {
 
     var requestBody = {
       "expectedWins": team.expectedWins,
