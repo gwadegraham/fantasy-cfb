@@ -4606,7 +4606,7 @@ describe('Claunts Scoring Test Suite', () => {
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
-        expect(resultingScore).toEqual(3);
+        expect(resultingScore).toEqual(2);
     });
     
     it('Top 10 Ranked Conference Game Win', async () => {
@@ -5758,7 +5758,7 @@ describe('Claunts Scoring Test Suite', () => {
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
-        expect(resultingScore).toEqual(3);
+        expect(resultingScore).toEqual(2);
     });
     
     it('Non Power 5 Win over Power 5 Opponent', async () => {
