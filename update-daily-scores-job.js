@@ -125,8 +125,9 @@ async function updateScores () {
     }
 }
 
-const todayDate = new Date();
-todayDate.setHours(todayDate.getHours() - 5);
+// Current time in Central (America/Chicago), DST-aware. The old fixed -5
+// offset was wrong for the CST half of the CFB season.
+const todayDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
 
 var dayText = "";
 
