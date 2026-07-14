@@ -183,3 +183,102 @@
         height: 35px !important;
     }
 }
+/* ---------- Draft Configuration panel ---------- */
+.draft-config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    color: #F4F6FB;
+}
+
+.draft-config-form .draft-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.draft-config-form label {
+    font-size: 0.9em;
+}
+
+.draft-config-form select,
+.draft-config-form input[type="datetime-local"],
+.draft-config-form input[type="number"] {
+    color: #F4F6FB;
+    background-color: #101322;
+    border: 1px solid #2A2E42;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+.draft-status-row {
+    font-size: 0.95em;
+}
+
+.draft-status-badge {
+    text-transform: capitalize;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background-color: #2A2E42;
+}
+
+.draft-status-badge.status-active { background-color: #71d28d; color: #101322; }
+.draft-status-badge.status-complete { background-color: #64b5f6; color: #101322; }
+.draft-status-badge.status-scheduled { background-color: #ed5858; color: #fff; }
+
+.draft-order-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.draft-order-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.draft-order-buttons button {
+    font-size: 0.8em;
+    padding: 4px 8px;
+}
+
+.draft-order-list {
+    list-style: decimal inside;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.draft-order-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: #101322;
+    border: 1px solid #2A2E42;
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+.draft-order-name {
+    flex: 1;
+}
+
+.draft-order-move button {
+    padding: 2px 6px;
+    font-size: 0.75em;
+    margin-left: 2px;
+}
+
+.draft-config-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.draft-config-actions button[draft-reset-btn] {
+    background-color: #ed5858;
+}

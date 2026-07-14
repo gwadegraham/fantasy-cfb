@@ -203,6 +203,9 @@ app.use('/records', requireAuthOrToken, recordRouter);
 const bettingRouter = require('./routes/betting');
 app.use('/betting', requireAuthOrToken, bettingRouter);
 
+const draftRouter = require('./routes/draft');
+app.use('/draft', requireAuthOrToken, draftRouter);
+
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireAuthOrToken, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
