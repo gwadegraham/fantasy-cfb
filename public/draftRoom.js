@@ -202,7 +202,19 @@ async function connectSocket() {
         const { token } = await res.json();
         socket = io({ auth: { token } });
 
+        // Fires on the initial connect AND every reconnect, so a dropped
+        // connection auto-rejoins and re-syncs the latest state.
         socket.on('connect', () => socket.emit('join-draft', { league: leagueCode, season }));
+        socket.on('disconnect', (reason) => {
+            if (reason !== 'io client disconnect') {
+                failToast.options.text = 'Connection lost — reconnecting…';
+                failToast.showToast();
+            }
+        });
+        socket.io.on('reconnect', () => {
+            successToast.options.text = 'Reconnected';
+            successToast.showToast();
+        });
         socket.on('draft-state', onDraftState);
         socket.on('pick-made', onPickMade);
         socket.on('draft-complete', onDraftComplete);
@@ -254,6 +266,10 @@ function startDraft() {
     if (socket) socket.emit('start-draft', { league: leagueCode, season });
 }
 
+function undoPick() {
+    if (socket) socket.emit('undo-pick', { league: leagueCode, season });
+}
+
 /////////////////////////////////////////////////////
 /////////////////////// Render ///////////////////////
 /////////////////////////////////////////////////////
@@ -283,7 +299,9 @@ function renderStatus() {
         updateCountdown();
         countdownTimer = setInterval(updateCountdown, 1000);
     } else if (draft.status === 'active') {
-        el.innerHTML = `<p class="draft-live-label">🟢 Draft in progress</p>`;
+        var undoBtn = (isCommish && draft.picks && draft.picks.length)
+            ? `<button type="button" class="draft-undo-btn" onclick="undoPick()">&#8617; Undo last pick</button>` : '';
+        el.innerHTML = `<p class="draft-live-label">🟢 Draft in progress</p>${undoBtn}`;
     } else if (draft.status === 'complete') {
         el.innerHTML = `<p class="draft-live-label">🎉 Draft complete!</p>`;
     }

@@ -400,3 +400,46 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .xwins-fill { height: 100%; background: #71d28d; }
 
 .drafted-chip { background: #2a2f42; color: #6b7280; border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
+
+/* ---------- Commissioner undo ---------- */
+.draft-undo-btn {
+    background: transparent;
+    color: #ed8a8a;
+    border: 1px solid #ed5858;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background-color 0.2s, color 0.2s;
+}
+.draft-undo-btn:hover { background: #ed5858; color: #fff; }
+
+/* ---------- Mobile pass ---------- */
+@media only screen and (max-width: 768px) {
+    .draft-status-panel { font-size: 0.95em; padding: 12px 10px 4px; }
+    .draft-countdown { font-size: 1.2em; }
+    .draft-live-label { font-size: 1.1em; }
+
+    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; }
+    .on-the-clock { font-size: 0.95em; padding: 10px; }
+
+    #draft-table th, #draft-table td { padding: 5px 3px; }
+    .draft-board-cell { height: 40px; }
+    .draft-board-cell img { width: 30px; height: 30px; }
+    #draft-board-head th:first-child, .draft-board-name { width: 92px; min-width: 92px; padding-left: 10px !important; }
+    #draft-board-head th:first-child { padding-left: 10px; }
+
+    .content.pool { padding: 0 8px; }
+    .pool-controls { gap: 8px; }
+    .pool-controls input[type="text"] { flex: 1 1 100%; }
+    .pool-controls select { flex: 1 1 auto; }
+    .pool-spacer { display: none; }
+    .pool-count { flex: 1 1 100%; text-align: left; }
+
+    .pool-table thead th, .pool-table tbody td { padding: 6px 8px; font-size: 0.82em; }
+    .pool-table thead th:first-child, .pool-table tbody td:first-child { width: 130px; }
+    .team-cell { gap: 6px; }
+    .team-cell img { width: 20px; height: 20px; }
+    .xwins-bar { width: 44px; }
+}

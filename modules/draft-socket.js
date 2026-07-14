@@ -103,6 +103,31 @@ module.exports = function registerDraftSockets(io) {
             }
         });
 
+        socket.on('undo-pick', async ({ league, season }) => {
+            try {
+                if (!isCommissioner(socket.user)) {
+                    return socket.emit('draft-error', { message: 'Only the commissioner can undo a pick' });
+                }
+                const draft = await Draft.findOne({ league, season });
+                if (!draft) return socket.emit('draft-error', { message: 'No draft configured' });
+                if (draft.status !== 'active') return socket.emit('draft-error', { message: 'Can only undo during an active draft' });
+                if (!draft.picks.length) return socket.emit('draft-error', { message: 'No picks to undo' });
+
+                // Atomic: remove the last pick and step the clock back, guarded on
+                // currentOverall so it can't race with an in-flight pick.
+                const updated = await Draft.findOneAndUpdate(
+                    { _id: draft._id, status: 'active', currentOverall: draft.currentOverall },
+                    { $pop: { picks: 1 }, $inc: { currentOverall: -1 }, $set: { updatedAt: new Date() } },
+                    { new: true }
+                );
+                if (!updated) return socket.emit('draft-error', { message: 'Undo failed — try again' });
+
+                io.to(roomKey(league, season)).emit('draft-state', publicState(updated));
+            } catch (err) {
+                socket.emit('draft-error', { message: err.message });
+            }
+        });
+
         socket.on('make-pick', async ({ league, season, team, forUserId }) => {
             try {
                 const draft = await Draft.findOne({ league, season });
