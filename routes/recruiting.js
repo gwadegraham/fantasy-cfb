@@ -57,45 +57,28 @@ router.post('/new/:year', async (req, res) => {
     var allNewRankings = [];
 
     try {
-        var opts = { 
+        var opts = {
         'year': req.body.season,
         };
 
-        recruitingApi.getRecruitingTeams(opts).then(async function(data) {
+        // Awaited (not .then with a broken err/error handler) so a rejected
+        // API call or failed insert is caught here instead of becoming an
+        // unhandled rejection with no response sent.
+        const data = await recruitingApi.getRecruitingTeams(opts);
 
-            const recruitingRanking = new Recruiting({
-                season: req.body.season,
-                seasonType: req.body.seasonType,
-                week: req.body.week,
-                polls: data[0].polls
-            });
+        for (const ranking of data) {
+            var alreadyExists = await Recruiting.find({ year: ranking.year, team: ranking.team });
+            if (alreadyExists.length == 0) {
+                allNewRankings.push(new Recruiting(ranking));
+            }
+        }
 
-            for (const ranking of data) {
-                var alreadyExists = await Recruiting.find({ year: ranking.year, team: ranking.team });
-                ranking.year = ranking.year;
-                ranking.rank = ranking.rank;
-                ranking.team = ranking.team;
-                ranking.points = ranking.points;
-        
-                if (alreadyExists.length == 0) {
-                    const newRanking = new Recruiting(ranking);
-                    allNewRankings.push(newRanking);
-                }
-            }
-                
-            try {
-                console.log("all new rankings length", allNewRankings.length);
-                const newRankings = await Recruiting.insertMany(allNewRankings);
-                return res.status(201).json(newRankings);
-            } catch (err) {
-                console.log("Error saving recruiting rankings: ", err.message)
-                res.status(400).json({message: err.message});
-            }
-        }, function(error) {
-            res.status(400).json({message: err.message});
-        });
+        console.log("all new rankings length", allNewRankings.length);
+        const newRankings = await Recruiting.insertMany(allNewRankings);
+        return res.status(201).json(newRankings);
     } catch (err) {
-        res.status(500).json({message: err.message});
+        console.log("Error saving recruiting rankings:", err.message);
+        res.status(400).json({message: err.message});
     }
 });
 

@@ -1,4 +1,5 @@
 const { internalFetch } = require('./modules/internal-api');
+const { withRetry } = require('./modules/retry');
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
@@ -18,7 +19,7 @@ const recordsModule = require('./modules/records.js');
 async function updateScores () {
 
     var gamesApi = new cfb.GamesApi();
-    var calendar = await gamesApi.getCalendar(process.env.YEAR);
+    var calendar = await withRetry(() => gamesApi.getCalendar(process.env.YEAR), { label: 'getCalendar' });
     var weekNumber = 1;
     var isPostseason = false;
 
@@ -40,6 +41,7 @@ async function updateScores () {
                 break;
             } else if ((currentDate < startDate) && (calendarWeek.week > 1)) {
                 weekNumber = (calendarWeek.week - 1);
+                break;
             }
         }
     }
@@ -234,16 +236,25 @@ if ((todayDate.getDay() == 6) && ((todayDate.getHours() == 15) || (todayDate.get
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString());
     
-    updateScores();
-
-    transporter.sendMail(mailOptions, function(error, info){
-        if (error) {
-            console.log(error);
-        } else {
-            console.log('Email sent: ' + info.response);
+    // Await the update so the email reflects the real outcome, and don't
+    // swallow failures (see comment in update-daily-scores-job.js).
+    (async () => {
+        try {
+            await updateScores();
+        } catch (err) {
+            console.error("❌ Saturday score update failed:", err);
+            mailOptions.subject = 'Campus Clash | Saturday Update FAILED';
+            mailOptions.html = `<p>The Saturday score update failed at ${todayDate.toLocaleString()}.</p><pre>${(err && err.stack) ? err.stack : err}</pre>`;
         }
-    });
-    
+
+        try {
+            const info = await transporter.sendMail(mailOptions);
+            console.log('Email sent: ' + info.response);
+        } catch (mailErr) {
+            console.log(mailErr);
+        }
+    })();
+
 } else {
     dayText = "Today is not Saturday, so games & scores are NOT being updated.";
     console.log(dayText);
