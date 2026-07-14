@@ -172,5 +172,8 @@ module.exports = {
                 console.log(response.message);
             }
         }
-    }
+    },
+
+    // Exported for testing.
+    dedupeGamesById: dedupeGamesById
 };
