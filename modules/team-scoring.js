@@ -1,6 +1,7 @@
+const { internalFetch } = require('./internal-api');
 module.exports = {
     updateAllTeamScores: async function() {
-        await fetch(`${process.env.URL}/teams`, {
+        await internalFetch(`${process.env.URL}/teams`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -9,7 +10,7 @@ module.exports = {
         }).then(res => res.json()).then(data => {
             console.log("Number of teams: " + data.length)
             data.forEach(async (team) => {
-                var response = await fetch(`${process.env.URL}/calculate-team-score/${process.env.YEAR}/${team.id}/${team.school}`, {
+                var response = await internalFetch(`${process.env.URL}/calculate-team-score/${process.env.YEAR}/${team.id}/${team.school}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'

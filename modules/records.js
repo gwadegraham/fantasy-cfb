@@ -1,6 +1,7 @@
+const { internalFetch } = require('./internal-api');
 module.exports = {
     updateAllTeamRecords: async function() {
-        const response = await fetch(`${process.env.URL}/records/new/${process.env.YEAR}`, {
+        const response = await internalFetch(`${process.env.URL}/records/new/${process.env.YEAR}`, {
             method: 'POST',
             headers: {
             'Accept': 'application/json',

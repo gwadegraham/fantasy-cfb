@@ -1,3 +1,4 @@
+const { internalFetch } = require('./modules/internal-api');
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
@@ -13,7 +14,7 @@ async function updateExpectedWins() {
       "expectedWins": team.expectedWins,
     };
 
-    const response = await fetch(`${process.env.URL}/teams/${team.team}/${season}/expectedWins`, {
+    const response = await internalFetch(`${process.env.URL}/teams/${team.team}/${season}/expectedWins`, {
       method: 'PATCH',
       headers: {
         'Accept': 'application/json',

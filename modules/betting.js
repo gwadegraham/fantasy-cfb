@@ -1,6 +1,7 @@
+const { internalFetch } = require('./internal-api');
 module.exports = {
     updateAllBettingLines: async function() {
-        const response = await fetch(`${process.env.URL}/betting/new/${process.env.YEAR}`, {
+        const response = await internalFetch(`${process.env.URL}/betting/new/${process.env.YEAR}`, {
             method: 'POST',
             headers: {
             'Accept': 'application/json',
