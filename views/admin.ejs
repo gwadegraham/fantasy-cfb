@@ -47,6 +47,56 @@
     <div class="admin-functions">
         <div class="function-container">
             <div class="button-container">
+                <button onclick="displayDraftConfigContainer()">
+                    <i class="fa-solid fa-list-ol" style="padding-right: 5px;"></i>
+                    Configure Draft
+                </button>
+            </div>
+            <div class="sub-container" draft-config-container style="display: none">
+                <form id="draft-config-form" class="draft-config-form">
+                    <div class="draft-status-row">
+                        Status: <span draft-status class="draft-status-badge">—</span>
+                    </div>
+                    <div class="draft-field">
+                        <label>Season</label>
+                        <select draft-season></select>
+                    </div>
+                    <div class="draft-field">
+                        <label>Draft date &amp; time</label>
+                        <input type="datetime-local" draft-datetime>
+                    </div>
+                    <div class="draft-field">
+                        <label>Rounds</label>
+                        <input type="number" draft-rounds min="1" max="20" value="10">
+                    </div>
+                    <div class="draft-field">
+                        <label>Type</label>
+                        <select draft-type>
+                            <option value="snake">Snake</option>
+                            <option value="linear">Linear</option>
+                        </select>
+                    </div>
+                    <div class="draft-field">
+                        <label><input type="checkbox" draft-autoopen> Auto-open room at scheduled time</label>
+                    </div>
+                    <div class="draft-order-header">
+                        <label>Draft order</label>
+                        <div class="draft-order-buttons">
+                            <button type="button" onclick="autoOrderStandings()">Auto (reverse standings)</button>
+                            <button type="button" onclick="randomizeOrder()">Randomize</button>
+                        </div>
+                    </div>
+                    <ol draft-order-list class="draft-order-list"></ol>
+                    <div class="draft-config-actions">
+                        <button type="submit">Save Draft Settings</button>
+                        <button type="button" draft-reset-btn onclick="resetDraft()" style="display:none;">Reset Draft</button>
+                    </div>
+                </form>
+                <hr>
+            </div>
+        </div>
+        <div class="function-container">
+            <div class="button-container">
                 <button onclick="displayCreateUserContainer()">
                     <i class="fa-solid fa-user-plus" style="padding-right: 5px;"></i>
                     Add a Player

@@ -971,3 +971,254 @@ function setNavbarUserId() {
         setTimeout(setNavbarUserId, 500);
     }
 }
+
+/////////////////////////////////////////////////////
+//////////////////// Draft Config ///////////////////
+/////////////////////////////////////////////////////
+
+var draftMembers = [];    // member objects in current display order
+var currentDraft = null;  // loaded Draft doc for the selected league+season
+
+function getDraftLeagueCode() {
+    var code = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
+    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
+        var stored = window.localStorage.getItem("leagueCode");
+        if (stored && stored != "undefined") code = stored;
+    }
+    return code;
+}
+
+function getSelectedDraftSeason() {
+    return parseInt(document.querySelector('[draft-season]').value, 10);
+}
+
+function populateDraftSeasonOptions() {
+    var sel = document.querySelector('[draft-season]');
+    if (!sel) return;
+    var currentYear = new Date().getFullYear();
+    var str = '';
+    for (var y = currentYear + 1; y >= currentYear - 3; y--) {
+        str += `<option value="${y}">${y}</option>`;
+    }
+    sel.innerHTML = str;
+    sel.value = currentYear;
+}
+
+async function displayDraftConfigContainer() {
+    var container = document.querySelector('[draft-config-container]');
+    if (container.style.display == 'flex' || container.style.display == '') {
+        container.style.display = 'none';
+    } else {
+        container.style.display = 'flex';
+        await loadDraftConfig();
+    }
+}
+
+async function loadDraftConfig() {
+    var leagueCode = getDraftLeagueCode();
+    var season = getSelectedDraftSeason();
+
+    // All league members (full seasons, so we can order by prior standings).
+    var membersResp = await fetch(`/users/league/${leagueCode}/all`, { headers: { 'Accept': 'application/json' } });
+    var members = await membersResp.json();
+
+    // Existing draft config for this league+season (null if none yet).
+    var draftResp = await fetch(`/draft/${leagueCode}/${season}`, { headers: { 'Accept': 'application/json' } });
+    currentDraft = await draftResp.json();
+
+    var byId = {};
+    members.forEach(m => { byId[String(m._id)] = m; });
+
+    var orderedIds = [];
+    var participantIds = new Set();
+
+    if (currentDraft && Array.isArray(currentDraft.draftOrder) && currentDraft.draftOrder.length) {
+        orderedIds = currentDraft.draftOrder.map(String);
+        orderedIds.forEach(id => participantIds.add(id));
+    } else {
+        // Default: everyone, ordered by reverse standings.
+        members = sortByStandings(members, season);
+        orderedIds = members.map(m => String(m._id));
+        orderedIds.forEach(id => participantIds.add(id));
+    }
+
+    draftMembers = [];
+    orderedIds.forEach(id => { if (byId[id]) draftMembers.push(byId[id]); });
+    // Include any members not already in the saved order (e.g. newly added).
+    members.forEach(m => {
+        if (!orderedIds.includes(String(m._id))) {
+            draftMembers.push(m);
+            participantIds.add(String(m._id));
+        }
+    });
+
+    renderDraftOrderList(participantIds);
+    populateDraftFormFields();
+}
+
+function sortByStandings(members, season) {
+    return members.slice().sort((a, b) => {
+        var aScore = (a.seasons.find(s => s.season == (season - 1))?.cumulativeScore) ?? 100000;
+        var bScore = (b.seasons.find(s => s.season == (season - 1))?.cumulativeScore) ?? 100000;
+        return aScore - bScore; // worst record picks first
+    });
+}
+
+function getCurrentParticipantIds() {
+    var set = new Set();
+    document.querySelectorAll('[draft-order-list] .draft-order-item').forEach(li => {
+        var cb = li.querySelector('.draft-participant');
+        if (cb && cb.checked) set.add(li.getAttribute('data-user-id'));
+    });
+    return set;
+}
+
+function renderDraftOrderList(participantIds) {
+    var list = document.querySelector('[draft-order-list]');
+    if (!list) return;
+    var str = '';
+    draftMembers.forEach(m => {
+        var id = String(m._id);
+        var checked = participantIds.has(id) ? 'checked' : '';
+        str += `<li class="draft-order-item" data-user-id="${id}">
+            <input type="checkbox" class="draft-participant" ${checked}>
+            <span class="draft-order-name">${m.firstName} ${m.lastName}</span>
+            <span class="draft-order-move">
+              <button type="button" title="Move up" onclick="moveDraftMember('${id}', -1)">&#9650;</button>
+              <button type="button" title="Move down" onclick="moveDraftMember('${id}', 1)">&#9660;</button>
+            </span>
+        </li>`;
+    });
+    list.innerHTML = str;
+}
+
+function moveDraftMember(id, dir) {
+    var participants = getCurrentParticipantIds();
+    var idx = draftMembers.findIndex(m => String(m._id) === id);
+    var swap = idx + dir;
+    if (idx < 0 || swap < 0 || swap >= draftMembers.length) return;
+    var tmp = draftMembers[idx];
+    draftMembers[idx] = draftMembers[swap];
+    draftMembers[swap] = tmp;
+    renderDraftOrderList(participants);
+}
+
+function autoOrderStandings() {
+    var participants = getCurrentParticipantIds();
+    draftMembers = sortByStandings(draftMembers, getSelectedDraftSeason());
+    renderDraftOrderList(participants);
+}
+
+function randomizeOrder() {
+    var participants = getCurrentParticipantIds();
+    for (var i = draftMembers.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = draftMembers[i];
+        draftMembers[i] = draftMembers[j];
+        draftMembers[j] = t;
+    }
+    renderDraftOrderList(participants);
+}
+
+function isoToLocalInput(iso) {
+    var d = new Date(iso);
+    var pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localInputToIso(val) {
+    if (!val) return null;
+    return new Date(val).toISOString();
+}
+
+function populateDraftFormFields() {
+    var status = currentDraft ? currentDraft.status : 'not configured';
+    var statusEl = document.querySelector('[draft-status]');
+    statusEl.textContent = status;
+    statusEl.className = 'draft-status-badge status-' + status.replace(/\s/g, '-');
+
+    document.querySelector('[draft-rounds]').value = (currentDraft && currentDraft.totalRounds) || 10;
+    document.querySelector('[draft-type]').value = (currentDraft && currentDraft.snake === false) ? 'linear' : 'snake';
+    document.querySelector('[draft-autoopen]').checked = (currentDraft && currentDraft.autoOpen) || false;
+    document.querySelector('[draft-datetime]').value =
+        (currentDraft && currentDraft.scheduledAt) ? isoToLocalInput(currentDraft.scheduledAt) : '';
+
+    var resetBtn = document.querySelector('[draft-reset-btn]');
+    resetBtn.style.display = (currentDraft && currentDraft._id) ? 'inline-block' : 'none';
+
+    // Lock settings once the draft is live/finished (but keep season + reset usable).
+    var locked = currentDraft && (currentDraft.status === 'active' || currentDraft.status === 'complete');
+    document.querySelectorAll('#draft-config-form input, #draft-config-form select, #draft-config-form button')
+        .forEach(el => { el.disabled = !!locked; });
+    document.querySelector('[draft-season]').disabled = false;
+    if (resetBtn) resetBtn.disabled = false;
+}
+
+async function resetDraft() {
+    if (!currentDraft || !currentDraft._id) return;
+    const response = await fetch(`/draft/${currentDraft._id}/reset`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    });
+    response.json().then(data => {
+        if (response.status == 200) {
+            currentDraft = data;
+            populateDraftFormFields();
+            successToast.options.text = "Draft reset";
+            successToast.showToast();
+        } else {
+            failToast.options.text = "Draft could not be reset";
+            failToast.showToast();
+        }
+    });
+}
+
+const draftConfigForm = document.getElementById('draft-config-form');
+if (draftConfigForm) {
+    draftConfigForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        var participants = getCurrentParticipantIds();
+        var draftOrder = draftMembers.map(m => String(m._id)).filter(id => participants.has(id));
+
+        if (draftOrder.length < 2) {
+            failToast.options.text = "Select at least 2 participants for the draft";
+            failToast.showToast();
+            return;
+        }
+
+        var body = {
+            league: getDraftLeagueCode(),
+            season: getSelectedDraftSeason(),
+            scheduledAt: localInputToIso(document.querySelector('[draft-datetime]').value),
+            autoOpen: document.querySelector('[draft-autoopen]').checked,
+            snake: document.querySelector('[draft-type]').value === 'snake',
+            totalRounds: parseInt(document.querySelector('[draft-rounds]').value, 10) || 10,
+            orderMethod: 'manual',
+            draftOrder: draftOrder
+        };
+
+        const response = await fetch('/draft', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        response.json().then(data => {
+            if (response.status == 200) {
+                currentDraft = data;
+                populateDraftFormFields();
+                successToast.options.text = "Draft settings saved";
+                successToast.showToast();
+            } else {
+                failToast.options.text = (data.message || "Draft settings could not be saved");
+                failToast.showToast();
+            }
+        });
+    });
+}
+
+if (document.querySelector('[draft-season]')) {
+    populateDraftSeasonOptions();
+    document.querySelector('[draft-season]').addEventListener('change', loadDraftConfig);
+}

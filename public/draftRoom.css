@@ -212,3 +212,234 @@
         padding: 2em 1em 1em;
     }
 }
+/* ---------- Live draft board ---------- */
+.draft-status-panel {
+    text-align: center;
+    color: #F4F6FB;
+    padding: 18px 12px 4px;
+    font-size: 1.05em;
+}
+
+.draft-countdown {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #64b5f6;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+
+.draft-live-label {
+    font-size: 1.35em;
+    font-weight: 700;
+    margin: 0;
+}
+
+.draft-start-btn {
+    background-color: #71d28d;
+    color: #101322;
+    border: none;
+    border-radius: 8px;
+    padding: 11px 26px;
+    font-weight: 700;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.draft-start-btn:hover { background-color: #5bbf79; }
+
+/* Board sits in a centered card that uses the width without stretching thin */
+.draft-board-wrap {
+    max-width: 1200px;
+    margin: 8px auto 24px;
+    padding: 0 16px;
+}
+
+/* On the clock: a prominent banner bar */
+.on-the-clock {
+    text-align: center;
+    color: #F4F6FB;
+    font-size: 1.1em;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 10px;
+}
+.on-the-clock .you-are-up {
+    color: #71d28d;
+    font-weight: 800;
+    font-size: 1.05em;
+}
+
+#draft-board {
+    margin: 0;
+    border-radius: 12px;
+    overflow: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    border: 1px solid #2A2E42;
+}
+
+/* Reset the inherited old-board padding/backgrounds */
+#draft-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #131725;
+}
+#draft-board-head th:first-child,
+.draft-board-name { width: 150px; }
+#draft-table th,
+#draft-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid #232838;
+}
+#draft-table td:not(:first-child) { background-color: transparent; }
+
+#draft-board-head th {
+    background: #0f1220;
+    color: #9aa4bf;
+    font-size: 0.85em;
+    font-weight: 700;
+    padding: 10px 6px;
+    position: sticky;
+    top: 0;
+}
+#draft-board-head th:first-child { text-align: left; padding-left: 16px; }
+
+/* Sticky player-name column + zebra striping for readability */
+.draft-board-name {
+    text-align: left !important;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #F4F6FB;
+    position: sticky;
+    left: 0;
+    background: #161b2b;
+    padding-left: 16px !important;
+    min-width: 120px;
+}
+#draft-board-body tr:nth-child(even) td { background-color: #10131f; }
+#draft-board-body tr:nth-child(even) .draft-board-name { background-color: #141827; }
+
+.draft-board-cell {
+    width: 9%;
+    height: 52px;
+}
+.draft-board-cell img {
+    width: 42px;
+    height: 42px;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+/* Current pick: filled highlight instead of a floaty thin outline */
+.on-clock-cell {
+    background-color: rgba(237, 88, 88, 0.18) !important;
+    box-shadow: inset 0 0 0 2px #ed5858;
+    border-radius: 4px;
+}
+
+/* Draft action buttons in the team list */
+.draft-pick-btn {
+    background-color: #71d28d;
+    color: #101322;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.draft-pick-btn:hover:not(:disabled) { background-color: #5bbf79; }
+.draft-pick-btn:disabled {
+    background-color: #2a2f42;
+    color: #6b7280;
+    cursor: not-allowed;
+}
+[user-table-body] tr.drafted { opacity: 0.35; }
+
+/* ---------- Team pool (draft aid) ---------- */
+.content.pool { max-width: 1100px; margin: 8px auto 40px; padding: 0 16px; display: block; }
+.pool-title { color: #F4F6FB; margin: 0 0 12px; }
+.pool-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.pool-controls input[type="text"], .pool-controls select {
+    background: #101322; color: #F4F6FB; border: 1px solid #2A2E42;
+    border-radius: 6px; padding: 8px 10px; font-size: 0.95em;
+}
+.pool-spacer { flex: 1; }
+.pool-count { color: #9aa4bf; font-size: 0.9em; }
+.pool-toggle { display: flex; align-items: center; gap: 6px; color: #9aa4bf; font-size: 0.9em; cursor: pointer; }
+
+.pool-table-wrap { overflow-x: auto; border: 1px solid #2A2E42; border-radius: 10px; }
+table.pool-table { width: 100%; border-collapse: collapse; background: #131725; }
+.pool-table thead th {
+    position: sticky; top: 0; background: #0f1220; color: #9aa4bf;
+    font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 10px 12px; text-align: left; cursor: pointer; user-select: none; white-space: nowrap;
+}
+.pool-table thead th.num { text-align: right; }
+.pool-table thead th .arrow { color: #4b5573; margin-left: 4px; font-size: 0.9em; }
+.pool-table thead th.sorted .arrow { color: #64b5f6; }
+.pool-table thead th:first-child, .pool-table tbody td:first-child { width: 210px; }
+.pool-table tbody td { padding: 7px 12px; border-top: 1px solid #1e2333; font-size: 0.92em; color: #F4F6FB; text-align: left; }
+.pool-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pool-table tbody tr:hover { background: #171c2c; }
+
+.team-cell { display: flex; align-items: center; gap: 9px; font-weight: 600; white-space: nowrap; }
+.team-cell img { width: 26px; height: 26px; object-fit: contain; }
+
+.rank-badge { display: inline-block; min-width: 26px; text-align: center; padding: 2px 7px;
+    border-radius: 10px; font-weight: 700; font-size: 0.85em; background: #263043; color: #9aa4bf; }
+.rank-badge.top25 { background: #1f3a5c; color: #8fc3ff; }
+.rank-badge.top10 { background: #eab308; color: #101322; }
+.muted { color: #5b6480; }
+
+.xwins-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.xwins-bar { width: 70px; height: 6px; background: #232838; border-radius: 3px; overflow: hidden; }
+.xwins-fill { height: 100%; background: #71d28d; }
+
+.drafted-chip { background: #2a2f42; color: #6b7280; border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
+
+/* ---------- Commissioner undo ---------- */
+.draft-undo-btn {
+    background: transparent;
+    color: #ed8a8a;
+    border: 1px solid #ed5858;
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background-color 0.2s, color 0.2s;
+}
+.draft-undo-btn:hover { background: #ed5858; color: #fff; }
+
+/* ---------- Mobile pass ---------- */
+@media only screen and (max-width: 768px) {
+    .draft-status-panel { font-size: 0.95em; padding: 12px 10px 4px; }
+    .draft-countdown { font-size: 1.2em; }
+    .draft-live-label { font-size: 1.1em; }
+
+    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; }
+    .on-the-clock { font-size: 0.95em; padding: 10px; }
+
+    #draft-table th, #draft-table td { padding: 5px 3px; }
+    .draft-board-cell { height: 40px; }
+    .draft-board-cell img { width: 30px; height: 30px; }
+    #draft-board-head th:first-child, .draft-board-name { width: 92px; min-width: 92px; padding-left: 10px !important; }
+    #draft-board-head th:first-child { padding-left: 10px; }
+
+    .content.pool { padding: 0 8px; }
+    .pool-controls { gap: 8px; }
+    .pool-controls input[type="text"] { flex: 1 1 100%; }
+    .pool-controls select { flex: 1 1 auto; }
+    .pool-spacer { display: none; }
+    .pool-count { flex: 1 1 100%; text-align: left; }
+
+    .pool-table thead th, .pool-table tbody td { padding: 6px 8px; font-size: 0.82em; }
+    .pool-table thead th:first-child, .pool-table tbody td:first-child { width: 130px; }
+    .team-cell { gap: 6px; }
+    .team-cell img { width: 20px; height: 20px; }
+    .xwins-bar { width: 44px; }
+}

@@ -4,11 +4,15 @@ if (process.env.NODE_ENV !== 'production') {
 
 const express = require('express');
 const app = express();
+const http = require('http');
+const { Server } = require('socket.io');
 const retrieveGamesModule = require('./modules/retrieve-games.js');
 const scoringModule = require('./modules/scoring.js');
 const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
+const draftToken = require('./modules/draft-token');
+const registerDraftSockets = require('./modules/draft-socket');
 
 // Serializes an object to JSON that is safe to embed inside an inline <script>
 // tag. Escapes the characters that could break out of the script context
@@ -57,6 +61,17 @@ const { requiresAuth } = require('express-openid-connect');
 
 app.get('/profile', requiresAuth(), (req, res) => {
   res.send(JSON.stringify(req.oidc.user));
+});
+
+// Mint a short-lived signed token the browser uses to authenticate its draft
+// socket connection. Requires a real Auth0 session so the identity is trusted.
+app.get('/draft-token', requiresAuth(), (req, res) => {
+  const ctx = buildUserContext(req.oidc.user);
+  const token = draftToken.sign(
+    { userId: ctx.userId, role: ctx.role, name: ctx.firstName },
+    process.env.AUTH_SECRET
+  );
+  res.json({ token });
 });
 
 // register the given template engine 
@@ -203,6 +218,9 @@ app.use('/records', requireAuthOrToken, recordRouter);
 const bettingRouter = require('./routes/betting');
 app.use('/betting', requireAuthOrToken, bettingRouter);
 
+const draftRouter = require('./routes/draft');
+app.use('/draft', requireAuthOrToken, draftRouter);
+
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireAuthOrToken, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
@@ -213,6 +231,11 @@ app.get('/calculate-team-score/:season/:teamId/:teamName', requireAuthOrToken, a
     }
 });
 
-app.listen(process.env.PORT || 3000, () =>{
+// Wrap Express in an HTTP server so Socket.IO (live draft) can share the port.
+const server = http.createServer(app);
+const io = new Server(server);
+registerDraftSockets(io);
+
+server.listen(process.env.PORT || 3000, () =>{
     console.log('Server Started');
 });
