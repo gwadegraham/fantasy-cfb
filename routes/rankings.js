@@ -40,7 +40,7 @@ router.get('/:week/:seasonType', async (req, res) => {
 // Getting One By Year & Week & Season Type
 router.get('/:season/:week/:seasonType', async (req, res) => {
     try {
-        const ranking = await Ranking.findOne({season: req.params.season, week: req.params.week, seasonType: "regular"});
+        const ranking = await Ranking.findOne({season: req.params.season, week: req.params.week, seasonType: req.params.seasonType});
 
         if (JSON.stringify(ranking) == "null") {
             res.status(400).json({message: `No rankings found for season ${req.params.season} & week ${req.params.week} & seasonType ${req.params.seasonType}`});
