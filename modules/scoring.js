@@ -218,7 +218,7 @@ module.exports= {
         var rankings = await response.json();        
     
         if (isQuarterFinalist(game)) {
-            score += 15;
+            score += 8;
         } else if (isSemiFinalist(game)) {
             score += 9;
         } else if (isFinalist(game)) {
@@ -243,14 +243,14 @@ module.exports= {
                     score += 6;
                 } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
-                    var ranked = isRankedV1(game.awayTeam, rankings);
-    
-                    if (ranked) {
+                    // Conference win is 2 (ranked or not); a non-conference win
+                    // over a ranked opponent is 3; non-conf vs unranked stays 1.
+                    if (isConference(game)) {
+                        score = 2;
+                    } else if (isRankedV1(game.awayTeam, rankings)) {
                         score = 3;
-                    } else {
-                        score = isConference(game) ? (score + 1) : score;
                     }
-                }  
+                }
             } else if (isFirstRound(game)) {
                 score += 7;
             }
@@ -274,12 +274,12 @@ module.exports= {
                     score += 6;
                 } else if (!isBowlTeam && !isFirstRound(game)) {
                     score += 1;
-                    var ranked = isRankedV1(game.homeTeam, rankings);
-    
-                    if (ranked) {
+                    // Conference win is 2 (ranked or not); a non-conference win
+                    // over a ranked opponent is 3; non-conf vs unranked stays 1.
+                    if (isConference(game)) {
+                        score = 2;
+                    } else if (isRankedV1(game.homeTeam, rankings)) {
                         score = 3;
-                    } else {
-                        score = isConference(game) ? (score + 1) : score;
                     }
                 }
             } else if (isFirstRound(game)) {
@@ -486,44 +486,29 @@ function isConference(game) {
     }
 }
 
+// Finds the relevant poll (CFP committee if present, else AP Top 25). Returns
+// null if rankings weren't loaded for the week or neither poll is present, so
+// callers degrade gracefully instead of throwing.
+function findPoll(rankings) {
+    if (!rankings || !Array.isArray(rankings.polls)) return null;
+    var poll = rankings.polls.find(x => x.poll === 'Playoff Committee Rankings')
+        || rankings.polls.find(x => x.poll === 'AP Top 25');
+    if (!poll || !Array.isArray(poll.ranks)) return null;
+    return poll;
+}
+
 function isRankedV1(team, rankings) {
-    var pollIndex = rankings.polls.findIndex(x => x.poll === 'Playoff Committee Rankings');
-
-    if (pollIndex == -1) {
-        pollIndex = rankings.polls.findIndex(x => x.poll === 'AP Top 25');
-    }
-
-    var rankIndex = rankings.polls[pollIndex].ranks.findIndex(y => y.school === team);
-
-
-    if (rankIndex != -1) {
-        return true;
-    } else {
-        return false;
-    }
+    var poll = findPoll(rankings);
+    if (!poll) return false;
+    return poll.ranks.some(y => y.school === team);
 }
 
 function isRanked(team, rankings) {
-    var pollIndex = rankings.polls.findIndex(x => x.poll === 'Playoff Committee Rankings');
-
-    if (pollIndex == -1) {
-        pollIndex = rankings.polls.findIndex(x => x.poll === 'AP Top 25');
-    }
-
-    var rankIndex = rankings.polls[pollIndex].ranks.findIndex(y => y.school === team);
-
-
-    if (rankIndex != -1) {
-        var teamRank = rankings.polls[pollIndex].ranks[rankIndex].rank;
-
-        if(teamRank >= 11) {
-            return 1;
-        } else if (teamRank <= 11) {
-            return 2;
-        }
-    } else {
-        return 0;
-    }
+    var poll = findPoll(rankings);
+    if (!poll) return 0;
+    var entry = poll.ranks.find(y => y.school === team);
+    if (!entry) return 0;
+    return entry.rank <= 10 ? 2 : 1;   // #1-10 -> 2, #11-25 -> 1
 }
 
 function isPowerFive(teamConf, oppConf) {
