@@ -119,6 +119,14 @@ function barWidth(x) {
     return 15 + ((x - xwMin) / (xwMax - xwMin)) * 85;
 }
 
+// Color the bar by win total: red (weak) -> gold -> lime -> green (elite).
+function barColor(x) {
+    if (x >= 9.5) return '#5bbf79';
+    if (x >= 7.5) return '#a3d977';
+    if (x >= 5.5) return '#e6b34d';
+    return '#e06b6b';
+}
+
 function populateConfFilter() {
     var sel = document.getElementById('poolConf');
     if (!sel) return;
@@ -192,7 +200,7 @@ function renderPool() {
             <td>${escapeHtml(p.conf)}</td>
             <td class="num">${badge}</td>
             <td class="num">${p.score == null ? '-' : p.score}</td>
-            <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%"></span></span></span></td>
+            <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%;background:${barColor(p.xwins)}"></span></span></span></td>
             <td class="num">${action}</td>
         </tr>`;
     }).join('');
