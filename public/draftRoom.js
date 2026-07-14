@@ -15,6 +15,15 @@ var season = new Date().getFullYear();
 var isMobile = false;
 var countdownTimer;
 
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 var pool = [];               // enriched team rows for the pool table
 var poolSort = { key: 'xwins', dir: -1 };
 var xwMin = 0, xwMax = 0;
@@ -179,8 +188,8 @@ function renderPool() {
             ? '<span class="drafted-chip">Drafted</span>'
             : `<button class="draft-pick-btn" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
         return `<tr class="${drafted ? 'drafted' : ''}">
-            <td><span class="team-cell"><img src="${p.logo}" alt="${p.name}">${p.name}</span></td>
-            <td>${p.conf}</td>
+            <td><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></td>
+            <td>${escapeHtml(p.conf)}</td>
             <td class="num">${badge}</td>
             <td class="num">${p.score == null ? '-' : p.score}</td>
             <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%"></span></span></span></td>
@@ -340,13 +349,13 @@ function renderBoard() {
         var member = membersById[String(userId)];
         var name = member ? `${member.firstName} ${member.lastName.substring(0, 1)}.` : '—';
         bodyStr += '<tr>';
-        bodyStr += `<td class="draft-board-name">${name}</td>`;
+        bodyStr += `<td class="draft-board-name">${escapeHtml(name)}</td>`;
         for (var round = 1; round <= draft.totalRounds; round++) {
             var pick = draft.picks.find(p => String(p.userId) === String(userId) && p.round === round);
             var isClock = onClock.userId === String(userId) && onClock.round === round;
             var cls = isClock ? 'draft-board-cell on-clock-cell' : 'draft-board-cell';
             if (pick) {
-                bodyStr += `<td class="${cls}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${pick.team.school}" title="${pick.team.school}"></td>`;
+                bodyStr += `<td class="${cls}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}" title="${escapeHtml(pick.team.school)}"></td>`;
             } else {
                 bodyStr += `<td class="${cls}"></td>`;
             }
@@ -365,7 +374,7 @@ function renderOnTheClock() {
     if (String(oc.userId) === String(myUserId)) {
         el.innerHTML = `<span class="you-are-up">🟢 You're on the clock! — Round ${oc.round}, Pick #${oc.overall}</span>`;
     } else {
-        el.innerHTML = `<span>On the clock: <strong>${name}</strong> — Round ${oc.round}, Pick #${oc.overall}</span>`;
+        el.innerHTML = `<span>On the clock: <strong>${escapeHtml(name)}</strong> — Round ${oc.round}, Pick #${oc.overall}</span>`;
     }
 }
 

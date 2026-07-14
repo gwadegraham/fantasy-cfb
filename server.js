@@ -11,6 +11,7 @@ const scoringModule = require('./modules/scoring.js');
 const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
+const requireCommissioner = require('./modules/require-commissioner');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 
@@ -149,6 +150,11 @@ app.get('/draft-room', (req, res) => {
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.oidc.user);
+        // Only commissioners get the admin page; other members go home.
+        const roles = (req.oidc.user && req.oidc.user.user_metadata && req.oidc.user.user_metadata.roles) || [];
+        if (!roles.includes('Admin') && !roles.includes('League Manager')) {
+            return res.redirect('/');
+        }
         const userState = safeJson(req.oidc.user);
 
         res.render('admin', {user, userState});
@@ -194,6 +200,18 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
 
+// Authorization: state-changing (non-GET) API calls require a commissioner
+// session or the internal token. Reads stay open to any authenticated member.
+// /teams/teamLogos is a POST but a member-safe read, so it's exempted.
+app.use('/teams', (req, res, next) => {
+    if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
+    return requireCommissioner(req, res, next);
+});
+app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft'], (req, res, next) => {
+    if (req.method === 'GET') return next();
+    return requireCommissioner(req, res, next);
+});
+
 const usersRouter = require('./routes/users');
 app.use('/users', requireAuthOrToken, usersRouter);
 
@@ -221,7 +239,7 @@ app.use('/betting', requireAuthOrToken, bettingRouter);
 const draftRouter = require('./routes/draft');
 app.use('/draft', requireAuthOrToken, draftRouter);
 
-app.get('/calculate-team-score/:season/:teamId/:teamName', requireAuthOrToken, async (req, res) => {
+app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
     if (response.status == 200) {

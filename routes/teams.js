@@ -15,6 +15,11 @@ router.get('/', async (req, res) => {
 //Getting Multiple Logos
 router.post('/teamLogos', async (req, res) => {
     try {
+        // Guard the $in value: only accept an array of ids so a crafted body
+        // (e.g. an operator object) can't be injected into the query.
+        if (!Array.isArray(req.body.teams)) {
+            return res.status(400).json({message: 'teams must be an array of team ids'});
+        }
         const teamLogos = await Team.find({id: {$in: req.body.teams}}, "id school logos");
 
         if (JSON.stringify(teamLogos) === '[]') {
