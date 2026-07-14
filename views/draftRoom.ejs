@@ -12,7 +12,6 @@
     <script src="confetti.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="draftRoom.js"></script>
-    <script src="sorttable.js"></script>
     <title>Campus Clash</title>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
@@ -50,27 +49,19 @@
         </div>
     </div>
 
-    <div class="content">
-        <input
-            type="text"
-            id="myInput"
-            onkeyup="_filterFunction()"
-            placeholder="Team or Conference"
-            title="Type in a team name or conference">
-        <div class="team-list-container" team-list-container>
-            <table class="fl-table sortable">
-                <thead>
-                <tr class="headerRow">
-                    <th class="sticky-header team-header" style="cursor: pointer;">Team</th>
-                    <th class="sticky-header team-header" style="cursor: pointer;">Conference</th>
-                    <th class="sticky-header team-header sorttable_numeric" recruiting-ranking style="cursor: pointer;"></th>
-                    <th class="sticky-header team-header sorttable_numeric" style="cursor: pointer;">Previous Season Score</th>
-                    <th class="sticky-header team-header sorttable_numeric" expected-wins style="cursor: pointer;">xWins</th>
-                    <th class="sticky-header team-header sorttable_nosort">Draft</th>
-                </tr>
-                </thead>
-                <tbody user-table-body>
-                <tbody>
+    <div class="content pool">
+        <h2 class="pool-title">Available Teams</h2>
+        <div class="pool-controls">
+            <input type="text" id="poolSearch" placeholder="Search team…" oninput="renderPool()">
+            <select id="poolConf" onchange="renderPool()"><option value="">All conferences</option></select>
+            <label class="pool-toggle"><input type="checkbox" id="showDrafted" onchange="renderPool()"> Show drafted</label>
+            <span class="pool-spacer"></span>
+            <span class="pool-count" id="poolCount"></span>
+        </div>
+        <div class="pool-table-wrap">
+            <table class="pool-table">
+                <thead><tr id="pool-head"></tr></thead>
+                <tbody user-table-body></tbody>
             </table>
         </div>
     </div>

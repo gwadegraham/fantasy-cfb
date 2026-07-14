@@ -1,5 +1,6 @@
 // Live draft room. Connects to the Socket.IO draft engine, renders the board
-// in real time, and lets whoever is on the clock draft a team.
+// in real time, and lets whoever is on the clock draft a team. The team pool
+// below the board is a sortable/filterable draft aid.
 
 var socket;
 var draft = null;            // latest draft state from the server (or null)
@@ -14,6 +15,10 @@ var season = new Date().getFullYear();
 var isMobile = false;
 var countdownTimer;
 
+var pool = [];               // enriched team rows for the pool table
+var poolSort = { key: 'xwins', dir: -1 };
+var xwMin = 0, xwMax = 0;
+
 window.onload = async function () {
     detectMobile();
     initNavbarToggle();
@@ -21,7 +26,6 @@ window.onload = async function () {
     setUserContext();
     await getMembers();
     await getTeams();
-    setDynamicYearHeaders();
     setNavbarUserId();
     connectSocket();
 };
@@ -60,68 +64,132 @@ async function getMembers() {
     data.forEach(m => { membersById[String(m._id)] = m; });
 }
 
+async function getRecruitingRankings() {
+    const res = await fetch(`/recruiting/${new Date().getFullYear()}`, { headers: { 'Accept': 'application/json' } });
+    return res.json().catch(() => []);
+}
+
 async function getTeams() {
     const res = await fetch('/teams', { headers: { 'Accept': 'application/json' } });
     const data = await res.json();
     teamList = data;
     data.forEach(t => { teamsById[String(t.id)] = t; });
-    await displayTeams(data);
+
+    const recruiting = await getRecruitingRankings();
+    buildPool(data, recruiting);
+    populateConfFilter();
+    renderPool();
 }
 
-function setDynamicYearHeaders() {
-    var rr = document.querySelector('[recruiting-ranking]');
-    var ew = document.querySelector('[expected-wins]');
-    if (rr) rr.innerHTML = `${new Date().getFullYear()} Recruiting`;
-    if (ew) ew.innerHTML = `${new Date().getFullYear()} xWins`;
-}
-
-async function getRecruitingRankings() {
-    const res = await fetch(`/recruiting/${new Date().getFullYear()}`, { headers: { 'Accept': 'application/json' } });
-    return res.json();
-}
-
-async function displayTeams(data) {
-    var recruitingRankings = await getRecruitingRankings();
-    const body = document.querySelector('[user-table-body]');
-    var str = '';
-
-    data.sort((a, b) => scoreForTeam(b) - scoreForTeam(a));
-
-    data.forEach(team => {
-        var conference = '-';
-        var cumulScore = '-';
-        var expectedWins = 0;
-        if (team.seasons.length > 0) {
-            var season = team.seasons.find(s => s.season == (new Date().getFullYear() - 1));
-            var currentSeason = team.seasons.find(s => s.season == (new Date().getFullYear()));
-            conference = team.seasons.at(-1).conference;
-            if (season != null) cumulScore = (leagueVersion == 'V1') ? season.cumulativeScoreV1 : season.cumulativeScoreV2;
-            expectedWins = currentSeason != null ? currentSeason.expectedWins : 0;
+function buildPool(teams, recruiting) {
+    var yr = new Date().getFullYear();
+    pool = teams.map(t => {
+        var conf = '-', score = null, xwins = 0;
+        if (t.seasons && t.seasons.length) {
+            var prev = t.seasons.find(s => s.season == (yr - 1));
+            var cur = t.seasons.find(s => s.season == yr);
+            conf = t.seasons.at(-1).conference;
+            if (prev) score = (leagueVersion == 'V1') ? prev.cumulativeScoreV1 : prev.cumulativeScoreV2;
+            if (cur) xwins = cur.expectedWins || 0;
         }
-
-        var teamRecruiting = { rank: '-' };
-        if (recruitingRankings.length > 0) {
-            teamRecruiting = recruitingRankings.filter(o => (o.team == team.school || team.alternateNames.includes(o.team)))[0] || { rank: '-' };
+        var rank = null;
+        if (recruiting && recruiting.length) {
+            var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
+            if (r) rank = r.rank;
         }
-
-        str += `<tr data-team-id="${team.id}">`;
-        str += `<td style="text-align: left;"><img src="${team.logos.at(-1)}" alt="${team.mascot}">${team.school}</td>`;
-        str += `<td>${conference}</td>`;
-        str += `<td>${teamRecruiting.rank}</td>`;
-        str += `<td>${cumulScore}</td>`;
-        str += `<td>O/U ${expectedWins}</td>`;
-        str += `<td><button type="button" class="draft-pick-btn" id="draft-btn-${team.id}" onclick="makePick(${team.id})" disabled>Draft</button></td>`;
-        str += '</tr>';
+        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank };
     });
-
-    body.innerHTML = str;
+    var xw = pool.map(p => p.xwins).filter(v => v > 0);
+    xwMin = xw.length ? Math.min(...xw) : 0;
+    xwMax = xw.length ? Math.max(...xw) : 0;
 }
 
-function scoreForTeam(team) {
-    if (!team.seasons || team.seasons.length === 0) return 0;
-    var s = team.seasons.find(x => x.season == (new Date().getFullYear() - 1));
-    if (s == null) return 0;
-    return (leagueVersion == 'V1' ? s.cumulativeScoreV1 : s.cumulativeScoreV2) || 0;
+function barWidth(x) {
+    if (!x || x <= 0) return 0;
+    if (xwMax === xwMin) return 100;
+    return 15 + ((x - xwMin) / (xwMax - xwMin)) * 85;
+}
+
+function populateConfFilter() {
+    var sel = document.getElementById('poolConf');
+    if (!sel) return;
+    [...new Set(pool.map(p => p.conf))].filter(c => c && c !== '-').sort().forEach(c => {
+        var o = document.createElement('option');
+        o.value = c; o.textContent = c;
+        sel.appendChild(o);
+    });
+}
+
+function sortVal(p, k) {
+    if (k === 'name') return p.name.toLowerCase();
+    if (k === 'conf') return (p.conf || '').toLowerCase();
+    if (k === 'rank') return p.rank == null ? 999 : p.rank;
+    if (k === 'score') return p.score == null ? -1 : p.score;
+    if (k === 'xwins') return p.xwins == null ? -1 : p.xwins;
+    return 0;
+}
+
+function sortPool(key) {
+    if (poolSort.key === key) {
+        poolSort.dir *= -1;
+    } else {
+        poolSort.key = key;
+        // Names/conference/recruiting read best ascending; stats descending.
+        poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank') ? 1 : -1;
+    }
+    renderPool();
+}
+
+function renderPool() {
+    var body = document.querySelector('[user-table-body]');
+    if (!body) return;
+
+    var draftedIds = new Set((draft && draft.picks ? draft.picks : []).map(p => String(p.team.id)));
+    var oc = (draft && draft.onTheClock) || {};
+    var canAct = draft && draft.status === 'active' && (String(oc.userId) === String(myUserId) || isCommish);
+
+    var q = (document.getElementById('poolSearch').value || '').toLowerCase();
+    var cf = document.getElementById('poolConf').value;
+    var showD = document.getElementById('showDrafted').checked;
+
+    var rows = pool.filter(p => {
+        var drafted = draftedIds.has(String(p.id));
+        if (drafted && !showD) return false;
+        if (cf && p.conf !== cf) return false;
+        if (q && !(p.name.toLowerCase().includes(q) || (p.conf || '').toLowerCase().includes(q))) return false;
+        return true;
+    });
+    var k = poolSort.key, dir = poolSort.dir;
+    rows.sort((a, b) => { var av = sortVal(a, k), bv = sortVal(b, k); return (av < bv ? -1 : av > bv ? 1 : 0) * dir; });
+
+    var cols = [['name', 'Team'], ['conf', 'Conference'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['draft', '']];
+    document.getElementById('pool-head').innerHTML = cols.map(([key, label]) => {
+        var numCls = (key === 'rank' || key === 'score' || key === 'xwins') ? 'num' : '';
+        var sorted = key === poolSort.key;
+        var arrow = key === 'draft' ? '' : `<span class="arrow">${sorted ? (poolSort.dir < 0 ? '▼' : '▲') : '↕'}</span>`;
+        var onclick = key === 'draft' ? '' : `onclick="sortPool('${key}')"`;
+        return `<th class="${numCls} ${sorted ? 'sorted' : ''}" ${onclick}>${label}${arrow}</th>`;
+    }).join('');
+
+    body.innerHTML = rows.map(p => {
+        var drafted = draftedIds.has(String(p.id));
+        var badge = p.rank == null ? '<span class="muted">—</span>' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">#${p.rank}</span>`;
+        var bw = barWidth(p.xwins);
+        var action = drafted
+            ? '<span class="drafted-chip">Drafted</span>'
+            : `<button class="draft-pick-btn" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
+        return `<tr class="${drafted ? 'drafted' : ''}">
+            <td><span class="team-cell"><img src="${p.logo}" alt="${p.name}">${p.name}</span></td>
+            <td>${p.conf}</td>
+            <td class="num">${badge}</td>
+            <td class="num">${p.score == null ? '-' : p.score}</td>
+            <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%"></span></span></span></td>
+            <td class="num">${action}</td>
+        </tr>`;
+    }).join('');
+
+    var avail = pool.filter(p => !draftedIds.has(String(p.id))).length;
+    document.getElementById('poolCount').textContent = `${rows.length} shown · ${avail} available`;
 }
 
 /////////////////////////////////////////////////////
@@ -194,7 +262,7 @@ function renderAll() {
     renderStatus();
     renderBoard();
     renderOnTheClock();
-    updateAvailability();
+    renderPool();
 }
 
 function renderStatus() {
@@ -283,43 +351,9 @@ function renderOnTheClock() {
     }
 }
 
-function updateAvailability() {
-    var draftedIds = new Set((draft && draft.picks ? draft.picks : []).map(p => String(p.team.id)));
-    var oc = (draft && draft.onTheClock) || {};
-    var myTurn = draft && draft.status === 'active' && String(oc.userId) === String(myUserId);
-    var canAct = draft && draft.status === 'active' && (myTurn || isCommish);
-
-    document.querySelectorAll('[user-table-body] tr').forEach(row => {
-        var teamId = row.getAttribute('data-team-id');
-        var btn = row.querySelector('.draft-pick-btn');
-        var drafted = draftedIds.has(String(teamId));
-        row.classList.toggle('drafted', drafted);
-        if (!btn) return;
-        if (drafted) {
-            btn.disabled = true;
-            btn.textContent = 'Drafted';
-        } else {
-            btn.textContent = 'Draft';
-            btn.disabled = !canAct;
-        }
-    });
-}
-
 /////////////////////////////////////////////////////
 //////////////////// Helpers /////////////////////////
 /////////////////////////////////////////////////////
-
-const _filterFunction = () => {
-    const filterColumns = [0, 1];
-    const trs = document.querySelectorAll(`.fl-table tr:not(.headerRow)`);
-    const filter = document.querySelector('#myInput').value.replace(/\s/g, "");
-    const regex = new RegExp(escape(filter), 'i');
-    const isFoundInTds = td => regex.test(td.innerHTML.replace(/\s/g, ""));
-    const isFound = arr => arr.some(isFoundInTds);
-    trs.forEach(({ style, children }) => {
-        style.display = isFound(filterColumns.map(c => children[c])) ? '' : 'none';
-    });
-};
 
 function setNavbarUserId() {
     var userId = (userState.user_metadata.metadata && userState.user_metadata.metadata.userId) || window.localStorage.getItem('userId');
