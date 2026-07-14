@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const Team = require('../models/team');
 
 //Getting All
@@ -180,15 +182,18 @@ router.patch('/:id/:season', getTeam, async (req, res) => {
 //Updating Expected Wins for One With Season
 router.post('/:season/expectedWins', async (req, res) => {
 
-    // Validate season is a 4-digit year before using it in a require path,
-    // otherwise a value like "../../server" is a local file inclusion vector.
+    // Validate season is a 4-digit year before using it in a file path,
+    // otherwise a value like "../../server" is a path-traversal vector.
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({message: 'Invalid season'});
     }
 
+    // Read fresh (not require()) so editing the JSON and re-running picks up
+    // the new values without needing a server restart.
     var teamJsonData;
     try {
-        teamJsonData = require(`../json/expectedWins${req.params.season}.json`);
+        const file = path.join(__dirname, '..', 'json', `expectedWins${req.params.season}.json`);
+        teamJsonData = JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (err) {
         return res.status(404).json({message: `No expected wins data for season ${req.params.season}`});
     }
