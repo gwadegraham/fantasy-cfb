@@ -216,85 +216,145 @@
 .draft-status-panel {
     text-align: center;
     color: #F4F6FB;
-    padding: 12px;
-    font-size: 1.1em;
+    padding: 18px 12px 4px;
+    font-size: 1.05em;
 }
 
 .draft-countdown {
-    font-size: 1.4em;
+    font-size: 1.6em;
     font-weight: 700;
     color: #64b5f6;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
 }
 
 .draft-live-label {
-    font-size: 1.3em;
+    font-size: 1.35em;
     font-weight: 700;
+    margin: 0;
 }
 
 .draft-start-btn {
     background-color: #71d28d;
     color: #101322;
     border: none;
-    border-radius: 6px;
-    padding: 10px 22px;
+    border-radius: 8px;
+    padding: 11px 26px;
     font-weight: 700;
+    font-size: 1em;
     cursor: pointer;
+    transition: background-color 0.2s;
 }
-
 .draft-start-btn:hover { background-color: #5bbf79; }
 
+/* Board sits in a centered card that uses the width without stretching thin */
 .draft-board-wrap {
-    padding: 0 12px 16px;
+    max-width: 1200px;
+    margin: 8px auto 24px;
+    padding: 0 16px;
 }
 
+/* On the clock: a prominent banner bar */
 .on-the-clock {
     text-align: center;
     color: #F4F6FB;
-    font-size: 1.15em;
-    padding: 10px;
+    font-size: 1.1em;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 10px;
 }
-
 .on-the-clock .you-are-up {
     color: #71d28d;
-    font-weight: 700;
+    font-weight: 800;
+    font-size: 1.05em;
 }
 
+#draft-board {
+    margin: 0;
+    border-radius: 12px;
+    overflow: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    border: 1px solid #2A2E42;
+}
+
+/* Reset the inherited old-board padding/backgrounds */
+#draft-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: #131725;
+}
+#draft-board-head th:first-child,
+.draft-board-name { width: 150px; }
+#draft-table th,
+#draft-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid #232838;
+}
+#draft-table td:not(:first-child) { background-color: transparent; }
+
+#draft-board-head th {
+    background: #0f1220;
+    color: #9aa4bf;
+    font-size: 0.85em;
+    font-weight: 700;
+    padding: 10px 6px;
+    position: sticky;
+    top: 0;
+}
+#draft-board-head th:first-child { text-align: left; padding-left: 16px; }
+
+/* Sticky player-name column + zebra striping for readability */
 .draft-board-name {
-    text-align: left;
+    text-align: left !important;
     white-space: nowrap;
     font-weight: 600;
     color: #F4F6FB;
+    position: sticky;
+    left: 0;
+    background: #161b2b;
+    padding-left: 16px !important;
+    min-width: 120px;
 }
+#draft-board-body tr:nth-child(even) td { background-color: #10131f; }
+#draft-board-body tr:nth-child(even) .draft-board-name { background-color: #141827; }
 
+.draft-board-cell {
+    width: 9%;
+    height: 52px;
+}
 .draft-board-cell img {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
     object-fit: contain;
     vertical-align: middle;
 }
 
+/* Current pick: filled highlight instead of a floaty thin outline */
 .on-clock-cell {
-    outline: 2px solid #ed5858;
-    outline-offset: -2px;
+    background-color: rgba(237, 88, 88, 0.18) !important;
+    box-shadow: inset 0 0 0 2px #ed5858;
+    border-radius: 4px;
 }
 
+/* Draft action buttons in the team list */
 .draft-pick-btn {
     background-color: #71d28d;
     color: #101322;
     border: none;
-    border-radius: 5px;
-    padding: 5px 12px;
-    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-weight: 700;
     cursor: pointer;
+    transition: background-color 0.2s;
 }
-
+.draft-pick-btn:hover:not(:disabled) { background-color: #5bbf79; }
 .draft-pick-btn:disabled {
-    background-color: #3a3f52;
-    color: #888;
+    background-color: #2a2f42;
+    color: #6b7280;
     cursor: not-allowed;
 }
-
-[user-table-body] tr.drafted {
-    opacity: 0.4;
-}
+[user-table-body] tr.drafted { opacity: 0.35; }
