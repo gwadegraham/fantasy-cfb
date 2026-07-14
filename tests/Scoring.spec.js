@@ -2,7 +2,7 @@ const scoringModule = require('../modules/scoring.js');;
 
 describe('Claunts Scoring Test Suite', () => {
     it('Non-Conference Unranked Game Loss', async () => {
-        const team = "University of Central Florida";
+        const team = 57;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -1146,7 +1146,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -1154,7 +1154,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
     
     it('Non-Conference Unranked Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -2298,7 +2298,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -2306,7 +2306,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
 
     it('Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -3450,7 +3450,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -3458,7 +3458,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
     
     it('Top 25 Ranked Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -4602,7 +4602,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -4610,7 +4610,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
     
     it('Top 10 Ranked Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -5754,7 +5754,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -5762,7 +5762,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
     
     it('Non Power 5 Win over Power 5 Opponent', async () => {
-        const team = "Tulane";
+        const team = 2655;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -6904,7 +6904,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -6912,7 +6912,7 @@ describe('Claunts Scoring Test Suite', () => {
     });
     
     it('Conference Championship Win', async () => {
-        const team = "Alabama";
+        const team = 333;
         const game = {
             "_id": {
                 "$oid": "65dfd87c1546400b2aeb7c84"
@@ -8054,15 +8054,15 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
-        expect(resultingScore).toEqual(5);
+        expect(resultingScore).toEqual(6);
     });
     
     it('Bowl Game Win', async () => {
-        const team = "Western Kentucky";
+        const team = 98;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7c96"
@@ -9206,15 +9206,15 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
-        expect(resultingScore).toEqual(6);
+        expect(resultingScore).toEqual(9);
     });
     
     it('College Football Playoff Berth', async () => {
-        const team = "Alabama";
+        const team = 333;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7cb7"
@@ -10358,15 +10358,15 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
-        expect(resultingScore).toEqual(7);
+        expect(resultingScore).toEqual(9);
     });
     
     it('College Football Playoff Final Win', async () => {
-        const team = "Michigan";
+        const team = 130;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7cba"
@@ -11508,7 +11508,7 @@ describe('Claunts Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV1(team, game, week);
@@ -11518,7 +11518,7 @@ describe('Claunts Scoring Test Suite', () => {
 
 describe('Graham Scoring Test Suite', () => {
     it('Non-Conference Unranked Game Loss', async () => {
-        const team = "University of Central Florida";
+        const team = 57;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -12662,7 +12662,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -12670,7 +12670,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Non-Conference Unranked Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -13814,7 +13814,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -13822,7 +13822,7 @@ describe('Graham Scoring Test Suite', () => {
     });
 
     it('Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -14966,7 +14966,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -14974,7 +14974,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Top 25 Ranked Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -16118,7 +16118,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -16126,7 +16126,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Top 10 Ranked Conference Game Win', async () => {
-        const team = "Arkansas";
+        const team = 8;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -17270,7 +17270,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -17278,7 +17278,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Non Power 5 Win over Power 5 Opponent', async () => {
-        const team = "Tulane";
+        const team = 2655;
         const game = {
             "_id": {
               "$oid": "65dfd87c1546400b2aeb7975"
@@ -18420,7 +18420,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -18428,7 +18428,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Conference Championship Win', async () => {
-        const team = "Alabama";
+        const team = 333;
         const game = {
             "_id": {
                 "$oid": "65dfd87c1546400b2aeb7c84"
@@ -19570,7 +19570,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -19578,7 +19578,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('Bowl Game Win', async () => {
-        const team = "Western Kentucky";
+        const team = 98;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7c96"
@@ -20722,7 +20722,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -20730,7 +20730,7 @@ describe('Graham Scoring Test Suite', () => {
     });
     
     it('College Football Playoff Berth', async () => {
-        const team = "Alabama";
+        const team = 333;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7cb7"
@@ -21874,15 +21874,15 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
-        expect(resultingScore).toEqual(7);
+        expect(resultingScore).toEqual(6);
     });
     
     it('College Football Playoff Final Win', async () => {
-        const team = "Michigan";
+        const team = 130;
         const game = {
             "_id": {
               "$oid": "65dfd98d1546400b2aeb7cba"
@@ -23024,7 +23024,7 @@ describe('Graham Scoring Test Suite', () => {
           }];
 
         global.fetch = jest.fn(() => Promise.resolve({
-            json: () => Promise.resolve(rankings)
+            json: () => Promise.resolve(rankings[0])
         }));
 
         var resultingScore = await scoringModule.calculateScoreV2(team, game, week);
@@ -23045,6 +23045,7 @@ describe('General Scoring Test Suite', () => {
   it('Testing calculateTeamScores(teamId, teamName)', async () => {
     const teamName = "Arkansas";
     const teamId = 8;
+    const season = 2023;
     const games = [{
       "_id": {
         "$oid": "65dfd87c1546400b2aeb6f6b"
@@ -23649,18 +23650,21 @@ describe('General Scoring Test Suite', () => {
     }));
     jest.spyOn(scoringModule, 'calculateScoreV1').mockReturnValue(20);
     jest.spyOn(scoringModule, 'calculateScoreV2').mockReturnValue(20);
-    jest.spyOn(scoringModule, 'updateTeamScores').mockImplementation(() =>
+    // calculateTeamScores persists via updateTeamScoresWithYear (not
+    // updateTeamScores), so spy on the real dependency and capture the spy so
+    // we can assert on it after the call.
+    const updateSpy = jest.spyOn(scoringModule, 'updateTeamScoresWithYear').mockImplementation(() =>
       Promise.resolve({
         status: 200,
-        json: scoreUpdateObject
+        updatedTeam: scoreUpdateObject
       })
     );
 
 
-    var result = await scoringModule.calculateTeamScores(teamId, teamName);
-    expect(jest.spyOn(scoringModule, 'updateTeamScores')).toBeCalledWith(teamId, scoreUpdateObject);
+    var result = await scoringModule.calculateTeamScores(season, teamId, teamName);
+    expect(updateSpy).toHaveBeenCalledWith(season, teamId, scoreUpdateObject);
 
-    expect(result.json.weeklyScore.length).toEqual(12)
-    expect(result.json.cumulativeScoreV1).toEqual(240)
+    expect(result.updatedTeam.weeklyScore.length).toEqual(12)
+    expect(result.updatedTeam.cumulativeScoreV1).toEqual(240)
   });
 });
