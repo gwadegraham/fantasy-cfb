@@ -34,7 +34,6 @@ async function getUserProfile() {
     });
 
     response.json().then(async data => {
-        console.log("user metadata", data)
 
         weekCode = window.localStorage.getItem("weekCode");
         const currentSelectedWeek = window.localStorage.getItem("week");
@@ -72,10 +71,8 @@ window.onload = function() {
             toggleButton.addEventListener('click', () => {
                 navbarLinks.classList.toggle('active');
             });
-            console.log("✅ Navbar toggle initialized");
         } else {
             // Retry after 500ms if elements aren't in the DOM yet
-            console.log("⏳ Navbar elements not found, retrying...");
             setTimeout(initNavbarToggle, 500);
         }
     }
@@ -114,7 +111,6 @@ async function getUser() {
     });
 
     response.json().then(async data => {
-        console.log("userData",data);
         userData = data[0];
         changeHeader(data[0]);
         displayTeams(data[0]);
@@ -727,10 +723,8 @@ function setNavbarUserId() {
 
     if (toggleButton && navbarLinks && myLink) {
         myLink.href = `/userHome?user=${userId}`;
-        console.log("✅ user profile link initialized");
     } else {
         // Retry after 500ms if elements aren't in the DOM yet
-        console.log("⏳ Navbar elements not found, retrying...");
         setTimeout(setNavbarUserId, 500);
     }
 }
