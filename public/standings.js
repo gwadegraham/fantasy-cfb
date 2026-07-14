@@ -37,10 +37,8 @@ window.onload = async function() {
             toggleButton.addEventListener('click', () => {
                 navbarLinks.classList.toggle('active');
             });
-            console.log("✅ Navbar toggle initialized");
         } else {
             // Retry after 500ms if elements aren't in the DOM yet
-            console.log("⏳ Navbar elements not found, retrying...");
             setTimeout(initNavbarToggle, 500);
         }
     }
@@ -57,7 +55,6 @@ window.onload = async function() {
     });
 
     response.json().then(async data => {
-        console.log("user metadata", data)
         userMetadata = data;
 
         weekCode = window.localStorage.getItem("weekCode");
@@ -1049,10 +1046,8 @@ function setNavbarUserId(metaData, usersData) {
 
     if (toggleButton && navbarLinks && myLink) {
         myLink.href = `/userHome?user=${userId}`;
-        console.log("✅ user profile link initialized");
     } else {
         // Retry after 500ms if elements aren't in the DOM yet
-        console.log("⏳ Navbar elements not found, retrying...");
         setTimeout(setNavbarUserId, 500);
     }
 }

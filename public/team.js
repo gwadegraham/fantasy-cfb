@@ -8,7 +8,6 @@ async function getUserProfile() {
     });
 
     response.json().then(async data => {
-        console.log("user metadata", data)
 
         // Only set leagueCode from metaData if it's not already stored
         if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
@@ -38,10 +37,8 @@ window.onload = function() {
             toggleButton.addEventListener('click', () => {
                 navbarLinks.classList.toggle('active');
             });
-            console.log("✅ Navbar toggle initialized");
         } else {
             // Retry after 500ms if elements aren't in the DOM yet
-            console.log("⏳ Navbar elements not found, retrying...");
             setTimeout(initNavbarToggle, 500);
         }
     }
@@ -654,10 +651,8 @@ function setNavbarUserId() {
 
     if (toggleButton && navbarLinks && myLink) {
         myLink.href = `/userHome?user=${userId}`;
-        console.log("✅ user profile link initialized");
     } else {
         // Retry after 500ms if elements aren't in the DOM yet
-        console.log("⏳ Navbar elements not found, retrying...");
         setTimeout(setNavbarUserId, 500);
     }
 }

@@ -228,7 +228,6 @@ async function getUserProfile() {
     });
 
     response.json().then(async data => {
-        console.log("user metadata", data)
         userMetadata = data;
 
         // Only set leagueCode from metaData if it's not already stored
@@ -261,10 +260,8 @@ window.onload = async function() {
             toggleButton.addEventListener('click', () => {
                 navbarLinks.classList.toggle('active');
             });
-            console.log("✅ Navbar toggle initialized");
         } else {
             // Retry after 500ms if elements aren't in the DOM yet
-            console.log("⏳ Navbar elements not found, retrying...");
             setTimeout(initNavbarToggle, 500);
         }
     }
@@ -924,7 +921,6 @@ function displayApiCallsContainer() {
 }
 
 function block_screen() {
-    console.log("running block screen")
     $('<div id="screenBlock"></div>').appendTo('body');
     $('#screenBlock').css( { opacity: 0, width: $(document).width(), height: $(document).height() } );
     $('#screenBlock').addClass('blockDiv');
@@ -964,10 +960,8 @@ function setNavbarUserId() {
 
     if (toggleButton && navbarLinks && myLink) {
         myLink.href = `/userHome?user=${userId}`;
-        console.log("✅ user profile link initialized");
     } else {
         // Retry after 500ms if elements aren't in the DOM yet
-        console.log("⏳ Navbar elements not found, retrying...");
         setTimeout(setNavbarUserId, 500);
     }
 }
