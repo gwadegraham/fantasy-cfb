@@ -21,6 +21,7 @@ function publicState(draft) {
         status: d.status,
         snake: d.snake,
         totalRounds: d.totalRounds,
+        scheduledAt: d.scheduledAt,
         draftOrder: (d.draftOrder || []).map(String),
         picks: d.picks || [],
         currentOverall: d.currentOverall,
@@ -76,6 +77,27 @@ module.exports = function registerDraftSockets(io) {
                 socket.data.season = season;
                 socket.join(roomKey(league, season));
                 socket.emit('draft-state', publicState(draft));
+            } catch (err) {
+                socket.emit('draft-error', { message: err.message });
+            }
+        });
+
+        socket.on('start-draft', async ({ league, season }) => {
+            try {
+                if (!isCommissioner(socket.user)) {
+                    return socket.emit('draft-error', { message: 'Only the commissioner can start the draft' });
+                }
+                const draft = await Draft.findOne({ league, season });
+                if (!draft) return socket.emit('draft-error', { message: 'No draft configured' });
+                if (draft.status === 'complete') return socket.emit('draft-error', { message: 'Draft is already complete' });
+                if (!Array.isArray(draft.draftOrder) || draft.draftOrder.length < 2) {
+                    return socket.emit('draft-error', { message: 'Draft needs at least 2 participants' });
+                }
+                draft.status = 'active';
+                if (!draft.currentOverall || draft.currentOverall < 1) draft.currentOverall = 1;
+                draft.updatedAt = new Date();
+                await draft.save();
+                io.to(roomKey(league, season)).emit('draft-state', publicState(draft));
             } catch (err) {
                 socket.emit('draft-error', { message: err.message });
             }

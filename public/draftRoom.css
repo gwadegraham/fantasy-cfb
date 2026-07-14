@@ -212,3 +212,89 @@
         padding: 2em 1em 1em;
     }
 }
+/* ---------- Live draft board ---------- */
+.draft-status-panel {
+    text-align: center;
+    color: #F4F6FB;
+    padding: 12px;
+    font-size: 1.1em;
+}
+
+.draft-countdown {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #64b5f6;
+    margin-bottom: 10px;
+}
+
+.draft-live-label {
+    font-size: 1.3em;
+    font-weight: 700;
+}
+
+.draft-start-btn {
+    background-color: #71d28d;
+    color: #101322;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 22px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.draft-start-btn:hover { background-color: #5bbf79; }
+
+.draft-board-wrap {
+    padding: 0 12px 16px;
+}
+
+.on-the-clock {
+    text-align: center;
+    color: #F4F6FB;
+    font-size: 1.15em;
+    padding: 10px;
+}
+
+.on-the-clock .you-are-up {
+    color: #71d28d;
+    font-weight: 700;
+}
+
+.draft-board-name {
+    text-align: left;
+    white-space: nowrap;
+    font-weight: 600;
+    color: #F4F6FB;
+}
+
+.draft-board-cell img {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+.on-clock-cell {
+    outline: 2px solid #ed5858;
+    outline-offset: -2px;
+}
+
+.draft-pick-btn {
+    background-color: #71d28d;
+    color: #101322;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.draft-pick-btn:disabled {
+    background-color: #3a3f52;
+    color: #888;
+    cursor: not-allowed;
+}
+
+[user-table-body] tr.drafted {
+    opacity: 0.4;
+}
