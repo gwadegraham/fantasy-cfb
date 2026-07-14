@@ -51,6 +51,32 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Start a draft: flip it to active so picks can be made. Requires a configured
+// order of at least 2 participants.
+router.post('/:id/start', async (req, res) => {
+    try {
+        const draft = await Draft.findById(req.params.id);
+        if (draft == null) {
+            return res.status(404).json({ message: 'Draft not found' });
+        }
+        if (draft.status === 'complete') {
+            return res.status(409).json({ message: 'Draft is already complete' });
+        }
+        if (!Array.isArray(draft.draftOrder) || draft.draftOrder.length < 2) {
+            return res.status(400).json({ message: 'Draft needs at least 2 participants' });
+        }
+        draft.status = 'active';
+        if (!draft.currentOverall || draft.currentOverall < 1) {
+            draft.currentOverall = 1;
+        }
+        draft.updatedAt = new Date();
+        await draft.save();
+        res.json(draft);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Reset a draft: clear picks and return it to pending. Used to re-run a draft
 // or wipe a mistaken start.
 router.post('/:id/reset', async (req, res) => {
