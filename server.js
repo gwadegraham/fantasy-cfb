@@ -12,6 +12,8 @@ const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
+const ScoringConfig = require('./models/scoringConfig');
+const { resolveConfig, MODELS } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 
@@ -124,12 +126,24 @@ app.get('/standings', (req, res) => {
     }
 });
 
-app.get('/rules', (req, res) => {
+app.get('/rules', async (req, res) => {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
-        res.render('scoringRules' + user.league, {user, userState});
+        // Render the rules from the league's scoring config so the page can
+        // never drift from the engine.
+        const leagueCode = user.league === 'gg' ? 'graham-league' : 'claunts-league';
+        let cfg;
+        try {
+            const doc = await ScoringConfig.findOne({ league: leagueCode });
+            cfg = resolveConfig(leagueCode, doc ? { model: doc.model, values: doc.values } : null);
+        } catch (err) {
+            cfg = resolveConfig(leagueCode, null);
+        }
+        const fields = MODELS[cfg.model].fields;
+
+        res.render('scoringRules', { user, userState, cfg, fields });
     } else {
         res.redirect("/login");
     }
@@ -207,7 +221,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireCommissioner(req, res, next);
 });
-app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft'], (req, res, next) => {
+app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft', '/scoring-config'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireCommissioner(req, res, next);
 });
@@ -238,6 +252,9 @@ app.use('/betting', requireAuthOrToken, bettingRouter);
 
 const draftRouter = require('./routes/draft');
 app.use('/draft', requireAuthOrToken, draftRouter);
+
+const scoringConfigRouter = require('./routes/scoringConfig');
+app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);

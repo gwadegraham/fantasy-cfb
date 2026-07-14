@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, resolveConfig } = require('./scoring-defaults');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -49,10 +50,16 @@ module.exports= {
         });
 
         var userData = await response.json();
+        var configByLeague = {};
 
         for (const user of userData) {
             var score = 0;
             var teamScores = new Array();
+
+            if (!configByLeague[user.league]) {
+                configByLeague[user.league] = await getScoringConfig(user.league);
+            }
+            var cfg = configByLeague[user.league];
 
             for (const team of user.seasons[0].teams) {
                 var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
@@ -69,10 +76,10 @@ module.exports= {
                     for (const game of response) {
                         var teamScore = 0;
 
-                        if (user.league == "claunts-league") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week);
-                        } else if (user.league == "graham-league") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week);
+                        if (cfg.model == "claunts") {
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg.values);
+                        } else if (cfg.model == "graham") {
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg.values);
                         }
 
                         score += teamScore;
@@ -131,6 +138,10 @@ module.exports= {
         var cumulativeScoreV2 = 0;
         var weeklyScores = [];
 
+        // Team scores track both leagues, so load each league's config.
+        var clauntsCfg = await getScoringConfig('claunts-league');
+        var grahamCfg = await getScoringConfig('graham-league');
+
         var gamesPromise = await internalFetch(process.env.URL + `/games/season/${season}/teamId/${teamId}`, {
             method: 'GET',
             headers: {
@@ -146,8 +157,8 @@ module.exports= {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
 
-                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season);
-                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season);
+                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season, clauntsCfg.values);
+                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season, grahamCfg.values);
 
                 cumulativeScoreV1 += gameScoreV1;
                 cumulativeScoreV2 += gameScoreV2;
@@ -180,197 +191,46 @@ module.exports= {
         }
     },
 
-    //Scoring for Claunts League
-    calculateScoreV1: async function (team, data, week, season = process.env.YEAR) {
+    //Scoring for Claunts League. cfg holds this league's point values.
+    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = CLAUNTS_DEFAULTS) {
         var game = data;
         var score = 0;
-    
-        var year = season;
-        var opts = {
-            'week': week
-        };
+        var rankings = await getRankingsForGame(game, week, season);
 
-        var postseasonRankingType = "";
-        var postseasonWeek = 1;
-        var response;
-
-        if ((game.seasonType == "postseason")) {
-            postseasonRankingType = "regular";
-            postseasonWeek = 1;
-
-            response = await internalFetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
-                method: 'GET',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                }
-            });
-        } else {
-            response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
-                method: 'GET',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                }
-            });
-        }
-    
-        var rankings = await response.json();        
-    
         if (isQuarterFinalist(game)) {
-            score += 8;
+            score += cfg.cfpQuarterfinal;
         } else if (isSemiFinalist(game)) {
-            score += 9;
+            score += cfg.cfpSemifinal;
         } else if (isFinalist(game)) {
-            score += 10;
+            score += cfg.nationalChampionship;
         } else if (game.homeId == team) {
-
-            var isBowlTeam = isBowlParticipant(game);
-            if (isBowlTeam) {
-                score += 4;
-            }
-
-            if (game.homePoints > game.awayPoints) {
-                var isConfChampion = isConferenceChampion(game);
-                var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isFinalist(game);
-    
-                if (isNationalChamp) {
-                    score += 10;
-                } else if (isBowlWinner) {
-                    score += 5;
-                } else if (isConfChampion) {
-                    score += 6;
-                } else if (!isBowlTeam && !isFirstRound(game)) {
-                    score += 1;
-                    // Conference win is 2 (ranked or not); a non-conference win
-                    // over a ranked opponent is 3; non-conf vs unranked stays 1.
-                    if (isConference(game)) {
-                        score = 2;
-                    } else if (isRankedV1(game.awayTeam, rankings)) {
-                        score = 3;
-                    }
-                }
-            } else if (isFirstRound(game)) {
-                score += 7;
-            }
+            score += scoreV1RegularOrBowl(game, game.homePoints > game.awayPoints, game.awayTeam, rankings, cfg);
         } else if (game.awayId == team) {
-
-            var isBowlTeam = isBowlParticipant(game);
-            if (isBowlTeam) {
-                score += 4;
-            }
-
-            if (game.awayPoints > game.homePoints) {
-                var isConfChampion = isConferenceChampion(game);
-                var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isFinalist(game);
-    
-                if (isNationalChamp) {
-                    score += 10;
-                } else if (isBowlWinner) {
-                    score += 5;
-                } else if (isConfChampion) {
-                    score += 6;
-                } else if (!isBowlTeam && !isFirstRound(game)) {
-                    score += 1;
-                    // Conference win is 2 (ranked or not); a non-conference win
-                    // over a ranked opponent is 3; non-conf vs unranked stays 1.
-                    if (isConference(game)) {
-                        score = 2;
-                    } else if (isRankedV1(game.homeTeam, rankings)) {
-                        score = 3;
-                    }
-                }
-            } else if (isFirstRound(game)) {
-                score += 7;
-            }
+            score += scoreV1RegularOrBowl(game, game.awayPoints > game.homePoints, game.homeTeam, rankings, cfg);
         }
 
         return score;
     },
 
-    //Scoring for Graham League
-    calculateScoreV2: async function (team, data, week, season = process.env.YEAR) {
+    //Scoring for Graham League. cfg holds this league's point values.
+    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = GRAHAM_DEFAULTS) {
         var game = data;
         var score = 0;
+        var rankings = await getRankingsForGame(game, week, season);
 
-        var postseasonRankingType = "";
-        var postseasonWeek = 1;
-        var response;
-
-        if ((game.seasonType == "postseason")) {
-            postseasonRankingType = "regular";
-            postseasonWeek = 1;
-
-            response = await internalFetch(`${process.env.URL}/rankings/${season}/${postseasonWeek}/${postseasonRankingType}`, {
-                method: 'GET',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                }
-            });
-        } else {
-            response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`, {
-                method: 'GET',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                }
-            });
-        }
-    
-        var rankings = await response.json();
-            
         if (isFirstRound(game)) {
-            score += 6;
+            score += cfg.cfpFirstRound;
         } else if (isQuarterFinalist(game)) {
-            if (isTop4Seed(game, team)) {
-                score += 6;
-            }
-
-            score += 6;
+            if (isTop4Seed(game, team)) score += cfg.cfpQuarterfinalTop4Bonus;
+            score += cfg.cfpQuarterfinal;
         } else if (isSemiFinalist(game)) {
-            score += 6;
+            score += cfg.cfpSemifinal;
         } else if (game.homeId == team) {
-            if (game.homePoints > game.awayPoints) {
-                var isConfChampion = isConferenceChampion(game);
-                var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isFinalist(game);
-    
-                if (isNationalChamp) {
-                    score += 10;
-                } else if (isBowlWinner) {
-                    score += 6;
-                } else if (isConfChampion) {
-                    score += 5;
-                } else {
-                    score += 1;
-                    score = isConference(game) ? (score + 1) : score;
-                    score += isRanked(game.awayTeam, rankings);
-                    score = isPowerFive(game.homeConference, game.awayConference) ? (score + 2) : score;
-                }  
-            }
+            score += scoreV2RegularOrBowl(game, game.homePoints > game.awayPoints, game.awayTeam, game.homeConference, game.awayConference, rankings, cfg);
         } else if (game.awayId == team) {
-            if (game.awayPoints > game.homePoints) {
-                var isConfChampion = isConferenceChampion(game);
-                var isBowlWinner = isBowlWin(game);
-                var isNationalChamp = isFinalist(game);
-    
-                if (isNationalChamp) {
-                    score += 10;
-                } else if (isBowlWinner) {
-                    score += 6;
-                } else if (isConfChampion) {
-                    score += 5;
-                } else {
-                    score += 1;
-                    score = isConference(game) ? (score + 1) : score;
-                    score += isRanked(game.homeTeam, rankings);
-                    score = isPowerFive(game.awayConference, game.homeConference) ? (score + 2) : score;
-                }
-            }
+            score += scoreV2RegularOrBowl(game, game.awayPoints > game.homePoints, game.homeTeam, game.awayConference, game.homeConference, rankings, cfg);
         }
+
         return score;
     },
 
@@ -477,6 +337,76 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
 }
 
 
+
+// Fetches the resolved scoring config (model + values) for a league via the
+// API, so it works in the web process and in job processes alike. Falls back
+// to that league's defaults on any error.
+async function getScoringConfig(league) {
+    try {
+        var res = await internalFetch(`${process.env.URL}/scoring-config/${league}`, {
+            method: 'GET', headers: { 'Accept': 'application/json' }
+        });
+        var data = await res.json();
+        if (data && data.values) return resolveConfig(league, { model: data.model, values: data.values });
+    } catch (e) { /* fall through to defaults */ }
+    return resolveConfig(league, null);
+}
+
+// Builds the rankings-fetch URL for a game and returns the parsed rankings.
+async function getRankingsForGame(game, week, season) {
+    var url = (game.seasonType == "postseason")
+        ? `${process.env.URL}/rankings/${season}/1/regular`
+        : `${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`;
+    var response = await internalFetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    });
+    return response.json();
+}
+
+// Claunts (V1) regular-season / bowl scoring for one team in a game.
+function scoreV1RegularOrBowl(game, won, opponent, rankings, cfg) {
+    var score = 0;
+    var isBowlTeam = isBowlParticipant(game);
+    if (isBowlTeam) score += cfg.bowlAppearance;
+    if (won) {
+        if (isFinalist(game)) {
+            score += cfg.nationalChampionship;
+        } else if (isBowlWin(game)) {
+            score += cfg.bowlWin;
+        } else if (isConferenceChampion(game)) {
+            score += cfg.confChampionship;
+        } else if (!isBowlTeam && !isFirstRound(game)) {
+            score += cfg.nonConfWinUnranked;
+            // Conference win is fixed (ranked or not); a non-conference win over
+            // a ranked opponent scores more.
+            if (isConference(game)) {
+                score = cfg.confWin;
+            } else if (isRankedV1(opponent, rankings)) {
+                score = cfg.nonConfWinRanked;
+            }
+        }
+    } else if (isFirstRound(game)) {
+        score += cfg.cfpAppearance;
+    }
+    return score;
+}
+
+// Graham (V2) regular-season / bowl scoring for one team in a game (additive).
+function scoreV2RegularOrBowl(game, won, opponent, teamConf, oppConf, rankings, cfg) {
+    if (!won) return 0;
+    if (isFinalist(game)) return cfg.nationalChampionship;
+    if (isBowlWin(game)) return cfg.bowlWin;
+    if (isConferenceChampion(game)) return cfg.confChampionship;
+
+    var score = cfg.baseWin;
+    if (isConference(game)) score += cfg.confBonus;
+    var rankVal = isRanked(opponent, rankings);   // 0 unranked, 1 = #11-25, 2 = #1-10
+    if (rankVal === 2) score += cfg.rankedTop10Bonus;
+    else if (rankVal === 1) score += cfg.rankedTop25Bonus;
+    if (isPowerFive(teamConf, oppConf)) score += cfg.nonP5UpsetBonus;
+    return score;
+}
 
 function isConference(game) {
     if ((game.homeConference == "FBS Independents") || (game.awayConference == "FBS Independents")) {

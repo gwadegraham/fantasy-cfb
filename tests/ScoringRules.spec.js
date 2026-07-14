@@ -1,4 +1,5 @@
 const scoring = require('../modules/scoring');
+const { CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS } = require('../modules/scoring-defaults');
 
 // Rankings come from a fetch to /rankings; mock it per test.
 function mockRankings(ranks) {
@@ -72,5 +73,19 @@ describe('Graham (V2) scoring rules (additive)', () => {
     it('does not crash when a week has no rankings loaded', async () => {
         mockNoRankings();
         expect(await scoring.calculateScoreV2(1, regularWin({ conf: true, awayConf: 'SEC' }), 5)).toBe(2);
+    });
+});
+
+describe('configurable point values', () => {
+    it('V1 honors a custom conference-win value', async () => {
+        mockRankings([]);
+        const cfg = { ...CLAUNTS_DEFAULTS, confWin: 5 };
+        expect(await scoring.calculateScoreV1(1, regularWin({ conf: true, awayConf: 'SEC' }), 5, 2025, cfg)).toBe(5);
+    });
+    it('V2 honors a custom conference bonus (additive)', async () => {
+        mockRankings([]);
+        const cfg = { ...GRAHAM_DEFAULTS, confBonus: 3 };
+        // base 1 + custom conference bonus 3
+        expect(await scoring.calculateScoreV2(1, regularWin({ conf: true, awayConf: 'SEC' }), 5, 2025, cfg)).toBe(4);
     });
 });

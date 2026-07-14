@@ -97,6 +97,24 @@
         </div>
         <div class="function-container">
             <div class="button-container">
+                <button onclick="displayScoringConfigContainer()">
+                    <i class="fa-solid fa-sliders" style="padding-right: 5px;"></i>
+                    Configure Scoring
+                </button>
+            </div>
+            <div class="sub-container" scoring-config-container style="display: none">
+                <form id="scoring-config-form" class="draft-config-form">
+                    <div class="draft-status-row">League: <span scoring-config-model></span></div>
+                    <div scoring-config-fields></div>
+                    <div class="draft-config-actions">
+                        <button type="submit">Save Scoring Values</button>
+                    </div>
+                </form>
+                <hr>
+            </div>
+        </div>
+        <div class="function-container">
+            <div class="button-container">
                 <button onclick="displayCreateUserContainer()">
                     <i class="fa-solid fa-user-plus" style="padding-right: 5px;"></i>
                     Add a Player
