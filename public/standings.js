@@ -1,5 +1,16 @@
 import { setChartData } from './weekByWeek.js';
 
+// Escapes HTML special chars before interpolating user-controlled values
+// (player/team names) into innerHTML, preventing stored/second-order XSS.
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 var isMobile;
 var weekCode;
 var usersData;
@@ -134,7 +145,7 @@ function displayUsers(data) {
         var userSeason = user.seasons[0];
         str += '<tr>';
         str += '<th class="sticky-header">' + (index + 1) + '</th>';
-        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName.substring(0,1) + '.</a></th>';
+        str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + escapeHtml(user.firstName + ' ' + user.lastName.substring(0,1) + '.') + '</a></th>';
         str += '<td class="team-item">';
 
         for (var i = 0; i < userSeason.teams.length; i++) {
@@ -142,7 +153,7 @@ function displayUsers(data) {
             var refLink = `/team?team=${team.id}`;
 
             str += '<div>';
-            str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
             str += '</div></a>';
         }
 
@@ -224,7 +235,7 @@ async function biggestWinner(users) {
 
             winnerUsers.forEach((user) => {
                 userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
-                htmlString += `<span biggest-winner>${userName}</span><br>`;
+                htmlString += `<span biggest-winner>${escapeHtml(userName)}</span><br>`;
                 winnerScore.innerHTML = `+${user.score || 0}`;
             });
 
@@ -232,7 +243,7 @@ async function biggestWinner(users) {
         } else {
             userName = winnerUsers[0]?.firstName + " " + winnerUsers[0]?.lastName?.substring(-1,1) + ".";
             winnerWeek.innerHTML = `in ${week}`;
-            winner.outerHTML = `<span biggest-winner>${userName}</span><br>`;
+            winner.outerHTML = `<span biggest-winner>${escapeHtml(userName)}</span><br>`;
             winnerScore.innerHTML = `+${winnerUsers[0]?.score || 0}`;
         }
     } else {
@@ -285,7 +296,7 @@ function biggestLoser(users) {
 
             loserUsers.forEach((user) => {
                 userName = user.firstName + " " + user.lastName.substring(-1,1) + ".";            
-                htmlString += `<span biggest-loser>${userName}</span><br>`;
+                htmlString += `<span biggest-loser>${escapeHtml(userName)}</span><br>`;
                 loserScore.innerHTML = `+${user.score || 0}`;
             });
 
@@ -293,7 +304,7 @@ function biggestLoser(users) {
         } else {
             userName = loserUsers[0]?.firstName + " " + loserUsers[0]?.lastName?.substring(-1,1) + ".";
             loserWeek.innerHTML = `in ${week}`;
-            loser.outerHTML = `<span biggest-loser>${userName}</span><br>`;
+            loser.outerHTML = `<span biggest-loser>${escapeHtml(userName)}</span><br>`;
             loserScore.innerHTML = `+${loserUsers[0]?.score || 0}`;
         }    
     } else {
@@ -396,7 +407,7 @@ async function hotTeam(users) {
         var htmlString = '';
 
         topUsers.forEach( user => {
-            htmlString += `<span hot-team>${user.firstName} ${user.lastName.substring(-1,1)}.</span><br>`;
+            htmlString += `<span hot-team>${escapeHtml(user.firstName + ' ' + user.lastName.substring(-1,1) + '.')}</span><br>`;
         });
 
         hotTeam.outerHTML = htmlString;

@@ -2,6 +2,16 @@ var weekCode;
 var userData;
 var isMobile;
 
+// Escapes HTML special chars before interpolating values into innerHTML.
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
         // true for mobile device
@@ -130,8 +140,8 @@ function displayTeams(data) {
         var refLink = `/team?team=${team.id}`;
 
         str += '<th class="team-header sticky-header">';
-        str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
-        str += team.school;
+        str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
+        str += escapeHtml(team.school);
         str += '</a></th>';
         
         data.seasons.at(-1).weeklyScore.forEach(week => {
