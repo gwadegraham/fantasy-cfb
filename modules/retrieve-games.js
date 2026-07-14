@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { withRetry } = require('./retry');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -7,6 +8,20 @@ var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
 var gamesApi = new cfb.GamesApi();
+
+// Dedupes games by id. Two teams in the same league can play each other, so the
+// same game gets collected twice; [...new Set(objects)] does NOT dedupe those
+// because each API result is a distinct object reference.
+function dedupeGamesById(games) {
+    var seen = new Set();
+    return games.filter(function (game) {
+        if (seen.has(game.id)) {
+            return false;
+        }
+        seen.add(game.id);
+        return true;
+    });
+}
 
 module.exports = {
 
@@ -35,7 +50,6 @@ module.exports = {
 
     retrieveGames: async (teams, week) => {
         var allGameData = [];
-        var uniqueGames;
         var year = process.env.YEAR;
         var opts = {
             'week': week,
@@ -46,18 +60,19 @@ module.exports = {
         for (const team of teams) {
             opts.team = team;
 
-            var response = await gamesApi.getGames(year, opts);
-            var gameData = await response;
-
-            for (let x = 0; x < gameData.length; x++) {
-                allGameData.push(gameData[x]);
+            try {
+                var gameData = await withRetry(() => gamesApi.getGames(year, opts), { label: `getGames(${team})` });
+                for (let x = 0; x < gameData.length; x++) {
+                    allGameData.push(gameData[x]);
+                }
+            } catch (err) {
+                console.log(`❌ Skipping team ${team} after repeated getGames failures: ${err.message || err}`);
             }
         }
 
-        uniqueGames = [...new Set(allGameData)];
-        return uniqueGames;
+        return dedupeGamesById(allGameData);
     },
-    
+
     massRetrieveGames: async (week, seasonType) => {
 
         const response = await internalFetch(`${process.env.URL}/games/week/mass-create`, {
@@ -88,7 +103,6 @@ module.exports = {
 
     retrievePostseasonGames: async (teams, week) => {
         var allGameData = [];
-        var uniqueGames;
         var year = process.env.YEAR;
         var opts = {
             'week': week,
@@ -99,16 +113,17 @@ module.exports = {
         for (const team of teams) {
             opts.team = team;
 
-            var response = await gamesApi.getGames(year, opts);
-            var gameData = await response;
-
-            for (let x = 0; x < gameData.length; x++) {
-                allGameData.push(gameData[x]);
+            try {
+                var gameData = await withRetry(() => gamesApi.getGames(year, opts), { label: `getGames(${team})` });
+                for (let x = 0; x < gameData.length; x++) {
+                    allGameData.push(gameData[x]);
+                }
+            } catch (err) {
+                console.log(`❌ Skipping team ${team} after repeated getGames failures: ${err.message || err}`);
             }
         }
 
-        uniqueGames = [...new Set(allGameData)];
-        return uniqueGames;
+        return dedupeGamesById(allGameData);
     },
 
     retrieveGameBySeasonWeekTeam: async (season, week, team) => {

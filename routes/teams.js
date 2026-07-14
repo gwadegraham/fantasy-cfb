@@ -189,23 +189,29 @@ router.post('/:season/expectedWins', async (req, res) => {
     }
     var updatedTeams = [];
 
-    for (teamJson of teamJsonData) {
+    for (const teamJson of teamJsonData) {
 
         var team = await getTeamByName(teamJson.team);
+        if (team == null) {
+            console.log(`Skipping unknown team: ${teamJson.team}`);
+            continue;
+        }
 
         var index = team.seasons.findIndex(x => x.season == req.params.season);
 
         if (index > -1) {
             if (teamJson.expectedWins != null) {
                 team.seasons[index].expectedWins = teamJson.expectedWins;
-            } 
+            }
         }
 
         try {
             const updatedTeam = await team.save();
             updatedTeams.push(updatedTeam);
         } catch (err) {
-            res.status(400).json({message: err.message});
+            // Log and keep going; sending a response here would collide with
+            // the res.status(200) after the loop ("headers already sent").
+            console.log(`Error saving expected wins for ${teamJson.team}: ${err.message}`);
         }
     }
 
@@ -308,16 +314,14 @@ async function getTeam(req, res, next) {
 }
 
 async function getTeamByName(teamName) {
-    let team;
+    // Returns the matching team, or null if not found / on error. This is a
+    // plain helper (no res in scope), so the caller decides how to respond.
     try {
-        team = await Team.findOne( { $or: [{"school": teamName}, {"alternateNames": teamName}]});
-        if (team == null) {
-            return res.status(404).json({message: 'Cannot find expected team ' + teamName});
-        }
+        return await Team.findOne( { $or: [{"school": teamName}, {"alternateNames": teamName}]});
     } catch (err) {
-        return res.status(500).json({message: err.message});
+        console.log(`Error looking up team ${teamName}: ${err.message}`);
+        return null;
     }
-    return team;
 }
 
 module.exports = router;

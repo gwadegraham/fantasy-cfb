@@ -21,6 +21,23 @@ function safeJson(obj) {
     });
 }
 
+// Builds the view's user context from the OIDC user, tolerating accounts that
+// are missing user_metadata / roles / metadata. Previously these were accessed
+// unguarded (e.g. user_metadata.roles.length), so any such account threw a
+// TypeError and got a 500 on every page.
+function buildUserContext(oidcUser) {
+    const meta = (oidcUser && oidcUser.user_metadata) || {};
+    const roles = meta.roles || [];
+    const innerMeta = meta.metadata || {};
+    return {
+        firstName: oidcUser && oidcUser.name,
+        role: roles.length > 0 ? roles[0] : '',
+        userId: innerMeta.userId,
+        league: innerMeta.league || '',
+        isMaintenance: false
+    };
+}
+
 // Routing
 const path = require('path')
 
@@ -66,12 +83,7 @@ db.on('open', () => console.log('Connected to Database'));
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
 
         const userState = safeJson(req.oidc.user);
 
@@ -87,12 +99,7 @@ app.get('/valentine', (req, res) => {
 
 app.get('/standings', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
         res.render('standings', {user, userState});
@@ -103,15 +110,10 @@ app.get('/standings', (req, res) => {
 
 app.get('/rules', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
-        res.render('scoringRules' + req.oidc.user.user_metadata.metadata.league, {user, userState});
+        res.render('scoringRules' + user.league, {user, userState});
     } else {
         res.redirect("/login");
     }
@@ -119,13 +121,8 @@ app.get('/rules', (req, res) => {
 
 app.get('/draft-room', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false,
-            isDraft: false
-        };
+        const user = buildUserContext(req.oidc.user);
+        user.isDraft = false;
         const userState = safeJson(req.oidc.user);
 
         res.render('draftRoom', {user, userState});
@@ -136,12 +133,7 @@ app.get('/draft-room', (req, res) => {
 
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
         res.render('admin', {user, userState});
@@ -152,12 +144,7 @@ app.get('/admin', (req, res) => {
 
 app.get('/index', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
         res.render('standings', {user, userState});
@@ -168,12 +155,7 @@ app.get('/index', (req, res) => {
 
 app.get('/userHome', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
         res.render('userHome', {user, userState});
@@ -184,12 +166,7 @@ app.get('/userHome', async function(req, res) {
 
 app.get('/team', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
-        const user = {
-            firstName: req.oidc.user.name,
-            role: req.oidc.user.user_metadata.roles.length > 0 ? req.oidc.user.user_metadata.roles[0] : '',
-            userId: req.oidc.user.user_metadata.metadata.userId,
-            isMaintenance: false
-        };
+        const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
         res.render('team', {user, userState});

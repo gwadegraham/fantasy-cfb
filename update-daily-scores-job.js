@@ -1,4 +1,5 @@
 const { internalFetch } = require('./modules/internal-api');
+const { withRetry } = require('./modules/retry');
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
@@ -19,7 +20,7 @@ const bettingModule = require('./modules/betting.js');
 async function updateScores () {
 
     var gamesApi = new cfb.GamesApi();
-    var calendar = await gamesApi.getCalendar(process.env.YEAR);
+    var calendar = await withRetry(() => gamesApi.getCalendar(process.env.YEAR), { label: 'getCalendar' });
     var weekNumber = 1;
     var isPostseason = false;
 
@@ -41,6 +42,7 @@ async function updateScores () {
                 break;
             } else if ((currentDate < startDate) && (calendarWeek.week > 1)) {
                 weekNumber = (calendarWeek.week - 1);
+                break;
             }
         }
     }
@@ -237,16 +239,27 @@ if ((todayDate.getHours() == 23)) {
     console.log(dayText);
     console.log("Current Date", todayDate.toLocaleString());
     
-    updateScores();
-
-    transporter.sendMail(mailOptions, function(error, info){
-        if (error) {
-            console.log(error);
-        } else {
-            console.log('Email sent: ' + info.response);
+    // Await the update so the email reflects the real outcome, and don't
+    // swallow failures: previously updateScores() was fire-and-forget, so the
+    // "Update Complete" email was sent before scores finished (and any error
+    // was an unhandled rejection with a green email still going out).
+    (async () => {
+        try {
+            await updateScores();
+        } catch (err) {
+            console.error("❌ Daily score update failed:", err);
+            mailOptions.subject = 'Campus Clash | Daily Update FAILED';
+            mailOptions.html = `<p>The daily score update failed at ${todayDate.toLocaleString()}.</p><pre>${(err && err.stack) ? err.stack : err}</pre>`;
         }
-    });
-    
+
+        try {
+            const info = await transporter.sendMail(mailOptions);
+            console.log('Email sent: ' + info.response);
+        } catch (mailErr) {
+            console.log(mailErr);
+        }
+    })();
+
 } else {
     dayText = "Time is not 11PM, so no updates run.";
     console.log(dayText);

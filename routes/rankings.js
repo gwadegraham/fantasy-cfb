@@ -72,31 +72,31 @@ router.get('/:season/', async (req, res) => {
 // Retrieving new rankings and saving to database || By Year & Week & Season Type
 router.post('/retrieveRankings', async (req, res) => {
     try {
-        var opts = { 
+        var opts = {
         'week': req.body.week,
         'seasonType': req.body.seasonType
         };
 
-        rankingsApi.getRankings(req.body.season, opts).then(async function(data) {
-            console.log('Rankings API called successfully. Returned data: ', data);
+        // Awaited (not .then with a broken err/error handler) so a rejected
+        // API call or a failed save is caught by this try/catch instead of
+        // becoming an unhandled promise rejection with no response sent.
+        const data = await rankingsApi.getRankings(req.body.season, opts);
+        console.log('Rankings API called successfully.');
 
-            const ranking = new Ranking({
-                season: req.body.season,
-                seasonType: req.body.seasonType,
-                week: req.body.week,
-                polls: data[0].polls
-            });
-
-            const newRanking = await ranking.save();
-
-            console.log("New Ranking Record", newRanking);
-
-            res.status(201).json(newRanking);
-        }, function(error) {
-            res.status(400).json({message: err.message});
+        const ranking = new Ranking({
+            season: req.body.season,
+            seasonType: req.body.seasonType,
+            week: req.body.week,
+            polls: data[0].polls
         });
+
+        const newRanking = await ranking.save();
+        console.log("New Ranking Record", newRanking);
+
+        res.status(201).json(newRanking);
     } catch (err) {
-        res.status(500).json({message: err.message});
+        console.log("Error retrieving rankings:", err.message);
+        res.status(400).json({message: err.message});
     }
 });
 

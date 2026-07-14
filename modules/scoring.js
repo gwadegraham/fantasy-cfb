@@ -23,15 +23,18 @@ module.exports= {
 
         for (const user of userData) {
             function score(item){
-                return item.score;
+                return typeof item.score === 'number' ? item.score : 0;
               }
-              
+
               function sum(prev, next){
                 return prev + next;
               }
-              
-              
-            var totalScore = user.seasons[0].weeklyScore.map(score).reduce(sum);
+
+            // Seed reduce with 0 so users with no weekly scores yet (new users
+            // / start of season) return 0 instead of throwing "Reduce of empty
+            // array with no initial value" and aborting the whole loop.
+            var weeklyScore = user.seasons[0].weeklyScore || [];
+            var totalScore = weeklyScore.map(score).reduce(sum, 0);
             updateUserCumulativeScore(user._id, totalScore);
         }
     },
@@ -110,7 +113,9 @@ module.exports= {
                 user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
                 await updateUser(user._id, user.seasons[0].weeklyScore);
             } else if (user.seasons[0].weeklyScore.length == 0){
-                await updateUser(user._id, scoreObject);
+                // First score of the season: weeklyScore is an array field, so
+                // wrap the object rather than storing a bare object.
+                await updateUser(user._id, [scoreObject]);
             } else {
                 user.seasons[0].weeklyScore.push(scoreObject);
                 await updateUser(user._id, user.seasons[0].weeklyScore);
