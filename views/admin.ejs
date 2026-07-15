@@ -105,10 +105,20 @@
             <div class="sub-container" scoring-config-container style="display: none">
                 <form id="scoring-config-form" class="draft-config-form">
                     <div class="draft-status-row">League: <span scoring-config-model></span></div>
+                    <div class="draft-field">
+                        <label>Regular-season combine mode</label>
+                        <select scoring-config-combine-mode>
+                            <option value="first">First match wins (priority)</option>
+                            <option value="sum">Sum all bonuses (additive)</option>
+                        </select>
+                    </div>
                     <div scoring-config-fields></div>
                     <div class="draft-config-actions">
-                        <button type="submit">Save Scoring Values</button>
+                        <button type="submit">Save Scoring Config</button>
                     </div>
+                    <p scoring-config-note class="draft-status-row" style="display:none">
+                        Saved. Run a full-season rescore to apply structural changes to existing scores.
+                    </p>
                 </form>
                 <hr>
             </div>

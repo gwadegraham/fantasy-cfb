@@ -1,5 +1,6 @@
 const { internalFetch } = require('./internal-api');
-const { CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, resolveConfig } = require('./scoring-defaults');
+const { resolveConfig, MODELS } = require('./scoring-defaults');
+const { CONDITIONS, buildContext } = require('./scoring-detectors');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -76,10 +77,13 @@ module.exports= {
                     for (const game of response) {
                         var teamScore = 0;
 
+                        // Pass the full resolved config (model + combineMode +
+                        // values + disabled) so commissioner structure changes
+                        // are honored, not just point values.
                         if (cfg.model == "claunts") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg.values);
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg);
                         } else if (cfg.model == "graham") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg.values);
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg);
                         }
 
                         score += teamScore;
@@ -157,8 +161,8 @@ module.exports= {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
 
-                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season, clauntsCfg.values);
-                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season, grahamCfg.values);
+                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season, clauntsCfg);
+                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season, grahamCfg);
 
                 cumulativeScoreV1 += gameScoreV1;
                 cumulativeScoreV2 += gameScoreV2;
@@ -191,47 +195,18 @@ module.exports= {
         }
     },
 
-    //Scoring for Claunts League. cfg holds this league's point values.
-    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = CLAUNTS_DEFAULTS) {
-        var game = data;
-        var score = 0;
-        var rankings = await getRankingsForGame(game, week, season);
-
-        if (isQuarterFinalist(game)) {
-            score += cfg.cfpQuarterfinal;
-        } else if (isSemiFinalist(game)) {
-            score += cfg.cfpSemifinal;
-        } else if (isFinalist(game)) {
-            score += cfg.nationalChampionship;
-        } else if (game.homeId == team) {
-            score += scoreV1RegularOrBowl(game, game.homePoints > game.awayPoints, game.awayTeam, rankings, cfg);
-        } else if (game.awayId == team) {
-            score += scoreV1RegularOrBowl(game, game.awayPoints > game.homePoints, game.homeTeam, rankings, cfg);
-        }
-
-        return score;
+    // Scoring for the Claunts league (claunts model). `cfg` may be a flat point-
+    // values object (back-compat with callers/tests that only tune values) or a
+    // fully-resolved config { model, combineMode, values, disabled }.
+    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.claunts.defaults) {
+        var rankings = await getRankingsForGame(data, week, season);
+        return evaluate('claunts', team, data, rankings, normalizeCfg('claunts', cfg));
     },
 
-    //Scoring for Graham League. cfg holds this league's point values.
-    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = GRAHAM_DEFAULTS) {
-        var game = data;
-        var score = 0;
-        var rankings = await getRankingsForGame(game, week, season);
-
-        if (isFirstRound(game)) {
-            score += cfg.cfpFirstRound;
-        } else if (isQuarterFinalist(game)) {
-            if (isTop4Seed(game, team)) score += cfg.cfpQuarterfinalTop4Bonus;
-            score += cfg.cfpQuarterfinal;
-        } else if (isSemiFinalist(game)) {
-            score += cfg.cfpSemifinal;
-        } else if (game.homeId == team) {
-            score += scoreV2RegularOrBowl(game, game.homePoints > game.awayPoints, game.awayTeam, game.homeConference, game.awayConference, rankings, cfg);
-        } else if (game.awayId == team) {
-            score += scoreV2RegularOrBowl(game, game.awayPoints > game.homePoints, game.homeTeam, game.awayConference, game.homeConference, rankings, cfg);
-        }
-
-        return score;
+    // Scoring for the Graham league (graham model). See calculateScoreV1 re: cfg.
+    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.graham.defaults) {
+        var rankings = await getRankingsForGame(data, week, season);
+        return evaluate('graham', team, data, rankings, normalizeCfg('graham', cfg));
     },
 
     updateTeamScores: async function (teamId, scoreUpdate) {
@@ -364,192 +339,66 @@ async function getRankingsForGame(game, week, season) {
     return response.json();
 }
 
-// Claunts (V1) regular-season / bowl scoring for one team in a game.
-function scoreV1RegularOrBowl(game, won, opponent, rankings, cfg) {
+// --- unified scoring engine ---------------------------------------------
+
+// Coerces the `cfg` arg accepted by calculateScoreV1/V2 into the shape the
+// engine needs: { combineMode, values, disabled }. A fully-resolved config
+// (from resolveConfig / getScoringConfig) is passed through; a bare point-values
+// object is wrapped, letting the model's default combine mode apply and leaving
+// all postseason events enabled.
+function normalizeCfg(model, cfg) {
+    if (cfg && typeof cfg === 'object' && cfg.values && typeof cfg.values === 'object') {
+        return { combineMode: cfg.combineMode, values: cfg.values, disabled: cfg.disabled || [] };
+    }
+    return { combineMode: undefined, values: cfg || {}, disabled: [] };
+}
+
+function pointsOf(values, key) {
+    var v = values[key];
+    return typeof v === 'number' ? v : 0;
+}
+
+// The single data-driven engine both leagues run through. `model` selects the
+// code-owned structure (rule lists + default combine mode); `cfg` supplies the
+// commissioner's point values, combine-mode override, and disabled postseason
+// events. See modules/scoring-defaults.js for the structure and the exact
+// precedence rationale.
+function evaluate(model, team, game, rankings, cfg) {
+    var structure = (MODELS[model] || MODELS.claunts).structure;
+    var values = cfg.values || {};
+    var disabled = new Set(cfg.disabled || []);
+    var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
+        ? cfg.combineMode : structure.combineMode;
+    var ctx = buildContext(team, game, rankings);
+
+    // 1. Postseason events, in order. Each enabled matching rule adds its
+    //    points; a non-additive match stops evaluation. This first-match-stop
+    //    reproduces the old elif precedence (bracket rounds short-circuit the
+    //    bowl/regular paths, so a CFP game at a bowl venue never double-counts).
     var score = 0;
-    var isBowlTeam = isBowlParticipant(game);
-    if (isBowlTeam) score += cfg.bowlAppearance;
-    if (won) {
-        if (isFinalist(game)) {
-            score += cfg.nationalChampionship;
-        } else if (isBowlWin(game)) {
-            score += cfg.bowlWin;
-        } else if (isConferenceChampion(game)) {
-            score += cfg.confChampionship;
-        } else if (!isBowlTeam && !isFirstRound(game)) {
-            score += cfg.nonConfWinUnranked;
-            // Conference win is fixed (ranked or not); a non-conference win over
-            // a ranked opponent scores more.
-            if (isConference(game)) {
-                score = cfg.confWin;
-            } else if (isRankedV1(opponent, rankings)) {
-                score = cfg.nonConfWinRanked;
-            }
+    var matchedPost = false;
+    for (var i = 0; i < structure.postseason.length; i++) {
+        var pr = structure.postseason[i];
+        if (disabled.has(pr.condition)) continue;
+        var pd = CONDITIONS[pr.condition];
+        if (pd && pd(ctx)) {
+            score += pointsOf(values, pr.pointsKey);
+            matchedPost = true;
+            if (!pr.additive) break;
         }
-    } else if (isFirstRound(game)) {
-        score += cfg.cfpAppearance;
+    }
+    if (matchedPost) return score;
+
+    // 2. Regular-win group (only if no postseason event matched). Combine mode
+    //    'sum' adds every matching rule (Graham); 'first' takes the first match
+    //    in priority order (Claunts).
+    for (var j = 0; j < structure.regularWin.length; j++) {
+        var rr = structure.regularWin[j];
+        var rd = CONDITIONS[rr.condition];
+        if (rd && rd(ctx)) {
+            score += pointsOf(values, rr.pointsKey);
+            if (combineMode !== 'sum') break;
+        }
     }
     return score;
-}
-
-// Graham (V2) regular-season / bowl scoring for one team in a game (additive).
-function scoreV2RegularOrBowl(game, won, opponent, teamConf, oppConf, rankings, cfg) {
-    if (!won) return 0;
-    if (isFinalist(game)) return cfg.nationalChampionship;
-    if (isBowlWin(game)) return cfg.bowlWin;
-    if (isConferenceChampion(game)) return cfg.confChampionship;
-
-    var score = cfg.baseWin;
-    if (isConference(game)) score += cfg.confBonus;
-    var rankVal = isRanked(opponent, rankings);   // 0 unranked, 1 = #11-25, 2 = #1-10
-    if (rankVal === 2) score += cfg.rankedTop10Bonus;
-    else if (rankVal === 1) score += cfg.rankedTop25Bonus;
-    if (isPowerFive(teamConf, oppConf)) score += cfg.nonP5UpsetBonus;
-    return score;
-}
-
-function isConference(game) {
-    if ((game.homeConference == "FBS Independents") || (game.awayConference == "FBS Independents")) {
-        return false;
-    } else {
-        return game.conferenceGame;
-    }
-}
-
-// Finds the relevant poll (CFP committee if present, else AP Top 25). Returns
-// null if rankings weren't loaded for the week or neither poll is present, so
-// callers degrade gracefully instead of throwing.
-function findPoll(rankings) {
-    if (!rankings || !Array.isArray(rankings.polls)) return null;
-    var poll = rankings.polls.find(x => x.poll === 'Playoff Committee Rankings')
-        || rankings.polls.find(x => x.poll === 'AP Top 25');
-    if (!poll || !Array.isArray(poll.ranks)) return null;
-    return poll;
-}
-
-function isRankedV1(team, rankings) {
-    var poll = findPoll(rankings);
-    if (!poll) return false;
-    return poll.ranks.some(y => y.school === team);
-}
-
-function isRanked(team, rankings) {
-    var poll = findPoll(rankings);
-    if (!poll) return 0;
-    var entry = poll.ranks.find(y => y.school === team);
-    if (!entry) return 0;
-    return entry.rank <= 10 ? 2 : 1;   // #1-10 -> 2, #11-25 -> 1
-}
-
-function isPowerFive(teamConf, oppConf) {
-    var powerFive = new Array("ACC", "Big 12", "Big Ten", "SEC");
-
-    if ((!powerFive.includes(teamConf)) && (powerFive.includes(oppConf))) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-function isConferenceChampion(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("championship") && (game.seasonType == "regular")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isBowlWin(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("playoff") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isBowlParticipant(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("playoff") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    } else {
-        return false;
-    }
-}
-
-function isFirstRound(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("first round") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isTop4Seed(game, teamId) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("quarterfinal") && (game.seasonType == "postseason") && (game.homeId == teamId)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isQuarterFinalist(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("quarterfinal") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isSemiFinalist(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("semifinal") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
-}
-
-function isFinalist(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("national championship") && (game.seasonType == "postseason")) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-     else {
-        return false;
-    }
 }

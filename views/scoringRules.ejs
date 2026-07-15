@@ -38,9 +38,27 @@
     </section>
 
     <section class="rules-section">
-      <h2 class="rule-header">🏈 Scoring System</h2>
+      <h2 class="rule-header">🏈 Regular Season Scoring</h2>
+      <p class="scoring-mode">
+        <% if (cfg.combineMode === 'sum') { %>
+          Bonuses <strong>stack</strong> — a win earns the base points plus every bonus that applies.
+        <% } else { %>
+          A win scores the <strong>single highest-priority</strong> rule that applies (bonuses do not stack).
+        <% } %>
+      </p>
       <ul class="scoring-list">
-        <% fields.forEach(function(f){ var v = cfg.values[f.key]; %>
+        <% fields.filter(function(f){ return f.group === 'regular' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
+          <li>
+            <% if (f.additive) { %><i class="fas fa-plus"></i><% } %><%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
+          </li>
+        <% }); %>
+      </ul>
+    </section>
+
+    <section class="rules-section">
+      <h2 class="rule-header">🏆 Postseason Scoring</h2>
+      <ul class="scoring-list">
+        <% fields.filter(function(f){ return f.group === 'postseason' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
           <li>
             <% if (f.additive) { %><i class="fas fa-plus"></i><% } %><%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
           </li>

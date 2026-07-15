@@ -1235,21 +1235,46 @@ async function displayScoringConfigContainer() {
 async function loadScoringConfig() {
     var leagueCode = getDraftLeagueCode();
     var res = await fetch(`/scoring-config/${leagueCode}`, { headers: { 'Accept': 'application/json' } });
-    scoringConfigData = await res.json();   // { league, model, values, fields }
+    scoringConfigData = await res.json();   // { league, model, combineMode, values, disabled, fields }
     document.querySelector('[scoring-config-model]').textContent =
         (leagueCode === 'graham-league' ? 'Graham' : 'Claunts') + ' — ' + scoringConfigData.model + ' model';
+    var mode = document.querySelector('[scoring-config-combine-mode]');
+    if (mode) mode.value = scoringConfigData.combineMode || 'first';
+    document.querySelector('[scoring-config-note]').style.display = 'none';
     renderScoringFields();
 }
 
+// Renders the value inputs grouped by regular vs postseason. Postseason events
+// get an enable/disable checkbox (Option A: commissioners tune points + toggle
+// events + flip combine mode; they do not add/reorder rules or pick conditions).
 function renderScoringFields() {
     var wrap = document.querySelector('[scoring-config-fields]');
     var vals = scoringConfigData.values || {};
-    wrap.innerHTML = (scoringConfigData.fields || []).map(function (f) {
-        return `<div class="draft-field">
-            <label>${f.additive ? '+ ' : ''}${f.label}</label>
+    var fields = scoringConfigData.fields || [];
+
+    function fieldRow(f) {
+        var toggle = f.toggleable
+            ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" ${f.enabled ? 'checked' : ''} title="Enable this event">`
+            : '';
+        return `<div class="draft-field scoring-field${f.enabled ? '' : ' scoring-disabled'}" data-condition="${f.condition}">
+            <label>${toggle}${f.additive ? '+ ' : ''}${f.label}</label>
             <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
         </div>`;
-    }).join('');
+    }
+
+    var regular = fields.filter(function (f) { return f.group === 'regular'; });
+    var post = fields.filter(function (f) { return f.group === 'postseason'; });
+    wrap.innerHTML =
+        '<div class="draft-status-row">Regular season</div>' + regular.map(fieldRow).join('') +
+        '<div class="draft-status-row">Postseason</div>' + post.map(fieldRow).join('');
+
+    // Grey out a postseason row when its event is disabled.
+    wrap.querySelectorAll('.scoring-toggle').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
+            if (row) row.classList.toggle('scoring-disabled', !cb.checked);
+        });
+    });
 }
 
 async function saveScoringConfig() {
@@ -1258,19 +1283,32 @@ async function saveScoringConfig() {
     document.querySelectorAll('[scoring-config-fields] input[data-key]').forEach(function (inp) {
         values[inp.getAttribute('data-key')] = parseFloat(inp.value);
     });
+    var disabled = [];
+    document.querySelectorAll('[scoring-config-fields] .scoring-toggle').forEach(function (cb) {
+        if (!cb.checked) disabled.push(cb.getAttribute('data-condition'));
+    });
+    var modeEl = document.querySelector('[scoring-config-combine-mode]');
+    var combineMode = modeEl ? modeEl.value : undefined;
+
     var res = await fetch('/scoring-config', {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ league: leagueCode, model: scoringConfigData.model, values: values })
+        body: JSON.stringify({
+            league: leagueCode, model: scoringConfigData.model,
+            values: values, combineMode: combineMode, disabled: disabled
+        })
     });
     var data = await res.json();
     if (res.status === 200) {
         scoringConfigData = data;
+        var modeReload = document.querySelector('[scoring-config-combine-mode]');
+        if (modeReload) modeReload.value = scoringConfigData.combineMode || 'first';
         renderScoringFields();
-        successToast.options.text = 'Scoring values saved';
+        document.querySelector('[scoring-config-note]').style.display = 'block';
+        successToast.options.text = 'Scoring config saved';
         successToast.showToast();
     } else {
-        failToast.options.text = (data.message || 'Could not save scoring values');
+        failToast.options.text = (data.message || 'Could not save scoring config');
         failToast.showToast();
     }
 }

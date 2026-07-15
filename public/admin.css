@@ -216,6 +216,21 @@
     font-size: 0.95em;
 }
 
+/* Postseason event rows carry an enable/disable checkbox; dim disabled ones. */
+.scoring-field label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.scoring-field .scoring-toggle {
+    flex: 0 0 auto;
+}
+
+.scoring-disabled {
+    opacity: 0.45;
+}
+
 .draft-status-badge {
     text-transform: capitalize;
     font-weight: 600;
