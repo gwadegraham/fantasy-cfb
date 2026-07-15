@@ -23,6 +23,28 @@ function dedupeGamesById(games) {
     });
 }
 
+// Guards for the /games/week/mass-create route. Kept pure (no req/res/DB) so
+// they can be unit-tested. Return an error message to send as a 400, or null
+// when the request is good to process.
+
+// A missing week/seasonType (e.g. the admin dropdown left unselected) must be
+// rejected BEFORE calling CFBD: an empty week makes CFBD return a 400 JSON
+// object instead of an array, and iterating that object throws "not iterable"
+// — an unhandled rejection that crashes the Node process.
+function massCreateInputError(week, seasonType) {
+    if (!week || !seasonType) return 'week and seasonType are required';
+    return null;
+}
+
+// Even with valid inputs the CFBD call can fail (rate limit, bad params, etc.),
+// returning a non-OK status and a JSON object rather than a games array.
+function gamesResponseError(responseOk, status, gameData) {
+    if (!responseOk || !Array.isArray(gameData)) {
+        return (gameData && gameData.message) ? gameData.message : `CFBD request failed (${status})`;
+    }
+    return null;
+}
+
 module.exports = {
 
     retrieveTeams: async () => {
@@ -175,5 +197,7 @@ module.exports = {
     },
 
     // Exported for testing.
-    dedupeGamesById: dedupeGamesById
+    dedupeGamesById: dedupeGamesById,
+    massCreateInputError: massCreateInputError,
+    gamesResponseError: gamesResponseError
 };

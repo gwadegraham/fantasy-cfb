@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Game = require('../models/game');
+const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -122,6 +123,15 @@ router.post('/week/mass-create', async (req, res) => {
         'division': 'fbs'
     };
 
+    // Reject a missing week/seasonType before hitting CFBD: an empty week makes
+    // CFBD return a 400 JSON object instead of an array, and iterating that
+    // object below throws "not iterable" — an unhandled rejection in this async
+    // handler, which crashes the Node process.
+    var inputError = massCreateInputError(req.body.week, req.body.seasonType);
+    if (inputError) {
+        return res.status(400).json({ message: inputError });
+    }
+
     const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}&week=${req.body.week}&seasonType=${req.body.seasonType}&division=fbs`, {
         method: 'GET',
         headers: {
@@ -131,7 +141,12 @@ router.post('/week/mass-create', async (req, res) => {
     });
 
     var gameData = await response.json();
-        
+
+    var responseError = gamesResponseError(response.ok, response.status, gameData);
+    if (responseError) {
+        return res.status(400).json({ message: responseError });
+    }
+
     for (const game of gameData) {
         var alreadyExists = await Game.find({ id: game.id });
 

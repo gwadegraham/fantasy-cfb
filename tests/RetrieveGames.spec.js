@@ -1,4 +1,4 @@
-const { dedupeGamesById } = require('../modules/retrieve-games');
+const { dedupeGamesById, massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 describe('dedupeGamesById', () => {
     it('removes games with duplicate ids (distinct object references)', () => {
@@ -29,5 +29,42 @@ describe('dedupeGamesById', () => {
     it('leaves an already-unique list unchanged', () => {
         const games = [{ id: 1 }, { id: 2 }, { id: 3 }];
         expect(dedupeGamesById(games)).toEqual(games);
+    });
+});
+
+describe('massCreateInputError', () => {
+    it('rejects a missing week (the dropdown-unselected case that crashed the server)', () => {
+        expect(massCreateInputError('', 'regular')).toBe('week and seasonType are required');
+        expect(massCreateInputError(undefined, 'regular')).toBe('week and seasonType are required');
+    });
+
+    it('rejects a missing seasonType', () => {
+        expect(massCreateInputError('5', '')).toBe('week and seasonType are required');
+    });
+
+    it('passes valid inputs', () => {
+        expect(massCreateInputError('5', 'regular')).toBeNull();
+        expect(massCreateInputError('1', 'postseason')).toBeNull();
+    });
+});
+
+describe('gamesResponseError', () => {
+    it('flags a non-OK CFBD response and surfaces its message', () => {
+        // What CFBD returns for an empty week: 400 + a JSON object, not an array.
+        const body = { message: 'Validation Failed', details: { week: {} } };
+        expect(gamesResponseError(false, 400, body)).toBe('Validation Failed');
+    });
+
+    it('flags a non-array body even on a 200 (would otherwise be "not iterable")', () => {
+        expect(gamesResponseError(true, 200, { unexpected: 'shape' })).toBe('CFBD request failed (200)');
+    });
+
+    it('falls back to a status message when there is no error message', () => {
+        expect(gamesResponseError(false, 500, null)).toBe('CFBD request failed (500)');
+    });
+
+    it('passes a normal array of games', () => {
+        expect(gamesResponseError(true, 200, [{ id: 1 }, { id: 2 }])).toBeNull();
+        expect(gamesResponseError(true, 200, [])).toBeNull();
     });
 });
