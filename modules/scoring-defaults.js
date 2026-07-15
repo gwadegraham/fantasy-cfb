@@ -1,7 +1,17 @@
-// Single source of truth for the two leagues' scoring models: default point
-// values (matching the historical hardcoded engine exactly) plus ordered field
-// metadata that drives BOTH the admin "Configure Scoring" form and the rules
-// page — so the page can never drift from the engine.
+// Single source of truth for the two leagues' scoring models.
+//
+// Phase 1 made point VALUES configurable. Phase 2 makes the STRUCTURE
+// configurable within a fixed vocabulary (see scoring-detectors.js): a
+// commissioner can edit each rule's points, enable/disable postseason events,
+// and flip the regular-win combine mode ('first' = priority, 'sum' = additive).
+//
+// A model's STRUCTURE (which conditions exist, their order, additive flags, the
+// default combine mode) is code-owned. The commissioner's overrides are just:
+// point `values`, a `combineMode`, and a `disabled` list of postseason
+// condition keys. resolveConfig() merges overrides onto the model defaults so a
+// partial/absent config always yields a valid, fully-populated config.
+
+// --- default point values (match the historical hardcoded engine exactly) ---
 
 const CLAUNTS_DEFAULTS = {
     nonConfWinUnranked: 1,
@@ -31,39 +41,62 @@ const GRAHAM_DEFAULTS = {
     nationalChampionship: 10
 };
 
-// Ordered fields for UI + rules page. `additive: true` marks a Graham bonus
-// that stacks on top of the base win (rendered with a "+").
-const CLAUNTS_FIELDS = [
-    { key: 'nonConfWinUnranked', label: 'Non-conference win vs. unranked opponent' },
-    { key: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent' },
-    { key: 'confWin', label: 'Conference win' },
-    { key: 'confChampionship', label: 'Conference championship win' },
-    { key: 'bowlAppearance', label: 'Non-playoff bowl appearance' },
-    { key: 'bowlWin', label: 'Non-playoff bowl win' },
-    { key: 'cfpAppearance', label: 'CFP appearance' },
-    { key: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
-    { key: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
-    { key: 'nationalChampionship', label: 'National Championship appearance' }
-];
+// --- structural definitions ---------------------------------------------
+//
+// regularWin: ordered rules combined per `combineMode`. Under 'first' the first
+//   matching rule's points win (Claunts: a conference win scores 2 even vs a
+//   ranked team). Under 'sum' the points of every matching rule are added
+//   (Graham: base + conference + ranked + upset bonuses stack).
+// postseason: ordered independent events. The engine walks them in order and a
+//   non-`additive` match stops evaluation — this reproduces the old elif
+//   precedence (e.g. a Rose Bowl quarterfinal scores the CFP value, not a bowl
+//   appearance). `additive: true` rules add their points and keep going.
+//
+// `condition` is the detector key (scoring-detectors.js CONDITIONS); `pointsKey`
+// indexes the point value; `label` drives the admin form and rules page.
 
-const GRAHAM_FIELDS = [
-    { key: 'baseWin', label: 'Non-con win vs. unranked opponent' },
-    { key: 'confBonus', label: 'Conference win vs. unranked opponent', additive: true },
-    { key: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
-    { key: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
-    { key: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true },
-    { key: 'confChampionship', label: 'Conference championship win' },
-    { key: 'bowlWin', label: 'Non-playoff bowl win' },
-    { key: 'cfpFirstRound', label: 'CFP First Round appearance' },
-    { key: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
-    { key: 'cfpQuarterfinalTop4Bonus', label: 'CFP Quarterfinal — top-4 seed bye bonus' },
-    { key: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
-    { key: 'nationalChampionship', label: 'National Championship win' }
-];
+const STRUCTURES = {
+    claunts: {
+        combineMode: 'first',
+        regularWin: [
+            { condition: 'conferenceWin', pointsKey: 'confWin', label: 'Conference win' },
+            { condition: 'nonConfRankedWin', pointsKey: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent' },
+            { condition: 'baseWin', pointsKey: 'nonConfWinUnranked', label: 'Non-conference win vs. unranked opponent' }
+        ],
+        postseason: [
+            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
+            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
+            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance' },
+            { condition: 'cfpFirstRoundLoss', pointsKey: 'cfpAppearance', label: 'CFP appearance (first-round exit)' },
+            { condition: 'bowlAppearance', pointsKey: 'bowlAppearance', label: 'Non-playoff bowl appearance', additive: true },
+            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win' },
+            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win' }
+        ]
+    },
+    graham: {
+        combineMode: 'sum',
+        regularWin: [
+            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Non-con win vs. unranked opponent' },
+            { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win vs. unranked opponent', additive: true },
+            { condition: 'rankedTop25Bonus', pointsKey: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
+            { condition: 'rankedTop10Bonus', pointsKey: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
+            { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true }
+        ],
+        postseason: [
+            { condition: 'cfpFirstRound', pointsKey: 'cfpFirstRound', label: 'CFP First Round appearance' },
+            { condition: 'cfpQuarterfinalTop4Bonus', pointsKey: 'cfpQuarterfinalTop4Bonus', label: 'CFP Quarterfinal — top-4 seed bye bonus', additive: true },
+            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
+            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
+            { condition: 'nationalChampionshipWin', pointsKey: 'nationalChampionship', label: 'National Championship win' },
+            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win' },
+            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win' }
+        ]
+    }
+};
 
 const MODELS = {
-    claunts: { defaults: CLAUNTS_DEFAULTS, fields: CLAUNTS_FIELDS },
-    graham: { defaults: GRAHAM_DEFAULTS, fields: GRAHAM_FIELDS }
+    claunts: { defaults: CLAUNTS_DEFAULTS, structure: STRUCTURES.claunts },
+    graham: { defaults: GRAHAM_DEFAULTS, structure: STRUCTURES.graham }
 };
 
 // Claunts = V1 engine, Graham = V2 engine. Unknown leagues default to Claunts.
@@ -71,18 +104,42 @@ function modelForLeague(league) {
     return league === 'graham-league' ? 'graham' : 'claunts';
 }
 
-// Returns { model, values } for a league, merging any provided overrides over
-// the model defaults (so a partial/absent config still yields valid values).
+// Flat, ordered field metadata for the admin form + rules page. Regular-win
+// fields carry group 'regular'; postseason fields group 'postseason' and are
+// toggleable (enable/disable). `enabled` reflects the resolved `disabled` set.
+function fieldsForModel(model, disabled) {
+    const structure = (MODELS[model] || MODELS.claunts).structure;
+    const off = new Set(disabled || []);
+    const regular = structure.regularWin.map(r => ({
+        key: r.pointsKey, condition: r.condition, label: r.label,
+        additive: !!r.additive, group: 'regular', toggleable: false, enabled: true
+    }));
+    const post = structure.postseason.map(r => ({
+        key: r.pointsKey, condition: r.condition, label: r.label,
+        additive: !!r.additive, group: 'postseason', toggleable: true, enabled: !off.has(r.condition)
+    }));
+    return regular.concat(post);
+}
+
+// Returns a fully-resolved config for a league:
+//   { model, combineMode, values, disabled }
+// merging any provided overrides over the model defaults.
 function resolveConfig(league, overrides) {
-    const model = (overrides && overrides.model) || modelForLeague(league);
-    const base = MODELS[model] ? MODELS[model].defaults : CLAUNTS_DEFAULTS;
+    const model = (overrides && overrides.model && MODELS[overrides.model]) ? overrides.model : modelForLeague(league);
+    const modelDef = MODELS[model] || MODELS.claunts;
+    const combineMode = (overrides && (overrides.combineMode === 'sum' || overrides.combineMode === 'first'))
+        ? overrides.combineMode
+        : modelDef.structure.combineMode;
+    const disabled = (overrides && Array.isArray(overrides.disabled)) ? overrides.disabled.slice() : [];
     return {
         model,
-        values: Object.assign({}, base, (overrides && overrides.values) || {})
+        combineMode,
+        values: Object.assign({}, modelDef.defaults, (overrides && overrides.values) || {}),
+        disabled
     };
 }
 
 module.exports = {
-    CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, CLAUNTS_FIELDS, GRAHAM_FIELDS,
-    MODELS, modelForLeague, resolveConfig
+    CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS,
+    modelForLeague, fieldsForModel, resolveConfig
 };

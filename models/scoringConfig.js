@@ -8,6 +8,11 @@ const scoringConfigSchema = new mongoose.Schema({
     league: { type: String, required: true, unique: true },
     model: { type: String, enum: ['claunts', 'graham'], required: true },
     values: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Phase 2 structure overrides: how regular-win rules combine
+    // ('first' = priority, 'sum' = additive) and which postseason event
+    // conditions are switched off (by condition key).
+    combineMode: { type: String, enum: ['first', 'sum'] },
+    disabled: { type: [String], default: [] },
     updatedAt: { type: Date, default: Date.now }
 });
 

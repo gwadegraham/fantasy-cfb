@@ -13,7 +13,7 @@ const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
 const ScoringConfig = require('./models/scoringConfig');
-const { resolveConfig, MODELS } = require('./modules/scoring-defaults');
+const { resolveConfig, fieldsForModel } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 
@@ -137,11 +137,13 @@ app.get('/rules', async (req, res) => {
         let cfg;
         try {
             const doc = await ScoringConfig.findOne({ league: leagueCode });
-            cfg = resolveConfig(leagueCode, doc ? { model: doc.model, values: doc.values } : null);
+            cfg = resolveConfig(leagueCode, doc
+                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled }
+                : null);
         } catch (err) {
             cfg = resolveConfig(leagueCode, null);
         }
-        const fields = MODELS[cfg.model].fields;
+        const fields = fieldsForModel(cfg.model, cfg.disabled);
 
         res.render('scoringRules', { user, userState, cfg, fields });
     } else {
