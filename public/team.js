@@ -81,17 +81,29 @@ async function getTeam() {
     const teamRecordInfo = await getRecord(teamData);
     const conferenceRecords = await getConferenceRecords(teamData);
     const allTeamLogos = await getTeamLogos(conferenceRecords);
-    const recruiting = await getRecruitingRankings(teamData.school, teamData.seasons.at(-1).season);
+    const recruiting = await getRecruitingRankings(teamData.school, (latestPlayedSeason(teamData.seasons) || teamData.seasons.at(-1)).season);
 
     renderConferenceStandings(conferenceRecords, teamData, allTeamLogos);
     renderTeamInfo(teamData, teamRecordInfo, recruiting);
 }
 
+// The latest season that actually has games played (a non-empty weeklyScore).
+// Team docs can carry a future-season stub (e.g. a preseason 2026 with 0 games)
+// as their LAST entry; using seasons.at(-1) would show an empty page, so prefer
+// the newest season with real data and fall back to the last season.
+function latestPlayedSeason(seasons) {
+    if (!Array.isArray(seasons) || seasons.length === 0) return null;
+    for (var i = seasons.length - 1; i >= 0; i--) {
+        var s = seasons[i];
+        if (s && Array.isArray(s.weeklyScore) && s.weeklyScore.length > 0) return s;
+    }
+    return seasons[seasons.length - 1];
+}
+
 async function getRecord(teamData) {
-    // Use the season being viewed (the team's latest season), not the wall-clock
-    // year — otherwise records are fetched for a year with no data once the
-    // calendar drifts past the season.
-    var currentYear = teamData?.seasons?.at(-1)?.season || new Date().getFullYear();
+    // Use the season actually being viewed (latest season with games), not the
+    // wall-clock year and not a future-season stub with no data.
+    var currentYear = latestPlayedSeason(teamData?.seasons)?.season || new Date().getFullYear();
 
     const response = await fetch(`/records/${currentYear}/${teamData.school}`, {
         method: 'GET',
@@ -106,7 +118,7 @@ async function getRecord(teamData) {
 }
 
 async function getConferenceRecords(teamData) {
-    var currentYear = teamData?.seasons?.at(-1)?.season || new Date().getFullYear();
+    var currentYear = latestPlayedSeason(teamData?.seasons)?.season || new Date().getFullYear();
 
     const response = await fetch(`/records/${currentYear}/conference/${teamData.seasons.at(-1).conference}`, {
         method: 'GET',
@@ -154,7 +166,7 @@ async function getTeamSeasonYear(teamId) {
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
         });
         const data = await res.json();
-        const season = data?.[0]?.seasons?.at(-1)?.season;
+        const season = latestPlayedSeason(data?.[0]?.seasons)?.season;
         if (season != null) return season;
     } catch (e) { /* fall through */ }
     return new Date().getFullYear();
@@ -208,8 +220,11 @@ function renderTeamInfo(team, record, recruiting) {
     // (never 'gg'), so the old 'gg' test always fell through to V2 and showed
     // every viewer the Graham score.
     var scoreCode = (leagueCode == 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-    var formatConference = team.seasons.at(-1).conference;
-    var confLogo = getConferenceLogo(team.seasons.at(-1).conference);
+    // Show the season actually being viewed (latest with games), not an empty
+    // future-season stub.
+    var seasonObj = latestPlayedSeason(team.seasons) || team.seasons.at(-1);
+    var formatConference = seasonObj.conference;
+    var confLogo = getConferenceLogo(seasonObj.conference);
 
     const html = `
         
@@ -226,13 +241,13 @@ function renderTeamInfo(team, record, recruiting) {
 
         <div class="team-details">
             <div>
-                <h4>${team.seasons.at(-1).season} Record</h4>
+                <h4>${seasonObj.season} Record</h4>
                 <p class="score">${record?.total?.wins || 0}-${record?.total?.losses || 0}    Overall</p>
                 <p class="score">${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}    Conference</p>
             </div>
             <div>
                 <h4>📈 Season Score</h4>
-                <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
+                <p class="score">${seasonObj[scoreCode] || 0} Points</p>
                 <h4>Recruiting Rank</h4>
                 <p class="score">#${recruiting?.rank || 0}</p>
             </div>
