@@ -1216,3 +1216,66 @@ if (document.querySelector('[draft-season]')) {
     populateDraftSeasonOptions();
     document.querySelector('[draft-season]').addEventListener('change', loadDraftConfig);
 }
+/////////////////////////////////////////////////////
+/////////////////// Scoring Config ////////////////////
+/////////////////////////////////////////////////////
+
+var scoringConfigData = null;
+
+async function displayScoringConfigContainer() {
+    var c = document.querySelector('[scoring-config-container]');
+    if (c.style.display == 'flex' || c.style.display == '') {
+        c.style.display = 'none';
+    } else {
+        c.style.display = 'flex';
+        await loadScoringConfig();
+    }
+}
+
+async function loadScoringConfig() {
+    var leagueCode = getDraftLeagueCode();
+    var res = await fetch(`/scoring-config/${leagueCode}`, { headers: { 'Accept': 'application/json' } });
+    scoringConfigData = await res.json();   // { league, model, values, fields }
+    document.querySelector('[scoring-config-model]').textContent =
+        (leagueCode === 'graham-league' ? 'Graham' : 'Claunts') + ' — ' + scoringConfigData.model + ' model';
+    renderScoringFields();
+}
+
+function renderScoringFields() {
+    var wrap = document.querySelector('[scoring-config-fields]');
+    var vals = scoringConfigData.values || {};
+    wrap.innerHTML = (scoringConfigData.fields || []).map(function (f) {
+        return `<div class="draft-field">
+            <label>${f.additive ? '+ ' : ''}${f.label}</label>
+            <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
+        </div>`;
+    }).join('');
+}
+
+async function saveScoringConfig() {
+    var leagueCode = getDraftLeagueCode();
+    var values = {};
+    document.querySelectorAll('[scoring-config-fields] input[data-key]').forEach(function (inp) {
+        values[inp.getAttribute('data-key')] = parseFloat(inp.value);
+    });
+    var res = await fetch('/scoring-config', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ league: leagueCode, model: scoringConfigData.model, values: values })
+    });
+    var data = await res.json();
+    if (res.status === 200) {
+        scoringConfigData = data;
+        renderScoringFields();
+        successToast.options.text = 'Scoring values saved';
+        successToast.showToast();
+    } else {
+        failToast.options.text = (data.message || 'Could not save scoring values');
+        failToast.showToast();
+    }
+}
+
+const scoringConfigForm = document.getElementById('scoring-config-form');
+if (scoringConfigForm) {
+    scoringConfigForm.addEventListener('submit', function (e) { e.preventDefault(); saveScoringConfig(); });
+}
