@@ -81,15 +81,17 @@ async function getTeam() {
     const teamRecordInfo = await getRecord(teamData);
     const conferenceRecords = await getConferenceRecords(teamData);
     const allTeamLogos = await getTeamLogos(conferenceRecords);
-    const recruiting = await getRecruitingRankings(teamData.school);
+    const recruiting = await getRecruitingRankings(teamData.school, teamData.seasons.at(-1).season);
 
     renderConferenceStandings(conferenceRecords, teamData, allTeamLogos);
     renderTeamInfo(teamData, teamRecordInfo, recruiting);
 }
 
 async function getRecord(teamData) {
-    var currentYear = new Date().getFullYear();
-    // currentYear = 2024;
+    // Use the season being viewed (the team's latest season), not the wall-clock
+    // year — otherwise records are fetched for a year with no data once the
+    // calendar drifts past the season.
+    var currentYear = teamData?.seasons?.at(-1)?.season || new Date().getFullYear();
 
     const response = await fetch(`/records/${currentYear}/${teamData.school}`, {
         method: 'GET',
@@ -104,8 +106,7 @@ async function getRecord(teamData) {
 }
 
 async function getConferenceRecords(teamData) {
-    var currentYear = new Date().getFullYear();
-    // currentYear = 2024;
+    var currentYear = teamData?.seasons?.at(-1)?.season || new Date().getFullYear();
 
     const response = await fetch(`/records/${currentYear}/conference/${teamData.seasons.at(-1).conference}`, {
         method: 'GET',
@@ -121,10 +122,12 @@ async function getConferenceRecords(teamData) {
 
 async function getSchedule() {
     const urlParams = new URLSearchParams(window.location.search);
-    var seasonYear = new Date().getFullYear();
-    // seasonYear = 2024;
+    const teamId = urlParams.get('team');
+    // Resolve the season from the team's own data, not the wall-clock year, so
+    // the schedule/rankings/lines match the season actually being shown.
+    var seasonYear = await getTeamSeasonYear(teamId);
 
-    const response = await fetch(`/games/season/${seasonYear}/teamId/${urlParams.get('team')}`, {
+    const response = await fetch(`/games/season/${seasonYear}/teamId/${teamId}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -136,10 +139,25 @@ async function getSchedule() {
         var scheduleData = data;
         const allTeamLogos = await getTeamLogos(data);
         const allRankings = await getRankings(seasonYear);
-        const allBettingLines = await getAllBettingLines();
+        const allBettingLines = await getAllBettingLines(seasonYear);
 
         renderTeamScheduleInfo(scheduleData, allTeamLogos, allRankings, allBettingLines, seasonYear);
     });
+}
+
+// Looks up the team's latest season (the one being viewed). Falls back to the
+// calendar year if the team can't be fetched.
+async function getTeamSeasonYear(teamId) {
+    try {
+        const res = await fetch(`/teams/info/${teamId}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        const season = data?.[0]?.seasons?.at(-1)?.season;
+        if (season != null) return season;
+    } catch (e) { /* fall through */ }
+    return new Date().getFullYear();
 }
 
 async function getTeamLogos () {
@@ -161,9 +179,8 @@ async function getTeamLogos () {
     }
 }
 
-async function getAllBettingLines () {
-    var seasonYear = new Date().getFullYear();
-    // seasonYear = 2024;
+async function getAllBettingLines (seasonYear) {
+    if (seasonYear == null) seasonYear = new Date().getFullYear();
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
@@ -187,7 +204,10 @@ async function getAllBettingLines () {
 function renderTeamInfo(team, record, recruiting) {
     const leagueCode = window.localStorage.getItem("leagueCode");
     const container = document.getElementById("team-container");
-    var scoreCode = (leagueCode == 'gg') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
+    // Claunts = V1, Graham = V2. leagueCode is 'claunts-league'/'graham-league'
+    // (never 'gg'), so the old 'gg' test always fell through to V2 and showed
+    // every viewer the Graham score.
+    var scoreCode = (leagueCode == 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
     var formatConference = team.seasons.at(-1).conference;
     var confLogo = getConferenceLogo(team.seasons.at(-1).conference);
 
@@ -207,14 +227,14 @@ function renderTeamInfo(team, record, recruiting) {
         <div class="team-details">
             <div>
                 <h4>${team.seasons.at(-1).season} Record</h4>
-                <p class="score">${record?.total.wins || 0}-${record?.total.losses || 0}    Overall</p>
-                <p class="score">${record?.conferenceGames.wins || 0}-${record?.conferenceGames.losses || 0}    Conference</p>
+                <p class="score">${record?.total?.wins || 0}-${record?.total?.losses || 0}    Overall</p>
+                <p class="score">${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}    Conference</p>
             </div>
             <div>
                 <h4>📈 Season Score</h4>
                 <p class="score">${team.seasons.at(-1)[scoreCode] || 0} Points</p>
                 <h4>Recruiting Rank</h4>
-                <p class="score">#${recruiting.rank || 0}</p>
+                <p class="score">#${recruiting?.rank || 0}</p>
             </div>
             <div>
                 <h4>🏟 Stadium</h4>
@@ -278,8 +298,12 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             if (game.seasonType == 'regular') {
                 weekRankings = rankings.find(r => r.week == game.week && r.season == year) ? rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
             } else {
-                weekRankings = rankings.find(r => r.week == '16' && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+                weekRankings = rankings.find(r => r.week == '16' && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks;
             }
+            // A week with no loaded rankings (or a poll that lacks this team)
+            // leaves weekRankings undefined; default to [] so .length/.find below
+            // don't throw and the schedule still renders without ranks.
+            if (!Array.isArray(weekRankings)) weekRankings = [];
 
             var homeRank = '';
             var awayRank = '';
@@ -424,7 +448,7 @@ async function renderConferenceStandings(data, teamData, logos) {
         //     });
     }
 
-    if (standings.length > 0 && teamData.conference != 'FBS Independents') {
+    if (standings.length > 0 && teamData.seasons.at(-1).conference != 'FBS Independents') {
         // Build table HTML
         let html = `
             <div class="standing-head">
@@ -560,7 +584,9 @@ function getConferenceLogo(conference) {
     ]
 
     const logoObj = allLogos.find(logo => logo.confName == conference);
-    return logoObj.url;
+    // A renamed/new/absent conference isn't in the list above; return '' rather
+    // than throwing on logoObj.url (which would break the whole team header).
+    return logoObj ? logoObj.url : '';
 }
 
 async function getRankings (season) {
@@ -599,9 +625,8 @@ async function getConferenceTeams (conference) {
     return conferences;
 }
 
-async function getRecruitingRankings(team) {
-    var seasonYear = new Date().getFullYear();
-    // seasonYear = 2024;
+async function getRecruitingRankings(team, seasonYear) {
+    if (seasonYear == null) seasonYear = new Date().getFullYear();
 
     var response = await fetch(`/recruiting/${seasonYear}/${team}`, {
         method: 'GET',

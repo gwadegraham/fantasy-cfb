@@ -319,6 +319,22 @@ async function getAllBettingLines (seasonYear) {
     }
 }
 
+// Returns the points a given team earned in a specific game, found by
+// (teamId, gameId) anywhere in the season's weeklyScore. This avoids the old
+// weeklyScore[gameWeek - 1] index math — which broke for the postseason bucket
+// (gameWeek "17" indexed slot 16, which only lines up by coincidence) — and
+// safely returns 0 when the game hasn't been scored yet instead of throwing.
+function teamGameScoreById(weeklyScore, teamId, gameId) {
+    if (!Array.isArray(weeklyScore)) return 0;
+    for (var i = 0; i < weeklyScore.length; i++) {
+        var sbt = weeklyScore[i] && weeklyScore[i].scoreByTeam;
+        if (!Array.isArray(sbt)) continue;
+        var match = sbt.find(o => o.teamId == teamId && o.gameId == gameId);
+        if (match && typeof match.score === 'number') return match.score;
+    }
+    return 0;
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     const leagueCode = window.localStorage.getItem("leagueCode");
@@ -416,12 +432,7 @@ async function displaySchedule(data) {
     
                     if( game.awayPoints > game.homePoints ) {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.awayId;
-                            });
-    
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
                         }
 
                         if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
@@ -435,25 +446,14 @@ async function displaySchedule(data) {
                     } else if (game.homePoints > game.awayPoints) {
     
                         if(!isAway) {
-                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.homeId;
-                            });
-    
-                            var teamObjectScore = (teamScoreObject.find((item) => item.gameId == game.id).score || 0);
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamObjectScore + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
                         }
-    
+
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     } else {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-                            var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.awayId;
-                            });
-    
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
                         }
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0');
@@ -527,19 +527,10 @@ async function displaySchedule(data) {
                         }
         
         
-                        if (game.seasonType == "postseason" && game.notes.toLowerCase().includes("playoff")) {
+                        if (game.seasonType == "postseason" && game.notes && game.notes.toLowerCase().includes("playoff")) {
                             shouldReplace = true;
-                            var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-
-                            var awayTeamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.awayId;
-                            });
-                            var homeTeamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                return obj.teamId == game.homeId;
-                            });
-    
-                            awayScoreAdded = '<strong style="color: #22C37A;">+' + awayTeamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
-                            homeScoreAdded = '<strong style="color: #22C37A;">+' + homeTeamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
@@ -552,25 +543,15 @@ async function displaySchedule(data) {
                         } else if ( game.awayPoints > game.homePoints ) {
                             if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-                                var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                    return obj.teamId == game.awayId;
-                                });
-        
-                                scoreAdded = '<strong style="color: #22C37A;">+' +  teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
                         } else {
-        
+
                             if(game.homeId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                var weeklyScore = userData.seasons.at(-1).weeklyScore[(parseInt(gameWeek) - 1)];
-                                var teamScoreObject = weeklyScore.scoreByTeam.filter(obj => {
-                                    return obj.teamId == game.homeId;
-                                });
-        
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamScoreObject.find((item) => item.gameId == game.id).score + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
                             }
         
                             topData = (game.awayPoints || '-');

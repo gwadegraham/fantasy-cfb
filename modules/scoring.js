@@ -332,7 +332,17 @@ async function getScoringConfig(league) {
             method: 'GET', headers: { 'Accept': 'application/json' }
         });
         var data = await res.json();
-        if (data && data.values) return resolveConfig(league, { model: data.model, values: data.values });
+        // Forward the FULL config — model, values, combineMode AND disabled — so
+        // the scoring jobs honor a commissioner's structural changes (combine
+        // mode, disabled postseason events), not just point values. Dropping
+        // combineMode/disabled here made computed scores silently ignore
+        // structural config while the rules page still showed it.
+        if (data && data.values) return resolveConfig(league, {
+            model: data.model,
+            values: data.values,
+            combineMode: data.combineMode,
+            disabled: data.disabled
+        });
     } catch (e) { /* fall through to defaults */ }
     return resolveConfig(league, null);
 }
