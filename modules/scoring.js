@@ -111,16 +111,26 @@ module.exports= {
             if ((season == "postseason")) {
                 scoreObject["season"] = season;
 
-                if (await user.seasons[0].weeklyScore.some(e => e.season === scoreObject.season)) {
-                    var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season === scoreObject.season);
+                // Key postseason entries by (season, week), not season alone, so
+                // multiple postseason weeks accumulate as separate entries rather
+                // than each call overwriting the previous one. (CFBD currently
+                // packs the FBS postseason into a single week, so today this only
+                // ever creates one entry — it's a safeguard against a future
+                // multi-week postseason.)
+                var postWeek = parseInt(scoreObject.week);
+                if (await user.seasons[0].weeklyScore.some(e => e.season === "postseason" && e.week === postWeek)) {
+                    var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season === "postseason" && x.week === postWeek);
                     user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
                     await updateUser(user._id, user.seasons[0].weeklyScore);
                 } else {
                     user.seasons[0].weeklyScore.push(scoreObject);
                     await updateUser(user._id, user.seasons[0].weeklyScore);
                 }
-            } else if (await user.seasons[0].weeklyScore.some(e => e.week === parseInt(scoreObject.week))) {
-                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.week === parseInt(scoreObject.week));
+            } else if (await user.seasons[0].weeklyScore.some(e => e.season !== "postseason" && e.week === parseInt(scoreObject.week))) {
+                // Match regular weeks only (exclude postseason entries), so a
+                // regular week N never clobbers a postseason entry that shares
+                // the same week number.
+                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season !== "postseason" && x.week === parseInt(scoreObject.week));
                 user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
                 await updateUser(user._id, user.seasons[0].weeklyScore);
             } else if (user.seasons[0].weeklyScore.length == 0){
