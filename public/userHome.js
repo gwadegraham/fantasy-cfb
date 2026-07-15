@@ -214,8 +214,12 @@ async function getGame(season, week, team) {
     return games;
 }
 
-async function getRankings (week, seasonType) {
-    var seasonYear = new Date().getFullYear();
+async function getRankings (week, seasonType, seasonYear) {
+    // seasonYear is the league's active season (from the user's roster), NOT the
+    // wall-clock year — otherwise, once the calendar rolls past the season (e.g.
+    // viewing the 2025 season in 2026, or bowl games in January), this fetches a
+    // year with no rankings and returns nothing.
+    if (seasonYear == null) seasonYear = new Date().getFullYear();
 
     var response = await fetch(`/rankings/${seasonYear}`, {
         method: 'GET',
@@ -240,10 +244,12 @@ async function getRankings (week, seasonType) {
     if (seasonType == 'regular') {
         weekRankings = rankings.find(r => r.week == week && r.season == seasonYear) ? rankings.find(r => r.week == week && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
     } else {
-        weekRankings = rankings.find(r => r.week == '16' && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks || {};
+        weekRankings = rankings.find(r => r.week == '16' && r.season == seasonYear)?.polls?.find(p => p.poll == pollName)?.ranks || [];
     }
 
-    return weekRankings;
+    // Always hand back an array so callers can safely call .findIndex even when
+    // the requested week/season has no rankings loaded.
+    return Array.isArray(weekRankings) ? weekRankings : [];
 }
 
 async function getTeamLogos (game) {
@@ -289,9 +295,10 @@ async function getTeamLogos (game) {
     }
 }
 
-async function getAllBettingLines () {
-    var seasonYear = new Date().getFullYear();
-    // seasonYear = 2024;
+async function getAllBettingLines (seasonYear) {
+    // Same as getRankings: use the league's active season, not the wall-clock
+    // year, so betting lines are fetched for the season actually being viewed.
+    if (seasonYear == null) seasonYear = new Date().getFullYear();
 
     var bettingPromise = await fetch(`/betting/${seasonYear}`, {
         method: 'GET',
@@ -308,6 +315,7 @@ async function getAllBettingLines () {
         return response;
     } else {
         console.log(response.message);
+        return [];   // degrade gracefully: no lines rather than undefined
     }
 }
 
@@ -323,18 +331,22 @@ async function displaySchedule(data) {
     var seasonType = "regular";
     var rankingsInfo;
 
+    // Resolve the year from the season being viewed (the user's latest roster),
+    // the same source displayTeams uses — never the wall-clock year.
+    var seasonYear = data.seasons.at(-1).season;
+
     if (week == "17") {
-        rankingsInfo = await getRankings((week - 1), seasonType);
+        rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
 
         seasonType = "postseason";
         week = 1;
         gameWeek = "17"
     } else {
         gameWeek = week;
-        rankingsInfo = await getRankings(week, seasonType);
+        rankingsInfo = await getRankings(week, seasonType, seasonYear);
     }
 
-    var allBettingLines = await getAllBettingLines();
+    var allBettingLines = await getAllBettingLines(seasonYear) || [];
 
     for (var iterNum = 0; iterNum < data.seasons.at(-1).teams.length; iterNum++) {
 
@@ -359,7 +371,10 @@ async function displaySchedule(data) {
             homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
 
             var bettingLineObj = allBettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
-            var bettingLine = (bettingLineObj.find(line => line.provider == "DraftKings") ? bettingLineObj.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
+            // A matchup may have no betting line (or none from DraftKings); guard
+            // so a missing line renders blank instead of throwing.
+            var chosenLine = bettingLineObj && (bettingLineObj.find(line => line.provider == "DraftKings") || bettingLineObj[0]);
+            var bettingLine = chosenLine?.formattedSpread?.split("-");
             var awayLine = '';
             var homeLine = '';
 
