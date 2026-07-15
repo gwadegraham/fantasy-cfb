@@ -101,4 +101,83 @@ describe('scoring aggregation', () => {
             expect(patchBody.weeklyScore[0].week).toBe(1);
         });
     });
+
+    describe('postseason week accumulation', () => {
+        // Regression/safeguard: postseason entries used to be keyed by
+        // season === "postseason" alone, so scoring a second postseason week
+        // overwrote the first. Key by (season, week) so they accumulate.
+        it('keeps a separate entry per postseason week instead of overwriting', async () => {
+            const user = {
+                _id: 'u1',
+                league: 'graham-league',
+                seasons: [{ season: '2025', teams: [{ id: 333, school: 'Alabama' }], weeklyScore: [] }],
+            };
+            const g1 = { id: 11, homeId: 333, awayId: 8, homePoints: 30, awayPoints: 20, seasonType: 'postseason' };
+            const g2 = { id: 22, homeId: 333, awayId: 9, homePoints: 40, awayPoints: 10, seasonType: 'postseason' };
+
+            global.fetch = jest.fn((url, opts) => {
+                if (url.includes('/users/season/')) {
+                    // Same object ref each call, so updateScores' in-place edits persist.
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
+                }
+                if (url.includes('/scoring-config/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/games/seasonType/postseason/week/1/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([g1]) });
+                }
+                if (url.includes('/games/seasonType/postseason/week/2/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([g2]) });
+                }
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+            });
+            jest.spyOn(scoringModule, 'calculateScoreV2').mockResolvedValue(5);
+
+            await scoringModule.updateScores('postseason', 1);
+            await scoringModule.updateScores('postseason', 2);
+
+            const post = user.seasons[0].weeklyScore.filter(e => e.season === 'postseason');
+            expect(post).toHaveLength(2);
+            expect(post.map(e => e.week).sort()).toEqual([1, 2]);
+        });
+
+        it('a regular week does not clobber a postseason entry with the same week number', async () => {
+            const user = {
+                _id: 'u2',
+                league: 'graham-league',
+                seasons: [{
+                    season: '2025',
+                    teams: [{ id: 333, school: 'Alabama' }],
+                    // Pre-existing postseason entry stored under week 1.
+                    weeklyScore: [{ week: 1, score: 9, season: 'postseason', scoreByTeam: [] }],
+                }],
+            };
+            const regGame = { id: 33, homeId: 333, awayId: 8, homePoints: 30, awayPoints: 20, seasonType: 'regular' };
+
+            global.fetch = jest.fn((url, opts) => {
+                if (url.includes('/users/season/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
+                }
+                if (url.includes('/scoring-config/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/games/seasonType/regular/week/1/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([regGame]) });
+                }
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+            });
+            jest.spyOn(scoringModule, 'calculateScoreV2').mockResolvedValue(3);
+
+            await scoringModule.updateScores('regular', 1);
+
+            const ws = user.seasons[0].weeklyScore;
+            const post = ws.find(e => e.season === 'postseason' && e.week === 1);
+            const reg = ws.find(e => e.season !== 'postseason' && e.week === 1);
+            expect(post).toBeDefined();
+            expect(post.score).toBe(9);          // postseason entry preserved
+            expect(reg).toBeDefined();
+            expect(reg.score).toBe(3);           // regular week added alongside it
+            expect(ws).toHaveLength(2);
+        });
+    });
 });
