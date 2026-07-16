@@ -431,8 +431,86 @@
     gap: 8px;
     line-height: 1.3;
 }
-.scoring-field input[type="number"] {
-    flex: none;
-    width: 64px;
+.scoring-field .num-stepper { flex: none; }
+
+/* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a
+   compact value field, as one segmented control. */
+.num-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid #2A2E42;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #101322;
+}
+.num-stepper input[type="number"] {
+    width: 44px;
     text-align: center;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    color: #F4F6FB;
+    padding: 7px 0;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.num-stepper input[type="number"]::-webkit-outer-spin-button,
+.num-stepper input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.num-stepper button {
+    width: 30px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: #1A1F33;
+    color: #AEB4CC;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.num-stepper button:hover { background-color: #2A2E42; color: #F4F6FB; }
+.num-stepper .step-dn { border-right: 1px solid #2A2E42; }
+.num-stepper .step-up { border-left: 1px solid #2A2E42; }
+
+/* Enable/disable toggles for postseason events: themed checkbox, green = on. */
+.scoring-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    border: 1px solid #3A4060;
+    border-radius: 5px;
+    background-color: #101322;
+    cursor: pointer;
+    position: relative;
+}
+.scoring-toggle:hover { border-color: #5B6690; }
+.scoring-toggle:checked {
+    background-color: #71D28D;
+    border-color: #71D28D;
+}
+.scoring-toggle:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid #0C0F1C;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.scoring-toggle:focus-visible {
+    outline: 2px solid #64B5F6;
+    outline-offset: 2px;
 }

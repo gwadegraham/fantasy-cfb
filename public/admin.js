@@ -1315,7 +1315,11 @@ function renderScoringFields() {
             : '';
         return `<div class="draft-field scoring-field${f.enabled ? '' : ' scoring-disabled'}" data-condition="${f.condition}">
             <label>${toggle}${f.additive ? '+ ' : ''}${f.label}</label>
-            <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
+            <div class="num-stepper">
+                <button type="button" class="step-dn" tabindex="-1" aria-label="Decrease points">&#8722;</button>
+                <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
+                <button type="button" class="step-up" tabindex="-1" aria-label="Increase points">+</button>
+            </div>
         </div>`;
     }
 
@@ -1331,6 +1335,18 @@ function renderScoringFields() {
             var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
             if (row) row.classList.toggle('scoring-disabled', !cb.checked);
         });
+    });
+
+    // Custom +/- steppers (native number spinners are hidden via CSS).
+    wrap.querySelectorAll('.num-stepper').forEach(function (st) {
+        var inp = st.querySelector('input[type="number"]');
+        function step(delta) {
+            var v = parseInt(inp.value, 10);
+            if (isNaN(v)) v = 0;
+            inp.value = Math.max(0, v + delta);
+        }
+        st.querySelector('.step-up').addEventListener('click', function () { step(1); });
+        st.querySelector('.step-dn').addEventListener('click', function () { step(-1); });
     });
 }
 
