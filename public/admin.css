@@ -282,10 +282,34 @@
     flex: 1;
 }
 
+/* Reorder controls: explicit sizing so they don't inherit the full-width red
+   .sub-container button style, and a large enough tap target to hit reliably
+   (the old 0.75em / 2px buttons were nearly impossible to tap, especially on
+   mobile). */
+.draft-order-move {
+    display: flex;
+    gap: 6px;
+    flex: none;
+}
 .draft-order-move button {
-    padding: 2px 6px;
-    font-size: 0.75em;
-    margin-left: 2px;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #232842;
+    color: #F4F6FB;
+    border: 1px solid #2A2E42;
+    border-radius: 8px;
+    box-shadow: none;
+}
+.draft-order-move button:hover {
+    background-color: #2A2E42;
 }
 
 .draft-config-actions {
@@ -296,4 +320,206 @@
 
 .draft-config-actions button[draft-reset-btn] {
     background-color: #ed5858;
+}
+
+/* ---------- Admin console redesign: groups, status strip ---------- */
+.admin-group {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto 1.75em;
+    padding: 0 0.5em;
+}
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 0.25em 0.55em;
+    border-bottom: 1px solid #2A2E42;
+    margin-bottom: 0.9em;
+}
+
+.group-head h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    color: #767D9C;
+    margin: 0;
+    font-weight: 500;
+}
+
+.group-count {
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    color: #AEB4CC;
+    border-radius: 20px;
+    padding: 1px 8px;
+    font-size: 0.7rem;
+}
+
+.job-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: #64B5F6;
+    padding: 5px 0.5em 0;
+}
+.job-tag i { font-size: 0.75rem; }
+
+/* Read-only "current state" summary at the top of the console. */
+.admin-status {
+    width: auto;
+    max-width: 1100px;
+    /* Side gutters so the card doesn't run into the device edges on mobile;
+       centers via auto margins once there's room (see media query below). */
+    margin: 0 16px 1.75em;
+    background: #141A2E;
+    border: 1px solid #2A2E42;
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: #F4F6FB;
+}
+@media (min-width: 1132px) {
+    .admin-status { margin-left: auto; margin-right: auto; }
+}
+.admin-status[hidden] { display: none; }
+.admin-status .ss-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
+    color: #767D9C; margin-bottom: 11px;
+}
+.admin-status .ss-row { display: flex; flex-wrap: wrap; gap: 20px; }
+.admin-status .ss-item { display: flex; flex-direction: column; gap: 2px; }
+.admin-status .ss-item small { color: #767D9C; font-size: 0.68rem; }
+.admin-status .ss-item b { font-weight: 500; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
+.admin-status .dot { width: 7px; height: 7px; border-radius: 50%; }
+.admin-status .dot.g { background: #71D28D; }
+.admin-status .dot.b { background: #64B5F6; }
+.admin-status .dot.a { background: #F2C14E; }
+.admin-status .ss-note {
+    margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
+    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: #AEB4CC;
+}
+.admin-status.ok .ss-note { color: #71D28D; }
+.admin-status.warn .ss-note { color: #F2C14E; }
+.admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
+
+/* Highlight the Update Scores tool when results are waiting to be scored. */
+.function-container.attn .button-container button {
+    box-shadow: inset 3px 0 0 #F2C14E, 0px 0px 2px 2px #1A1F33;
+}
+
+/* Scoring config: label and its (small) value input on one row, so each rule
+   reads as "label … value" instead of a tall stack. Overrides the base
+   .draft-field column layout (matched specificity, declared later). */
+.draft-config-form .scoring-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+.scoring-field label {
+    flex: 1;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.35;
+}
+
+/* Section labels ("Regular season" / "Postseason") inside the scoring config:
+   give them room so the two groups read as distinct blocks. */
+[scoring-config-fields] .draft-status-row {
+    margin: 18px 0 10px;
+    font-weight: 500;
+    color: #AEB4CC;
+}
+[scoring-config-fields] .draft-status-row:first-child { margin-top: 4px; }
+
+/* Combine-mode dropdown: full width so "Sum all bonuses" isn't truncated on
+   mobile (the shared .sub-container select is only 45% wide there). */
+select[scoring-config-combine-mode] { width: 100%; }
+.scoring-field .num-stepper { flex: none; }
+
+/* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a
+   compact value field, as one segmented control. */
+.num-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid #2A2E42;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #101322;
+}
+.num-stepper input[type="number"] {
+    width: 44px;
+    text-align: center;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    color: #F4F6FB;
+    padding: 7px 0;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.num-stepper input[type="number"]::-webkit-outer-spin-button,
+.num-stepper input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.num-stepper button {
+    width: 30px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background-color: #1A1F33;
+    color: #AEB4CC;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.num-stepper button:hover { background-color: #2A2E42; color: #F4F6FB; }
+.num-stepper .step-dn { border-right: 1px solid #2A2E42; }
+.num-stepper .step-up { border-left: 1px solid #2A2E42; }
+
+/* Enable/disable toggles for postseason events: themed checkbox, green = on. */
+.scoring-toggle {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    border: 1px solid #3A4060;
+    border-radius: 5px;
+    background-color: #101322;
+    cursor: pointer;
+    position: relative;
+}
+.scoring-toggle:hover { border-color: #5B6690; }
+.scoring-toggle:checked {
+    background-color: #71D28D;
+    border-color: #71D28D;
+}
+.scoring-toggle:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid #0C0F1C;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.scoring-toggle:focus-visible {
+    outline: 2px solid #64B5F6;
+    outline-offset: 2px;
 }
