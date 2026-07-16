@@ -369,14 +369,19 @@
 
 /* Read-only "current state" summary at the top of the console. */
 .admin-status {
-    width: 100%;
+    width: auto;
     max-width: 1100px;
-    margin: 0 auto 1.75em;
+    /* Side gutters so the card doesn't run into the device edges on mobile;
+       centers via auto margins once there's room (see media query below). */
+    margin: 0 16px 1.75em;
     background: #141A2E;
     border: 1px solid #2A2E42;
     border-radius: 12px;
     padding: 14px 16px;
     color: #F4F6FB;
+}
+@media (min-width: 1132px) {
+    .admin-status { margin-left: auto; margin-right: auto; }
 }
 .admin-status[hidden] { display: none; }
 .admin-status .ss-head {
