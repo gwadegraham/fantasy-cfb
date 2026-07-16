@@ -282,10 +282,34 @@
     flex: 1;
 }
 
+/* Reorder controls: explicit sizing so they don't inherit the full-width red
+   .sub-container button style, and a large enough tap target to hit reliably
+   (the old 0.75em / 2px buttons were nearly impossible to tap, especially on
+   mobile). */
+.draft-order-move {
+    display: flex;
+    gap: 6px;
+    flex: none;
+}
 .draft-order-move button {
-    padding: 2px 6px;
-    font-size: 0.75em;
-    margin-left: 2px;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #232842;
+    color: #F4F6FB;
+    border: 1px solid #2A2E42;
+    border-radius: 8px;
+    box-shadow: none;
+}
+.draft-order-move button:hover {
+    background-color: #2A2E42;
 }
 
 .draft-config-actions {
@@ -389,4 +413,26 @@
 /* Highlight the Update Scores tool when results are waiting to be scored. */
 .function-container.attn .button-container button {
     box-shadow: inset 3px 0 0 #F2C14E, 0px 0px 2px 2px #1A1F33;
+}
+
+/* Scoring config: label and its (small) value input on one row, so each rule
+   reads as "label … value" instead of a tall stack. Overrides the base
+   .draft-field column layout (matched specificity, declared later). */
+.draft-config-form .scoring-field {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+.scoring-field label {
+    flex: 1;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.3;
+}
+.scoring-field input[type="number"] {
+    flex: none;
+    width: 64px;
+    text-align: center;
 }
