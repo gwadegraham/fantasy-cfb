@@ -251,6 +251,62 @@ async function getUserProfile() {
     });
 }
 
+// Read-only "current state" strip: shows how far scoring/games have progressed
+// and, when completed results are still unscored, flags it and points at the
+// Update Scores tool. All derived server-side from existing data.
+async function loadAdminStatus() {
+    var el = document.querySelector('[admin-status]');
+    if (!el) return;
+    var year = window.APP_YEAR || new Date().getFullYear();
+    try {
+        var res = await fetch(`/scores/status/${year}`, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return;
+        var s = await res.json();
+        var api = null;
+        try {
+            var apiRes = await fetch('/games/info', { headers: { 'Accept': 'application/json' } });
+            if (apiRes.ok) { var a = await apiRes.json(); api = a && a.remainingCalls; }
+        } catch (e) { /* API count is optional */ }
+        renderAdminStatus(el, s, api, year);
+    } catch (e) { /* leave the strip hidden on error */ }
+}
+
+function renderAdminStatus(el, s, api, year) {
+    var behind = !s.upToDate;
+    var items = [
+        ['Scored through', (s.scoredThroughWeek ? 'Week ' + s.scoredThroughWeek : '—'), behind ? 'a' : 'g'],
+        ['Games loaded', (s.gamesLoadedThroughWeek ? 'Week ' + s.gamesLoadedThroughWeek : '—'), 'g']
+    ];
+    if (api != null) items.push(['CFBD calls left', Number(api).toLocaleString(), null]);
+
+    var rows = items.map(function (it) {
+        var dot = it[2] ? '<span class="dot ' + it[2] + '"></span>' : '';
+        return '<div class="ss-item"><small>' + it[0] + '</small><b>' + dot + it[1] + '</b></div>';
+    }).join('');
+
+    var note = behind
+        ? '<i class="fa-solid fa-bolt"></i><span>' + s.unscoredResults + ' completed result' + (s.unscoredResults === 1 ? '' : 's') +
+          ' not scored yet. <a data-fix-scores>Force update scores</a></span>'
+        : '<i class="fa-solid fa-bolt"></i><span>Everything’s current through Week ' + (s.scoredThroughWeek || 0) +
+          '. Automation is keeping scores up to date — nothing to do here.</span>';
+
+    el.className = 'admin-status ' + (behind ? 'warn' : 'ok');
+    el.innerHTML = '<div class="ss-head"><i class="fa-solid fa-circle-info"></i> Current state · ' + year + ' season</div>' +
+        '<div class="ss-row">' + rows + '</div>' +
+        '<div class="ss-note">' + note + '</div>';
+    el.hidden = false;
+
+    var tool = document.querySelector('[scores-tool]');
+    if (tool) tool.classList.toggle('attn', behind);
+
+    var fix = el.querySelector('[data-fix-scores]');
+    if (fix) fix.addEventListener('click', function () {
+        var c = document.querySelector('[scores-container]');
+        if (c && c.style.display === 'none') displayScoresContainer();
+        if (tool) tool.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+}
+
 window.onload = async function() {
     function initNavbarToggle() {
         const toggleButton = document.querySelector('.toggle-button');
@@ -274,6 +330,7 @@ window.onload = async function() {
     setSeasonOptions();
     setSeasonTypeOptions();
     setWeekOptions();
+    loadAdminStatus();
 };
 
 const createForm = document.getElementById('create-form')

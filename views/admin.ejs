@@ -24,12 +24,23 @@
             var userState = <%- userState %>;
         </script>
     <% } %>
+    <script>
+        // Authoritative active season from the server (process.env.YEAR), so the
+        // status strip queries the season the league is actually playing rather
+        // than the wall-clock year.
+        window.APP_YEAR = "<%= year %>";
+    </script>
 
     <div class="header">
         <div class="header-title">
             Admin
         </div>
     </div>
+
+    <p class="admin-intro">Scores, games and expected wins update automatically on schedule. Use these tools to force a run or fix data when something looks off.</p>
+
+    <div class="admin-status" admin-status hidden></div>
+
     <div class="get-users-container" get-users-container>
         <div class="table-wrapper">
             <table class="fl-table">
@@ -44,279 +55,304 @@
             </table>
         </div>
     </div>
-    <div class="admin-functions">
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayDraftConfigContainer()">
-                    <i class="fa-solid fa-list-ol" style="padding-right: 5px;"></i>
-                    Configure Draft
-                </button>
+
+    <section class="admin-group">
+        <div class="group-head"><h2>Scoring — force a run</h2><span class="group-count">3</span></div>
+        <div class="admin-functions">
+            <div class="function-container" scores-tool>
+                <div class="button-container">
+                    <button onclick="displayScoresContainer()">
+                        <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                        Update Scores
+                    </button>
+                </div>
+                <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · nightly + Saturday/Sunday jobs</div>
+                <div class="sub-container" scores-container style="display: none">
+                    <form id="scores-form">
+                        <div><select score-week week-options></select></div>
+                        <div><select score-season-type season-type-options></select></div>
+                        <div><button type="submit">Update Scores</button></div>
+                    </form>
+                </div>
             </div>
-            <div class="sub-container" draft-config-container style="display: none">
-                <form id="draft-config-form" class="draft-config-form">
-                    <div class="draft-status-row">
-                        Status: <span draft-status class="draft-status-badge">—</span>
-                    </div>
-                    <div class="draft-field">
-                        <label>Season</label>
-                        <select draft-season></select>
-                    </div>
-                    <div class="draft-field">
-                        <label>Draft date &amp; time</label>
-                        <input type="datetime-local" draft-datetime>
-                    </div>
-                    <div class="draft-field">
-                        <label>Rounds</label>
-                        <input type="number" draft-rounds min="1" max="20" value="10">
-                    </div>
-                    <div class="draft-field">
-                        <label>Type</label>
-                        <select draft-type>
-                            <option value="snake">Snake</option>
-                            <option value="linear">Linear</option>
-                        </select>
-                    </div>
-                    <div class="draft-field">
-                        <label><input type="checkbox" draft-autoopen> Auto-open room at scheduled time</label>
-                    </div>
-                    <div class="draft-order-header">
-                        <label>Draft order</label>
-                        <div class="draft-order-buttons">
-                            <button type="button" onclick="autoOrderStandings()">Auto (reverse standings)</button>
-                            <button type="button" onclick="randomizeOrder()">Randomize</button>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayTeamContainer()">
+                        <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
+                        Calculate Team Score
+                    </button>
+                </div>
+                <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · with the scores jobs</div>
+                <div class="sub-container" calculate-team-score-container style="display: none">
+                    <form id="score-form">
+                        <div class="team-picker-container" team-picker-container>
+                            <select class="calculate-team-picker" id="calculate-team-picker" calculate-team-options>
+                            </select>
                         </div>
-                    </div>
-                    <ol draft-order-list class="draft-order-list"></ol>
-                    <div class="draft-config-actions">
-                        <button type="submit">Save Draft Settings</button>
-                        <button type="button" draft-reset-btn onclick="resetDraft()" style="display:none;">Reset Draft</button>
-                    </div>
-                </form>
-                <hr>
+                        <div><select team-score-season season-options></select></div>
+                        <div><button type="submit">Calculate Score</button></div>
+                    </form>
+                    <form id="all-score-form">
+                        <button type="submit">Calculate Scores for all teams</button>
+                    </form>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayExpectedWinsContainer()">
+                        <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
+                        Refresh Expected Wins
+                    </button>
+                </div>
+                <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · expected-wins job</div>
+                <div class="sub-container" expected-wins-container style="display: none">
+                    <form id="expected-wins-form">
+                        <div><select expected-wins-season season-options></select></div>
+                        <div><button type="submit">Refresh Expected Wins</button></div>
+                    </form>
+                </div>
             </div>
         </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayScoringConfigContainer()">
-                    <i class="fa-solid fa-sliders" style="padding-right: 5px;"></i>
-                    Configure Scoring
-                </button>
+    </section>
+
+    <section class="admin-group">
+        <div class="group-head"><h2>Data sync · College Football Data</h2><span class="group-count">6</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayGamesContainer()">
+                        <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                        Retrieve Game Information
+                    </button>
+                </div>
+                <div class="sub-container" games-container style="display: none">
+                    <form id="games-form">
+                        <div><select game-week week-options></select></div>
+                        <div><select game-season-type season-type-options></select></div>
+                        <div><button type="submit">Retrieve Games</button></div>
+                    </form>
+                </div>
             </div>
-            <div class="sub-container" scoring-config-container style="display: none">
-                <form id="scoring-config-form" class="draft-config-form">
-                    <div class="draft-status-row">League: <span scoring-config-model></span></div>
-                    <div class="draft-field">
-                        <label>Regular-season combine mode</label>
-                        <select scoring-config-combine-mode>
-                            <option value="first">First match wins (priority)</option>
-                            <option value="sum">Sum all bonuses (additive)</option>
-                        </select>
-                    </div>
-                    <div scoring-config-fields></div>
-                    <div class="draft-config-actions">
-                        <button type="submit">Save Scoring Config</button>
-                    </div>
-                    <p scoring-config-note class="draft-status-row" style="display:none">
-                        Saved. Run a full-season rescore to apply structural changes to existing scores.
-                    </p>
-                </form>
-                <hr>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayRankingsContainer()">
+                        <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                        Retrieve Rankings
+                    </button>
+                </div>
+                <div class="sub-container" rankings-container style="display: none">
+                    <form id="rankings-form">
+                        <div><select rankings-season season-options></select></div>
+                        <div><select season-type-options></select></div>
+                        <div><select week-options></select></div>
+                        <div><button type="submit">Retrieve Rankings</button></div>
+                    </form>
+                </div>
             </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayCreateUserContainer()">
-                    <i class="fa-solid fa-user-plus" style="padding-right: 5px;"></i>
-                    Add a Player
-                </button>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayRecruitRankingsContainer()">
+                        <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                        Retrieve Recruiting Rankings
+                    </button>
+                </div>
+                <div class="sub-container" recruit-rankings-container style="display: none">
+                    <form id="recruit-rankings-form">
+                        <div><select recruiting-season season-options></select></div>
+                        <div><button type="submit">Retrieve Recruiting Rankings</button></div>
+                    </form>
+                </div>
             </div>
-            <div class="sub-container" create-user-container style="display: none">
-                <form id="create-form">
-                    <input type="text" class="first-name" first-name placeholder="First Name">
-                    <input type="text" class="last-name" last-name placeholder="Last Name">
-                    <div style="padding-top: 5px;">
-                        <label style="padding-right: 5px;">Display Color</label>
-                        <input style="border-radius: 5px;" type="color" class="display-color" display-color>
-                    </div>
-                    <div class="team-container" team-container>
-                        <select class="team-picker" id="team-picker" team-options>
-                        </select>
-                    </div>
-                    <button type="submit">Create Player</button>
-                </form>
-                <hr>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayTeamRecordsContainer()">
+                        <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                        Retrieve Team Records
+                    </button>
+                </div>
+                <div class="sub-container" team-records-container style="display: none">
+                    <form id="team-records-form">
+                        <div><select record-season season-options></select></div>
+                        <div><button type="submit">Retrieve Team Records</button></div>
+                    </form>
+                </div>
             </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayRemoveUserContainer()">
-                    <i class="fa-solid fa-user-minus" style="padding-right: 5px;"></i>
-                    Remove a Player
-                </button>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayBettingLinesContainer()">
+                        <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
+                        Retrieve Betting Lines
+                    </button>
+                </div>
+                <div class="sub-container" betting-lines-container style="display: none">
+                    <form id="betting-lines-form">
+                        <div><select betting-season season-options></select></div>
+                        <div><button type="submit">Retrieve Betting Lines</button></div>
+                    </form>
+                </div>
             </div>
-            
-            <div class="sub-container" remove-user-container style="display: none">
-                <form id="remove-form">
-                    <div class="user-container" user-container>
-                        <select class="user-picker" id="user-picker" user-options>
-                        </select>
-                    </div>
-                    <button type="submit">Remove Player</button>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayTeamContainer()">
-                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
-                    Calculate Team Score
-                </button>
-            </div>
-            <div class="sub-container" calculate-team-score-container style="display: none">
-                <form id="score-form">
-                    <div class="team-picker-container" team-picker-container>
-                        <select class="calculate-team-picker" id="calculate-team-picker" calculate-team-options>
-                        </select>
-                    </div>
-                    <div><select team-score-season season-options></select></div>
-                    <div><button type="submit">Calculate Score</button></div>
-                </form>
-                <form id="all-score-form">
-                    <button type="submit">Calculate Scores for all teams</button>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayRankingsContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Rankings
-                </button>
-            </div>
-            <div class="sub-container" rankings-container style="display: none">
-                <form id="rankings-form">
-                    <div><select rankings-season season-options></select></div>
-                    <div><select season-type-options></select></div>
-                    <div><select week-options></select></div>
-                    <div><button type="submit">Retrieve Rankings</button></div>
-                </form>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayRefreshTeamsContainer()">
+                        <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
+                        Refresh Teams
+                    </button>
+                </div>
+                <div class="sub-container" refresh-teams-container style="display: none">
+                    <form id="refresh-teams-form">
+                        <div><select refresh-season season-options></select></div>
+                        <div><button type="submit">Refresh Teams</button></div>
+                    </form>
+                </div>
             </div>
         </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayRecruitRankingsContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Recruiting Rankings
-                </button>
+    </section>
+
+    <section class="admin-group">
+        <div class="group-head"><h2>League setup</h2><span class="group-count">4</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayDraftConfigContainer()">
+                        <i class="fa-solid fa-list-ol" style="padding-right: 5px;"></i>
+                        Configure Draft
+                    </button>
+                </div>
+                <div class="sub-container" draft-config-container style="display: none">
+                    <form id="draft-config-form" class="draft-config-form">
+                        <div class="draft-status-row">
+                            Status: <span draft-status class="draft-status-badge">—</span>
+                        </div>
+                        <div class="draft-field">
+                            <label>Season</label>
+                            <select draft-season></select>
+                        </div>
+                        <div class="draft-field">
+                            <label>Draft date &amp; time</label>
+                            <input type="datetime-local" draft-datetime>
+                        </div>
+                        <div class="draft-field">
+                            <label>Rounds</label>
+                            <input type="number" draft-rounds min="1" max="20" value="10">
+                        </div>
+                        <div class="draft-field">
+                            <label>Type</label>
+                            <select draft-type>
+                                <option value="snake">Snake</option>
+                                <option value="linear">Linear</option>
+                            </select>
+                        </div>
+                        <div class="draft-field">
+                            <label><input type="checkbox" draft-autoopen> Auto-open room at scheduled time</label>
+                        </div>
+                        <div class="draft-order-header">
+                            <label>Draft order</label>
+                            <div class="draft-order-buttons">
+                                <button type="button" onclick="autoOrderStandings()">Auto (reverse standings)</button>
+                                <button type="button" onclick="randomizeOrder()">Randomize</button>
+                            </div>
+                        </div>
+                        <ol draft-order-list class="draft-order-list"></ol>
+                        <div class="draft-config-actions">
+                            <button type="submit">Save Draft Settings</button>
+                            <button type="button" draft-reset-btn onclick="resetDraft()" style="display:none;">Reset Draft</button>
+                        </div>
+                    </form>
+                    <hr>
+                </div>
             </div>
-            <div class="sub-container" recruit-rankings-container style="display: none">
-                <form id="recruit-rankings-form">
-                    <div><select recruiting-season season-options></select></div>
-                    <div><button type="submit">Retrieve Recruiting Rankings</button></div>
-                </form>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayScoringConfigContainer()">
+                        <i class="fa-solid fa-sliders" style="padding-right: 5px;"></i>
+                        Configure Scoring
+                    </button>
+                </div>
+                <div class="sub-container" scoring-config-container style="display: none">
+                    <form id="scoring-config-form" class="draft-config-form">
+                        <div class="draft-status-row">League: <span scoring-config-model></span></div>
+                        <div class="draft-field">
+                            <label>Regular-season combine mode</label>
+                            <select scoring-config-combine-mode>
+                                <option value="first">First match wins (priority)</option>
+                                <option value="sum">Sum all bonuses (additive)</option>
+                            </select>
+                        </div>
+                        <div scoring-config-fields></div>
+                        <div class="draft-config-actions">
+                            <button type="submit">Save Scoring Config</button>
+                        </div>
+                        <p scoring-config-note class="draft-status-row" style="display:none">
+                            Saved. Run a full-season rescore to apply structural changes to existing scores.
+                        </p>
+                    </form>
+                    <hr>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayCreateUserContainer()">
+                        <i class="fa-solid fa-user-plus" style="padding-right: 5px;"></i>
+                        Add a Player
+                    </button>
+                </div>
+                <div class="sub-container" create-user-container style="display: none">
+                    <form id="create-form">
+                        <input type="text" class="first-name" first-name placeholder="First Name">
+                        <input type="text" class="last-name" last-name placeholder="Last Name">
+                        <div style="padding-top: 5px;">
+                            <label style="padding-right: 5px;">Display Color</label>
+                            <input style="border-radius: 5px;" type="color" class="display-color" display-color>
+                        </div>
+                        <div class="team-container" team-container>
+                            <select class="team-picker" id="team-picker" team-options>
+                            </select>
+                        </div>
+                        <button type="submit">Create Player</button>
+                    </form>
+                    <hr>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayRemoveUserContainer()">
+                        <i class="fa-solid fa-user-minus" style="padding-right: 5px;"></i>
+                        Remove a Player
+                    </button>
+                </div>
+                <div class="sub-container" remove-user-container style="display: none">
+                    <form id="remove-form">
+                        <div class="user-container" user-container>
+                            <select class="user-picker" id="user-picker" user-options>
+                            </select>
+                        </div>
+                        <button type="submit">Remove Player</button>
+                    </form>
+                </div>
             </div>
         </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayGamesContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Game Information
-                </button>
-            </div>
-            <div class="sub-container" games-container style="display: none">
-                <form id="games-form">
-                    <div><select game-week week-options></select></div>
-                    <div><select game-season-type season-type-options></select></div>
-                    <div><button type="submit">Retrieve Games</button></div>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayScoresContainer()">
-                    <i class="fa-solid fa-calculator" style="padding-right: 5px;"></i>
-                    Update Scores
-                </button>
-            </div>
-            <div class="sub-container" scores-container style="display: none">
-                <form id="scores-form">
-                    <div><select score-week week-options></select></div>
-                    <div><select score-season-type season-type-options></select></div>
-                    <div><button type="submit">Update Scores</button></div>
-                </form>
+    </section>
+
+    <section class="admin-group">
+        <div class="group-head"><h2>Monitoring</h2><span class="group-count">1</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayApiCallsContainer()">
+                        <i class="fa-solid fa-eye" style="padding-right: 5px;"></i>
+                        View API calls this month
+                    </button>
+                </div>
+                <div class="sub-container" api-calls-container style="display: none">
+                    <form id="api-calls-form">
+                        <div><button type="submit">View API calls remaining</button></div>
+                        <div class="api-info"><p class="api-info" api-calls-remaining></p></div>
+                    </form>
+                </div>
             </div>
         </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayRefreshTeamsContainer()">
-                    <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
-                    Refresh Teams
-                </button>
-            </div>
-            <div class="sub-container" refresh-teams-container style="display: none">
-                <form id="refresh-teams-form">
-                    <div><select refresh-season season-options></select></div>
-                    <div><button type="submit">Refresh Teams</button></div>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayTeamRecordsContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Team Records
-                </button>
-            </div>
-            <div class="sub-container" team-records-container style="display: none">
-                <form id="team-records-form">
-                    <div><select record-season season-options></select></div>
-                    <div><button type="submit">Retrieve Team Records</button></div>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayBettingLinesContainer()">
-                    <i class="fa-solid fa-download" style="padding-right: 5px;"></i>
-                    Retrieve Betting Lines
-                </button>
-            </div>
-            <div class="sub-container" betting-lines-container style="display: none">
-                <form id="betting-lines-form">
-                    <div><select betting-season season-options></select></div>
-                    <div><button type="submit">Retrieve Betting Lines</button></div>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayExpectedWinsContainer()">
-                    <i class="fa-solid fa-arrows-rotate" style="padding-right: 5px;"></i>
-                    Refresh Expected Wins
-                </button>
-            </div>
-            <div class="sub-container" expected-wins-container style="display: none">
-                <form id="expected-wins-form">
-                    <div><select expected-wins-season season-options></select></div>
-                    <div><button type="submit">Refresh Expected Wins</button></div>
-                </form>
-            </div>
-        </div>
-        <div class="function-container">
-            <div class="button-container">
-                <button onclick="displayApiCallsContainer()">
-                    <i class="fa-solid fa-eye" style="padding-right: 5px;"></i>
-                    View API calls this month
-                </button>
-            </div>
-            <div class="sub-container" api-calls-container style="display: none">
-                <form id="api-calls-form">
-                    <div><button type="submit">View API calls remaining</button></div>
-                    <div class="api-info"><p class="api-info" api-calls-remaining></p></div>
-                </form>
-            </div>
-        </div>
-    </div>
+    </section>
+
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
     </footer>

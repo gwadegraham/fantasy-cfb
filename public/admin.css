@@ -297,3 +297,96 @@
 .draft-config-actions button[draft-reset-btn] {
     background-color: #ed5858;
 }
+
+/* ---------- Admin console redesign: intro, groups, status strip ---------- */
+.admin-intro {
+    color: #AEB4CC;
+    max-width: 760px;
+    margin: 0 auto 1.25em;
+    padding: 0 1em;
+    text-align: center;
+    font-size: 0.95em;
+    line-height: 1.5;
+}
+
+.admin-group {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto 1.75em;
+    padding: 0 0.5em;
+}
+
+.group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 0.25em 0.55em;
+    border-bottom: 1px solid #2A2E42;
+    margin-bottom: 0.9em;
+}
+
+.group-head h2 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    color: #767D9C;
+    margin: 0;
+    font-weight: 500;
+}
+
+.group-count {
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    color: #AEB4CC;
+    border-radius: 20px;
+    padding: 1px 8px;
+    font-size: 0.7rem;
+}
+
+.job-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: #64B5F6;
+    padding: 5px 0.5em 0;
+}
+.job-tag i { font-size: 0.75rem; }
+
+/* Read-only "current state" summary at the top of the console. */
+.admin-status {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto 1.75em;
+    background: #141A2E;
+    border: 1px solid #2A2E42;
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: #F4F6FB;
+}
+.admin-status[hidden] { display: none; }
+.admin-status .ss-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
+    color: #767D9C; margin-bottom: 11px;
+}
+.admin-status .ss-row { display: flex; flex-wrap: wrap; gap: 20px; }
+.admin-status .ss-item { display: flex; flex-direction: column; gap: 2px; }
+.admin-status .ss-item small { color: #767D9C; font-size: 0.68rem; }
+.admin-status .ss-item b { font-weight: 500; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
+.admin-status .dot { width: 7px; height: 7px; border-radius: 50%; }
+.admin-status .dot.g { background: #71D28D; }
+.admin-status .dot.b { background: #64B5F6; }
+.admin-status .dot.a { background: #F2C14E; }
+.admin-status .ss-note {
+    margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
+    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: #AEB4CC;
+}
+.admin-status.ok .ss-note { color: #71D28D; }
+.admin-status.warn .ss-note { color: #F2C14E; }
+.admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
+
+/* Highlight the Update Scores tool when results are waiting to be scored. */
+.function-container.attn .button-container button {
+    box-shadow: inset 3px 0 0 #F2C14E, 0px 0px 2px 2px #1A1F33;
+}

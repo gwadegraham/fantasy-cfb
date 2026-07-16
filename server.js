@@ -173,7 +173,7 @@ app.get('/admin', (req, res) => {
         }
         const userState = safeJson(req.oidc.user);
 
-        res.render('admin', {user, userState});
+        res.render('admin', {user, userState, year: process.env.YEAR});
     } else {
         res.redirect("/login");
     }
