@@ -1,4 +1,5 @@
 const scoringModule = require('../modules/scoring.js');
+const { CLAUNTS_DEFAULTS } = require('../modules/scoring-defaults');
 
 // These exercise the aggregation paths that were previously untested and that
 // the #171 fixes touched: the cumulative-score reduce and the first-week
@@ -99,6 +100,59 @@ describe('scoring aggregation', () => {
             expect(patchBody.weeklyScore).toHaveLength(1);
             expect(patchBody.weeklyScore[0].score).toBe(7);
             expect(patchBody.weeklyScore[0].week).toBe(1);
+        });
+    });
+
+    describe('structural config is honored end-to-end', () => {
+        // Regression: getScoringConfig forwarded only { model, values } to
+        // resolveConfig, dropping combineMode/disabled — so the scoring jobs
+        // ignored structural config even though the API returned it and the
+        // rules page showed it. This drives updateScores with the REAL engine
+        // (calculateScoreV1 not mocked) and asserts a saved combineMode changes
+        // the computed score.
+        function runWithConfig(configResponse, game) {
+            const user = {
+                _id: 'u1',
+                league: 'claunts-league',
+                seasons: [{ season: '2025', teams: [{ id: 333, school: 'Alabama' }], weeklyScore: [] }],
+            };
+            let patchBody;
+            global.fetch = jest.fn((url, opts) => {
+                if (url.includes('/users/season/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
+                }
+                if (url.includes('/scoring-config/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve(configResponse) });
+                }
+                if (url.includes('/games/seasonType/')) {
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve([game]) });
+                }
+                if (url.includes('/rankings/')) {
+                    return Promise.resolve({ json: () => Promise.resolve({ polls: [{ poll: 'AP Top 25', ranks: [] }] }) });
+                }
+                patchBody = JSON.parse(opts.body); // PATCH /users/:id
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+            });
+            return scoringModule.updateScores('regular', 5).then(() => patchBody);
+        }
+
+        // Conference win vs an unranked opponent.
+        const confWin = {
+            id: 1, seasonType: 'regular', notes: null, conferenceGame: true,
+            homeId: 333, awayId: 8, homeTeam: 'Alabama', awayTeam: 'Auburn',
+            homePoints: 30, awayPoints: 20, homeConference: 'SEC', awayConference: 'SEC',
+        };
+
+        it('default (first) combine mode scores a conference win as 2', async () => {
+            const cfg = { model: 'claunts', combineMode: 'first', values: CLAUNTS_DEFAULTS, disabled: [] };
+            const patchBody = await runWithConfig(cfg, confWin);
+            expect(patchBody.weeklyScore[0].score).toBe(2);
+        });
+
+        it("a saved 'sum' combine mode is honored (conf 2 + base 1 = 3)", async () => {
+            const cfg = { model: 'claunts', combineMode: 'sum', values: CLAUNTS_DEFAULTS, disabled: [] };
+            const patchBody = await runWithConfig(cfg, confWin);
+            expect(patchBody.weeklyScore[0].score).toBe(3);
         });
     });
 
