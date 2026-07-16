@@ -421,7 +421,8 @@
 .draft-config-form .scoring-field {
     flex-direction: row;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    margin-bottom: 12px;
 }
 .scoring-field label {
     flex: 1;
@@ -429,8 +430,21 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    line-height: 1.3;
+    line-height: 1.35;
 }
+
+/* Section labels ("Regular season" / "Postseason") inside the scoring config:
+   give them room so the two groups read as distinct blocks. */
+[scoring-config-fields] .draft-status-row {
+    margin: 18px 0 10px;
+    font-weight: 500;
+    color: #AEB4CC;
+}
+[scoring-config-fields] .draft-status-row:first-child { margin-top: 4px; }
+
+/* Combine-mode dropdown: full width so "Sum all bonuses" isn't truncated on
+   mobile (the shared .sub-container select is only 45% wide there). */
+select[scoring-config-combine-mode] { width: 100%; }
 .scoring-field .num-stepper { flex: none; }
 
 /* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a
