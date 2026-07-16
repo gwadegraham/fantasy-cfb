@@ -322,17 +322,7 @@
     background-color: #ed5858;
 }
 
-/* ---------- Admin console redesign: intro, groups, status strip ---------- */
-.admin-intro {
-    color: #AEB4CC;
-    max-width: 760px;
-    margin: 0 auto 1.25em;
-    padding: 0 1em;
-    text-align: center;
-    font-size: 0.95em;
-    line-height: 1.5;
-}
-
+/* ---------- Admin console redesign: groups, status strip ---------- */
 .admin-group {
     width: 100%;
     max-width: 1100px;
