@@ -187,7 +187,10 @@ export function buildHighlights(users) {
     const eligible = withWeeks.filter(u => weekly(u).length >= 2);
     if (eligible.length) {
         const steady = eligible.slice().sort((a, b) => stdev(weekly(a).map(w => w.score || 0)) - stdev(weekly(b).map(w => w.score || 0)))[0];
-        cards.push({ icon: '🎯', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: 'steadiest', tone: 'neutral' });
+        const scores = weekly(steady).map(w => w.score || 0);
+        const sd = stdev(scores);
+        const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
+        cards.push({ icon: '🎯', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });
     }
 
     return cards;
@@ -200,6 +203,7 @@ export function buildHighlightsHtml(cards) {
             <div class="highlight-info">
                 <span class="hl-name">${c.name}</span>
                 <span class="hl-value ${c.tone}">${c.value}</span>
+                ${c.sub ? `<span class="hl-detail">${c.sub}</span>` : ''}
             </div>
         </div>`).join('');
 }
