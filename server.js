@@ -223,7 +223,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireCommissioner(req, res, next);
 });
-app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft', '/scoring-config'], (req, res, next) => {
+app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft', '/scoring-config', '/job-runs'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireCommissioner(req, res, next);
 });
@@ -258,6 +258,9 @@ app.use('/draft', requireAuthOrToken, draftRouter);
 const scoringConfigRouter = require('./routes/scoringConfig');
 app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
+const jobRunsRouter = require('./routes/jobRuns');
+app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
+
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
@@ -275,4 +278,12 @@ registerDraftSockets(io);
 
 server.listen(process.env.PORT || 3000, () =>{
     console.log('Server Started');
+
+    // Run the score-update jobs in-process on a schedule (America/Chicago),
+    // replacing Heroku Scheduler. Gated so it only runs on the deployed dyno,
+    // not on local dev machines or in tests.
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_SCHEDULER === 'true') {
+        require('./modules/scheduler').start();
+        console.log('In-process job scheduler started');
+    }
 });
