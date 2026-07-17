@@ -389,7 +389,7 @@
     }
 }
 /* ---------- Standings UX enhancements ---------- */
-/* Ranked table: movement, medals, crown, sparkline, gap-to-leader */
+/* Ranked table: movement, medals, crown, gap-to-leader */
 .rank-num { font-weight: 700; margin-right: 5px; }
 .move { font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
 .move.up { color: #5BD08D; }
@@ -399,7 +399,6 @@
 .standings-row.medal-2 .rank-num { color: #C7CCDB; }
 .standings-row.medal-3 .rank-num { color: #D8925B; }
 .crown { font-size: 0.85rem; margin-right: 2px; }
-.name-cell .spark { display: block; margin-top: 3px; }
 .gap { display: inline-block; font-size: 0.68rem; color: #767D9C; font-weight: 400; }
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
