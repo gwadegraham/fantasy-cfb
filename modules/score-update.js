@@ -98,12 +98,18 @@ async function runFullUpdate({ withBetting = false } = {}) {
         });
     }
 
+    var teamCount = 0;
+    var gamesNew = 0;
+    var gamesUpdated = 0;
+
     if (isPostseason) {
         var teams = await retrieveGamesModule.retrieveTeams();
-        console.log("number of returned teams", teams.length);
+        teamCount = teams.length;
+        console.log("number of returned teams", teamCount);
 
         var games = await retrieveGamesModule.retrievePostseasonGames(teams, 1);
-        console.log("number of returned games", games.length);
+        gamesNew = games.length;
+        console.log("number of returned games", gamesNew);
 
         await retrieveGamesModule.saveGames(games);
         await scoringModule.updateScores("postseason", 1);
@@ -113,11 +119,14 @@ async function runFullUpdate({ withBetting = false } = {}) {
         if (withBetting) await bettingModule.updateAllBettingLines();
     } else {
         var teams = await retrieveGamesModule.retrieveTeams();
-        console.log("number of returned teams", teams.length);
+        teamCount = teams.length;
+        console.log("number of returned teams", teamCount);
 
         var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
-        console.log("number of returned new games", games.newGames.length);
-        console.log("number of returned existing games", games.existingGames.length);
+        gamesNew = games.newGames.length;
+        gamesUpdated = games.existingGames.length;
+        console.log("number of returned new games", gamesNew);
+        console.log("number of returned existing games", gamesUpdated);
 
         await scoringModule.updateScores("regular", weekNumber);
         await scoringModule.updateCumulativeScores();
@@ -126,7 +135,7 @@ async function runFullUpdate({ withBetting = false } = {}) {
         if (withBetting) await bettingModule.updateAllBettingLines();
     }
 
-    return { week, seasonType };
+    return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated };
 }
 
 module.exports = { runFullUpdate };
