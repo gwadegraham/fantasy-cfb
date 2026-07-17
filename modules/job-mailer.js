@@ -31,7 +31,7 @@ function buildJobEmailHtml({ label, when, ok, rows, error }) {
     return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Campus Clash - ${escapeHtml(label)}</title></head>
-<body style="font-family:Arial,sans-serif;background-color:#121212;margin:0;padding:0;color:#e0e0e0;">
+<body style="font-family:Arial,sans-serif;background-color:#eceff1;margin:0;padding:24px 12px;color:#e0e0e0;">
   <div style="max-width:600px;margin:0 auto;background-color:#1e1e1e;border-radius:8px;overflow:hidden;">
     <div style="background-color:#0d47a1;color:#fff;padding:20px;text-align:center;"><h1 style="margin:0;font-size:24px;">🏈 Campus Clash · ${escapeHtml(label)}</h1></div>
     <div style="padding:20px;border-bottom:1px solid #333;">
