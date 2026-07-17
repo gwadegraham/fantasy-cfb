@@ -28,8 +28,7 @@ function weekLabel(entry) {
 
 // --- ranked table rows -------------------------------------------------------
 
-// Ranked rows with movement (rank change vs last week), gap to the leader, and a
-// weekly-score series for the sparkline.
+// Ranked rows with movement (rank change vs last week) and gap to the leader.
 export function rankedRows(users) {
     const sorted = users.slice().sort((a, b) => cum(b) - cum(a));
     const weeks = sorted.length ? weekly(sorted[0]).length : 0;
@@ -49,29 +48,8 @@ export function rankedRows(users) {
         teams: season(u).teams || [],
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
-        delta: (prevRankById && prevRankById[u._id] != null) ? (prevRankById[u._id] - i) : null,
-        spark: weekly(u).map(w => w.score || 0)
+        delta: (prevRankById && prevRankById[u._id] != null) ? (prevRankById[u._id] - i) : null
     }));
-}
-
-// Tiny inline sparkline of a user's weekly points.
-export function sparklineSvg(points, color) {
-    const w = 84, h = 22, pad = 2;
-    if (!points || points.length < 2) return '';
-    const max = Math.max(...points, 1);
-    const min = Math.min(...points, 0);
-    const span = (max - min) || 1;
-    const step = (w - pad * 2) / (points.length - 1);
-    const coords = points.map((p, i) => {
-        const x = pad + i * step;
-        const y = h - pad - ((p - min) / span) * (h - pad * 2);
-        return `${round(x)},${round(y)}`;
-    });
-    const last = coords[coords.length - 1].split(',');
-    const stroke = color || '#64B5F6';
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">` +
-        `<polyline fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="${coords.join(' ')}"/>` +
-        `<circle cx="${last[0]}" cy="${last[1]}" r="2" fill="${stroke}"/></svg>`;
 }
 
 function movementHtml(delta) {
@@ -90,10 +68,10 @@ export function buildStandingsRowsHtml(rows) {
         ).join('');
         const gap = r.rank === 1
             ? '<span class="gap leader">Leader</span>'
-            : `<span class="gap">-${r.gap} back</span>`;
+            : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
         return `<tr class="standings-row${medal}">
             <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
-            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.name)}</a>${sparklineSvg(r.spark, '#64B5F6')}</th>
+            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.name)}</a></th>
             <td class="team-item">${logos}</td>
             <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
         </tr>`;
