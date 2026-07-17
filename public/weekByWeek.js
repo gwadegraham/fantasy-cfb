@@ -1,77 +1,52 @@
+import { buildChartData } from './standings-insights.js';
+
+let chart = null;
+let chartData = null;
+let mode = 'points';
+
+// Draws the "Path to the Championship" chart and wires the Points/Rank toggle.
+// Chart is a global from the Chart.js CDN script in the view.
 export function setChartData(data) {
-    var chartMax = 100;
+    chartData = buildChartData(data);
+    draw();
 
-    data.sort((a, b) => {
-        return b.seasons[0].cumulativeScore - a.seasons[0].cumulativeScore;
-    });
-
-    const labels = [];
-    const dataset = [];
-
-    for (var i = 0; (i-1) < data[0].seasons[0].weeklyScore.length; i++) {
-        labels.push("Week " + i);
-    }
-
-    data.forEach( (user) => {
-        var scoreData = [0];        
-        var cumulativeScore = 0;
-
-        chartMax = (user.seasons[0].weeklyScore.length * 17);
-
-        user.seasons[0].weeklyScore.forEach( week => {
-            cumulativeScore += week.score; 
-            scoreData.push(cumulativeScore);
+    const toggle = document.querySelector('[chart-mode-toggle]');
+    if (toggle && !toggle.dataset.wired) {
+        toggle.dataset.wired = '1';
+        toggle.querySelectorAll('button[data-mode]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                mode = btn.getAttribute('data-mode');
+                toggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+                draw();
+            });
         });
+    }
+}
 
-        var userData = {
-            label: user.firstName + " " + user.lastName.substring(-1,1),
-            data: scoreData,
-            fill: false,
-            backgroundColor: user.color,
-            borderColor: user.color,
-            tension: 0.1
-        };
+function draw() {
+    if (!chartData) return;
+    const canvas = document.getElementById('week-by-week');
+    if (!canvas) return;
+    if (chart) chart.destroy();
 
-        dataset.push(userData);
-    });
-
-    const chartData = {
-        labels: labels,
-        datasets: dataset
-    };
-
-    const config = {
+    const isRank = mode === 'rank';
+    const grid = { color: 'rgba(255,255,255,0.06)' };
+    chart = new Chart(canvas, {
         type: 'line',
-        data: chartData,
+        data: { labels: chartData.labels, datasets: isRank ? chartData.rankDatasets : chartData.pointsDatasets },
         options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
             scales: {
-                x: {
-                    ticks: {
-                        color: '#F4F6FB',
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    min: 0,
-                    max: chartMax,
-                    ticks: {
-                        color: '#F4F6FB',
-                        stepSize : Math.round(chartMax / 7)
-                    },
-                }
+                x: { ticks: { color: '#F4F6FB' }, grid },
+                y: isRank
+                    ? { reverse: true, min: 1, max: chartData.playerCount, ticks: { color: '#F4F6FB', stepSize: 1, precision: 0 }, grid,
+                        title: { display: true, text: 'Rank', color: '#AEB4CC' } }
+                    : { beginAtZero: true, ticks: { color: '#F4F6FB' }, grid,
+                        title: { display: true, text: 'Points', color: '#AEB4CC' } }
             },
-            plugins: {  // 'legend' now within object 'plugins {}'
-                legend: {
-                    labels: {
-                        color: '#F4F6FB',
-                    }
-                }
-            },
+            plugins: { legend: { labels: { color: '#F4F6FB' } } }
         }
-    };
-
-    new Chart(
-        document.getElementById('week-by-week'),
-        config
-    );
+    });
 }

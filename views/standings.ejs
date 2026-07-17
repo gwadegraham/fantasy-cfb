@@ -63,45 +63,8 @@
     </div>
     <hr class="hr-subtle">
     <h2 class="highlights-header">🌟 League Highlights</h2>
-    <div class="highlights-container">
-        <!-- 🔥 Hot Streak -->
-        <div class="sub-highlight-container">
-            <div class="highlight-title">
-                <p>🔥 Hot Streak</p>
-            </div>
-            <div class="highlight-info">
-                <span hot-team></span>
-                <span hot-team-score style="color: #22C37A;"></span>
-            </div>
-        </div>
-        <!-- 🏆 Biggest Winner -->
-        <div class="sub-highlight-container">
-            <div class="highlight-title">🏆 Big Winner</div>
-            <div class="highlight-info">
-            <span biggest-winner></span>
-            <span biggest-winner-score style="color: #22C37A;"></span> 
-            <span winner-week style="color: #22C37A;"></span>
-            </div>
-        </div>
-
-        <div class="sub-highlight-container">
-            <div class="highlight-title">😢 Big Losers</div>
-            <div class="highlight-info">
-            <span biggest-loser></span>
-            <span biggest-loser-score style="color: #ed5858;"></span> 
-            <span loser-week style="color: #ed5858;"></span>
-            </div>
-        </div>
-        <!-- 🥇 Best Teams -->
-        <div class="sub-highlight-container">
-            <div class="highlight-title">🥇 Best Teams</div>
-            <div class="highlight-info">
-            <span best-team></span>
-            <span best-team-score style="color: #22C37A;"></span> 
-            <span best-week style="color: #22C37A;"></span>
-            </div>
-        </div>
-    </div>
+    <!-- Cards are rendered from data by standings.js (buildHighlights). -->
+    <div class="highlights-container"></div>
     <hr class="hr-subtle">
     <div class="header">
         <div class="header-title" poll-name>
@@ -149,15 +112,17 @@
     </div>
     <div class="chart-container" chart-container style="display: none;">
         <div class="header">
-            <div class="header-title" poll-name>
+            <div class="header-title">
                 Path to the Championship
             </div>
         </div>
+        <div class="chart-mode-toggle" chart-mode-toggle>
+            <button type="button" data-mode="points" class="active">Points</button>
+            <button type="button" data-mode="rank">Rank</button>
+        </div>
         <div class="content">
-            <div class="get-users-container" get-users-container>
-                <div class="table-wrapper">
-                    <div style="width: 1000px; padding-left: 40px;"><canvas id="week-by-week"></canvas></div>
-                </div>
+            <div class="chart-canvas-wrap">
+                <canvas id="week-by-week"></canvas>
             </div>
         </div>
     </div>
