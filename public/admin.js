@@ -267,11 +267,33 @@ async function loadAdminStatus() {
             var apiRes = await fetch('/games/info', { headers: { 'Accept': 'application/json' } });
             if (apiRes.ok) { var a = await apiRes.json(); api = a && a.remainingCalls; }
         } catch (e) { /* API count is optional */ }
-        renderAdminStatus(el, s, api, year);
+        var jobs = [];
+        try {
+            var jobsRes = await fetch('/job-runs', { headers: { 'Accept': 'application/json' } });
+            if (jobsRes.ok) { jobs = await jobsRes.json(); }
+        } catch (e) { /* job history is optional */ }
+        renderAdminStatus(el, s, api, year, jobs);
     } catch (e) { /* leave the strip hidden on error */ }
 }
 
-function renderAdminStatus(el, s, api, year) {
+// Human-friendly "how long ago" for a timestamp.
+function timeAgo(iso) {
+    if (!iso) return '';
+    var diff = Date.now() - new Date(iso).getTime();
+    if (isNaN(diff)) return '';
+    var mins = Math.round(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    return Math.round(hrs / 24) + 'd ago';
+}
+
+var JOB_LABELS = {
+    'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday'
+};
+
+function renderAdminStatus(el, s, api, year, jobs) {
     var behind = !s.upToDate;
     var items = [
         ['Scored through', (s.scoredThroughWeek ? 'Week ' + s.scoredThroughWeek : '—'), behind ? 'a' : 'g'],
@@ -290,10 +312,27 @@ function renderAdminStatus(el, s, api, year) {
         : '<i class="fa-solid fa-bolt"></i><span>Everything’s current through Week ' + (s.scoredThroughWeek || 0) +
           '. Automation is keeping scores up to date — nothing to do here.</span>';
 
+    // Automated-job last-run summary (green success, red error, amber running).
+    var jobsBlock = '';
+    if (jobs && jobs.length) {
+        var order = ['daily-scores', 'saturday-scores', 'sunday-scores'];
+        var sorted = jobs.slice().sort(function (a, b) { return order.indexOf(a.jobName) - order.indexOf(b.jobName); });
+        var jobItems = sorted.map(function (j) {
+            var dot = j.status === 'success' ? 'g' : (j.status === 'error' ? 'r' : 'a');
+            var label = JOB_LABELS[j.jobName] || j.jobName;
+            var when = timeAgo(j.finishedAt || j.startedAt);
+            var outcome = j.status === 'error' ? 'failed' : (j.status === 'running' ? 'running' : 'ran');
+            return '<div class="ss-job"><span class="dot ' + dot + '"></span><b>' + label + '</b>' +
+                '<span class="ss-job-meta">' + outcome + (when ? ' · ' + when : '') + '</span></div>';
+        }).join('');
+        jobsBlock = '<div class="ss-jobs"><small>Automated jobs</small><div class="ss-jobs-row">' + jobItems + '</div></div>';
+    }
+
     el.className = 'admin-status ' + (behind ? 'warn' : 'ok');
     el.innerHTML = '<div class="ss-head"><i class="fa-solid fa-circle-info"></i> Current state · ' + year + ' season</div>' +
         '<div class="ss-row">' + rows + '</div>' +
-        '<div class="ss-note">' + note + '</div>';
+        '<div class="ss-note">' + note + '</div>' +
+        jobsBlock;
     el.hidden = false;
 
     var tool = document.querySelector('[scores-tool]');
