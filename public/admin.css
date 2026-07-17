@@ -397,6 +397,15 @@
 .admin-status .dot.g { background: #71D28D; }
 .admin-status .dot.b { background: #64B5F6; }
 .admin-status .dot.a { background: #F2C14E; }
+.admin-status .dot.r { background: #ED5858; }
+
+/* Automated-jobs last-run summary. */
+.ss-jobs { margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741; }
+.ss-jobs > small { color: #767D9C; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.ss-jobs-row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
+.ss-job { display: flex; align-items: center; gap: 7px; font-size: 0.82rem; }
+.ss-job b { font-weight: 500; }
+.ss-job-meta { color: #767D9C; }
 .admin-status .ss-note {
     margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
     font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: #AEB4CC;
