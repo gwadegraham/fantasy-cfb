@@ -72,7 +72,7 @@ export function buildStandingsRowsHtml(rows) {
         return `<tr class="standings-row${medal}">
             <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
             <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.name)}</a></th>
-            <td class="team-item">${logos}</td>
+            <td class="team-item"><div class="team-logos">${logos}</div></td>
             <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
         </tr>`;
     }).join('');

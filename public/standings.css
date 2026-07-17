@@ -403,6 +403,17 @@
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
 
+/* Team logos: keep the cell a real table cell so it fills the row height and
+   vertical-align:middle applies; the logos live in an inner flex row. A
+   display:flex <td> instead collapses to its content height, stranding the
+   logos at the top of taller rows. Scoped so admin/userHome .team-item keep
+   their own flex layout. */
+.standings-row .team-item { display: table-cell; vertical-align: middle; }
+.standings-row .team-logos { display: flex; align-items: center; width: 100%; }
+@media only screen and (min-width: 64em) {
+    .standings-row .team-logos { justify-content: space-between; }
+}
+
 /* Highlight cards: flow all cards, spaced tags, colored values */
 @media only screen and (min-width: 64em) {
     /* 3 across on desktop — better density for the fuller set of highlight cards. */
