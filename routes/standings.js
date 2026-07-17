@@ -4,7 +4,7 @@ const User = require('../models/user');
 const Team = require('../models/team');
 const Record = require('../models/record');
 const Game = require('../models/game');
-const Ranking = require('../models/ranking');
+const Betting = require('../models/bettingLine');
 const Draft = require('../models/draft');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 
@@ -53,23 +53,21 @@ router.get('/highlights/:league/:season', async (req, res) => {
         const draft = await Draft.findOne({ league: league, season: seasonNum });
         const picks = (draft && draft.picks) || [];
 
-        // Regular-season games involving drafted teams + rankings by week (Giant Killer).
+        // Regular-season games involving drafted teams + betting spreads by game
+        // (for Biggest Upset).
         const games = await Game.find(
             { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-            { homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, week: 1, completed: 1, _id: 0 }
+            { id: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
         );
-        const rankings = await Ranking.find({ season: seasonNum, seasonType: 'regular' });
-        const rankByWeek = {};
-        rankings.forEach(rk => {
-            const poll = (rk.polls || []).find(p => p.poll === 'Playoff Committee Rankings')
-                || (rk.polls || []).find(p => p.poll === 'AP Top 25');
-            if (!poll) return;
-            const map = {};
-            (poll.ranks || []).forEach(rr => { map[rr.school] = rr.rank; });
-            rankByWeek[rk.week] = map;
+        const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
+        const spreadByGameId = {};
+        betting.forEach(b => {
+            const lines = b.lines || [];
+            const line = lines.find(l => l.provider === 'DraftKings') || lines[0];
+            if (line && typeof line.spread === 'number') spreadByGameId[b.id] = line.spread;
         });
 
-        res.json(buildAdvancedHighlights({ records, metaById, picks, scoreById, games, rankByWeek, draftedNames, metaByName }));
+        res.json(buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

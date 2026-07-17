@@ -64,11 +64,12 @@ function draftStealCard(picks, scoreById) {
     };
 }
 
-// Giant killer: drafted team's win over the highest-ranked opponent (where the
-// winner was unranked or lower-ranked — a genuine upset).
-// games: [{ homeTeam, awayTeam, homePoints, awayPoints, week, completed }]
-// rankByWeek: { [week]: { [school]: rank } }; draftedNames: Set of school names
-function giantKillerCard(games, rankByWeek, draftedNames, metaByName) {
+// Biggest upset: the drafted team that won as the largest betting underdog.
+// games: [{ id, homeTeam, awayTeam, homePoints, awayPoints, completed }]
+// spreadByGameId: { [gameId]: homeSpread } where a POSITIVE home spread means
+//   the home team was the underdog by that many points (CFBD convention), so a
+//   negative spread means the home team was favored.
+function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName) {
     let best = null;
     (games || []).forEach(g => {
         if (!g.completed) return;
@@ -78,28 +79,29 @@ function giantKillerCard(games, rankByWeek, draftedNames, metaByName) {
         const winner = homeWon ? g.homeTeam : g.awayTeam;
         const loser = homeWon ? g.awayTeam : g.homeTeam;
         if (!draftedNames.has(winner)) return;
-        const wk = (rankByWeek && rankByWeek[g.week]) || {};
-        const loserRank = wk[loser];
-        if (!loserRank) return;                       // opponent must be ranked
-        const winnerRank = wk[winner];
-        if (winnerRank && winnerRank <= loserRank) return; // winner favored → not an upset
-        if (!best || loserRank < best.loserRank) best = { winner, loser, loserRank };
+        const spread = spreadByGameId ? spreadByGameId[g.id] : undefined;
+        if (spread == null) return;
+        // Underdog margin for the winner: home won while a home underdog
+        // (spread > 0), or away won while the home team was favored (spread < 0).
+        const margin = homeWon ? (spread > 0 ? spread : null) : (spread < 0 ? -spread : null);
+        if (margin == null || margin <= 0) return;
+        if (!best || margin > best.margin) best = { winner, loser, margin };
     });
     if (!best) return null;
     const meta = (metaByName && metaByName[best.winner]) || null;
     return {
-        icon: '🐉', title: 'Giant Killer', tag: 'season',
+        icon: '🎲', title: 'Biggest Upset', tag: 'season',
         name: `${logoImg(meta)}${teamLabel(meta, best.winner)}`,
-        value: `beat #${best.loserRank} ${escapeHtml(best.loser)}`, tone: 'good'
+        value: `beat ${escapeHtml(best.loser)} as a ${round(best.margin)}-pt dog`, tone: 'good'
     };
 }
 
-function buildAdvancedHighlights({ records, metaById, picks, scoreById, games, rankByWeek, draftedNames, metaByName }) {
+function buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName }) {
     return [
         overachieverCard(records, metaById),
         draftStealCard(picks, scoreById),
-        giantKillerCard(games, rankByWeek, draftedNames, metaByName)
+        biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName)
     ].filter(Boolean);
 }
 
-module.exports = { overachieverCard, draftStealCard, giantKillerCard, buildAdvancedHighlights };
+module.exports = { overachieverCard, draftStealCard, biggestUpsetCard, buildAdvancedHighlights };

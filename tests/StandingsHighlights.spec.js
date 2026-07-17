@@ -1,4 +1,4 @@
-const { overachieverCard, draftStealCard, giantKillerCard } = require('../modules/standings-highlights');
+const { overachieverCard, draftStealCard, biggestUpsetCard } = require('../modules/standings-highlights');
 
 describe('overachieverCard', () => {
     it('picks the team most over its expected wins', () => {
@@ -41,31 +41,32 @@ describe('draftStealCard', () => {
     });
 });
 
-describe('giantKillerCard', () => {
-    const metaByName = { 'Vanderbilt': { mascot: 'Commodores', logos: ['v.png'] } };
-    const drafted = new Set(['Vanderbilt']);
-    it('finds a drafted team beating the highest-ranked opponent', () => {
+describe('biggestUpsetCard', () => {
+    const metaByName = { 'Vanderbilt': { mascot: 'Commodores', logos: ['v.png'] }, 'Northwestern': { mascot: 'Wildcats' } };
+    const drafted = new Set(['Vanderbilt', 'Northwestern']);
+
+    it('finds the drafted team that won as the biggest underdog', () => {
         const games = [
-            { homeTeam: 'Vanderbilt', awayTeam: 'Alabama', homePoints: 40, awayPoints: 35, week: 6, completed: true },
-            { homeTeam: 'Vanderbilt', awayTeam: 'Kentucky', homePoints: 20, awayPoints: 13, week: 7, completed: true }
+            { id: 1, homeTeam: 'Vanderbilt', awayTeam: 'Alabama', homePoints: 40, awayPoints: 35, completed: true }, // home won
+            { id: 2, homeTeam: 'Ohio State', awayTeam: 'Northwestern', homePoints: 10, awayPoints: 14, completed: true } // away won
         ];
-        const rankByWeek = { 6: { Alabama: 1 }, 7: { Kentucky: 18 } };  // beat #1 and #18
-        const card = giantKillerCard(games, rankByWeek, drafted, metaByName);
-        expect(card.title).toBe('Giant Killer');
-        expect(card.name).toContain('Commodores');
-        expect(card.value).toBe('beat #1 Alabama');
+        // g1: home spread +14 -> Vanderbilt a 14-pt home dog, won.
+        // g2: home spread -21 -> Ohio State favored by 21 -> Northwestern a 21-pt away dog, won.
+        const spreadByGameId = { 1: 14, 2: -21 };
+        const card = biggestUpsetCard(games, spreadByGameId, drafted, metaByName);
+        expect(card.title).toBe('Biggest Upset');
+        expect(card.name).toContain('Wildcats');           // 21 > 14
+        expect(card.value).toContain('21-pt');
+        expect(card.value).toContain('beat Ohio State');
     });
-    it('ignores wins over unranked teams and games the drafted team lost', () => {
+
+    it('ignores favored wins, losses, and games with no line', () => {
         const games = [
-            { homeTeam: 'Vanderbilt', awayTeam: 'Rice', homePoints: 50, awayPoints: 3, week: 1, completed: true },     // unranked
-            { homeTeam: 'Georgia', awayTeam: 'Vanderbilt', homePoints: 44, awayPoints: 10, week: 2, completed: true }  // Vandy lost
+            { id: 1, homeTeam: 'Vanderbilt', awayTeam: 'Rice', homePoints: 50, awayPoints: 3, completed: true },    // favored
+            { id: 2, homeTeam: 'Georgia', awayTeam: 'Vanderbilt', homePoints: 44, awayPoints: 10, completed: true }, // Vandy lost
+            { id: 3, homeTeam: 'Vanderbilt', awayTeam: 'LSU', homePoints: 20, awayPoints: 17, completed: true }      // no line
         ];
-        const rankByWeek = { 2: { Georgia: 2 } };
-        expect(giantKillerCard(games, rankByWeek, drafted, metaByName)).toBeNull();
-    });
-    it('does not count a win where the winner was already higher-ranked (not an upset)', () => {
-        const games = [{ homeTeam: 'Vanderbilt', awayTeam: 'Auburn', homePoints: 30, awayPoints: 20, week: 3, completed: true }];
-        const rankByWeek = { 3: { Vanderbilt: 2, Auburn: 10 } };  // favored winner
-        expect(giantKillerCard(games, rankByWeek, drafted, metaByName)).toBeNull();
+        const spreadByGameId = { 1: -30, 2: -21 };   // g1 home favored; g3 absent
+        expect(biggestUpsetCard(games, spreadByGameId, drafted, metaByName)).toBeNull();
     });
 });
