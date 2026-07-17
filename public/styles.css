@@ -423,7 +423,10 @@ footer {
     }
 
     .header {
-        height: 50px;
+        /* min-height, not height: a fixed height combined with
+           align-items:flex-end makes a wrapped title (e.g. "Path to the
+           Championship") overflow upward and collide with the content above. */
+        min-height: 50px;
     }
 
     .header-title {
