@@ -47,8 +47,8 @@ describe('biggestUpsetCard', () => {
 
     it('finds the drafted team that won as the biggest underdog', () => {
         const games = [
-            { id: 1, homeTeam: 'Vanderbilt', awayTeam: 'Alabama', homePoints: 40, awayPoints: 35, completed: true }, // home won
-            { id: 2, homeTeam: 'Ohio State', awayTeam: 'Northwestern', homePoints: 10, awayPoints: 14, completed: true } // away won
+            { id: 1, week: 3, homeTeam: 'Vanderbilt', awayTeam: 'Alabama', homePoints: 40, awayPoints: 35, completed: true }, // home won
+            { id: 2, week: 8, homeTeam: 'Ohio State', awayTeam: 'Northwestern', homePoints: 10, awayPoints: 14, completed: true } // away won
         ];
         // g1: home spread +14 -> Vanderbilt a 14-pt home dog, won.
         // g2: home spread -21 -> Ohio State favored by 21 -> Northwestern a 21-pt away dog, won.
@@ -56,8 +56,24 @@ describe('biggestUpsetCard', () => {
         const card = biggestUpsetCard(games, spreadByGameId, drafted, metaByName);
         expect(card.title).toBe('Biggest Upset');
         expect(card.name).toContain('Wildcats');           // 21 > 14
-        expect(card.value).toContain('21-pt');
-        expect(card.value).toContain('beat Ohio State');
+        expect(card.tag).toBe('week 8');
+        expect(card.sub).toContain('21-pt');
+        expect(card.sub).toContain('beat Ohio State');
+        expect(card.sub).toContain('14–10');               // final score (winner–loser)
+        expect(card.sub).toContain('underdog');
+        // No fantasy map -> value falls back to the underdog margin.
+        expect(card.value).toBe('21-pt dog');
+    });
+
+    it('leads with the owner\'s fantasy points when available', () => {
+        const games = [
+            { id: 2, week: 8, homeTeam: 'Ohio State', awayTeam: 'Northwestern', homePoints: 10, awayPoints: 14, completed: true }
+        ];
+        const spreadByGameId = { 2: -21 };
+        const fantasyByGameId = { 2: { Northwestern: 18.5 } };
+        const card = biggestUpsetCard(games, spreadByGameId, drafted, metaByName, fantasyByGameId);
+        expect(card.value).toBe('+18.5 pts');
+        expect(card.sub).toContain('beat Ohio State 14–10 · 21-pt underdog');
     });
 
     it('ignores favored wins, losses, and games with no line', () => {

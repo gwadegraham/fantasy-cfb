@@ -65,11 +65,13 @@ function draftStealCard(picks, scoreById) {
 }
 
 // Biggest upset: the drafted team that won as the largest betting underdog.
-// games: [{ id, homeTeam, awayTeam, homePoints, awayPoints, completed }]
+// games: [{ id, week, homeTeam, awayTeam, homePoints, awayPoints, completed }]
 // spreadByGameId: { [gameId]: homeSpread } where a POSITIVE home spread means
 //   the home team was the underdog by that many points (CFBD convention), so a
 //   negative spread means the home team was favored.
-function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName) {
+// fantasyByGameId: { [gameId]: { [teamName]: fantasyPoints } } — the points the
+//   drafting owner banked from that team in that game (used for the card detail).
+function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName, fantasyByGameId) {
     let best = null;
     (games || []).forEach(g => {
         if (!g.completed) return;
@@ -85,22 +87,34 @@ function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName) {
         // (spread > 0), or away won while the home team was favored (spread < 0).
         const margin = homeWon ? (spread > 0 ? spread : null) : (spread < 0 ? -spread : null);
         if (margin == null || margin <= 0) return;
-        if (!best || margin > best.margin) best = { winner, loser, margin };
+        if (!best || margin > best.margin) best = { game: g, winner, loser, margin, homeWon };
     });
     if (!best) return null;
+    const g = best.game;
     const meta = (metaByName && metaByName[best.winner]) || null;
+    const winScore = best.homeWon ? g.homePoints : g.awayPoints;
+    const loseScore = best.homeWon ? g.awayPoints : g.homePoints;
+    const fantasy = fantasyByGameId && fantasyByGameId[g.id] ? fantasyByGameId[g.id][best.winner] : undefined;
+
+    // Fantasy points the owner banked lead the card (that's the payoff); the
+    // matchup, final score and underdog margin sit in the detail line.
+    const value = typeof fantasy === 'number'
+        ? `+${round(fantasy)} pts`
+        : `${round(best.margin)}-pt dog`;
+    const detail = `beat ${escapeHtml(best.loser)} ${winScore}–${loseScore} · ${round(best.margin)}-pt underdog`;
     return {
-        icon: '🎲', title: 'Biggest Upset', tag: 'season',
+        icon: '🎲', title: 'Biggest Upset',
+        tag: g.week != null ? `week ${g.week}` : 'season',
         name: `${logoImg(meta)}${teamLabel(meta, best.winner)}`,
-        value: `beat ${escapeHtml(best.loser)} as a ${round(best.margin)}-pt dog`, tone: 'good'
+        value, sub: detail, tone: 'good'
     };
 }
 
-function buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName }) {
+function buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName, fantasyByGameId }) {
     return [
         overachieverCard(records, metaById),
         draftStealCard(picks, scoreById),
-        biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName)
+        biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName, fantasyByGameId)
     ].filter(Boolean);
 }
 

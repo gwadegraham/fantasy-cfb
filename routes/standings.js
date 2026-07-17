@@ -34,6 +34,19 @@ router.get('/highlights/:league/:season', async (req, res) => {
                 metaByName[t.school] = meta;
             });
         });
+
+        // Fantasy points each owner banked from a team in a given game, keyed
+        // gameId -> { teamName -> points } (for the Biggest Upset detail line).
+        const fantasyByGameId = {};
+        users.forEach(u => {
+            const s = (u.seasons || []).find(x => String(x.season) === String(season));
+            ((s && s.weeklyScore) || []).forEach(wk => {
+                (wk.scoreByTeam || []).forEach(st => {
+                    if (st.gameId == null || st.team == null) return;
+                    (fantasyByGameId[st.gameId] || (fantasyByGameId[st.gameId] = {}))[st.team] = st.score || 0;
+                });
+            });
+        });
         const idList = [...draftedIds];
         if (!idList.length) return res.json([]);
 
@@ -57,7 +70,7 @@ router.get('/highlights/:league/:season', async (req, res) => {
         // (for Biggest Upset).
         const games = await Game.find(
             { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-            { id: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
+            { id: 1, week: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
         );
         const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
         const spreadByGameId = {};
@@ -67,7 +80,7 @@ router.get('/highlights/:league/:season', async (req, res) => {
             if (line && typeof line.spread === 'number') spreadByGameId[b.id] = line.spread;
         });
 
-        res.json(buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName }));
+        res.json(buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName, fantasyByGameId }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
