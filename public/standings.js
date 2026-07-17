@@ -139,6 +139,7 @@ async function getUsers() {
             displayUsers(data);
             displayLastUpdated(data);
             displayHighlights(data);
+            loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             setNavbarUserId(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
@@ -188,6 +189,22 @@ function displayLastUpdated(data) {
         const lastUpdated = document.querySelector('[last-updated]');
         lastUpdated.innerHTML = `Last Updated ${formatTime}`;
     }
+}
+
+// Advanced highlights (Overachiever, Draft Steal, Giant Killer) come from the
+// server since they need records/games/rankings/draft data the roster payload
+// doesn't carry. Appended to the highlights grid; failures are silent.
+async function loadAdvancedHighlights(league, season) {
+    if (!league || season == null) return;
+    try {
+        const res = await fetch(`/standings/highlights/${league}/${season}`, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return;
+        const cards = await res.json();
+        const container = document.querySelector('.highlights-container');
+        if (container && Array.isArray(cards) && cards.length) {
+            container.insertAdjacentHTML('beforeend', buildHighlightsHtml(cards));
+        }
+    } catch (e) { /* advanced highlights are best-effort */ }
 }
 
 function displayHighlights(users) {
