@@ -261,6 +261,9 @@ app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 const jobRunsRouter = require('./routes/jobRuns');
 app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
 
+const standingsRouter = require('./routes/standings');
+app.use('/standings', requireAuthOrToken, standingsRouter);
+
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
