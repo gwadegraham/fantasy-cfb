@@ -123,67 +123,69 @@ function changeHeader(data) {
 
 }
 
-function displayTeams(data) {
-    const userTableBody = document.querySelector('[user-table-body]');
-    var str = '';
+// Column model for the weekly table: regular weeks 1-16 keyed by week number,
+// plus one aggregated Postseason column. Building columns by week (rather than
+// by array position) keeps each score under its correct header even when weeks
+// are missing or a postseason entry is present — the old positional rendering
+// dropped the postseason bonus into whatever column index it happened to land.
+function weeklyColumns(season) {
+    const weekly = (season && season.weeklyScore) || [];
+    const isPost = (w) => w.season === 'postseason' || w.week > 16;
 
-    var currentWeeksLength = data.seasons.at(-1).weeklyScore.length;
+    const regularByWeek = {};
+    weekly.forEach(w => { if (!isPost(w)) regularByWeek[w.week] = w; });
 
-    data.seasons.at(-1).teams.forEach( (team, index) => {
-        var totalScore = 0;
-
-        str += '<tr>';
-        var refLink = `/team?team=${team.id}`;
-
-        str += '<th class="team-header sticky-header">';
-        str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
-        str += escapeHtml(team.school);
-        str += '</a></th>';
-        
-        data.seasons.at(-1).weeklyScore.forEach(week => {
-            var result = week.scoreByTeam.filter(obj => {
-                return obj.team == team.school
-              });
-
-            var tableWeeklyScore = 0;
-            if (result.length > 0) {
-                for (const repeatedScore of result) {
-                    tableWeeklyScore += repeatedScore.score;
-                }
-            }
-
-            if (result[0]) {
-                str += '<td>' + tableWeeklyScore + '</td>';
-                totalScore += tableWeeklyScore;
-            } else {
-                str += '<td>0</td>';
-            }
-        });
-
-
-        for(var i = 0; i < (17 - currentWeeksLength); i++) {
-            str += '<td>0</td>';
-        }
-
-        str += '<th class="sticky-header-score">' + totalScore + '</th>';
-        str += '</tr>';
-    });
-
-    str += '<tr>';
-    str += '<th class="team-header sticky-header">';
-    str += 'Cumulative Score';
-    str += '</th>';
-
-    data.seasons.at(-1).weeklyScore.forEach(week => {
-        str += '<td>' + week.score + '</td>'
-    });
-
-    for(var i = 0; i < (17 - currentWeeksLength); i++) {
-        str += '<td>0</td>';
+    // Fold any/all postseason entries into a single synthetic column.
+    const postEntries = weekly.filter(isPost);
+    let postseason = null;
+    if (postEntries.length) {
+        postseason = {
+            score: postEntries.reduce((s, w) => s + (w.score || 0), 0),
+            scoreByTeam: postEntries.flatMap(w => w.scoreByTeam || [])
+        };
     }
 
-    str += '<th class="sticky-header-score">' + (data.seasons.at(-1).cumulativeScore || 0) + '</th>';
-    str += '</tr>';
+    const columns = [];
+    for (let wk = 1; wk <= 16; wk++) columns.push(regularByWeek[wk] || null);
+    columns.push(postseason);   // Postseason column (null until it exists)
+    return columns;
+}
+
+function displayTeams(data) {
+    const userTableBody = document.querySelector('[user-table-body]');
+    const season = data.seasons.at(-1) || {};
+    const columns = weeklyColumns(season);
+    var str = '';
+
+    (season.teams || []).forEach(team => {
+        var totalScore = 0;
+        var cells = '';
+
+        columns.forEach(entry => {
+            // No entry -> week hasn't been played yet (blank, not a scored 0).
+            if (!entry) { cells += '<td class="cell-future"></td>'; return; }
+            const games = (entry.scoreByTeam || []).filter(o => o.team === team.school);
+            // Week was scored but this team had no game -> bye (muted dash).
+            if (!games.length) { cells += '<td class="cell-bye">–</td>'; return; }
+            const sum = games.reduce((s, g) => s + (g.score || 0), 0);
+            totalScore += sum;
+            cells += '<td>' + sum + '</td>';
+        });
+
+        const refLink = `/team?team=${team.id}`;
+        str += '<tr><th class="team-header sticky-header">'
+            + '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
+            + escapeHtml(team.school) + '</a></th>'
+            + cells
+            + '<th class="sticky-header-score">' + totalScore + '</th></tr>';
+    });
+
+    // Cumulative row: the whole-week total per column.
+    str += '<tr class="cumulative-row"><th class="team-header sticky-header">Cumulative Score</th>';
+    columns.forEach(entry => {
+        str += entry ? '<td>' + (entry.score || 0) + '</td>' : '<td class="cell-future"></td>';
+    });
+    str += '<th class="sticky-header-score">' + (season.cumulativeScore || 0) + '</th></tr>';
 
     userTableBody.innerHTML = str;
 }
