@@ -242,6 +242,7 @@ footer {
 
 .fl-table td, .fl-table th {
     text-align: center;
+    vertical-align: middle;
     padding: 8px;
 }
 
@@ -400,6 +401,19 @@ footer {
         margin-right: 10px
     }
 
+    /* The Score column is frozen to the right while the logos scroll under it.
+       Give it a real gutter (so it doesn't jam against the last logo) and a
+       soft divider shadow that reads as "content scrolls beneath this". */
+    .fl-table th.sticky-header-score {
+        padding-left: 12px;
+        padding-right: 12px;
+        box-shadow: -8px 0 8px -6px rgba(0, 0, 0, 0.6);
+    }
+
+    .fl-table th.sticky-header-score .gap {
+        white-space: nowrap;
+    }
+
     .cfb-data {
         font-size: 1rem;
     }
@@ -409,7 +423,10 @@ footer {
     }
 
     .header {
-        height: 50px;
+        /* min-height, not height: a fixed height combined with
+           align-items:flex-end makes a wrapped title (e.g. "Path to the
+           Championship") overflow upward and collide with the content above. */
+        min-height: 50px;
     }
 
     .header-title {

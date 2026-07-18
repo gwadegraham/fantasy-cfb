@@ -403,6 +403,17 @@
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
 
+/* Team logos: keep the cell a real table cell so it fills the row height and
+   vertical-align:middle applies; the logos live in an inner flex row. A
+   display:flex <td> instead collapses to its content height, stranding the
+   logos at the top of taller rows. Scoped so admin/userHome .team-item keep
+   their own flex layout. */
+.standings-row .team-item { display: table-cell; vertical-align: middle; }
+.standings-row .team-logos { display: flex; align-items: center; width: 100%; }
+@media only screen and (min-width: 64em) {
+    .standings-row .team-logos { justify-content: space-between; }
+}
+
 /* Highlight cards: flow all cards, spaced tags, colored values */
 @media only screen and (min-width: 64em) {
     /* 3 across on desktop — better density for the fuller set of highlight cards. */
@@ -420,6 +431,55 @@
 .highlight-info .hl-value.good { color: #5BD08D; }
 .highlight-info .hl-value.bad { color: #ED5858; }
 .highlight-info .hl-value.neutral { color: #64B5F6; }
+
+/* Tie popover: the "+N" pill on the Top Single Game card opens a small
+   popover listing every tied team (standings.js toggles [hidden]). */
+.highlight-info .hl-name { position: relative; }
+.hl-more {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 7px;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #C9CEE6;
+    background: #2A2E42;
+    border: 1px solid #3A3F58;
+    border-radius: 20px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+.hl-more:hover { background: #343954; color: #F4F6FB; }
+.hl-more[aria-expanded="true"] { background: #8E8CF0; border-color: #8E8CF0; color: #fff; }
+.hl-popover {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(100% + 6px);
+    z-index: 20;
+    width: max-content;
+    /* Cap to ~a grid column so a card in either column keeps the centered
+       popover on-screen on mobile; desktop takes the 240px cap. */
+    max-width: min(240px, 42vw);
+    padding: 10px 12px;
+    background: #232840;
+    border: 1px solid #3A3F58;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    font-size: 0.82rem;
+    color: #C9CEE6;
+    line-height: 1.5;
+    text-align: left;
+    white-space: normal;
+}
+.hl-popover .hl-popover-title {
+    display: block;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #8E93AE;
+    margin-bottom: 4px;
+}
 
 /* Path to the Championship: responsive canvas + Points/Rank toggle */
 .chart-canvas-wrap { position: relative; height: 340px; width: 100%; max-width: 1000px; margin: 0 auto; padding: 0 10px; box-sizing: border-box; }
