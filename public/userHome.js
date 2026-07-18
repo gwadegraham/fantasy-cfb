@@ -267,6 +267,9 @@ function setupEditModal(data, season) {
 
     btn.addEventListener('click', open);
     cancelBtn.addEventListener('click', close);
+
+    // Arriving from the first-login onboarding nudge opens the editor straight away.
+    if (new URLSearchParams(window.location.search).get('setup') === '1') open();
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) close(); });
 

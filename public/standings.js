@@ -137,6 +137,7 @@ async function getUsers() {
                 }
             }
             displayUsers(data);
+            maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
@@ -210,6 +211,38 @@ async function loadAdvancedHighlights(league, season) {
 function displayHighlights(users) {
     const container = document.querySelector('.highlights-container');
     if (container) container.innerHTML = buildHighlightsHtml(buildHighlights(users));
+}
+
+// First-login nudge: if the logged-in manager hasn't been prompted yet, invite
+// them to name their team + add a photo. Either choice marks them prompted so
+// it never shows again; "Set up" sends them to their profile with the editor
+// auto-opened.
+function maybePromptProfileSetup(data) {
+    try {
+        const myId = (userState.user_metadata.metadata.userId) || window.localStorage.getItem('userId');
+        if (!myId) return;
+        const me = data.find(u => String(u._id) === String(myId));
+        if (!me || me.profilePrompted) return;
+        const modal = document.querySelector('[welcome-modal]');
+        if (!modal || modal.dataset.wired) return;
+        modal.dataset.wired = '1';
+
+        const dismiss = async (navigate) => {
+            modal.hidden = true;
+            try {
+                await fetch('/users/me/profile', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompted: true })
+                });
+            } catch (e) { /* non-blocking */ }
+            if (navigate) window.location.href = `/userHome?user=${myId}&setup=1`;
+        };
+
+        modal.querySelector('[welcome-later]').addEventListener('click', () => dismiss(false));
+        modal.querySelector('[welcome-setup]').addEventListener('click', () => dismiss(true));
+        modal.hidden = false;
+    } catch (e) { /* onboarding is best-effort */ }
 }
 
 // Toggles the "+N" tie popover on the Top Single Game card. Wired once via
