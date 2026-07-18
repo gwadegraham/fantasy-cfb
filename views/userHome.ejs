@@ -24,9 +24,43 @@
             var userState = <%- userState %>;
         </script>
     <% } %>
+    <script>
+        var CLOUDINARY = <%- JSON.stringify(cloudinary || { cloudName: '', uploadPreset: '' }) %>;
+    </script>
 
-    <div class="header">
-        <div class="header-title" poll-name></div>
+    <div class="profile-hero" profile-hero>
+        <div class="avatar avatar-lg" profile-avatar></div>
+        <div class="profile-meta">
+            <h1 class="franchise-name" profile-franchise></h1>
+            <p class="manager-name" profile-manager></p>
+            <div class="profile-stats" profile-stats></div>
+        </div>
+        <button type="button" class="edit-profile-btn" edit-profile-btn hidden>
+            <i class="fa-solid fa-pen"></i> Edit profile
+        </button>
+    </div>
+
+    <div class="modal-backdrop" profile-modal hidden>
+        <div class="profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+            <h2 id="profile-modal-title">Edit your profile</h2>
+            <label class="field">
+                <span>Team name</span>
+                <input type="text" profile-name-input maxlength="40" placeholder="Name your team">
+            </label>
+            <div class="avatar-edit">
+                <div class="avatar avatar-md" profile-modal-avatar></div>
+                <div class="avatar-edit-controls">
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" profile-file-input hidden>
+                    <button type="button" class="btn-secondary" profile-upload-btn>Upload photo</button>
+                    <span class="upload-status" profile-upload-status></span>
+                </div>
+            </div>
+            <p class="modal-error" profile-modal-error hidden></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" profile-cancel-btn>Cancel</button>
+                <button type="button" class="btn-primary" profile-save-btn>Save</button>
+            </div>
+        </div>
     </div>
     <div class="content">
         <div class="get-users-container" get-users-container>

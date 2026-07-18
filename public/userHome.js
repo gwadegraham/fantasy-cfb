@@ -112,15 +112,213 @@ async function getUser() {
 
     response.json().then(async data => {
         userData = data[0];
-        changeHeader(data[0]);
+        renderHero(data[0]);
         displayTeams(data[0]);
         displaySchedule(data[0]);
     });
 }
-function changeHeader(data) {
-    var pageHeader = data.firstName + ' ' + data.lastName;
-    document.getElementsByClassName('header-title')[0].innerText = pageHeader;
+// ---------- Profile hero ----------
 
+function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function initials(data) {
+    return (((data.firstName || '')[0] || '') + ((data.lastName || '')[0] || '')).toUpperCase();
+}
+
+// Stable color for the initials avatar: the user's stored color if any, else a
+// hue hashed from their name so each manager gets a consistent shade.
+function colorFor(data) {
+    if (data.color) return data.color;
+    const s = (data.firstName || '') + (data.lastName || '');
+    let h = 0;
+    for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return `hsl(${h % 360}, 45%, 45%)`;
+}
+
+// Deliver the avatar as a face-centered 256px square (Cloudinary transformation
+// inserted into the stored delivery URL).
+function cloudinaryAvatar(url) {
+    if (typeof url === 'string' && url.indexOf('/upload/') !== -1) {
+        return url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256,q_auto,f_auto/');
+    }
+    return url;
+}
+
+function renderAvatar(el, data) {
+    if (!el) return;
+    el.innerHTML = '';
+    if (data.avatarUrl) {
+        const img = document.createElement('img');
+        img.src = cloudinaryAvatar(data.avatarUrl);
+        img.alt = '';
+        el.style.background = 'transparent';
+        el.appendChild(img);
+    } else {
+        el.textContent = initials(data) || '?';
+        el.style.background = colorFor(data);
+    }
+}
+
+// Highest-scoring team on the roster this season (summed from scoreByTeam).
+function bestTeam(season) {
+    const weekly = season.weeklyScore || [];
+    let best = null;
+    (season.teams || []).forEach(t => {
+        let total = 0;
+        weekly.forEach(w => (w.scoreByTeam || []).forEach(st => { if (st.team === t.school) total += (st.score || 0); }));
+        if (!best || total > best.total) best = { team: t, total };
+    });
+    return best;
+}
+
+// League rank for the profile user, by current-season cumulative score.
+async function computeRank(data) {
+    try {
+        if (!data.league) return null;
+        const res = await fetch(`/users/league/${data.league}`, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return null;
+        const users = await res.json();
+        const ranked = users
+            .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
+            .sort((a, b) => b.score - a.score);
+        const idx = ranked.findIndex(r => r.id === data._id);
+        return idx < 0 ? null : { rank: idx + 1, total: ranked.length };
+    } catch (e) { return null; }
+}
+
+function statTile(valueHtml, label) {
+    return `<div class="stat"><span class="stat-value">${valueHtml}</span><span class="stat-label">${escapeHtml(label)}</span></div>`;
+}
+
+// The logged-in user's own id (from the Auth0 session), used to decide whether
+// to show the Edit control.
+function currentUserId() {
+    try { return (userState.user_metadata.metadata.userId) || window.localStorage.getItem('userId'); }
+    catch (e) { return window.localStorage.getItem('userId'); }
+}
+
+async function renderHero(data) {
+    const season = data.seasons.at(-1) || {};
+    const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    const franchise = season.franchiseName;
+
+    document.querySelector('[profile-franchise]').textContent = franchise || `${data.firstName || 'Unnamed'}'s Team`;
+    document.querySelector('[profile-manager]').textContent = franchise ? `Managed by ${manager}` : manager;
+    document.title = `${franchise || manager} · Campus Clash`;
+    renderAvatar(document.querySelector('[profile-avatar]'), data);
+
+    const statsEl = document.querySelector('[profile-stats]');
+    let html = '';
+    const rank = await computeRank(data);
+    if (rank) html += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`);
+    html += statTile(String(season.cumulativeScore || 0), 'Total points');
+    const bt = bestTeam(season);
+    if (bt && bt.total > 0) {
+        html += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    }
+    statsEl.innerHTML = html;
+
+    // Edit is only offered on the viewer's own profile (the endpoint enforces
+    // this too, from the session).
+    if (currentUserId() && String(currentUserId()) === String(data._id)) {
+        setupEditModal(data, season);
+    }
+}
+
+// ---------- Edit modal (franchise name + avatar upload) ----------
+
+function setupEditModal(data, season) {
+    const btn = document.querySelector('[edit-profile-btn]');
+    const modal = document.querySelector('[profile-modal]');
+    const nameInput = document.querySelector('[profile-name-input]');
+    const modalAvatar = document.querySelector('[profile-modal-avatar]');
+    const fileInput = document.querySelector('[profile-file-input]');
+    const uploadBtn = document.querySelector('[profile-upload-btn]');
+    const status = document.querySelector('[profile-upload-status]');
+    const errorEl = document.querySelector('[profile-modal-error]');
+    const saveBtn = document.querySelector('[profile-save-btn]');
+    const cancelBtn = document.querySelector('[profile-cancel-btn]');
+    if (!btn || !modal || btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    btn.hidden = false;
+
+    let pendingAvatar; // undefined = unchanged; string/null = new value to save
+
+    const cloudinaryReady = !!(CLOUDINARY && CLOUDINARY.cloudName && CLOUDINARY.uploadPreset);
+    if (!cloudinaryReady) {
+        uploadBtn.disabled = true;
+        status.textContent = 'Photo upload unavailable';
+    }
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.hidden = !msg; }
+
+    function open() {
+        pendingAvatar = undefined;
+        nameInput.value = season.franchiseName || '';
+        renderAvatar(modalAvatar, data);
+        status.textContent = '';
+        showError('');
+        modal.hidden = false;
+    }
+    function close() { modal.hidden = true; }
+
+    btn.addEventListener('click', open);
+    cancelBtn.addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) close(); });
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        showError('');
+        status.textContent = 'Uploading…';
+        uploadBtn.disabled = true;
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('upload_preset', CLOUDINARY.uploadPreset);
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY.cloudName}/image/upload`, { method: 'POST', body: form });
+            if (!res.ok) throw new Error('Upload failed');
+            const out = await res.json();
+            pendingAvatar = out.secure_url;
+            renderAvatar(modalAvatar, { avatarUrl: pendingAvatar });
+            status.textContent = 'Photo ready — click Save';
+        } catch (e) {
+            status.textContent = '';
+            showError('Upload failed. Try a different image.');
+        } finally {
+            uploadBtn.disabled = !cloudinaryReady;
+            fileInput.value = '';
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        showError('');
+        saveBtn.disabled = true;
+        const body = { franchiseName: nameInput.value };
+        if (pendingAvatar !== undefined) body.avatarUrl = pendingAvatar;
+        try {
+            const res = await fetch('/users/me/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.message || 'Save failed');
+            data.avatarUrl = out.avatarUrl;
+            season.franchiseName = out.franchiseName;
+            renderHero(data);
+            close();
+        } catch (e) {
+            showError(e.message || 'Save failed.');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
 }
 
 // Column model for the weekly table: regular weeks 1-16 keyed by week number,

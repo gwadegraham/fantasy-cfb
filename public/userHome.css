@@ -271,3 +271,69 @@
         height: 2rem;
     }
 }
+/* ---------- Profile hero + edit modal ---------- */
+.profile-hero {
+    display: flex;
+    align-items: center;
+    gap: 1.25em;
+    width: 95%;
+    max-width: 900px;
+    margin: 1.5em auto 0.5em;
+    padding: 1.25em 1.5em;
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    box-sizing: border-box;
+}
+.profile-meta { flex: 1; min-width: 0; }
+.franchise-name { font-size: 1.6rem; font-weight: 700; color: #F4F6FB; margin: 0; line-height: 1.15; word-break: break-word; }
+.manager-name { font-size: 0.9rem; color: #A4A9C2; margin: 2px 0 0; }
+.profile-stats { display: flex; flex-wrap: wrap; gap: 1.5em; margin-top: 0.9em; }
+.profile-stats .stat { display: flex; flex-direction: column; }
+.profile-stats .stat .stat-value { font-size: 1.25rem; font-weight: 700; color: #F4F6FB; display: flex; align-items: center; gap: 6px; }
+.profile-stats .stat .stat-value img { height: 1.2rem; width: auto; }
+.profile-stats .stat .stat-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-top: 2px; }
+
+/* Avatar: image or colored initials */
+.avatar { border-radius: 50%; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; font-weight: 700; color: #fff; background-size: cover; background-position: center; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-lg { width: 88px; height: 88px; font-size: 2rem; }
+.avatar-md { width: 72px; height: 72px; font-size: 1.6rem; }
+
+.edit-profile-btn { align-self: flex-start; background: #2A2E42; color: #C9CEE6; border: 1px solid #3A3F58; border-radius: 20px; padding: 6px 14px; font: inherit; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+.edit-profile-btn:hover { background: #343954; color: #F4F6FB; }
+
+/* Edit modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(8,10,20,0.72); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1em; }
+.modal-backdrop[hidden] { display: none; }
+.profile-modal-card { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 14px; padding: 1.5em; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+.profile-modal-card h2 { font-size: 1.3rem; margin: 0 0 1em; color: #F4F6FB; }
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25em; }
+.field span { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #A4A9C2; }
+.field input { background: #101322; border: 1px solid #3A3F58; border-radius: 8px; padding: 10px 12px; color: #F4F6FB; font: inherit; }
+.field input:focus { outline: none; border-color: #8E8CF0; }
+.avatar-edit { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
+.avatar-edit-controls { display: flex; flex-direction: column; gap: 6px; }
+.upload-status { font-size: 0.75rem; color: #767D9C; }
+.modal-error { color: #ED5858; font-size: 0.82rem; margin: 0 0 0.75em; }
+.modal-error[hidden] { display: none; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.75em; }
+.btn-primary, .btn-secondary, .btn-ghost { font: inherit; font-size: 0.9rem; border-radius: 8px; padding: 8px 16px; cursor: pointer; border: 1px solid transparent; }
+.btn-primary { background: #8E8CF0; color: #fff; border-color: #8E8CF0; }
+.btn-primary:hover { background: #7d7be8; }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
+.btn-secondary { background: #2A2E42; color: #C9CEE6; border-color: #3A3F58; }
+.btn-secondary:hover { background: #343954; }
+.btn-ghost { background: transparent; color: #A4A9C2; }
+.btn-ghost:hover { color: #F4F6FB; }
+
+@media only screen and (max-width: 40em) {
+    .profile-hero { flex-direction: column; align-items: center; text-align: center; gap: 0.75em; }
+    .avatar-lg { width: 72px; height: 72px; font-size: 1.6rem; }
+    .franchise-name { font-size: 1.35rem; }
+    .profile-stats { justify-content: center; gap: 1.25em; margin-top: 0.5em; }
+    .profile-stats .stat { align-items: center; }
+    .profile-stats .stat .stat-value { justify-content: center; }
+    .edit-profile-btn { order: 4; align-self: center; }
+}
