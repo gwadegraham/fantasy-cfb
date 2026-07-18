@@ -147,6 +147,11 @@ const seasonSchema = new mongoose.Schema({
     season: {
         type: Number
     },
+    // The manager's custom franchise name for this season (e.g. "Garrett's
+    // Gridiron Gang"). Season-scoped so it can change year to year.
+    franchiseName: {
+        type: String
+    },
     draftPosition: {
         type: Number
     },
@@ -188,6 +193,17 @@ const userSchema = new mongoose.Schema({
     },
     lastUpdated: {
         type: String
+    },
+    // Profile picture: a Cloudinary delivery URL (validated server-side). Held
+    // at the account level since a person's photo doesn't change per season.
+    avatarUrl: {
+        type: String
+    },
+    // Set once the user has seen the "add a photo / name your team" onboarding
+    // prompt, so we only show it the first time after the feature launched.
+    profilePrompted: {
+        type: Boolean,
+        default: false
     },
 });
 

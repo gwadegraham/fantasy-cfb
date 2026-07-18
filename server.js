@@ -16,6 +16,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const { resolveConfig, fieldsForModel } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
+const { cloudinaryConfig } = require('./modules/profile-update');
 
 // Serializes an object to JSON that is safe to embed inside an inline <script>
 // tag. Escapes the characters that could break out of the script context
@@ -195,7 +196,7 @@ app.get('/userHome', async function(req, res) {
         const user = buildUserContext(req.oidc.user);
         const userState = safeJson(req.oidc.user);
 
-        res.render('userHome', {user, userState});
+        res.render('userHome', {user, userState, cloudinary: cloudinaryConfig()});
     } else {
         res.redirect("/login");
     }
@@ -225,6 +226,9 @@ app.use('/teams', (req, res, next) => {
 });
 app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft', '/scoring-config', '/job-runs'], (req, res, next) => {
     if (req.method === 'GET') return next();
+    // Self-service profile edit is scoped to the caller's own record (identity
+    // comes from the session in the handler), so it doesn't need commissioner.
+    if (req.method === 'PATCH' && req.path === '/me/profile') return next();
     return requireCommissioner(req, res, next);
 });
 
