@@ -305,7 +305,11 @@
 .edit-profile-btn:hover { background: #343954; color: #F4F6FB; }
 
 /* Edit modal */
-.modal-backdrop { position: fixed; inset: 0; background: rgba(8,10,20,0.72); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1em; }
+/* Keep a file input reachable by a programmatic .click() (display:none inputs
+   don't reliably open the picker) while hiding it visually. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; opacity: 0; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(10,12,24,0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1em; }
 .modal-backdrop[hidden] { display: none; }
 .profile-modal-card { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 14px; padding: 1.5em; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
 .profile-modal-card h2 { font-size: 1.3rem; margin: 0 0 1em; color: #F4F6FB; }

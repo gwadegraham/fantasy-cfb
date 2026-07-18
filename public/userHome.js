@@ -248,10 +248,6 @@ function setupEditModal(data, season) {
     let pendingAvatar; // undefined = unchanged; string/null = new value to save
 
     const cloudinaryReady = !!(CLOUDINARY && CLOUDINARY.cloudName && CLOUDINARY.uploadPreset);
-    if (!cloudinaryReady) {
-        uploadBtn.disabled = true;
-        status.textContent = 'Photo upload unavailable';
-    }
 
     function showError(msg) { errorEl.textContent = msg; errorEl.hidden = !msg; }
 
@@ -259,8 +255,11 @@ function setupEditModal(data, season) {
         pendingAvatar = undefined;
         nameInput.value = season.franchiseName || '';
         renderAvatar(modalAvatar, data);
-        status.textContent = '';
         showError('');
+        // Set the upload control's state every open so a missing Cloudinary
+        // config surfaces a persistent reason rather than a silently-dead button.
+        uploadBtn.disabled = !cloudinaryReady;
+        status.textContent = cloudinaryReady ? '' : 'Photo upload unavailable';
         modal.hidden = false;
     }
     function close() { modal.hidden = true; }
