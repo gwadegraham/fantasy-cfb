@@ -50,7 +50,7 @@
     .team-header {
         padding: 0em 0em 0em 0.5em !important;
         text-align: center !important;
-        min-width: 4em;
+        min-width: 2.6em;
     }
 
     .sticky-header {
@@ -67,8 +67,27 @@
 
     .fl-table td {
         padding: 0em 0em 0em 0.5em;
-        min-width: 4em;
+        min-width: 2.6em;
     }
+
+    /* The Postseason header was clipped to "Po" — give its column room to fit. */
+    .fl-table thead th:nth-last-child(2) {
+        min-width: 6em;
+        white-space: nowrap;
+    }
+
+    /* Frozen Team Score column: gutter + divider so it doesn't crowd/overlap
+       the Postseason column as the table scrolls. */
+    .sticky-header-score {
+        padding-left: 1em;
+        box-shadow: -8px 0 8px -6px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Unplayed weeks read as blank (not a scored 0); byes as a muted dash. */
+    td.cell-bye { color: #4A4F68; }
+
+    /* Set the cumulative row apart from the per-team rows. */
+    .cumulative-row td, .cumulative-row th { border-top: 2px solid #2A2E42; font-weight: 600; }
 
     .game-notes {
         font-size: 0.75em;
@@ -184,6 +203,10 @@
 
     .content {
         margin-top: 0px;
+        /* The flex-centered body shrink-wraps .content, which made the table
+           wrapper collapse narrower than the table and clip the last column.
+           Stretch it so percentage-width children resolve against the viewport. */
+        width: 100%;
     }
 
     .brand-title {
@@ -204,9 +227,23 @@
         width: auto;
     }
 
+    /* On desktop the table fits without horizontal scroll, so the frozen
+       Team Score column has nothing to scroll over — left sticky it just
+       detaches to the container edge and paints over the Postseason column.
+       Let it sit in normal flow here; it stays sticky on mobile where the
+       table actually scrolls. */
+    .sticky-header-score {
+        position: static;
+        box-shadow: none;
+    }
+
     .fl-table {
         font-size: 1em;
         line-height: 3em;
+        /* Size to content (not stretched to the wrapper): with the score column
+           no longer sticky on desktop, min-width:100% only padded the table out
+           and pushed the last column off-screen. */
+        min-width: 0;
     }
 
     .hr-subtle {
