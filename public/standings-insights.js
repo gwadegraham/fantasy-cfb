@@ -176,8 +176,18 @@ export function buildHighlights(users) {
         const teamNames = [...new Set(topGames.map(g => g.team))];
         if (teamNames.length > 1) {
             const shown = teamNames.slice(0, 4).map(escapeHtml).join(', ');
-            const more = teamNames.length > 4 ? ` +${teamNames.length - 4}` : '';
-            cards.push({ icon: '⚡', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name: shown + more, value: `+${topScore}`, tone: 'good' });
+            let name = shown;
+            if (teamNames.length > 4) {
+                // "+N" is a button that reveals the full list in a popover
+                // (standings.js wires the toggle); the popover carries every
+                // tied team so nothing is hidden for good.
+                const extra = teamNames.length - 4;
+                const full = teamNames.map(escapeHtml).join(', ');
+                name += ` <button type="button" class="hl-more" aria-expanded="false">+${extra}</button>`
+                    + `<span class="hl-popover" role="tooltip" hidden>`
+                    + `<span class="hl-popover-title">All ${teamNames.length} tied teams</span>${full}</span>`;
+            }
+            cards.push({ icon: '⚡', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name, value: `+${topScore}`, tone: 'good' });
         } else {
             cards.push({ icon: '⚡', title: 'Top Single Game', tag: 'one game', name: `${escapeHtml(topGames[0].team)} <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
         }

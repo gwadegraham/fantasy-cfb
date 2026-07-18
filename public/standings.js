@@ -212,6 +212,33 @@ function displayHighlights(users) {
     if (container) container.innerHTML = buildHighlightsHtml(buildHighlights(users));
 }
 
+// Toggles the "+N" tie popover on the Top Single Game card. Wired once via
+// delegation so it survives re-renders; closes on outside click or Escape.
+function setupTiePopovers() {
+    const container = document.querySelector('.highlights-container');
+    if (!container) return;
+    const closeAll = (except) => container.querySelectorAll('.hl-popover:not([hidden])').forEach(p => {
+        if (p === except) return;
+        p.hidden = true;
+        const btn = p.previousElementSibling;
+        if (btn && btn.classList.contains('hl-more')) btn.setAttribute('aria-expanded', 'false');
+    });
+    container.addEventListener('click', (e) => {
+        const btn = e.target.closest('.hl-more');
+        if (!btn || !container.contains(btn)) { closeAll(); return; }
+        const pop = btn.nextElementSibling;
+        if (!pop || !pop.classList.contains('hl-popover')) return;
+        const willOpen = pop.hidden;
+        closeAll(pop);
+        pop.hidden = !willOpen;
+        btn.setAttribute('aria-expanded', String(willOpen));
+        e.stopPropagation();
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('.hl-popover, .hl-more')) closeAll(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
+setupTiePopovers();
+
 async function getGame(season, week, team) {
 
     var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}`, {
