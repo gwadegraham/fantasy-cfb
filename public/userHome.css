@@ -86,6 +86,9 @@
     /* Unplayed weeks read as blank (not a scored 0); byes as a muted dash. */
     td.cell-bye { color: #4A4F68; }
 
+    /* Season standouts: best single team-game and best weekly total. */
+    td.cell-best { color: #F2C14E; font-weight: 700; }
+
     /* Set the cumulative row apart from the per-team rows. */
     .cumulative-row td, .cumulative-row th { border-top: 2px solid #2A2E42; font-weight: 600; }
 
@@ -356,3 +359,8 @@
         margin-right: auto;
     }
 }
+
+/* ---------- Season Progress chart ---------- */
+.profile-chart-section { width: 95%; max-width: 900px; margin: 1.5em auto 0; }
+.profile-chart-section .header { justify-content: flex-start; }
+.profile-chart-wrap { position: relative; height: 260px; width: 100%; padding: 0 10px 1em; box-sizing: border-box; }

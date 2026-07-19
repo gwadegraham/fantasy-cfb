@@ -114,6 +114,7 @@ async function getUser() {
         userData = data[0];
         renderHero(data[0]);
         displayTeams(data[0]);
+        renderProfileChart(data[0]);
         displaySchedule(data[0]);
     });
 }
@@ -323,17 +324,19 @@ function setupEditModal(data, season) {
     });
 }
 
-// Column model for the weekly table: regular weeks 1-16 keyed by week number,
-// plus one aggregated Postseason column. Building columns by week (rather than
-// by array position) keeps each score under its correct header even when weeks
-// are missing or a postseason entry is present — the old positional rendering
-// dropped the postseason bonus into whatever column index it happened to land.
+// Column model for the weekly table. Each entry is mapped to its real week
+// (regular weeks by number, postseason folded into one column) rather than by
+// array position, so scores never land under the wrong header. Only weeks that
+// have actually been played are included (plus Postseason once it exists), so
+// the table isn't padded out with a wall of empty future columns — which also
+// keeps it far narrower on mobile.
 function weeklyColumns(season) {
     const weekly = (season && season.weeklyScore) || [];
     const isPost = (w) => w.season === 'postseason' || w.week > 16;
 
     const regularByWeek = {};
-    weekly.forEach(w => { if (!isPost(w)) regularByWeek[w.week] = w; });
+    let maxWeek = 0;
+    weekly.forEach(w => { if (!isPost(w)) { regularByWeek[w.week] = w; if (w.week > maxWeek) maxWeek = w.week; } });
 
     // Fold any/all postseason entries into a single synthetic column.
     const postEntries = weekly.filter(isPost);
@@ -346,48 +349,118 @@ function weeklyColumns(season) {
     }
 
     const columns = [];
-    for (let wk = 1; wk <= 16; wk++) columns.push(regularByWeek[wk] || null);
-    columns.push(postseason);   // Postseason column (null until it exists)
+    for (let wk = 1; wk <= maxWeek; wk++) {
+        columns.push({ label: String(wk), ariaLabel: 'Week ' + wk, entry: regularByWeek[wk] || null });
+    }
+    if (postseason) columns.push({ label: 'Post&shy;season', ariaLabel: 'Postseason', entry: postseason });
     return columns;
 }
 
+// The points a team banked in one column (bye / not yet played -> null).
+function columnTeamScore(entry, teamSchool) {
+    if (!entry) return null;
+    const games = (entry.scoreByTeam || []).filter(o => o.team === teamSchool);
+    if (!games.length) return null;
+    return games.reduce((s, g) => s + (g.score || 0), 0);
+}
+
 function displayTeams(data) {
-    const userTableBody = document.querySelector('[user-table-body]');
+    const head = document.querySelector('[user-table-head]');
+    const body = document.querySelector('[user-table-body]');
     const season = data.seasons.at(-1) || {};
+    const teams = season.teams || [];
     const columns = weeklyColumns(season);
-    var str = '';
 
-    (season.teams || []).forEach(team => {
-        var totalScore = 0;
-        var cells = '';
+    // Header (generated so it always matches the columns actually shown, and so
+    // the week numbers carry an accessible "Week N" label for screen readers).
+    let headHtml = '<tr><th class="sticky-header team-header" scope="col">Team</th>';
+    columns.forEach(c => {
+        headHtml += `<th class="team-header" scope="col" aria-label="${c.ariaLabel}">${c.label}</th>`;
+    });
+    headHtml += '<th class="sticky-header-score team-header" scope="col">Team Score</th></tr>';
+    if (head) head.innerHTML = headHtml;
 
-        columns.forEach(entry => {
-            // No entry -> week hasn't been played yet (blank, not a scored 0).
-            if (!entry) { cells += '<td class="cell-future"></td>'; return; }
-            const games = (entry.scoreByTeam || []).filter(o => o.team === team.school);
-            // Week was scored but this team had no game -> bye (muted dash).
-            if (!games.length) { cells += '<td class="cell-bye">–</td>'; return; }
-            const sum = games.reduce((s, g) => s + (g.score || 0), 0);
-            totalScore += sum;
-            cells += '<td>' + sum + '</td>';
+    // Highlight the season's best single team-game and best week (top weekly
+    // total) — the standout cells, tie-inclusive.
+    let bestGame = 0;
+    teams.forEach(t => columns.forEach(c => { const s = columnTeamScore(c.entry, t.school); if (s != null && s > bestGame) bestGame = s; }));
+    let bestWeek = 0;
+    columns.forEach(c => { if (c.entry && (c.entry.score || 0) > bestWeek) bestWeek = c.entry.score || 0; });
+
+    let str = '';
+    teams.forEach(team => {
+        let totalScore = 0;
+        let cells = '';
+        columns.forEach(c => {
+            const s = columnTeamScore(c.entry, team.school);
+            if (!c.entry) { cells += '<td class="cell-future"></td>'; return; }   // week not played yet
+            if (s == null) { cells += '<td class="cell-bye">–</td>'; return; }    // bye / no game
+            totalScore += s;
+            const best = (s === bestGame && s > 0) ? ' cell-best' : '';
+            cells += `<td class="${best}">${s}</td>`;
         });
-
         const refLink = `/team?team=${team.id}`;
-        str += '<tr><th class="team-header sticky-header">'
+        str += '<tr><th class="team-header sticky-header" scope="row">'
             + '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
             + escapeHtml(team.school) + '</a></th>'
             + cells
             + '<th class="sticky-header-score">' + totalScore + '</th></tr>';
     });
 
-    // Cumulative row: the whole-week total per column.
-    str += '<tr class="cumulative-row"><th class="team-header sticky-header">Cumulative Score</th>';
-    columns.forEach(entry => {
-        str += entry ? '<td>' + (entry.score || 0) + '</td>' : '<td class="cell-future"></td>';
+    // Cumulative row: the whole-week total per column, best week highlighted.
+    str += '<tr class="cumulative-row"><th class="team-header sticky-header" scope="row">Cumulative Score</th>';
+    columns.forEach(c => {
+        if (!c.entry) { str += '<td class="cell-future"></td>'; return; }
+        const v = c.entry.score || 0;
+        const best = (v === bestWeek && v > 0) ? ' cell-best' : '';
+        str += `<td class="${best}">${v}</td>`;
     });
     str += '<th class="sticky-header-score">' + (season.cumulativeScore || 0) + '</th></tr>';
 
-    userTableBody.innerHTML = str;
+    body.innerHTML = str;
+}
+
+// Cumulative-points-over-the-season line chart for this manager. Hidden until
+// there are at least two scored weeks (a single point isn't a trend).
+let profileChart = null;
+function renderProfileChart(data) {
+    const section = document.querySelector('[profile-chart-section]');
+    const canvas = document.getElementById('profile-chart');
+    if (!section || !canvas || typeof Chart === 'undefined') return;
+
+    const season = data.seasons.at(-1) || {};
+    const cols = weeklyColumns(season);
+    let cum = 0;
+    const labels = [], points = [];
+    cols.forEach(c => {
+        if (!c.entry) return;   // skip any unplayed gap
+        cum += c.entry.score || 0;
+        labels.push(c.ariaLabel === 'Postseason' ? 'Post' : c.ariaLabel.replace('Week', 'Wk'));
+        points.push(cum);
+    });
+
+    if (points.length < 2) { section.hidden = true; return; }
+    section.hidden = false;
+    if (profileChart) profileChart.destroy();
+    profileChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Cumulative points', data: points,
+                borderColor: '#8E8CF0', backgroundColor: 'rgba(142,140,240,0.15)',
+                fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8E8CF0'
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' } },
+            scales: {
+                x: { grid: { color: '#2A2E42' }, ticks: { color: '#A4A9C2' } },
+                y: { beginAtZero: true, grid: { color: '#2A2E42' }, ticks: { color: '#A4A9C2' } }
+            }
+        }
+    });
 }
 
 async function getGame(season, week, team) {
