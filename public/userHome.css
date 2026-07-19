@@ -342,15 +342,17 @@
     .edit-profile-btn { order: 4; align-self: center; }
 }
 
-/* Desktop hero alignment — placed after the base .profile-hero rule so it wins
-   on cascade order. Left-align the hero with the table below it: the table
-   content starts at the centered wrapper's left inset (get-users-container 2.5%
-   + table-wrapper 20px margin), so match that and opt out of the body's
-   centering, instead of the hero floating centered over a left-aligned table. */
+/* Desktop layout: center the content column so the hero and the (roughly
+   fixed-width) weekly table sit balanced in the viewport rather than hugging
+   the left with a lonely right gutter. The hero centers via its base margin
+   auto; shrink the table wrapper to the table's width and center it too, so
+   both are symmetric about the middle. Placed after the base rules so it wins
+   on cascade order. */
 @media only screen and (min-width: 64em) {
-    .profile-hero {
-        align-self: flex-start;
-        margin-left: calc(2.5% + 20px);
-        margin-right: 0;
+    .table-wrapper {
+        width: fit-content;
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
     }
 }
