@@ -679,7 +679,7 @@ async function displaySchedule(data) {
 
                 var topData = '';
                 var bottomData = '';
-                var scoreAdded = '<strong style="color: white;">+0<strong>';
+                var scoreAdded = '<strong style="color: white;">+0</strong>';
                 var awayTeam = '';
                 var homeTeam = '';
                 var isAway = false;
@@ -707,11 +707,11 @@ async function displaySchedule(data) {
     
                     if( game.awayPoints > game.homePoints ) {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                         }
 
                         if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
-                            scoreAdded = '<strong style="color: #22C37A;">+4<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+4</strong>';
                             topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>';
                             bottomData = (game.homePoints || '0') + '<td class="score-added">' + scoreAdded + '</td>';
                         } else {
@@ -721,14 +721,14 @@ async function displaySchedule(data) {
                     } else if (game.homePoints > game.awayPoints) {
     
                         if(!isAway) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
                         }
 
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     } else {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                         }
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0');
@@ -769,7 +769,7 @@ async function displaySchedule(data) {
                 teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                 teamTable += `</tr><tr><td class="game-notes">`;
                 teamTable += game.notes || '';
-                teamTable += '</td></tr><tbody></table></td>';
+                teamTable += '</td></tr></tbody></table></td>';
     
                 var gameInfo = {
                     id: game.id,
@@ -804,8 +804,8 @@ async function displaySchedule(data) {
         
                         if (game.seasonType == "postseason" && game.notes && game.notes.toLowerCase().includes("playoff")) {
                             shouldReplace = true;
-                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
-                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
+                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
@@ -818,7 +818,7 @@ async function displaySchedule(data) {
                         } else if ( game.awayPoints > game.homePoints ) {
                             if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
@@ -826,7 +826,7 @@ async function displaySchedule(data) {
 
                             if(game.homeId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -871,7 +871,7 @@ async function displaySchedule(data) {
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += `</tr><tr><td class="game-notes">`;
                     teamTable += game.notes || '';
-                    teamTable += '</td></tr><tbody></table></td>';
+                    teamTable += '</td></tr></tbody></table></td>';
         
                     var gameInfo = {
                         id: game.id,
