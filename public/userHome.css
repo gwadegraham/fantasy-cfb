@@ -341,3 +341,16 @@
     .profile-stats .stat .stat-value { justify-content: center; }
     .edit-profile-btn { order: 4; align-self: center; }
 }
+
+/* Desktop hero alignment — placed after the base .profile-hero rule so it wins
+   on cascade order. Left-align the hero with the table below it: the table
+   content starts at the centered wrapper's left inset (get-users-container 2.5%
+   + table-wrapper 20px margin), so match that and opt out of the body's
+   centering, instead of the hero floating centered over a left-aligned table. */
+@media only screen and (min-width: 64em) {
+    .profile-hero {
+        align-self: flex-start;
+        margin-left: calc(2.5% + 20px);
+        margin-right: 0;
+    }
+}
