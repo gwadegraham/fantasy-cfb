@@ -23,7 +23,7 @@
     }
 
     .team-details p, .team-details small {
-        color: #ed5858;
+        color: var(--team-accent, #ed5858);
     }
 
     .team-logo {
@@ -52,7 +52,7 @@
     }
 
     .team-twitter {
-    color: #ed5858;
+    color: var(--team-accent, #ed5858);
     text-decoration: none;
     font-weight: 500;
     }
@@ -83,7 +83,7 @@
 
     .team-details .score {
     font-size: 1rem;
-    color: #ed5858;
+    color: var(--team-accent, #ed5858);
     font-weight: bold;
     }
 
@@ -111,7 +111,7 @@
     display: block;
     font-weight: bold;
     margin-top: 4px;
-    color: #ed5858;
+    color: var(--team-accent, #ed5858);
     }
 
     .standings-container {
@@ -154,7 +154,7 @@
     }
 
     .boldTeam {
-        color: #ed5858;
+        color: var(--team-accent, #ed5858);
     }
 
     .schedule {
@@ -213,7 +213,7 @@
     }
 
     .game-winner, .game-winner a {
-        color: #ed5858 !important;
+        color: var(--team-accent, #ed5858) !important;
     }
 
     .rank {
@@ -286,4 +286,233 @@
         flex-grow: 1;
         margin: 0.15em;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Additions from the team-view audit. These live outside the         */
+/* media-query blocks above so they apply at every breakpoint.        */
+/* --team-accent is set per-team in team.js (falls back to the        */
+/* original red when a team has no usable colour).                    */
+/* ------------------------------------------------------------------ */
+
+:root {
+    --team-accent: #ed5858;
+    --team-accent-rgb: 237, 88, 88;
+    --team-accent-contrast: #101322;
+}
+
+/* Loading + empty/error states (replace the old blank screen) */
+.team-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75em;
+    padding: 2em 1em;
+    color: #A4A9C2;
+}
+
+.spinner {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    border: 3px solid #2A2E42;
+    border-top-color: var(--team-accent, #ed5858);
+    animation: team-spin 0.8s linear infinite;
+}
+
+@keyframes team-spin {
+    to { transform: rotate(360deg); }
+}
+
+.team-empty {
+    text-align: center;
+    padding: 2.5em 1em;
+    color: #A4A9C2;
+}
+
+.team-empty i {
+    font-size: 2.5rem;
+    color: #2A2E42;
+    margin-bottom: 0.25em;
+}
+
+.team-empty h2 {
+    margin: 0.25em 0 0.75em;
+    color: #F4F6FB;
+    font-size: 1.25rem;
+}
+
+.team-empty a {
+    color: var(--team-accent, #ed5858);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* Team-colour accent on the header */
+.team-header {
+    border-left: 4px solid var(--team-accent, #ed5858);
+    padding-left: 1em;
+    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, 237, 88, 88), 0.10), transparent 60%);
+    border-radius: 8px;
+}
+
+/* Recent-results form strip (W/L pills) */
+.form-strip {
+    display: flex;
+    gap: 0.3em;
+    margin-top: 0.5em;
+}
+
+.form-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4em;
+    height: 1.4em;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.form-win { background-color: #3f9d5a; }
+.form-loss { background-color: #b5423f; }
+
+/* Expected-wins comparison */
+.expected-wins {
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    color: #A4A9C2 !important;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    flex-wrap: wrap;
+}
+
+.ew-delta { font-weight: 700; }
+.ew-up { color: #3f9d5a; }
+.ew-down { color: #d27171; }
+
+/* Weekly points bar chart (uses data previously collected but never shown) */
+.weekly-scores {
+    margin-top: 1.5em;
+}
+
+.weekly-scores h4 {
+    margin: 0 0 0.75em 0;
+    font-size: 1.1rem;
+    color: #F4F6FB;
+}
+
+.week-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.4em;
+    height: 120px;
+    overflow-x: auto;
+    padding-bottom: 0.25em;
+}
+
+.week-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1 0 34px;
+    height: 100%;
+    gap: 0.25em;
+}
+
+.week-bar-value {
+    font-size: 0.7rem;
+    color: #A4A9C2;
+}
+
+.week-bar-fill {
+    width: 60%;
+    min-height: 4px;
+    background: linear-gradient(180deg, var(--team-accent, #ed5858), rgba(var(--team-accent-rgb, 237, 88, 88), 0.45));
+    border-radius: 4px 4px 0 0;
+    transition: height 0.4s ease;
+}
+
+.week-bar-label {
+    font-size: 0.65rem;
+    color: #6f7492;
+}
+
+/* Next-game hero card */
+.next-game {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin: 0.75em 0 1em;
+    padding: 0.75em 1em;
+    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, 237, 88, 88), 0.18), #101322 70%);
+    border: 1px solid #2A2E42;
+    border-left: 4px solid var(--team-accent, #ed5858);
+    border-radius: 8px;
+    text-decoration: none !important;
+    color: #F4F6FB !important;
+}
+
+.next-game-tag {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    color: var(--team-accent, #ed5858);
+    white-space: nowrap;
+}
+
+.next-game-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15em;
+}
+
+.next-game-opp {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    font-weight: 600;
+}
+
+.next-game-opp img {
+    height: 1.5em;
+}
+
+.next-game-opp i {
+    color: #6f7492;
+}
+
+.next-game-date, .next-game-venue {
+    font-size: 0.8rem;
+    color: #A4A9C2;
+}
+
+/* Stadium detail chips */
+.stadium-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em;
+    margin-top: 0.5em;
+}
+
+.stadium-chips .chip {
+    font-size: 0.72rem;
+    color: #cfd3e6 !important;
+    background-color: #101322;
+    border: 1px solid #2A2E42;
+    border-radius: 999px;
+    padding: 0.2em 0.6em;
+}
+
+/* Highlight the viewed team's standings row with a subtle accent wash */
+.viewed-team-row {
+    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
+}
+
+.viewed-team-row td:first-child {
+    border-left: 3px solid var(--team-accent, #ed5858);
 }

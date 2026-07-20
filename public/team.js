@@ -1,3 +1,10 @@
+// ---------------------------------------------------------------------------
+// Small shared cache so the team document and the (large) all-logos payload are
+// each fetched exactly once per page load instead of once per render function.
+// ---------------------------------------------------------------------------
+var _teamDocCache = {};
+var _allLogosPromise = null;
+
 async function getUserProfile() {
     const response = await fetch(`/profile`, {
         method: 'GET',
@@ -15,16 +22,17 @@ async function getUserProfile() {
             window.localStorage.setItem("leagueCode", newLeagueCode);
         }
 
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
+        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
             const leagueCode = window.localStorage.getItem("leagueCode");
 
             if (leagueCode && (leagueCode != "undefined")) {
                 const currentSelectedLeague = window.sessionStorage.getItem("league");
                 if (currentSelectedLeague) {
-                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                    var btn = document.getElementById("dropdownMenuButton");
+                    if (btn) btn.textContent = currentSelectedLeague;
                 }
             }
-        }      
+        }
     });
 }
 
@@ -44,47 +52,93 @@ window.onload = function() {
     }
 
     initNavbarToggle();
+    initLeagueSelector();
 
     getUserProfile();
-    getTeam();
-    getSchedule();
+    loadTeamPage();
     setNavbarUserId();
 };
 
-if ($("[league-selector]")) {
-    setTimeout(() => {
-        $("[league-selector] a").click(function(){
-            $(this).parents(".dropdown").find('.btn').html($(this).text());
-            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-            var selectedLeague = $("#dropdownMenuButton").text();
-            var selectedLeagueCode = $("#dropdownMenuButton").val();
-            window.sessionStorage.setItem("league", selectedLeague);
-            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+// Vanilla replacement for the old jQuery league-selector handler. The navbar's
+// Bootstrap handles opening the dropdown; this only wires the item clicks.
+function initLeagueSelector() {
+    const items = document.querySelectorAll('[league-selector] a');
+    if (!items.length) return;
+
+    const button = document.getElementById('dropdownMenuButton');
+    items.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const label = item.textContent;
+            const value = item.getAttribute('value');
+            if (button) {
+                button.textContent = label;
+                button.value = value;
+            }
+            window.sessionStorage.setItem("league", label);
+            window.localStorage.setItem("leagueCode", value);
             window.location.reload();
         });
-    }, "200");
+    });
 }
 
-async function getTeam() {
+// ---------------------------------------------------------------------------
+// Page orchestration: fetch the team doc once, then fan out the dependent
+// requests. A missing / unknown ?team= param renders an error card instead of
+// throwing and leaving a blank page.
+// ---------------------------------------------------------------------------
+async function loadTeamPage() {
     const urlParams = new URLSearchParams(window.location.search);
+    const teamId = urlParams.get('team');
 
-    const response = await fetch(`/teams/info/${urlParams.get('team')}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
+    if (!teamId) {
+        renderTeamError("No team was specified.");
+        return;
+    }
 
-    const data = await response.json();
-    const teamData = data[0];
-    const teamRecordInfo = await getRecord(teamData);
-    const conferenceRecords = await getConferenceRecords(teamData);
-    const allTeamLogos = await getTeamLogos(conferenceRecords);
-    const recruiting = await getRecruitingRankings(teamData.school, (latestPlayedSeason(teamData.seasons) || teamData.seasons.at(-1)).season);
+    const teamData = await fetchTeamDoc(teamId);
+    if (!teamData) {
+        renderTeamError("We couldn't find that team.");
+        return;
+    }
 
-    renderConferenceStandings(conferenceRecords, teamData, allTeamLogos);
-    renderTeamInfo(teamData, teamRecordInfo, recruiting);
+    // Theme the page from the team's own colours before anything renders.
+    applyTeamTheme(teamData);
+
+    const seasonObj = latestPlayedSeason(teamData.seasons) || teamData.seasons.at(-1);
+    const seasonYear = seasonObj?.season || new Date().getFullYear();
+    const conference = seasonObj?.conference;
+
+    // Fire the independent requests together rather than serially.
+    const [record, conferenceRecords, allLogos, recruiting, schedule, rankings, bettingLines] = await Promise.all([
+        getRecord(teamData.school, seasonYear),
+        getConferenceRecords(seasonYear, conference),
+        getTeamLogos(),
+        getRecruitingRankings(teamData.school, seasonYear),
+        getScheduleGames(teamId, seasonYear),
+        getRankings(seasonYear),
+        getAllBettingLines(seasonYear)
+    ]);
+
+    renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
+    renderTeamInfo(teamData, record, recruiting, seasonObj, schedule);
+    renderTeamScheduleInfo(schedule, allLogos, rankings, bettingLines, seasonYear, teamData);
+}
+
+async function fetchTeamDoc(teamId) {
+    if (_teamDocCache[teamId] !== undefined) return _teamDocCache[teamId];
+    try {
+        const response = await fetch(`/teams/info/${teamId}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        const team = Array.isArray(data) ? data[0] : null;
+        _teamDocCache[teamId] = team || null;
+        return _teamDocCache[teamId];
+    } catch (e) {
+        return null;
+    }
 }
 
 // The latest season that actually has games played (a non-empty weeklyScore).
@@ -100,12 +154,8 @@ function latestPlayedSeason(seasons) {
     return seasons[seasons.length - 1];
 }
 
-async function getRecord(teamData) {
-    // Use the season actually being viewed (latest season with games), not the
-    // wall-clock year and not a future-season stub with no data.
-    var currentYear = latestPlayedSeason(teamData?.seasons)?.season || new Date().getFullYear();
-
-    const response = await fetch(`/records/${currentYear}/${teamData.school}`, {
+async function getRecord(school, seasonYear) {
+    const response = await fetch(`/records/${seasonYear}/${school}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -114,13 +164,11 @@ async function getRecord(teamData) {
     });
 
     const data = await response.json();
-    return data[0];
+    return Array.isArray(data) ? data[0] : undefined;
 }
 
-async function getConferenceRecords(teamData) {
-    var currentYear = latestPlayedSeason(teamData?.seasons)?.season || new Date().getFullYear();
-
-    const response = await fetch(`/records/${currentYear}/conference/${teamData.seasons.at(-1).conference}`, {
+async function getConferenceRecords(seasonYear, conference) {
+    const response = await fetch(`/records/${seasonYear}/conference/${conference}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -132,13 +180,7 @@ async function getConferenceRecords(teamData) {
     return data;
 }
 
-async function getSchedule() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const teamId = urlParams.get('team');
-    // Resolve the season from the team's own data, not the wall-clock year, so
-    // the schedule/rankings/lines match the season actually being shown.
-    var seasonYear = await getTeamSeasonYear(teamId);
-
+async function getScheduleGames(teamId, seasonYear) {
     const response = await fetch(`/games/season/${seasonYear}/teamId/${teamId}`, {
         method: 'GET',
         headers: {
@@ -146,49 +188,32 @@ async function getSchedule() {
         'Content-Type': 'application/json'
         }
     });
-
-    response.json().then(async data => {
-        var scheduleData = data;
-        const allTeamLogos = await getTeamLogos(data);
-        const allRankings = await getRankings(seasonYear);
-        const allBettingLines = await getAllBettingLines(seasonYear);
-
-        renderTeamScheduleInfo(scheduleData, allTeamLogos, allRankings, allBettingLines, seasonYear);
-    });
+    return await response.json();
 }
 
-// Looks up the team's latest season (the one being viewed). Falls back to the
-// calendar year if the team can't be fetched.
-async function getTeamSeasonYear(teamId) {
-    try {
-        const res = await fetch(`/teams/info/${teamId}`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        const season = latestPlayedSeason(data?.[0]?.seasons)?.season;
-        if (season != null) return season;
-    } catch (e) { /* fall through */ }
-    return new Date().getFullYear();
-}
-
+// Fetch the all-team logos payload once and memoise it. (It's a large response
+// and was previously requested twice per page load.)
 async function getTeamLogos () {
-    var teamsPromise = await fetch('/teams/teamLogos/all', {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+    if (_allLogosPromise) return _allLogosPromise;
+    _allLogosPromise = (async () => {
+        var teamsPromise = await fetch('/teams/teamLogos/all', {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            }
+        });
+
+        var response = await teamsPromise.json();
+
+        if (teamsPromise.status == 200) {
+            return response;
+        } else {
+            console.log(response.message);
+            return [];
         }
-    });
-
-    var teamLogos = await teamsPromise;
-    var response = await teamLogos.json();
-
-    if (teamLogos.status == 200) {
-        return response;
-    } else {
-        console.log(response.message);
-    }
+    })();
+    return _allLogosPromise;
 }
 
 async function getAllBettingLines (seasonYear) {
@@ -202,38 +227,169 @@ async function getAllBettingLines (seasonYear) {
         }
     });
 
-    var bettingLines = await bettingPromise;
-    var response = await bettingLines.json();
+    var response = await bettingPromise.json();
 
-    if (bettingLines.status == 200) {
+    if (bettingPromise.status == 200) {
         return response;
     } else {
         console.log(response.message);
+        return [];
     }
 }
 
+// ---------------------------------------------------------------------------
+// Team-colour theming. Sets CSS custom properties from the team's stored
+// colours; team.css consumes them (with the old red as fallback).
+// ---------------------------------------------------------------------------
+function applyTeamTheme(team) {
+    var accent = readableOnDark(team?.color) || readableOnDark(team?.alt_color) || '#ed5858';
+    var rgb = hexToRgb(accent);
+    var root = document.documentElement;
+    root.style.setProperty('--team-accent', accent);
+    if (rgb) {
+        root.style.setProperty('--team-accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+        root.style.setProperty('--team-accent-contrast', contrastText(rgb));
+    }
+}
+
+function hexToRgb(hex) {
+    if (typeof hex !== 'string') return null;
+    var m = hex.trim().replace('#', '');
+    if (m.length === 3) m = m.split('').map(c => c + c).join('');
+    if (!/^[0-9a-fA-F]{6}$/.test(m)) return null;
+    return {
+        r: parseInt(m.slice(0, 2), 16),
+        g: parseInt(m.slice(2, 4), 16),
+        b: parseInt(m.slice(4, 6), 16)
+    };
+}
+
+function rgbToHex(r, g, b) {
+    const h = v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
+    return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+// Relative luminance (0 = black, 1 = white), used to decide readability.
+function luminance(r, g, b) {
+    const a = [r, g, b].map(v => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+}
+
+// Returns a version of the colour that reads on the dark (#101322) background:
+// very dark team colours (e.g. navy/black) are lightened toward white until
+// they clear a minimum luminance. Returns null for unparseable input.
+function readableOnDark(hex) {
+    var rgb = hexToRgb(hex);
+    if (!rgb) return null;
+    var { r, g, b } = rgb;
+    var guard = 0;
+    while (luminance(r, g, b) < 0.22 && guard < 12) {
+        r = r + (255 - r) * 0.18;
+        g = g + (255 - g) * 0.18;
+        b = b + (255 - b) * 0.18;
+        guard++;
+    }
+    return rgbToHex(r, g, b);
+}
+
+// Black or white text to sit on top of the accent colour.
+function contrastText(rgb) {
+    return luminance(rgb.r, rgb.g, rgb.b) > 0.45 ? '#101322' : '#F4F6FB';
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function renderTeamError(message) {
+    const container = document.getElementById("team-container");
+    if (!container) return;
+    container.innerHTML = `
+        <div class="team-empty">
+            <i class="fa-solid fa-helmet-un"></i>
+            <h2>${message}</h2>
+            <p><a href="/standings">Back to standings</a></p>
+        </div>
+    `;
+    // Nothing else can render without a team; hide the lower panels.
+    var lower = document.querySelector('.standings-container');
+    if (lower) lower.style.display = 'none';
+    var hr = document.querySelector('.hr-subtle');
+    if (hr) hr.style.display = 'none';
+}
+
+// Compute the viewed team's completed results in chronological order.
+function computeForm(schedule, teamId) {
+    if (!Array.isArray(schedule)) return [];
+    return schedule
+        .filter(g => g.completed && (g.homeId == teamId || g.awayId == teamId))
+        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+        .map(g => {
+            var isHome = g.homeId == teamId;
+            var us = isHome ? g.homePoints : g.awayPoints;
+            var them = isHome ? g.awayPoints : g.homePoints;
+            return { win: Number(us) > Number(them), us, them };
+        });
+}
+
 // Render team info
-function renderTeamInfo(team, record, recruiting) {
+function renderTeamInfo(team, record, recruiting, seasonObj, schedule) {
     const leagueCode = window.localStorage.getItem("leagueCode");
     const container = document.getElementById("team-container");
     // Claunts = V1, Graham = V2. leagueCode is 'claunts-league'/'graham-league'
     // (never 'gg'), so the old 'gg' test always fell through to V2 and showed
     // every viewer the Graham score.
     var scoreCode = (leagueCode == 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-    // Show the season actually being viewed (latest with games), not an empty
-    // future-season stub.
-    var seasonObj = latestPlayedSeason(team.seasons) || team.seasons.at(-1);
     var formatConference = seasonObj.conference;
     var confLogo = getConferenceLogo(seasonObj.conference);
 
+    var recruitingRank = (recruiting?.rank != null) ? `#${recruiting.rank}` : '—';
+    var seasonScore = (seasonObj[scoreCode] != null) ? seasonObj[scoreCode] : 0;
+
+    // Twitter is optional; only render the link when a handle exists (otherwise
+    // the old code printed the literal text "null" linking to twitter.com/null).
+    var handle = team.twitter ? String(team.twitter).replace(/^@/, '') : '';
+    var twitterHtml = handle
+        ? `<a class="team-twitter" href="https://twitter.com/${handle}" target="_blank" rel="noopener noreferrer">@${handle}</a>`
+        : '';
+
+    // Stadium fields are individually optional in the schema; guard each.
+    var loc = team.location || {};
+    var capacity = (loc.capacity != null) ? loc.capacity.toLocaleString() : null;
+    var stadiumChips = [];
+    if (loc.year_constructed) stadiumChips.push(`Built ${loc.year_constructed}`);
+    if (capacity) stadiumChips.push(`${capacity} seats`);
+    if (loc.grass === true) stadiumChips.push('Grass');
+    if (loc.grass === false) stadiumChips.push('Turf');
+    if (loc.dome === true) stadiumChips.push('Dome');
+    if (loc.elevation) stadiumChips.push(`${Math.round(Number(loc.elevation)).toLocaleString()} ft`);
+
+    // Win/loss form strip + expected-wins comparison.
+    var form = computeForm(schedule, team.id);
+    var wins = record?.total?.wins ?? form.filter(f => f.win).length;
+    var expected = seasonObj.expectedWins;
+    var formStrip = form.slice(-6).map(f =>
+        `<span class="form-dot ${f.win ? 'form-win' : 'form-loss'}" title="${f.us}-${f.them}">${f.win ? 'W' : 'L'}</span>`
+    ).join('');
+
+    var expectedHtml = (expected != null)
+        ? `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
+             <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
+                ${wins - expected >= 0 ? '▲' : '▼'} ${Math.abs(wins - expected).toFixed(1)}
+             </span></p>`
+        : '';
+
     const html = `
-        
+
         <div class="team-header">
             <img class="team-logo" src="${team.logos.at(-1)}" alt="${team.school}" />
             <div class="team-meta">
             <h2 class="team-name">${team.school} ${team.mascot}</h2>
             <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
-            <a class="team-twitter" href="https://twitter.com/${team.twitter}" target="_blank">${team.twitter}</a>
+            ${twitterHtml}
+            ${formStrip ? `<div class="form-strip" title="Most recent results">${formStrip}</div>` : ''}
             </div>
         </div>
 
@@ -244,33 +400,72 @@ function renderTeamInfo(team, record, recruiting) {
                 <h4>${seasonObj.season} Record</h4>
                 <p class="score">${record?.total?.wins || 0}-${record?.total?.losses || 0}    Overall</p>
                 <p class="score">${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}    Conference</p>
+                ${expectedHtml}
             </div>
             <div>
                 <h4>📈 Season Score</h4>
-                <p class="score">${seasonObj[scoreCode] || 0} Points</p>
+                <p class="score">${seasonScore} Points</p>
                 <h4>Recruiting Rank</h4>
-                <p class="score">#${recruiting?.rank || 0}</p>
+                <p class="score">${recruitingRank}</p>
             </div>
             <div>
                 <h4>🏟 Stadium</h4>
-                <p>${team.location.name}</p>
-                <p><small>${team.location.city}, ${team.location.state} — Capacity: ${team.location.capacity.toLocaleString()}</small></p>
+                <p>${loc.name || '—'}</p>
+                ${(loc.city && loc.state) ? `<p><small>${loc.city}, ${loc.state}</small></p>` : ''}
+                ${stadiumChips.length ? `<div class="stadium-chips">${stadiumChips.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
             </div>
         </div>
+
+        ${renderWeeklyScores(seasonObj, scoreCode)}
     `;
 
     container.innerHTML = html;
 }
 
+// Weekly points bar chart from the season's weeklyScore[] (previously collected
+// but never shown; the .weekly-scores/.score-grid styles already existed).
+function renderWeeklyScores(seasonObj, scoreCode) {
+    var weekly = Array.isArray(seasonObj.weeklyScore) ? seasonObj.weeklyScore : [];
+    if (!weekly.length) return '';
+
+    var key = (scoreCode == 'cumulativeScoreV1') ? 'scoreV1' : 'scoreV2';
+    var values = weekly.map(w => Number(w[key]) || 0);
+    var max = Math.max(...values, 1);
+
+    var bars = weekly.map((w, i) => {
+        var v = values[i];
+        var pct = Math.max(4, Math.round((v / max) * 100));
+        var label = (w.seasonType && w.seasonType !== 'regular') ? 'P' + w.week : 'W' + w.week;
+        return `
+            <div class="week-bar" title="Week ${w.week}: ${v} pts">
+                <span class="week-bar-value">${v}</span>
+                <span class="week-bar-fill" style="height:${pct}%"></span>
+                <span class="week-bar-label">${label}</span>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="weekly-scores">
+            <h4>📊 Weekly Points</h4>
+            <div class="week-bars">${bars}</div>
+        </div>
+    `;
+}
+
 // Render schedule info
-function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
+function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, teamData) {
     const container = document.getElementById("schedule-container");
+    const teamId = teamData?.id;
+
+    var nextGameHtml = renderNextGame(schedule, logos, teamId);
 
     var html = `
         <div class="schedule-head">
             <h2><i class="fa-solid fa-calendar-days fa-rank-stand"></i>${year} Schedule</h2>
             <i class="fa-solid fa-caret-down drop"></i>
         </div>
+        ${nextGameHtml}
         <div class="games-container">
     `;
 
@@ -289,9 +484,17 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             var homeLine = '';
 
             if(bettingLineObj?.length > 0 && bettingLineObj != null) {
-                var bettingLine = (bettingLineObj?.find(line => line.provider == "DraftKings") ? bettingLineObj?.find(line => line.provider == "DraftKings") : bettingLineObj[0])?.formattedSpread.split("-");
-                awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
-                homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
+                var providerLine = bettingLineObj.find(line => line.provider == "DraftKings") || bettingLineObj[0];
+                // formattedSpread looks like "Georgia -7.5"; guard a missing /
+                // malformed value so one bad line can't break the whole render.
+                var spread = providerLine?.formattedSpread;
+                if (typeof spread === 'string' && spread.includes('-')) {
+                    var idx = spread.lastIndexOf('-');
+                    var favTeam = spread.slice(0, idx).trim();
+                    var number = spread.slice(idx + 1).trim();
+                    awayLine = (favTeam == game.awayTeam) ? number : '';
+                    homeLine = (favTeam == game.homeTeam) ? number : '';
+                }
             }
 
             var homeLogo = logos.find((team) => team.id == game.homeId)?.logos.at(-1);
@@ -308,7 +511,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             rankings.sort((a, b) => {
                 return b.week - a.week;
             });
-            
+
             var weekRankings;
             if (game.seasonType == 'regular') {
                 weekRankings = rankings.find(r => r.week == game.week && r.season == year) ? rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
@@ -326,16 +529,16 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
                 homeRank = weekRankings.find(w => w.school == game.homeTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.homeTeam)?.rank}</span>` : '';
                 awayRank = weekRankings.find(w => w.school == game.awayTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.awayTeam)?.rank}</span>` : '';
             }
-            
+
 
             if (game.completed) {
                 homePoints = game.homePoints || '0';
                 awayPoints = game.awayPoints || '0';
             }
 
-            // Winner logic
-            const homeIsWinner = game.completed && homePoints > awayPoints;
-            const awayIsWinner = game.completed && awayPoints > homePoints;
+            // Winner logic (compare numerically, not as strings)
+            const homeIsWinner = game.completed && Number(homePoints) > Number(awayPoints);
+            const awayIsWinner = game.completed && Number(awayPoints) > Number(homePoints);
 
             const awayTeamHTML = `
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
@@ -376,7 +579,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
             `;
         });
     }
-    
+
     html += '</div>';
     container.innerHTML = html;
 
@@ -401,10 +604,39 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year) {
     }
 }
 
-async function renderConferenceStandings(data, teamData, logos) {
+// The next upcoming (not-yet-completed) game, surfaced as a hero card above the
+// collapsible schedule list.
+function renderNextGame(schedule, logos, teamId) {
+    if (!Array.isArray(schedule) || !schedule.length) return '';
+    var upcoming = schedule
+        .filter(g => !g.completed)
+        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    var game = upcoming[0];
+    if (!game) return '';
+
+    var isHome = game.homeId == teamId;
+    var oppName = isHome ? game.awayTeam : game.homeTeam;
+    var oppId = isHome ? game.awayId : game.homeId;
+    var oppLogoUrl = logos.find(t => t.id == oppId)?.logos.at(-1);
+    var oppLogo = oppLogoUrl ? `<img src="${oppLogoUrl}" alt="${oppName}">` : '<i class="fa-solid fa-helmet-un"></i>';
+    var prefix = game.neutralSite ? 'vs' : (isHome ? 'vs' : '@');
+
+    return `
+        <a class="next-game" href="/team?team=${oppId}">
+            <span class="next-game-tag">Next Up</span>
+            <div class="next-game-body">
+                <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>
+                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}</span>
+                ${game.neutralSite && game.venue ? `<span class="next-game-venue">${game.venue}</span>` : ''}
+            </div>
+        </a>
+    `;
+}
+
+async function renderConferenceStandings(data, teamData, logos, conference) {
     // Filter for specified conference
     var standings = [];
-    var conferenceTeams = await getConferenceTeams(teamData.seasons.at(-1).conference);
+    var conferenceTeams = await getConferenceTeams(conference);
     conferenceTeams.sort((a,b) => {
         return a.school.toLowerCase().localeCompare(b.school.toLowerCase());
     });
@@ -434,7 +666,7 @@ async function renderConferenceStandings(data, teamData, logos) {
 
         // Replace matching objects in standings
         const updatedStandings = standings.map(team => {
-            return dataMap.get(team.teamId) || team; 
+            return dataMap.get(team.teamId) || team;
         });
 
         // Sort: conference wins → overall wins → overall losses
@@ -447,27 +679,15 @@ async function renderConferenceStandings(data, teamData, logos) {
             }
             return a.total.losses - b.total.losses;
         });
-        console.log("updatedStandings", updatedStandings)
 
         standings = updatedStandings;
-        // standings = data
-        //     .sort((a, b) => {
-        //         // Sort by conference wins DESC, then losses ASC, then total wins DESC
-        //         if (b.conferenceGames.wins !== a.conferenceGames.wins) {
-        //             return b.conferenceGames.wins - a.conferenceGames.wins;
-        //         }
-        //         if (a.conferenceGames.losses !== b.conferenceGames.losses) {
-        //             return a.conferenceGames.losses - b.conferenceGames.losses;
-        //         }
-        //         return b.total.wins - a.total.wins;
-        //     });
     }
 
-    if (standings.length > 0 && teamData.seasons.at(-1).conference != 'FBS Independents') {
+    if (standings.length > 0 && conference != 'FBS Independents') {
         // Build table HTML
         let html = `
             <div class="standing-head">
-                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0]?.conference || standings[0].seasons.at(-1).conference} Standings</h2>
+                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0]?.conference || conference} Standings</h2>
                 <i class="fa-solid fa-caret-down drop"></i>
             </div>
             <table class="standings-table">
@@ -491,8 +711,8 @@ async function renderConferenceStandings(data, teamData, logos) {
             var confHtml = team.conferenceGames.wins + '-' + team.conferenceGames.losses;
             var ovrHtml = team.total.wins + '-' + team.total.losses;
 
-
-            if (team.team == teamData.school) {
+            var isViewedTeam = team.team == teamData.school;
+            if (isViewedTeam) {
                 rankHtml = `<strong class="boldTeam">${index + 1}</strong>`;
                 teamHtml = `<strong class="boldTeam">${teamLogo} ${team.team}</strong>`;
                 confHtml = `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`;
@@ -500,7 +720,7 @@ async function renderConferenceStandings(data, teamData, logos) {
             }
 
             html += `
-                <tr>
+                <tr class="${isViewedTeam ? 'viewed-team-row' : ''}">
                     <td class="standingColumn">${rankHtml}</td>
                     <td class="standingColumn"><a href="/team?team=${team.teamId}">${teamHtml}</a></td>
                     <td class="standingColumn">${confHtml}</td>
@@ -547,25 +767,57 @@ async function renderConferenceStandings(data, teamData, logos) {
 
         const scheduleContainer = document.getElementById('schedule-container');
         scheduleContainer.style.width = '100%';
-    } 
+    }
 }
 
 function getConferenceLogo(conference) {
-    // All conference logos are self-hosted under /images (was a mix of external
-    // hotlinks — cloudfront/sportslogos/brandfetch — that could break or, as
-    // with the old Big Ten brandfetch id, point at the wrong logo entirely).
     var allLogos = [
-        { confName: "ACC", url: "../images/logo-acc.svg" },
-        { confName: "American Athletic", url: "../images/logo-aac.png" },
-        { confName: "Big 12", url: "../images/logo-big12.png" },
-        { confName: "Big Ten", url: "../images/logo-big-ten.svg" },
-        { confName: "Conference USA", url: "../images/logo-cusa.png" },
-        { confName: "FBS Independents", url: "../images/logo-fbs-independents.gif" },
-        { confName: "Mid-American", url: "../images/logo-mac.png" },
-        { confName: "Mountain West", url: "../images/logo-mountain-west.png" },
-        { confName: "Pac-12", url: "../images/logo-pac12.png" },
-        { confName: "Sun Belt", url: "../images/logo-sun-belt.png" },
-        { confName: "SEC", url: "../images/logo-sec.png" }
+        {
+            confName: "ACC",
+            url: "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/acc.sidearmsports.com/images/responsive_2024/footer_logo_acc-white.svg"
+        },
+        {
+            confName: "American Athletic",
+            url: "https://content.sportslogos.net/logos/153/5032/full/american_athletic_conference_logo_primary_20178032.png"
+        },
+        {
+            confName: "Big 12",
+            url: "https://content.sportslogos.net/logos/153/4662/full/big_12_conference_logo_alternate_20188833.png"
+        },
+        {
+            // Self-hosted (the old brandfetch URL "idzgo3Vrw2" was Indiana's
+            // logo, not the Big Ten's). White "B" + blue "1G" for the dark header.
+            confName: "Big Ten",
+            url: "../images/logo-big-ten.svg"
+        },
+        {
+            confName: "Conference USA",
+            url: "../images/logo-cusa.png"
+        },
+        {
+            confName: "FBS Independents",
+            url: "https://content.sportslogos.net/logos/153/4756/full/589_division_i_fbs-independents-primary-.gif"
+        },
+        {
+            confName: "Mid-American",
+            url: "https://content.sportslogos.net/logos/153/4664/full/mid-american_conference_logo_primary_2008_sportslogosnet-6826.png"
+        },
+        {
+            confName: "Mountain West",
+            url: "https://content.sportslogos.net/logos/153/4665/full/mountain_west_conference_logo_primary_20111652.png"
+        },
+        {
+            confName: "Pac-12",
+            url: "https://content.sportslogos.net/logos/153/4666/full/pacific-12_conference_logo_primary_20117066.png"
+        },
+        {
+            confName: "Sun Belt",
+            url: "https://content.sportslogos.net/logos/153/4668/full/sun_belt_conference_logo_primary_20207257.png"
+        },
+        {
+            confName: "SEC",
+            url: "https://content.sportslogos.net/logos/153/4667/full/southeastern_conference_logo_primary_2018_sportslogosnet-5123.png"
+        }
     ]
 
     const logoObj = allLogos.find(logo => logo.confName == conference);
@@ -585,8 +837,9 @@ async function getRankings (season) {
 
     var rankings = await response.json();
 
-    if (rankings.length < 0) {
+    if (!Array.isArray(rankings)) {
         console.log(rankings.message);
+        return [];
     }
 
     return rankings;
@@ -603,8 +856,9 @@ async function getConferenceTeams (conference) {
 
     var conferences = await response.json();
 
-    if (conferences.length < 0) {
+    if (!Array.isArray(conferences)) {
         console.log(conferences.message);
+        return [];
     }
 
     return conferences;
@@ -623,7 +877,7 @@ async function getRecruitingRankings(team, seasonYear) {
 
     var recruitingRankings = await response.json();
 
-    return recruitingRankings[0];
+    return Array.isArray(recruitingRankings) ? recruitingRankings[0] : undefined;
 }
 
 // Helper: Format the date to readable format
@@ -654,7 +908,7 @@ function setNavbarUserId() {
     if (userId == null) {
         userId = window.localStorage.getItem("userId");
     }
-    
+
     const toggleButton = document.querySelector('.toggle-button');
     const navbarLinks = document.querySelector('.navbar-links');
     const myLink = document.querySelector('[user-home]');
