@@ -551,51 +551,21 @@ async function renderConferenceStandings(data, teamData, logos) {
 }
 
 function getConferenceLogo(conference) {
+    // All conference logos are self-hosted under /images (was a mix of external
+    // hotlinks — cloudfront/sportslogos/brandfetch — that could break or, as
+    // with the old Big Ten brandfetch id, point at the wrong logo entirely).
     var allLogos = [
-        {
-            confName: "ACC",
-            url: "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/acc.sidearmsports.com/images/responsive_2024/footer_logo_acc-white.svg"
-        },
-        {
-            confName: "American Athletic",
-            url: "https://content.sportslogos.net/logos/153/5032/full/american_athletic_conference_logo_primary_20178032.png"
-        },
-        {
-            confName: "Big 12",
-            url: "https://content.sportslogos.net/logos/153/4662/full/big_12_conference_logo_alternate_20188833.png"
-        },
-        {
-            confName: "Big Ten",
-            url: "https://cdn.brandfetch.io/idzgo3Vrw2/theme/dark/logo.svg?c=1bxid64Mup7aczewSAYMX&t=1712244113805"
-        },
-        {
-            confName: "Conference USA",
-            url: "../images/logo-cusa.png"
-        },
-        {
-            confName: "FBS Independents",
-            url: "https://content.sportslogos.net/logos/153/4756/full/589_division_i_fbs-independents-primary-.gif"
-        },
-        {
-            confName: "Mid-American",
-            url: "https://content.sportslogos.net/logos/153/4664/full/mid-american_conference_logo_primary_2008_sportslogosnet-6826.png"
-        },
-        {
-            confName: "Mountain West",
-            url: "https://content.sportslogos.net/logos/153/4665/full/mountain_west_conference_logo_primary_20111652.png"
-        },
-        {
-            confName: "Pac-12",
-            url: "https://content.sportslogos.net/logos/153/4666/full/pacific-12_conference_logo_primary_20117066.png"
-        },
-        {
-            confName: "Sun Belt",
-            url: "https://content.sportslogos.net/logos/153/4668/full/sun_belt_conference_logo_primary_20207257.png"
-        },
-        {
-            confName: "SEC",
-            url: "https://content.sportslogos.net/logos/153/4667/full/southeastern_conference_logo_primary_2018_sportslogosnet-5123.png"
-        }
+        { confName: "ACC", url: "../images/logo-acc.svg" },
+        { confName: "American Athletic", url: "../images/logo-aac.png" },
+        { confName: "Big 12", url: "../images/logo-big12.png" },
+        { confName: "Big Ten", url: "../images/logo-big-ten.svg" },
+        { confName: "Conference USA", url: "../images/logo-cusa.png" },
+        { confName: "FBS Independents", url: "../images/logo-fbs-independents.gif" },
+        { confName: "Mid-American", url: "../images/logo-mac.png" },
+        { confName: "Mountain West", url: "../images/logo-mountain-west.png" },
+        { confName: "Pac-12", url: "../images/logo-pac12.png" },
+        { confName: "Sun Belt", url: "../images/logo-sun-belt.png" },
+        { confName: "SEC", url: "../images/logo-sec.png" }
     ]
 
     const logoObj = allLogos.find(logo => logo.confName == conference);
