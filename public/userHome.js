@@ -657,309 +657,118 @@ function logoHtmlFromMap(map, teamId) {
     return map[teamId] || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 }
 
+// Formats a kickoff time like "7:30PM" from a game's start date.
+function kickoffTime(date) {
+    const mil = date.toString().substring(16, 21);
+    const [h, m] = mil.split(':');
+    const hours = parseInt(h);
+    if (hours < 12) return hours + ':' + m + 'AM';
+    if (hours == 12) return '12:' + m + 'PM';
+    return (hours - 12) + ':' + m + 'PM';
+}
+
+// Builds one game card. The green "+N" badge shows the fantasy points a
+// ROSTERED team earned in this game (from the season's weeklyScore) and only
+// when that's > 0 — so a team that earned nothing (or isn't yours) shows no
+// badge, while your teams stay identifiable by their bold name. The caret
+// marks the winner, independent of the badge. This reads the same per-game
+// values the weekly table uses, so there's no league-specific special-casing.
+function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines) {
+    const rankOf = (school) => {
+        const i = rankingsInfo.findIndex(e => e.school === school);
+        return i > -1 ? rankingsInfo[i].rank : '';
+    };
+    const rankHtml = (r) => `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${r}</p>`;
+
+    // Betting spread (formattedSpread names the favored team + line).
+    const lines = allBettingLines.find(b => b.homeTeam == game.homeTeam && b.awayTeam == game.awayTeam)?.lines;
+    const chosen = lines && (lines.find(l => l.provider == 'DraftKings') || lines[0]);
+    const parts = chosen?.formattedSpread?.split('-');
+    let awayLine = '', homeLine = '';
+    if (parts) {
+        awayLine = (parts[0]?.trim() == game.awayTeam) ? parts.at(-1) : '';
+        homeLine = (parts[0]?.trim() == game.homeTeam) ? parts.at(-1) : '';
+    }
+    const lineHtml = (v) => `<span class="betting-line">${v ? '-' + v : ''}</span>`;
+
+    const awayRostered = rosteredIds.has(game.awayId);
+    const homeRostered = rosteredIds.has(game.homeId);
+    const nameHtml = (id, name, rostered) =>
+        `<a href="/team?team=${id}">${rostered ? '<strong>' + name + '</strong>' : name}</a>`;
+
+    const awayCol = logoHtmlFromMap(logoMap, game.awayId) + rankHtml(rankOf(game.awayTeam)) + nameHtml(game.awayId, game.awayTeam, awayRostered) + lineHtml(awayLine);
+    const homeCol = logoHtmlFromMap(logoMap, game.homeId) + rankHtml(rankOf(game.homeTeam)) + nameHtml(game.homeId, game.homeTeam, homeRostered) + lineHtml(homeLine);
+
+    // A rostered team's points for this game -> a green badge cell, or '' at 0.
+    const badgeCell = (id, rostered) => {
+        if (!rostered) return '';
+        const pts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, id, game.id);
+        return pts > 0 ? `<td class="score-added"><strong style="color: #22C37A;">+${pts}</strong></td>` : '';
+    };
+    const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
+
+    let awayScore, homeScore;
+    if (game.completed) {
+        const awayWon = game.awayPoints > game.homePoints;
+        const homeWon = game.homePoints > game.awayPoints;
+        awayScore = (game.awayPoints ?? 0) + (awayWon ? caret : '') + '</td>' + badgeCell(game.awayId, awayRostered);
+        homeScore = (game.homePoints ?? 0) + (homeWon ? caret : '') + '</td>' + badgeCell(game.homeId, homeRostered);
+    } else {
+        const d = new Date(game.startDate);
+        awayScore = d.toString().substring(4, 10) + '</td>';
+        homeScore = (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</td>';
+    }
+
+    return '<div class="game-card"><table class="game-table"><tbody><tr></tr>'
+        + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
+        + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
+        + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
+        + '</tbody></table></div>';
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
-    const leagueCode = window.localStorage.getItem("leagueCode");
-    var str = '';
-    var gameIds = [];
-    var gameTables = [];
 
-    var week = window.localStorage.getItem("weekCode").substring(5);
-    var gameWeek;
-    var seasonType = "regular";
-    var rankingsInfo;
+    let week = window.localStorage.getItem('weekCode').substring(5);
+    let seasonType = 'regular';
+    let rankingsInfo;
+    const seasonYear = data.seasons.at(-1).season;
 
-    // Resolve the year from the season being viewed (the user's latest roster),
-    // the same source displayTeams uses — never the wall-clock year.
-    var seasonYear = data.seasons.at(-1).season;
-
-    if (week == "17") {
+    if (week == '17') {
         rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
-
-        seasonType = "postseason";
+        seasonType = 'postseason';
         week = 1;
-        gameWeek = "17"
     } else {
-        gameWeek = week;
         rankingsInfo = await getRankings(week, seasonType, seasonYear);
     }
 
-    var allBettingLines = await getAllBettingLines(seasonYear) || [];
+    const allBettingLines = await getAllBettingLines(seasonYear) || [];
 
-    // Fetch each roster team's games in parallel (was a sequential await per
-    // team), then fetch all logos in a single batched request up front — the
-    // schedule used to make one /teams/teamLogos round-trip per game.
+    // Fetch each roster team's games in parallel, then all logos in one request.
     const teamsList = data.seasons.at(-1).teams;
+    const rosteredIds = new Set(teamsList.map(t => t.id));
     const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
-    const logoMap = await batchTeamLogos(gamesPerTeam.flat());
 
-    for (var iterNum = 0; iterNum < teamsList.length; iterNum++) {
+    // Dedup by game id (a game between two rostered teams comes back twice).
+    const gamesById = new Map();
+    gamesPerTeam.flat().forEach(g => { if (!gamesById.has(g.id)) gamesById.set(g.id, g); });
+    const games = [...gamesById.values()];
 
-        var gamesInfo = gamesPerTeam[iterNum];
+    const logoMap = await batchTeamLogos(games);
 
-        for (const [i, game] of gamesInfo.entries()) {
+    const cards = games
+        .map(g => ({ startDate: g.startDate || '', html: buildGameCard(g, rosteredIds, logoMap, rankingsInfo, allBettingLines) }))
+        .sort((a, b) => new Date(a.startDate || 0) - new Date(b.startDate || 0));
 
-            var awayRank = '';
-            var homeRank = '';
-
-            var awayIndex = rankingsInfo.findIndex(e => e.school === game.awayTeam);
-            if (awayIndex > -1) {
-                awayRank = rankingsInfo[awayIndex].rank;
-            }
-
-            var homeIndex = rankingsInfo.findIndex(e => e.school === game.homeTeam);
-            if (homeIndex > -1) {
-                homeRank = rankingsInfo[homeIndex].rank;
-            }
-
-            awayRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${awayRank}</p>`;
-            homeRank = `<p style="display: inline; padding-right: 5px; color: #A4A9C2;">${homeRank}</p>`;
-
-            var bettingLineObj = allBettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
-            // A matchup may have no betting line (or none from DraftKings); guard
-            // so a missing line renders blank instead of throwing.
-            var chosenLine = bettingLineObj && (bettingLineObj.find(line => line.provider == "DraftKings") || bettingLineObj[0]);
-            var bettingLine = chosenLine?.formattedSpread?.split("-");
-            var awayLine = '';
-            var homeLine = '';
-
-            if (bettingLine) {
-                awayLine = (bettingLine[0]?.trim() == game.awayTeam) ? bettingLine.at(-1) :  '';
-                homeLine = (bettingLine[0]?.trim() == game.homeTeam) ? bettingLine.at(-1) :  '';
-            }
-
-            if (gameIds.indexOf(game.id) == -1) {
-                gameIds.push(game.id);
-
-                var topData = '';
-                var bottomData = '';
-                var scoreAdded = '<strong style="color: white;">+0</strong>';
-                var awayTeam = '';
-                var homeTeam = '';
-                var isAway = false;
-                var awayImg = logoHtmlFromMap(logoMap, game.awayId);
-                var homeImg = logoHtmlFromMap(logoMap, game.homeId);
-
-                if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-
-                    if (await data.seasons.at(-1).teams.some(e => e.id === game.homeId)) {
-                        awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
-                        homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
-                    } else {
-                        awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
-                        homeTeam = `<a href="/team?team=${game.homeId}">` + game.homeTeam + '</a>';
-                    }
-
-                    isAway = true;
-                } else {
-                    awayTeam = `<a href="/team?team=${game.awayId}">` + game.awayTeam + '</a>';
-                    homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
-                }
-    
-                if (game.completed) {
-    
-                    if( game.awayPoints > game.homePoints ) {
-                        if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
-                        }
-
-                        if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
-                            scoreAdded = '<strong style="color: #22C37A;">+4</strong>';
-                            topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>';
-                            bottomData = (game.homePoints || '0') + '<td class="score-added">' + scoreAdded + '</td>';
-                        } else {
-                            topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                            bottomData = (game.homePoints || '0');
-                        }
-                    } else if (game.homePoints > game.awayPoints) {
-    
-                        if(!isAway) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
-                        }
-
-                        topData = (game.awayPoints || '0');
-                        bottomData = (game.homePoints || '0')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                    } else {
-                        if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
-                        }
-                        topData = (game.awayPoints || '0');
-                        bottomData = (game.homePoints || '0');
-                    }
-                } else {
-    
-                    var centralDate = new Date(game.startDate);
-                    var militaryTime = centralDate.toString().substring(16,21);
-                    var time = militaryTime.split(':');
-                    var hours = parseInt(time[0]);
-                    var minutes = time[1];
-                    var standardTime = '';
-    
-                    if (hours < 12) {
-                        standardTime = hours.toString() + ":" + minutes +  "AM";
-                    }
-                    else if (hours == 12) {
-                        standardTime = hours.toString() + ":" + minutes + "PM";
-                    }
-                    else {
-                        standardTime =( hours - 12).toString() + ":" + minutes + "PM";
-                    }
-    
-                    topData = centralDate.toString().substring(4,10);
-                    bottomData = standardTime;
-                }
-    
-                var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
-
-                var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
-                var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
-    
-                teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
-                teamTable += '</tr><tr><td class="gc-team">';
-    
-                teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
-                teamTable += `</tr><tr><td class="game-notes">`;
-                teamTable += game.notes || '';
-                teamTable += '</td></tr></tbody></table></div>';
-    
-                var gameInfo = {
-                    id: game.id,
-                    table: teamTable,
-                    homeTeam: game.homeTeam,
-                    awayTeam: game.awayTeam,
-                    startDate: game.startDate || ''
-                };
-
-                gameTables.push(gameInfo);
-            } else {
-                if (!game.startTimeTbd) {
-
-                    if (game.completed) {
-                        var shouldReplace = false;
-    
-                        if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            if (await data.seasons.at(-1).teams.some(e => e.id === game.homeId)) {
-                                awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
-                                homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
-                            } else {
-                                awayTeam = `<a href="/team?team=${game.awayId}"><strong>` + game.awayTeam + '</strong></a>';
-                                homeTeam = `<a href="/team?team=${game.homeId}">` + game.homeTeam + '</a>';
-                            }
-        
-                            isAway = true;
-                        } else {
-                            awayTeam = `<a href="/team?team=${game.awayId}">` + game.awayTeam + '</a>';
-                            homeTeam = `<a href="/team?team=${game.homeId}"><strong>` + game.homeTeam + '</strong></a>';
-                        }
-        
-        
-                        if (game.seasonType == "postseason" && game.notes && game.notes.toLowerCase().includes("playoff")) {
-                            shouldReplace = true;
-                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
-                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
-
-                            if (game.awayPoints > game.homePoints) {
-                                topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
-                                bottomData = (game.homePoints || '-') + '<td class="score-added">' + homeScoreAdded + '</td>';
-                            } else {
-                                topData = (game.awayPoints || '-') + '<td class="score-added">' + awayScoreAdded + '</td>';
-                                bottomData = (game.homePoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + homeScoreAdded + '</td>';
-                            }
-
-                        } else if ( game.awayPoints > game.homePoints ) {
-                            if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                                shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
-                            }
-                            topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                            bottomData = (game.homePoints || '-');
-                        } else {
-
-                            if(game.homeId == data.seasons.at(-1).teams[iterNum].id) {
-                                shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
-                            }
-        
-                            topData = (game.awayPoints || '-');
-                            bottomData = (game.homePoints || '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                        }
-                    } else {
-                        var centralDate = new Date(game.startDate);
-                        var militaryTime = centralDate.toString().substring(16,21);
-                        var time = militaryTime.split(':');
-                        var hours = parseInt(time[0]);
-                        var minutes = time[1];
-                        var standardTime = '';
-        
-                        if (hours < 12) {
-                            standardTime = hours.toString() + ":" + minutes +  "AM";
-                        }
-                        else if (hours == 12) {
-                            standardTime = hours.toString() + ":" + minutes + "PM";
-                        }
-                        else {
-                            standardTime =( hours - 12).toString() + ":" + minutes + "PM";
-                        }
-        
-                        topData = centralDate.toString().substring(4,10);
-                        bottomData = standardTime;
-                    }
-                    
-
-                    var awayImg = logoHtmlFromMap(logoMap, game.awayId);
-                    var homeImg = logoHtmlFromMap(logoMap, game.homeId);
-                    var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
-                    var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
-
-                    var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
-    
-                    teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
-                    teamTable += '</tr><tr><td class="gc-team">';
-        
-                    teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
-                    teamTable += `</tr><tr><td class="game-notes">`;
-                    teamTable += game.notes || '';
-                    teamTable += '</td></tr></tbody></table></div>';
-        
-                    var gameInfo = {
-                        id: game.id,
-                        table: teamTable,
-                        homeTeam: game.homeTeam,
-                        awayTeam: game.awayTeam,
-                        startDate: game.startDate || ''
-                    };
-
-                    if (shouldReplace) {
-                        var indexToReplace = gameTables.findIndex(x => x.id == game.id);
-                        gameTables.splice(indexToReplace, 1);
-                        gameTables.push(gameInfo);
-                    }
-                }
-            }
-        } 
-    }
-
-    gameTables.sort((a, b) => {
-        return new Date(a.startDate) - new Date(b.startDate);
-    });
-
-    // Cards flow into a responsive flex grid (CSS wraps them by width), so no
-    // more manual row breaks or userAgent-based one-per-row handling.
-    for (var k = 0; k < gameTables.length; k++) {
-        str += gameTables[k].table;
-    }
-
-    if (gameTables.length == 0) {
+    if (cards.length) {
+        scheduleContainer.innerHTML = cards.map(c => c.html).join('');
+    } else {
+        scheduleContainer.innerHTML = '<div id="no-games-container"></div>';
         showRandomNoGamesMessage();
     }
 
-    scheduleContainer.innerHTML = str;
-    document.querySelector('.football-loader').style.display = "none";
-    document.querySelector('[schedule-body]').style.display = "flex";
+    document.querySelector('.football-loader').style.display = 'none';
+    document.querySelector('[schedule-body]').style.display = 'flex';
 }
 
 if ($("[league-selector]")) {
@@ -976,15 +785,6 @@ if ($("[league-selector]")) {
     }, "200");
 }
 
-function isBowlParticipant(game) {
-    if (game.notes) {
-        if (game.notes.toLowerCase().includes("bowl") && !game.notes.toLowerCase().includes("cfp") && (game.seasonType == "postseason")) {
-            return true;
-        }
-    } else {
-        return false;
-    }
-}
 
 const noGamesMessages = [
   `
