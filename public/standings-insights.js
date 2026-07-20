@@ -88,7 +88,6 @@ function movementHtml(delta) {
 export function buildStandingsRowsHtml(rows) {
     return rows.map(r => {
         const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
-        const crown = r.rank === 1 ? '<span class="crown" aria-label="Leader">👑</span> ' : '';
         const logos = r.teams.map(t =>
             `<a href="/team?team=${t.id}"><img src="${t.logos.at(-1)}" alt="${escapeHtml(t.mascot)}"></a>`
         ).join('');
@@ -97,7 +96,7 @@ export function buildStandingsRowsHtml(rows) {
             : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
         return `<tr class="standings-row${medal}">
             <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
-            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
+            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
             <td class="team-item"><div class="team-logos">${logos}</div></td>
             <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
         </tr>`;
