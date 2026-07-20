@@ -525,3 +525,35 @@
 .welcome-actions .btn-primary:hover { background: #7d7be8; }
 .welcome-actions .btn-ghost { background: transparent; color: #A4A9C2; }
 .welcome-actions .btn-ghost:hover { color: #F4F6FB; }
+
+/* ==================================================================== */
+/* Standings entrance animations. Defined only under                    */
+/* prefers-reduced-motion:no-preference, and they play on the           */
+/* innerHTML insert (buildStandingsRowsHtml) — no JS wiring needed.     */
+/* Count-up on the scores already lives in standings.js (animateScores).*/
+/* ==================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+    /* Ranked rows rise + fade in, staggered top to bottom */
+    .standings-row { animation: std-row-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+    .standings-row:nth-child(1)  { animation-delay: .04s; }
+    .standings-row:nth-child(2)  { animation-delay: .10s; }
+    .standings-row:nth-child(3)  { animation-delay: .16s; }
+    .standings-row:nth-child(4)  { animation-delay: .22s; }
+    .standings-row:nth-child(5)  { animation-delay: .28s; }
+    .standings-row:nth-child(6)  { animation-delay: .34s; }
+    .standings-row:nth-child(7)  { animation-delay: .40s; }
+    .standings-row:nth-child(8)  { animation-delay: .46s; }
+    .standings-row:nth-child(9)  { animation-delay: .52s; }
+    .standings-row:nth-child(10) { animation-delay: .58s; }
+    .standings-row:nth-child(n+11) { animation-delay: .64s; }
+
+    /* Leader: a soft gold glow pulses on the rank number */
+    .standings-row.medal-1 .rank-num { animation: std-leader-glow 2.6s ease-in-out infinite; }
+
+    /* Movement arrows pop in after the rows have settled */
+    .move { display: inline-block; animation: std-move-pop .45s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: .55s; }
+}
+
+@keyframes std-row-in { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes std-leader-glow { 0%, 100% { text-shadow: 0 0 0 rgba(242, 193, 78, 0); } 50% { text-shadow: 0 0 9px rgba(242, 193, 78, .75); } }
+@keyframes std-move-pop { 0% { opacity: 0; transform: scale(0) translateY(-4px); } 60% { transform: scale(1.25); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
