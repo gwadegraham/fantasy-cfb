@@ -508,6 +508,45 @@
     padding: 0.2em 0.6em;
 }
 
+/* Standings team cell: keep the logo and (possibly wrapping) name aligned as
+   two columns instead of letting the name fall under the logo. */
+.standings-team {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    text-align: left;
+}
+
+.standings-team-logo {
+    flex: 0 0 auto;
+    display: inline-flex;
+}
+
+.standings-team-logo img,
+.standings-team-logo i {
+    height: 1.5em;
+    padding-right: 0 !important;
+}
+
+.standings-team-name {
+    line-height: 1.15;
+}
+
+/* Give the team column room to breathe and the numeric columns a tidy,
+   non-wrapping width so long names have space before they wrap. */
+.standings-table th.standingColumn,
+.standings-table td.standingColumn {
+    vertical-align: middle;
+}
+
+.standings-table td.standingColumn:nth-child(3),
+.standings-table td.standingColumn:nth-child(4),
+.standings-table th.standingColumn:nth-child(3),
+.standings-table th.standingColumn:nth-child(4) {
+    white-space: nowrap;
+    text-align: center;
+}
+
 /* Highlight the viewed team's standings row with a subtle accent wash */
 .viewed-team-row {
     background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);

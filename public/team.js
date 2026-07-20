@@ -706,18 +706,20 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
             var teamLogo = logos.find((logo) => logo.id == team.teamId)?.logos.at(-1);
             teamLogo = teamLogo ? `<img src="${teamLogo}" alt="${team.mascot}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
-            var rankHtml = index + 1;
-            var teamHtml = teamLogo + ' ' + team.team;
-            var confHtml = team.conferenceGames.wins + '-' + team.conferenceGames.losses;
-            var ovrHtml = team.total.wins + '-' + team.total.losses;
-
             var isViewedTeam = team.team == teamData.school;
-            if (isViewedTeam) {
-                rankHtml = `<strong class="boldTeam">${index + 1}</strong>`;
-                teamHtml = `<strong class="boldTeam">${teamLogo} ${team.team}</strong>`;
-                confHtml = `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`;
-                ovrHtml = `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`;
-            }
+            var boldCls = isViewedTeam ? ' boldTeam' : '';
+
+            // Logo and name are their own flex columns so a long name (e.g.
+            // "Georgia Tech", "Florida State") wraps beside the logo, centered,
+            // instead of dropping onto a second line underneath it.
+            var rankHtml = isViewedTeam ? `<strong class="boldTeam">${index + 1}</strong>` : (index + 1);
+            var teamHtml = `<span class="standings-team"><span class="standings-team-logo">${teamLogo}</span><span class="standings-team-name${boldCls}">${team.team}</span></span>`;
+            var confHtml = isViewedTeam
+                ? `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`
+                : `${team.conferenceGames.wins}-${team.conferenceGames.losses}`;
+            var ovrHtml = isViewedTeam
+                ? `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`
+                : `${team.total.wins}-${team.total.losses}`;
 
             html += `
                 <tr class="${isViewedTeam ? 'viewed-team-row' : ''}">
