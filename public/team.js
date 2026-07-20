@@ -669,7 +669,9 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 var isTie = us === them;
                 var cls = isTie ? 'result-tie' : (us > them ? 'result-win' : 'result-loss');
                 var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
-                resultBadge = `<span class="game-result ${cls}"><strong>${letter}</strong> ${us}-${them}</span>`;
+                // Just the W/L/T (the per-team scores already show the numbers);
+                // keep the exact score available on hover.
+                resultBadge = `<span class="game-result ${cls}" title="${us}-${them}">${letter}</span>`;
             }
 
             const awayTeamHTML = `

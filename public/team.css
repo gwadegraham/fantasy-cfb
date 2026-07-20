@@ -604,17 +604,15 @@
 .game-result {
     flex: 0 0 auto;
     display: inline-flex;
-    align-items: baseline;
-    gap: 0.3em;
-    padding: 0.25em 0.55em;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    white-space: nowrap;
+    align-items: center;
+    justify-content: center;
+    width: 1.9em;
+    height: 1.9em;
+    border-radius: 50%;
+    font-size: 0.85rem;
+    font-weight: 700;
     color: #F4F6FB;
 }
-
-.game-result strong { font-size: 0.9rem; }
 .result-win { background-color: rgba(63, 157, 90, 0.22); border: 1px solid #3f9d5a; }
 .result-loss { background-color: rgba(181, 66, 63, 0.22); border: 1px solid #b5423f; }
 .result-tie { background-color: rgba(164, 169, 194, 0.18); border: 1px solid #A4A9C2; }
