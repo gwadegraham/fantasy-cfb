@@ -664,3 +664,79 @@
 .viewed-team-row td:first-child {
     border-left: 3px solid var(--team-accent, #ed5858);
 }
+
+/* ==================================================================== */
+/* Entrance animations. All are defined ONLY inside the                 */
+/* prefers-reduced-motion:no-preference query, so a reader who opts out */
+/* of motion just sees the final state (the .run/.reveal classes are    */
+/* always added, but do nothing without these rules). JS-driven count-  */
+/* ups check the same preference before animating.                      */
+/* ==================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+
+    /* Whole team card eases in on load / season change */
+    #team-container.reveal { animation: cc-card-in .5s cubic-bezier(.2,.8,.2,1) both; }
+
+    /* Header: accent border draws down + a team-colour sheen sweeps once */
+    .team-header { position: relative; overflow: hidden; }
+    .team-header.run::after {
+        content: "";
+        position: absolute; inset: 0;
+        background: linear-gradient(105deg, transparent 34%, rgba(var(--team-accent-rgb, 237,88,88), .22) 50%, transparent 66%);
+        transform: translateX(-120%);
+        animation: cc-sweep 1s ease .15s 1;
+        pointer-events: none;
+    }
+
+    /* Form strip: W/L dots pop in left to right */
+    .form-strip.run .form-dot { animation: cc-pop .42s cubic-bezier(.2,1.5,.4,1) both; }
+    .form-strip.run .form-dot:nth-child(1) { animation-delay: .04s; }
+    .form-strip.run .form-dot:nth-child(2) { animation-delay: .12s; }
+    .form-strip.run .form-dot:nth-child(3) { animation-delay: .20s; }
+    .form-strip.run .form-dot:nth-child(4) { animation-delay: .28s; }
+    .form-strip.run .form-dot:nth-child(5) { animation-delay: .36s; }
+    .form-strip.run .form-dot:nth-child(6) { animation-delay: .44s; }
+
+    /* Weekly points chart: bars grow up from the axis (delay set inline) */
+    .week-bar-fill { transform-origin: bottom; }
+    .week-bars.run .week-bar-fill { animation: cc-grow .6s cubic-bezier(.2,.8,.2,1) both; }
+
+    /* Schedule: result badge stamps down; score flips in */
+    .game-result.run { animation: cc-stamp .4s cubic-bezier(.2,1.4,.3,1) both; }
+    .team-score.run { animation: cc-flip-in .45s ease both; display: inline-block; }
+}
+
+@keyframes cc-card-in { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes cc-sweep { to { transform: translateX(120%); } }
+@keyframes cc-pop { 0% { opacity: 0; transform: scale(0); } 70% { transform: scale(1.18); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes cc-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes cc-stamp { 0% { opacity: 0; transform: scale(1.8) rotate(-14deg); } 60% { opacity: 1; transform: scale(.92) rotate(3deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes cc-flip-in { 0% { transform: perspective(300px) rotateX(-90deg); opacity: 0; } 100% { transform: perspective(300px) rotateX(0); opacity: 1; } }
+
+/* Smooth collapse/expand for the schedule + standings panels (mobile).
+   Keeps the existing display / flex-wrap / table rendering intact and just
+   animates max-height on the existing .active toggle — so no JS change and no
+   layout regression. Desktop (>=64em) forces them fully open. */
+@media only screen and (min-width: 0em) {
+    .games-container {
+        display: flex;
+        flex-direction: column;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height .35s cubic-bezier(.3,.8,.3,1);
+    }
+    .standings-table {
+        display: block;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height .35s cubic-bezier(.3,.8,.3,1);
+    }
+    .games-container.active, .standings-table.active { max-height: 1500px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .games-container, .standings-table { transition: none; }
+}
+@media only screen and (min-width: 64em) {
+    /* Desktop: always visible, no clipping */
+    .games-container, .standings-table { max-height: none; overflow: visible; }
+}

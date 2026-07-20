@@ -48,3 +48,22 @@
 		opacity: 1;
 	}
 }
+
+/* Yard-line sweep beneath the football — a moving highlight along a track,
+   like a chain crew running the line. Pure CSS (::after), so it applies
+   everywhere the loader is used without markup changes. */
+.football-loader::after {
+	content: "";
+	width: 150px;
+	height: 6px;
+	margin-top: 1.1em;
+	border-radius: 3px;
+	background: linear-gradient(90deg, #1c2237 0%, #1c2237 42%, #ed5858 50%, #1c2237 58%, #1c2237 100%);
+	background-size: 260% 100%;
+	animation: yard-sweep 1.3s ease-in-out infinite;
+}
+
+@keyframes yard-sweep {
+	0%   { background-position: 130% 0; }
+	100% { background-position: -130% 0; }
+}
