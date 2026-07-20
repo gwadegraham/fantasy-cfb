@@ -310,8 +310,8 @@
     }
 
     .header-title {
-        font-size: 3.4rem;
-        padding: 35px 35px 35px 0px;
+        font-size: 2.6rem;
+        padding: 20px 20px 20px 0px;
     }
 
     .last-updated {
@@ -321,7 +321,18 @@
 
     .fl-table {
         font-size: 1em;
-        line-height: 4em;
+        /* was 4em — rows were ~64px tall, which felt oversized on laptop/iPad
+           where this breakpoint kicks in at 1024px. */
+        line-height: 2.6em;
+    }
+
+    /* Cap + center the main content so it doesn't sprawl edge-to-edge on wide
+       screens (the table container is width:100%); gives comfortable margins
+       on laptops/large monitors. */
+    .table-wrapper {
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     .team-item {
@@ -329,7 +340,7 @@
     }
 
     .team-item img {
-        height: 35px !important;
+        height: 28px !important;
     }
 
     .highlights-container {
@@ -338,6 +349,9 @@
         gap: 2em;
         padding: 2em;
         width: 95%;
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
     }
 
     .highlight-title {
@@ -345,7 +359,7 @@
     }
 
     .highlights-header {
-        font-size: 3.4rem;
+        font-size: 2.6rem;
     }
 
     .highlight-info span{
@@ -403,7 +417,14 @@
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
 /* Manager's name under a custom franchise name in the ranked table. */
-.name-cell .std-manager { display: block; font-size: 0.68rem; font-weight: 400; color: #767D9C; line-height: 1.1; }
+/* Ranked-row identity: round avatar (photo or colored initials) + name. */
+.name-cell a { display: inline-flex; align-items: center; gap: 8px; }
+.std-avatar { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* Specific enough to beat the global `.fl-table tbody img { height:… }` rule,
+   which was shrinking the photo so it didn't fill its circle. */
+.name-cell .std-avatar img { width: 100%; height: 100%; object-fit: cover; margin: 0; }
+.std-avatar-initials { font-size: 0.62rem; font-weight: 700; color: #fff; }
+.std-name { white-space: nowrap; }
 
 /* Team logos: keep the cell a real table cell so it fills the row height and
    vertical-align:middle applies; the logos live in an inner flex row. A
