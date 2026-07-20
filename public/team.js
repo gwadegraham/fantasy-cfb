@@ -908,22 +908,24 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
 }
 
 function getConferenceLogo(conference) {
+    // All logos are self-hosted under /images so no conference logo depends on
+    // an outside host. (The image files were added in 684d27d but only Big Ten
+    // and Conference USA were actually wired up; the other 9 still hotlinked
+    // sportslogos/cloudfront until this change.)
     var allLogos = [
         {
             confName: "ACC",
-            url: "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/acc.sidearmsports.com/images/responsive_2024/footer_logo_acc-white.svg"
+            url: "../images/logo-acc.svg"
         },
         {
             confName: "American Athletic",
-            url: "https://content.sportslogos.net/logos/153/5032/full/american_athletic_conference_logo_primary_20178032.png"
+            url: "../images/logo-aac.png"
         },
         {
             confName: "Big 12",
-            url: "https://content.sportslogos.net/logos/153/4662/full/big_12_conference_logo_alternate_20188833.png"
+            url: "../images/logo-big12.png"
         },
         {
-            // Self-hosted (the old brandfetch URL "idzgo3Vrw2" was Indiana's
-            // logo, not the Big Ten's). White "B" + blue "1G" for the dark header.
             confName: "Big Ten",
             url: "../images/logo-big-ten.svg"
         },
@@ -933,27 +935,27 @@ function getConferenceLogo(conference) {
         },
         {
             confName: "FBS Independents",
-            url: "https://content.sportslogos.net/logos/153/4756/full/589_division_i_fbs-independents-primary-.gif"
+            url: "../images/logo-fbs-independents.gif"
         },
         {
             confName: "Mid-American",
-            url: "https://content.sportslogos.net/logos/153/4664/full/mid-american_conference_logo_primary_2008_sportslogosnet-6826.png"
+            url: "../images/logo-mac.png"
         },
         {
             confName: "Mountain West",
-            url: "https://content.sportslogos.net/logos/153/4665/full/mountain_west_conference_logo_primary_20111652.png"
+            url: "../images/logo-mountain-west.png"
         },
         {
             confName: "Pac-12",
-            url: "https://content.sportslogos.net/logos/153/4666/full/pacific-12_conference_logo_primary_20117066.png"
+            url: "../images/logo-pac12.png"
         },
         {
             confName: "Sun Belt",
-            url: "https://content.sportslogos.net/logos/153/4668/full/sun_belt_conference_logo_primary_20207257.png"
+            url: "../images/logo-sun-belt.png"
         },
         {
             confName: "SEC",
-            url: "https://content.sportslogos.net/logos/153/4667/full/southeastern_conference_logo_primary_2018_sportslogosnet-5123.png"
+            url: "../images/logo-sec.png"
         }
     ]
 
