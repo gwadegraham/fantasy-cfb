@@ -417,7 +417,12 @@
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
 /* Manager's name under a custom franchise name in the ranked table. */
-.name-cell .std-manager { display: block; font-size: 0.68rem; font-weight: 400; color: #767D9C; line-height: 1.1; }
+/* Ranked-row identity: round avatar (photo or colored initials) + name. */
+.name-cell a { display: inline-flex; align-items: center; gap: 8px; }
+.std-avatar { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.std-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.std-avatar-initials { font-size: 0.62rem; font-weight: 700; color: #fff; }
+.std-name { white-space: nowrap; }
 
 /* Team logos: keep the cell a real table cell so it fills the row height and
    vertical-align:middle applies; the logos live in an inner flex row. A

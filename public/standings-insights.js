@@ -47,11 +47,35 @@ export function rankedRows(users) {
         id: u._id,
         name: initialName(u),
         franchise: franchiseName(u),
+        avatarUrl: u.avatarUrl || null,
+        initials: (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase(),
+        color: u.color || avatarColor(u),
         teams: season(u).teams || [],
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
         delta: (prevRankById && prevRankById[u._id] != null) ? (prevRankById[u._id] - i) : null
     }));
+}
+
+// Stable fallback color for the initials avatar when a user has no stored
+// color (hue hashed from the name so each manager gets a consistent shade).
+const avatarColor = (u) => {
+    const s = (u.firstName || '') + (u.lastName || '');
+    let h = 0;
+    for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return `hsl(${h % 360}, 45%, 45%)`;
+};
+
+// Small round avatar for a ranked row: the uploaded photo (face-cropped) or a
+// colored initials fallback.
+function stdAvatarHtml(r) {
+    if (r.avatarUrl) {
+        const src = r.avatarUrl.indexOf('/upload/') !== -1
+            ? r.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_48,h_48,q_auto,f_auto/')
+            : r.avatarUrl;
+        return `<span class="std-avatar"><img src="${src}" alt=""></span>`;
+    }
+    return `<span class="std-avatar std-avatar-initials" style="background:${r.color}">${escapeHtml(r.initials || '?')}</span>`;
 }
 
 function movementHtml(delta) {
@@ -73,7 +97,7 @@ export function buildStandingsRowsHtml(rows) {
             : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
         return `<tr class="standings-row${medal}">
             <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
-            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.franchise || r.name)}${r.franchise ? `<span class="std-manager">${escapeHtml(r.name)}</span>` : ''}</a></th>
+            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
             <td class="team-item"><div class="team-logos">${logos}</div></td>
             <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
         </tr>`;
