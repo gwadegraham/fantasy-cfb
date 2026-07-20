@@ -51,6 +51,25 @@ router.get('/teamLogos/all', async (req,res) => {
     }
 });
 
+// Getting cumulative fantasy scores for every team in a season, used to rank a
+// team against the rest of the FBS. Projected down to just the ids/scores so
+// this stays small (unlike a full Team.find()).
+router.get('/scores/:season', async (req, res) => {
+    try {
+        const season = Number(req.params.season);
+        if (!Number.isInteger(season)) {
+            return res.status(400).json({message: 'Invalid season'});
+        }
+        const teams = await Team.find(
+            {"seasons.season": season},
+            {"id": 1, "school": 1, "seasons": {"$elemMatch": {"season": season}}}
+        );
+        res.status(200).json(teams);
+    } catch (err) {
+        res.status(500).json({message: err.message});
+    }
+});
+
 // Getting One
 router.get('/:id', async (req, res) => {
     try {

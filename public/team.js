@@ -105,24 +105,124 @@ async function loadTeamPage() {
     // Theme the page from the team's own colours before anything renders.
     applyTeamTheme(teamData);
 
-    const seasonObj = latestPlayedSeason(teamData.seasons) || teamData.seasons.at(-1);
+    // Honour an explicit ?season=YYYY (from the season selector); otherwise show
+    // the latest season with games played.
+    const seasonParam = urlParams.get('season');
+    var seasonObj = null;
+    if (seasonParam) {
+        seasonObj = teamData.seasons.find(s => String(s.season) === String(seasonParam));
+    }
+    if (!seasonObj) seasonObj = latestPlayedSeason(teamData.seasons) || teamData.seasons.at(-1);
+
     const seasonYear = seasonObj?.season || new Date().getFullYear();
     const conference = seasonObj?.conference;
+    const leagueCode = window.localStorage.getItem("leagueCode");
 
-    // Fire the independent requests together rather than serially.
-    const [record, conferenceRecords, allLogos, recruiting, schedule, rankings, bettingLines] = await Promise.all([
+    // Fire the independent requests together. allSettled (not all) so one failed
+    // request can't blank the whole page — each section falls back to a default.
+    const results = await Promise.allSettled([
         getRecord(teamData.school, seasonYear),
         getConferenceRecords(seasonYear, conference),
         getTeamLogos(),
         getRecruitingRankings(teamData.school, seasonYear),
         getScheduleGames(teamId, seasonYear),
         getRankings(seasonYear),
-        getAllBettingLines(seasonYear)
+        getAllBettingLines(seasonYear),
+        getTeamOwner(teamId, seasonYear, leagueCode),
+        getTeamFantasyRank(teamId, seasonYear, leagueCode)
     ]);
+    const val = (i, fallback) => results[i].status === 'fulfilled' && results[i].value != null ? results[i].value : fallback;
+    const record = val(0, undefined);
+    const conferenceRecords = val(1, []);
+    const allLogos = val(2, []);
+    const recruiting = val(3, undefined);
+    const schedule = val(4, []);
+    const rankings = val(5, []);
+    const bettingLines = val(6, []);
+    const owner = val(7, null);
+    const fantasyRank = val(8, null);
 
     renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
-    renderTeamInfo(teamData, record, recruiting, seasonObj, schedule);
+    renderTeamInfo(teamData, record, recruiting, seasonObj, schedule, owner, fantasyRank);
     renderTeamScheduleInfo(schedule, allLogos, rankings, bettingLines, seasonYear, teamData);
+}
+
+// Find the fantasy manager who drafted this team in the given season/league.
+// Returns { name, franchiseName, userId } or null if undrafted / unavailable.
+async function getTeamOwner(teamId, seasonYear, leagueCode) {
+    try {
+        const res = await fetch(`/users/season/${seasonYear}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const users = await res.json();
+        if (!Array.isArray(users)) return null;
+
+        const scoped = leagueCode ? users.filter(u => u.league === leagueCode) : users;
+        for (const user of scoped) {
+            const season = user.seasons?.[0];
+            const owns = season?.teams?.some(t => String(t.id) === String(teamId));
+            if (owns) {
+                return {
+                    userId: user._id,
+                    name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                    franchiseName: season.franchiseName || ''
+                };
+            }
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Rank this team's cumulative fantasy score against every FBS team for the
+// season. Returns { rank, total } or null.
+async function getTeamFantasyRank(teamId, seasonYear, leagueCode) {
+    try {
+        const res = await fetch(`/teams/scores/${seasonYear}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const teams = await res.json();
+        if (!Array.isArray(teams) || !teams.length) return null;
+
+        // Claunts league scores on V1, Graham on V2 (matches the header score).
+        const key = (leagueCode === 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
+        const scored = teams
+            .map(t => ({ id: t.id, score: Number(t.seasons?.[0]?.[key]) || 0 }))
+            .sort((a, b) => b.score - a.score);
+
+        const idx = scored.findIndex(t => String(t.id) === String(teamId));
+        if (idx === -1) return null;
+        return { rank: idx + 1, total: scored.length };
+    } catch (e) {
+        return null;
+    }
+}
+
+// Build the season <select> from the seasons present on the team doc.
+function renderSeasonSelector(seasons, currentSeason) {
+    if (!Array.isArray(seasons) || seasons.length < 2) return '';
+    var options = seasons
+        .map(s => s.season)
+        .filter((v, i, arr) => v != null && arr.indexOf(v) === i)
+        .sort((a, b) => b - a)
+        .map(y => `<option value="${y}" ${String(y) === String(currentSeason) ? 'selected' : ''}>${y}</option>`)
+        .join('');
+    return `
+        <select class="season-select" aria-label="Select season" onchange="onSeasonChange(this.value)">
+            ${options}
+        </select>
+    `;
+}
+
+// Navigate to the chosen season (full reload re-runs loadTeamPage with the
+// new ?season=).
+function onSeasonChange(year) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('season', year);
+    window.location.search = params.toString();
 }
 
 async function fetchTeamDoc(teamId) {
@@ -335,7 +435,7 @@ function computeForm(schedule, teamId) {
 }
 
 // Render team info
-function renderTeamInfo(team, record, recruiting, seasonObj, schedule) {
+function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fantasyRank) {
     const leagueCode = window.localStorage.getItem("leagueCode");
     const container = document.getElementById("team-container");
     // Claunts = V1, Graham = V2. leagueCode is 'claunts-league'/'graham-league'
@@ -381,14 +481,33 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule) {
              </span></p>`
         : '';
 
+    // "Drafted by" — ties the team back to its fantasy manager for the season.
+    var ownerHtml = owner
+        ? `<a class="team-owner" href="/userHome?user=${owner.userId}">
+               <i class="fa-solid fa-user-group"></i>
+               <span>${owner.franchiseName || owner.name || 'a manager'}</span>
+           </a>`
+        : `<span class="team-owner team-owner--undrafted"><i class="fa-solid fa-user-slash"></i> Undrafted</span>`;
+
+    // National fantasy-scoring rank alongside the raw point total.
+    var rankHtml = fantasyRank
+        ? `<span class="fantasy-rank">#${fantasyRank.rank} of ${fantasyRank.total}</span>`
+        : '';
+
+    // Set the tab title to the team being viewed.
+    document.title = `${team.school} ${team.mascot} · Campus Clash`;
+
     const html = `
 
         <div class="team-header">
             <img class="team-logo" src="${team.logos.at(-1)}" alt="${team.school}" />
             <div class="team-meta">
-            <h2 class="team-name">${team.school} ${team.mascot}</h2>
+            <div class="team-name-row">
+                <h2 class="team-name">${team.school} ${team.mascot}</h2>
+                ${renderSeasonSelector(team.seasons, seasonObj.season)}
+            </div>
             <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
-            ${twitterHtml}
+            <div class="team-meta-links">${twitterHtml}${ownerHtml}</div>
             ${formStrip ? `<div class="form-strip" title="Most recent results">${formStrip}</div>` : ''}
             </div>
         </div>
@@ -404,7 +523,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule) {
             </div>
             <div>
                 <h4>📈 Season Score</h4>
-                <p class="score">${seasonScore} Points</p>
+                <p class="score">${seasonScore} Points ${rankHtml}</p>
                 <h4>Recruiting Rank</h4>
                 <p class="score">${recruitingRank}</p>
             </div>
@@ -540,6 +659,19 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             const homeIsWinner = game.completed && Number(homePoints) > Number(awayPoints);
             const awayIsWinner = game.completed && Number(awayPoints) > Number(homePoints);
 
+            // Result badge from the VIEWED team's perspective (W/L/T + score),
+            // so a completed game reads at a glance without relying on colour.
+            var resultBadge = '';
+            if (game.completed) {
+                var teamIsHome = String(game.homeId) === String(teamId);
+                var us = Number(teamIsHome ? homePoints : awayPoints);
+                var them = Number(teamIsHome ? awayPoints : homePoints);
+                var isTie = us === them;
+                var cls = isTie ? 'result-tie' : (us > them ? 'result-win' : 'result-loss');
+                var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
+                resultBadge = `<span class="game-result ${cls}"><strong>${letter}</strong> ${us}-${them}</span>`;
+            }
+
             const awayTeamHTML = `
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
                <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
@@ -575,6 +707,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
+                    ${resultBadge}
                 </div>
             `;
         });

@@ -508,6 +508,90 @@
     padding: 0.2em 0.6em;
 }
 
+/* Season selector next to the team name */
+.team-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    flex-wrap: wrap;
+}
+
+.season-select {
+    background-color: #101322;
+    color: #F4F6FB;
+    border: 1px solid var(--team-accent, #ed5858);
+    border-radius: 6px;
+    padding: 0.2em 0.5em;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.season-select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--team-accent-rgb, 237, 88, 88), 0.4);
+}
+
+/* "Drafted by" owner link + Twitter, on one line */
+.team-meta-links {
+    display: flex;
+    align-items: center;
+    gap: 0.9em;
+    flex-wrap: wrap;
+    margin-top: 0.15em;
+}
+
+.team-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--team-accent, #ed5858) !important;
+    text-decoration: none;
+}
+
+.team-owner:hover { text-decoration: underline; }
+
+.team-owner i { font-size: 0.85rem; }
+
+.team-owner--undrafted {
+    color: #A4A9C2 !important;
+    font-weight: 500;
+}
+
+/* National fantasy-scoring rank next to the point total */
+.fantasy-rank {
+    display: inline-block;
+    margin-left: 0.4em;
+    padding: 0.05em 0.5em;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--team-accent-contrast, #101322);
+    background-color: var(--team-accent, #ed5858);
+    border-radius: 999px;
+    vertical-align: middle;
+}
+
+/* Per-game result badge (W/L/T + score) from the viewed team's perspective */
+.game-result {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3em;
+    padding: 0.25em 0.55em;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    color: #F4F6FB;
+}
+
+.game-result strong { font-size: 0.9rem; }
+.result-win { background-color: rgba(63, 157, 90, 0.22); border: 1px solid #3f9d5a; }
+.result-loss { background-color: rgba(181, 66, 63, 0.22); border: 1px solid #b5423f; }
+.result-tie { background-color: rgba(164, 169, 194, 0.18); border: 1px solid #A4A9C2; }
+
 /* Standings team cell: keep the logo and (possibly wrapping) name aligned as
    two columns instead of letting the name fall under the logo. */
 .standings-team {
