@@ -1,10 +1,10 @@
 const { sanitizeProfileUpdate, isValidAvatarUrl, FRANCHISE_NAME_MAX } = require('../modules/profile-update');
 
-const CLOUD = 'loa85ael';
+const CLOUD = 'testcloud';
 
 describe('isValidAvatarUrl', () => {
     it('accepts an https Cloudinary URL for our cloud', () => {
-        expect(isValidAvatarUrl(`https://res.cloudinary.com/${CLOUD}/image/upload/v1/campus-clash/avatars/x.jpg`, CLOUD)).toBe(true);
+        expect(isValidAvatarUrl(`https://res.cloudinary.com/${CLOUD}/image/upload/v1/avatars/x.jpg`, CLOUD)).toBe(true);
     });
     it('rejects other hosts, other clouds, non-https, and junk', () => {
         expect(isValidAvatarUrl(`http://res.cloudinary.com/${CLOUD}/x.jpg`, CLOUD)).toBe(false);   // not https
