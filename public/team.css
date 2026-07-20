@@ -191,7 +191,8 @@
     .team-row {
         display: flex;
         flex-direction: row;
-        justify-content: space-between;
+        align-items: center;
+        gap: 0.5em;
     }
 
     .game-info {
@@ -207,11 +208,24 @@
     }
 
 
+    /* Right-aligned column that always reserves its width, so the spread never
+       crowds the score and the two team rows line up whether or not a line is
+       shown. margin-left:auto pushes the line+score pair to the right edge. */
     .betting-line {
+        flex: 0 0 auto;
+        margin-left: auto;
+        min-width: 2.75em;
+        text-align: right;
         font-size: 0.75em;
         color: #A4A9C2;
-        padding-left: 1em;
-        align-content: center;
+    }
+
+    /* Fixed right-aligned score column so scores stack in a clean column. */
+    .team-score {
+        flex: 0 0 auto;
+        min-width: 1.9em;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
     }
 
     .game-winner, .game-winner a {
@@ -225,6 +239,8 @@
     }
 
     .team-vs {
+      flex: 1 1 auto;
+      min-width: 0;
       font-weight: 500;
     }
 
