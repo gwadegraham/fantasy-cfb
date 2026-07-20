@@ -94,7 +94,7 @@ if ($(".dropdown-menu-week")) {
         window.localStorage.setItem("weekCode", selectedWeekCode);
 
         document.querySelector('.football-loader').style.display = "flex";
-        document.querySelector('.schedule-table').style.display = "none";
+        document.querySelector('[schedule-body]').style.display = "none";
         displaySchedule(userData);
     });
 }
@@ -115,8 +115,29 @@ async function getUser() {
         renderHero(data[0]);
         displayTeams(data[0]);
         renderProfileChart(data[0]);
+        ensureWeekSelected(data[0]);
         displaySchedule(data[0]);
     });
+}
+
+// The Games week defaults to the latest played week when nothing is stored,
+// so the dropdown never shows the literal "Week X" placeholder (and
+// displaySchedule never reads a null weekCode) on a fresh visit.
+function ensureWeekSelected(data) {
+    if (window.localStorage.getItem('weekCode') && window.localStorage.getItem('week')) return;
+    const weekly = (data.seasons.at(-1) || {}).weeklyScore || [];
+    let maxWeek = 0, hasPost = false;
+    weekly.forEach(w => {
+        if (w.season === 'postseason' || w.week > 16) hasPost = true;
+        else if (w.week > maxWeek) maxWeek = w.week;
+    });
+    let code = 'week-1', label = 'Week 1';
+    if (hasPost) { code = 'week-17'; label = 'Postseason'; }
+    else if (maxWeek > 0) { code = 'week-' + maxWeek; label = 'Week ' + maxWeek; }
+    window.localStorage.setItem('weekCode', code);
+    window.localStorage.setItem('week', label);
+    weekCode = code;
+    $('#dropdownMenuButtonWeek').text(label);
 }
 // ---------- Profile hero ----------
 
@@ -610,10 +631,36 @@ function teamGameScoreById(weeklyScore, teamId, gameId) {
     return 0;
 }
 
+// Fetch every team logo the week's games need in ONE request, returning a
+// { teamId: <img html> } map. Replaces the old per-game POST to
+// /teams/teamLogos (one round-trip per game); missing teams fall back to the
+// helmet icon at lookup time.
+async function batchTeamLogos(games) {
+    const ids = [...new Set((games || []).flatMap(g => [g.awayId, g.homeId]))];
+    const map = {};
+    if (!ids.length) return map;
+    try {
+        const res = await fetch('/teams/teamLogos', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teams: ids })
+        });
+        if (res.status === 200) {
+            (await res.json()).forEach(t => {
+                if (t && t.logos && t.logos.length) map[t.id] = '<img src="' + t.logos.at(-1) + '" style="padding-right: 5px;">';
+            });
+        }
+    } catch (e) { /* fall back to helmet icons */ }
+    return map;
+}
+function logoHtmlFromMap(map, teamId) {
+    return map[teamId] || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     const leagueCode = window.localStorage.getItem("leagueCode");
-    var str = '<tr>';
+    var str = '';
     var gameIds = [];
     var gameTables = [];
 
@@ -639,9 +686,16 @@ async function displaySchedule(data) {
 
     var allBettingLines = await getAllBettingLines(seasonYear) || [];
 
-    for (var iterNum = 0; iterNum < data.seasons.at(-1).teams.length; iterNum++) {
+    // Fetch each roster team's games in parallel (was a sequential await per
+    // team), then fetch all logos in a single batched request up front — the
+    // schedule used to make one /teams/teamLogos round-trip per game.
+    const teamsList = data.seasons.at(-1).teams;
+    const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
+    const logoMap = await batchTeamLogos(gamesPerTeam.flat());
 
-        var gamesInfo = await getGame(seasonType, week, data.seasons.at(-1).teams[iterNum]);
+    for (var iterNum = 0; iterNum < teamsList.length; iterNum++) {
+
+        var gamesInfo = gamesPerTeam[iterNum];
 
         for (const [i, game] of gamesInfo.entries()) {
 
@@ -683,9 +737,8 @@ async function displaySchedule(data) {
                 var awayTeam = '';
                 var homeTeam = '';
                 var isAway = false;
-                var teamLogos = await getTeamLogos(game);
-                var awayImg = teamLogos.awayTeamLogo;
-                var homeImg = teamLogos.homeTeamLogo;
+                var awayImg = logoHtmlFromMap(logoMap, game.awayId);
+                var homeImg = logoHtmlFromMap(logoMap, game.homeId);
 
                 if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
 
@@ -756,20 +809,20 @@ async function displaySchedule(data) {
                     bottomData = standardTime;
                 }
     
-                var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+                var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
 
                 var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
                 var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
     
                 teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
-                teamTable += '</tr><tr><td style="width: 250px;">';
+                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
+                teamTable += '</tr><tr><td class="gc-team">';
     
                 teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
+                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
                 teamTable += `</tr><tr><td class="game-notes">`;
                 teamTable += game.notes || '';
-                teamTable += '</td></tr></tbody></table></td>';
+                teamTable += '</td></tr></tbody></table></div>';
     
                 var gameInfo = {
                     id: game.id,
@@ -855,23 +908,22 @@ async function displaySchedule(data) {
                     }
                     
 
-                    var teamLogos = await getTeamLogos(game);
-                    var awayImg = teamLogos.awayTeamLogo;
-                    var homeImg = teamLogos.homeTeamLogo;
+                    var awayImg = logoHtmlFromMap(logoMap, game.awayId);
+                    var homeImg = logoHtmlFromMap(logoMap, game.homeId);
                     var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
                     var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
 
-                    var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+                    var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
     
                     teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
-                    teamTable += '</tr><tr><td style="width: 250px;">';
+                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
+                    teamTable += '</tr><tr><td class="gc-team">';
         
                     teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
                     teamTable += `</tr><tr><td class="game-notes">`;
                     teamTable += game.notes || '';
-                    teamTable += '</td></tr></tbody></table></td>';
+                    teamTable += '</td></tr></tbody></table></div>';
         
                     var gameInfo = {
                         id: game.id,
@@ -895,23 +947,10 @@ async function displaySchedule(data) {
         return new Date(a.startDate) - new Date(b.startDate);
     });
 
-    for(var k = 0; k < gameTables.length; k++) {
-        if (isMobile) {
-            str += '</tr><tr>';
-        }
-        
-        if ((k + 1) > gameTables.length) {
-            str += '</td></tr>'
-        }
-        else if (((k) % 3 == 0) && (k > 0)) {
-            str += '</tr><tr>';
-        }
-
+    // Cards flow into a responsive flex grid (CSS wraps them by width), so no
+    // more manual row breaks or userAgent-based one-per-row handling.
+    for (var k = 0; k < gameTables.length; k++) {
         str += gameTables[k].table;
-
-        if (isMobile) {
-            str += '</tr><tr>';
-        }
     }
 
     if (gameTables.length == 0) {
@@ -920,7 +959,7 @@ async function displaySchedule(data) {
 
     scheduleContainer.innerHTML = str;
     document.querySelector('.football-loader').style.display = "none";
-    document.querySelector('.schedule-table').style.display = "flex";
+    document.querySelector('[schedule-body]').style.display = "flex";
 }
 
 if ($("[league-selector]")) {

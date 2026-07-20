@@ -364,3 +364,11 @@
 .profile-chart-section { width: 95%; max-width: 900px; margin: 1.5em auto 0; }
 .profile-chart-section .header { justify-content: flex-start; }
 .profile-chart-wrap { position: relative; height: 260px; width: 100%; padding: 0 10px 1em; box-sizing: border-box; }
+
+/* ---------- Games schedule: responsive card grid ---------- */
+.schedule-grid { display: flex; flex-wrap: wrap; gap: 1em; justify-content: center; padding: 1em; width: 100%; box-sizing: border-box; }
+.game-card { flex: 0 1 340px; max-width: 100%; }
+.game-card .game-table { width: 100%; display: table; margin: 0; }
+.game-card .gc-team { text-align: left; }
+.game-card .gc-divider { width: 1px; border-left: 1px solid #A4A9C2; }
+.game-card .gc-score { text-align: right; white-space: nowrap; }
