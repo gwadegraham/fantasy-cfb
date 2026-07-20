@@ -565,8 +565,10 @@ function getConferenceLogo(conference) {
             url: "https://content.sportslogos.net/logos/153/4662/full/big_12_conference_logo_alternate_20188833.png"
         },
         {
+            // Self-hosted (the old brandfetch URL "idzgo3Vrw2" was Indiana's
+            // logo, not the Big Ten's). White "B" + blue "1G" for the dark header.
             confName: "Big Ten",
-            url: "https://cdn.brandfetch.io/idzgo3Vrw2/theme/dark/logo.svg?c=1bxid64Mup7aczewSAYMX&t=1712244113805"
+            url: "../images/logo-big-ten.svg"
         },
         {
             confName: "Conference USA",
