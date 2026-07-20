@@ -116,6 +116,9 @@
         color: #A4A9C2;
         padding-left: 1em;
         align-content: center;
+        /* Keep the spread together (e.g. "-1.5") so it never breaks between
+           the sign and the number when the team column gets tight. */
+        white-space: nowrap;
     }
 
     .hr-subtle {
