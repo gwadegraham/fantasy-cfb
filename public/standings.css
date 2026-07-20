@@ -402,6 +402,8 @@
 .gap { display: inline-block; font-size: 0.68rem; color: #767D9C; font-weight: 400; }
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
+/* Manager's name under a custom franchise name in the ranked table. */
+.name-cell .std-manager { display: block; font-size: 0.68rem; font-weight: 400; color: #767D9C; line-height: 1.1; }
 
 /* Team logos: keep the cell a real table cell so it fills the row height and
    vertical-align:middle applies; the logos live in an inner flex row. A
@@ -488,3 +490,17 @@
 .chart-mode-toggle button:first-child { border-radius: 8px 0 0 8px; }
 .chart-mode-toggle button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
 .chart-mode-toggle button.active { background: #8E8CF0; color: #fff; border-color: #8E8CF0; }
+
+/* ---------- First-login profile onboarding modal ---------- */
+.welcome-backdrop { position: fixed; inset: 0; background: rgba(10,12,24,0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1em; }
+.welcome-backdrop[hidden] { display: none; }
+.welcome-card { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 14px; padding: 2em 1.75em; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+.welcome-emoji { font-size: 2.5rem; margin-bottom: 0.25em; }
+.welcome-card h2 { font-size: 1.4rem; color: #F4F6FB; margin: 0 0 0.5em; }
+.welcome-card p { font-size: 0.92rem; color: #A4A9C2; line-height: 1.5; margin: 0 0 1.5em; }
+.welcome-actions { display: flex; justify-content: center; gap: 0.75em; }
+.welcome-actions button { font: inherit; font-size: 0.9rem; border-radius: 8px; padding: 9px 18px; cursor: pointer; border: 1px solid transparent; }
+.welcome-actions .btn-primary { background: #8E8CF0; color: #fff; border-color: #8E8CF0; }
+.welcome-actions .btn-primary:hover { background: #7d7be8; }
+.welcome-actions .btn-ghost { background: transparent; color: #A4A9C2; }
+.welcome-actions .btn-ghost:hover { color: #F4F6FB; }

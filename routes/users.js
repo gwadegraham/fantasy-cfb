@@ -2,6 +2,55 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/user');
 const scoring = require('../modules/scoring');
+const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
+
+// Self-service profile edit: a signed-in user updates THEIR OWN franchise name
+// / avatar / onboarding flag. The identity comes from the Auth0 session (never
+// from the client), so a user can only edit their own record. This route is
+// exempted from the commissioner gate in server.js precisely because it's
+// self-scoped. franchiseName is stored on the current season; the rest are
+// account-level.
+router.patch('/me/profile', async (req, res) => {
+    const oidcUser = req.oidc && req.oidc.user;
+    const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
+    const userId = meta && meta.userId;
+    if (!userId) {
+        return res.status(401).json({ message: 'No profile in session.' });
+    }
+
+    let clean;
+    try {
+        clean = sanitizeProfileUpdate(req.body, cloudinaryConfig().cloudName);
+    } catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+
+        if (clean.avatarUrl !== undefined) user.avatarUrl = clean.avatarUrl;
+        if (clean.prompted !== undefined) user.profilePrompted = clean.prompted;
+
+        if (clean.franchiseName !== undefined) {
+            const year = Number(process.env.YEAR);
+            const season = (user.seasons || []).find(s => Number(s.season) === year)
+                || (user.seasons && user.seasons[user.seasons.length - 1]);
+            if (season) season.franchiseName = clean.franchiseName;
+        }
+
+        await user.save();
+        const current = (user.seasons || []).find(s => Number(s.season) === Number(process.env.YEAR))
+            || (user.seasons && user.seasons[user.seasons.length - 1]);
+        res.json({
+            avatarUrl: user.avatarUrl || null,
+            profilePrompted: user.profilePrompted,
+            franchiseName: (current && current.franchiseName) || null
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 //Getting All
 router.get('/', async (req, res) => {
@@ -42,7 +91,7 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     try {
         console.log("finding all users in league", leagueCode);
         const users = await User.find({"seasons.season": {"$eq": process.env.YEAR}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
+                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "avatarUrl": 1, "profilePrompted": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});

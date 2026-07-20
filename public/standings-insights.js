@@ -12,6 +12,7 @@ const season = (u) => (u && u.seasons && u.seasons[0]) || {};
 const weekly = (u) => season(u).weeklyScore || [];
 const cum = (u) => season(u).cumulativeScore || 0;
 const initialName = (u) => `${u.firstName} ${u.lastName ? u.lastName[0] : ''}.`;
+const franchiseName = (u) => season(u).franchiseName || null;
 // Cumulative points through the first `n` weekly entries (matches how the
 // season total is summed).
 const cumThrough = (u, n) => weekly(u).slice(0, n).reduce((s, w) => s + (w.score || 0), 0);
@@ -45,6 +46,7 @@ export function rankedRows(users) {
         rank: i + 1,
         id: u._id,
         name: initialName(u),
+        franchise: franchiseName(u),
         teams: season(u).teams || [],
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
@@ -71,7 +73,7 @@ export function buildStandingsRowsHtml(rows) {
             : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
         return `<tr class="standings-row${medal}">
             <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
-            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.name)}</a></th>
+            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${crown}${escapeHtml(r.franchise || r.name)}${r.franchise ? `<span class="std-manager">${escapeHtml(r.name)}</span>` : ''}</a></th>
             <td class="team-item"><div class="team-logos">${logos}</div></td>
             <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
         </tr>`;

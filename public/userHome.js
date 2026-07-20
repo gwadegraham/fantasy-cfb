@@ -94,7 +94,7 @@ if ($(".dropdown-menu-week")) {
         window.localStorage.setItem("weekCode", selectedWeekCode);
 
         document.querySelector('.football-loader').style.display = "flex";
-        document.querySelector('.schedule-table').style.display = "none";
+        document.querySelector('[schedule-body]').style.display = "none";
         displaySchedule(userData);
     });
 }
@@ -112,28 +112,252 @@ async function getUser() {
 
     response.json().then(async data => {
         userData = data[0];
-        changeHeader(data[0]);
+        renderHero(data[0]);
         displayTeams(data[0]);
+        renderProfileChart(data[0]);
+        ensureWeekSelected(data[0]);
         displaySchedule(data[0]);
     });
 }
-function changeHeader(data) {
-    var pageHeader = data.firstName + ' ' + data.lastName;
-    document.getElementsByClassName('header-title')[0].innerText = pageHeader;
 
+// The Games week defaults to the latest played week when nothing is stored,
+// so the dropdown never shows the literal "Week X" placeholder (and
+// displaySchedule never reads a null weekCode) on a fresh visit.
+function ensureWeekSelected(data) {
+    if (window.localStorage.getItem('weekCode') && window.localStorage.getItem('week')) return;
+    const weekly = (data.seasons.at(-1) || {}).weeklyScore || [];
+    let maxWeek = 0, hasPost = false;
+    weekly.forEach(w => {
+        if (w.season === 'postseason' || w.week > 16) hasPost = true;
+        else if (w.week > maxWeek) maxWeek = w.week;
+    });
+    let code = 'week-1', label = 'Week 1';
+    if (hasPost) { code = 'week-17'; label = 'Postseason'; }
+    else if (maxWeek > 0) { code = 'week-' + maxWeek; label = 'Week ' + maxWeek; }
+    window.localStorage.setItem('weekCode', code);
+    window.localStorage.setItem('week', label);
+    weekCode = code;
+    $('#dropdownMenuButtonWeek').text(label);
+}
+// ---------- Profile hero ----------
+
+function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-// Column model for the weekly table: regular weeks 1-16 keyed by week number,
-// plus one aggregated Postseason column. Building columns by week (rather than
-// by array position) keeps each score under its correct header even when weeks
-// are missing or a postseason entry is present — the old positional rendering
-// dropped the postseason bonus into whatever column index it happened to land.
+function initials(data) {
+    return (((data.firstName || '')[0] || '') + ((data.lastName || '')[0] || '')).toUpperCase();
+}
+
+// Stable color for the initials avatar: the user's stored color if any, else a
+// hue hashed from their name so each manager gets a consistent shade.
+function colorFor(data) {
+    if (data.color) return data.color;
+    const s = (data.firstName || '') + (data.lastName || '');
+    let h = 0;
+    for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return `hsl(${h % 360}, 45%, 45%)`;
+}
+
+// Deliver the avatar as a face-centered 256px square (Cloudinary transformation
+// inserted into the stored delivery URL).
+function cloudinaryAvatar(url) {
+    if (typeof url === 'string' && url.indexOf('/upload/') !== -1) {
+        return url.replace('/upload/', '/upload/c_fill,g_face,w_256,h_256,q_auto,f_auto/');
+    }
+    return url;
+}
+
+function renderAvatar(el, data) {
+    if (!el) return;
+    el.innerHTML = '';
+    if (data.avatarUrl) {
+        const img = document.createElement('img');
+        img.src = cloudinaryAvatar(data.avatarUrl);
+        img.alt = '';
+        el.style.background = 'transparent';
+        el.appendChild(img);
+    } else {
+        el.textContent = initials(data) || '?';
+        el.style.background = colorFor(data);
+    }
+}
+
+// Highest-scoring team on the roster this season (summed from scoreByTeam).
+function bestTeam(season) {
+    const weekly = season.weeklyScore || [];
+    let best = null;
+    (season.teams || []).forEach(t => {
+        let total = 0;
+        weekly.forEach(w => (w.scoreByTeam || []).forEach(st => { if (st.team === t.school) total += (st.score || 0); }));
+        if (!best || total > best.total) best = { team: t, total };
+    });
+    return best;
+}
+
+// League rank for the profile user, by current-season cumulative score.
+async function computeRank(data) {
+    try {
+        if (!data.league) return null;
+        const res = await fetch(`/users/league/${data.league}`, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return null;
+        const users = await res.json();
+        const ranked = users
+            .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
+            .sort((a, b) => b.score - a.score);
+        const idx = ranked.findIndex(r => r.id === data._id);
+        return idx < 0 ? null : { rank: idx + 1, total: ranked.length };
+    } catch (e) { return null; }
+}
+
+function statTile(valueHtml, label) {
+    return `<div class="stat"><span class="stat-value">${valueHtml}</span><span class="stat-label">${escapeHtml(label)}</span></div>`;
+}
+
+// The logged-in user's own id (from the Auth0 session), used to decide whether
+// to show the Edit control.
+function currentUserId() {
+    try { return (userState.user_metadata.metadata.userId) || window.localStorage.getItem('userId'); }
+    catch (e) { return window.localStorage.getItem('userId'); }
+}
+
+async function renderHero(data) {
+    const season = data.seasons.at(-1) || {};
+    const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    const franchise = season.franchiseName;
+
+    document.querySelector('[profile-franchise]').textContent = franchise || `${data.firstName || 'Unnamed'}'s Team`;
+    document.querySelector('[profile-manager]').textContent = franchise ? `Managed by ${manager}` : manager;
+    document.title = `${franchise || manager} · Campus Clash`;
+    renderAvatar(document.querySelector('[profile-avatar]'), data);
+
+    const statsEl = document.querySelector('[profile-stats]');
+    let html = '';
+    const rank = await computeRank(data);
+    if (rank) html += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`);
+    html += statTile(String(season.cumulativeScore || 0), 'Total points');
+    const bt = bestTeam(season);
+    if (bt && bt.total > 0) {
+        html += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    }
+    statsEl.innerHTML = html;
+
+    // Edit is only offered on the viewer's own profile (the endpoint enforces
+    // this too, from the session).
+    if (currentUserId() && String(currentUserId()) === String(data._id)) {
+        setupEditModal(data, season);
+    }
+}
+
+// ---------- Edit modal (franchise name + avatar upload) ----------
+
+function setupEditModal(data, season) {
+    const btn = document.querySelector('[edit-profile-btn]');
+    const modal = document.querySelector('[profile-modal]');
+    const nameInput = document.querySelector('[profile-name-input]');
+    const modalAvatar = document.querySelector('[profile-modal-avatar]');
+    const fileInput = document.querySelector('[profile-file-input]');
+    const uploadBtn = document.querySelector('[profile-upload-btn]');
+    const status = document.querySelector('[profile-upload-status]');
+    const errorEl = document.querySelector('[profile-modal-error]');
+    const saveBtn = document.querySelector('[profile-save-btn]');
+    const cancelBtn = document.querySelector('[profile-cancel-btn]');
+    if (!btn || !modal || btn.dataset.wired) return;
+    btn.dataset.wired = '1';
+    btn.hidden = false;
+
+    let pendingAvatar; // undefined = unchanged; string/null = new value to save
+
+    const cloudinaryReady = !!(CLOUDINARY && CLOUDINARY.cloudName && CLOUDINARY.uploadPreset);
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.hidden = !msg; }
+
+    function open() {
+        pendingAvatar = undefined;
+        nameInput.value = season.franchiseName || '';
+        renderAvatar(modalAvatar, data);
+        showError('');
+        // Set the upload control's state every open so a missing Cloudinary
+        // config surfaces a persistent reason rather than a silently-dead button.
+        uploadBtn.disabled = !cloudinaryReady;
+        status.textContent = cloudinaryReady ? '' : 'Photo upload unavailable';
+        modal.hidden = false;
+    }
+    function close() { modal.hidden = true; }
+
+    btn.addEventListener('click', open);
+    cancelBtn.addEventListener('click', close);
+
+    // Arriving from the first-login onboarding nudge opens the editor straight away.
+    if (new URLSearchParams(window.location.search).get('setup') === '1') open();
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) close(); });
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        showError('');
+        status.textContent = 'Uploading…';
+        uploadBtn.disabled = true;
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('upload_preset', CLOUDINARY.uploadPreset);
+            const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY.cloudName}/image/upload`, { method: 'POST', body: form });
+            if (!res.ok) throw new Error('Upload failed');
+            const out = await res.json();
+            pendingAvatar = out.secure_url;
+            renderAvatar(modalAvatar, { avatarUrl: pendingAvatar });
+            status.textContent = 'Photo ready — click Save';
+        } catch (e) {
+            status.textContent = '';
+            showError('Upload failed. Try a different image.');
+        } finally {
+            uploadBtn.disabled = !cloudinaryReady;
+            fileInput.value = '';
+        }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        showError('');
+        saveBtn.disabled = true;
+        const body = { franchiseName: nameInput.value };
+        if (pendingAvatar !== undefined) body.avatarUrl = pendingAvatar;
+        try {
+            const res = await fetch('/users/me/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const out = await res.json();
+            if (!res.ok) throw new Error(out.message || 'Save failed');
+            data.avatarUrl = out.avatarUrl;
+            season.franchiseName = out.franchiseName;
+            renderHero(data);
+            close();
+        } catch (e) {
+            showError(e.message || 'Save failed.');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+}
+
+// Column model for the weekly table. Each entry is mapped to its real week
+// (regular weeks by number, postseason folded into one column) rather than by
+// array position, so scores never land under the wrong header. Only weeks that
+// have actually been played are included (plus Postseason once it exists), so
+// the table isn't padded out with a wall of empty future columns — which also
+// keeps it far narrower on mobile.
 function weeklyColumns(season) {
     const weekly = (season && season.weeklyScore) || [];
     const isPost = (w) => w.season === 'postseason' || w.week > 16;
 
     const regularByWeek = {};
-    weekly.forEach(w => { if (!isPost(w)) regularByWeek[w.week] = w; });
+    let maxWeek = 0;
+    weekly.forEach(w => { if (!isPost(w)) { regularByWeek[w.week] = w; if (w.week > maxWeek) maxWeek = w.week; } });
 
     // Fold any/all postseason entries into a single synthetic column.
     const postEntries = weekly.filter(isPost);
@@ -146,48 +370,118 @@ function weeklyColumns(season) {
     }
 
     const columns = [];
-    for (let wk = 1; wk <= 16; wk++) columns.push(regularByWeek[wk] || null);
-    columns.push(postseason);   // Postseason column (null until it exists)
+    for (let wk = 1; wk <= maxWeek; wk++) {
+        columns.push({ label: String(wk), ariaLabel: 'Week ' + wk, entry: regularByWeek[wk] || null });
+    }
+    if (postseason) columns.push({ label: 'Post&shy;season', ariaLabel: 'Postseason', entry: postseason });
     return columns;
 }
 
+// The points a team banked in one column (bye / not yet played -> null).
+function columnTeamScore(entry, teamSchool) {
+    if (!entry) return null;
+    const games = (entry.scoreByTeam || []).filter(o => o.team === teamSchool);
+    if (!games.length) return null;
+    return games.reduce((s, g) => s + (g.score || 0), 0);
+}
+
 function displayTeams(data) {
-    const userTableBody = document.querySelector('[user-table-body]');
+    const head = document.querySelector('[user-table-head]');
+    const body = document.querySelector('[user-table-body]');
     const season = data.seasons.at(-1) || {};
+    const teams = season.teams || [];
     const columns = weeklyColumns(season);
-    var str = '';
 
-    (season.teams || []).forEach(team => {
-        var totalScore = 0;
-        var cells = '';
+    // Header (generated so it always matches the columns actually shown, and so
+    // the week numbers carry an accessible "Week N" label for screen readers).
+    let headHtml = '<tr><th class="sticky-header team-header" scope="col">Team</th>';
+    columns.forEach(c => {
+        headHtml += `<th class="team-header" scope="col" aria-label="${c.ariaLabel}">${c.label}</th>`;
+    });
+    headHtml += '<th class="sticky-header-score team-header" scope="col">Team Score</th></tr>';
+    if (head) head.innerHTML = headHtml;
 
-        columns.forEach(entry => {
-            // No entry -> week hasn't been played yet (blank, not a scored 0).
-            if (!entry) { cells += '<td class="cell-future"></td>'; return; }
-            const games = (entry.scoreByTeam || []).filter(o => o.team === team.school);
-            // Week was scored but this team had no game -> bye (muted dash).
-            if (!games.length) { cells += '<td class="cell-bye">–</td>'; return; }
-            const sum = games.reduce((s, g) => s + (g.score || 0), 0);
-            totalScore += sum;
-            cells += '<td>' + sum + '</td>';
+    // Highlight the season's best single team-game and best week (top weekly
+    // total) — the standout cells, tie-inclusive.
+    let bestGame = 0;
+    teams.forEach(t => columns.forEach(c => { const s = columnTeamScore(c.entry, t.school); if (s != null && s > bestGame) bestGame = s; }));
+    let bestWeek = 0;
+    columns.forEach(c => { if (c.entry && (c.entry.score || 0) > bestWeek) bestWeek = c.entry.score || 0; });
+
+    let str = '';
+    teams.forEach(team => {
+        let totalScore = 0;
+        let cells = '';
+        columns.forEach(c => {
+            const s = columnTeamScore(c.entry, team.school);
+            if (!c.entry) { cells += '<td class="cell-future"></td>'; return; }   // week not played yet
+            if (s == null) { cells += '<td class="cell-bye">–</td>'; return; }    // bye / no game
+            totalScore += s;
+            const best = (s === bestGame && s > 0) ? ' cell-best' : '';
+            cells += `<td class="${best}">${s}</td>`;
         });
-
         const refLink = `/team?team=${team.id}`;
-        str += '<tr><th class="team-header sticky-header">'
+        str += '<tr><th class="team-header sticky-header" scope="row">'
             + '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
             + escapeHtml(team.school) + '</a></th>'
             + cells
             + '<th class="sticky-header-score">' + totalScore + '</th></tr>';
     });
 
-    // Cumulative row: the whole-week total per column.
-    str += '<tr class="cumulative-row"><th class="team-header sticky-header">Cumulative Score</th>';
-    columns.forEach(entry => {
-        str += entry ? '<td>' + (entry.score || 0) + '</td>' : '<td class="cell-future"></td>';
+    // Cumulative row: the whole-week total per column, best week highlighted.
+    str += '<tr class="cumulative-row"><th class="team-header sticky-header" scope="row">Cumulative Score</th>';
+    columns.forEach(c => {
+        if (!c.entry) { str += '<td class="cell-future"></td>'; return; }
+        const v = c.entry.score || 0;
+        const best = (v === bestWeek && v > 0) ? ' cell-best' : '';
+        str += `<td class="${best}">${v}</td>`;
     });
     str += '<th class="sticky-header-score">' + (season.cumulativeScore || 0) + '</th></tr>';
 
-    userTableBody.innerHTML = str;
+    body.innerHTML = str;
+}
+
+// Cumulative-points-over-the-season line chart for this manager. Hidden until
+// there are at least two scored weeks (a single point isn't a trend).
+let profileChart = null;
+function renderProfileChart(data) {
+    const section = document.querySelector('[profile-chart-section]');
+    const canvas = document.getElementById('profile-chart');
+    if (!section || !canvas || typeof Chart === 'undefined') return;
+
+    const season = data.seasons.at(-1) || {};
+    const cols = weeklyColumns(season);
+    let cum = 0;
+    const labels = [], points = [];
+    cols.forEach(c => {
+        if (!c.entry) return;   // skip any unplayed gap
+        cum += c.entry.score || 0;
+        labels.push(c.ariaLabel === 'Postseason' ? 'Post' : c.ariaLabel.replace('Week', 'Wk'));
+        points.push(cum);
+    });
+
+    if (points.length < 2) { section.hidden = true; return; }
+    section.hidden = false;
+    if (profileChart) profileChart.destroy();
+    profileChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Cumulative points', data: points,
+                borderColor: '#8E8CF0', backgroundColor: 'rgba(142,140,240,0.15)',
+                fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#8E8CF0'
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { intersect: false, mode: 'index' } },
+            scales: {
+                x: { grid: { color: '#2A2E42' }, ticks: { color: '#A4A9C2' } },
+                y: { beginAtZero: true, grid: { color: '#2A2E42' }, ticks: { color: '#A4A9C2' } }
+            }
+        }
+    });
 }
 
 async function getGame(season, week, team) {
@@ -337,10 +631,36 @@ function teamGameScoreById(weeklyScore, teamId, gameId) {
     return 0;
 }
 
+// Fetch every team logo the week's games need in ONE request, returning a
+// { teamId: <img html> } map. Replaces the old per-game POST to
+// /teams/teamLogos (one round-trip per game); missing teams fall back to the
+// helmet icon at lookup time.
+async function batchTeamLogos(games) {
+    const ids = [...new Set((games || []).flatMap(g => [g.awayId, g.homeId]))];
+    const map = {};
+    if (!ids.length) return map;
+    try {
+        const res = await fetch('/teams/teamLogos', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teams: ids })
+        });
+        if (res.status === 200) {
+            (await res.json()).forEach(t => {
+                if (t && t.logos && t.logos.length) map[t.id] = '<img src="' + t.logos.at(-1) + '" style="padding-right: 5px;">';
+            });
+        }
+    } catch (e) { /* fall back to helmet icons */ }
+    return map;
+}
+function logoHtmlFromMap(map, teamId) {
+    return map[teamId] || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+}
+
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
     const leagueCode = window.localStorage.getItem("leagueCode");
-    var str = '<tr>';
+    var str = '';
     var gameIds = [];
     var gameTables = [];
 
@@ -366,9 +686,16 @@ async function displaySchedule(data) {
 
     var allBettingLines = await getAllBettingLines(seasonYear) || [];
 
-    for (var iterNum = 0; iterNum < data.seasons.at(-1).teams.length; iterNum++) {
+    // Fetch each roster team's games in parallel (was a sequential await per
+    // team), then fetch all logos in a single batched request up front — the
+    // schedule used to make one /teams/teamLogos round-trip per game.
+    const teamsList = data.seasons.at(-1).teams;
+    const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
+    const logoMap = await batchTeamLogos(gamesPerTeam.flat());
 
-        var gamesInfo = await getGame(seasonType, week, data.seasons.at(-1).teams[iterNum]);
+    for (var iterNum = 0; iterNum < teamsList.length; iterNum++) {
+
+        var gamesInfo = gamesPerTeam[iterNum];
 
         for (const [i, game] of gamesInfo.entries()) {
 
@@ -406,13 +733,12 @@ async function displaySchedule(data) {
 
                 var topData = '';
                 var bottomData = '';
-                var scoreAdded = '<strong style="color: white;">+0<strong>';
+                var scoreAdded = '<strong style="color: white;">+0</strong>';
                 var awayTeam = '';
                 var homeTeam = '';
                 var isAway = false;
-                var teamLogos = await getTeamLogos(game);
-                var awayImg = teamLogos.awayTeamLogo;
-                var homeImg = teamLogos.homeTeamLogo;
+                var awayImg = logoHtmlFromMap(logoMap, game.awayId);
+                var homeImg = logoHtmlFromMap(logoMap, game.homeId);
 
                 if (game.awayId == data.seasons.at(-1).teams[iterNum].id) {
 
@@ -434,11 +760,11 @@ async function displaySchedule(data) {
     
                     if( game.awayPoints > game.homePoints ) {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                         }
 
                         if (isBowlParticipant(game) && (leagueCode == "claunts-league")) {
-                            scoreAdded = '<strong style="color: #22C37A;">+4<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+4</strong>';
                             topData = (game.awayPoints || '0') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>';
                             bottomData = (game.homePoints || '0') + '<td class="score-added">' + scoreAdded + '</td>';
                         } else {
@@ -448,14 +774,14 @@ async function displaySchedule(data) {
                     } else if (game.homePoints > game.awayPoints) {
     
                         if(!isAway) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
                         }
 
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                     } else {
                         if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
-                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                            scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                         }
                         topData = (game.awayPoints || '0');
                         bottomData = (game.homePoints || '0');
@@ -483,20 +809,20 @@ async function displaySchedule(data) {
                     bottomData = standardTime;
                 }
     
-                var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+                var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
 
                 var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
                 var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
     
                 teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
-                teamTable += '</tr><tr><td style="width: 250px;">';
+                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
+                teamTable += '</tr><tr><td class="gc-team">';
     
                 teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
+                teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
                 teamTable += `</tr><tr><td class="game-notes">`;
                 teamTable += game.notes || '';
-                teamTable += '</td></tr><tbody></table></td>';
+                teamTable += '</td></tr></tbody></table></div>';
     
                 var gameInfo = {
                     id: game.id,
@@ -531,8 +857,8 @@ async function displaySchedule(data) {
         
                         if (game.seasonType == "postseason" && game.notes && game.notes.toLowerCase().includes("playoff")) {
                             shouldReplace = true;
-                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
-                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                            awayScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
+                            homeScoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
@@ -545,7 +871,7 @@ async function displaySchedule(data) {
                         } else if ( game.awayPoints > game.homePoints ) {
                             if(game.awayId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id) + '</strong>';
                             }
                             topData = (game.awayPoints || '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints || '-');
@@ -553,7 +879,7 @@ async function displaySchedule(data) {
 
                             if(game.homeId == data.seasons.at(-1).teams[iterNum].id) {
                                 shouldReplace = true;
-                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '<strong>';
+                                scoreAdded = '<strong style="color: #22C37A;">+' + teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id) + '</strong>';
                             }
         
                             topData = (game.awayPoints || '-');
@@ -582,23 +908,22 @@ async function displaySchedule(data) {
                     }
                     
 
-                    var teamLogos = await getTeamLogos(game);
-                    var awayImg = teamLogos.awayTeamLogo;
-                    var homeImg = teamLogos.homeTeamLogo;
+                    var awayImg = logoHtmlFromMap(logoMap, game.awayId);
+                    var homeImg = logoHtmlFromMap(logoMap, game.homeId);
                     var awayLineHtml = `<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span>`;
                     var homeLineHtml = `<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span>`;
 
-                    var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr><tr><td style="width: 250px;">';
+                    var teamTable = '<div class="game-card"><table class="game-table"><tbody><tr></tr><tr><td class="gc-team">';
     
                     teamTable += awayImg + awayRank + awayTeam + awayLineHtml;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
-                    teamTable += '</tr><tr><td style="width: 250px;">';
+                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + topData;
+                    teamTable += '</tr><tr><td class="gc-team">';
         
                     teamTable += homeImg + homeRank + homeTeam + homeLineHtml;
-                    teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
+                    teamTable += '</td><td class="gc-divider"></td><td class="gc-score">' + bottomData;
                     teamTable += `</tr><tr><td class="game-notes">`;
                     teamTable += game.notes || '';
-                    teamTable += '</td></tr><tbody></table></td>';
+                    teamTable += '</td></tr></tbody></table></div>';
         
                     var gameInfo = {
                         id: game.id,
@@ -622,23 +947,10 @@ async function displaySchedule(data) {
         return new Date(a.startDate) - new Date(b.startDate);
     });
 
-    for(var k = 0; k < gameTables.length; k++) {
-        if (isMobile) {
-            str += '</tr><tr>';
-        }
-        
-        if ((k + 1) > gameTables.length) {
-            str += '</td></tr>'
-        }
-        else if (((k) % 3 == 0) && (k > 0)) {
-            str += '</tr><tr>';
-        }
-
+    // Cards flow into a responsive flex grid (CSS wraps them by width), so no
+    // more manual row breaks or userAgent-based one-per-row handling.
+    for (var k = 0; k < gameTables.length; k++) {
         str += gameTables[k].table;
-
-        if (isMobile) {
-            str += '</tr><tr>';
-        }
     }
 
     if (gameTables.length == 0) {
@@ -647,7 +959,7 @@ async function displaySchedule(data) {
 
     scheduleContainer.innerHTML = str;
     document.querySelector('.football-loader').style.display = "none";
-    document.querySelector('.schedule-table').style.display = "flex";
+    document.querySelector('[schedule-body]').style.display = "flex";
 }
 
 if ($("[league-selector]")) {
