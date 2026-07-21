@@ -548,14 +548,17 @@
     .standings-row:nth-child(n+11) { animation-delay: .64s; }
 
     /* Leader: a soft gold glow pulses on the rank number */
-    .standings-row.medal-1 .rank-num { animation: std-leader-glow 2.6s ease-in-out infinite; }
+    .standings-row.medal-1 .rank-num { display: inline-block; animation: std-leader-glow 2.4s ease-in-out infinite; }
 
     /* Movement arrows pop in after the rows have settled */
     .move { display: inline-block; animation: std-move-pop .45s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: .55s; }
 }
 
 @keyframes std-row-in { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes std-leader-glow { 0%, 100% { text-shadow: 0 0 0 rgba(242, 193, 78, 0); } 50% { text-shadow: 0 0 9px rgba(242, 193, 78, .75); } }
+@keyframes std-leader-glow {
+    0%, 100% { text-shadow: 0 0 2px rgba(242, 193, 78, .35); transform: scale(1); }
+    50% { text-shadow: 0 0 13px rgba(242, 193, 78, .95), 0 0 24px rgba(242, 193, 78, .5); transform: scale(1.15); }
+}
 @keyframes std-move-pop { 0% { opacity: 0; transform: scale(0) translateY(-4px); } 60% { transform: scale(1.25); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 
 /* Weekly-winner celebration: the Big Winner trophy bounces when the logged-in
