@@ -722,6 +722,41 @@ if (refreshTeamsForm) {
     });
 }
 
+const enrichmentForm = document.getElementById('enrichment-form');
+
+if (enrichmentForm) {
+    enrichmentForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+
+        block_screen();
+
+        const season = document.querySelector('[enrichment-season]').value;
+        const opts = { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } };
+
+        try {
+            // Team ratings/talent/returning/coaches, then game broadcasts.
+            const teamsRes = await fetch(`/teams/${season}/enrich`, opts);
+            const teamsData = await teamsRes.json();
+            const mediaRes = await fetch(`/games/${season}/media`, opts);
+            const mediaData = await mediaRes.json();
+
+            unblock_screen();
+
+            if (teamsRes.status == 200) {
+                successToast.options.text = `Enriched ${teamsData.updated} teams + ${mediaData.updated || 0} games for ${season}`;
+                successToast.showToast();
+            } else {
+                failToast.options.text = (teamsData && teamsData.message) || `${teamsRes.status} Enrichment failed`;
+                failToast.showToast();
+            }
+        } catch (err) {
+            unblock_screen();
+            failToast.options.text = 'Enrichment failed: ' + err.message;
+            failToast.showToast();
+        }
+    });
+}
+
 const gamesForm = document.getElementById('games-form');
 
 if (gamesForm) {
@@ -1003,6 +1038,16 @@ function displayExpectedWinsContainer() {
         expectedWinsContainer.style.display = 'none';
     } else {
         expectedWinsContainer.style.display = 'flex';
+    }
+}
+
+function displayEnrichmentContainer() {
+    var enrichmentContainer = document.querySelector('[enrichment-container]');
+
+    if (enrichmentContainer.style.display == 'flex' || enrichmentContainer.style.display=='') {
+        enrichmentContainer.style.display = 'none';
+    } else {
+        enrichmentContainer.style.display = 'flex';
     }
 }
 
