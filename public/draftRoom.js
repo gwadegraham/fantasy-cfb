@@ -82,27 +82,16 @@ function memberAvatar(userId) {
 
 window.onload = async function () {
     detectMobile();
-    initNavbarToggle();
-
+    // The navbar partial (views/partials/navbar.ejs) owns its hamburger and the
+    // "My team" link + userId caching.
     setUserContext();
     await getMembers();
     await getTeams();
-    setNavbarUserId();
     connectSocket();
 };
 
 function detectMobile() {
     isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent);
-}
-
-function initNavbarToggle() {
-    const toggleButton = document.querySelector('.toggle-button');
-    const navbarLinks = document.querySelector('.navbar-links');
-    if (toggleButton && navbarLinks) {
-        toggleButton.addEventListener('click', () => navbarLinks.classList.toggle('active'));
-    } else {
-        setTimeout(initNavbarToggle, 500);
-    }
 }
 
 function setUserContext() {
@@ -529,15 +518,7 @@ function renderOnTheClock() {
 //////////////////// Helpers /////////////////////////
 /////////////////////////////////////////////////////
 
-function setNavbarUserId() {
-    var userId = (userState.user_metadata.metadata && userState.user_metadata.metadata.userId) || window.localStorage.getItem('userId');
-    const myLink = document.querySelector('[user-home]');
-    if (myLink) {
-        myLink.href = `/userHome?user=${userId}`;
-    } else {
-        setTimeout(setNavbarUserId, 500);
-    }
-}
+// The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
 
 var successToast = Toastify({
     text: "", duration: 4000, close: true, gravity: "top", position: "left", stopOnFocus: true,

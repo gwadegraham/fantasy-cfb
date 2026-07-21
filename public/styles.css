@@ -33,16 +33,38 @@ body {
 
 .navbar {
     display: flex;
-    width: 100vw;
+    width: 100%;
     justify-content: space-between;
     align-items: center;
     background-color: #101322;
     color: #F4F6FB;
+    border-bottom: 1px solid #2A2E42;
+}
+
+/* Stay reachable on long pages. #navbar (id) beats Bootstrap's own
+   `.navbar { position: relative }`, which loads after styles.css. */
+#navbar.navbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+}
+
+.brand-link {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
 }
 
 .brand-title {
     font-size: 1.5rem;
     margin: .5rem;
+}
+
+/* Current page indicator */
+.navbar-links li a.active {
+    color: #ed5858;
+    font-weight: 700;
+    box-shadow: inset 0 -2px 0 #ed5858;
 }
 
 .navbar-links ul {
@@ -60,15 +82,81 @@ body {
     color: #F4F6FB;
     padding: 1rem;
     display: block;
+    position: relative;
+}
+
+.navbar-links li a[user-home] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
 }
 
 .navbar-links li a[user-home] i {
-    font-size: 1.2rem;
+    font-size: 1.4rem;
+    padding-left: 0; /* neutralize the global .fa left padding so it centers */
 }
 
-.navbar-links li:hover {
+/* Logged-in member's profile photo (or initials) in place of a generic icon. */
+.nav-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid #2A2E42;
+}
+
+.nav-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.nav-avatar-initials {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #F4F6FB;
+}
+
+/* "My Team" label: hidden on desktop (avatar speaks for itself), revealed in
+   the stacked mobile menu where an unlabeled icon is ambiguous. */
+.nav-label {
+    display: none;
+}
+
+/* Hover: a red underline sweeps in from the center of the label — the same
+   visual language as the active tab's static underline, so hover reads as
+   "about to become active". Scoped to top-level links; the active link keeps
+   its persistent underline and is excluded. */
+.navbar-links > ul > li > a::after {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    bottom: 0.5rem;
+    height: 2px;
     background-color: #ed5858;
-    border-radius: 5px;
+    transform: scaleX(0);
+    transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .navbar-links > ul > li > a::after {
+        transition: transform 0.22s ease;
+    }
+}
+
+.navbar-links > ul > li > a:not(.active):hover {
+    color: #FFFFFF;
+}
+
+.navbar-links > ul > li > a:not(.active):hover::after {
+    transform: scaleX(1);
 }
 
 .dropdown {
@@ -98,6 +186,11 @@ body {
     justify-content: space-between;
     width: 30px;
     height: 21px;
+    /* Reset native <button> chrome (was an <a>) */
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
 }
 
 .toggle-button .bar {
@@ -105,6 +198,23 @@ body {
     width: 100%;
     background-color: #F4F6FB;
     border-radius: 10px;
+}
+
+/* Morph the three bars into an X while the menu is open, so the button reads as
+   a close control. Driven off aria-expanded, which the navbar keeps in sync. */
+@media (prefers-reduced-motion: no-preference) {
+    .toggle-button .bar {
+        transition: transform 0.3s ease, opacity 0.2s ease;
+    }
+}
+.toggle-button[aria-expanded="true"] .bar:nth-child(1) {
+    transform: translateY(9px) rotate(45deg);
+}
+.toggle-button[aria-expanded="true"] .bar:nth-child(2) {
+    opacity: 0;
+}
+.toggle-button[aria-expanded="true"] .bar:nth-child(3) {
+    transform: translateY(-9px) rotate(-45deg);
 }
 
 @media (max-width: 600px) {
@@ -129,16 +239,54 @@ body {
 
     .navbar-links li {
         text-align: center;
+        border-bottom: 1px solid #23273D; /* dividers so the stacked items read as a menu */
     }
 
+    .navbar-links li:last-child {
+        border-bottom: none;
+    }
+
+    /* Roomier tap targets (~48px) for thumbs. */
     .navbar-links li a {
-        padding: .5rem 1rem;
+        padding: .85rem 1rem;
     }
 
+    /* A distinct panel + top border so the open menu reads as an overlay rather
+       than blending into the page (its background is otherwise transparent). */
     .navbar-links.active {
         display: flex;
-        box-shadow: 0px 8px 10px -7px rgba(0, 0, 0, 0.5);
+        background-color: #171B31;
+        border-top: 1px solid #2A2E42;
+        box-shadow: 0px 10px 12px -7px rgba(0, 0, 0, 0.6);
     }
+
+    /* On mobile the full-width underline reads as a divider, so mark the current
+       page with a left accent bar (inset shadow = no layout shift) instead. */
+    .navbar-links li a.active {
+        box-shadow: inset 3px 0 0 #ed5858;
+    }
+
+    /* Same reasoning for hover: a bottom sweep would look like a row divider in
+       the stacked menu, and hover isn't a real interaction on touch anyway. */
+    .navbar-links > ul > li > a::after {
+        content: none;
+    }
+
+    /* Reveal the "My Team" label beside the avatar in the stacked menu. */
+    .nav-label {
+        display: inline;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .navbar-links.active {
+            animation: nav-drop 0.22s ease;
+        }
+    }
+}
+
+@keyframes nav-drop {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
 }
 
 .container {

@@ -63,25 +63,10 @@ async function getUserProfile() {
 }
 
 window.onload = function() {
-    function initNavbarToggle() {
-        const toggleButton = document.querySelector('.toggle-button');
-        const navbarLinks = document.querySelector('.navbar-links');
-
-        if (toggleButton && navbarLinks) {
-            toggleButton.addEventListener('click', () => {
-                navbarLinks.classList.toggle('active');
-            });
-        } else {
-            // Retry after 500ms if elements aren't in the DOM yet
-            setTimeout(initNavbarToggle, 500);
-        }
-    }
-
-    initNavbarToggle();
-
+    // The navbar partial (views/partials/navbar.ejs) owns its hamburger and the
+    // "My team" link + userId caching.
     detectMobile();
     getUserProfile();
-    setNavbarUserId();
 };
 
 if ($(".dropdown-menu-week")) {
@@ -820,21 +805,4 @@ function showRandomNoGamesMessage() {
 }
 
 
-function setNavbarUserId() {
-    var userId = userState.user_metadata.metadata.userId || null;
-
-    if (userId == null) {
-        userId = window.localStorage.getItem("userId");
-    }
-    
-    const toggleButton = document.querySelector('.toggle-button');
-    const navbarLinks = document.querySelector('.navbar-links');
-    const myLink = document.querySelector('[user-home]');
-
-    if (toggleButton && navbarLinks && myLink) {
-        myLink.href = `/userHome?user=${userId}`;
-    } else {
-        // Retry after 500ms if elements aren't in the DOM yet
-        setTimeout(setNavbarUserId, 500);
-    }
-}
+// The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
