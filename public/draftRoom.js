@@ -82,8 +82,7 @@ function memberAvatar(userId) {
 
 window.onload = async function () {
     detectMobile();
-    initNavbarToggle();
-
+    // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     setUserContext();
     await getMembers();
     await getTeams();
@@ -93,16 +92,6 @@ window.onload = async function () {
 
 function detectMobile() {
     isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent);
-}
-
-function initNavbarToggle() {
-    const toggleButton = document.querySelector('.toggle-button');
-    const navbarLinks = document.querySelector('.navbar-links');
-    if (toggleButton && navbarLinks) {
-        toggleButton.addEventListener('click', () => navbarLinks.classList.toggle('active'));
-    } else {
-        setTimeout(initNavbarToggle, 500);
-    }
 }
 
 function setUserContext() {

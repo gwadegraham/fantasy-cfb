@@ -38,23 +38,8 @@ function detectMobile() {
 
 window.onload = async function() {
     detectMobile();
+    // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
 
-    function initNavbarToggle() {
-        const toggleButton = document.querySelector('.toggle-button');
-        const navbarLinks = document.querySelector('.navbar-links');
-
-        if (toggleButton && navbarLinks) {
-            toggleButton.addEventListener('click', () => {
-                navbarLinks.classList.toggle('active');
-            });
-        } else {
-            // Retry after 500ms if elements aren't in the DOM yet
-            setTimeout(initNavbarToggle, 500);
-        }
-    }
-
-    initNavbarToggle();
-    
 
     const response = await fetch(`/profile`, {
         method: 'GET',

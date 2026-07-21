@@ -1,21 +1,7 @@
 var leagueCode;
 
 window.onload = async function () {
-    function initNavbarToggle() {
-        const toggleButton = document.querySelector('.toggle-button');
-        const navbarLinks = document.querySelector('.navbar-links');
-
-        if (toggleButton && navbarLinks) {
-            toggleButton.addEventListener('click', () => {
-                navbarLinks.classList.toggle('active');
-            });
-        } else {
-            // Retry after 500ms if elements aren't in the DOM yet
-            setTimeout(initNavbarToggle, 500);
-        }
-    }
-
-    initNavbarToggle();
+    // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     setNavbarUserId();
 
     const response = await fetch(`/profile`, {
