@@ -1,6 +1,6 @@
 <head>
     <link rel="shortcut icon" type="image/png" href="images/favicon.png"/>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
     <!-- <link rel="stylesheet" href="/../main.css"> -->
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.1/css/bootstrap.min.css" integrity="sha512-T584yQ/tdRR5QwOpfvDfVQUidzfgc2339Lc8uBDtcp/wYu80d7jwBgAxbyMh0a9YM9F8N3tdErpFI8iaGx6x5g==" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -32,18 +32,20 @@
         })();
     </script>
 </head>
-<nav id="navbar" class="navbar">
-    <div class="brand-title" style="display: flex; flex-flow: column;">
-        <div style="font-family: Graduate, serif;font-weight: 400;font-style: normal;margin: auto;">CAMPUS</div>
-        <div style="font-family: Pacifico, cursive;font-weight: 400;font-style: normal;margin: auto;margin-top: -18%;">Clash</div>
-    </div>
-    <a href="#" class="toggle-button">
-        <span class="bar"></span>
-        <span class="bar"></span>
-        <span class="bar"></span>
-        <span class="bar"></span>
+<nav id="navbar" class="navbar" aria-label="Main">
+    <a href="/standings" class="brand-link" aria-label="Campus Clash — home">
+        <div class="brand-title" style="display: flex; flex-flow: column;">
+            <div style="font-family: Graduate, serif;font-weight: 400;font-style: normal;margin: auto;">CAMPUS</div>
+            <div style="font-family: Pacifico, cursive;font-weight: 400;font-style: normal;margin: auto;margin-top: -18%;">Clash</div>
+        </div>
     </a>
-    <div class="navbar-links">
+    <button type="button" class="toggle-button" aria-label="Toggle navigation" aria-controls="navbar-links" aria-expanded="false">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+    </button>
+    <div class="navbar-links" id="navbar-links">
         <ul>
             <% if (user && user.role == "Admin") { %>
             <li><a admin-page href="./admin">Admin</a></li>
@@ -63,9 +65,38 @@
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
             <% if (user && user.userId) { %>
-            <li><a user-home href=""><i class="fa-solid fa-circle-user"></i></a></li>
+            <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team"><i class="fa-solid fa-circle-user"></i></a></li>
             <% } %>
             <li><a href="./logout">Logout</a></li>
         </ul>
     </div>
 </nav>
+<script>
+    // Navbar behaviors that belong to the navbar itself: highlight the current
+    // page, and keep the hamburger's aria-expanded in sync with the menu. (The
+    // open/close click + user link are still wired by each page's script; this
+    // only reads state, so there's no double-binding.)
+    (function () {
+        var nav = document.getElementById('navbar');
+        if (!nav) return;
+        var here = (location.pathname.replace(/\/+$/, '') || '/');
+        nav.querySelectorAll('.navbar-links a').forEach(function (a) {
+            // Skip in-page/dropdown anchors (href="#") — their pathname resolves
+            // to the current page and would falsely match.
+            var raw = a.getAttribute('href') || '';
+            if (!raw || raw.charAt(0) === '#') return;
+            var p = (a.pathname || '').replace(/\/+$/, '') || '/';
+            if (p !== '/' && p === here) {
+                a.classList.add('active');
+                a.setAttribute('aria-current', 'page');
+            }
+        });
+        var links = document.getElementById('navbar-links');
+        var toggle = nav.querySelector('.toggle-button');
+        if (links && toggle && window.MutationObserver) {
+            new MutationObserver(function () {
+                toggle.setAttribute('aria-expanded', links.classList.contains('active') ? 'true' : 'false');
+            }).observe(links, { attributes: true, attributeFilter: ['class'] });
+        }
+    })();
+</script>
