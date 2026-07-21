@@ -216,7 +216,9 @@ function renderPool() {
     if (cardsEl) {
         cardsEl.innerHTML = rows.map(p => {
             var drafted = draftedIds.has(String(p.id));
-            var badge = p.rank == null ? '' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">#${p.rank}</span>`;
+            // Labelled "Rec" so it's clearly the recruiting-class rank, not a
+            // team-strength ranking (e.g. recruiting has Arkansas above Kentucky).
+            var badge = p.rank == null ? '' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">Rec #${p.rank}</span>`;
             var action = drafted
                 ? '<span class="drafted-chip">Drafted</span>'
                 : `<button class="draft-pick-btn card-draft" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;

@@ -502,7 +502,14 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
     .draft-countdown { font-size: 1.2em; }
     .draft-live-label { font-size: 1.1em; }
 
-    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; }
+    /* Constrain the board to the viewport so it scrolls INSIDE #draft-board
+       instead of stretching the whole page sideways (which also pushed the
+       centered on-the-clock text off-screen). */
+    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; max-width: 100%; overflow-x: hidden; }
+    #draft-board { width: 100%; max-width: 100%; }
+    /* Let the table keep its natural width (so rounds stay legible) and overflow
+       the board, which then scrolls horizontally on its own. */
+    #draft-table { table-layout: auto; width: max-content; min-width: 620px; }
     .on-the-clock { font-size: 0.95em; padding: 10px; }
 
     #draft-table th, #draft-table td { padding: 5px 3px; }
