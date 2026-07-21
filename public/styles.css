@@ -82,6 +82,7 @@ body {
     color: #F4F6FB;
     padding: 1rem;
     display: block;
+    position: relative;
 }
 
 .navbar-links li a[user-home] {
@@ -128,9 +129,34 @@ body {
     display: none;
 }
 
-.navbar-links li:hover {
-    background-color: rgba(237, 88, 88, 0.15);
-    border-radius: 5px;
+/* Hover: a red underline sweeps in from the center of the label — the same
+   visual language as the active tab's static underline, so hover reads as
+   "about to become active". Scoped to top-level links; the active link keeps
+   its persistent underline and is excluded. */
+.navbar-links > ul > li > a::after {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    bottom: 0.5rem;
+    height: 2px;
+    background-color: #ed5858;
+    transform: scaleX(0);
+    transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .navbar-links > ul > li > a::after {
+        transition: transform 0.22s ease;
+    }
+}
+
+.navbar-links > ul > li > a:not(.active):hover {
+    color: #FFFFFF;
+}
+
+.navbar-links > ul > li > a:not(.active):hover::after {
+    transform: scaleX(1);
 }
 
 .dropdown {
@@ -238,6 +264,12 @@ body {
        page with a left accent bar (inset shadow = no layout shift) instead. */
     .navbar-links li a.active {
         box-shadow: inset 3px 0 0 #ed5858;
+    }
+
+    /* Same reasoning for hover: a bottom sweep would look like a row divider in
+       the stacked menu, and hover isn't a real interaction on touch anyway. */
+    .navbar-links > ul > li > a::after {
+        content: none;
     }
 
     /* Reveal the "My Team" label beside the avatar in the stacked menu. */
