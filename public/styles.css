@@ -438,3 +438,19 @@ footer {
         padding: 5px;
     }
 }
+
+/* Brand wordmark draw-in: the two "Campus Clash" lines wipe on left-to-right
+   on page load. Gated behind prefers-reduced-motion (no-preference only), so
+   the logo just appears normally for readers who opt out. */
+@media (prefers-reduced-motion: no-preference) {
+    .brand-title > div {
+        clip-path: inset(0 100% 0 0);
+        animation: brand-draw .7s cubic-bezier(.4, 0, .2, 1) both;
+    }
+    .brand-title > div:nth-child(1) { animation-delay: .05s; }
+    .brand-title > div:nth-child(2) { animation-delay: .32s; }
+}
+
+@keyframes brand-draw {
+    to { clip-path: inset(0 0 0 0); }
+}

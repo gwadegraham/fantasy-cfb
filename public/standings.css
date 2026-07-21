@@ -405,6 +405,9 @@
 /* ---------- Standings UX enhancements ---------- */
 /* Ranked table: movement, medals, crown, gap-to-leader */
 .rank-num { font-weight: 700; margin-right: 5px; }
+/* Left gutter on every rank cell so the digit clears the leader's gold rail
+   (applied to all rows so the numbers stay vertically aligned). */
+.standings-row .rank-cell { padding-left: 12px; }
 .move { font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
 .move.up { color: #5BD08D; }
 .move.down { color: #ED5858; }
@@ -413,6 +416,16 @@
 .standings-row.medal-2 .rank-num { color: #C7CCDB; }
 .standings-row.medal-3 .rank-num { color: #D8925B; }
 .crown { font-size: 0.85rem; margin-right: 2px; }
+
+/* Leader row treatment — always visible (independent of reduced-motion): a
+   gold rail down the left edge, a warm tint across the row, and a persistent
+   soft glow on the #1. The pulse in the motion block below adds movement on
+   top for viewers who allow motion. */
+.standings-row.medal-1 td,
+.standings-row.medal-1 .sticky-header,
+.standings-row.medal-1 .sticky-header-score { background-color: #1a1710; }
+.standings-row.medal-1 .rank-cell { box-shadow: inset 3px 0 0 #F2C14E; }
+.standings-row.medal-1 .rank-num { text-shadow: 0 0 8px rgba(242, 193, 78, .65); }
 .gap { display: inline-block; font-size: 0.68rem; color: #767D9C; font-weight: 400; }
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
@@ -525,3 +538,64 @@
 .welcome-actions .btn-primary:hover { background: #7d7be8; }
 .welcome-actions .btn-ghost { background: transparent; color: #A4A9C2; }
 .welcome-actions .btn-ghost:hover { color: #F4F6FB; }
+
+/* ==================================================================== */
+/* Standings entrance animations. Defined only under                    */
+/* prefers-reduced-motion:no-preference, and they play on the           */
+/* innerHTML insert (buildStandingsRowsHtml) — no JS wiring needed.     */
+/* Count-up on the scores already lives in standings.js (animateScores).*/
+/* ==================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+    /* Ranked rows rise + fade in, staggered top to bottom */
+    .standings-row { animation: std-row-in .42s cubic-bezier(.2, .8, .2, 1) both; }
+    .standings-row:nth-child(1)  { animation-delay: .04s; }
+    .standings-row:nth-child(2)  { animation-delay: .10s; }
+    .standings-row:nth-child(3)  { animation-delay: .16s; }
+    .standings-row:nth-child(4)  { animation-delay: .22s; }
+    .standings-row:nth-child(5)  { animation-delay: .28s; }
+    .standings-row:nth-child(6)  { animation-delay: .34s; }
+    .standings-row:nth-child(7)  { animation-delay: .40s; }
+    .standings-row:nth-child(8)  { animation-delay: .46s; }
+    .standings-row:nth-child(9)  { animation-delay: .52s; }
+    .standings-row:nth-child(10) { animation-delay: .58s; }
+    .standings-row:nth-child(n+11) { animation-delay: .64s; }
+
+    /* Leader: a soft gold glow pulses on the rank number */
+    .standings-row.medal-1 .rank-num { display: inline-block; animation: std-leader-glow 2.4s ease-in-out infinite; }
+
+    /* Leader: a warm glow pulses across the whole row so the motion is
+       obvious (the tiny number pulse alone was too easy to miss). */
+    .standings-row.medal-1 td,
+    .standings-row.medal-1 .sticky-header,
+    .standings-row.medal-1 .sticky-header-score { animation: std-leader-tint 2.4s ease-in-out infinite; }
+    /* The rank cell runs BOTH the tint (background) and rail (box-shadow)
+       animations so its background brightens in sync with the rest of the row
+       — otherwise it stayed dark and looked like a gap by the avatar. */
+    .standings-row.medal-1 .rank-cell { animation: std-leader-tint 2.4s ease-in-out infinite, std-leader-rail 2.4s ease-in-out infinite; }
+
+    /* Movement arrows pop in after the rows have settled */
+    .move { display: inline-block; animation: std-move-pop .45s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: .55s; }
+}
+
+@keyframes std-row-in { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes std-leader-glow {
+    0%, 100% { text-shadow: 0 0 2px rgba(242, 193, 78, .35); transform: scale(1); }
+    50% { text-shadow: 0 0 13px rgba(242, 193, 78, .95), 0 0 24px rgba(242, 193, 78, .5); transform: scale(1.15); }
+}
+@keyframes std-move-pop { 0% { opacity: 0; transform: scale(0) translateY(-4px); } 60% { transform: scale(1.25); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes std-leader-tint { 0%, 100% { background-color: #1a1710; } 50% { background-color: #33290d; } }
+@keyframes std-leader-rail { 0%, 100% { box-shadow: inset 3px 0 0 #F2C14E; } 50% { box-shadow: inset 3px 0 0 #F2C14E, 0 0 16px rgba(242, 193, 78, .55); } }
+
+/* Weekly-winner celebration: the Big Winner trophy bounces when the logged-in
+   manager won the week (standings.js adds .celebrate + fires confetti; both
+   are reduced-motion aware and fire once per week). */
+@media (prefers-reduced-motion: no-preference) {
+    .hl-icon.celebrate { display: inline-block; animation: hl-trophy-bounce .9s cubic-bezier(.2, 1.5, .35, 1) 2; }
+}
+@keyframes hl-trophy-bounce {
+    0% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-11px) scale(1.25); }
+    60% { transform: translateY(0) scale(1); }
+    80% { transform: translateY(-4px); }
+    100% { transform: translateY(0); }
+}

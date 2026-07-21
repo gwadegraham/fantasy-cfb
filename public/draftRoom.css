@@ -340,6 +340,60 @@
     border-radius: 4px;
 }
 
+/* ==================================================================== */
+/* Draft-room animations. Entrance/urgency effects gated behind         */
+/* prefers-reduced-motion:no-preference (the ticker's loop-scroll is    */
+/* also disabled in JS when reduced). Confetti on your own pick is      */
+/* fired from draftRoom.js (also reduced-motion aware).                 */
+/* ==================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+    /* A freshly drafted logo flips + pops onto the board */
+    .draft-board-cell.just-picked img { animation: dr-pick-reveal .55s cubic-bezier(.2, 1.3, .3, 1) both; }
+
+    /* The active pick cell pulses so the eye finds it */
+    .on-clock-cell { animation: dr-cell-pulse 1.4s ease-in-out infinite; }
+
+    /* When it's YOUR turn, the whole banner pulses with urgency */
+    .on-the-clock.your-turn { animation: dr-clock-pulse 2.5s ease-in-out infinite; }
+
+    /* Recent-picks ticker loop-scroll (class added in JS only when it overflows;
+       the track is duplicated in JS and animation-duration is set inline so the
+       on-screen speed stays constant regardless of how many picks there are). */
+    .pick-ticker-track.scroll { animation: dr-ticker 60s linear infinite; }
+}
+
+@keyframes dr-pick-reveal { 0% { opacity: 0; transform: rotateY(90deg) scale(.6); } 60% { opacity: 1; transform: rotateY(0) scale(1.14); } 100% { transform: scale(1); } }
+@keyframes dr-cell-pulse { 0%, 100% { box-shadow: inset 0 0 0 2px #ed5858; } 50% { box-shadow: inset 0 0 0 2px #ed5858, 0 0 12px rgba(237, 88, 88, .6); } }
+@keyframes dr-clock-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(113, 210, 141, .4); } 50% { box-shadow: 0 0 0 6px rgba(113, 210, 141, 0); } }
+@keyframes dr-ticker { to { transform: translateX(-50%); } }
+
+/* Recent-picks ticker */
+.pick-ticker {
+    overflow: hidden;
+    margin-bottom: 14px;
+    padding: 7px 0;
+    background: #141829;
+    border: 1px solid #2A2E42;
+    border-radius: 10px;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.pick-ticker:empty { display: none; }
+.pick-ticker-track { display: inline-flex; gap: 8px; white-space: nowrap; }
+.pick-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 999px;
+    padding: 4px 11px;
+    font-size: 0.82em;
+    color: #F4F6FB;
+}
+.pick-chip img { width: 18px; height: 18px; object-fit: contain; }
+.pick-chip .pk { color: #ed5858; font-weight: 700; }
+
 /* Draft action buttons in the team list */
 .draft-pick-btn {
     background-color: #71d28d;

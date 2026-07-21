@@ -140,6 +140,7 @@ async function getUsers() {
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
+            maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             setNavbarUserId(userMetadata, usersData);
@@ -211,6 +212,49 @@ async function loadAdvancedHighlights(league, season) {
 function displayHighlights(users) {
     const container = document.querySelector('.highlights-container');
     if (container) container.innerHTML = buildHighlightsHtml(buildHighlights(users));
+}
+
+// Reserved celebration: if the logged-in manager posted the top score in the
+// most recent week, bounce the Big Winner trophy and throw confetti — once per
+// week (localStorage-guarded) and never under reduced-motion.
+function maybeCelebrateWeeklyWin(users) {
+    try {
+        const myId = (userState.user_metadata && userState.user_metadata.metadata && userState.user_metadata.metadata.userId)
+            || window.localStorage.getItem('userId');
+        if (!myId || !Array.isArray(users) || !users.length) return;
+
+        const weekOf = (u) => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || []);
+        const weeks = weekOf(users[0]).length;
+        if (!weeks) return;
+        const lastIdx = weeks - 1;
+
+        const scored = users.map(u => {
+            const wk = weekOf(u)[lastIdx];
+            return { id: String(u._id), score: (wk && wk.score) || 0, wk };
+        });
+        const max = Math.max(...scored.map(s => s.score));
+        if (max <= 0) return;
+
+        const mine = scored.find(s => s.id === String(myId));
+        if (!mine || mine.score !== max) return;   // you didn't (co-)win the week
+
+        // Once per week: key by season + week so it fires the first time only.
+        const season = (users[0].seasons[0].season) || '';
+        const wkLabel = (mine.wk && mine.wk.season === 'postseason') ? 'post' : (mine.wk && mine.wk.week);
+        const key = `weekWin-${season}-${wkLabel}`;
+        if (window.localStorage.getItem(key)) return;
+        window.localStorage.setItem(key, '1');
+
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+        // Big Winner is the first highlight card; bounce its trophy + confetti.
+        const icon = document.querySelector('.highlights-container .sub-highlight-container:first-child .hl-icon');
+        if (icon) icon.classList.add('celebrate');
+        if (typeof startConfetti === 'function') {
+            startConfetti();
+            setTimeout(() => { if (typeof stopConfetti === 'function') stopConfetti(); }, 3500);
+        }
+    } catch (e) { /* celebration is best-effort */ }
 }
 
 // First-login nudge: if the logged-in manager hasn't been prompted yet, invite

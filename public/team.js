@@ -401,6 +401,32 @@ function contrastText(rgb) {
 }
 
 // ---------------------------------------------------------------------------
+// Animation helpers. Entrance animations are CSS-driven and gated behind
+// prefers-reduced-motion in team.css; these JS bits (count-up) check the same
+// preference so a reader who opts out sees final values immediately.
+// ---------------------------------------------------------------------------
+function ccReducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Animate every [data-countup] inside root from 0 to its target.
+function ccCountUp(root) {
+    root.querySelectorAll('[data-countup]').forEach(el => {
+        var to = Number(el.getAttribute('data-countup'));
+        if (isNaN(to)) return;
+        if (ccReducedMotion()) { el.textContent = to; return; }
+        var dur = 850, start = null;
+        function step(ts) {
+            if (start === null) start = ts;
+            var p = Math.min(1, (ts - start) / dur);
+            el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 function renderTeamError(message) {
@@ -491,7 +517,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
 
     // National fantasy-scoring rank alongside the raw point total.
     var rankHtml = fantasyRank
-        ? `<span class="fantasy-rank">#${fantasyRank.rank} of ${fantasyRank.total}</span>`
+        ? `<span class="fantasy-rank">#<span data-countup="${fantasyRank.rank}">0</span> of ${fantasyRank.total}</span>`
         : '';
 
     // Set the tab title to the team being viewed.
@@ -523,7 +549,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
             </div>
             <div>
                 <h4>📈 Season Score</h4>
-                <p class="score">${seasonScore} Points ${rankHtml}</p>
+                <p class="score"><span data-countup="${seasonScore}">0</span> Points ${rankHtml}</p>
                 <h4>Recruiting Rank</h4>
                 <p class="score">${recruitingRank}</p>
             </div>
@@ -539,6 +565,12 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
     `;
 
     container.innerHTML = html;
+
+    // Trigger entrance animations (CSS handles reduced-motion by no-op).
+    container.classList.add('reveal');
+    container.querySelector('.team-header')?.classList.add('run');
+    container.querySelector('.form-strip')?.classList.add('run');
+    ccCountUp(container);
 }
 
 // Weekly points bar chart from the season's weeklyScore[] (previously collected
@@ -558,7 +590,7 @@ function renderWeeklyScores(seasonObj, scoreCode) {
         return `
             <div class="week-bar" title="Week ${w.week}: ${v} pts">
                 <span class="week-bar-value">${v}</span>
-                <span class="week-bar-fill" style="height:${pct}%"></span>
+                <span class="week-bar-fill" style="height:${pct}%;animation-delay:${i * 50}ms"></span>
                 <span class="week-bar-label">${label}</span>
             </div>
         `;
@@ -567,7 +599,7 @@ function renderWeeklyScores(seasonObj, scoreCode) {
     return `
         <div class="weekly-scores">
             <h4>📊 Weekly Points</h4>
-            <div class="week-bars">${bars}</div>
+            <div class="week-bars run">${bars}</div>
         </div>
     `;
 }
@@ -593,7 +625,8 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             return new Date(a.startDate) - new Date(b.startDate);
         });
 
-        schedule.forEach(game => {
+        schedule.forEach((game, gi) => {
+            var animDelay = Math.min(gi * 70, 700);
             var homePoints = '';
             var awayPoints = '';
 
@@ -671,14 +704,14 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
                 // Just the W/L/T (the per-team scores already show the numbers);
                 // keep the exact score available on hover.
-                resultBadge = `<span class="game-result ${cls}" title="${us}-${them}">${letter}</span>`;
+                resultBadge = `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`;
             }
 
             const awayTeamHTML = `
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
                <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
                 ${awayIsWinner ? '</strong>' : ''}
-                </span><span class="betting-line">${awayLine ? '-' + awayLine : ''}</span><span class="team-score">
+                </span><span class="betting-line">${awayLine ? '-' + awayLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
                 ${awayIsWinner ? '<strong class="game-winner">' : ''}
                 ${awayPoints ? awayPoints : ''}
                 ${awayIsWinner ? '</strong>' : ''}
@@ -689,7 +722,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 ${homeIsWinner ? '<strong class="game-winner">' : ''}
                <a href="/team?team=${game.homeId}">${homeLogo}${homeRank}${game.homeTeam}</a>
                 ${homeIsWinner ? '</strong>' : ''}
-                </span><span class="betting-line">${homeLine ? '-' + homeLine : ''}</span><span class="team-score">
+                </span><span class="betting-line">${homeLine ? '-' + homeLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
                 ${homeIsWinner ? '<strong class="game-winner">' : ''}
                 ${homePoints ? homePoints : ''}
                 ${homeIsWinner ? '</strong>' : ''}

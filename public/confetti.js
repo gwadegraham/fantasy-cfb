@@ -10,7 +10,8 @@ var removeConfetti; //call to stop the confetti animation and remove all confett
 	stopConfetti = stopConfettiInner;
 	toggleConfetti = toggleConfettiInner;
 	removeConfetti = removeConfettiInner;
-	var colors = ["DodgerBlue", "OliveDrab", "Gold", "Pink", "SlateBlue", "LightBlue", "Violet", "PaleGreen", "SteelBlue", "SandyBrown", "Chocolate", "Crimson"]
+	var defaultColors = ["DodgerBlue", "OliveDrab", "Gold", "Pink", "SlateBlue", "LightBlue", "Violet", "PaleGreen", "SteelBlue", "SandyBrown", "Chocolate", "Crimson"];
+	var colors = defaultColors;
 	var streamingConfetti = false;
 	var animationTimer = null;
 	var particles = [];
@@ -27,7 +28,10 @@ var removeConfetti; //call to stop the confetti animation and remove all confett
 		return particle;
 	}
 
-	function startConfettiInner() {
+	// Optional customColors (array) overrides the default rainbow for this run;
+	// omit to keep the default mix (draft-complete, weekly-winner).
+	function startConfettiInner(customColors) {
+		colors = (customColors && customColors.length) ? customColors : defaultColors;
 		var width = window.innerWidth;
 		var height = window.innerHeight;
 		window.requestAnimFrame = (function() {
