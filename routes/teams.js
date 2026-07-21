@@ -283,9 +283,13 @@ router.post('/:season/enrich', async (req, res) => {
             .sort((a, b) => b.fpi - a.fpi)
             .forEach((r, i) => fpiMap.set(norm(r.team), { fpi: r.fpi, rank: i + 1 }));
 
+        // CFBD /talent keys the team as `team` (some other endpoints use
+        // `school`). Rank is derived by sorting the composite, like FPI.
         const talentMap = new Map();
-        // CFBD /talent keys the team as `team` (some other endpoints use `school`).
-        (Array.isArray(talent) ? talent : []).forEach(r => talentMap.set(norm(r.team || r.school), r.talent));
+        (Array.isArray(talent) ? talent : [])
+            .filter(r => r.talent != null)
+            .sort((a, b) => b.talent - a.talent)
+            .forEach((r, i) => talentMap.set(norm(r.team || r.school), { value: r.talent, rank: i + 1 }));
 
         const retMap = new Map();
         (Array.isArray(returning) ? returning : []).forEach(r => retMap.set(norm(r.team), r.percentPPA));
@@ -320,7 +324,7 @@ router.post('/:season/enrich', async (req, res) => {
                 if (spR.ranking != null) s.spRank = spR.ranking;
             }
             if (fpiR) { s.fpiRating = fpiR.fpi; s.fpiRank = fpiR.rank; }
-            if (tal != null) s.talent = Number(tal);
+            if (tal) { s.talent = Number(tal.value); s.talentRank = tal.rank; }
             if (ret != null) {
                 // percentPPA arrives as a 0-1 fraction; store as a 0-100 percent.
                 var pct = Number(ret);

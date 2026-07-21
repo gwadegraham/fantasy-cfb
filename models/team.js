@@ -103,7 +103,10 @@ const seasonSchema = new mongoose.Schema({
     fpiRank: {           // FPI national ranking (computed by sorting fpiRating)
         type: Number
     },
-    talent: {            // 247 talent composite
+    talent: {            // 247 talent composite (raw score, e.g. ~875)
+        type: Number
+    },
+    talentRank: {        // national rank of the talent composite (1 = best)
         type: Number
     },
     returningProduction: {   // % of production returning (0-100)

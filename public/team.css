@@ -751,4 +751,17 @@
     gap: 0.4em;
 }
 .team-coach i { color: var(--team-accent, #ed5858); }
-.rating-val { color: #A4A9C2; font-weight: 500; font-size: 0.9em; }
+
+/* Outlook ratings as accent-tinted chips (SP+/FPI/talent/returning). */
+.outlook-chips { display: flex; flex-wrap: wrap; gap: 0.4em; margin-top: 0.35em; }
+.outlook-chip {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--team-accent, #ed5858);
+    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
+    border: 1px solid rgba(var(--team-accent-rgb, 237, 88, 88), 0.4);
+    border-radius: 999px;
+    padding: 0.25em 0.7em;
+    white-space: nowrap;
+    cursor: default;
+}

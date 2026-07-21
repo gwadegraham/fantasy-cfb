@@ -527,15 +527,23 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
 
     // Outlook block: SP+/FPI power ratings, talent, returning production. Only
     // rendered once the enrichment job has populated these (absent otherwise).
-    var outlookRows = [];
+    var outlookChips = [];
     if (seasonObj.spRank != null) {
-        var spVal = seasonObj.spRating != null ? ` <span class="rating-val">(${seasonObj.spRating > 0 ? '+' : ''}${seasonObj.spRating})</span>` : '';
-        outlookRows.push(`<p class="score">SP+ #${seasonObj.spRank}${spVal}</p>`);
+        var spTip = seasonObj.spRating != null ? `SP+ ${seasonObj.spRating > 0 ? '+' : ''}${seasonObj.spRating} — projected points per game vs. an average team` : 'SP+ national rank';
+        outlookChips.push(`<span class="outlook-chip" title="${spTip}">SP+ #${seasonObj.spRank}</span>`);
     }
-    if (seasonObj.fpiRank != null) outlookRows.push(`<p class="score">FPI #${seasonObj.fpiRank}</p>`);
-    if (seasonObj.talent != null) outlookRows.push(`<p class="score">Talent ${Math.round(seasonObj.talent)}</p>`);
-    if (seasonObj.returningProduction != null) outlookRows.push(`<p class="score">${seasonObj.returningProduction}% returning</p>`);
-    var outlookHtml = outlookRows.length ? `<div><h4>📊 Outlook</h4>${outlookRows.join('')}</div>` : '';
+    if (seasonObj.fpiRank != null) {
+        outlookChips.push(`<span class="outlook-chip" title="ESPN Football Power Index — national rank">FPI #${seasonObj.fpiRank}</span>`);
+    }
+    if (seasonObj.talentRank != null || seasonObj.talent != null) {
+        var talLabel = seasonObj.talentRank != null ? `Talent #${seasonObj.talentRank}` : `Talent ${Math.round(seasonObj.talent)}`;
+        var talTip = `247Sports Talent Composite${seasonObj.talent != null ? ' (' + Math.round(seasonObj.talent) + ')' : ''} — total blue-chip recruiting talent on the roster; higher = more talent`;
+        outlookChips.push(`<span class="outlook-chip" title="${talTip}">${talLabel}</span>`);
+    }
+    if (seasonObj.returningProduction != null) {
+        outlookChips.push(`<span class="outlook-chip" title="Share of last season's production (PPA) returning">${seasonObj.returningProduction}% returning</span>`);
+    }
+    var outlookHtml = outlookChips.length ? `<div><h4>📊 Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div></div>` : '';
 
     // Set the tab title to the team being viewed.
     document.title = `${team.school} ${team.mascot} · Campus Clash`;
