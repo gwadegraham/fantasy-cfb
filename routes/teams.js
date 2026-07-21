@@ -284,7 +284,8 @@ router.post('/:season/enrich', async (req, res) => {
             .forEach((r, i) => fpiMap.set(norm(r.team), { fpi: r.fpi, rank: i + 1 }));
 
         const talentMap = new Map();
-        (Array.isArray(talent) ? talent : []).forEach(r => talentMap.set(norm(r.school), r.talent));
+        // CFBD /talent keys the team as `team` (some other endpoints use `school`).
+        (Array.isArray(talent) ? talent : []).forEach(r => talentMap.set(norm(r.team || r.school), r.talent));
 
         const retMap = new Map();
         (Array.isArray(returning) ? returning : []).forEach(r => retMap.set(norm(r.team), r.percentPPA));
