@@ -520,6 +520,23 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
         ? `<span class="fantasy-rank">#<span data-countup="${fantasyRank.rank}">0</span> of ${fantasyRank.total}</span>`
         : '';
 
+    // Head coach (from the weekly enrichment job) — a subtle line in the header.
+    var coachHtml = seasonObj.coach
+        ? `<p class="team-coach"><i class="fa-solid fa-clipboard-user"></i> ${seasonObj.coach}</p>`
+        : '';
+
+    // Outlook block: SP+/FPI power ratings, talent, returning production. Only
+    // rendered once the enrichment job has populated these (absent otherwise).
+    var outlookRows = [];
+    if (seasonObj.spRank != null) {
+        var spVal = seasonObj.spRating != null ? ` <span class="rating-val">(${seasonObj.spRating > 0 ? '+' : ''}${seasonObj.spRating})</span>` : '';
+        outlookRows.push(`<p class="score">SP+ #${seasonObj.spRank}${spVal}</p>`);
+    }
+    if (seasonObj.fpiRank != null) outlookRows.push(`<p class="score">FPI #${seasonObj.fpiRank}</p>`);
+    if (seasonObj.talent != null) outlookRows.push(`<p class="score">Talent ${Math.round(seasonObj.talent)}</p>`);
+    if (seasonObj.returningProduction != null) outlookRows.push(`<p class="score">${seasonObj.returningProduction}% returning</p>`);
+    var outlookHtml = outlookRows.length ? `<div><h4>📊 Outlook</h4>${outlookRows.join('')}</div>` : '';
+
     // Set the tab title to the team being viewed.
     document.title = `${team.school} ${team.mascot} · Campus Clash`;
 
@@ -533,6 +550,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
                 ${renderSeasonSelector(team.seasons, seasonObj.season)}
             </div>
             <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
+            ${coachHtml}
             <div class="team-meta-links">${twitterHtml}${ownerHtml}</div>
             ${formStrip ? `<div class="form-strip" title="Most recent results">${formStrip}</div>` : ''}
             </div>
@@ -559,6 +577,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
                 ${(loc.city && loc.state) ? `<p><small>${loc.city}, ${loc.state}</small></p>` : ''}
                 ${stadiumChips.length ? `<div class="stadium-chips">${stadiumChips.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
             </div>
+            ${outlookHtml}
         </div>
 
         ${renderWeeklyScores(seasonObj, scoreCode)}
@@ -738,7 +757,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">📺 ${game.outlet}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -794,7 +813,7 @@ function renderNextGame(schedule, logos, teamId) {
             <span class="next-game-tag">Next Up</span>
             <div class="next-game-body">
                 <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>
-                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}</span>
+                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · 📺 ${game.outlet}` : ''}</span>
                 ${game.neutralSite && game.venue ? `<span class="next-game-venue">${game.venue}</span>` : ''}
             </div>
         </a>

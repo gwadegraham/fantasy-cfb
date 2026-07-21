@@ -740,3 +740,15 @@
     /* Desktop: always visible, no clipping */
     .games-container, .standings-table { max-height: none; overflow: visible; }
 }
+/* Head coach line in the team header + SP+/FPI rating value in the Outlook block
+   (populated by the weekly enrichment job). */
+.team-coach {
+    color: #A4A9C2;
+    font-size: 0.85rem;
+    margin: 0.2em 0 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+}
+.team-coach i { color: var(--team-accent, #ed5858); }
+.rating-val { color: #A4A9C2; font-weight: 500; font-size: 0.9em; }

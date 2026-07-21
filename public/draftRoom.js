@@ -145,24 +145,32 @@ async function getTeams() {
 function buildPool(teams, recruiting) {
     var yr = new Date().getFullYear();
     pool = teams.map(t => {
-        var conf = '-', score = null, xwins = 0;
+        var conf = '-', score = null, xwins = 0, sp = null, spRank = null;
         if (t.seasons && t.seasons.length) {
             var prev = t.seasons.find(s => s.season == (yr - 1));
             var cur = t.seasons.find(s => s.season == yr);
             conf = t.seasons.at(-1).conference;
             if (prev) score = (leagueVersion == 'V1') ? prev.cumulativeScoreV1 : prev.cumulativeScoreV2;
-            if (cur) xwins = cur.expectedWins || 0;
+            if (cur) {
+                xwins = cur.expectedWins || 0;
+                if (cur.spRating != null) sp = cur.spRating;
+                if (cur.spRank != null) spRank = cur.spRank;
+            }
         }
         var rank = null;
         if (recruiting && recruiting.length) {
             var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
             if (r) rank = r.rank;
         }
-        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, scoreYear: prev ? prev.season : null };
+        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
     });
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
     xwMax = xw.length ? Math.max(...xw) : 0;
+
+    // Once SP+ is populated (enrichment job has run), default the draft sort to
+    // it — a truer team-strength signal than recruiting/xWins.
+    if (pool.some(p => p.sp != null)) poolSort = { key: 'sp', dir: -1 };
 }
 
 function barWidth(x) {
@@ -195,6 +203,7 @@ function sortVal(p, k) {
     if (k === 'rank') return p.rank == null ? 999 : p.rank;
     if (k === 'score') return p.score == null ? -1 : p.score;
     if (k === 'xwins') return p.xwins == null ? -1 : p.xwins;
+    if (k === 'sp') return p.sp == null ? -Infinity : p.sp;   // higher SP+ = better
     return 0;
 }
 
@@ -231,9 +240,9 @@ function renderPool() {
     var k = poolSort.key, dir = poolSort.dir;
     rows.sort((a, b) => { var av = sortVal(a, k), bv = sortVal(b, k); return (av < bv ? -1 : av > bv ? 1 : 0) * dir; });
 
-    var cols = [['name', 'Team'], ['conf', 'Conference'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['draft', '']];
+    var cols = [['name', 'Team'], ['conf', 'Conference'], ['sp', 'SP+'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['draft', '']];
     document.getElementById('pool-head').innerHTML = cols.map(([key, label]) => {
-        var numCls = (key === 'rank' || key === 'score' || key === 'xwins') ? 'num' : '';
+        var numCls = (key === 'rank' || key === 'score' || key === 'xwins' || key === 'sp') ? 'num' : '';
         var sorted = key === poolSort.key;
         var arrow = key === 'draft' ? '' : `<span class="arrow">${sorted ? (poolSort.dir < 0 ? '▼' : '▲') : '↕'}</span>`;
         var onclick = key === 'draft' ? '' : `onclick="sortPool('${key}')"`;
@@ -247,9 +256,13 @@ function renderPool() {
         var action = drafted
             ? '<span class="drafted-chip">Drafted</span>'
             : `<button class="draft-pick-btn" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
+        var spCell = p.spRank == null
+            ? '<span class="muted">—</span>'
+            : `<span class="sp-badge" title="SP+ rating ${p.sp}">#${p.spRank}</span>`;
         return `<tr class="${drafted ? 'drafted' : ''}">
             <td><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></td>
             <td>${escapeHtml(p.conf)}</td>
+            <td class="num">${spCell}</td>
             <td class="num">${badge}</td>
             <td class="num">${p.score == null ? '-' : p.score}</td>
             <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%;background:${barColor(p.xwins)}"></span></span></span></td>
@@ -281,6 +294,7 @@ function renderPool() {
                     <span class="pool-card-meta">${confHtml}${badge}</span>
                 </div>
                 <div class="pool-card-stats">
+                    ${p.spRank != null ? `<span title="SP+ rating ${p.sp}"><b>#${p.spRank}</b><small>SP+</small></span>` : ''}
                     <span><b>${p.xwins || '-'}</b><small>xWins</small></span>
                     <span><b>${p.score == null ? '-' : p.score}</b><small>${ptsLabel}</small></span>
                 </div>
