@@ -488,7 +488,9 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .pool-card-main .team-cell img { width: 30px; height: 30px; }
 .pool-card-meta { display: flex; align-items: center; gap: 8px; color: #9aa4bf; font-size: 0.82em; min-width: 0; }
 .pc-conf { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pc-conf-logo { height: 20px; width: auto; max-width: 64px; object-fit: contain; flex: 0 0 auto; }
+/* Fixed box + contain so every conference logo occupies the same footprint,
+   regardless of aspect ratio (wide wordmarks like ACC no longer dominate). */
+.pc-conf-logo { width: 42px; height: 18px; object-fit: contain; object-position: left center; flex: 0 0 auto; }
 .pool-card-stats { display: flex; gap: 14px; text-align: center; flex: 0 0 auto; }
 .pool-card-stats span { display: flex; flex-direction: column; line-height: 1.1; }
 .pool-card-stats b { color: #F4F6FB; font-size: 0.98em; font-variant-numeric: tabular-nums; }
