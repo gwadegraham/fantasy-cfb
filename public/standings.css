@@ -413,6 +413,16 @@
 .standings-row.medal-2 .rank-num { color: #C7CCDB; }
 .standings-row.medal-3 .rank-num { color: #D8925B; }
 .crown { font-size: 0.85rem; margin-right: 2px; }
+
+/* Leader row treatment — always visible (independent of reduced-motion): a
+   gold rail down the left edge, a warm tint across the row, and a persistent
+   soft glow on the #1. The pulse in the motion block below adds movement on
+   top for viewers who allow motion. */
+.standings-row.medal-1 td,
+.standings-row.medal-1 .sticky-header,
+.standings-row.medal-1 .sticky-header-score { background-color: #1a1710; }
+.standings-row.medal-1 .rank-cell { box-shadow: inset 3px 0 0 #F2C14E; }
+.standings-row.medal-1 .rank-num { text-shadow: 0 0 8px rgba(242, 193, 78, .65); }
 .gap { display: inline-block; font-size: 0.68rem; color: #767D9C; font-weight: 400; }
 .gap.leader { color: #5BD08D; }
 .score-num { font-weight: 700; }
