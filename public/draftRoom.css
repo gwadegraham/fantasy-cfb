@@ -544,3 +544,14 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
     .pool-cards { display: flex; flex-direction: column; gap: 8px; }
     .team-cell { gap: 6px; }
 }
+
+/* SP+ rank badge in the pool table (power-rating column). */
+.sp-badge { display: inline-block; min-width: 26px; text-align: center; padding: 2px 7px; border-radius: 6px; background: #1f3a2c; color: #8fe0a8; font-weight: 700; font-size: 0.9em; }
+
+/* Clickable team name/logo → team page (new tab, so a live draft isn't lost). */
+.team-link { display: inline-flex; align-items: center; color: inherit; text-decoration: none; }
+.team-link:hover .team-cell { text-decoration: underline; }
+.draft-board-cell a { display: inline-flex; align-items: center; justify-content: center; }
+.draft-board-cell a:hover img { transform: scale(1.08); transition: transform .12s ease; }
+a.pick-chip { text-decoration: none; }
+a.pick-chip:hover { border-color: #ed5858; }

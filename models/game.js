@@ -112,6 +112,13 @@ const gameSchema = new mongoose.Schema({
     notes: {
         type: String,
     },
+    // Broadcast info from CFBD /games/media (e.g. outlet "ABC", mediaType "tv").
+    mediaType: {
+        type: String
+    },
+    outlet: {
+        type: String
+    },
     lastUpdated: {
         type: String
     },

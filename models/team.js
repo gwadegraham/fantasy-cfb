@@ -88,6 +88,32 @@ const seasonSchema = new mongoose.Schema({
     },
     expectedWins: {
         type: Number
+    },
+    // --- opponent-agnostic enrichment pulled from CFBD once per week/season ---
+    // (stored here so the team page + draft pool get it without extra reads).
+    spRating: {          // SP+ overall rating (e.g. 18.4)
+        type: Number
+    },
+    spRank: {            // SP+ national ranking (1 = best)
+        type: Number
+    },
+    fpiRating: {         // ESPN FPI rating
+        type: Number
+    },
+    fpiRank: {           // FPI national ranking (computed by sorting fpiRating)
+        type: Number
+    },
+    talent: {            // 247 talent composite (raw score, e.g. ~875)
+        type: Number
+    },
+    talentRank: {        // national rank of the talent composite (1 = best)
+        type: Number
+    },
+    returningProduction: {   // % of production returning (0-100)
+        type: Number
+    },
+    coach: {             // head coach display name for the season
+        type: String
     }
 });
 

@@ -1,9 +1,9 @@
 const { JOB_SCHEDULES, TZ, toRule } = require('../modules/scheduler');
 
 describe('scheduler config', () => {
-    it('schedules exactly the three score jobs (expected wins is manual)', () => {
+    it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['daily-scores', 'saturday-scores', 'sunday-scores']);
+        expect(jobs).toEqual(['daily-scores', 'enrichment', 'saturday-scores', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
 
@@ -13,6 +13,7 @@ describe('scheduler config', () => {
         expect(byJob['daily-scores']).toEqual({ hour: 23, minute: 0 });
         expect(byJob['saturday-scores']).toEqual({ dayOfWeek: 6, hour: [15, 18, 22], minute: 0 });
         expect(byJob['sunday-scores']).toEqual({ dayOfWeek: 0, hour: [3, 6], minute: 0 });
+        expect(byJob['enrichment']).toEqual({ dayOfWeek: 2, hour: 5, minute: 30 });
     });
 
     it('builds a timezone-aware recurrence rule', () => {

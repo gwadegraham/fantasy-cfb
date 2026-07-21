@@ -114,7 +114,7 @@
     </section>
 
     <section class="admin-group">
-        <div class="group-head"><h2>Data sync · College Football Data</h2><span class="group-count">6</span></div>
+        <div class="group-head"><h2>Data sync · College Football Data</h2><span class="group-count">7</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -200,6 +200,26 @@
                     <form id="refresh-teams-form">
                         <div><select refresh-season season-options></select></div>
                         <div><button type="submit">Refresh Teams</button></div>
+                    </form>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayEnrichmentContainer()">
+                        <i class="fa-solid fa-chart-line" style="padding-right: 5px;"></i>
+                        Refresh Ratings &amp; Broadcasts
+                    </button>
+                </div>
+                <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · weekly enrichment job (Tue)</div>
+                <div class="sub-container" enrichment-container style="display: none">
+                    <p class="function-description">
+                        Pulls SP+ &amp; FPI ratings, 247 talent, returning production and head coaches onto every
+                        team, plus TV/broadcast outlets onto games. Powers the team-page Outlook block and the
+                        draft board's SP+ column. Uses ~6 CFBD calls.
+                    </p>
+                    <form id="enrichment-form">
+                        <div><select enrichment-season season-options></select></div>
+                        <div><button type="submit">Run Enrichment</button></div>
                     </form>
                 </div>
             </div>

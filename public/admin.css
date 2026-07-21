@@ -532,3 +532,12 @@ select[scoring-config-combine-mode] { width: 100%; }
     outline: 2px solid #64B5F6;
     outline-offset: 2px;
 }
+
+/* Short explanation shown inside an admin function's expanded panel. */
+.function-description {
+    color: #A4A9C2;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-width: 46ch;
+    margin: 0 0 0.75em;
+}
