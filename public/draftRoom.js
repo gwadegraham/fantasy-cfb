@@ -14,6 +14,11 @@ var leagueVersion = 'V2';
 var season = new Date().getFullYear();
 var isMobile = false;
 var countdownTimer;
+var justPickedKey = null;    // "userId-round" of the pick to animate in once
+
+function ccReduced() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -257,11 +262,18 @@ function onDraftState(state) {
 
 function onPickMade({ pick, state }) {
     draft = state;
+    // Mark this pick's board cell so renderBoard animates just it (once).
+    justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
     var member = membersById[String(pick.userId)];
     var name = member ? `${member.firstName} ${member.lastName.substring(0, 1)}.` : 'Someone';
     successToast.options.text = `${name} drafted ${pick.team.school}`;
     successToast.showToast();
+    // Celebrate your own pick with a short confetti burst.
+    if (String(pick.userId) === String(myUserId) && !ccReduced() && typeof startConfetti === 'function') {
+        startConfetti();
+        setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+    }
 }
 
 function onDraftComplete(state) {
@@ -294,8 +306,29 @@ function undoPick() {
 function renderAll() {
     renderStatus();
     renderBoard();
+    renderTicker();
     renderOnTheClock();
     renderPool();
+}
+
+// Scrolling ribbon of recent picks above the board (most recent first).
+function renderTicker() {
+    var el = document.getElementById('pick-ticker');
+    if (!el) return;
+    if (!draft || !draft.picks || !draft.picks.length ||
+        (draft.status !== 'active' && draft.status !== 'complete')) {
+        el.innerHTML = '';
+        return;
+    }
+    var recent = draft.picks.slice(-16).reverse();
+    var chips = recent.map(function (p) {
+        var logo = (p.team.logos && p.team.logos.length) ? p.team.logos.at(-1) : '';
+        return `<span class="pick-chip"><span class="pk">#${p.overall}</span>`
+            + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</span>`;
+    }).join('');
+    // Only loop-scroll when there are enough picks to overflow and motion is OK.
+    var scroll = !ccReduced() && recent.length > 5;
+    el.innerHTML = `<div class="pick-ticker-track${scroll ? ' scroll' : ''}">${scroll ? chips + chips : chips}</div>`;
 }
 
 function renderStatus() {
@@ -363,7 +396,8 @@ function renderBoard() {
             var isClock = onClock.userId === String(userId) && onClock.round === round;
             var cls = isClock ? 'draft-board-cell on-clock-cell' : 'draft-board-cell';
             if (pick) {
-                bodyStr += `<td class="${cls}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}" title="${escapeHtml(pick.team.school)}"></td>`;
+                var freshCls = (justPickedKey === String(userId) + '-' + round) ? ' just-picked' : '';
+                bodyStr += `<td class="${cls}${freshCls}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}" title="${escapeHtml(pick.team.school)}"></td>`;
             } else {
                 bodyStr += `<td class="${cls}"></td>`;
             }
@@ -371,15 +405,19 @@ function renderBoard() {
         bodyStr += '</tr>';
     });
     body.innerHTML = bodyStr;
+    justPickedKey = null;   // consumed — don't re-animate on the next render
 }
 
 function renderOnTheClock() {
     var el = document.getElementById('on-the-clock');
-    if (!draft || draft.status !== 'active' || !draft.onTheClock) { el.innerHTML = ''; return; }
+    if (!draft || draft.status !== 'active' || !draft.onTheClock) { el.innerHTML = ''; el.classList.remove('your-turn'); return; }
     var oc = draft.onTheClock;
     var member = membersById[String(oc.userId)];
     var name = member ? `${member.firstName} ${member.lastName}` : 'Unknown';
-    if (String(oc.userId) === String(myUserId)) {
+    var mine = String(oc.userId) === String(myUserId);
+    // .your-turn drives the urgency pulse in CSS (only when it's you).
+    el.classList.toggle('your-turn', mine);
+    if (mine) {
         el.innerHTML = `<span class="you-are-up">🟢 You're on the clock! — Round ${oc.round}, Pick #${oc.overall}</span>`;
     } else {
         el.innerHTML = `<span>On the clock: <strong>${escapeHtml(name)}</strong> — Round ${oc.round}, Pick #${oc.overall}</span>`;
