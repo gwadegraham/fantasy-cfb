@@ -270,6 +270,8 @@
     font-weight: 800;
     font-size: 1.05em;
 }
+/* No content (between picks / not active) — don't show an empty bordered box. */
+.on-the-clock:empty { display: none; }
 
 #draft-board {
     margin: 0;
@@ -287,7 +289,7 @@
     background: #131725;
 }
 #draft-board-head th:first-child,
-.draft-board-name { width: 150px; }
+.draft-board-name { width: 60px; }
 #draft-table th,
 #draft-table td {
     padding: 8px 6px;
@@ -305,20 +307,31 @@
     position: sticky;
     top: 0;
 }
-#draft-board-head th:first-child { text-align: left; padding-left: 16px; }
+#draft-board-head th:first-child { text-align: center; padding-left: 6px; }
 
-/* Sticky player-name column + zebra striping for readability */
+/* Sticky player column (avatars only) + zebra striping for readability */
 .draft-board-name {
-    text-align: left !important;
+    text-align: center !important;
     white-space: nowrap;
-    font-weight: 600;
     color: #F4F6FB;
     position: sticky;
     left: 0;
     background: #161b2b;
-    padding-left: 16px !important;
-    min-width: 120px;
+    padding: 6px !important;
+    min-width: 56px;
 }
+.board-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+}
+.board-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.board-avatar-initials { font-size: 0.72rem; font-weight: 700; color: #fff; }
 #draft-board-body tr:nth-child(even) td { background-color: #10131f; }
 #draft-board-body tr:nth-child(even) .draft-board-name { background-color: #141827; }
 
@@ -455,6 +468,34 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 
 .drafted-chip { background: #2a2f42; color: #6b7280; border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
 
+/* ---------- Mobile pool cards (Sleeper-style; shown <=768px) ---------- */
+.pool-cards { display: none; }   /* desktop uses the table */
+.pool-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+    background: #131725;
+    border: 1px solid #2A2E42;
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+.pool-card.drafted { opacity: 0.55; }
+.pool-card .card-draft { min-width: 76px; padding: 10px 0; font-size: 0.95em; }
+.pool-card .drafted-chip { min-width: 76px; text-align: center; padding: 9px 0; }
+.pool-card-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pool-card-main .team-cell { font-size: 1.02em; white-space: normal; }
+.pool-card-main .team-cell img { width: 30px; height: 30px; }
+.pool-card-meta { display: flex; align-items: center; gap: 8px; color: #9aa4bf; font-size: 0.82em; min-width: 0; }
+.pc-conf { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Fixed box + contain so every conference logo occupies the same footprint,
+   regardless of aspect ratio (wide wordmarks like ACC no longer dominate). */
+.pc-conf-logo { width: 42px; height: 18px; object-fit: contain; object-position: left center; flex: 0 0 auto; }
+.pool-card-stats { display: flex; gap: 14px; text-align: center; flex: 0 0 auto; }
+.pool-card-stats span { display: flex; flex-direction: column; line-height: 1.1; }
+.pool-card-stats b { color: #F4F6FB; font-size: 0.98em; font-variant-numeric: tabular-nums; }
+.pool-card-stats small { color: #6b7280; font-size: 0.66em; text-transform: uppercase; letter-spacing: .04em; }
+
 /* ---------- Commissioner undo ---------- */
 .draft-undo-btn {
     background: transparent;
@@ -475,14 +516,21 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
     .draft-countdown { font-size: 1.2em; }
     .draft-live-label { font-size: 1.1em; }
 
-    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; }
+    /* Constrain the board to the viewport so it scrolls INSIDE #draft-board
+       instead of stretching the whole page sideways (which also pushed the
+       centered on-the-clock text off-screen). */
+    .draft-board-wrap { padding: 0 8px; margin: 6px auto 16px; max-width: 100%; overflow-x: hidden; }
+    #draft-board { width: 100%; max-width: 100%; }
+    /* Let the table keep its natural width (so rounds stay legible) and overflow
+       the board, which then scrolls horizontally on its own. */
+    #draft-table { table-layout: auto; width: max-content; min-width: 620px; }
     .on-the-clock { font-size: 0.95em; padding: 10px; }
 
     #draft-table th, #draft-table td { padding: 5px 3px; }
     .draft-board-cell { height: 40px; }
     .draft-board-cell img { width: 30px; height: 30px; }
-    #draft-board-head th:first-child, .draft-board-name { width: 92px; min-width: 92px; padding-left: 10px !important; }
-    #draft-board-head th:first-child { padding-left: 10px; }
+    #draft-board-head th:first-child, .draft-board-name { width: 50px; min-width: 50px; padding: 4px !important; }
+    .board-avatar { width: 30px; height: 30px; }
 
     .content.pool { padding: 0 8px; }
     .pool-controls { gap: 8px; }
@@ -491,9 +539,8 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
     .pool-spacer { display: none; }
     .pool-count { flex: 1 1 100%; text-align: left; }
 
-    .pool-table thead th, .pool-table tbody td { padding: 6px 8px; font-size: 0.82em; }
-    .pool-table thead th:first-child, .pool-table tbody td:first-child { width: 130px; }
+    /* Swap the wide sortable table for the card list. */
+    .pool-table-wrap { display: none; }
+    .pool-cards { display: flex; flex-direction: column; gap: 8px; }
     .team-cell { gap: 6px; }
-    .team-cell img { width: 20px; height: 20px; }
-    .xwins-bar { width: 44px; }
 }
