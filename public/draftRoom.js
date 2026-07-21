@@ -210,6 +210,30 @@ function renderPool() {
         </tr>`;
     }).join('');
 
+    // Mobile card list (CSS shows this instead of the table at <=768px). Built
+    // from the same filtered/sorted rows so search/filter/sort stay in sync.
+    var cardsEl = document.getElementById('pool-cards');
+    if (cardsEl) {
+        cardsEl.innerHTML = rows.map(p => {
+            var drafted = draftedIds.has(String(p.id));
+            var badge = p.rank == null ? '' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">#${p.rank}</span>`;
+            var action = drafted
+                ? '<span class="drafted-chip">Drafted</span>'
+                : `<button class="draft-pick-btn card-draft" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
+            return `<div class="pool-card${drafted ? ' drafted' : ''}">
+                ${action}
+                <div class="pool-card-main">
+                    <span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+                    <span class="pool-card-meta"><span class="pc-conf">${escapeHtml(p.conf)}</span>${badge}</span>
+                </div>
+                <div class="pool-card-stats">
+                    <span><b>${p.xwins || '-'}</b><small>xWins</small></span>
+                    <span><b>${p.score == null ? '-' : p.score}</b><small>last yr</small></span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
     var avail = pool.filter(p => !draftedIds.has(String(p.id))).length;
     document.getElementById('poolCount').textContent = `${rows.length} shown · ${avail} available`;
 }
