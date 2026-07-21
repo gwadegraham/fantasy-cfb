@@ -670,7 +670,7 @@ async function displaySchedule(data) {
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                    teamTable += `</tr><tr><td class="game-notes">`;
+                    teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">📺 ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
                     teamTable += game.notes || '';
                     teamTable += '</td></tr><tbody></table></td>';
 
@@ -758,7 +758,7 @@ async function displaySchedule(data) {
                         teamTable += homeImg + homeRank + homeTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                         teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                        teamTable += `</tr><tr><td class="game-notes">`;
+                        teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">📺 ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
                         teamTable += game.notes || '';
                         teamTable += '</td></tr><tbody></table></td>';
             

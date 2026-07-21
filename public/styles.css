@@ -468,6 +468,16 @@ footer {
     padding: 3px;
 }
 
+/* Broadcast (📺 network) line on a game card — muted, matching the Team View's
+   game-date/game-tv treatment. Shared here so every game card styles it the
+   same. Only rendered when the game has a stored outlet. */
+.game-broadcast {
+    font-size: 0.75em;
+    color: #A4A9C2;
+    padding-left: 0.5em !important;
+    white-space: nowrap;
+}
+
 #loading {
     position: fixed;
     display: block;
