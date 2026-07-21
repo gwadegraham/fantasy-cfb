@@ -156,6 +156,12 @@ function buildPool(teams, recruiting) {
                 if (cur.spRating != null) sp = cur.spRating;
                 if (cur.spRank != null) spRank = cur.spRank;
             }
+            // Preseason fallback: before the upcoming season's ratings publish,
+            // use last season's final SP+ as the draft signal.
+            if (sp == null && prev) {
+                if (prev.spRating != null) sp = prev.spRating;
+                if (prev.spRank != null) spRank = prev.spRank;
+            }
         }
         var rank = null;
         if (recruiting && recruiting.length) {
