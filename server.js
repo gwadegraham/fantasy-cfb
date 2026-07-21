@@ -13,6 +13,7 @@ const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
 const ScoringConfig = require('./models/scoringConfig');
+const User = require('./models/user');
 const { resolveConfig, fieldsForModel, LEAGUES } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
@@ -63,6 +64,33 @@ app.locals.leagues = LEAGUES;
 
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));
+
+// Make the logged-in member's avatar available to every rendered view, so the
+// navbar can show their profile photo instead of a generic icon. One indexed
+// lookup per page navigation (guarded to HTML GETs so it never fires for static
+// assets or API calls); any failure falls back to the generic icon.
+app.use(async (req, res, next) => {
+    try {
+        if (req.method === 'GET'
+            && (req.headers.accept || '').includes('text/html')
+            && req.oidc && req.oidc.isAuthenticated()) {
+            const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
+            if (innerMeta.userId) {
+                const u = await User.findById(innerMeta.userId,
+                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1 }).lean();
+                if (u) {
+                    const initials = (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
+                    res.locals.navUser = {
+                        avatarUrl: u.avatarUrl || null,
+                        color: u.color || null,
+                        initials: initials || null
+                    };
+                }
+            }
+        }
+    } catch (e) { /* non-fatal: navbar falls back to the generic icon */ }
+    next();
+});
 
 const { requiresAuth } = require('express-openid-connect');
 

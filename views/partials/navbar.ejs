@@ -63,7 +63,18 @@
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
             <% if (user && user.userId) { %>
-            <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team"><i class="fa-solid fa-circle-user"></i></a></li>
+            <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team">
+                <% var nu = (typeof navUser !== 'undefined' && navUser) || null; %>
+                <% if (nu && nu.avatarUrl) { %>
+                    <% var navAv = nu.avatarUrl.indexOf('/upload/') !== -1 ? nu.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_64,h_64,q_auto,f_auto/') : nu.avatarUrl; %>
+                    <span class="nav-avatar"><img src="<%= navAv %>" alt=""></span>
+                <% } else if (nu && nu.initials) { %>
+                    <span class="nav-avatar nav-avatar-initials" style="background: <%= nu.color || '#333' %>"><%= nu.initials %></span>
+                <% } else { %>
+                    <i class="fa-solid fa-circle-user"></i>
+                <% } %>
+                <span class="nav-label">My Team</span>
+            </a></li>
             <% } %>
             <li><a href="./logout">Logout</a></li>
         </ul>
