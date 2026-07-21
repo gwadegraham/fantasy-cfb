@@ -354,10 +354,10 @@
     .on-clock-cell { animation: dr-cell-pulse 1.4s ease-in-out infinite; }
 
     /* When it's YOUR turn, the whole banner pulses with urgency */
-    .on-the-clock.your-turn { animation: dr-clock-pulse 1.1s ease-in-out infinite; }
+    .on-the-clock.your-turn { animation: dr-clock-pulse 2.5s ease-in-out infinite; }
 
     /* Recent-picks ticker loop-scroll (class added in JS only when it overflows) */
-    .pick-ticker-track.scroll { animation: dr-ticker 22s linear infinite; padding-left: 100%; }
+    .pick-ticker-track.scroll { animation: dr-ticker 60s linear infinite; padding-left: 100%; }
 }
 
 @keyframes dr-pick-reveal { 0% { opacity: 0; transform: rotateY(90deg) scale(.6); } 60% { opacity: 1; transform: rotateY(0) scale(1.14); } 100% { transform: scale(1); } }
