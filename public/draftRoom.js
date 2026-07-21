@@ -266,7 +266,7 @@ function renderPool() {
             ? '<span class="muted">—</span>'
             : `<span class="sp-badge" title="SP+ rating ${p.sp}">#${p.spRank}</span>`;
         return `<tr class="${drafted ? 'drafted' : ''}">
-            <td><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></td>
+            <td><a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a></td>
             <td>${escapeHtml(p.conf)}</td>
             <td class="num">${spCell}</td>
             <td class="num">${badge}</td>
@@ -296,7 +296,7 @@ function renderPool() {
             return `<div class="pool-card${drafted ? ' drafted' : ''}">
                 ${action}
                 <div class="pool-card-main">
-                    <span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
+                    <a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>
                     <span class="pool-card-meta">${confHtml}${badge}</span>
                 </div>
                 <div class="pool-card-stats">
@@ -422,8 +422,8 @@ function renderTicker() {
     var ordered = draft.picks.slice().sort(function (a, b) { return (a.overall || 0) - (b.overall || 0); });
     var chips = ordered.map(function (p) {
         var logo = (p.team.logos && p.team.logos.length) ? p.team.logos.at(-1) : '';
-        return `<span class="pick-chip"><span class="pk">#${p.overall}</span>`
-            + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</span>`;
+        return `<a class="pick-chip" href="/team?team=${p.team.id}" target="_blank" rel="noopener"><span class="pk">#${p.overall}</span>`
+            + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</a>`;
     }).join('');
     // Only loop-scroll when there are enough picks to overflow and motion is OK.
     // Duration scales with pick count (~2s per chip) so the on-screen speed
@@ -499,7 +499,7 @@ function renderBoard() {
             var cls = isClock ? 'draft-board-cell on-clock-cell' : 'draft-board-cell';
             if (pick) {
                 var freshCls = (justPickedKey === String(userId) + '-' + round) ? ' just-picked' : '';
-                bodyStr += `<td class="${cls}${freshCls}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}" title="${escapeHtml(pick.team.school)}"></td>`;
+                bodyStr += `<td class="${cls}${freshCls}"><a href="/team?team=${pick.team.id}" target="_blank" rel="noopener" title="${escapeHtml(pick.team.school)}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}"></a></td>`;
             } else {
                 bodyStr += `<td class="${cls}"></td>`;
             }
