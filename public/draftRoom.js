@@ -325,8 +325,12 @@ function renderTicker() {
             + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</span>`;
     }).join('');
     // Only loop-scroll when there are enough picks to overflow and motion is OK.
+    // Duration scales with pick count (~2s per chip) so the on-screen speed
+    // stays constant as the draft grows. The track is duplicated so a -50%
+    // translate loops seamlessly.
     var scroll = !ccReduced() && ordered.length > 5;
-    el.innerHTML = `<div class="pick-ticker-track${scroll ? ' scroll' : ''}">${scroll ? chips + chips : chips}</div>`;
+    var durStyle = scroll ? ` style="animation-duration:${Math.max(12, ordered.length * 2)}s"` : '';
+    el.innerHTML = `<div class="pick-ticker-track${scroll ? ' scroll' : ''}"${durStyle}>${scroll ? chips + chips : chips}</div>`;
 }
 
 function renderStatus() {

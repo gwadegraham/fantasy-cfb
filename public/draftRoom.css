@@ -356,14 +356,16 @@
     /* When it's YOUR turn, the whole banner pulses with urgency */
     .on-the-clock.your-turn { animation: dr-clock-pulse 2.5s ease-in-out infinite; }
 
-    /* Recent-picks ticker loop-scroll (class added in JS only when it overflows) */
-    .pick-ticker-track.scroll { animation: dr-ticker 60s linear infinite; padding-left: 100%; }
+    /* Recent-picks ticker loop-scroll (class added in JS only when it overflows;
+       the track is duplicated in JS and animation-duration is set inline so the
+       on-screen speed stays constant regardless of how many picks there are). */
+    .pick-ticker-track.scroll { animation: dr-ticker 60s linear infinite; }
 }
 
 @keyframes dr-pick-reveal { 0% { opacity: 0; transform: rotateY(90deg) scale(.6); } 60% { opacity: 1; transform: rotateY(0) scale(1.14); } 100% { transform: scale(1); } }
 @keyframes dr-cell-pulse { 0%, 100% { box-shadow: inset 0 0 0 2px #ed5858; } 50% { box-shadow: inset 0 0 0 2px #ed5858, 0 0 12px rgba(237, 88, 88, .6); } }
 @keyframes dr-clock-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(113, 210, 141, .4); } 50% { box-shadow: 0 0 0 6px rgba(113, 210, 141, 0); } }
-@keyframes dr-ticker { to { transform: translateX(-100%); } }
+@keyframes dr-ticker { to { transform: translateX(-50%); } }
 
 /* Recent-picks ticker */
 .pick-ticker {
