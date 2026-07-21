@@ -265,10 +265,7 @@ function onPickMade({ pick, state }) {
     // Mark this pick's board cell so renderBoard animates just it (once).
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
-    var member = membersById[String(pick.userId)];
-    var name = member ? `${member.firstName} ${member.lastName.substring(0, 1)}.` : 'Someone';
-    successToast.options.text = `${name} drafted ${pick.team.school}`;
-    successToast.showToast();
+    // No per-pick toast — the board pick-reveal and the ticker already show it.
     // Celebrate your own pick with a short confetti burst.
     if (String(pick.userId) === String(myUserId) && !ccReduced() && typeof startConfetti === 'function') {
         startConfetti();
