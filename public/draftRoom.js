@@ -33,6 +33,53 @@ var pool = [];               // enriched team rows for the pool table
 var poolSort = { key: 'xwins', dir: -1 };
 var xwMin = 0, xwMax = 0;
 
+// Self-hosted conference logos (same set as the team page) — used instead of
+// conference names in the mobile pool cards so long names don't get cut off.
+function conferenceLogo(conf) {
+    var map = {
+        'ACC': '../images/logo-acc.svg',
+        'American Athletic': '../images/logo-aac.png',
+        'Big 12': '../images/logo-big12.png',
+        'Big Ten': '../images/logo-big-ten.svg',
+        'Conference USA': '../images/logo-cusa.png',
+        'FBS Independents': '../images/logo-fbs-independents.gif',
+        'Mid-American': '../images/logo-mac.png',
+        'Mountain West': '../images/logo-mountain-west.png',
+        'Pac-12': '../images/logo-pac12.png',
+        'Sun Belt': '../images/logo-sun-belt.png',
+        'SEC': '../images/logo-sec.png'
+    };
+    return map[conf] || '';
+}
+
+// Manager display: prefer the season's franchise/team name, fall back to person.
+function managerName(userId) {
+    var m = membersById[String(userId)];
+    return m ? `${m.firstName || ''} ${m.lastName || ''}`.trim() : 'Unknown';
+}
+function managerDisplay(userId) {
+    var m = membersById[String(userId)];
+    if (!m) return 'Unknown';
+    var yr = (draft && draft.season) || season;
+    var s = (m.seasons || []).find(x => String(x.season) === String(yr));
+    return (s && s.franchiseName) || managerName(userId);
+}
+
+// Small round avatar for the board (photo face-crop or colored initials), so the
+// board can show managers by picture and reclaim the space the names used.
+function memberAvatar(userId) {
+    var m = membersById[String(userId)];
+    if (!m) return '<span class="board-avatar board-avatar-initials" style="background:#333">?</span>';
+    var initials = (((m.firstName || '')[0] || '') + ((m.lastName || '')[0] || '')).toUpperCase();
+    if (m.avatarUrl) {
+        var src = m.avatarUrl.indexOf('/upload/') !== -1
+            ? m.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_64,h_64,q_auto,f_auto/')
+            : m.avatarUrl;
+        return `<span class="board-avatar"><img src="${src}" alt=""></span>`;
+    }
+    return `<span class="board-avatar board-avatar-initials" style="background:${m.color || '#333'}">${escapeHtml(initials || '?')}</span>`;
+}
+
 window.onload = async function () {
     detectMobile();
     initNavbarToggle();
@@ -111,7 +158,7 @@ function buildPool(teams, recruiting) {
             var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
             if (r) rank = r.rank;
         }
-        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank };
+        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, scoreYear: prev ? prev.season : null };
     });
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
@@ -222,15 +269,20 @@ function renderPool() {
             var action = drafted
                 ? '<span class="drafted-chip">Drafted</span>'
                 : `<button class="draft-pick-btn card-draft" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
+            var cl = conferenceLogo(p.conf);
+            var confHtml = cl
+                ? `<img class="pc-conf-logo" src="${cl}" alt="${escapeHtml(p.conf)}" title="${escapeHtml(p.conf)}">`
+                : `<span class="pc-conf">${escapeHtml(p.conf)}</span>`;
+            var ptsLabel = p.scoreYear ? `'${String(p.scoreYear).slice(-2)} pts` : 'pts';
             return `<div class="pool-card${drafted ? ' drafted' : ''}">
                 ${action}
                 <div class="pool-card-main">
                     <span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>
-                    <span class="pool-card-meta"><span class="pc-conf">${escapeHtml(p.conf)}</span>${badge}</span>
+                    <span class="pool-card-meta">${confHtml}${badge}</span>
                 </div>
                 <div class="pool-card-stats">
                     <span><b>${p.xwins || '-'}</b><small>xWins</small></span>
-                    <span><b>${p.score == null ? '-' : p.score}</b><small>last yr</small></span>
+                    <span><b>${p.score == null ? '-' : p.score}</b><small>${ptsLabel}</small></span>
                 </div>
             </div>`;
         }).join('');
@@ -418,10 +470,9 @@ function renderBoard() {
     var onClock = draft.onTheClock || {};
     var bodyStr = '';
     draft.draftOrder.forEach(userId => {
-        var member = membersById[String(userId)];
-        var name = member ? `${member.firstName} ${member.lastName.substring(0, 1)}.` : '—';
         bodyStr += '<tr>';
-        bodyStr += `<td class="draft-board-name">${escapeHtml(name)}</td>`;
+        // Avatar only (name in the tooltip) to save horizontal space.
+        bodyStr += `<td class="draft-board-name" title="${escapeHtml(managerDisplay(userId))}">${memberAvatar(userId)}</td>`;
         for (var round = 1; round <= draft.totalRounds; round++) {
             var pick = draft.picks.find(p => String(p.userId) === String(userId) && p.round === round);
             var isClock = onClock.userId === String(userId) && onClock.round === round;
@@ -443,15 +494,14 @@ function renderOnTheClock() {
     var el = document.getElementById('on-the-clock');
     if (!draft || draft.status !== 'active' || !draft.onTheClock) { el.innerHTML = ''; el.classList.remove('your-turn'); return; }
     var oc = draft.onTheClock;
-    var member = membersById[String(oc.userId)];
-    var name = member ? `${member.firstName} ${member.lastName}` : 'Unknown';
     var mine = String(oc.userId) === String(myUserId);
     // .your-turn drives the urgency pulse in CSS (only when it's you).
     el.classList.toggle('your-turn', mine);
     if (mine) {
         el.innerHTML = `<span class="you-are-up">🟢 You're on the clock! — Round ${oc.round}, Pick #${oc.overall}</span>`;
     } else {
-        el.innerHTML = `<span>On the clock: <strong>${escapeHtml(name)}</strong> — Round ${oc.round}, Pick #${oc.overall}</span>`;
+        // Show the manager's team/franchise name (falls back to their name).
+        el.innerHTML = `<span>On the clock: <strong>${escapeHtml(managerDisplay(oc.userId))}</strong> — Round ${oc.round}, Pick #${oc.overall}</span>`;
     }
 }
 
