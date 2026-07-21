@@ -41,7 +41,6 @@
         <span class="bar"></span>
         <span class="bar"></span>
         <span class="bar"></span>
-        <span class="bar"></span>
     </button>
     <div class="navbar-links" id="navbar-links">
         <ul>
@@ -53,8 +52,9 @@
                         Leagues
                     </button>
                     <div league-selector class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
-                        <a class="dropdown-item" href="#" value="claunts-league">Claunts League</a>
-                        <a class="dropdown-item selected" href="#" value="graham-league">Graham League</a>
+                        <% (typeof leagues !== 'undefined' && leagues || []).forEach(function (lg) { %>
+                        <a class="dropdown-item" href="#" value="<%= lg.code %>"><%= lg.name %></a>
+                        <% }) %>
                     </div>
                 </div>
             </li>
@@ -70,26 +70,56 @@
     </div>
 </nav>
 <script>
-    // Navbar behaviors that belong to the navbar itself: wire the hamburger and
-    // highlight the current page. This runs inline right after the markup above,
-    // so the elements already exist (no retry needed) and pages no longer wire
-    // the toggle themselves.
+    // Navbar behaviors that belong to the navbar itself: wire the hamburger,
+    // seed the "My team" link, and highlight the current page. This runs inline
+    // right after the markup above, so the elements already exist (no retry
+    // needed) and pages no longer wire any of this themselves.
     (function () {
         var nav = document.getElementById('navbar');
         if (!nav) return;
-
-        // Hamburger open/close + aria-expanded, owned here so there's a single
-        // click binding across all pages.
         var links = document.getElementById('navbar-links');
         var toggle = nav.querySelector('.toggle-button');
+
+        // --- Hamburger: single click binding, plus close on Escape / outside
+        // click / link tap, so the mobile menu doesn't get stuck open. ---
+        function setOpen(open) {
+            links.classList.toggle('active', open);
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
         if (links && toggle) {
             toggle.addEventListener('click', function () {
-                var open = links.classList.toggle('active');
-                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                setOpen(!links.classList.contains('active'));
+            });
+            // Tapping a destination link closes the menu (dropdown toggles are
+            // <button>s, so opening "Leagues" leaves the menu open).
+            links.addEventListener('click', function (e) {
+                if (e.target.closest('a')) setOpen(false);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && links.classList.contains('active')) {
+                    setOpen(false);
+                    toggle.focus();
+                }
+            });
+            document.addEventListener('click', function (e) {
+                if (links.classList.contains('active') && !nav.contains(e.target)) setOpen(false);
             });
         }
 
-        // Highlight the current page.
+        // --- "My team" link: seed href + cache userId for the localStorage
+        // fallback other pages read. userState is injected by the server before
+        // this runs. (The href is also server-rendered; this re-affirms it.) ---
+        try {
+            var inner = (window.userState && userState.user_metadata && userState.user_metadata.metadata) || {};
+            var userId = inner.userId || window.localStorage.getItem('userId');
+            if (userId) {
+                window.localStorage.setItem('userId', userId);
+                var myLink = nav.querySelector('[user-home]');
+                if (myLink) myLink.href = '/userHome?user=' + userId;
+            }
+        } catch (e) { /* non-fatal: link falls back to its server-rendered href */ }
+
+        // --- Highlight the current page. ---
         var here = (location.pathname.replace(/\/+$/, '') || '/');
         nav.querySelectorAll('.navbar-links a').forEach(function (a) {
             // Skip in-page/dropdown anchors (href="#") — their pathname resolves

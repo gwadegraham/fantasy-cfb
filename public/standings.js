@@ -128,7 +128,7 @@ async function getUsers() {
             maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
-            setNavbarUserId(userMetadata, usersData);
+            seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
             setChartData(data);
             document.querySelector('[chart-container]').removeAttribute("style");
@@ -880,29 +880,19 @@ function showRandomNoGamesMessage() {
   container.innerHTML = noGamesMessages[randomIndex];
 }
 
-function setNavbarUserId(metaData, usersData) {
-    var userId = userState.user_metadata.metadata.userId || null;
+// Legacy-account fallback: the navbar seeds the "My team" link + caches userId
+// from the Auth0 metadata. But some older accounts have no metadata.userId — for
+// those, derive the id from the email against the fetched user list and cache it,
+// so the localStorage-based lookups on this page (myId, highlights) still work.
+function seedUserIdFromEmail(metaData, usersData) {
+    if (userState.user_metadata.metadata.userId) return; // navbar already cached it
+    if (!metaData || !metaData.email || !Array.isArray(usersData)) return;
 
-    if (userId == null) {
-        if (!metaData || !metaData.email || !Array.isArray(usersData)) {
-            return null;
-        }
-
-        const email = metaData.email.toLowerCase();
-        const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
-        userId = user ? user._id : null;
-    }
-
-    window.localStorage.setItem("userId", userId);
-    
-    const toggleButton = document.querySelector('.toggle-button');
-    const navbarLinks = document.querySelector('.navbar-links');
-    const myLink = document.querySelector('[user-home]');
-
-    if (toggleButton && navbarLinks && myLink) {
-        myLink.href = `/userHome?user=${userId}`;
-    } else {
-        // Retry after 500ms if elements aren't in the DOM yet
-        setTimeout(setNavbarUserId, 500);
+    const email = metaData.email.toLowerCase();
+    const user = usersData.find(u => u.email && u.email.toLowerCase() == email);
+    if (user && user._id) {
+        window.localStorage.setItem("userId", user._id);
+        const myLink = document.querySelector('[user-home]');
+        if (myLink) myLink.href = `/userHome?user=${user._id}`;
     }
 }

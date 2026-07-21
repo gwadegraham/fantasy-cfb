@@ -1,9 +1,8 @@
 var leagueCode;
 
 window.onload = async function () {
-    // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
-    setNavbarUserId();
-
+    // The navbar partial (views/partials/navbar.ejs) owns its hamburger and the
+    // "My team" link + userId caching.
     const response = await fetch(`/profile`, {
         method: 'GET',
         headers: {
@@ -48,21 +47,4 @@ if ($("[league-selector]")) {
 }
 
 
-function setNavbarUserId() {
-    var userId = userState.user_metadata.metadata.userId || null;
-
-    if (userId == null) {
-        userId = window.localStorage.getItem("userId");
-    }
-
-    const toggleButton = document.querySelector('.toggle-button');
-    const navbarLinks = document.querySelector('.navbar-links');
-    const myLink = document.querySelector('[user-home]');
-
-    if (toggleButton && navbarLinks && myLink) {
-        myLink.href = `/userHome?user=${userId}`;
-    } else {
-        // Retry after 500ms if elements aren't in the DOM yet
-        setTimeout(setNavbarUserId, 500);
-    }
-}
+// The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).

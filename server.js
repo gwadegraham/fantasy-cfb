@@ -13,7 +13,7 @@ const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
 const ScoringConfig = require('./models/scoringConfig');
-const { resolveConfig, fieldsForModel } = require('./modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, LEAGUES } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -57,6 +57,9 @@ const config = {
   clientID: process.env.CLIENT_ID,
   issuerBaseURL: process.env.ISSUER_BASE_URL
 };
+
+// Expose the league list to every view (the navbar switcher renders from it).
+app.locals.leagues = LEAGUES;
 
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));

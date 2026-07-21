@@ -104,6 +104,14 @@ function modelForLeague(league) {
     return league === 'graham-league' ? 'graham' : 'claunts';
 }
 
+// The leagues surfaced in the navbar switcher (array order = display order).
+// One place to add or rename a league instead of hardcoding <a> tags in the
+// navbar partial; codes map to the scoring engines via modelForLeague().
+const LEAGUES = [
+    { code: 'claunts-league', name: 'Claunts League' },
+    { code: 'graham-league', name: 'Graham League' }
+];
+
 // Flat, ordered field metadata for the admin form + rules page. Regular-win
 // fields carry group 'regular'; postseason fields group 'postseason' and are
 // toggleable (enable/disable). `enabled` reflects the resolved `disabled` set.
@@ -140,6 +148,6 @@ function resolveConfig(league, overrides) {
 }
 
 module.exports = {
-    CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS,
+    CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS, LEAGUES,
     modelForLeague, fieldsForModel, resolveConfig
 };
