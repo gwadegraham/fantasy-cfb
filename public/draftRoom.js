@@ -266,9 +266,12 @@ function onPickMade({ pick, state }) {
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
     // No per-pick toast — the board pick-reveal and the ticker already show it.
-    // Celebrate your own pick with a short confetti burst.
+    // Celebrate your own pick with a short confetti burst in white + the
+    // drafted team's colour.
     if (String(pick.userId) === String(myUserId) && !ccReduced() && typeof startConfetti === 'function') {
-        startConfetti();
+        var tc = pick.team && pick.team.color;
+        if (tc && tc.charAt(0) !== '#') tc = '#' + tc;
+        startConfetti(tc ? ['#ffffff', tc] : undefined);
         setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
     }
 }
