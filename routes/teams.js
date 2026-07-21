@@ -247,6 +247,103 @@ router.post('/:season/expectedWins', async (req, res) => {
     res.status(200).json(updatedTeams);
 });
 
+// Enrich each team's season with opponent-agnostic CFBD data: SP+ / FPI power
+// ratings, 247 talent, returning production, and head coach. One run makes ~5
+// CFBD calls total (each endpoint returns all teams), so it's cheap to schedule
+// weekly. Commissioner/token-gated by the /teams middleware in server.js.
+router.post('/:season/enrich', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({message: 'Invalid season'});
+    }
+    const season = Number(req.params.season);
+    const cfbd = (path) => fetch(`https://api.collegefootballdata.com${path}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+    }).then(r => r.ok ? r.json() : []);
+
+    const norm = (s) => String(s == null ? '' : s).toLowerCase().trim();
+
+    try {
+        const [sp, fpi, talent, returning, coaches] = await Promise.all([
+            cfbd(`/ratings/sp?year=${season}`),
+            cfbd(`/ratings/fpi?year=${season}`),
+            cfbd(`/talent?year=${season}`),
+            cfbd(`/player/returning?year=${season}`),
+            cfbd(`/coaches?year=${season}`)
+        ]);
+
+        // Build lookup maps keyed by normalized team name.
+        const spMap = new Map();
+        (Array.isArray(sp) ? sp : []).forEach(r => spMap.set(norm(r.team), r));
+
+        // FPI has no overall rank field, so derive it by sorting the rating.
+        const fpiMap = new Map();
+        (Array.isArray(fpi) ? fpi : [])
+            .filter(r => r.fpi != null)
+            .sort((a, b) => b.fpi - a.fpi)
+            .forEach((r, i) => fpiMap.set(norm(r.team), { fpi: r.fpi, rank: i + 1 }));
+
+        const talentMap = new Map();
+        (Array.isArray(talent) ? talent : []).forEach(r => talentMap.set(norm(r.school), r.talent));
+
+        const retMap = new Map();
+        (Array.isArray(returning) ? returning : []).forEach(r => retMap.set(norm(r.team), r.percentPPA));
+
+        // Coaches are coach-centric; flatten to a team->name map for the season.
+        const coachMap = new Map();
+        (Array.isArray(coaches) ? coaches : []).forEach(c => {
+            (c.seasons || []).forEach(s => {
+                if (Number(s.year) === season && s.school) {
+                    coachMap.set(norm(s.school), `${c.firstName || ''} ${c.lastName || ''}`.trim());
+                }
+            });
+        });
+
+        const teams = await Team.find();
+        let updated = 0;
+        for (const team of teams) {
+            const keys = [norm(team.school), ...((team.alternateNames || []).map(norm))];
+            const pick = (map) => { for (const k of keys) if (map.has(k)) return map.get(k); return undefined; };
+
+            const spR = pick(spMap), fpiR = pick(fpiMap), tal = pick(talentMap), ret = pick(retMap), coach = pick(coachMap);
+            if (spR === undefined && fpiR === undefined && tal === undefined && ret === undefined && coach === undefined) continue;
+
+            let idx = team.seasons.findIndex(x => x.season == season);
+            if (idx === -1) {
+                team.seasons.push({ season: season, conference: team.conference });
+                idx = team.seasons.length - 1;
+            }
+            const s = team.seasons[idx];
+            if (spR) {
+                if (spR.rating != null) s.spRating = spR.rating;
+                if (spR.ranking != null) s.spRank = spR.ranking;
+            }
+            if (fpiR) { s.fpiRating = fpiR.fpi; s.fpiRank = fpiR.rank; }
+            if (tal != null) s.talent = Number(tal);
+            if (ret != null) {
+                // percentPPA arrives as a 0-1 fraction; store as a 0-100 percent.
+                var pct = Number(ret);
+                s.returningProduction = Math.round((pct <= 1 ? pct * 100 : pct) * 10) / 10;
+            }
+            if (coach) s.coach = coach;
+
+            await team.save();
+            updated++;
+        }
+
+        res.status(200).json({
+            season, updated,
+            counts: {
+                sp: (sp || []).length, fpi: (fpi || []).length, talent: (talent || []).length,
+                returning: (returning || []).length, coaches: (coaches || []).length
+            }
+        });
+    } catch (err) {
+        console.log('Error enriching teams:', err.message);
+        res.status(400).json({message: err.message});
+    }
+});
+
 //Refreshing All
 router.post('/refresh', async (req, res) => {
     try {

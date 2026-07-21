@@ -218,4 +218,44 @@ router.post('/week/mass-create', async (req, res) => {
     }
 });
 
+// Populate broadcast info (TV/web outlet) onto existing game docs from CFBD
+// /games/media. One call covers the whole season; matched by game id.
+router.post('/:season/media', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    try {
+        const response = await fetch(`https://api.collegefootballdata.com/games/media?year=${season}&seasonType=both`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+        });
+        const media = await response.json();
+        if (!response.ok || !Array.isArray(media)) {
+            return res.status(400).json({ message: (media && media.message) || 'Could not fetch media' });
+        }
+
+        // A game can have multiple media rows (tv + web); prefer a TV outlet.
+        const byId = new Map();
+        media.forEach(m => {
+            if (m.id == null) return;
+            const existing = byId.get(m.id);
+            if (!existing || (m.mediaType === 'tv' && existing.mediaType !== 'tv')) byId.set(m.id, m);
+        });
+
+        let updated = 0;
+        for (const [id, m] of byId) {
+            const result = await Game.updateOne(
+                { id: id },
+                { $set: { mediaType: m.mediaType || null, outlet: m.outlet || null } }
+            );
+            if (result.modifiedCount) updated++;
+        }
+        res.status(200).json({ season, mediaRows: media.length, updated });
+    } catch (err) {
+        console.log('Error updating game media:', err.message);
+        res.status(400).json({ message: err.message });
+    }
+});
+
 module.exports = router;
