@@ -311,7 +311,7 @@ function renderAll() {
     renderPool();
 }
 
-// Scrolling ribbon of recent picks above the board (most recent first).
+// Scrolling ribbon of every pick, in draft order (pick #1 → most recent).
 function renderTicker() {
     var el = document.getElementById('pick-ticker');
     if (!el) return;
@@ -320,14 +320,15 @@ function renderTicker() {
         el.innerHTML = '';
         return;
     }
-    var recent = draft.picks.slice(-16).reverse();
-    var chips = recent.map(function (p) {
+    // Chronological order (defensive sort in case picks aren't stored ordered).
+    var ordered = draft.picks.slice().sort(function (a, b) { return (a.overall || 0) - (b.overall || 0); });
+    var chips = ordered.map(function (p) {
         var logo = (p.team.logos && p.team.logos.length) ? p.team.logos.at(-1) : '';
         return `<span class="pick-chip"><span class="pk">#${p.overall}</span>`
             + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</span>`;
     }).join('');
     // Only loop-scroll when there are enough picks to overflow and motion is OK.
-    var scroll = !ccReduced() && recent.length > 5;
+    var scroll = !ccReduced() && ordered.length > 5;
     el.innerHTML = `<div class="pick-ticker-track${scroll ? ' scroll' : ''}">${scroll ? chips + chips : chips}</div>`;
 }
 
