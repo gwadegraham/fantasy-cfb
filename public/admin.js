@@ -22,37 +22,8 @@ function detectMobile() {
     }
 }
 
-var successToast = Toastify({
-    text: "",
-    duration: 4000,
-    close: true,
-    gravity: "top", // `top` or `bottom`
-    position: "left", // `left`, `center` or `right`
-    stopOnFocus: true, // Prevents dismissing of toast on hover
-    style: {
-      background: "#71d28d",
-      color: "#222"
-    },
-    offset: {
-        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
-    },
-});
-
-var failToast = Toastify({
-    text: "",
-    duration: 3000,
-    close: true,
-    gravity: "top", // `top` or `bottom`
-    position: "left", // `left`, `center` or `right`
-    stopOnFocus: true, // Prevents dismissing of toast on hover
-    style: {
-      background: "#d27171",
-      color: "#222"
-    },
-    offset: {
-        y: '40px' // vertical axis - can be a number or a string indicating unity. eg: '2em'
-    },
-});
+// successToast / failToast are shared globals defined in public/toast.js
+// (loaded by the navbar partial). Set .options.text then call .showToast().
 
 async function getTeams() {
     fetch("/teams", {
