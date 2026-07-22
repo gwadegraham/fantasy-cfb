@@ -13,12 +13,69 @@ button {
     font-family: "Font Awesome 5 Free" !important;
     padding-left: 0.5rem;
 }
-.toast-close {
-    color: #222 !important;
-}
-
 .fa-helmet-un {
     color: #ed5858;
+}
+
+/* ---- Toasts (Toastify) ------------------------------------------------------
+   Modern dark-surface toast with a colored left accent + icon per type. Every
+   toast carries the .cc-toast class (see public/toast.js), so these two-class
+   selectors win over Toastify's base .toastify rules regardless of load order. */
+.toastify.cc-toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 360px;
+    padding: 14px 16px;
+    background: #1A1F33;
+    color: #F4F6FB;
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.35;
+    border: 1px solid #2A2E42;
+    border-left: 4px solid #A4A9C2;   /* accent color set per type below */
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Leading status icon (FontAwesome 6, which the app already loads). */
+.toastify.cc-toast::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 1.15rem;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.cc-toast--success { border-left-color: #22C37A; }
+.cc-toast--success::before { content: "\f058"; color: #22C37A; }   /* circle-check */
+
+.cc-toast--error { border-left-color: #ED5858; }
+.cc-toast--error::before { content: "\f06a"; color: #ED5858; }     /* circle-exclamation */
+
+.cc-toast--info { border-left-color: #4A90D9; }
+.cc-toast--info::before { content: "\f05a"; color: #4A90D9; }      /* circle-info */
+
+/* Close button: quiet by default, brightens on hover. */
+.toastify.cc-toast .toast-close {
+    color: #A4A9C2;
+    opacity: 0.85;
+    font-size: 1.15rem;
+    line-height: 1;
+    padding: 0 0 0 6px;
+    background: transparent;
+    align-self: flex-start;
+}
+.toastify.cc-toast .toast-close:hover {
+    color: #F4F6FB;
+    opacity: 1;
+}
+
+/* Don't let a toast run off a phone screen. */
+@media (max-width: 600px) {
+    .toastify.cc-toast {
+        max-width: calc(100vw - 32px);
+    }
 }
 
 body {

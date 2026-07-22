@@ -520,15 +520,8 @@ function renderOnTheClock() {
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
 
-var successToast = Toastify({
-    text: "", duration: 4000, close: true, gravity: "top", position: "left", stopOnFocus: true,
-    style: { background: "#71d28d", color: "#222" }, offset: { y: '40px' }
-});
-
-var failToast = Toastify({
-    text: "", duration: 3000, close: true, gravity: "top", position: "left", stopOnFocus: true,
-    style: { background: "#d27171", color: "#222" }, offset: { y: '40px' }
-});
+// successToast / failToast are shared globals defined in public/toast.js
+// (loaded by the navbar partial). Set .options.text then call .showToast().
 
 if ($("[league-selector]")) {
     setTimeout(() => {
