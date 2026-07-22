@@ -126,7 +126,7 @@ async function loadHomeGrades(user) {
             renderDraftGrades(el, data, {
                 currentUserId: me,
                 title: 'Draft Grades · ' + season,
-                note: 'Preseason grade — a blend of roster strength (SP+) and draft value (quality vs. where each team was picked), curved within the league.'
+                note: 'Preseason grade — a blend of team quality (SP+), projected wins, and CFP upside. Each draft graded on its own merit.'
             });
         }
     } catch (e) {

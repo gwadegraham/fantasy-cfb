@@ -1,30 +1,61 @@
 // Post-draft grades — immediate, PRESEASON feedback the moment a draft ends
-// (no games required). Blends two signals known at draft time:
-//   * roster strength — average preseason SP+ of the teams drafted
-//   * draft value      — how much each pick's SP+ quality beat its draft slot
-// Each is min-max normalized within the league, blended 50/50, then curved to a
-// letter grade. SP+ mirrors the draft pool: the season's rating, falling back to
-// the prior season's rating when this season's isn't populated yet.
+// (no games required). Each draft is judged on its OWN MERIT against fixed
+// thresholds (absolute bands), so a manager's grade never depends on how their
+// leaguemates drafted.
+//
+// The grade blends three preseason roster-quality signals, chosen to match how
+// THIS league actually scores (wins + ranked wins + deep CFP runs):
+//   * team quality  — average SP+
+//   * projected wins — average expected wins (the win-based core of scoring)
+//   * CFP upside     — reward stacking likely-playoff teams (advancing in the
+//                      12-team CFP is worth the most points). Proxied by SP+
+//                      national rank; top-4-caliber weighted highest.
+//
+// Each signal is normalized against fixed anchors (tunable below) and blended,
+// then mapped to a letter. SP+/wins mirror the draft pool (season value, prior-
+// season fallback). Best-value / biggest-reach picks (shown as highlights, not
+// part of the letter) use projected wins over the slot's "par".
 
-// Preseason SP+ for a team in a season (prev-season fallback, like the pool).
-function spFor(team, season) {
+// --- absolute grading anchors + weights (tune here) ---
+const STRENGTH_LOW = -3, STRENGTH_HIGH = 16;   // roster avg SP+  → 0..1
+const WINS_LOW = 6.0, WINS_HIGH = 9.0;         // roster avg expected wins → 0..1
+const CFP_LOW = 0, CFP_HIGH = 3.0;             // roster CFP-upside sum → 0..1
+const W_STRENGTH = 0.35, W_WINS = 0.35, W_CFP = 0.30;
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+// A season value on a team (SP+ or expected wins), with prior-season fallback.
+function seasonVal(team, season, field) {
     const seasons = (team && team.seasons) || [];
     const cur = seasons.find(s => Number(s.season) === season);
-    if (cur && cur.spRating != null) return cur.spRating;
+    if (cur && cur[field] != null) return cur[field];
     const prev = seasons.find(s => Number(s.season) === season - 1);
-    if (prev && prev.spRating != null) return prev.spRating;
+    if (prev && prev[field] != null) return prev[field];
     return null;
 }
+const spFor = (t, s) => seasonVal(t, s, 'spRating');
+const winsFor = (t, s) => seasonVal(t, s, 'expectedWins');
 
-// Letter grade from a rank fraction (0 = best in league, 1 = worst).
-function letterFor(frac) {
-    if (frac <= 0.15) return 'A';
-    if (frac <= 0.30) return 'A-';
-    if (frac <= 0.45) return 'B+';
-    if (frac <= 0.60) return 'B';
-    if (frac <= 0.75) return 'B-';
-    if (frac <= 0.90) return 'C+';
-    return 'C';
+// CFP upside for a team, by its SP+ national rank (1 = best). Top seeds advance
+// further in the 12-team playoff, so they're worth the most.
+function cfpTier(rank) {
+    if (rank == null) return 0;
+    if (rank <= 4) return 1.0;    // bye-caliber — deep run likely
+    if (rank <= 12) return 0.6;   // in the field
+    if (rank <= 25) return 0.25;  // bubble / ranked
+    return 0;
+}
+
+// Letter grade from an absolute 0..1 score (fixed bands).
+function letterFor(score) {
+    if (score >= 0.85) return 'A';
+    if (score >= 0.75) return 'A-';
+    if (score >= 0.65) return 'B+';
+    if (score >= 0.55) return 'B';
+    if (score >= 0.45) return 'B-';
+    if (score >= 0.35) return 'C+';
+    if (score >= 0.25) return 'C';
+    return 'D';
 }
 
 function displayName(u) {
@@ -34,7 +65,7 @@ function displayName(u) {
 function pickView(p) {
     return p ? {
         school: p.school, round: p.round, overall: p.overall,
-        sp: Math.round(p.sp * 10) / 10, value: p.value, logo: p.logo || null
+        wins: Math.round(p.wins * 10) / 10, value: p.value, logo: p.logo || null
     } : null;
 }
 
@@ -42,60 +73,73 @@ function pickView(p) {
 function computeGrades(draft, usersById, teamsById) {
     const season = Number(draft.season);
 
-    // 1. Preseason SP+ per pick (0 = league-average when a team has no rating).
+    // National reference curves for this season.
+    const allTeams = Object.keys(teamsById).map(k => teamsById[k]);
+    // SP+ rank per team id (1 = best).
+    const spRankById = {};
+    allTeams.map(t => ({ id: t.id, sp: spFor(t, season) }))
+        .filter(x => x.sp != null)
+        .sort((a, b) => b.sp - a.sp)
+        .forEach((x, i) => { spRankById[String(x.id)] = i + 1; });
+    // 1. Per pick: SP+, projected wins, CFP tier.
     const picks = (draft.picks || []).map(p => {
         const team = teamsById[String(p.team.id)];
         const sp = spFor(team, season);
+        const wins = winsFor(team, season);
         return {
             userId: String(p.userId), overall: p.overall, round: p.round,
             school: p.team.school, logo: (p.team.logos || [])[0],
-            sp: sp == null ? 0 : sp
+            sp: sp == null ? 0 : sp, wins: wins == null ? 0 : wins,
+            spRank: spRankById[String(p.team.id)] || null,
+            cfp: cfpTier(spRankById[String(p.team.id)] || null)
         };
     });
 
-    // 2. Quality rank by SP+ (1 = best) → value = how far it beat its slot.
-    picks.slice().sort((a, b) => b.sp - a.sp).forEach((p, i) => { p.qualityRank = i + 1; });
-    picks.forEach(p => { p.value = p.overall - p.qualityRank; });
+    // Highlight value = how far a pick beat its draft slot on projected wins:
+    // rank all picks by projected wins (1 = most), then value = overall − winsRank.
+    // Big positive = a win-heavy team that fell (steal); big negative = a low-win
+    // team taken early (reach). Elite early picks rank high, so they aren't
+    // penalized. This drives the steal/reach highlights only — not the grade.
+    picks.slice().sort((a, b) => b.wins - a.wins).forEach((p, i) => { p.winsRank = i + 1; });
+    picks.forEach(p => { p.value = p.overall - p.winsRank; });
 
-    // 3. Roll up per manager.
+    // 2. Roll up per manager.
     const byUser = {};
     picks.forEach(p => { (byUser[p.userId] = byUser[p.userId] || []).push(p); });
 
-    const managers = Object.keys(byUser).map(uid => {
+    return Object.keys(byUser).map(uid => {
         const ps = byUser[uid].slice().sort((a, b) => a.overall - b.overall);
         const strength = ps.reduce((s, p) => s + p.sp, 0) / ps.length;
-        const avgValue = ps.reduce((s, p) => s + p.value, 0) / ps.length;
+        const projWins = ps.reduce((s, p) => s + p.wins, 0) / ps.length;
+        const cfpSum = ps.reduce((s, p) => s + p.cfp, 0);
+        const cfpCount = ps.filter(p => p.spRank != null && p.spRank <= 12).length;
         const best = ps.slice().sort((a, b) => b.value - a.value)[0];
         const worst = ps.slice().sort((a, b) => a.value - b.value)[0];
         const u = usersById[uid] || {};
         const us = (u.seasons || []).find(s => Number(s.season) === season) || {};
+
+        // 3. Absolute blended score → letter (each draft on its own merit).
+        const sStr = clamp01((strength - STRENGTH_LOW) / (STRENGTH_HIGH - STRENGTH_LOW));
+        const sWin = clamp01((projWins - WINS_LOW) / (WINS_HIGH - WINS_LOW));
+        const sCfp = clamp01((cfpSum - CFP_LOW) / (CFP_HIGH - CFP_LOW));
+        const score = W_STRENGTH * sStr + W_WINS * sWin + W_CFP * sCfp;
+
         return {
             userId: uid, name: displayName(u), franchise: us.franchiseName || null,
             avatarUrl: u.avatarUrl || null,
             strength: Math.round(strength * 10) / 10,
-            avgValue: Math.round(avgValue * 10) / 10,
-            bestPick: pickView(best), worstPick: pickView(worst)
+            projWins: Math.round(projWins * 10) / 10,
+            cfpCount,
+            grade: letterFor(score),
+            // Only surface a steal/reach when it beat (or lagged) its slot by a
+            // few rounds — otherwise there's no notable story to tell.
+            bestPick: (best && best.value >= 5) ? pickView(best) : null,
+            worstPick: (worst && worst.value <= -5) ? pickView(worst) : null
         };
+    }).sort((a, b) => {
+        const order = ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D'];
+        return order.indexOf(a.grade) - order.indexOf(b.grade) || b.projWins - a.projWins;
     });
-
-    // 4. Blend: min-max normalize strength + value within the league, 50/50, curve.
-    const normalize = (key) => {
-        const vals = managers.map(m => m[key]);
-        const mn = Math.min(...vals), mx = Math.max(...vals);
-        managers.forEach(m => { m['_' + key] = (mx === mn) ? 0.5 : (m[key] - mn) / (mx - mn); });
-    };
-    normalize('strength');
-    normalize('avgValue');
-    managers.forEach(m => { m._blend = 0.5 * m._strength + 0.5 * m._avgValue; });
-    managers.sort((a, b) => b._blend - a._blend);
-
-    const n = managers.length;
-    managers.forEach((m, i) => {
-        m.rank = i + 1;
-        m.grade = letterFor(n > 1 ? i / (n - 1) : 0);
-        delete m._strength; delete m._avgValue; delete m._blend;
-    });
-    return managers;
 }
 
-module.exports = { computeGrades, spFor, letterFor };
+module.exports = { computeGrades, spFor, winsFor, cfpTier, letterFor };

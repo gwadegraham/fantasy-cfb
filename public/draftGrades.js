@@ -27,7 +27,7 @@
         return '<div class="gg-pick ' + cls + '">'
             + '<span class="gg-pick-label">' + label + '</span>'
             + '<span class="gg-pick-team">' + logo(p.logo) + esc(p.school) + '</span>'
-            + '<span class="gg-pick-meta">R' + p.round + ' · SP+ ' + p.sp + ' · ' + signed(p.value) + '</span>'
+            + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.wins + ' proj W · ' + signed(p.value) + ' slots</span>'
             + '</div>';
     }
 
@@ -44,8 +44,9 @@
             +   '<span class="gg-grade">' + esc(m.grade) + '</span>'
             + '</div>'
             + '<div class="gg-stats">'
+            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projWins + '</span><span class="gg-stat-lbl">proj wins</span></div>'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.strength + '</span><span class="gg-stat-lbl">avg SP+</span></div>'
-            +   '<div class="gg-stat"><span class="gg-stat-val">' + signed(m.avgValue) + '</span><span class="gg-stat-lbl">avg value / pick</span></div>'
+            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.cfpCount + '</span><span class="gg-stat-lbl">CFP teams</span></div>'
             + '</div>'
             + pickLine('best', m.bestPick)
             + pickLine('worst', m.worstPick)
