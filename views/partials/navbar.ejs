@@ -61,7 +61,6 @@
             <li><a href="./standings">Standings</a></li>
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
-            <li><a href="./draft-grades">Grades</a></li>
             <% if (user && user.userId) { %>
             <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team">
                 <% var nu = (typeof navUser !== 'undefined' && navUser) || null; %>

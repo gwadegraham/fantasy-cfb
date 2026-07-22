@@ -2,27 +2,32 @@ const express = require('express');
 const router = express.Router();
 const Draft = require('../models/draft');
 const User = require('../models/user');
+const Team = require('../models/team');
 const { computeGrades } = require('../modules/draft-grades');
 
-// Post-draft grades for a league + season: how well each manager drafted,
-// scored by how much their picks beat their draft slot (uses actual fantasy
-// points, so grades fill in as the season is played). Read-only.
+// Post-draft grades for a league + season — immediate preseason feedback that
+// blends roster strength (SP+) and draft value (SP+ quality vs. draft slot).
+// Read-only; available as soon as the draft is complete.
 router.get('/grades/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
         const draft = await Draft.findOne({ league, season }).lean();
         if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
-            return res.json({ league, season, pending: true, managers: [] });
+            return res.json({ league, season, managers: [] });
         }
         const users = await User.find({ league },
             { firstName: 1, lastName: 1, league: 1, avatarUrl: 1, seasons: 1 }).lean();
         const usersById = {};
         users.forEach(u => { usersById[String(u._id)] = u; });
 
-        const managers = computeGrades(draft, usersById);
-        const totalPoints = managers.reduce((s, m) => s + m.totalPoints, 0);
-        res.json({ league, season, pending: totalPoints === 0, managers });
+        // SP+ lives on the Team docs (the draft-pick snapshots don't carry it).
+        const teams = await Team.find({}, { id: 1, seasons: 1 }).lean();
+        const teamsById = {};
+        teams.forEach(t => { teamsById[String(t.id)] = t; });
+
+        const managers = computeGrades(draft, usersById, teamsById);
+        res.json({ league, season, managers });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

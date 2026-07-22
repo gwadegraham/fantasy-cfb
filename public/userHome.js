@@ -102,7 +102,36 @@ async function getUser() {
         renderProfileChart(data[0]);
         ensureWeekSelected(data[0]);
         displaySchedule(data[0]);
+        loadHomeGrades(data[0]);
     });
+}
+
+// Draft grades review, on the profile: this manager's most-recent season, with
+// the viewing user's card highlighted. Preseason blend of roster strength + draft
+// value (see modules/draft-grades.js).
+async function loadHomeGrades(user) {
+    const el = document.getElementById('uh-grades');
+    if (!el || !user || !user.league || !(user.seasons || []).length) return;
+    const season = user.seasons.at(-1).season;
+    try {
+        const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (!data.managers || !data.managers.length) return;   // no draft for this season — hide section
+        let me;
+        try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }
+        me = me || window.localStorage.getItem('userId') || user._id;
+        if (typeof renderDraftGrades === 'function') {
+            renderDraftGrades(el, data, {
+                currentUserId: me,
+                title: 'Draft Grades · ' + season,
+                note: 'Preseason grade — a blend of roster strength (SP+) and draft value (quality vs. where each team was picked), curved within the league.'
+            });
+        }
+    } catch (e) {
+        console.error('home grades failed:', e);
+    }
 }
 
 // The Games week defaults to the latest played week when nothing is stored,

@@ -400,3 +400,12 @@
    its number out of line under right-alignment). */
 .game-card .gc-score { text-align: left; white-space: nowrap; padding-left: 0.9em; width: 1%; }
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
+
+/* Draft grades review section on the profile (cards styled by draftGrades.css). */
+.uh-grades {
+    display: block;
+    width: 92%;
+    max-width: 1100px;
+    margin: 1.5rem auto 0;
+}
+.uh-grades:empty { display: none; }

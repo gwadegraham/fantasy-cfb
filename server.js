@@ -244,17 +244,6 @@ app.get('/team', async function(req, res) {
     }
 });
 
-app.get('/draft-grades', (req, res) => {
-    if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
-
-        res.render('draftGrades', { user, userState, year: process.env.YEAR });
-    } else {
-        res.redirect("/login");
-    }
-});
-
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
