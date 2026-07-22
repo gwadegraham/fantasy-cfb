@@ -225,6 +225,35 @@
     </section>
 
     <section class="admin-group">
+        <div class="group-head"><h2>Maintenance</h2><span class="group-count">1</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayDraftBackfillContainer()">
+                        <i class="fa-solid fa-clock-rotate-left" style="padding-right: 5px;"></i>
+                        Reconstruct Draft History
+                    </button>
+                </div>
+                <div class="sub-container" draft-backfill-container style="display: none">
+                    <p class="function-description">
+                        Rebuilds past drafts into the drafts collection from each manager's saved roster order
+                        (snake + the known draft orders). One-time; run against production. Preview shows every
+                        reconstructed board — nothing is written until you press Commit.
+                    </p>
+                    <form id="draft-backfill-form">
+                        <div class="backfill-controls">
+                            <button type="submit">Preview (dry run)</button>
+                            <button type="button" id="backfill-commit" disabled>Commit backfill</button>
+                            <label class="backfill-force"><input type="checkbox" id="backfill-force"> overwrite existing</label>
+                        </div>
+                    </form>
+                    <div id="backfill-results" class="backfill-results"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-group">
         <div class="group-head"><h2>League setup</h2><span class="group-count">4</span></div>
         <div class="admin-functions">
             <div class="function-container">
