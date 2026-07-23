@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const Team = require('../models/team');
+const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
 
 //Getting All
 router.get('/', async (req, res) => {
@@ -346,6 +347,57 @@ router.post('/:season/enrich', async (req, res) => {
     } catch (err) {
         console.log('Error enriching teams:', err.message);
         res.status(400).json({message: err.message});
+    }
+});
+
+// Ingest market CFP futures pasted from a sportsbook (make-CFP or championship
+// odds). Dry-run by default (returns matched/unmatched preview so the paste can
+// be verified); writes to team.seasons only when commit === true.
+// body: { market: 'make' | 'champ', text: '<pasted odds>', commit: bool }
+router.post('/:season/cfp-odds', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    const market = req.body.market === 'champ' ? 'champ' : 'make';
+    const field = market === 'champ' ? 'cfpChampOdds' : 'cfpMakeOdds';
+    const commit = req.body.commit === true;
+    try {
+        const entries = parseOdds(req.body.text || '');
+        if (!entries.length) {
+            return res.status(400).json({ message: 'No odds could be parsed from the input' });
+        }
+
+        const teams = await Team.find({}, 'id school alt_name1 alt_name2 alt_name3 alternateNames conference seasons');
+        const match = buildTeamMatcher(teams);
+
+        const matched = [], unmatched = [], seen = new Set();
+        for (const e of entries) {
+            const t = match(e.name);
+            if (!t) { unmatched.push(e.name); continue; }
+            if (seen.has(t.id)) continue;           // ignore duplicate lines
+            seen.add(t.id);
+            matched.push({ team: t, name: e.name, odds: e.odds, prob: Math.round(americanToProb(e.odds) * 1000) / 10 });
+        }
+
+        if (commit) {
+            for (const m of matched) {
+                const team = m.team;
+                let idx = team.seasons.findIndex(x => x.season == season);
+                if (idx === -1) { team.seasons.push({ season, conference: team.conference }); idx = team.seasons.length - 1; }
+                team.seasons[idx][field] = m.odds;
+                await team.save();
+            }
+        }
+
+        res.status(200).json({
+            season, market, field, dryRun: !commit,
+            matchedCount: matched.length, unmatchedCount: unmatched.length,
+            matched: matched.map(m => ({ school: m.team.school, id: m.team.id, name: m.name, odds: m.odds, prob: m.prob })),
+            unmatched
+        });
+    } catch (err) {
+        res.status(400).json({ message: err.message });
     }
 });
 

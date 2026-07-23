@@ -225,6 +225,44 @@
     </section>
 
     <section class="admin-group">
+        <div class="group-head"><h2>Market odds</h2><span class="group-count">1</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayCfpOddsContainer()">
+                        <i class="fa-solid fa-chart-simple" style="padding-right: 5px;"></i>
+                        Update CFP Odds
+                    </button>
+                </div>
+                <div class="sub-container" cfp-odds-container style="display: none">
+                    <p class="function-description">
+                        Paste a sportsbook's futures board (team + American odds) to feed the draft-grade
+                        CFP factor. Pick the market, paste, then <strong>Preview</strong> to check the team
+                        matches — nothing is saved until you <strong>Commit</strong>.
+                    </p>
+                    <form id="cfp-odds-form">
+                        <div><select cfp-odds-market>
+                            <option value="make">Odds to make the CFP</option>
+                            <option value="champ">Odds to win the championship</option>
+                        </select></div>
+                        <div><select cfp-odds-season>
+                            <% for (var y = Number(year) + 1; y >= 2023; y--) { %>
+                                <option value="<%= y %>"><%= y %></option>
+                            <% } %>
+                        </select></div>
+                        <div><textarea cfp-odds-text rows="6" placeholder="Paste the odds board here…"></textarea></div>
+                        <div class="cfp-odds-controls">
+                            <button type="submit">Preview</button>
+                            <button type="button" id="cfp-odds-commit" disabled>Commit</button>
+                        </div>
+                    </form>
+                    <div id="cfp-odds-results" class="cfp-odds-results"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-group">
         <div class="group-head"><h2>League setup</h2><span class="group-count">4</span></div>
         <div class="admin-functions">
             <div class="function-container">

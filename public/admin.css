@@ -541,3 +541,37 @@ select[scoring-config-combine-mode] { width: 100%; }
     max-width: 46ch;
     margin: 0 0 0.75em;
 }
+
+/* --- CFP odds ingestion (Market odds) --- */
+.sub-container textarea[cfp-odds-text] {
+    width: 100%;
+    background-color: #101322;
+    color: #F4F6FB;
+    border: 1px solid #2A2E42;
+    border-radius: 5px;
+    padding: 0.5em;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    resize: vertical;
+}
+.cfp-odds-controls { display: flex; gap: 0.6em; }
+#cfp-odds-commit:disabled { opacity: 0.45; cursor: not-allowed; }
+.cfp-odds-results { width: 100%; text-align: left; margin-top: 0.75em; }
+.cfp-odds-summary { color: #F4F6FB; font-weight: 600; margin-bottom: 0.5em; }
+.cfp-unmatched {
+    color: #E0B341;
+    font-size: 0.8rem;
+    background-color: rgba(224, 179, 65, 0.1);
+    border: 1px solid rgba(224, 179, 65, 0.35);
+    border-radius: 6px;
+    padding: 0.5em 0.65em;
+    margin-bottom: 0.75em;
+    line-height: 1.5;
+}
+.cfp-odds-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.cfp-odds-table th, .cfp-odds-table td { padding: 0.3em 0.6em; border-bottom: 1px solid #2A2E42; text-align: left; }
+.cfp-odds-table th {
+    color: #A4A9C2; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cfp-odds-table .cfp-num { font-variant-numeric: tabular-nums; text-align: right; }
+.cfp-odds-table tbody tr:hover { background-color: #171B31; }

@@ -712,6 +712,85 @@ if (enrichmentForm) {
     });
 }
 
+// --- CFP odds ingestion (Market odds) ---------------------------------------
+function displayCfpOddsContainer() {
+    var c = document.querySelector('[cfp-odds-container]');
+    c.style.display = (c.style.display === 'flex' || c.style.display === '') ? 'none' : 'flex';
+}
+
+(function () {
+    var form = document.getElementById('cfp-odds-form');
+    if (!form) return;
+    var commitBtn = document.getElementById('cfp-odds-commit');
+    var previewed = false;
+
+    async function run(commit) {
+        var season = document.querySelector('[cfp-odds-season]').value;
+        var market = document.querySelector('[cfp-odds-market]').value;
+        var text = document.querySelector('[cfp-odds-text]').value;
+        if (!text.trim()) {
+            failToast.options.text = 'Paste an odds board first';
+            failToast.showToast();
+            return;
+        }
+        block_screen();
+        try {
+            var res = await fetch('/teams/' + encodeURIComponent(season) + '/cfp-odds', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ market: market, text: text, commit: commit })
+            });
+            var data = await res.json();
+            unblock_screen();
+            if (res.status !== 200) {
+                failToast.options.text = (data && data.message) || (res.status + ' failed');
+                failToast.showToast();
+                return;
+            }
+            renderCfpOdds(data);
+            if (!commit) {
+                previewed = true;
+                commitBtn.disabled = false;
+                infoToast.options.text = 'Matched ' + data.matchedCount + ' teams' + (data.unmatchedCount ? (', ' + data.unmatchedCount + ' unmatched') : '') + '. Review, then Commit.';
+                infoToast.showToast();
+            } else {
+                successToast.options.text = 'Saved ' + data.matchedCount + ' ' + (market === 'champ' ? 'championship' : 'CFP') + ' odds for ' + season;
+                successToast.showToast();
+                commitBtn.disabled = true;
+                previewed = false;
+            }
+        } catch (err) {
+            unblock_screen();
+            failToast.options.text = 'CFP odds failed: ' + err.message;
+            failToast.showToast();
+        }
+    }
+
+    form.addEventListener('submit', function (e) { e.preventDefault(); run(false); });
+    commitBtn.addEventListener('click', function () {
+        if (!previewed) return;
+        if (!window.confirm('Save these odds to the ' + document.querySelector('[cfp-odds-season]').value + ' season?')) return;
+        run(true);
+    });
+})();
+
+function renderCfpOdds(data) {
+    var out = document.getElementById('cfp-odds-results');
+    if (!out) return;
+    function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+
+    var rows = (data.matched || []).map(function (m) {
+        return '<tr><td>' + esc(m.school) + '</td><td class="cfp-num">' + (m.odds > 0 ? '+' : '') + m.odds + '</td><td class="cfp-num">' + m.prob + '%</td></tr>';
+    }).join('');
+    var unmatched = (data.unmatched && data.unmatched.length)
+        ? '<div class="cfp-unmatched"><strong>Unmatched (' + data.unmatched.length + '):</strong> ' + data.unmatched.map(esc).join(', ') + '</div>'
+        : '';
+    out.innerHTML = '<div class="cfp-odds-summary">' + (data.dryRun ? 'Preview — ' : 'Saved — ')
+        + data.matchedCount + ' matched, ' + data.unmatchedCount + ' unmatched (' + esc(data.market) + ', ' + data.season + ')</div>'
+        + unmatched
+        + '<table class="cfp-odds-table"><thead><tr><th>Team</th><th>Odds</th><th>Implied</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
 const gamesForm = document.getElementById('games-form');
 
 if (gamesForm) {

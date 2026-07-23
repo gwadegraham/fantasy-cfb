@@ -8,19 +8,24 @@
 //   * team quality  — average SP+
 //   * projected wins — average expected wins (the win-based core of scoring)
 //   * CFP upside     — reward stacking likely-playoff teams (advancing in the
-//                      12-team CFP is worth the most points). Proxied by SP+
-//                      national rank; top-4-caliber weighted highest.
+//                      12-team CFP is worth the most points). Uses MARKET odds
+//                      when entered (make-CFP probability + a championship-odds
+//                      bonus for deep-run upside), falling back to the SP+ rank
+//                      proxy when a season has no odds.
 //
 // Each signal is normalized against fixed anchors (tunable below) and blended,
 // then mapped to a letter. SP+/wins mirror the draft pool (season value, prior-
 // season fallback). Best-value / biggest-reach picks (shown as highlights, not
-// part of the letter) use projected wins over the slot's "par".
+// part of the letter) use projected-wins rank vs. draft slot.
+
+const { americanToProb } = require('./cfp-odds');
 
 // --- absolute grading anchors + weights (tune here) ---
 const STRENGTH_LOW = -3, STRENGTH_HIGH = 16;   // roster avg SP+  → 0..1
 const WINS_LOW = 6.0, WINS_HIGH = 9.0;         // roster avg expected wins → 0..1
 const CFP_LOW = 0, CFP_HIGH = 3.0;             // roster CFP-upside sum → 0..1
 const W_STRENGTH = 0.35, W_WINS = 0.35, W_CFP = 0.30;
+const CHAMP_WEIGHT = 2;                        // deep-run (title) upside multiplier
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
@@ -81,19 +86,29 @@ function computeGrades(draft, usersById, teamsById) {
         .filter(x => x.sp != null)
         .sort((a, b) => b.sp - a.sp)
         .forEach((x, i) => { spRankById[String(x.id)] = i + 1; });
-    // 1. Per pick: SP+, projected wins, CFP tier.
+    // 1. Per pick: SP+, projected wins, and CFP upside.
+    //    CFP upside uses market odds when entered (make-CFP probability + a
+    //    championship-odds bonus for deep-run upside), else the SP+ rank proxy.
     const picks = (draft.picks || []).map(p => {
         const team = teamsById[String(p.team.id)];
         const sp = spFor(team, season);
         const wins = winsFor(team, season);
+        const makeOdds = seasonVal(team, season, 'cfpMakeOdds');
+        const champOdds = seasonVal(team, season, 'cfpChampOdds');
+        const makeProb = makeOdds != null ? americanToProb(makeOdds) : null;
+        const champProb = champOdds != null ? americanToProb(champOdds) : 0;
+        const cfp = makeProb != null
+            ? makeProb + CHAMP_WEIGHT * champProb
+            : cfpTier(spRankById[String(p.team.id)] || null);
         return {
             userId: String(p.userId), overall: p.overall, round: p.round,
             school: p.team.school, logo: (p.team.logos || [])[0],
             sp: sp == null ? 0 : sp, wins: wins == null ? 0 : wins,
             spRank: spRankById[String(p.team.id)] || null,
-            cfp: cfpTier(spRankById[String(p.team.id)] || null)
+            makeProb, cfp
         };
     });
+    const oddsPresent = picks.some(p => p.makeProb != null);
 
     // Highlight value = how far a pick beat its draft slot on projected wins:
     // rank all picks by projected wins (1 = most), then value = overall − winsRank.
@@ -112,7 +127,11 @@ function computeGrades(draft, usersById, teamsById) {
         const strength = ps.reduce((s, p) => s + p.sp, 0) / ps.length;
         const projWins = ps.reduce((s, p) => s + p.wins, 0) / ps.length;
         const cfpSum = ps.reduce((s, p) => s + p.cfp, 0);
-        const cfpCount = ps.filter(p => p.spRank != null && p.spRank <= 12).length;
+        // Display: expected # of CFP teams (sum of make-odds probability) when
+        // odds are in; else a hard count of top-12 SP+ teams.
+        const cfpCount = oddsPresent
+            ? Math.round(ps.reduce((s, p) => s + (p.makeProb || 0), 0) * 10) / 10
+            : ps.filter(p => p.spRank != null && p.spRank <= 12).length;
         const best = ps.slice().sort((a, b) => b.value - a.value)[0];
         const worst = ps.slice().sort((a, b) => a.value - b.value)[0];
         const u = usersById[uid] || {};
