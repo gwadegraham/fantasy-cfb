@@ -422,3 +422,10 @@ function evaluate(model, team, game, rankings, cfg) {
     }
     return score;
 }
+
+// Exported for the draft-grade projection (modules/draft-projection.js), which
+// reuses the EXACT engine on synthesized games + a locally-supplied rankings
+// object — so it never triggers the network rankings fetch that
+// calculateScoreV1/V2 do, and stays byte-for-byte consistent with live scoring.
+module.exports.evaluate = evaluate;
+module.exports.normalizeCfg = normalizeCfg;

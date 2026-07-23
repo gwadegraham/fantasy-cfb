@@ -112,7 +112,7 @@
     </section>
 
     <section class="admin-group">
-        <div class="group-head"><h2>Data sync · College Football Data</h2><span class="group-count">7</span></div>
+        <div class="group-head"><h2>Data sync · College Football Data</h2><span class="group-count">8</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -127,6 +127,21 @@
                         <div><select game-season-type season-type-options></select></div>
                         <div><button type="submit">Retrieve Games</button></div>
                     </form>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayScheduleContainer()">
+                        <i class="fa-solid fa-calendar-days" style="padding-right: 5px;"></i>
+                        Ingest Full Schedule
+                    </button>
+                </div>
+                <div class="sub-container" schedule-container style="display: none">
+                    <form id="schedule-form">
+                        <div><select schedule-season season-options></select></div>
+                        <div><button type="submit">Ingest Full Schedule</button></div>
+                    </form>
+                    <div id="schedule-results" class="cfp-odds-results"></div>
                 </div>
             </div>
             <div class="function-container">

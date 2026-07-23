@@ -827,6 +827,41 @@ if (gamesForm) {
     });
 }
 
+function displayScheduleContainer() {
+    var el = document.querySelector('[schedule-container]');
+    el.style.display = (el.style.display == 'flex' || el.style.display == '') ? 'none' : 'flex';
+}
+
+// Bulk-ingest a season's full FBS regular schedule — the preseason prerequisite
+// for draft grades (the projection reads each team's schedule).
+const scheduleForm = document.getElementById('schedule-form');
+
+if (scheduleForm) {
+    scheduleForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        block_screen();
+
+        const season = document.querySelector('[schedule-season]').value;
+        const response = await fetch(`/games/${season}/schedule`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        unblock_screen();
+
+        const results = document.getElementById('schedule-results');
+        if (response.status == 201) {
+            successToast.options.text = `Schedule ingested for ${season}: ${data.created} new, ${data.updated} updated`;
+            successToast.showToast();
+            if (results) results.textContent = `${data.total} games (${data.created} new, ${data.updated} updated).`;
+        } else {
+            failToast.options.text = (response.status) + `| Schedule could not be ingested`;
+            failToast.showToast();
+            if (results) results.textContent = (data && data.message) || 'Failed.';
+        }
+    });
+}
+
 const scoresForm = document.getElementById('scores-form');
 
 if (scoresForm) {
