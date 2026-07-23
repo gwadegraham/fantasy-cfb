@@ -19,9 +19,11 @@
             '<path d="M6 4h12v4a6 6 0 0 1-12 0V4Z" fill="currentColor" fill-opacity=".22"/>' +
             '<path d="M6 5.5H3.5V7a3 3 0 0 0 3 3"/><path d="M18 5.5h2.5V7a3 3 0 0 1-3 3"/>' +
             '<path d="M12 14v2.5"/><path d="M8.5 20h7l-1-3.5h-5Z" fill="currentColor" fill-opacity=".22"/>' },
-        flame: { c: '#22C37A', svg:
-            '<path d="M12 3c3.2 3 4.6 5.2 4.6 8A4.6 4.6 0 0 1 7.4 11c0-1.5.6-2.6 1.7-3.6C10.4 8 11.2 6.4 12 3Z" fill="currentColor" fill-opacity=".2"/>' +
-            '<path d="M12 20a2.5 2.5 0 0 1-2.5-2.5c0-1.4 1.1-2.2 2.5-3.7 1.4 1.5 2.5 2.3 2.5 3.7A2.5 2.5 0 0 1 12 20Z"/>' },
+        // Two-tone fire (red-orange outer + amber core) — baked, so it stays
+        // fire-colored regardless of any color override.
+        flame: { c: '#EF5A2A', sw: 1.6, svg:
+            '<path d="M13 2.5c.4 2.3-.4 4.1-1.7 5.6-.8.9-1.6 1.9-1.6 3.4 0 0-.6-.7-.6-1.9C7.5 10.6 6.5 12.4 6.5 14.5a5.5 5.5 0 0 0 11 0c0-3.6-2.9-6-4.5-12Z" fill="#EF5A2A" fill-opacity=".18" stroke="#EF5A2A"/>' +
+            '<path d="M12 20a2.7 2.7 0 0 1-2.7-2.7c0-1.5 1.2-2.4 2.7-3.9 1.5 1.5 2.7 2.4 2.7 3.9A2.7 2.7 0 0 1 12 20Z" fill="#F7A81E" fill-opacity=".3" stroke="#F7A81E"/>' },
         snowflake: { c: '#7FC7FF', sw: 1.6, svg:
             '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5 4.2 16.5"/>' +
             '<path d="M12 6l-2-1.6M12 6l2-1.6M12 18l-2 1.6M12 18l2 1.6"/>' +
@@ -98,10 +100,14 @@
         if (d.raw) return d.svg.replace(/__S__/g, size);
         var color = opts.color || d.c;
         var sw = d.sw || 1.7;
+        // Bake the concrete color into stroke + fills. (currentColor was
+        // resolving to white — an app color rule interrupts `color` inheritance
+        // to the SVG's descendants — so use the color directly, which inherits
+        // via the `stroke`/`fill` presentation attributes with nothing competing.)
+        var inner = d.svg.replace(/currentColor/g, color);
         return '<svg class="cc-icon cc-i-' + name + '" width="' + size + '" height="' + size + '"'
-            + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '"'
-            + ' stroke-linecap="round" stroke-linejoin="round" style="color:' + color + '"'
-            + ' aria-hidden="true">' + d.svg + '</svg>';
+            + ' viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="' + sw + '"'
+            + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
     };
 
     // Baseline alignment for inline icons, injected once (icons appear across
