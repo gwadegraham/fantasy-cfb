@@ -127,6 +127,7 @@ async function getUsers() {
             displayHighlights(data);
             maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
+            loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
@@ -195,8 +196,62 @@ async function loadAdvancedHighlights(league, season) {
 }
 
 function displayHighlights(users) {
+    const cards = buildHighlights(users);
     const container = document.querySelector('.highlights-container');
-    if (container) container.innerHTML = buildHighlightsHtml(buildHighlights(users));
+    const header = document.querySelector('.highlights-header');
+    // Hide the whole section (header + its leading divider) when there's nothing
+    // to show yet — e.g. preseason, before any games are scored — so we don't
+    // leave a bare "League Highlights" heading over empty space.
+    if (!cards.length) {
+        if (header) header.style.display = 'none';
+        if (container) container.style.display = 'none';
+        const hr = header && header.previousElementSibling;
+        if (hr && hr.classList && hr.classList.contains('hr-subtle')) hr.style.display = 'none';
+        return;
+    }
+    if (header) header.style.display = '';
+    if (container) { container.style.display = ''; container.innerHTML = buildHighlightsHtml(cards); }
+}
+
+// Forward-looking analytics (#210): projected final points + title odds, in a
+// dedicated "Projected Finish" panel below the standings. Server-computed (needs
+// schedule/SP+/odds); the route returns nothing when a season has no games left.
+async function loadProjections(league, season) {
+    if (!league || season == null) return;
+    let managers = [];
+    try {
+        const res = await fetch(`/standings/projections/${league}/${season}`, { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        managers = (data && data.managers) || [];
+    } catch (e) { return; }
+    if (!managers.length) return;
+    renderProjPanel(managers);
+}
+
+function projAvatarHtml(m) {
+    if (m.avatarUrl) {
+        const src = m.avatarUrl.indexOf('/upload/') !== -1
+            ? m.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_48,h_48,q_auto,f_auto/') : m.avatarUrl;
+        return `<span class="pp-avatar"><img src="${src}" alt=""></span>`;
+    }
+    return `<span class="pp-avatar pp-avatar-initials" style="background:${m.color || '#333'}">${escapeHtml(m.initials || '?')}</span>`;
+}
+
+function renderProjPanel(managers) {
+    const el = document.getElementById('proj-panel');
+    if (!el) return;
+    const rows = managers.map((m, i) => `
+        <div class="pp-row">
+            <span class="pp-rank">${i + 1}</span>
+            ${projAvatarHtml(m)}
+            <span class="pp-id"><span class="pp-name">${escapeHtml(m.franchise || m.name)}</span>${m.franchise ? `<span class="pp-sub">${escapeHtml(m.name)}</span>` : ''}</span>
+            <span class="pp-points"><span class="pp-cur">${m.banked}</span><i class="fa-solid fa-arrow-right pp-arrow"></i><span class="pp-proj">${m.projectedFinal}</span></span>
+            <span class="pp-title"><span class="pp-bar"><i style="width:${Math.min(100, m.titleOdds)}%"></i></span><b>${m.titleOdds}%</b></span>
+        </div>`).join('');
+    el.innerHTML = `<h2 class="proj-panel-title">🔮 Projected Finish</h2>
+        <p class="proj-panel-note">Projected final points and title odds — banked points plus expected points from each roster's remaining schedule.</p>
+        <div class="pp-list">${rows}</div>`;
+    el.hidden = false;
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the

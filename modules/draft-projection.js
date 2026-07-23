@@ -176,7 +176,11 @@ function expectedCfpPoints(teamId, m, beta, q, rankings, cfg) {
 }
 
 // --- per-team projection -------------------------------------------------
-function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season) {
+// opts.expectedWins: calibration target for the games passed (default: the
+//   team's season expected wins — used for a full-season projection; the
+//   standings projection passes REMAINING expected wins for a remaining subset).
+// opts.perGame: also return perGame [{ winProb, pointsIfWin }] for Monte-Carlo.
+function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts = {}) {
     const teamId = team.id;
     const sp = spFor(team, season);
     const mySp = sp == null ? 0 : sp;
@@ -193,9 +197,15 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season) {
         const hfa = g.neutralSite ? 0 : (isHome ? HFA : -HFA);
         return (mySp - effOpp) + hfa;
     });
-    const { probs } = calibrateToExpectedWins(margins, winsFor(team, season));
+    const target = opts.expectedWins != null ? opts.expectedWins : winsFor(team, season);
+    const { probs } = calibrateToExpectedWins(margins, target);
     let regular = 0;
-    reg.forEach((g, i) => { regular += probs[i] * evaluate(cfg.model, teamId, synthWin(g, teamId), rankings, cfg); });
+    const perGame = [];
+    reg.forEach((g, i) => {
+        const pts = evaluate(cfg.model, teamId, synthWin(g, teamId), rankings, cfg);
+        regular += probs[i] * pts;
+        if (opts.perGame) perGame.push({ winProb: probs[i], pointsIfWin: pts });
+    });
     const projWins = probs.reduce((a, b) => a + b, 0);
 
     // 2. CFP (market odds, else SP+-rank fallback).
@@ -226,7 +236,7 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season) {
     const bowl = pBowl * (BOWL_WIN_PROB * bowlWin + (1 - BOWL_WIN_PROB) * bowlLose);
 
     const total = regular + cfp + confChamp + bowl;
-    return { regular, cfp, confChamp, bowl, total, projWins, makeProb: m };
+    return { regular, cfp, confChamp, bowl, total, projWins, makeProb: m, perGame };
 }
 
 // --- absolute per-league bands ------------------------------------------

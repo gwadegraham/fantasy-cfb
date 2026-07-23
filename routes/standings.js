@@ -6,6 +6,11 @@ const Record = require('../models/record');
 const Game = require('../models/game');
 const Betting = require('../models/bettingLine');
 const Draft = require('../models/draft');
+const Ranking = require('../models/ranking');
+const ScoringConfig = require('../models/scoringConfig');
+const { resolveConfig } = require('../modules/scoring-defaults');
+const { buildRankingProxy, buildPoolContext } = require('../modules/draft-projection');
+const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 
 // Advanced league highlights that need data the Standings payload doesn't carry
@@ -81,6 +86,68 @@ router.get('/highlights/:league/:season', async (req, res) => {
         });
 
         res.json(buildAdvancedHighlights({ records, metaById, picks, scoreById, games, spreadByGameId, draftedNames, metaByName, fantasyByGameId }));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Forward-looking analytics: projected final points + Monte-Carlo title odds
+// per manager for a league + season. Reuses the draft-grade projection engine
+// on each rostered team's REMAINING schedule. Read-only.
+router.get('/projections/:league/:season', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const season = Number(req.params.season);
+
+        const users = await User.find(
+            { league, 'seasons.season': season },
+            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons: { $elemMatch: { season } } }
+        ).lean();
+        if (!users.length) return res.json({ league, season, managers: [] });
+
+        const teams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+        const teamsById = {};
+        teams.forEach(t => { teamsById[String(t.id)] = t; });
+
+        const games = await Game.find({ season, seasonType: 'regular' },
+            { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
+              completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+              awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
+        const gamesByTeam = {};
+        games.forEach(g => {
+            const h = String(g.homeId), a = String(g.awayId);
+            if (teamsById[h]) (gamesByTeam[h] = gamesByTeam[h] || []).push(g);
+            if (teamsById[a]) (gamesByTeam[a] = gamesByTeam[a] || []).push(g);
+        });
+
+        const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+        const cfg = resolveConfig(league, cfgDoc ? {
+            model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
+        } : null);
+        const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
+        const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
+
+        const rankings = buildRankingProxy(season, teamsById, apPoll);
+        const poolCtx = buildPoolContext(teamsById, season);
+        const managers = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
+        // Forward-looking only: if the regular season has no games left (season
+        // complete / not yet scheduled), the "projection" would just be actuals
+        // plus a stray postseason term — hide it. Client renders nothing.
+        if (!managers.length || !managers.some(m => m.remainingCount > 0)) {
+            return res.json({ league, season, managers: [] });
+        }
+
+        const odds = simulateTitleOdds(managers, 5000);
+        const ranked = managers.slice().sort((a, b) => b.projectedFinal - a.projectedFinal);
+        const payload = ranked.map((m, i) => ({
+            userId: m.userId, name: m.name, franchise: m.franchise,
+            avatarUrl: m.avatarUrl, initials: m.initials, color: m.color,
+            banked: m.banked, projectedFinal: m.projectedFinal,
+            titleOdds: Math.round(odds[m.userId] * 1000) / 10,   // percent, 0.1 precision
+            projectedRank: i + 1
+        }));
+
+        res.json({ league, season, managers: payload });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
