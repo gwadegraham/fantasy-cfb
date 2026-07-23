@@ -248,7 +248,7 @@ function renderProjPanel(managers) {
             <span class="pp-points"><span class="pp-cur">${m.banked}</span><i class="fa-solid fa-arrow-right pp-arrow"></i><span class="pp-proj">${m.projectedFinal}</span></span>
             <span class="pp-title"><span class="pp-bar"><i style="width:${Math.min(100, m.titleOdds)}%"></i></span><b>${m.titleOdds}%</b></span>
         </div>`).join('');
-    el.innerHTML = `<h2 class="proj-panel-title">🔮 Projected Finish</h2>
+    el.innerHTML = `<h2 class="proj-panel-title">${window.ccIcon ? window.ccIcon('crystalball', { size: 22 }) : ''}Projected Finish</h2>
         <p class="proj-panel-note">Projected final points and title odds — banked points plus expected points from each roster's remaining schedule.</p>
         <div class="pp-list">${rows}</div>`;
     el.hidden = false;
@@ -725,7 +725,7 @@ async function displaySchedule(data) {
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                    teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">📺 ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
+                    teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">${window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : ''} ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
                     teamTable += game.notes || '';
                     teamTable += '</td></tr><tbody></table></td>';
 
@@ -813,7 +813,7 @@ async function displaySchedule(data) {
                         teamTable += homeImg + homeRank + homeTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                         teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                        teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">📺 ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
+                        teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">${window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : ''} ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
                         teamTable += game.notes || '';
                         teamTable += '</td></tr><tbody></table></td>';
             

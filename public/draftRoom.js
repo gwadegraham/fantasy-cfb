@@ -472,7 +472,7 @@ function renderStatus() {
             ? `<button type="button" class="draft-undo-btn" onclick="undoPick()">&#8617; Undo last pick</button>` : '';
         el.innerHTML = `<p class="draft-live-label">🟢 Draft in progress</p>${undoBtn}`;
     } else if (draft.status === 'complete') {
-        el.innerHTML = `<p class="draft-live-label">🎉 Draft complete!</p>`;
+        el.innerHTML = `<p class="draft-live-label">${window.ccIcon ? window.ccIcon('confetti', { size: 18 }) : ''} Draft complete!</p>`;
     }
 }
 

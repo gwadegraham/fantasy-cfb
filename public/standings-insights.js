@@ -148,16 +148,16 @@ export function buildHighlights(users) {
     const byLatest = withWeeks.slice().sort((a, b) => latestScore(b) - latestScore(a));
     if (byLatest.length) {
         const w = byLatest[0], l = byLatest[byLatest.length - 1];
-        cards.push({ icon: '🏆', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
-        cards.push({ icon: '😢', title: 'Big Loser', tag: thisWeekLabel, name: initialName(l), value: `+${latestScore(l)}`, tone: 'bad' });
+        cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
+        cards.push({ icon: 'heartbreak', title: 'Big Loser', tag: thisWeekLabel, name: initialName(l), value: `+${latestScore(l)}`, tone: 'bad' });
     }
 
     // Hot / cold streak (last 2 weeks)
     const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2)).reduce((s, w) => s + (w.score || 0), 0);
     const byStreak = withWeeks.slice().sort((a, b) => twoWk(b) - twoWk(a));
     if (byStreak.length) {
-        cards.push({ icon: '🔥', title: 'Hot Streak', tag: 'last 2 weeks', name: initialName(byStreak[0]), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
-        cards.push({ icon: '🧊', title: 'Cold Streak', tag: 'last 2 weeks', name: initialName(byStreak[byStreak.length - 1]), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
+        cards.push({ icon: 'flame', title: 'Hot Streak', tag: 'last 2 weeks', name: initialName(byStreak[0]), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
+        cards.push({ icon: 'snowflake', title: 'Cold Streak', tag: 'last 2 weeks', name: initialName(byStreak[byStreak.length - 1]), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
     }
 
     // Biggest riser (rank climb vs last week)
@@ -165,7 +165,7 @@ export function buildHighlights(users) {
         const rows = rankedRows(users).filter(r => r.delta != null);
         const riser = rows.slice().sort((a, b) => b.delta - a.delta)[0];
         if (riser && riser.delta > 0) {
-            cards.push({ icon: '📈', title: 'Biggest Riser', tag: thisWeekLabel, name: riser.name, value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
+            cards.push({ icon: 'riser', title: 'Biggest Riser', tag: thisWeekLabel, name: riser.name, value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
         }
     }
 
@@ -173,7 +173,7 @@ export function buildHighlights(users) {
     const ranked = rankedRows(users);
     if (ranked.length > 1) {
         const g = ranked[1].gap;
-        cards.push({ icon: '🏁', title: 'Closest Race', tag: 'season', name: `${ranked[0].name} over ${ranked[1].name}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
+        cards.push({ icon: 'checkered', title: 'Closest Race', tag: 'season', name: `${ranked[0].name} over ${ranked[1].name}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
     }
 
     // Season-high single week (anyone)
@@ -181,12 +181,12 @@ export function buildHighlights(users) {
     withWeeks.forEach(u => weekly(u).forEach(wk => {
         if (!high || (wk.score || 0) > high.score) high = { name: initialName(u), score: wk.score || 0, when: weekLabel(wk) };
     }));
-    if (high) cards.push({ icon: '💥', title: 'Season High', tag: high.when, name: high.name, value: `+${high.score}`, tone: 'good' });
+    if (high) cards.push({ icon: 'burst', title: 'Season High', tag: high.when, name: high.name, value: `+${high.score}`, tone: 'good' });
 
     // Best team (season) + best single team-game
     const totals = teamTotals(users);
     if (totals.length && totals[0].score > 0) {
-        cards.push({ icon: '🥇', title: 'Best Team', tag: 'season', name: `<img src="${totals[0].logo}" class="hl-logo">${escapeHtml(totals[0].team)}`, value: `+${totals[0].score}`, tone: 'good' });
+        cards.push({ icon: 'medal', title: 'Best Team', tag: 'season', name: `<img src="${totals[0].logo}" class="hl-logo">${escapeHtml(totals[0].team)}`, value: `+${totals[0].score}`, tone: 'good' });
     }
     // Top single game: the highest one-game team score. Since the postseason
     // bonuses make the max a frequent multi-way tie, show all tied teams.
@@ -212,9 +212,9 @@ export function buildHighlights(users) {
                     + `<span class="hl-popover" role="tooltip" hidden>`
                     + `<span class="hl-popover-title">All ${teamNames.length} tied teams</span>${full}</span>`;
             }
-            cards.push({ icon: '⚡', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name, value: `+${topScore}`, tone: 'good' });
+            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name, value: `+${topScore}`, tone: 'good' });
         } else {
-            cards.push({ icon: '⚡', title: 'Top Single Game', tag: 'one game', name: `${escapeHtml(topGames[0].team)} <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
+            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: 'one game', name: `${escapeHtml(topGames[0].team)} <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
         }
     }
 
@@ -225,7 +225,7 @@ export function buildHighlights(users) {
         const scores = weekly(steady).map(w => w.score || 0);
         const sd = stdev(scores);
         const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
-        cards.push({ icon: '🎯', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });
+        cards.push({ icon: 'target', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });
     }
 
     return cards;
@@ -234,7 +234,7 @@ export function buildHighlights(users) {
 export function buildHighlightsHtml(cards) {
     return cards.map(c => `
         <div class="sub-highlight-container">
-            <div class="highlight-title"><span class="hl-icon">${c.icon}</span> ${escapeHtml(c.title)}<span class="hl-tag">${escapeHtml(c.tag)}</span></div>
+            <div class="highlight-title"><span class="hl-icon">${(typeof window !== 'undefined' && window.ccIcon) ? window.ccIcon(c.icon, { size: 20 }) : ''}</span> ${escapeHtml(c.title)}<span class="hl-tag">${escapeHtml(c.tag)}</span></div>
             <div class="highlight-info">
                 <span class="hl-name">${c.name}</span>
                 <span class="hl-value ${c.tone}">${c.value}</span>
