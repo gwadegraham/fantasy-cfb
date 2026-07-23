@@ -116,4 +116,38 @@ router.get('/:week/:seasonType/poll/:pollName', async (req, res) => {
     }
 });
 
+// Bulk-pull a whole season's rankings in one CFBD call and upsert each week's
+// doc. Non-destructive: matches on (season, seasonType, week), updates existing
+// and inserts new, never deletes — so it's safe to re-run and covers regular +
+// postseason weeks at once. Replaces the fragile per-week form.
+router.post('/:season/refresh', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    try {
+        const response = await fetch(`https://api.collegefootballdata.com/rankings?year=${season}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+        });
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) {
+            return res.status(400).json({ message: (data && data.message) || `CFBD request failed (${response.status})` });
+        }
+
+        let created = 0, updated = 0;
+        for (const wk of data) {
+            if (wk.week == null || !wk.seasonType) continue;
+            const filter = { season: wk.season, seasonType: wk.seasonType, week: wk.week };
+            const doc = { season: wk.season, seasonType: wk.seasonType, week: wk.week, polls: wk.polls || [] };
+            const existing = await Ranking.findOne(filter);
+            if (existing) { await Ranking.findOneAndUpdate(filter, doc); updated++; }
+            else { await new Ranking(doc).save(); created++; }
+        }
+        return res.status(201).json({ season, weeks: data.length, created, updated });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+});
+
 module.exports = router;
