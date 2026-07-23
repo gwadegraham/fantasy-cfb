@@ -396,6 +396,33 @@ function renderAll() {
     renderTicker();
     renderOnTheClock();
     renderPool();
+    renderGrades();
+}
+
+// Immediate post-draft report card: once the draft is complete, fetch the
+// preseason grades and render the shared cards (highlighting the viewer). Fetch
+// once per completed draft to avoid re-hitting the endpoint on every re-render.
+var gradesRenderedFor = null;
+function renderGrades() {
+    var el = document.getElementById('draft-grades-panel');
+    if (!el) return;
+    if (!draft || draft.status !== 'complete') { el.style.display = 'none'; return; }
+    el.style.display = '';
+    var key = leagueCode + ':' + season;
+    if (gradesRenderedFor === key) return;
+    gradesRenderedFor = key;
+    fetch('/draft/grades/' + encodeURIComponent(leagueCode) + '/' + encodeURIComponent(season), { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (typeof renderDraftGrades === 'function') {
+                renderDraftGrades(el, data, {
+                    currentUserId: myUserId,
+                    title: 'Draft Grades',
+                    note: 'Instant, preseason grades — a blend of team quality (SP+), projected wins, and CFP upside. Each draft graded on its own merit.'
+                });
+            }
+        })
+        .catch(function (e) { gradesRenderedFor = null; console.error('grades load failed:', e); });
 }
 
 // Scrolling ribbon of every pick, in draft order (pick #1 → most recent).

@@ -1,0 +1,112 @@
+/* Shared draft-grade styling (draft room + user profile). The host page wraps
+   these in its own section; this owns the title, grid, and cards. */
+.gg-title {
+    color: #F4F6FB;
+    font-size: 1.4rem;
+    margin: 0 0 0.35rem;
+}
+
+.grades-note {
+    color: #A4A9C2;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-width: 70ch;
+    margin: 0 0 1rem;
+}
+
+.grades-empty {
+    color: #A4A9C2;
+    padding: 1.5rem 0;
+    text-align: center;
+}
+
+.grades-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.gg-card {
+    background-color: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-left: 4px solid #6C9BFF;   /* tier accent, overridden below */
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.gg-tier-a { border-left-color: #22C37A; }
+.gg-tier-b { border-left-color: #6C9BFF; }
+.gg-tier-c { border-left-color: #E0B341; }
+
+/* Highlight the viewing user's own card. */
+.gg-you { box-shadow: 0 0 0 1px #ed5858 inset; }
+.gg-youtag {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: #ed5858;
+    border: 1px solid #ed5858;
+    border-radius: 999px;
+    padding: 0.05em 0.4em;
+    vertical-align: middle;
+}
+
+.gg-card-head { display: flex; align-items: center; gap: 0.7rem; }
+
+.gg-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex: 0 0 auto;
+    border: 1px solid #2A2E42;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #101322;
+}
+.gg-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gg-avatar-initials { font-weight: 700; font-size: 0.9rem; color: #F4F6FB; }
+
+.gg-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gg-name { font-weight: 600; font-size: 1rem; color: #F4F6FB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gg-sub { color: #A4A9C2; font-size: 0.78rem; }
+
+.gg-grade {
+    font-family: Graduate, serif;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: auto;
+    flex: 0 0 auto;
+    color: #6C9BFF;
+}
+.gg-tier-a .gg-grade { color: #22C37A; }
+.gg-tier-b .gg-grade { color: #6C9BFF; }
+.gg-tier-c .gg-grade { color: #E0B341; }
+
+.gg-stats {
+    display: flex;
+    gap: 0.6rem;
+    border-top: 1px solid #2A2E42;
+    border-bottom: 1px solid #2A2E42;
+    padding: 0.6rem 0;
+}
+.gg-stat { display: flex; flex-direction: column; flex: 1; }
+.gg-stat-val { font-size: 1.15rem; font-weight: 700; color: #F4F6FB; font-variant-numeric: tabular-nums; }
+.gg-stat-lbl { color: #A4A9C2; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.gg-pick { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
+.gg-pick-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+.gg-steal .gg-pick-label { color: #22C37A; }
+.gg-bust .gg-pick-label { color: #ED5858; }
+.gg-pick-team { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; color: #F4F6FB; }
+.gg-logo { height: 18px; width: 18px; object-fit: contain; }
+.gg-pick-meta { color: #A4A9C2; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+    .grades-grid { grid-template-columns: 1fr; }
+}

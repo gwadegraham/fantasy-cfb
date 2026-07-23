@@ -542,81 +542,36 @@ select[scoring-config-combine-mode] { width: 100%; }
     margin: 0 0 0.75em;
 }
 
-/* --- Draft history backfill (Maintenance) --- */
-.backfill-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.6em;
-    margin-bottom: 0.75em;
-}
-.backfill-force {
-    color: #A4A9C2;
-    font-size: 0.85rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35em;
-    cursor: pointer;
-}
-#backfill-commit:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-.backfill-results {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75em;
+/* --- CFP odds ingestion (Market odds) --- */
+.sub-container textarea[cfp-odds-text] {
     width: 100%;
-}
-.bf-season {
     background-color: #101322;
-    border: 1px solid #2A2E42;
-    border-radius: 8px;
-    padding: 0.7em 0.85em;
-    text-align: left;
-}
-.bf-head {
-    font-weight: 600;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4em;
-    margin-bottom: 0.4em;
-}
-.bf-badge {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    padding: 0.15em 0.5em;
-    border-radius: 999px;
-    background-color: #1A1F33;
-    color: #A4A9C2;
-    border: 1px solid #2A2E42;
-    font-weight: 700;
-}
-.bf-badge.ok { color: #22C37A; border-color: rgba(34, 195, 122, 0.4); }
-.bf-badge.bad { color: #ED5858; border-color: rgba(237, 88, 88, 0.4); }
-.bf-badge.warn { color: #E0B341; border-color: rgba(224, 179, 65, 0.4); }
-.bf-badge.muted { color: #767D99; }
-.bf-errs {
-    color: #ED5858;
-    font-size: 0.8rem;
-    margin: 0.25em 0 0.5em;
-}
-.bf-order {
-    color: #A4A9C2;
-    font-size: 0.8rem;
-    margin-bottom: 0.4em;
-}
-.bf-round {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 0.78rem;
     color: #F4F6FB;
-    line-height: 1.7;
+    border: 1px solid #2A2E42;
+    border-radius: 5px;
+    padding: 0.5em;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    resize: vertical;
 }
-.bf-rlabel {
-    color: #ED5858;
-    font-weight: 700;
-    margin-right: 0.3em;
+.cfp-odds-controls { display: flex; gap: 0.6em; }
+#cfp-odds-commit:disabled { opacity: 0.45; cursor: not-allowed; }
+.cfp-odds-results { width: 100%; text-align: left; margin-top: 0.75em; }
+.cfp-odds-summary { color: #F4F6FB; font-weight: 600; margin-bottom: 0.5em; }
+.cfp-unmatched {
+    color: #E0B341;
+    font-size: 0.8rem;
+    background-color: rgba(224, 179, 65, 0.1);
+    border: 1px solid rgba(224, 179, 65, 0.35);
+    border-radius: 6px;
+    padding: 0.5em 0.65em;
+    margin-bottom: 0.75em;
+    line-height: 1.5;
 }
+.cfp-odds-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.cfp-odds-table th, .cfp-odds-table td { padding: 0.3em 0.6em; border-bottom: 1px solid #2A2E42; text-align: left; }
+.cfp-odds-table th {
+    color: #A4A9C2; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cfp-odds-table .cfp-num { font-variant-numeric: tabular-nums; text-align: right; }
+.cfp-odds-table tbody tr:hover { background-color: #171B31; }

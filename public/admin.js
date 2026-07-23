@@ -712,50 +712,56 @@ if (enrichmentForm) {
     });
 }
 
-// --- Draft history backfill (Maintenance) -----------------------------------
-function displayDraftBackfillContainer() {
-    var c = document.querySelector('[draft-backfill-container]');
+// --- CFP odds ingestion (Market odds) ---------------------------------------
+function displayCfpOddsContainer() {
+    var c = document.querySelector('[cfp-odds-container]');
     c.style.display = (c.style.display === 'flex' || c.style.display === '') ? 'none' : 'flex';
 }
 
 (function () {
-    var form = document.getElementById('draft-backfill-form');
+    var form = document.getElementById('cfp-odds-form');
     if (!form) return;
-    var commitBtn = document.getElementById('backfill-commit');
-    var forceBox = document.getElementById('backfill-force');
+    var commitBtn = document.getElementById('cfp-odds-commit');
     var previewed = false;
 
     async function run(commit) {
+        var season = document.querySelector('[cfp-odds-season]').value;
+        var market = document.querySelector('[cfp-odds-market]').value;
+        var text = document.querySelector('[cfp-odds-text]').value;
+        if (!text.trim()) {
+            failToast.options.text = 'Paste an odds board first';
+            failToast.showToast();
+            return;
+        }
         block_screen();
         try {
-            var res = await fetch('/draft/backfill', {
+            var res = await fetch('/teams/' + encodeURIComponent(season) + '/cfp-odds', {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ commit: commit, force: forceBox.checked })
+                body: JSON.stringify({ market: market, text: text, commit: commit })
             });
             var data = await res.json();
             unblock_screen();
             if (res.status !== 200) {
-                failToast.options.text = (data && data.message) || (res.status + ' backfill failed');
+                failToast.options.text = (data && data.message) || (res.status + ' failed');
                 failToast.showToast();
                 return;
             }
-            renderBackfill(data);
+            renderCfpOdds(data);
             if (!commit) {
                 previewed = true;
                 commitBtn.disabled = false;
-                infoToast.options.text = 'Preview ready — review the boards, then Commit.';
+                infoToast.options.text = 'Matched ' + data.matchedCount + ' teams' + (data.unmatchedCount ? (', ' + data.unmatchedCount + ' unmatched') : '') + '. Review, then Commit.';
                 infoToast.showToast();
             } else {
-                var n = (data.written || []).length;
-                successToast.options.text = n ? ('Backfilled ' + n + ' draft(s)') : 'Nothing written — see notes below';
+                successToast.options.text = 'Saved ' + data.matchedCount + ' ' + (market === 'champ' ? 'championship' : 'CFP') + ' odds for ' + season;
                 successToast.showToast();
                 commitBtn.disabled = true;
                 previewed = false;
             }
         } catch (err) {
             unblock_screen();
-            failToast.options.text = 'Backfill failed: ' + err.message;
+            failToast.options.text = 'CFP odds failed: ' + err.message;
             failToast.showToast();
         }
     }
@@ -763,43 +769,26 @@ function displayDraftBackfillContainer() {
     form.addEventListener('submit', function (e) { e.preventDefault(); run(false); });
     commitBtn.addEventListener('click', function () {
         if (!previewed) return;
-        if (!window.confirm('Write the reconstructed drafts to the database? This modifies the drafts collection.')) return;
+        if (!window.confirm('Save these odds to the ' + document.querySelector('[cfp-odds-season]').value + ' season?')) return;
         run(true);
     });
 })();
 
-function renderBackfill(data) {
-    var out = document.getElementById('backfill-results');
+function renderCfpOdds(data) {
+    var out = document.getElementById('cfp-odds-results');
     if (!out) return;
     function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
 
-    out.innerHTML = (data.results || []).map(function (r) {
-        var badges = [];
-        badges.push('<span class="bf-badge ' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? 'OK' : 'ERRORS') + '</span>');
-        if (r.integrity) badges.push('<span class="bf-badge">' + r.integrity.placed + '/' + r.integrity.expected + ' picks</span>');
-        if (r.exists) badges.push('<span class="bf-badge warn">exists: ' + esc(r.existingStatus) + '</span>');
-        var writeState = data.dryRun ? r.wouldWrite : r.willWrite;
-        var stateTxt = writeState ? (data.dryRun ? 'will write' : 'written') : (r.skipReason || 'skip');
-        badges.push('<span class="bf-badge ' + (writeState ? 'ok' : 'muted') + '">' + esc(stateTxt) + '</span>');
-
-        var errsHtml = (r.errors && r.errors.length) ? '<div class="bf-errs">' + r.errors.map(esc).join('<br>') + '</div>' : '';
-        var orderHtml = (r.order || []).map(function (o) { return o.slot + '.' + esc(o.name); }).join('  ');
-
-        var byRound = {};
-        (r.board || []).forEach(function (b) { (byRound[b.round] = byRound[b.round] || []).push(b); });
-        var boardHtml = [1, 2].map(function (rd) {
-            if (!byRound[rd]) return '';
-            return '<div class="bf-round"><span class="bf-rlabel">R' + rd + '</span> ' +
-                byRound[rd].map(function (b) { return b.overall + '. ' + esc(b.school) + ' (' + esc(String(b.name).split(' ')[0]) + ')'; }).join('  ·  ') + '</div>';
-        }).join('');
-
-        return '<div class="bf-season">' +
-            '<div class="bf-head">' + esc(r.league) + ' · ' + r.season + ' ' + badges.join(' ') + '</div>' +
-            errsHtml +
-            (orderHtml ? '<div class="bf-order">order: ' + orderHtml + '</div>' : '') +
-            boardHtml +
-            '</div>';
+    var rows = (data.matched || []).map(function (m) {
+        return '<tr><td>' + esc(m.school) + '</td><td class="cfp-num">' + (m.odds > 0 ? '+' : '') + m.odds + '</td><td class="cfp-num">' + m.prob + '%</td></tr>';
     }).join('');
+    var unmatched = (data.unmatched && data.unmatched.length)
+        ? '<div class="cfp-unmatched"><strong>Unmatched (' + data.unmatched.length + '):</strong> ' + data.unmatched.map(esc).join(', ') + '</div>'
+        : '';
+    out.innerHTML = '<div class="cfp-odds-summary">' + (data.dryRun ? 'Preview — ' : 'Saved — ')
+        + data.matchedCount + ' matched, ' + data.unmatchedCount + ' unmatched (' + esc(data.market) + ', ' + data.season + ')</div>'
+        + unmatched
+        + '<table class="cfp-odds-table"><thead><tr><th>Team</th><th>Odds</th><th>Implied</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 const gamesForm = document.getElementById('games-form');

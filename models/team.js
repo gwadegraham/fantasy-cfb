@@ -114,6 +114,14 @@ const seasonSchema = new mongoose.Schema({
     },
     coach: {             // head coach display name for the season
         type: String
+    },
+    // --- market CFP futures (American odds), entered by the commissioner in the
+    // admin "CFP Odds" action. Used by the draft-grade CFP component. ---
+    cfpMakeOdds: {       // odds to make the 12-team CFP (e.g. -800, +450)
+        type: Number
+    },
+    cfpChampOdds: {      // odds to win the national championship
+        type: Number
     }
 });
 

@@ -2,82 +2,32 @@ const express = require('express');
 const router = express.Router();
 const Draft = require('../models/draft');
 const User = require('../models/user');
-const { reconstructAll } = require('../modules/draft-history');
+const Team = require('../models/team');
+const { computeGrades } = require('../modules/draft-grades');
 
-// Trim a reconstruction result down to what the admin UI renders (drops the
-// full team objects on each pick; keeps the human-readable board).
-function previewShape(r) {
-    return {
-        league: r.league, season: r.season, orderMethod: r.orderMethod,
-        ok: r.ok, errors: r.errors, integrity: r.integrity,
-        order: (r.order || []).map(o => ({ name: o.name, slot: o.slot })),
-        board: r.board,
-        exists: r.exists, existingStatus: r.existingStatus,
-        wouldWrite: r.wouldWrite, willWrite: r.willWrite, skipReason: r.skipReason
-    };
-}
-
-// One-time backfill of historical drafts into the `drafts` collection, rebuilt
-// from user.seasons[] (see modules/draft-history.js). Commissioner-gated by the
-// /draft router. Dry-run by default — writes ONLY when commit === true, and only
-// the scope-locked seasons in DRAFT_HISTORY, so it can never touch a live draft.
-router.post('/backfill', async (req, res) => {
+// Post-draft grades for a league + season — immediate preseason feedback that
+// blends roster strength (SP+) and draft value (SP+ quality vs. draft slot).
+// Read-only; available as soon as the draft is complete.
+router.get('/grades/:league/:season', async (req, res) => {
     try {
-        const commit = req.body.commit === true;
-        const force = req.body.force === true;
-
-        const userDocs = await User.find({}, { firstName: 1, lastName: 1, email: 1, league: 1, seasons: 1 }).lean();
-        const results = reconstructAll(userDocs);
-
-        // Annotate each season with whether a draft already exists and whether
-        // this run would write it.
-        for (const r of results) {
-            const existing = await Draft.findOne({ league: r.league, season: r.season });
-            r.exists = !!existing;
-            r.existingStatus = existing ? existing.status : null;
-            r.skipReason = null;
-            if (!r.ok) {
-                r.skipReason = 'reconstruction errors';
-            } else if (existing && existing.status === 'active') {
-                // An in-progress draft is sacrosanct — never overwritten, even with force.
-                r.skipReason = "existing draft is 'active' — refusing to overwrite";
-            } else if (existing && !force) {
-                r.skipReason = `already has a '${existing.status}' draft (check "overwrite" to replace)`;
-            }
-            r.wouldWrite = r.ok && !r.skipReason;   // eligible to write (force already considered)
-            r.willWrite = commit && r.wouldWrite;   // actually writing on this run
+        const league = req.params.league;
+        const season = Number(req.params.season);
+        const draft = await Draft.findOne({ league, season }).lean();
+        if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
+            return res.json({ league, season, managers: [] });
         }
+        const users = await User.find({ league },
+            { firstName: 1, lastName: 1, league: 1, avatarUrl: 1, seasons: 1 }).lean();
+        const usersById = {};
+        users.forEach(u => { usersById[String(u._id)] = u; });
 
-        if (!commit) {
-            return res.json({ dryRun: true, results: results.map(previewShape) });
-        }
+        // SP+ lives on the Team docs (the draft-pick snapshots don't carry it).
+        const teams = await Team.find({}, { id: 1, seasons: 1 }).lean();
+        const teamsById = {};
+        teams.forEach(t => { teamsById[String(t.id)] = t; });
 
-        const written = [];
-        for (const r of results) {
-            if (!r.willWrite) continue;
-            await Draft.findOneAndUpdate(
-                { league: r.league, season: r.season },
-                {
-                    $set: {
-                        league: r.league, season: r.season, status: 'complete', snake: true,
-                        totalRounds: r.integrity.rounds, orderMethod: r.orderMethod,
-                        draftOrder: r.draftOrder, picks: r.picks,
-                        currentOverall: r.picks.length + 1, updatedAt: new Date()
-                    },
-                    $setOnInsert: { createdAt: new Date() }
-                },
-                { upsert: true, setDefaultsOnInsert: true }
-            );
-            // Populate the dormant draftPosition on each manager's season.
-            for (const o of r.order) {
-                await User.updateOne(
-                    { _id: o.userId, 'seasons.season': r.season },
-                    { $set: { 'seasons.$.draftPosition': o.slot } }
-                );
-            }
-            written.push({ league: r.league, season: r.season, picks: r.picks.length });
-        }
-        return res.json({ dryRun: false, written, results: results.map(previewShape) });
+        const managers = computeGrades(draft, usersById, teamsById);
+        res.json({ league, season, managers });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
