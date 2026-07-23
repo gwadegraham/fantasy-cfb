@@ -1,0 +1,95 @@
+/* Hall of Fame page. Dark theme consistent with the grade cards / profile. */
+.hof {
+    width: 92%;
+    max-width: 1000px;
+    margin: 0.5rem auto 2.5rem;
+    box-sizing: border-box;
+}
+.hof-loading, .hof-empty { color: #A4A9C2; text-align: center; padding: 2.5rem 1rem; }
+
+.hof-section { margin-top: 1.75rem; }
+.hof-h2 {
+    font-size: 1.05rem; font-weight: 700; color: #F4F6FB;
+    margin: 0 0 0.85rem; text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+/* --- shared avatar --- */
+.hof-avatar {
+    width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center; background: #101322;
+}
+.hof-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hof-avatar-initials { font-weight: 700; color: #fff; font-size: 0.95rem; }
+
+/* --- champions strip --- */
+.hof-champs { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: 0.4rem; }
+.hof-champ {
+    flex: 0 0 auto; width: 158px; text-align: center; position: relative;
+    background: #1A1F33; border: 1px solid #2A2E42; border-top: 3px solid #E0B341;
+    border-radius: 14px; padding: 0.9rem;
+}
+.hof-champ-season { color: #A4A9C2; font-weight: 700; letter-spacing: 0.06em; font-size: 0.82rem; }
+.hof-champ-trophy { font-size: 1.35rem; line-height: 1; margin: 0.1rem 0 0.35rem; }
+.hof-champ .hof-avatar { width: 60px; height: 60px; margin: 0 auto 0.5rem; }
+.hof-champ-name { font-weight: 700; color: #F4F6FB; line-height: 1.2; }
+.hof-champ-sub { color: #A4A9C2; font-size: 0.75rem; margin-top: 1px; }
+.hof-champ-score { color: #E0B341; font-weight: 700; margin-top: 0.4rem; font-variant-numeric: tabular-nums; }
+
+/* --- all-time leaderboard (expandable manager cards) --- */
+.hof-board { display: flex; flex-direction: column; gap: 0.6rem; }
+.hof-mgr { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; overflow: hidden; }
+.hof-mgr.hof-you { border-color: #ed5858; box-shadow: inset 0 0 0 1px #ed5858; }
+.hof-mgr-head {
+    display: flex; align-items: center; gap: 0.9rem; width: 100%;
+    padding: 0.7rem 1rem; background: none; border: 0; cursor: pointer;
+    color: inherit; text-align: left; font: inherit;
+}
+.hof-rank { font-weight: 800; color: #A4A9C2; width: 1.4rem; text-align: center; font-variant-numeric: tabular-nums; }
+.hof-mgr-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hof-mgr-nameline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hof-mgr-name { font-weight: 600; color: #F4F6FB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof-youtag { flex-shrink: 0; }
+.hof-mgr-sub { color: #A4A9C2; font-size: 0.76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof-youtag { color: #ed5858; border: 1px solid #ed5858; border-radius: 999px; font-size: 0.58rem; padding: 1px 6px; text-transform: uppercase; letter-spacing: 0.05em; vertical-align: middle; }
+.hof-mgr-titles { min-width: 3rem; text-align: center; font-size: 0.95rem; letter-spacing: -3px; }
+.hof-none { color: #4A4F68; letter-spacing: 0; }
+.hof-stat { display: flex; flex-direction: column; align-items: center; min-width: 3.4rem; }
+.hof-stat b { color: #F4F6FB; font-size: 1.02rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hof-stat small { color: #A4A9C2; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.hof-chev { color: #A4A9C2; font-size: 0.8rem; transition: transform 0.24s ease; }
+.hof-mgr.is-open .hof-chev { transform: rotate(180deg); }
+
+.hof-mgr-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.hof-mgr.is-open .hof-mgr-body { max-height: 700px; }
+.hof-mgr-summary {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
+    padding: 0.55rem 1rem 0.1rem; font-size: 0.76rem; color: #A4A9C2;
+}
+.hof-mgr-summary b { color: #F4F6FB; font-variant-numeric: tabular-nums; }
+.hof-hist-head, .hof-hist {
+    display: grid; grid-template-columns: 3.5rem 6.5rem 1fr auto; gap: 0.6rem;
+    align-items: center; padding: 0.45rem 1rem;
+}
+.hof-hist-head { color: #A4A9C2; text-transform: uppercase; font-size: 0.64rem; letter-spacing: 0.04em; border-top: 1px solid #2A2E42; padding-top: 0.6rem; }
+.hof-hist { border-top: 1px solid #23273b; font-size: 0.82rem; color: #F4F6FB; }
+.hof-hist-season { font-weight: 700; color: #A4A9C2; font-variant-numeric: tabular-nums; }
+.hof-hist-franchise { color: #A4A9C2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof-hist-score { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media only screen and (max-width: 560px) {
+    /* Drop the secondary stat + franchise column and tighten everything so the
+       manager name gets enough room not to truncate mid-word. */
+    .hof-mgr-head .hof-stat:last-of-type { display: none; }
+    .hof-mgr-head { gap: 0.55rem; padding: 0.6rem 0.7rem; }
+    .hof-rank { width: 1rem; }
+    .hof-avatar { width: 38px; height: 38px; }
+    .hof-avatar-initials { font-size: 0.8rem; }
+    .hof-mgr-titles { min-width: auto; }
+    .hof-stat { min-width: 2.8rem; }
+    .hof-hist-head, .hof-hist { grid-template-columns: 3rem 1fr auto; }
+    .hof-hist-franchise, .hof-hist-head span:nth-child(3) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hof-chev, .hof-mgr-body { transition: none; }
+}

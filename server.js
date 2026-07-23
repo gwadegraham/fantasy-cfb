@@ -244,6 +244,17 @@ app.get('/team', async function(req, res) {
     }
 });
 
+app.get('/hall-of-fame', async function(req, res) {
+    if (req.oidc.isAuthenticated()) {
+        const user = buildUserContext(req.oidc.user);
+        const userState = safeJson(req.oidc.user);
+
+        res.render('history', {user, userState});
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
@@ -298,6 +309,9 @@ app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
 
 const standingsRouter = require('./routes/standings');
 app.use('/standings', requireAuthOrToken, standingsRouter);
+
+const historyRouter = require('./routes/history');
+app.use('/history', requireAuthOrToken, historyRouter);
 
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
