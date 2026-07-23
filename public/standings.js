@@ -248,7 +248,7 @@ function renderProjPanel(managers) {
             <span class="pp-points"><span class="pp-cur">${m.banked}</span><i class="fa-solid fa-arrow-right pp-arrow"></i><span class="pp-proj">${m.projectedFinal}</span></span>
             <span class="pp-title"><span class="pp-bar"><i style="width:${Math.min(100, m.titleOdds)}%"></i></span><b>${m.titleOdds}%</b></span>
         </div>`).join('');
-    el.innerHTML = `<h2 class="proj-panel-title">🔮 Projected Finish</h2>
+    el.innerHTML = `<h2 class="proj-panel-title">${window.ccIcon ? window.ccIcon('crystalball', { size: 22 }) : ''}Projected Finish</h2>
         <p class="proj-panel-note">Projected final points and title odds — banked points plus expected points from each roster's remaining schedule.</p>
         <div class="pp-list">${rows}</div>`;
     el.hidden = false;

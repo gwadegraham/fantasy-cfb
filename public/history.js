@@ -42,7 +42,7 @@
             var c = s.champion;
             return '<div class="hof-champ">'
                 + '<div class="hof-champ-season">' + s.season + '</div>'
-                + '<div class="hof-champ-trophy">🏆</div>'
+                + '<div class="hof-champ-trophy">' + (window.ccIcon ? window.ccIcon('trophy', { size: 30 }) : '') + '</div>'
                 + avatar(c, 96)
                 + '<div class="hof-champ-name">' + esc(c.franchise || c.name) + '</div>'
                 + (c.franchise ? '<div class="hof-champ-sub">' + esc(c.name) + '</div>' : '')
@@ -59,7 +59,7 @@
         return m.history.map(function (h) {
             return '<div class="hof-hist">'
                 + '<span class="hof-hist-season">' + h.season + '</span>'
-                + '<span class="hof-hist-finish">' + (h.champion ? '🏆 ' : '') + ordinal(h.rank) + ' of ' + h.of + '</span>'
+                + '<span class="hof-hist-finish">' + (h.champion ? (window.ccIcon ? window.ccIcon('trophy', { size: 14 }) + ' ' : '') : '') + ordinal(h.rank) + ' of ' + h.of + '</span>'
                 + '<span class="hof-hist-franchise">' + esc(h.franchise || '—') + '</span>'
                 + '<span class="hof-hist-score">' + h.score + ' pts</span>'
                 + '</div>';
@@ -69,7 +69,7 @@
     function leaderboardHtml(managers, meId) {
         var cards = managers.map(function (m, i) {
             var you = meId && String(m.userId) === String(meId);
-            var titles = m.titles > 0 ? '🏆'.repeat(Math.min(m.titles, 5)) : '<span class="hof-none">—</span>';
+            var titles = m.titles > 0 ? (window.ccIcon ? window.ccIcon('trophy', { size: 15 }).repeat(Math.min(m.titles, 5)) : '') : '<span class="hof-none">—</span>';
             return '<div class="hof-mgr' + (you ? ' hof-you' : '') + '">'
                 + '<button class="hof-mgr-head" type="button" aria-expanded="false">'
                 + '<span class="hof-rank">' + (i + 1) + '</span>'

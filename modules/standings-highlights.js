@@ -33,7 +33,7 @@ function overachieverCard(records, metaById) {
     if (!best || best.diff < 0.5) return null;   // only when meaningfully over
     const meta = (metaById && metaById[best.teamId]) || null;
     return {
-        icon: '📊', title: 'Overachiever', tag: 'vs expected wins',
+        icon: 'chart', title: 'Overachiever', tag: 'vs expected wins',
         name: `${logoImg(meta)}${teamLabel(meta, best.team)}`,
         value: `+${round(best.diff)} wins`, tone: 'good'
     };
@@ -58,7 +58,7 @@ function draftStealCard(picks, scoreById) {
     });
     if (!best || best.edge <= 0) return null;
     return {
-        icon: '💎', title: 'Draft Steal', tag: 'season',
+        icon: 'gem', title: 'Draft Steal', tag: 'season',
         name: `${logoImg(best.meta)}${teamLabel(best.meta, best.meta.school)}`,
         value: `pick #${best.overall}, ${ordinal(best.scoreRank)} in points`, tone: 'good'
     };
@@ -103,7 +103,7 @@ function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName, fanta
         : `${round(best.margin)}-pt dog`;
     const detail = `beat ${escapeHtml(best.loser)} ${winScore}–${loseScore} · ${round(best.margin)}-pt underdog`;
     return {
-        icon: '🎲', title: 'Biggest Upset',
+        icon: 'upset', title: 'Biggest Upset',
         tag: g.week != null ? `week ${g.week}` : 'season',
         name: `${logoImg(meta)}${teamLabel(meta, best.winner)}`,
         value, sub: detail, tone: 'good'
