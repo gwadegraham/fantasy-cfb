@@ -37,11 +37,19 @@
             <h1 class="franchise-name" profile-franchise></h1>
             <p class="manager-name" profile-manager></p>
             <div class="profile-stats" profile-stats></div>
+            <button type="button" class="grade-chip" profile-grade-chip hidden
+                    aria-expanded="false" aria-controls="uh-grades">
+                <span class="grade-chip-label">Draft grade</span>
+                <span class="grade-chip-letter" profile-grade-letter></span>
+                <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
+            </button>
         </div>
         <button type="button" class="edit-profile-btn" edit-profile-btn hidden>
             <i class="fa-solid fa-pen"></i> Edit profile
         </button>
     </div>
+
+    <section class="uh-grades" id="uh-grades" hidden></section>
 
     <div class="modal-backdrop" profile-modal hidden>
         <div class="profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
@@ -123,7 +131,6 @@
             </div>
         </div>
     </div>
-    <section class="uh-grades" id="uh-grades"></section>
 
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>

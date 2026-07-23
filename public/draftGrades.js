@@ -27,7 +27,25 @@
         return '<div class="gg-pick ' + cls + '">'
             + '<span class="gg-pick-label">' + label + '</span>'
             + '<span class="gg-pick-team">' + logo(p.logo) + esc(p.school) + '</span>'
-            + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.wins + ' proj W · ' + signed(p.value) + ' slots</span>'
+            + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.points + ' proj pts · ' + signed(p.value) + ' slots</span>'
+            + '</div>';
+    }
+
+    // Thin two-segment bar showing how projected points split between the
+    // regular-season floor and postseason (CFP + conf title + bowl) upside.
+    function splitBar(m) {
+        var reg = m.regPoints || 0, post = m.postPoints || 0, tot = reg + post;
+        if (tot <= 0) return '';
+        var regPct = Math.round(reg / tot * 100);
+        return '<div class="gg-split">'
+            + '<div class="gg-split-bar">'
+            +   '<span class="gg-split-reg" style="width:' + regPct + '%"></span>'
+            +   '<span class="gg-split-post" style="width:' + (100 - regPct) + '%"></span>'
+            + '</div>'
+            + '<div class="gg-split-legend">'
+            +   '<span class="gg-split-lg"><i class="gg-dot-reg"></i>' + reg + ' regular</span>'
+            +   '<span class="gg-split-lg"><i class="gg-dot-post"></i>' + post + ' postseason</span>'
+            + '</div>'
             + '</div>';
     }
 
@@ -44,10 +62,11 @@
             +   '<span class="gg-grade">' + esc(m.grade) + '</span>'
             + '</div>'
             + '<div class="gg-stats">'
+            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projPoints + '</span><span class="gg-stat-lbl">proj points</span></div>'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projWins + '</span><span class="gg-stat-lbl">proj wins</span></div>'
-            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.strength + '</span><span class="gg-stat-lbl">avg SP+</span></div>'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.cfpCount + '</span><span class="gg-stat-lbl">CFP teams</span></div>'
             + '</div>'
+            + splitBar(m)
             + pickLine('best', m.bestPick)
             + pickLine('worst', m.worstPick)
             + '</div>';
@@ -65,6 +84,17 @@
         container.innerHTML = head + note
             + '<div class="grades-grid">'
             + payload.managers.map(function (m) { return card(m, opts.currentUserId); }).join('')
+            + '</div>';
+    };
+
+    // Render just one manager's card (used by the profile chip → expand panel).
+    window.renderDraftGradeCard = function (container, manager, opts) {
+        opts = opts || {};
+        if (!container || !manager) return;
+        var note = opts.note ? '<p class="grades-note">' + esc(opts.note) + '</p>' : '';
+        container.innerHTML = note
+            + '<div class="grades-grid grades-grid-single">'
+            + card(manager, opts.currentUserId)
             + '</div>';
     };
 })();

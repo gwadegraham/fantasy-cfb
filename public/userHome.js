@@ -106,27 +106,50 @@ async function getUser() {
     });
 }
 
-// Draft grades review, on the profile: this manager's most-recent season, with
-// the viewing user's card highlighted. Preseason blend of roster strength + draft
-// value (see modules/draft-grades.js).
+// Draft grade on the profile: just THIS manager's own most-recent-season card,
+// surfaced as a color-coded chip in the hero that expands the detail on demand.
+// Preseason blend of roster strength + draft value (see modules/draft-grades.js).
 async function loadHomeGrades(user) {
     const el = document.getElementById('uh-grades');
-    if (!el || !user || !user.league || !(user.seasons || []).length) return;
+    const chip = document.querySelector('[profile-grade-chip]');
+    if (!el || !chip || !user || !user.league || !(user.seasons || []).length) return;
     const season = user.seasons.at(-1).season;
     try {
         const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
             headers: { 'Accept': 'application/json' }
         });
         const data = await res.json();
-        if (!data.managers || !data.managers.length) return;   // no draft for this season — hide section
+        // Show only the profile owner's card; hide the chip entirely if this
+        // manager didn't draft that season.
+        const mine = (data.managers || []).find(m => String(m.userId) === String(user._id));
+        if (!mine) return;   // chip stays hidden
+
+        const tier = (mine.grade || '').charAt(0).toLowerCase();
+        chip.classList.add('gg-tier-' + tier);
+        document.querySelector('[profile-grade-letter]').textContent = mine.grade;
+        chip.hidden = false;
+
+        // "you" tag keys off the logged-in viewer, not the profile owner, so it
+        // only appears when you're looking at your own profile.
         let me;
         try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }
         me = me || window.localStorage.getItem('userId') || user._id;
-        if (typeof renderDraftGrades === 'function') {
-            renderDraftGrades(el, data, {
+        if (typeof renderDraftGradeCard === 'function') {
+            renderDraftGradeCard(el, mine, {
                 currentUserId: me,
-                title: 'Draft Grades · ' + season,
-                note: 'Preseason grade — a blend of team quality (SP+), projected wins, and CFP upside. Each draft graded on its own merit.'
+                note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+            });
+        }
+        // Reveal the panel but keep it collapsed via CSS max-height, so the
+        // first expand animates (display:none can't transition).
+        el.hidden = false;
+
+        // Chip toggles the detail panel (collapsed by default).
+        if (!chip.dataset.wired) {
+            chip.dataset.wired = '1';
+            chip.addEventListener('click', () => {
+                const open = el.classList.toggle('is-open');
+                chip.setAttribute('aria-expanded', String(open));
             });
         }
     } catch (e) {

@@ -1,10 +1,23 @@
 @media only screen and (min-width: 0em) {
 
+    /* The body is a centered column flexbox, so a width-less .content shrinks to
+       its table's content width and the card collapses. Stretch it to the
+       viewport at every breakpoint (desktop repeats this in its own query). */
+    .content {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
     .get-users-container {
         width: 95%;
-        max-width: 100vw;
-        /* overflow-x: hidden; */
+        max-width: 900px;
+        margin: 0 auto 1em;
         overflow-x: visible !important;
+        background: #1A1F33;
+        border: 1px solid #2A2E42;
+        border-radius: 14px;
+        padding: 0.25em 1em;
+        box-sizing: border-box;
     }
     
     .header {
@@ -33,14 +46,29 @@
     }
 
     .table-wrapper {
-        overflow-x: scroll;
-        width: 95%;
-
+        overflow-x: auto;
+        overflow-y: hidden;
+        width: 100%;
+        /* styles.css sets margin:10px 20px 20px; with width:100% those side
+           margins push the wrapper past the card edge. Zero them — the card's
+           own padding provides the gutter. */
+        margin: 0;
+        box-shadow: none;
+        /* Round the row backgrounds to echo the card (overflow clips the square
+           corners; overflow-y:hidden + overflow-x:auto keeps horizontal scroll). */
+        border-radius: 10px;
     }
 
+    /* Standings-style: table fills the card; the team column absorbs the slack
+       so the score sits flush right. In-season the weekly columns push the
+       total width past the container and the wrapper scrolls horizontally. */
     .fl-table {
-        width: max-content;
-        min-width: 100%;
+        width: 100%;
+    }
+
+    .fl-table th.sticky-header {
+        width: 100%;
+        text-align: left !important;
     }
 
     .fl-table th {
@@ -81,6 +109,29 @@
     .sticky-header-score {
         padding-left: 1em;
         box-shadow: -8px 0 8px -6px rgba(0, 0, 0, 0.6);
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    /* The mobile ".fl-table .team-header" rule (50px + pre-wrap, meant for the
+       narrow weekly columns) also matches the score header, squishing it and
+       wrapping "Team Score". Outrank it so the score column sizes to its label.
+       That rule also pins padding to "0 0 0 0.5em !important", jamming the score
+       flush to the edge — restore a right gutter (needs !important to win). */
+    .fl-table th.sticky-header-score {
+        width: auto;
+        white-space: nowrap;
+        padding-right: 1.25em !important;
+    }
+
+    /* Matching left gutter so the "Team" header lines up with the team logos.
+       The body cell's <a> carries its own padding-left, so move the inset onto
+       the cell and zero the anchor's — otherwise logos indent past the header. */
+    .fl-table th.sticky-header {
+        padding-left: 1.25em !important;
+    }
+    .fl-table th.sticky-header a {
+        padding-left: 0;
     }
 
     /* Unplayed weeks read as blank (not a scored 0); byes as a muted dash. */
@@ -226,11 +277,14 @@
 
     .get-users-container {
         width: 95%;
-        margin-left: 2.5%;
+        max-width: 900px;
+        margin: 0 auto 1em;
+        padding: 0.25em 1.5em;
     }
 
     .table-wrapper {
-        width: auto;
+        width: 100%;
+        overflow-x: auto;
     }
 
     /* On desktop the table fits without horizontal scroll, so the frozen
@@ -241,15 +295,24 @@
     .sticky-header-score {
         position: static;
         box-shadow: none;
+        text-align: right !important;
+        white-space: nowrap;
     }
 
     .fl-table {
         font-size: 1em;
         line-height: 3em;
-        /* Size to content (not stretched to the wrapper): with the score column
-           no longer sticky on desktop, min-width:100% only padded the table out
-           and pushed the last column off-screen. */
+        /* Fill the container as a standings-style table: the team column grows
+           and pushes the score to the right edge. Weekly columns (in-season)
+           sit between them, scrolling if they overflow. */
+        width: 100%;
         min-width: 0;
+    }
+
+    /* Team column takes the slack so the score sits flush right. */
+    .fl-table th.sticky-header {
+        width: 100%;
+        text-align: left !important;
     }
 
     .hr-subtle {
@@ -348,18 +411,17 @@
     .edit-profile-btn { order: 4; align-self: center; }
 }
 
-/* Desktop layout: center the content column so the hero and the (roughly
-   fixed-width) weekly table sit balanced in the viewport rather than hugging
-   the left with a lonely right gutter. The hero centers via its base margin
-   auto; shrink the table wrapper to the table's width and center it too, so
-   both are symmetric about the middle. Placed after the base rules so it wins
-   on cascade order. */
+/* Desktop layout: the roster is a full-width, standings-style table inside the
+   hero-matching card (team left, score flush right). Fill the wrapper so the
+   columns span the card rather than shrink-wrapping to a lonely centered block.
+   Placed after the base rules so it wins on cascade order. */
 @media only screen and (min-width: 64em) {
     .table-wrapper {
-        width: fit-content;
+        width: 100%;
         max-width: 100%;
         margin-left: auto;
         margin-right: auto;
+        overflow-x: auto;
     }
 }
 
@@ -402,10 +464,45 @@
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
 
 /* Draft grades review section on the profile (cards styled by draftGrades.css). */
-.uh-grades {
-    display: block;
-    width: 92%;
-    max-width: 1100px;
-    margin: 1.5rem auto 0;
+/* Draft-grade chip in the profile hero → expands the detail panel below. */
+.grade-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.85rem;
+    padding: 0.35rem 0.75rem;
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 999px;
+    color: #A4A9C2;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease;
 }
-.uh-grades:empty { display: none; }
+.grade-chip:hover { background: #202640; border-color: #3A3F58; }
+.grade-chip-label { text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; }
+.grade-chip-letter { font-size: 1.05rem; font-weight: 800; color: #6C9BFF; }
+.grade-chip.gg-tier-a { border-color: #22C37A; }
+.grade-chip.gg-tier-a .grade-chip-letter { color: #22C37A; }
+.grade-chip.gg-tier-b { border-color: #6C9BFF; }
+.grade-chip.gg-tier-b .grade-chip-letter { color: #6C9BFF; }
+.grade-chip.gg-tier-c { border-color: #E0B341; }
+.grade-chip.gg-tier-c .grade-chip-letter { color: #E0B341; }
+.grade-chip-caret { font-size: 0.72rem; transition: transform 0.24s ease; }
+.grade-chip[aria-expanded="true"] .grade-chip-caret { transform: rotate(180deg); }
+
+.uh-grades {
+    width: 92%;
+    max-width: 560px;
+    margin: 0 auto;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.32s ease;
+}
+.uh-grades.is-open { max-height: 900px; margin-top: 1.1rem; }
+.uh-grades .grades-grid-single { grid-template-columns: 1fr; }
+@media (prefers-reduced-motion: reduce) {
+    .uh-grades { transition: none; }
+    .grade-chip-caret { transition: none; }
+}

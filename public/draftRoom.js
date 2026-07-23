@@ -418,7 +418,7 @@ function renderGrades() {
                 renderDraftGrades(el, data, {
                     currentUserId: myUserId,
                     title: 'Draft Grades',
-                    note: 'Instant, preseason grades — a blend of team quality (SP+), projected wins, and CFP upside. Each draft graded on its own merit.'
+                    note: 'Instant, preseason grades — projected fantasy points in this league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
                 });
             }
         })

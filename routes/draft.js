@@ -3,11 +3,16 @@ const router = express.Router();
 const Draft = require('../models/draft');
 const User = require('../models/user');
 const Team = require('../models/team');
+const Game = require('../models/game');
+const Ranking = require('../models/ranking');
+const ScoringConfig = require('../models/scoringConfig');
+const { resolveConfig } = require('../modules/scoring-defaults');
 const { computeGrades } = require('../modules/draft-grades');
 
-// Post-draft grades for a league + season — immediate preseason feedback that
-// blends roster strength (SP+) and draft value (SP+ quality vs. draft slot).
-// Read-only; available as soon as the draft is complete.
+// Post-draft grades for a league + season — immediate preseason feedback. Each
+// roster is projected to EXPECTED FANTASY POINTS under that league's own scoring
+// config (schedule + SP+ win probs + market CFP odds), graded on absolute
+// per-league bands. Read-only; available as soon as the draft is complete.
 router.get('/grades/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
@@ -21,12 +26,30 @@ router.get('/grades/:league/:season', async (req, res) => {
         const usersById = {};
         users.forEach(u => { usersById[String(u._id)] = u; });
 
-        // SP+ lives on the Team docs (the draft-pick snapshots don't carry it).
-        const teams = await Team.find({}, { id: 1, seasons: 1 }).lean();
+        // SP+ / expected wins / CFP odds / conference live on the Team docs.
+        const teams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
         const teamsById = {};
         teams.forEach(t => { teamsById[String(t.id)] = t; });
 
-        const managers = computeGrades(draft, usersById, teamsById);
+        // Inputs the projection needs: the season's regular schedule, the
+        // league's resolved scoring config, and a preseason AP poll if ingested
+        // (else the projection synthesizes one from SP+).
+        const games = await Game.find({ season, seasonType: 'regular' },
+            { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1,
+              notes: 1, homeId: 1, homeTeam: 1, homeConference: 1,
+              awayId: 1, awayTeam: 1, awayConference: 1 }).lean();
+
+        const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+        const config = resolveConfig(league, cfgDoc ? {
+            model: cfgDoc.model, values: cfgDoc.values,
+            combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
+        } : null);
+
+        const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
+        const apPoll = apDoc && Array.isArray(apDoc.polls)
+            ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
+
+        const managers = computeGrades(draft, usersById, teamsById, { games, config, apPoll });
         res.json({ league, season, managers });
     } catch (err) {
         res.status(500).json({ message: err.message });

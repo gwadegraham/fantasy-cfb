@@ -99,6 +99,17 @@
 .gg-stat-val { font-size: 1.15rem; font-weight: 700; color: #F4F6FB; font-variant-numeric: tabular-nums; }
 .gg-stat-lbl { color: #A4A9C2; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* Regular-season vs postseason projected-points split. */
+.gg-split { margin-top: 0.7rem; }
+.gg-split-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #2A2E42; }
+.gg-split-reg { background: #6C9BFF; }
+.gg-split-post { background: #E0B341; }
+.gg-split-legend { display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.68rem; color: #A4A9C2; }
+.gg-split-lg { display: flex; align-items: center; gap: 5px; }
+.gg-split-lg i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.gg-dot-reg { background: #6C9BFF; }
+.gg-dot-post { background: #E0B341; }
+
 .gg-pick { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
 .gg-pick-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
 .gg-steal .gg-pick-label { color: #22C37A; }

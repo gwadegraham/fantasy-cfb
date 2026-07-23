@@ -218,6 +218,43 @@ router.post('/week/mass-create', async (req, res) => {
     }
 });
 
+// Bulk-ingest a full regular-season FBS schedule in one CFBD call. Preseason
+// prerequisite for draft grades (the projection reads each team's schedule).
+// Upserts by game id, so it's safe to re-run and future games (no scores yet)
+// store fine. One shot instead of looping /week/mass-create over 15 weeks.
+router.post('/:season/schedule', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = req.params.season;
+
+    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=regular&division=fbs`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+    });
+    const gameData = await response.json();
+    const responseError = gamesResponseError(response.ok, response.status, gameData);
+    if (responseError) return res.status(400).json({ message: responseError });
+
+    const centralTime = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
+    let created = 0, updated = 0;
+    for (const g of gameData) {
+        g.startTimeTbd = g.startTimeTBD;
+        g.lastUpdated = centralTime;
+        const exists = await Game.findOne({ id: g.id });
+        if (!exists) {
+            try { await new Game(g).save(); created++; }
+            catch (err) { console.log('Error saving game', g.id, err.message); }
+        } else {
+            const filter = { id: g.id };
+            delete g.id;
+            try { await Game.findOneAndUpdate(filter, g); updated++; }
+            catch (err) { console.log('Error updating game', filter.id, err.message); }
+        }
+    }
+    return res.status(201).json({ season: Number(season), created, updated, total: gameData.length });
+});
+
 // Populate broadcast info (TV/web outlet) onto existing game docs from CFBD
 // /games/media. One call covers the whole season; matched by game id.
 router.post('/:season/media', async (req, res) => {
