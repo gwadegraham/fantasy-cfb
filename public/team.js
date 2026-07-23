@@ -751,7 +751,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 12 }) : ''} ${game.outlet}</span>` : ''}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -807,7 +807,7 @@ function renderNextGame(schedule, logos, teamId) {
             <span class="next-game-tag">Next Up</span>
             <div class="next-game-body">
                 <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>
-                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · ${window.ccIcon ? window.ccIcon('broadcast', { size: 12 }) : ''} ${game.outlet}` : ''}</span>
+                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · ${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}` : ''}</span>
                 ${game.neutralSite && game.venue ? `<span class="next-game-venue">${game.venue}</span>` : ''}
             </div>
         </a>

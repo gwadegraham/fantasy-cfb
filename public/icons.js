@@ -77,9 +77,9 @@
             '<path d="M6.5 12h11" stroke-opacity=".4"/>' +
             '<path d="M9.7 10.6v2.8M11.2 10.3v3.4M12.8 10.3v3.4M14.3 10.6v2.8"/></g>' },
         broadcast: { c: '#C9CEE6', sw: 1.6, svg:
-            '<rect x="3" y="7" width="18" height="12" rx="2.5" fill="currentColor" fill-opacity=".12"/>' +
-            '<path d="M8.5 4 12 7l3.5-3"/>' +
-            '<path d="M10.5 10.5 14 13l-3.5 2.5Z" fill="currentColor" stroke="none"/>' },
+            '<rect x="3" y="5" width="18" height="12" rx="2.5" fill="currentColor" fill-opacity=".14"/>' +
+            '<path d="M12 17v2.4M8.5 20.2h7"/>' +
+            '<path d="M10.4 8.7 14.8 11 10.4 13.3Z" fill="currentColor" stroke="none"/>' },
         pennant: { c: '#E0B341', sw: 1.7, svg:
             '<path d="M6 3.4v17.2"/><path d="M6 5l12.6 3.3L6 11.6Z" fill="currentColor" fill-opacity=".2"/>' },
         stadium: { c: '#6C9BFF', sw: 1.6, svg:
