@@ -759,7 +759,7 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
     return '<div class="game-card"><table class="game-table"><tbody><tr></tr>'
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
         + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
-        + (game.outlet ? '<tr><td class="game-broadcast">📺 ' + game.outlet + '</td></tr>' : '')
+        + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 13 }) : '') + ' ' + game.outlet + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
         + '</tbody></table></div>';
 }

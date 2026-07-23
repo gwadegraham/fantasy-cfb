@@ -24,10 +24,10 @@
     <% } %>
 
   <div class="rules-container">
-    <h1 class="header-title">📘 Scoring Rules</h1>
+    <h1 class="header-title"><span data-icon="book" data-icon-size="26"></span>Scoring Rules</h1>
 
     <section class="rules-section draft-section">
-      <h2 class="rule-header">📋 Draft Rules</h2>
+      <h2 class="rule-header"><span data-icon="clipboard" data-icon-size="20"></span>Draft Rules</h2>
       <ul>
         <li><i class="fas fa-circle fa-xs"></i>Every <strong>FBS team</strong> is available to be drafted</li>
         <li><i class="fas fa-circle fa-xs"></i><strong>Snake Drafting</strong> format</li>
@@ -36,7 +36,7 @@
     </section>
 
     <section class="rules-section">
-      <h2 class="rule-header">🏈 Regular Season Scoring</h2>
+      <h2 class="rule-header"><span data-icon="football" data-icon-size="20"></span>Regular Season Scoring</h2>
       <p class="scoring-mode">
         <% if (cfg.combineMode === 'sum') { %>
           Bonuses <strong>stack</strong> — a win earns the base points plus every bonus that applies.
@@ -54,7 +54,7 @@
     </section>
 
     <section class="rules-section">
-      <h2 class="rule-header">🏆 Postseason Scoring</h2>
+      <h2 class="rule-header"><span data-icon="trophy" data-icon-size="20"></span>Postseason Scoring</h2>
       <ul class="scoring-list">
         <% fields.filter(function(f){ return f.group === 'postseason' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
           <li>
@@ -65,7 +65,7 @@
     </section>
 
     <section class="rules-section">
-      <h2 class="rule-header">📊 Rankings Used</h2>
+      <h2 class="rule-header"><span data-icon="chart" data-icon-size="20"></span>Rankings Used</h2>
       <p>Rankings are based on the <strong>AP Poll</strong> until the <strong>CFP Poll</strong> is released.</p>
     </section>
   </div>

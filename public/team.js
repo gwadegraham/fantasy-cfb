@@ -529,7 +529,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
     if (seasonObj.returningProduction != null) {
         outlookChips.push(`<span class="outlook-chip" title="Share of last season's production (PPA) returning">${seasonObj.returningProduction}% returning</span>`);
     }
-    var outlookHtml = outlookChips.length ? `<div><h4>📊 Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div></div>` : '';
+    var outlookHtml = outlookChips.length ? `<div><h4>${window.ccIcon ? window.ccIcon('chart', { size: 16 }) : ''} Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div></div>` : '';
 
     // Set the tab title to the team being viewed.
     document.title = `${team.school} ${team.mascot} · Campus Clash`;
@@ -560,13 +560,13 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
                 ${expectedHtml}
             </div>
             <div>
-                <h4>📈 Season Score</h4>
+                <h4>${window.ccIcon ? window.ccIcon('riser', { size: 16 }) : ''} Season Score</h4>
                 <p class="score"><span data-countup="${seasonScore}">0</span> Points ${rankHtml}</p>
                 <h4>Recruiting Rank</h4>
                 <p class="score">${recruitingRank}</p>
             </div>
             <div>
-                <h4>🏟 Stadium</h4>
+                <h4>${window.ccIcon ? window.ccIcon('stadium', { size: 16 }) : ''} Stadium</h4>
                 <p>${loc.name || '—'}</p>
                 ${(loc.city && loc.state) ? `<p><small>${loc.city}, ${loc.state}</small></p>` : ''}
                 ${stadiumChips.length ? `<div class="stadium-chips">${stadiumChips.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
@@ -611,7 +611,7 @@ function renderWeeklyScores(seasonObj, scoreCode) {
 
     return `
         <div class="weekly-scores">
-            <h4>📊 Weekly Points</h4>
+            <h4>${window.ccIcon ? window.ccIcon('chart', { size: 16 }) : ''} Weekly Points</h4>
             <div class="week-bars run">${bars}</div>
         </div>
     `;
@@ -751,7 +751,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">📺 ${game.outlet}</span>` : ''}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 12 }) : ''} ${game.outlet}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -807,7 +807,7 @@ function renderNextGame(schedule, logos, teamId) {
             <span class="next-game-tag">Next Up</span>
             <div class="next-game-body">
                 <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>
-                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · 📺 ${game.outlet}` : ''}</span>
+                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · ${window.ccIcon ? window.ccIcon('broadcast', { size: 12 }) : ''} ${game.outlet}` : ''}</span>
                 ${game.neutralSite && game.venue ? `<span class="next-game-venue">${game.venue}</span>` : ''}
             </div>
         </a>

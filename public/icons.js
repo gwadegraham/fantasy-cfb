@@ -82,6 +82,17 @@
             '<path d="M10.5 10.5 14 13l-3.5 2.5Z" fill="currentColor" stroke="none"/>' },
         pennant: { c: '#E0B341', sw: 1.7, svg:
             '<path d="M6 3.4v17.2"/><path d="M6 5l12.6 3.3L6 11.6Z" fill="currentColor" fill-opacity=".2"/>' },
+        stadium: { c: '#6C9BFF', sw: 1.6, svg:
+            '<path d="M2.6 9.6c0-2.3 4.2-3.9 9.4-3.9s9.4 1.6 9.4 3.9v4.8c0 2.3-4.2 3.9-9.4 3.9S2.6 16.7 2.6 14.4Z" fill="currentColor" fill-opacity=".16"/>' +
+            '<ellipse cx="12" cy="9.6" rx="6.2" ry="2.3"/>' +
+            '<path d="M6.2 4.9v1.5M17.8 4.9v1.5"/>' },
+        book: { c: '#6C9BFF', sw: 1.6, svg:
+            '<path d="M12 6.5C10.2 5.3 7.4 5.1 5 5.9v11.4c2.4-.8 5.2-.6 7 .6 1.8-1.2 4.6-1.4 7-.6V5.9c-2.4-.8-5.2-.6-7 .6Z" fill="currentColor" fill-opacity=".16"/>' +
+            '<path d="M12 6.5v11.9"/>' },
+        clipboard: { c: '#6C9BFF', sw: 1.6, svg:
+            '<rect x="5" y="4.5" width="14" height="16" rx="2.5" fill="currentColor" fill-opacity=".14"/>' +
+            '<rect x="8.5" y="3" width="7" height="3.2" rx="1.2"/>' +
+            '<path d="M8.5 10.5h7M8.5 13.5h7M8.5 16.5h4"/>' },
         // Multicolor by design — bypasses the currentColor wrapper.
         confetti: { c: '#F4F6FB', raw: true, svg:
             '<svg class="cc-icon cc-i-confetti" width="__S__" height="__S__" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -122,6 +133,8 @@
             // drift on large headings).
             '.highlights-header{display:flex;align-items:center;justify-content:center;gap:.4rem}' +
             '.proj-panel-title{display:flex;align-items:center;gap:.4rem}' +
+            '.rule-header{display:flex;align-items:center;gap:.45rem}' +
+            '.header-title .cc-icon{vertical-align:-.14em;margin-right:.4rem}' +
             '.hof-champ-trophy .cc-icon{vertical-align:middle}';
         document.head.appendChild(st);
     })();
