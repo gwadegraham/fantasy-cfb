@@ -717,10 +717,21 @@ select[scoring-config-combine-mode] { width: 100%; }
     padding: 0.6em 1em;
     font-size: 0.9rem;
     font-weight: 600;
+    box-sizing: border-box;
     transition: background-color 0.18s ease, transform 0.08s ease;
 }
 .sub-container button:hover { background-color: #d94a4a; }
 .sub-container button:active { transform: translateY(1px); }
+
+/* Full-width form with no horizontal margin — the base rules give it
+   width:100% AND margin:0.5em, so its right margin overflowed the panel and got
+   clipped by the accordion's overflow:hidden (chopping the controls' right
+   edge). Keep only the vertical gap. */
+.sub-container form:not(.draft-config-form) {
+    width: 100%;
+    margin: 0.5em 0;
+    box-sizing: border-box;
+}
 
 /* --- Fields & dropdowns in the generic panels (config forms keep their own
    .draft-config-form styling, which this :not() leaves untouched). --- */
@@ -734,6 +745,8 @@ select[scoring-config-combine-mode] { width: 100%; }
     padding: 0.5em 0.65em;
     font-size: 0.88rem;
     margin-bottom: 0.4em;
+    width: 100%;
+    box-sizing: border-box;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .sub-container form:not(.draft-config-form) select:focus,
