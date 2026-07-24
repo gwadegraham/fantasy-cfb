@@ -631,3 +631,12 @@ select[scoring-config-combine-mode] { width: 100%; }
     0%, 100% { opacity: 0.55; }
     50%      { opacity: 1; }
 }
+
+/* Caption under the "Score All Weeks" button explaining what it runs. */
+.all-weeks-note {
+    font-size: 0.72rem;
+    color: #A4A9C2;
+    line-height: 1.4;
+    margin-top: 0.4em;
+    max-width: 22em;
+}

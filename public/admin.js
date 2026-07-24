@@ -468,41 +468,58 @@ if (calculateForm) {
     });
 }
 
+// Score every team's team-doc in one server-side request (rankings cached
+// across the run) instead of firing ~136 parallel requests + ~136 toasts.
 const calculateAllForm = document.getElementById('all-score-form')
 if (calculateAllForm) {
     calculateAllForm.addEventListener('submit', async function(event) {
         event.preventDefault();
 
         const season = document.querySelector('[team-score-season]').value;
+        if (!season) {
+            failToast.options.text = 'Pick a season first';
+            failToast.showToast();
+            return;
+        }
 
-        await fetch('/teams', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
+        try {
+            const { status, data } = await runLongBlockingRequest(`/scores/calculate-all/${season}`, 'Calculating team scores…');
+            if (status === 200) {
+                successToast.options.text = `Calculated ${data.scored} teams${data.failed ? ` (${data.failed} failed)` : ''} for ${season}`;
+                successToast.showToast();
+            } else {
+                failToast.options.text = status + ' | Team scores could not be calculated' + (data && data.message ? `: ${data.message}` : '');
+                failToast.showToast();
             }
-        }).then(res => res.json()).then(data => {
-            console.log("Number of teams: " + data.length)
-            data.forEach(async (team) => {
-                var response = await fetch(`/calculate-team-score/${season}/${team.id}/${team.school}`, {
-                    method: 'GET',
-                    headers: {
-                    'Accept': 'application/json'
-                    }
-                });
+        } catch (err) {
+            failToast.options.text = 'Team scores failed: ' + err.message;
+            failToast.showToast();
+        }
+    });
+}
 
-                response.json().then(data => {
-                    if (response.status == 200) {
-                        console.log(data);
-                        successToast.options.text = "Score successfully calculated for " + data.school;
-                        successToast.showToast();
-                    } else {
-                        failToast.options.text = response.status + " Team score could not be calculated";
-                        failToast.showToast();
-                    }
-                });
-            })
-        });
+// Score the whole season in one click: user weekly scores for every week +
+// postseason, all team-doc scores, then cumulative totals — the finished-season
+// backfill (replaces 17× Update Scores + Calculate Scores for all teams).
+const scoresAllForm = document.getElementById('scores-all-form');
+if (scoresAllForm) {
+    scoresAllForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!window.confirm('Recompute ALL user + team scores for the whole season? This can take several minutes.')) return;
+
+        try {
+            const { status, data } = await runLongBlockingRequest('/scores/update-all', 'Scoring the full season — this can take several minutes…');
+            if (status === 200) {
+                successToast.options.text = `Scored ${data.weeksScored} weeks + ${data.teamsScored} teams${data.teamsFailed ? ` (${data.teamsFailed} failed)` : ''}`;
+                successToast.showToast();
+            } else {
+                failToast.options.text = status + ' | Season score failed' + (data && data.message ? `: ${data.message}` : '');
+                failToast.showToast();
+            }
+        } catch (err) {
+            failToast.options.text = 'Season score failed: ' + err.message;
+            failToast.showToast();
+        }
     });
 }
 
@@ -1169,6 +1186,33 @@ function unblock_screen() {
     };
     el.addEventListener('transitionend', done, { once: true });
     setTimeout(done, 400);
+}
+
+// Update the loading overlay's caption (status for long-running admin ops).
+function setBlockMessage(msg) {
+    var t = document.querySelector('#screenBlock .admin-loader-text');
+    if (t) t.textContent = msg;
+}
+
+// Run a long admin POST behind the overlay. The overlay's safety watchdog is
+// 150s, so for multi-minute operations we re-arm it on a heartbeat; the overlay
+// always clears on success OR failure (finally). Returns { status, data }.
+async function runLongBlockingRequest(url, message) {
+    block_screen();
+    setBlockMessage(message);
+    var heartbeat = setInterval(block_screen, 60000); // keep the watchdog from firing mid-run
+    try {
+        var res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(1200000) // 20-minute ceiling
+        });
+        var data = await res.json().catch(function () { return {}; });
+        return { status: res.status, data: data };
+    } finally {
+        clearInterval(heartbeat);
+        unblock_screen();
+    }
 }
 
 // Belt-and-suspenders: if any admin request rejects (network error, aborted

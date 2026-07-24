@@ -41,7 +41,8 @@ module.exports= {
         }
     },
 
-    updateScores: async function(season, week) {
+    updateScores: async function(season, week, cache) {
+        var rankingCache = cache || new Map();
         var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
@@ -81,9 +82,9 @@ module.exports= {
                         // values + disabled) so commissioner structure changes
                         // are honored, not just point values.
                         if (cfg.model == "claunts") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg);
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg, rankingCache);
                         } else if (cfg.model == "graham") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg);
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg, rankingCache);
                         }
 
                         score += teamScore;
@@ -146,7 +147,8 @@ module.exports= {
         }
     },
 
-    calculateTeamScores: async function (season, teamId, teamName) {
+    calculateTeamScores: async function (season, teamId, teamName, cache) {
+        var rankingCache = cache || new Map();
 
         var cumulativeScoreV1 = 0;
         var cumulativeScoreV2 = 0;
@@ -171,8 +173,8 @@ module.exports= {
                 var gameScoreV1 = 0;
                 var gameScoreV2 = 0;
 
-                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season, clauntsCfg);
-                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season, grahamCfg);
+                gameScoreV1 = await module.exports.calculateScoreV1(teamId, game, game.week, season, clauntsCfg, rankingCache);
+                gameScoreV2 = await module.exports.calculateScoreV2(teamId, game, game.week, season, grahamCfg, rankingCache);
 
                 cumulativeScoreV1 += gameScoreV1;
                 cumulativeScoreV2 += gameScoreV2;
@@ -208,14 +210,14 @@ module.exports= {
     // Scoring for the Claunts league (claunts model). `cfg` may be a flat point-
     // values object (back-compat with callers/tests that only tune values) or a
     // fully-resolved config { model, combineMode, values, disabled }.
-    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.claunts.defaults) {
-        var rankings = await getRankingsForGame(data, week, season);
+    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.claunts.defaults, cache) {
+        var rankings = await getRankingsForGame(data, week, season, cache);
         return evaluate('claunts', team, data, rankings, normalizeCfg('claunts', cfg));
     },
 
     // Scoring for the Graham league (graham model). See calculateScoreV1 re: cfg.
-    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.graham.defaults) {
-        var rankings = await getRankingsForGame(data, week, season);
+    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.graham.defaults, cache) {
+        var rankings = await getRankingsForGame(data, week, season, cache);
         return evaluate('graham', team, data, rankings, normalizeCfg('graham', cfg));
     },
 
@@ -348,7 +350,18 @@ async function getScoringConfig(league) {
 }
 
 // Builds the rankings-fetch URL for a game and returns the parsed rankings.
-async function getRankingsForGame(game, week, season) {
+// Fetches the ranking doc for a game's week from the internal /rankings
+// endpoint (a Mongo read). The same (season, week, seasonType) doc is needed by
+// every game in a week and by both league models, so callers that score many
+// games in one run (updateScores / calculateTeamScores) pass a `cache` Map to
+// reuse it instead of re-reading it per game. Without a cache it always fetches
+// — so direct callers stay stateless and correct even if rankings change.
+async function getRankingsForGame(game, week, season, cache) {
+    var key = (game.seasonType == "postseason")
+        ? `${season}|1|regular`
+        : `${season}|${week}|${game.seasonType}`;
+    if (cache && cache.has(key)) return cache.get(key);
+
     var url = (game.seasonType == "postseason")
         ? `${process.env.URL}/rankings/${season}/1/regular`
         : `${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`;
@@ -356,7 +369,9 @@ async function getRankingsForGame(game, week, season) {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     });
-    return response.json();
+    var data = await response.json();
+    if (cache) cache.set(key, data);
+    return data;
 }
 
 // --- unified scoring engine ---------------------------------------------
