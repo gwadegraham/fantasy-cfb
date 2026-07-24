@@ -580,6 +580,7 @@ if (recruitRankingsForm) {
                 } else {
                     failToast.options.text = response.status + " Recruiting Rankings could not be retrieved";
                     failToast.showToast();
+                    unblock_screen();
                 }
             });
         }
@@ -616,6 +617,7 @@ if (teamRecordsForm) {
             } else {
                 failToast.options.text = response.status + " Team Records could not be retrieved";
                 failToast.showToast();
+                unblock_screen();
             }
         });
     });
@@ -651,6 +653,7 @@ if (refreshTeamsForm) {
             } else {
                 failToast.options.text = response.status + " Teams could not be refreshed";
                 failToast.showToast();
+                unblock_screen();
             }
         });
     });
@@ -801,7 +804,9 @@ if (gamesForm) {
                 unblock_screen();
             } else {
                 failToast.options.text = response.status + "| Games could not be retrieved";
-                failToast.showToast();            }
+                failToast.showToast();
+                unblock_screen();
+            }
         });
     });
 }
@@ -873,7 +878,9 @@ if (scoresForm) {
                 unblock_screen();
             } else {
                 failToast.options.text = response.status + "| Scores could not be updated";
-                failToast.showToast();            }
+                failToast.showToast();
+                unblock_screen();
+            }
         });
     });
 }
@@ -908,6 +915,7 @@ if (bettingLinesForm) {
             } else {
                 failToast.options.text = response.status + " Betting Records could not be retrieved";
                 failToast.showToast();
+                unblock_screen();
             }
         });
     });
@@ -943,6 +951,7 @@ if (expectedWinsForm) {
             } else {
                 failToast.options.text = response.status + " Team expected wins could not be updated";
                 failToast.showToast();
+                unblock_screen();
             }
         });
     });
@@ -974,6 +983,7 @@ if (apiCallsForm) {
             } else {
                 failToast.options.text = response.status + " API calls remaining could not be retrieved";
                 failToast.showToast();
+                unblock_screen();
             }
         });
     });
@@ -1109,17 +1119,62 @@ function displayApiCallsContainer() {
     }
 }
 
+// Full-screen "working" overlay shown while an admin request runs. It carries a
+// football loader (desktop + mobile friendly, respects reduced-motion) and, most
+// importantly, is engineered so it can NEVER stay stuck:
+//   1. block_screen is idempotent — repeated calls reuse one overlay.
+//   2. A watchdog auto-clears it if a handler ever forgets to unblock.
+//   3. A global unhandledrejection listener (registered below) clears it the
+//      instant a request throws/rejects.
+// Individual handlers also unblock in both their success and error branches.
 function block_screen() {
-    $('<div id="screenBlock"></div>').appendTo('body');
-    $('#screenBlock').css( { opacity: 0, width: $(document).width(), height: $(document).height() } );
-    $('#screenBlock').addClass('blockDiv');
-    $('#screenBlock').animate({opacity: 0.7}, 200);
+    let el = document.getElementById('screenBlock');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'screenBlock';
+        el.className = 'blockDiv';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        el.setAttribute('aria-label', 'Working');
+        var ball = (typeof window !== 'undefined' && window.ccIcon)
+            ? window.ccIcon('football', { size: 46 })
+            : '🏈';
+        el.innerHTML =
+            '<div class="admin-loader">' +
+              '<span class="admin-loader-ball" aria-hidden="true">' + ball + '</span>' +
+              '<div class="admin-loader-text">Working<span class="admin-loader-dots"><i>.</i><i>.</i><i>.</i></span></div>' +
+            '</div>';
+        document.body.appendChild(el);
+    }
+    // Fade in on the next frame so the CSS transition actually runs.
+    requestAnimationFrame(function () { el.classList.add('is-visible'); });
+    // Safety net: never leave the overlay up longer than the slowest admin op
+    // (score updates cap out near 100s), even if a handler forgets to unblock.
+    clearTimeout(block_screen._watchdog);
+    block_screen._watchdog = setTimeout(unblock_screen, 150000);
 }
 
 function unblock_screen() {
-$('#screenBlock').animate({opacity: 0}, 200, function() {
-    $('#screenBlock').remove();
-});
+    clearTimeout(block_screen._watchdog);
+    var el = document.getElementById('screenBlock');
+    if (!el) return;
+    el.classList.remove('is-visible');
+    // Remove after the fade, with a hard-removal fallback so a missed
+    // transitionend (reduced-motion, backgrounded tab) can't orphan the node.
+    var removed = false;
+    var done = function () {
+        if (removed) return;
+        removed = true;
+        if (el.parentNode) el.parentNode.removeChild(el);
+    };
+    el.addEventListener('transitionend', done, { once: true });
+    setTimeout(done, 400);
+}
+
+// Belt-and-suspenders: if any admin request rejects (network error, aborted
+// fetch, JSON parse failure) the overlay clears immediately instead of hanging.
+if (typeof window !== 'undefined') {
+    window.addEventListener('unhandledrejection', function () { unblock_screen(); });
 }
 
 if ($("[league-selector]")) {
