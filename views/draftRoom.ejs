@@ -54,6 +54,16 @@
     <div id="draft-grades-panel" class="draft-grades-panel" style="display:none;"></div>
 
     <div class="content pool">
+        <!-- Draft cheat sheet: best-available grouped into SP+ tiers, with ADP + a
+             reach/steal read. Collapsible; rendered by draftRoom.js renderCheatSheet(). -->
+        <div class="cheat-sheet" id="cheat-sheet">
+            <button class="cheat-toggle" id="cheat-toggle" type="button" onclick="toggleCheatSheet()" aria-expanded="true">
+                <span class="cheat-title">Cheat Sheet <span class="cheat-sub">— best available by tier</span></span>
+                <span class="cheat-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="cheat-body" id="cheat-body"></div>
+        </div>
+
         <h2 class="pool-title">Available Teams</h2>
         <div class="pool-controls">
             <input type="text" id="poolSearch" placeholder="Search team…" oninput="renderPool()">

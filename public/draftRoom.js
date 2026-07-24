@@ -32,6 +32,7 @@ function escapeHtml(value) {
 var pool = [];               // enriched team rows for the pool table
 var poolSort = { key: 'xwins', dir: -1 };
 var xwMin = 0, xwMax = 0;
+var adpMap = {};             // teamId -> { adp, n } from historical drafts
 
 // Self-hosted conference logos (same set as the team page) — used instead of
 // conference names in the mobile pool cards so long names don't get cut off.
@@ -119,13 +120,24 @@ async function getRecruitingRankings() {
     return res.json().catch(() => []);
 }
 
+// Average draft position per team, aggregated across past drafts (both leagues).
+async function getADP() {
+    try {
+        const res = await fetch('/draft/adp', { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        adpMap = (data && data.adp) || {};
+    } catch (e) {
+        adpMap = {};
+    }
+}
+
 async function getTeams() {
     const res = await fetch('/teams', { headers: { 'Accept': 'application/json' } });
     const data = await res.json();
     teamList = data;
     data.forEach(t => { teamsById[String(t.id)] = t; });
 
-    const recruiting = await getRecruitingRankings();
+    const [recruiting] = await Promise.all([getRecruitingRankings(), getADP()]);
     buildPool(data, recruiting);
     populateConfFilter();
     renderPool();
@@ -157,7 +169,8 @@ function buildPool(teams, recruiting) {
             var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
             if (r) rank = r.rank;
         }
-        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
+        var adpInfo = adpMap[String(t.id)];
+        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null, adp: adpInfo ? adpInfo.adp : null, adpN: adpInfo ? adpInfo.n : 0 };
     });
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
@@ -199,7 +212,19 @@ function sortVal(p, k) {
     if (k === 'score') return p.score == null ? -1 : p.score;
     if (k === 'xwins') return p.xwins == null ? -1 : p.xwins;
     if (k === 'sp') return p.sp == null ? -Infinity : p.sp;   // higher SP+ = better
+    if (k === 'adp') return p.adp == null ? Infinity : p.adp; // lower ADP = drafted earlier
     return 0;
+}
+
+// A team's "value" this pick: how many spots past its usual ADP it's still
+// available. Positive = falling/steal, negative = a reach ahead of ADP. Only
+// meaningful while a draft is live (a current overall pick exists).
+function valueBadge(p, currentPick) {
+    if (p.adp == null || !currentPick) return '';
+    var delta = currentPick - p.adp;
+    if (delta >= 4) return '<span class="value-badge steal" title="Usually goes ~#' + p.adp + '; still on the board at #' + currentPick + '">Value</span>';
+    if (delta <= -4) return '<span class="value-badge reach" title="Usually goes ~#' + p.adp + '; that\'s ahead of its usual spot">Reach</span>';
+    return '';
 }
 
 function sortPool(key) {
@@ -208,7 +233,7 @@ function sortPool(key) {
     } else {
         poolSort.key = key;
         // Names/conference/recruiting read best ascending; stats descending.
-        poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank') ? 1 : -1;
+        poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank' || key === 'adp') ? 1 : -1;
     }
     renderPool();
 }
@@ -235,9 +260,11 @@ function renderPool() {
     var k = poolSort.key, dir = poolSort.dir;
     rows.sort((a, b) => { var av = sortVal(a, k), bv = sortVal(b, k); return (av < bv ? -1 : av > bv ? 1 : 0) * dir; });
 
-    var cols = [['name', 'Team'], ['conf', 'Conference'], ['sp', 'SP+'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['draft', '']];
+    var currentPick = oc.overall || null;
+
+    var cols = [['name', 'Team'], ['conf', 'Conference'], ['sp', 'SP+'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['adp', 'ADP'], ['draft', '']];
     document.getElementById('pool-head').innerHTML = cols.map(([key, label]) => {
-        var numCls = (key === 'rank' || key === 'score' || key === 'xwins' || key === 'sp') ? 'num' : '';
+        var numCls = (key === 'rank' || key === 'score' || key === 'xwins' || key === 'sp' || key === 'adp') ? 'num' : '';
         var sorted = key === poolSort.key;
         var arrow = key === 'draft' ? '' : `<span class="arrow">${sorted ? (poolSort.dir < 0 ? '▼' : '▲') : '↕'}</span>`;
         var onclick = key === 'draft' ? '' : `onclick="sortPool('${key}')"`;
@@ -261,6 +288,7 @@ function renderPool() {
             <td class="num">${badge}</td>
             <td class="num">${p.score == null ? '-' : p.score}</td>
             <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%;background:${barColor(p.xwins)}"></span></span></span></td>
+            <td class="num"><span class="adp-cell">${p.adp == null ? '<span class="muted">—</span>' : p.adp}${drafted ? '' : valueBadge(p, currentPick)}</span></td>
             <td class="num">${action}</td>
         </tr>`;
     }).join('');
@@ -291,7 +319,8 @@ function renderPool() {
                 <div class="pool-card-stats">
                     ${p.spRank != null ? `<span title="SP+ rating ${p.sp}"><b>#${p.spRank}</b><small>SP+</small></span>` : ''}
                     <span><b>${p.xwins || '-'}</b><small>xWins</small></span>
-                    <span><b>${p.score == null ? '-' : p.score}</b><small>${ptsLabel}</small></span>
+                    <span><b>${p.adp == null ? '-' : p.adp}</b><small>ADP</small></span>
+                    ${drafted ? '' : valueBadge(p, currentPick)}
                 </div>
             </div>`;
         }).join('');
@@ -299,6 +328,64 @@ function renderPool() {
 
     var avail = pool.filter(p => !draftedIds.has(String(p.id))).length;
     document.getElementById('poolCount').textContent = `${rows.length} shown · ${avail} available`;
+
+    renderCheatSheet(draftedIds, currentPick);
+}
+
+// Collapsible "Best Available by Tier" cheat sheet. Tiers are the top available
+// teams grouped by SP+ drop-offs (a new tier starts where the gap to the next
+// team is unusually large), each row carrying SP+ rank, ADP, and a value read.
+function renderCheatSheet(draftedIds, currentPick) {
+    var el = document.getElementById('cheat-body');
+    if (!el) return;
+
+    var avail = pool.filter(p => !draftedIds.has(String(p.id)) && p.sp != null)
+                    .sort((a, b) => b.sp - a.sp);
+    var top = avail.slice(0, 24);
+    if (!top.length) {
+        el.innerHTML = '<p class="cheat-empty">No SP+ ratings loaded yet — run enrichment to power the cheat sheet.</p>';
+        return;
+    }
+
+    // Break into tiers where the SP+ gap to the next team exceeds the typical gap.
+    var gaps = [];
+    for (var i = 1; i < top.length; i++) gaps.push(top[i - 1].sp - top[i].sp);
+    var mean = gaps.reduce((s, g) => s + g, 0) / (gaps.length || 1);
+    var sd = Math.sqrt(gaps.reduce((s, g) => s + (g - mean) * (g - mean), 0) / (gaps.length || 1));
+    var thr = mean + sd;
+
+    var tiers = [[top[0]]];
+    for (var j = 1; j < top.length; j++) {
+        if ((top[j - 1].sp - top[j].sp) > thr) tiers.push([]);
+        tiers[tiers.length - 1].push(top[j]);
+    }
+
+    var canAct = draft && draft.status === 'active' &&
+        (String((draft.onTheClock || {}).userId) === String(myUserId) || isCommish);
+
+    el.innerHTML = tiers.map((teams, ti) => {
+        var lis = teams.map(p => {
+            var vb = valueBadge(p, currentPick);
+            var adpTxt = p.adp == null ? '<span class="muted">—</span>' : ('#' + p.adp);
+            var pick = canAct ? `<button class="cheat-draft" onclick="makePick(${p.id})" title="Draft ${escapeHtml(p.name)}">+</button>` : '';
+            return `<li class="cheat-row">
+                <img src="${p.logo}" alt="">
+                <span class="cheat-name">${escapeHtml(p.name)}</span>
+                <span class="cheat-sp" title="SP+ rating ${p.sp}">SP+ #${p.spRank == null ? '—' : p.spRank}</span>
+                <span class="cheat-adp" title="Average draft position">ADP ${adpTxt}</span>
+                ${vb}${pick}
+            </li>`;
+        }).join('');
+        return `<div class="cheat-tier"><div class="cheat-tier-label">Tier ${ti + 1}</div><ul class="cheat-list">${lis}</ul></div>`;
+    }).join('');
+}
+
+function toggleCheatSheet() {
+    var cs = document.getElementById('cheat-sheet');
+    var btn = document.getElementById('cheat-toggle');
+    if (!cs) return;
+    var open = cs.classList.toggle('collapsed') === false;
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 /////////////////////////////////////////////////////
