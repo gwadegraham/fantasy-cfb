@@ -640,3 +640,116 @@ select[scoring-config-combine-mode] { width: 100%; }
     margin-top: 0.4em;
     max-width: 22em;
 }
+
+/* =========================================================================
+   Admin UI refresh: accordion animation + button/field polish
+   ========================================================================= */
+
+/* --- Accordion: smooth height + fade. Collapsed by default; toggleSub() in
+   admin.js sets max-height to the measured content height to animate open. --- */
+.sub-container {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.22s ease;
+}
+.sub-container.open {
+    opacity: 1;
+}
+
+/* --- Accordion header buttons: clean list-row look with a rotating caret,
+   replacing the chunky double box-shadow. --- */
+.button-container button {
+    display: flex;
+    align-items: center;
+    gap: 0.55em;
+    text-align: left;
+    background-color: #1A1F33;
+    color: #F4F6FB;
+    border: 1px solid #2A2E42;
+    border-radius: 10px;
+    box-shadow: none;
+    padding: 0.7em 0.95em;
+    font-size: 0.92rem;
+    font-weight: 600;
+    transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.button-container button:hover {
+    background-color: #212843;
+    border-color: #3a4162;
+}
+/* Caret chevron on the right, rotates down when the panel is open. */
+.button-container button::after {
+    content: "";
+    margin-left: auto;
+    flex: 0 0 auto;
+    width: 0.5em;
+    height: 0.5em;
+    border-right: 2px solid #767D9C;
+    border-bottom: 2px solid #767D9C;
+    transform: rotate(-45deg);
+    transition: transform 0.25s ease, border-color 0.18s ease;
+}
+.function-container.is-open .button-container button {
+    background-color: #212843;
+    border-color: #3a4162;
+}
+.function-container.is-open .button-container button::after {
+    transform: rotate(45deg);
+    border-color: #F4F6FB;
+}
+
+/* Keep the "unscored results" highlight working with the new flat button. */
+.function-container.attn .button-container button {
+    box-shadow: inset 3px 0 0 #F2C14E;
+    border-color: #F2C14E66;
+}
+
+/* --- Action (submit) buttons inside a panel --- */
+.sub-container button {
+    background-color: #ed5858;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    padding: 0.6em 1em;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: background-color 0.18s ease, transform 0.08s ease;
+}
+.sub-container button:hover { background-color: #d94a4a; }
+.sub-container button:active { transform: translateY(1px); }
+
+/* --- Fields & dropdowns in the generic panels (config forms keep their own
+   .draft-config-form styling, which this :not() leaves untouched). --- */
+.sub-container form:not(.draft-config-form) select,
+.sub-container form:not(.draft-config-form) input[type="text"],
+.sub-container form:not(.draft-config-form) input[type="number"] {
+    background-color: #101322;
+    color: #F4F6FB;
+    border: 1px solid #2A2E42;
+    border-radius: 8px;
+    padding: 0.5em 0.65em;
+    font-size: 0.88rem;
+    margin-bottom: 0.4em;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.sub-container form:not(.draft-config-form) select:focus,
+.sub-container form:not(.draft-config-form) input:focus {
+    outline: none;
+    border-color: #6C9BFF;
+    box-shadow: 0 0 0 2px rgba(108, 155, 255, 0.25);
+}
+
+/* Slightly smaller, tighter one-line description. */
+.function-description {
+    font-size: 0.8rem;
+    margin: 0 0 0.7em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sub-container { transition: opacity 0.2s ease; }
+    .button-container button::after { transition: border-color 0.18s ease; }
+}

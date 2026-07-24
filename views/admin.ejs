@@ -64,6 +64,7 @@
                 </div>
                 <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · nightly + Saturday/Sunday jobs</div>
                 <div class="sub-container" scores-container style="display: none">
+                    <p class="function-description">Recalculate managers' fantasy points for one week — or the whole season — from the games already stored.</p>
                     <form id="scores-form">
                         <div><select score-week week-options></select></div>
                         <div><select score-season-type season-type-options></select></div>
@@ -84,6 +85,7 @@
                 </div>
                 <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · with the scores jobs</div>
                 <div class="sub-container" calculate-team-score-container style="display: none">
+                    <p class="function-description">Recompute a team's per-game fantasy points — one team or all — for a season.</p>
                     <form id="score-form">
                         <div class="team-picker-container" team-picker-container>
                             <select class="calculate-team-picker" id="calculate-team-picker" calculate-team-options>
@@ -106,6 +108,7 @@
                 </div>
                 <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · expected-wins job</div>
                 <div class="sub-container" expected-wins-container style="display: none">
+                    <p class="function-description">Recompute each team's projected win total for the season from current SP+ ratings.</p>
                     <form id="expected-wins-form">
                         <div><select expected-wins-season season-options></select></div>
                         <div><button type="submit">Refresh Expected Wins</button></div>
@@ -126,6 +129,7 @@
                     </button>
                 </div>
                 <div class="sub-container" games-container style="display: none">
+                    <p class="function-description">Pull one week's games and results from CollegeFootballData.</p>
                     <form id="games-form">
                         <div><select game-week week-options></select></div>
                         <div><select game-season-type season-type-options></select></div>
@@ -141,6 +145,7 @@
                     </button>
                 </div>
                 <div class="sub-container" schedule-container style="display: none">
+                    <p class="function-description">Pull a full season's regular-season schedule in one pass (the prerequisite for draft grades).</p>
                     <form id="schedule-form">
                         <div><select schedule-season season-options></select></div>
                         <div><button type="submit">Ingest Full Schedule</button></div>
@@ -156,6 +161,7 @@
                     </button>
                 </div>
                 <div class="sub-container" rankings-container style="display: none">
+                    <p class="function-description">Pull every poll for a season (AP + CFP, all weeks) and upsert it — safe to re-run.</p>
                     <form id="rankings-form">
                         <div><select rankings-season season-options></select></div>
                         <div><button type="submit">Retrieve Rankings</button></div>
@@ -171,6 +177,7 @@
                     </button>
                 </div>
                 <div class="sub-container" recruit-rankings-container style="display: none">
+                    <p class="function-description">Pull the 247Sports team recruiting rankings for a season.</p>
                     <form id="recruit-rankings-form">
                         <div><select recruiting-season season-options></select></div>
                         <div><button type="submit">Retrieve Recruiting Rankings</button></div>
@@ -185,6 +192,7 @@
                     </button>
                 </div>
                 <div class="sub-container" team-records-container style="display: none">
+                    <p class="function-description">Pull each team's win/loss record for a season.</p>
                     <form id="team-records-form">
                         <div><select record-season season-options></select></div>
                         <div><button type="submit">Retrieve Team Records</button></div>
@@ -199,6 +207,7 @@
                     </button>
                 </div>
                 <div class="sub-container" betting-lines-container style="display: none">
+                    <p class="function-description">Pull sportsbook spreads and totals for every game in a season.</p>
                     <form id="betting-lines-form">
                         <div><select betting-season season-options></select></div>
                         <div><button type="submit">Retrieve Betting Lines</button></div>
@@ -213,6 +222,7 @@
                     </button>
                 </div>
                 <div class="sub-container" refresh-teams-container style="display: none">
+                    <p class="function-description">Re-pull the FBS team list — names, logos, and conferences — for a season.</p>
                     <form id="refresh-teams-form">
                         <div><select refresh-season season-options></select></div>
                         <div><button type="submit">Refresh Teams</button></div>
@@ -228,11 +238,7 @@
                 </div>
                 <div class="job-tag"><i class="fa-solid fa-bolt"></i> Automated · weekly enrichment job (Tue)</div>
                 <div class="sub-container" enrichment-container style="display: none">
-                    <p class="function-description">
-                        Pulls SP+ &amp; FPI ratings, 247 talent, returning production and head coaches onto every
-                        team, plus TV/broadcast outlets onto games. Powers the team-page Outlook block and the
-                        draft board's SP+ column. Uses ~6 CFBD calls.
-                    </p>
+                    <p class="function-description">Pull SP+/FPI ratings, talent, returning production and coaches onto teams, plus TV outlets onto games (~6 CFBD calls).</p>
                     <form id="enrichment-form">
                         <div><select enrichment-season season-options></select></div>
                         <div><button type="submit">Run Enrichment</button></div>
@@ -253,11 +259,7 @@
                     </button>
                 </div>
                 <div class="sub-container" cfp-odds-container style="display: none">
-                    <p class="function-description">
-                        Paste a sportsbook's futures board (team + American odds) to feed the draft-grade
-                        CFP factor. Pick the market, paste, then <strong>Preview</strong> to check the team
-                        matches — nothing is saved until you <strong>Commit</strong>.
-                    </p>
+                    <p class="function-description">Paste a sportsbook futures board to feed the draft-grade CFP factor — Preview to check matches, then Commit to save.</p>
                     <form id="cfp-odds-form">
                         <div><select cfp-odds-market>
                             <option value="make">Odds to make the CFP</option>
@@ -291,6 +293,7 @@
                     </button>
                 </div>
                 <div class="sub-container" draft-config-container style="display: none">
+                    <p class="function-description">Set a season's draft date, rounds, format, and pick order.</p>
                     <form id="draft-config-form" class="draft-config-form">
                         <div class="draft-status-row">
                             Status: <span draft-status class="draft-status-badge">—</span>
@@ -341,6 +344,7 @@
                     </button>
                 </div>
                 <div class="sub-container" scoring-config-container style="display: none">
+                    <p class="function-description">Tune this league's point values, bonus-stacking mode, and postseason events.</p>
                     <form id="scoring-config-form" class="draft-config-form">
                         <div class="draft-status-row">League: <span scoring-config-model></span></div>
                         <div class="draft-field">
@@ -369,6 +373,7 @@
                     </button>
                 </div>
                 <div class="sub-container" create-user-container style="display: none">
+                    <p class="function-description">Add a manager to this league with a display color and starting roster.</p>
                     <form id="create-form">
                         <input type="text" class="first-name" first-name placeholder="First Name">
                         <input type="text" class="last-name" last-name placeholder="Last Name">
@@ -393,6 +398,7 @@
                     </button>
                 </div>
                 <div class="sub-container" remove-user-container style="display: none">
+                    <p class="function-description">Remove a manager from this league.</p>
                     <form id="remove-form">
                         <div class="user-container" user-container>
                             <select class="user-picker" id="user-picker" user-options>
@@ -416,6 +422,7 @@
                     </button>
                 </div>
                 <div class="sub-container" api-calls-container style="display: none">
+                    <p class="function-description">Check how many CollegeFootballData API calls remain this month.</p>
                     <form id="api-calls-form">
                         <div><button type="submit">View API calls remaining</button></div>
                         <div class="api-info"><p class="api-info" api-calls-remaining></p></div>
