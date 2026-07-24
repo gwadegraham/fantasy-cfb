@@ -311,7 +311,7 @@ function renderAdminStatus(el, s, api, year, jobs) {
     var fix = el.querySelector('[data-fix-scores]');
     if (fix) fix.addEventListener('click', function () {
         var c = document.querySelector('[scores-container]');
-        if (c && c.style.display === 'none') displayScoresContainer();
+        if (c && !c.classList.contains('open')) displayScoresContainer();
         if (tool) tool.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 }
@@ -734,10 +734,7 @@ if (enrichmentForm) {
 }
 
 // --- CFP odds ingestion (Market odds) ---------------------------------------
-function displayCfpOddsContainer() {
-    var c = document.querySelector('[cfp-odds-container]');
-    c.style.display = (c.style.display === 'flex' || c.style.display === '') ? 'none' : 'flex';
-}
+function displayCfpOddsContainer() { toggleSub('cfp-odds-container'); }
 
 (function () {
     var form = document.getElementById('cfp-odds-form');
@@ -850,10 +847,7 @@ if (gamesForm) {
     });
 }
 
-function displayScheduleContainer() {
-    var el = document.querySelector('[schedule-container]');
-    el.style.display = (el.style.display == 'flex' || el.style.display == '') ? 'none' : 'flex';
-}
+function displayScheduleContainer() { toggleSub('schedule-container'); }
 
 // Bulk-ingest a season's full FBS regular schedule — the preseason prerequisite
 // for draft grades (the projection reads each team's schedule).
@@ -1028,135 +1022,73 @@ if (apiCallsForm) {
     });
 }
 
-function displayCreateUserContainer() {
-    var createUserContainer = document.querySelector('[create-user-container]');
-
-    if (createUserContainer.style.display == 'flex' || createUserContainer.style.display=='') {
-        createUserContainer.style.display = 'none';
-    } else {
-        createUserContainer.style.display = 'flex';
-    }
+// --- Accordion (admin function panels) -----------------------------------
+// Panels collapse via a CSS max-height:0 state; on open we set max-height to the
+// measured content height so it animates smoothly, then release the cap so
+// lazy-loaded content (draft/scoring config) can still grow. The inline
+// display:none is dropped once so the collapsed CSS state can take over.
+function initAccordion() {
+    document.querySelectorAll('.sub-container').forEach(function (sc) {
+        sc.style.display = '';
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAccordion);
+} else {
+    initAccordion();
 }
 
-function displayRemoveUserContainer() {
-    var removeUserContainer = document.querySelector('[remove-user-container]');
+// Toggle a panel open/closed by its container attribute. Returns the new open
+// state so callers that lazy-load on expand (draft/scoring config) can react.
+function toggleSub(attr) {
+    var el = document.querySelector('[' + attr + ']');
+    if (!el) return false;
+    var open = !el.classList.contains('open');
 
-    if (removeUserContainer.style.display == 'flex' || removeUserContainer.style.display=='') {
-        removeUserContainer.style.display = 'none';
+    clearTimeout(el._mhTimer);
+    if (open) {
+        el.classList.add('open');
+        el.style.maxHeight = el.scrollHeight + 'px';
+        // After the open animation, drop the cap so async-loaded content
+        // (draft/scoring config) can still grow the panel. Guarded + timer-based
+        // so it survives rapid re-toggles and reduced-motion (no transitionend).
+        el._mhTimer = setTimeout(function () {
+            if (el.classList.contains('open')) el.style.maxHeight = 'none';
+        }, 340);
     } else {
-        removeUserContainer.style.display = 'flex';
+        // Pin the current height, then collapse to 0 so it can transition.
+        el.style.maxHeight = el.scrollHeight + 'px';
+        void el.offsetHeight; // reflow
+        el.classList.remove('open');
+        el.style.maxHeight = '0';
     }
+
+    var fc = el.closest('.function-container');
+    if (fc) {
+        fc.classList.toggle('is-open', open);
+        var btn = fc.querySelector('.button-container button');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    return open;
 }
 
-function displayTeamContainer() {
-    var teamScoreContainer = document.querySelector('[calculate-team-score-container]');
+function displayCreateUserContainer() { toggleSub('create-user-container'); }
 
-    if (teamScoreContainer.style.display == 'flex' || teamScoreContainer.style.display=='') {
-        teamScoreContainer.style.display = 'none';
-    } else {
-        teamScoreContainer.style.display = 'flex';
-    }
-}
+function displayRemoveUserContainer() { toggleSub('remove-user-container'); }
 
-function displayRankingsContainer() {
-    var rankingsContainer = document.querySelector('[rankings-container]');
+function displayTeamContainer() { toggleSub('calculate-team-score-container'); }
 
-    if (rankingsContainer.style.display == 'flex' || rankingsContainer.style.display=='') {
-        rankingsContainer.style.display = 'none';
-    } else {
-        rankingsContainer.style.display = 'flex';
-    }
-}
+function displayRankingsContainer() { toggleSub('rankings-container'); }
 
-function displayRecruitRankingsContainer() {
-    var recruitRankingsContainer = document.querySelector('[recruit-rankings-container]');
-
-    if (recruitRankingsContainer.style.display == 'flex' || recruitRankingsContainer.style.display=='') {
-        recruitRankingsContainer.style.display = 'none';
-    } else {
-        recruitRankingsContainer.style.display = 'flex';
-    }
-}
-
-function displayTeamRecordsContainer() {
-    var teamRecordsContainer = document.querySelector('[team-records-container]');
-
-    if (teamRecordsContainer.style.display == 'flex' || teamRecordsContainer.style.display=='') {
-        teamRecordsContainer.style.display = 'none';
-    } else {
-        teamRecordsContainer.style.display = 'flex';
-    }
-}
-
-function displayRefreshTeamsContainer() {
-    var refreshTeamsContainer = document.querySelector('[refresh-teams-container]');
-
-    if (refreshTeamsContainer.style.display == 'flex' || refreshTeamsContainer.style.display=='') {
-        refreshTeamsContainer.style.display = 'none';
-    } else {
-        refreshTeamsContainer.style.display = 'flex';
-    }
-}
-
-function displayGamesContainer() {
-    var gamesContainer = document.querySelector('[games-container]');
-
-    if (gamesContainer.style.display == 'flex' || gamesContainer.style.display=='') {
-        gamesContainer.style.display = 'none';
-    } else {
-        gamesContainer.style.display = 'flex';
-    }
-}
-
-function displayScoresContainer() {
-    var scoresContainer = document.querySelector('[scores-container]');
-
-    if (scoresContainer.style.display == 'flex' || scoresContainer.style.display=='') {
-        scoresContainer.style.display = 'none';
-    } else {
-        scoresContainer.style.display = 'flex';
-    }
-}
-
-function displayBettingLinesContainer() {
-    var bettingContainer = document.querySelector('[betting-lines-container]');
-
-    if (bettingContainer.style.display == 'flex' || bettingContainer.style.display=='') {
-        bettingContainer.style.display = 'none';
-    } else {
-        bettingContainer.style.display = 'flex';
-    }
-}
-
-function displayExpectedWinsContainer() {
-    var expectedWinsContainer = document.querySelector('[expected-wins-container]');
-
-    if (expectedWinsContainer.style.display == 'flex' || expectedWinsContainer.style.display=='') {
-        expectedWinsContainer.style.display = 'none';
-    } else {
-        expectedWinsContainer.style.display = 'flex';
-    }
-}
-
-function displayEnrichmentContainer() {
-    var enrichmentContainer = document.querySelector('[enrichment-container]');
-
-    if (enrichmentContainer.style.display == 'flex' || enrichmentContainer.style.display=='') {
-        enrichmentContainer.style.display = 'none';
-    } else {
-        enrichmentContainer.style.display = 'flex';
-    }
-}
-
-function displayApiCallsContainer() {
-    var apiCallsContainer = document.querySelector('[api-calls-container]');
-
-    if (apiCallsContainer.style.display == 'flex' || apiCallsContainer.style.display=='') {
-        apiCallsContainer.style.display = 'none';
-    } else {
-        apiCallsContainer.style.display = 'flex';
-    }
-}
+function displayRecruitRankingsContainer() { toggleSub('recruit-rankings-container'); }
+function displayTeamRecordsContainer() { toggleSub('team-records-container'); }
+function displayRefreshTeamsContainer() { toggleSub('refresh-teams-container'); }
+function displayGamesContainer() { toggleSub('games-container'); }
+function displayScoresContainer() { toggleSub('scores-container'); }
+function displayBettingLinesContainer() { toggleSub('betting-lines-container'); }
+function displayExpectedWinsContainer() { toggleSub('expected-wins-container'); }
+function displayEnrichmentContainer() { toggleSub('enrichment-container'); }
+function displayApiCallsContainer() { toggleSub('api-calls-container'); }
 
 // Full-screen "working" overlay shown while an admin request runs. It carries a
 // football loader (desktop + mobile friendly, respects reduced-motion) and, most
@@ -1308,13 +1240,7 @@ function populateDraftSeasonOptions() {
 }
 
 async function displayDraftConfigContainer() {
-    var container = document.querySelector('[draft-config-container]');
-    if (container.style.display == 'flex' || container.style.display == '') {
-        container.style.display = 'none';
-    } else {
-        container.style.display = 'flex';
-        await loadDraftConfig();
-    }
+    if (toggleSub('draft-config-container')) await loadDraftConfig();
 }
 
 async function loadDraftConfig() {
@@ -1532,13 +1458,7 @@ if (document.querySelector('[draft-season]')) {
 var scoringConfigData = null;
 
 async function displayScoringConfigContainer() {
-    var c = document.querySelector('[scoring-config-container]');
-    if (c.style.display == 'flex' || c.style.display == '') {
-        c.style.display = 'none';
-    } else {
-        c.style.display = 'flex';
-        await loadScoringConfig();
-    }
+    if (toggleSub('scoring-config-container')) await loadScoringConfig();
 }
 
 async function loadScoringConfig() {
