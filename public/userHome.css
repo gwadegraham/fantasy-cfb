@@ -506,3 +506,16 @@
     .uh-grades { transition: none; }
     .grade-chip-caret { transition: none; }
 }
+
+/* Roster table zebra fix. Odd rows carry no background of their own, so the
+   frozen Team / Team Score columns show #101322 while the middle cells let the
+   lighter profile card (#1A1F33) bleed through — a two-tone, inconsistent row.
+   Give odd rows the same solid base as the frozen columns for a clean stripe
+   (even rows are #171b31 from styles.css). Applies at all widths and outranks
+   the mobile `background: none` rule since userHome.css loads last. */
+.fl-table tbody tr:nth-child(odd) { background: #101322; }
+
+/* Same fix for the header row: only the frozen Team / Team Score cells carried a
+   background, so the middle header cells let the lighter card show through. Give
+   every header cell the solid base + a divider so the header reads as one bar. */
+.fl-table thead th { background-color: #101322; border-bottom: 1px solid #2A2E42; }
