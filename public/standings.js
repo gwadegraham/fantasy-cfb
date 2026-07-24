@@ -661,8 +661,8 @@ async function displaySchedule(data) {
                             // so gate on >0 to avoid a spurious "+0" badge on the opponent's row.
                             var awayPts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id);
                             var homePts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id);
-                            var awayScoreAdded = awayPts > 0 ? '<strong style="color: #F2A93B;">+' + awayPts + '</strong>' : '';
-                            var homeScoreAdded = homePts > 0 ? '<strong style="color: #F2A93B;">+' + homePts + '</strong>' : '';
+                            var awayScoreAdded = awayPts > 0 ? '<strong style="color: #22C37A;">+' + awayPts + '</strong>' : '';
+                            var homeScoreAdded = homePts > 0 ? '<strong style="color: #22C37A;">+' + homePts + '</strong>' : '';
 
                             if (game.awayPoints > game.homePoints) {
                                 topData = (game.awayPoints != null ? game.awayPoints : '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + awayScoreAdded + '</td>';
