@@ -563,7 +563,7 @@ a.pick-chip:hover { border-color: #ed5858; }
     margin: 1.75rem auto 0;
 }
 
-/* ---------- Draft cheat sheet + ADP/value aids (#211) ---------- */
+/* ---------- Draft cheat sheet + tier scarcity (#211) ---------- */
 .cheat-sheet {
     background-color: #1A1F33;
     border: 1px solid #2A2E42;
@@ -606,12 +606,31 @@ a.pick-chip:hover { border-color: #ed5858; }
     padding: 0.5em 0.6em 0.6em;
 }
 .cheat-tier-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #A4A9C2;
     font-weight: 700;
     margin-bottom: 0.35em;
+}
+/* Tier scarcity — "grab now vs wait". Turns amber when a tier is down to one. */
+.tier-count {
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #A4A9C2;
+    background-color: #23283b;
+    border-radius: 999px;
+    padding: 0.08em 0.5em;
+    text-transform: none;
+}
+.tier-count.last {
+    color: #E0B341;
+    background-color: rgba(224, 179, 65, 0.14);
+    border: 1px solid rgba(224, 179, 65, 0.4);
 }
 .cheat-list { list-style: none; margin: 0; padding: 0; }
 .cheat-row {
@@ -625,7 +644,7 @@ a.pick-chip:hover { border-color: #ed5858; }
 .cheat-row:first-child { border-top: none; }
 .cheat-row img { width: 20px; height: 20px; object-fit: contain; flex: 0 0 auto; }
 .cheat-name { flex: 1 1 auto; color: #F4F6FB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cheat-sp, .cheat-adp { color: #A4A9C2; font-size: 0.72rem; white-space: nowrap; }
+.cheat-sp { color: #A4A9C2; font-size: 0.72rem; white-space: nowrap; }
 .cheat-draft {
     flex: 0 0 auto;
     width: 22px; height: 22px;
@@ -634,21 +653,6 @@ a.pick-chip:hover { border-color: #ed5858; }
     font-weight: 800; cursor: pointer; line-height: 1;
 }
 .cheat-draft:hover { background-color: #ff6b6b; }
-
-/* Reach/steal value badge (cheat sheet + pool table + mobile cards) */
-.value-badge {
-    flex: 0 0 auto;
-    font-size: 0.62rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.1em 0.4em;
-    border-radius: 999px;
-    white-space: nowrap;
-}
-.value-badge.steal { color: #22C37A; background-color: rgba(34,195,122,0.12); border: 1px solid rgba(34,195,122,0.4); }
-.value-badge.reach { color: #E0B341; background-color: rgba(224,179,65,0.12); border: 1px solid rgba(224,179,65,0.4); }
-.adp-cell { display: inline-flex; align-items: center; gap: 0.35em; justify-content: flex-end; }
 
 @media (prefers-reduced-motion: reduce) {
     .cheat-caret { transition: none; }

@@ -56,39 +56,6 @@ router.get('/grades/:league/:season', async (req, res) => {
     }
 });
 
-// Average draft position per team, aggregated across every historical draft
-// (both leagues, 2023–2025) — the "where does this team usually go" signal for
-// the draft-room cheat sheet. Returns { adp: { [teamId]: { adp, n } } }.
-// Static path, so it's declared before the /:league/:season param route.
-router.get('/adp', async (req, res) => {
-    try {
-        const drafts = await Draft.find(
-            { season: { $gte: 2023, $lte: 2025 }, 'picks.0': { $exists: true } },
-            { picks: 1 }
-        ).lean();
-
-        const agg = {}; // teamId -> { sum, n }
-        for (const d of drafts) {
-            for (const p of (d.picks || [])) {
-                const id = p && p.team && p.team.id;
-                if (id == null || p.overall == null) continue;
-                const key = String(id);
-                if (!agg[key]) agg[key] = { sum: 0, n: 0 };
-                agg[key].sum += p.overall;
-                agg[key].n += 1;
-            }
-        }
-
-        const adp = {};
-        for (const [id, v] of Object.entries(agg)) {
-            adp[id] = { adp: Math.round((v.sum / v.n) * 10) / 10, n: v.n };
-        }
-        res.json({ adp });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
 // Get the draft for a league + season (returns null if none configured yet).
 router.get('/:league/:season', async (req, res) => {
     try {
