@@ -468,8 +468,10 @@ if (calculateForm) {
     });
 }
 
-// Score every team's team-doc in one server-side request (rankings cached
-// across the run) instead of firing ~136 parallel requests + ~136 toasts.
+// Score every team's team-doc by looping the existing per-team endpoint in
+// small concurrent batches (single summary toast) instead of firing ~136
+// parallel requests + ~136 toasts. Each request is short — this is driven from
+// the browser precisely so no single request trips Heroku's 30s router timeout.
 const calculateAllForm = document.getElementById('all-score-form')
 if (calculateAllForm) {
     calculateAllForm.addEventListener('submit', async function(event) {
@@ -482,16 +484,14 @@ if (calculateAllForm) {
             return;
         }
 
+        block_screen();
         try {
-            const { status, data } = await runLongBlockingRequest(`/scores/calculate-all/${season}`, 'Calculating team scores…');
-            if (status === 200) {
-                successToast.options.text = `Calculated ${data.scored} teams${data.failed ? ` (${data.failed} failed)` : ''} for ${season}`;
-                successToast.showToast();
-            } else {
-                failToast.options.text = status + ' | Team scores could not be calculated' + (data && data.message ? `: ${data.message}` : '');
-                failToast.showToast();
-            }
+            const { total, failed } = await calcAllTeams(season);
+            unblock_screen();
+            successToast.options.text = `Calculated ${total - failed}/${total} teams for ${season}` + (failed ? ` (${failed} failed)` : '');
+            successToast.showToast();
         } catch (err) {
+            unblock_screen();
             failToast.options.text = 'Team scores failed: ' + err.message;
             failToast.showToast();
         }
@@ -499,24 +499,46 @@ if (calculateAllForm) {
 }
 
 // Score the whole season in one click: user weekly scores for every week +
-// postseason, all team-doc scores, then cumulative totals — the finished-season
-// backfill (replaces 17× Update Scores + Calculate Scores for all teams).
+// postseason, then all team-doc scores — the finished-season backfill (replaces
+// 17× Update Scores + Calculate Scores for all teams). Orchestrated from the
+// browser as many short requests: a single server request doing the whole
+// season would exceed Heroku's 30s router timeout (H12) and 503.
 const scoresAllForm = document.getElementById('scores-all-form');
 if (scoresAllForm) {
     scoresAllForm.addEventListener('submit', async function(event) {
         event.preventDefault();
         if (!window.confirm('Recompute ALL user + team scores for the whole season? This can take several minutes.')) return;
 
+        const season = window.APP_YEAR || String(new Date().getFullYear());
+        const weeks = [];
+        for (let w = 1; w <= 16; w++) weeks.push(['regular', w]);
+        weeks.push(['postseason', 1]);
+
+        block_screen();
+        const failedWeeks = [];
         try {
-            const { status, data } = await runLongBlockingRequest('/scores/update-all', 'Scoring the full season — this can take several minutes…');
-            if (status === 200) {
-                successToast.options.text = `Scored ${data.weeksScored} weeks + ${data.teamsScored} teams${data.teamsFailed ? ` (${data.teamsFailed} failed)` : ''}`;
-                successToast.showToast();
-            } else {
-                failToast.options.text = status + ' | Season score failed' + (data && data.message ? `: ${data.message}` : '');
-                failToast.showToast();
+            // 1. User weekly scores — one short request per week (each also
+            //    recomputes cumulative totals, so the last call leaves them current).
+            for (let i = 0; i < weeks.length; i++) {
+                block_screen(); // re-arm the overlay watchdog between steps
+                setBlockMessage(`Scoring week ${i + 1} of ${weeks.length}…`);
+                try {
+                    await updateWeek(weeks[i][0], weeks[i][1]);
+                } catch (e) {
+                    failedWeeks.push(weeks[i][0] === 'postseason' ? 'postseason' : `wk${weeks[i][1]}`);
+                }
             }
+            // 2. Team-doc scores.
+            const { total, failed } = await calcAllTeams(season);
+            unblock_screen();
+
+            const notes = [];
+            if (failedWeeks.length) notes.push(`${failedWeeks.length} week(s) failed`);
+            if (failed) notes.push(`${failed} team(s) failed`);
+            successToast.options.text = `Season scored: ${weeks.length} weeks + ${total} teams` + (notes.length ? ` (${notes.join(', ')})` : '');
+            successToast.showToast();
         } catch (err) {
+            unblock_screen();
             failToast.options.text = 'Season score failed: ' + err.message;
             failToast.showToast();
         }
@@ -1194,25 +1216,41 @@ function setBlockMessage(msg) {
     if (t) t.textContent = msg;
 }
 
-// Run a long admin POST behind the overlay. The overlay's safety watchdog is
-// 150s, so for multi-minute operations we re-arm it on a heartbeat; the overlay
-// always clears on success OR failure (finally). Returns { status, data }.
-async function runLongBlockingRequest(url, message) {
-    block_screen();
-    setBlockMessage(message);
-    var heartbeat = setInterval(block_screen, 60000); // keep the watchdog from firing mid-run
-    try {
-        var res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            signal: AbortSignal.timeout(1200000) // 20-minute ceiling
-        });
-        var data = await res.json().catch(function () { return {}; });
-        return { status: res.status, data: data };
-    } finally {
-        clearInterval(heartbeat);
-        unblock_screen();
+// Score one week's user scores (existing per-week endpoint; stays well under
+// Heroku's 30s request limit). Throws on a non-OK response.
+async function updateWeek(seasonType, week) {
+    var res = await fetch('/scores/update', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seasonType: seasonType, week: String(week) })
+    });
+    if (!res.ok) throw new Error(seasonType + ' week ' + week + ': ' + res.status);
+}
+
+// Score every team's team-doc by looping the per-team endpoint in small
+// concurrent batches, updating the overlay caption. Each request is short, so
+// no single request can trip Heroku's 30s router timeout. Returns
+// { total, failed }; a failed team is counted and skipped, never fatal.
+async function calcAllTeams(season) {
+    var teams = await fetch('/teams', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+    var list = Array.isArray(teams) ? teams : [];
+    var done = 0, failed = 0;
+    var CONCURRENCY = 5;
+    for (var i = 0; i < list.length; i += CONCURRENCY) {
+        var chunk = list.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map(async function (t) {
+            try {
+                var res = await fetch('/calculate-team-score/' + season + '/' + t.id + '/' + encodeURIComponent(t.school), { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) failed++;
+            } catch (e) {
+                failed++;
+            }
+            done++;
+        }));
+        block_screen(); // re-arm the overlay watchdog between batches
+        setBlockMessage('Calculating team scores ' + done + ' of ' + list.length + '…');
     }
+    return { total: list.length, failed: failed };
 }
 
 // Belt-and-suspenders: if any admin request rejects (network error, aborted

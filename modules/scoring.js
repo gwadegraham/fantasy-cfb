@@ -41,8 +41,10 @@ module.exports= {
         }
     },
 
-    updateScores: async function(season, week, cache) {
-        var rankingCache = cache || new Map();
+    updateScores: async function(season, week) {
+        // One ranking cache per call: every game in the week shares its poll doc
+        // instead of re-reading it from Mongo per game.
+        var rankingCache = new Map();
         var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
             method: 'GET',
             headers: {
@@ -147,8 +149,10 @@ module.exports= {
         }
     },
 
-    calculateTeamScores: async function (season, teamId, teamName, cache) {
-        var rankingCache = cache || new Map();
+    calculateTeamScores: async function (season, teamId, teamName) {
+        // One ranking cache per call: both league models + same-week games share
+        // each poll doc instead of re-reading it from Mongo per game per model.
+        var rankingCache = new Map();
 
         var cumulativeScoreV1 = 0;
         var cumulativeScoreV2 = 0;
