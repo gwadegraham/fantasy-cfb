@@ -216,14 +216,23 @@ function sortVal(p, k) {
     return 0;
 }
 
-// A team's "value" this pick: how many spots past its usual ADP it's still
-// available. Positive = falling/steal, negative = a reach ahead of ADP. Only
-// meaningful while a draft is live (a current overall pick exists).
+// The reach/steal read for the team on the clock. A raw pick-vs-ADP compare is
+// biased by draft position (early on almost everything sits "ahead of" its ADP;
+// late almost everything sits "behind" it) and ADP lags a breakout team — e.g.
+// Indiana went ~#35 historically but is SP+ #1 now, so taking it #2 isn't a
+// reach. So a badge only fires when BOTH signals agree: the market (ADP) AND the
+// team's current strength (SP+ rank) both say it's early/late for this pick.
+// Needs a live pick and both an ADP and an SP+ rank to judge.
 function valueBadge(p, currentPick) {
-    if (p.adp == null || !currentPick) return '';
-    var delta = currentPick - p.adp;
-    if (delta >= 4) return '<span class="value-badge steal" title="Usually goes ~#' + p.adp + '; still on the board at #' + currentPick + '">Value</span>';
-    if (delta <= -4) return '<span class="value-badge reach" title="Usually goes ~#' + p.adp + '; that\'s ahead of its usual spot">Reach</span>';
+    if (!currentPick || p.adp == null || p.spRank == null) return '';
+    var adpGap = currentPick - p.adp;        // + = still here past its usual draft spot
+    var talentGap = currentPick - p.spRank;  // + = still here past its strength rank
+    if (adpGap >= 4 && talentGap >= 4) {
+        return '<span class="value-badge steal" title="Usually ~#' + p.adp + ', SP+ #' + p.spRank + ' — still on the board at #' + currentPick + '">Value</span>';
+    }
+    if (adpGap <= -4 && talentGap <= -4) {
+        return '<span class="value-badge reach" title="Usually ~#' + p.adp + ', SP+ #' + p.spRank + ' — ahead of both its usual spot and its strength">Reach</span>';
+    }
     return '';
 }
 
