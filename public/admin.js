@@ -508,51 +508,30 @@ if (calculateAllForm) {
 
 const rankingsForm = document.getElementById('rankings-form');
 
+// Pull a whole season's rankings in one shot (all weeks, regular + postseason)
+// and upsert them — non-destructive, safe to re-run.
 if (rankingsForm) {
     rankingsForm.addEventListener('submit', async function(event) {
         event.preventDefault();
+        block_screen();
 
         const season = document.querySelector('[rankings-season]').value;
-        const seasonType = document.querySelector('[season-type-options]').value.toLowerCase();
-        const week = document.querySelector('[week-options]').value;
-
-        var response = await fetch(`/rankings/${season}/${week}/${seasonType}`, {
-            method: 'GET',
-            headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-            }
+        const response = await fetch(`/rankings/${season}/refresh`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
         });
-    
-        var rankings = await response;
+        const data = await response.json();
+        unblock_screen();
 
-        if (rankings.status == 200) {
-            successToast.options.text = `Rankings already in system for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
+        const results = document.getElementById('rankings-results');
+        if (response.status == 201) {
+            successToast.options.text = `Rankings synced for ${season}: ${data.weeks} weeks (${data.created} new, ${data.updated} updated)`;
             successToast.showToast();
+            if (results) results.textContent = `${data.weeks} weeks — ${data.created} new, ${data.updated} updated.`;
         } else {
-            const response = await fetch("/rankings/retrieveRankings", {
-                method: 'POST',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                },
-                body: `{
-                "season": "${season}",
-                "seasonType": "${seasonType}",
-                "week": "${week}"
-                }`,
-            });
-
-            response.json().then(data => {
-                if (response.status == 201) {
-                    console.log("New Rankings", data);
-                    successToast.options.text = `New rankings retrieved for Season: ${season}, Season Type: ${seasonType}, Week: ${week}`;
-                    successToast.showToast();
-                } else {
-                    failToast.options.text = response.status + " Rankings could not be retrieved";
-                    failToast.showToast();
-                }
-            });
+            failToast.options.text = (response.status) + ` | Rankings could not be retrieved`;
+            failToast.showToast();
+            if (results) results.textContent = (data && data.message) || 'Failed.';
         }
     });
 }
