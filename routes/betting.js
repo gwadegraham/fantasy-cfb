@@ -39,57 +39,46 @@ router.post('/new/:year', async (req, res) => {
             }
         });
 
-        var allBettingLines = await response.json();
-
-        var refreshedLines = [];
-        var newLines = [];
-        for (const bettingLine of allBettingLines) {
-            var existingBettingLine = await Betting.findOne({id: bettingLine.id, year: bettingLine.year});
-
-            if (existingBettingLine != null) {
-                
-                existingBettingLine.season = bettingLine.season;
-                existingBettingLine.seasonType = bettingLine.seasonType;
-                existingBettingLine.week = bettingLine.week;
-                existingBettingLine.startDate = bettingLine.startDate;
-                existingBettingLine.homeTeam = bettingLine.homeTeam;
-                existingBettingLine.homeConference = bettingLine.homeConference;
-                existingBettingLine.homeClassification = bettingLine.homeClassification;
-                existingBettingLine.homeScore = bettingLine.homeScore;
-                existingBettingLine.awayTeam = bettingLine.awayTeam;
-                existingBettingLine.awayConference = bettingLine.awayConference;
-                existingBettingLine.awayClassification = bettingLine.awayClassification;
-                existingBettingLine.awayScore = bettingLine.awayScore;
-                existingBettingLine.lines = bettingLine.lines;
-
-                var filter = {id: bettingLine.id, year: bettingLine.year};
-                try {
-                    var updatedBettingLine = await Betting.findOneAndUpdate(filter, existingBettingLine, {new: true});
-                    refreshedLines.push(updatedBettingLine);
-                } catch (err) {
-                    console.log("Error updating record with id:", existingBettingLine.id);
-                    console.log("Update error:", err.message);
-                } 
-
-            } else {
-                newLines.push(bettingLine);
-            }
+        const allBettingLines = await response.json();
+        if (!Array.isArray(allBettingLines)) {
+            return res.status(400).json({ message: 'CFBD lines response was not a list' });
         }
 
-        try {
-            console.log("Refreshing " + refreshedLines.length + " records and adding " + newLines.length + " new records");
-            const newCreatedBettingLines = await Betting.insertMany(newLines);
+        // Upsert every line in one bulk write, keyed on the CFBD line id (unique
+        // per game). The old code did a findOne + findOneAndUpdate PER line —
+        // ~1,600 sequential round-trips for a full season, which blew past
+        // Heroku's 30s request limit (H12) and killed the nightly scoring job.
+        const ops = allBettingLines
+            .filter(bl => bl && bl.id != null)
+            .map(bl => ({
+                updateOne: {
+                    filter: { id: bl.id },
+                    update: { $set: {
+                        id: bl.id,
+                        season: bl.season,
+                        seasonType: bl.seasonType,
+                        week: bl.week,
+                        startDate: bl.startDate,
+                        homeTeam: bl.homeTeam,
+                        homeConference: bl.homeConference,
+                        homeClassification: bl.homeClassification,
+                        homeScore: bl.homeScore,
+                        awayTeam: bl.awayTeam,
+                        awayConference: bl.awayConference,
+                        awayClassification: bl.awayClassification,
+                        awayScore: bl.awayScore,
+                        lines: bl.lines
+                    } },
+                    upsert: true
+                }
+            }));
 
-            var returnedBettingLines = {
-                newLines: newCreatedBettingLines,
-                refreshedLines: refreshedLines
-            };
-
-            return res.status(201).json(returnedBettingLines);
-        } catch (err) {
-            console.log("Error refreshing teams: " + err.message);
-            res.status(400).json({message: err.message});
-        }
+        const result = ops.length
+            ? await Betting.bulkWrite(ops, { ordered: false })
+            : { upsertedCount: 0, modifiedCount: 0 };
+        const created = result.upsertedCount || 0;
+        console.log(`Betting lines for ${req.body.season}: ${ops.length} total, ${created} new, ${result.modifiedCount || 0} updated`);
+        return res.status(201).json({ total: ops.length, created, updated: result.modifiedCount || 0 });
     } catch (err) {
         res.status(400).json({message: err.message});
     }
