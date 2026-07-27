@@ -8,6 +8,7 @@ const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig } = require('../modules/scoring-defaults');
 const { computeGrades } = require('../modules/draft-grades');
+const { canManageLeague } = require('../modules/league-access');
 
 // Post-draft grades for a league + season — immediate preseason feedback. Each
 // roster is projected to EXPECTED FANTASY POINTS under that league's own scoring
@@ -74,6 +75,9 @@ router.post('/', async (req, res) => {
         if (!league || season == null) {
             return res.status(400).json({ message: 'league and season are required' });
         }
+        if (!canManageLeague(req, league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
 
         const existing = await Draft.findOne({ league, season });
         if (existing && (existing.status === 'active' || existing.status === 'complete')) {
@@ -113,6 +117,9 @@ router.post('/:id/start', async (req, res) => {
         if (draft == null) {
             return res.status(404).json({ message: 'Draft not found' });
         }
+        if (!canManageLeague(req, draft.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
         if (draft.status === 'complete') {
             return res.status(409).json({ message: 'Draft is already complete' });
         }
@@ -135,14 +142,18 @@ router.post('/:id/start', async (req, res) => {
 // or wipe a mistaken start.
 router.post('/:id/reset', async (req, res) => {
     try {
+        const existing = await Draft.findById(req.params.id);
+        if (existing == null) {
+            return res.status(404).json({ message: 'Draft not found' });
+        }
+        if (!canManageLeague(req, existing.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
         const draft = await Draft.findByIdAndUpdate(
             req.params.id,
             { $set: { status: 'pending', picks: [], currentOverall: 1, updatedAt: new Date() } },
             { new: true }
         );
-        if (draft == null) {
-            return res.status(404).json({ message: 'Draft not found' });
-        }
         res.json(draft);
     } catch (err) {
         res.status(500).json({ message: err.message });

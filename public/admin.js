@@ -62,9 +62,12 @@ function setTeamOptions(data) {
     teamOptionList.forEach(selector => {
         selector.innerHTML = str;
     });
-    calculateTeamOption.innerHTML = str;
+    // The calculate-team picker lives in the Admin-only Scoring group, so it's
+    // absent for a League Manager — guard it (and the team-container clone).
+    if (calculateTeamOption) calculateTeamOption.innerHTML = str;
 
-    multiplyNode(document.querySelector('.team-container'), 10, true);
+    var teamContainer = document.querySelector('.team-container');
+    if (teamContainer) multiplyNode(teamContainer, 10, true);
 }
 
 function setSeasonOptions() {
@@ -326,6 +329,39 @@ window.onload = async function() {
     setWeekOptions();
     loadAdminStatus();
 };
+
+// League name: rename the active league (own-league enforced server-side).
+const leagueNameForm = document.getElementById('league-name-form');
+if (leagueNameForm) {
+    leagueNameForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const code = getDraftLeagueCode();
+        const name = (document.querySelector('[league-name-input]').value || '').trim();
+        if (!name) {
+            failToast.options.text = 'Enter a league name';
+            failToast.showToast();
+            return;
+        }
+        try {
+            const res = await fetch('/leagues/' + code, {
+                method: 'PATCH',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 200) {
+                successToast.options.text = `League renamed to "${data.name}"`;
+                successToast.showToast();
+            } else {
+                failToast.options.text = (data && data.message) || ('League name could not be saved | ' + res.status);
+                failToast.showToast();
+            }
+        } catch (err) {
+            failToast.options.text = 'League name save failed: ' + err.message;
+            failToast.showToast();
+        }
+    });
+}
 
 const createForm = document.getElementById('create-form')
 
@@ -1089,6 +1125,18 @@ function displayBettingLinesContainer() { toggleSub('betting-lines-container'); 
 function displayExpectedWinsContainer() { toggleSub('expected-wins-container'); }
 function displayEnrichmentContainer() { toggleSub('enrichment-container'); }
 function displayApiCallsContainer() { toggleSub('api-calls-container'); }
+function displayLeagueNameContainer() { if (toggleSub('league-name-container')) loadLeagueName(); }
+
+// Prefill the league-name field with the current name for the active league.
+async function loadLeagueName() {
+    try {
+        var code = getDraftLeagueCode();
+        var list = await fetch('/leagues', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+        var lg = (list || []).find(function (l) { return l.code === code; });
+        var input = document.querySelector('[league-name-input]');
+        if (input && lg) input.value = lg.name;
+    } catch (e) { /* leave the field as-is */ }
+}
 
 // Full-screen "working" overlay shown while an admin request runs. It carries a
 // football loader (desktop + mobile friendly, respects reduced-motion) and, most

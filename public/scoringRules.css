@@ -83,3 +83,14 @@
         font-size: 1.2rem;
     }
 }
+
+/* Heading icons scale with the heading font (they were a fixed 20–26px, which
+   read as too small next to the large Scoring Rules headings). Scoped to
+   .rules-container so this wins over the generic injected .cc-icon sizing. */
+.rules-container .header-title .cc-icon,
+.rules-container .rule-header .cc-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.12em;
+    margin-right: 0.3em;
+}

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig, fieldsForModel } = require('../modules/scoring-defaults');
+const { canManageLeague } = require('../modules/league-access');
 
 // Attaches the ordered field metadata (for the admin form + rules page) to a
 // resolved config. `fields` reflect the resolved `disabled` set via each
@@ -33,6 +34,9 @@ router.post('/', async (req, res) => {
         const { league, model, values, combineMode, disabled } = req.body;
         if (!league) {
             return res.status(400).json({ message: 'league is required' });
+        }
+        if (!canManageLeague(req, league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
         }
         const resolved = resolveConfig(league, { model, values, combineMode, disabled });
         const doc = await ScoringConfig.findOneAndUpdate(

@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/user');
 const scoring = require('../modules/scoring');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
+const { canManageLeague } = require('../modules/league-access');
 
 // Self-service profile edit: a signed-in user updates THEIR OWN franchise name
 // / avatar / onboarding flag. The identity comes from the Auth0 session (never
@@ -140,6 +141,11 @@ router.get('/:id/season', async (req, res) => {
 //Creating One
 router.post('/', async (req, res) => {
 
+    // A League Manager may only add players to their own league (Admins: any).
+    if (!canManageLeague(req, req.body.league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
 
@@ -219,6 +225,10 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
 
 //Deleting One
 router.delete('/:id', getUser, async (req, res) => {
+    // A League Manager may only remove players from their own league.
+    if (!canManageLeague(req, res.user.league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
     try {
         await res.user.deleteOne();
         res.json({message: 'Deleted User'});

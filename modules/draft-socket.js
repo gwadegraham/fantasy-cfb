@@ -11,6 +11,15 @@ function isCommissioner(user) {
     return user && (user.role === 'Admin' || user.role === 'League Manager');
 }
 
+// Commissioner control is scoped by league: an Admin controls any league's
+// draft; a League Manager only their own (the league is baked into their
+// signed draft token).
+function isCommissionerOf(user, league) {
+    if (!user) return false;
+    if (user.role === 'Admin') return true;
+    return user.role === 'League Manager' && user.league === league;
+}
+
 // The shape broadcast to clients — the draft plus a derived "on the clock".
 function publicState(draft) {
     const d = draft.toObject ? draft.toObject() : draft;
@@ -84,7 +93,7 @@ module.exports = function registerDraftSockets(io) {
 
         socket.on('start-draft', async ({ league, season }) => {
             try {
-                if (!isCommissioner(socket.user)) {
+                if (!isCommissionerOf(socket.user, league)) {
                     return socket.emit('draft-error', { message: 'Only the commissioner can start the draft' });
                 }
                 const draft = await Draft.findOne({ league, season });
@@ -105,7 +114,7 @@ module.exports = function registerDraftSockets(io) {
 
         socket.on('undo-pick', async ({ league, season }) => {
             try {
-                if (!isCommissioner(socket.user)) {
+                if (!isCommissionerOf(socket.user, league)) {
                     return socket.emit('draft-error', { message: 'Only the commissioner can undo a pick' });
                 }
                 const draft = await Draft.findOne({ league, season });
@@ -138,7 +147,7 @@ module.exports = function registerDraftSockets(io) {
                 const turn = engine.whoseTurn(draft);
                 if (!turn) return socket.emit('draft-error', { message: 'Draft is complete' });
 
-                const commish = isCommissioner(socket.user);
+                const commish = isCommissionerOf(socket.user, league);
                 // A member may only pick on their own turn; a commissioner may
                 // pick for whoever is on the clock (absent member).
                 if (String(socket.user.userId) !== turn.userId && !commish) {
