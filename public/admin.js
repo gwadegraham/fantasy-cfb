@@ -62,9 +62,12 @@ function setTeamOptions(data) {
     teamOptionList.forEach(selector => {
         selector.innerHTML = str;
     });
-    calculateTeamOption.innerHTML = str;
+    // The calculate-team picker lives in the Admin-only Scoring group, so it's
+    // absent for a League Manager — guard it (and the team-container clone).
+    if (calculateTeamOption) calculateTeamOption.innerHTML = str;
 
-    multiplyNode(document.querySelector('.team-container'), 10, true);
+    var teamContainer = document.querySelector('.team-container');
+    if (teamContainer) multiplyNode(teamContainer, 10, true);
 }
 
 function setSeasonOptions() {

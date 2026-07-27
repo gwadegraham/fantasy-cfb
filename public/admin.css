@@ -210,7 +210,16 @@
     border: 1px solid #2A2E42;
     border-radius: 4px;
     padding: 6px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
+/* Let flex children (fields, labels) shrink instead of overflowing the panel,
+   which the accordion clips with overflow:hidden. */
+.draft-config-form .draft-field,
+.draft-config-form .scoring-field,
+.draft-config-form .scoring-field label { min-width: 0; }
 
 .draft-status-row {
     font-size: 0.95em;
@@ -726,8 +735,8 @@ select[scoring-config-combine-mode] { width: 100%; }
 /* Full-width form with no horizontal margin — the base rules give it
    width:100% AND margin:0.5em, so its right margin overflowed the panel and got
    clipped by the accordion's overflow:hidden (chopping the controls' right
-   edge). Keep only the vertical gap. */
-.sub-container form:not(.draft-config-form) {
+   edge). Applies to every panel form, including the draft/scoring config. */
+.sub-container form {
     width: 100%;
     margin: 0.5em 0;
     box-sizing: border-box;
