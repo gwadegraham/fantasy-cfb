@@ -52,6 +52,8 @@
 
     <div class="admin-status" admin-status hidden></div>
 
+    <% /* Platform-wide groups: Admins only. League Managers see just League setup. */ %>
+    <% if (isAdmin) { %>
     <section class="admin-group">
         <div class="group-head"><h2>Scoring — force a run</h2><span class="group-count">3</span></div>
         <div class="admin-functions">
@@ -282,9 +284,26 @@
         </div>
     </section>
 
+    <% } %>
+
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count">4</span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count">5</span></div>
         <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayLeagueNameContainer()">
+                        <i class="fa-solid fa-pen" style="padding-right: 5px;"></i>
+                        League Name
+                    </button>
+                </div>
+                <div class="sub-container" league-name-container style="display: none">
+                    <p class="function-description">Set the display name shown in the league switcher and page headers.</p>
+                    <form id="league-name-form">
+                        <div><input type="text" league-name-input maxlength="40" placeholder="League name"></div>
+                        <div><button type="submit">Save Name</button></div>
+                    </form>
+                </div>
+            </div>
             <div class="function-container">
                 <div class="button-container">
                     <button onclick="displayDraftConfigContainer()">
@@ -411,6 +430,7 @@
         </div>
     </section>
 
+    <% if (isAdmin) { %>
     <section class="admin-group">
         <div class="group-head"><h2>Monitoring</h2><span class="group-count">1</span></div>
         <div class="admin-functions">
@@ -431,6 +451,7 @@
             </div>
         </div>
     </section>
+    <% } %>
 
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>

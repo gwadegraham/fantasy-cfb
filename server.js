@@ -12,8 +12,12 @@ const schedule = require('node-schedule');
 const { auth } = require('express-openid-connect');
 const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
+const requireAdmin = require('./modules/require-admin');
+const devRole = require('./modules/dev-role');
+const { leagueCodeFor } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
+const League = require('./models/league');
 const { resolveConfig, fieldsForModel, LEAGUES } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
@@ -65,6 +69,35 @@ app.locals.leagues = LEAGUES;
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));
 
+// Dev role-spoof + view context. Resolves the effective user (honors an Admin's
+// active role spoof in non-production; a no-op in prod / for non-Admins) and
+// exposes dev flags to every view. The render routes and the role gates all
+// read this, so a spoof is consistent across server checks and the client UI.
+app.use((req, res, next) => {
+    req.effUser = devRole.effectiveUser(req);
+    res.locals.devMode = devRole.DEV;
+    res.locals.canSpoof = devRole.DEV && devRole.isRealAdmin(req);
+    res.locals.spoof = devRole.readSpoof(req); // {roles, league} | null, for the dev widget
+    next();
+});
+
+// Per-request league display names (editable via /leagues) for the navbar
+// switcher — HTML GETs only, falling back to the hardcoded defaults.
+app.use(async (req, res, next) => {
+    res.locals.leagues = LEAGUES;
+    try {
+        if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+            const docs = await League.find({}, { code: 1, name: 1, _id: 0 }).lean();
+            if (docs.length) {
+                const byCode = {};
+                docs.forEach(d => { byCode[d.code] = d.name; });
+                res.locals.leagues = LEAGUES.map(l => ({ code: l.code, name: byCode[l.code] || l.name }));
+            }
+        }
+    } catch (e) { /* fall back to defaults */ }
+    next();
+});
+
 // Make the logged-in member's avatar available to every rendered view, so the
 // navbar can show their profile photo instead of a generic icon. One indexed
 // lookup per page navigation (guarded to HTML GETs so it never fires for static
@@ -101,9 +134,9 @@ app.get('/profile', requiresAuth(), (req, res) => {
 // Mint a short-lived signed token the browser uses to authenticate its draft
 // socket connection. Requires a real Auth0 session so the identity is trusted.
 app.get('/draft-token', requiresAuth(), (req, res) => {
-  const ctx = buildUserContext(req.oidc.user);
+  const ctx = buildUserContext(req.effUser);
   const token = draftToken.sign(
-    { userId: ctx.userId, role: ctx.role, name: ctx.firstName },
+    { userId: ctx.userId, role: ctx.role, name: ctx.firstName, league: leagueCodeFor(req.effUser) },
     process.env.AUTH_SECRET
   );
   res.json({ token });
@@ -133,9 +166,9 @@ db.on('open', () => console.log('Connected to Database'));
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
+        const user = buildUserContext(req.effUser);
 
-        const userState = safeJson(req.oidc.user);
+        const userState = safeJson(req.effUser);
 
         res.render('standings', {user, userState});
     } else {
@@ -149,8 +182,8 @@ app.get('/valentine', (req, res) => {
 
 app.get('/standings', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         res.render('standings', {user, userState});
     } else {
@@ -160,8 +193,8 @@ app.get('/standings', (req, res) => {
 
 app.get('/rules', async (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         // Render the rules from the league's scoring config so the page can
         // never drift from the engine.
@@ -185,9 +218,9 @@ app.get('/rules', async (req, res) => {
 
 app.get('/draft-room', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
+        const user = buildUserContext(req.effUser);
         user.isDraft = false;
-        const userState = safeJson(req.oidc.user);
+        const userState = safeJson(req.effUser);
 
         res.render('draftRoom', {user, userState});
     } else {
@@ -197,15 +230,17 @@ app.get('/draft-room', (req, res) => {
 
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
+        const user = buildUserContext(req.effUser);
         // Only commissioners get the admin page; other members go home.
-        const roles = (req.oidc.user && req.oidc.user.user_metadata && req.oidc.user.user_metadata.roles) || [];
+        // Effective roles so a dev role-spoof is honored.
+        const roles = devRole.effectiveRoles(req);
         if (!roles.includes('Admin') && !roles.includes('League Manager')) {
             return res.redirect('/');
         }
-        const userState = safeJson(req.oidc.user);
+        const userState = safeJson(req.effUser);
+        const isAdmin = roles.includes('Admin');
 
-        res.render('admin', {user, userState, year: process.env.YEAR});
+        res.render('admin', {user, userState, year: process.env.YEAR, isAdmin});
     } else {
         res.redirect("/login");
     }
@@ -213,8 +248,8 @@ app.get('/admin', (req, res) => {
 
 app.get('/index', (req, res) => {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         res.render('standings', {user, userState});
     } else {
@@ -224,8 +259,8 @@ app.get('/index', (req, res) => {
 
 app.get('/userHome', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         res.render('userHome', {user, userState, cloudinary: cloudinaryConfig()});
     } else {
@@ -235,8 +270,8 @@ app.get('/userHome', async function(req, res) {
 
 app.get('/team', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         res.render('team', {user, userState});
     } else {
@@ -246,8 +281,8 @@ app.get('/team', async function(req, res) {
 
 app.get('/hall-of-fame', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
-        const user = buildUserContext(req.oidc.user);
-        const userState = safeJson(req.oidc.user);
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
 
         res.render('history', {user, userState});
     } else {
@@ -259,14 +294,24 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
 
-// Authorization: state-changing (non-GET) API calls require a commissioner
-// session or the internal token. Reads stay open to any authenticated member.
-// /teams/teamLogos is a POST but a member-safe read, so it's exempted.
+// Authorization for state-changing (non-GET) API calls, in two tiers:
+//   - Platform-wide data sync, scoring runs, and market odds -> Admin only
+//     (requireAdmin).
+//   - League-scoped setup (roster, draft, scoring config, league name) -> any
+//     commissioner (requireCommissioner); the handlers additionally enforce
+//     that a League Manager can only touch their OWN league.
+// GET reads stay open to any authenticated member, and the internal token
+// passes both tiers so scheduled jobs keep working. /teams/teamLogos is a
+// member-safe POST read, so it's exempted.
 app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
-    return requireCommissioner(req, res, next);
+    return requireAdmin(req, res, next);
 });
-app.use(['/users', '/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/draft', '/scoring-config', '/job-runs'], (req, res, next) => {
+app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/job-runs'], (req, res, next) => {
+    if (req.method === 'GET') return next();
+    return requireAdmin(req, res, next);
+});
+app.use(['/users', '/draft', '/scoring-config', '/leagues'], (req, res, next) => {
     if (req.method === 'GET') return next();
     // Self-service profile edit is scoped to the caller's own record (identity
     // comes from the session in the handler), so it doesn't need commissioner.
@@ -304,6 +349,27 @@ app.use('/draft', requireAuthOrToken, draftRouter);
 const scoringConfigRouter = require('./routes/scoringConfig');
 app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
+const leaguesRouter = require('./routes/leagues');
+app.use('/leagues', requireAuthOrToken, leaguesRouter);
+
+// Dev-only role spoofing: a real Admin (non-production only) can view the app
+// as a League Manager or a regular member to test permissions. Sets/clears the
+// cookie the effective-roles resolver reads. Returns 404 in production or for
+// anyone who isn't a real Admin, so it can never be an escalation path.
+app.post('/dev/spoof', (req, res) => {
+    if (!devRole.DEV || !devRole.isRealAdmin(req)) return res.status(404).end();
+    const role = (req.body && req.body.role) || '';   // 'Admin' | 'League Manager' | 'member'
+    const league = (req.body && req.body.league) || undefined;
+    const roles = role === 'member' ? [] : (role ? [role] : []);
+    res.cookie(devRole.SPOOF_COOKIE, JSON.stringify({ roles, league }), { sameSite: 'lax', httpOnly: true });
+    res.json({ ok: true, roles, league: league || null });
+});
+app.post('/dev/spoof/reset', (req, res) => {
+    if (!devRole.DEV || !devRole.isRealAdmin(req)) return res.status(404).end();
+    res.clearCookie(devRole.SPOOF_COOKIE);
+    res.json({ ok: true });
+});
+
 const jobRunsRouter = require('./routes/jobRuns');
 app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
 
@@ -313,7 +379,7 @@ app.use('/standings', requireAuthOrToken, standingsRouter);
 const historyRouter = require('./routes/history');
 app.use('/history', requireAuthOrToken, historyRouter);
 
-app.get('/calculate-team-score/:season/:teamId/:teamName', requireCommissioner, async (req, res) => {
+app.get('/calculate-team-score/:season/:teamId/:teamName', requireAdmin, async (req, res) => {
     var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
     if (response.status == 200) {

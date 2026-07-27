@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { effectiveRoles } = require('./dev-role');
 
 function safeEqual(a, b) {
     const bufA = Buffer.from(String(a));
@@ -24,7 +25,7 @@ module.exports = function requireCommissioner(req, res, next) {
     }
 
     if (req.oidc && req.oidc.isAuthenticated()) {
-        const roles = (req.oidc.user && req.oidc.user.user_metadata && req.oidc.user.user_metadata.roles) || [];
+        const roles = effectiveRoles(req);
         if (roles.includes('Admin') || roles.includes('League Manager')) {
             return next();
         }

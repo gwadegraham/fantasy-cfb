@@ -681,3 +681,13 @@ footer {
 @keyframes brand-draw {
     to { clip-path: inset(0 0 0 0); }
 }
+/* Dev-only role-spoof switcher in the navbar (rendered only in non-production
+   for a real Admin). Amber signals "development tool". */
+.dev-spoof { display: flex; align-items: center; gap: 4px; }
+.dev-spoof-label { font-size: 0.68rem; color: #E0B341; text-transform: uppercase; letter-spacing: 0.04em; }
+.dev-spoof button {
+    font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid rgba(224,179,65,0.4); background: transparent; color: #E0B341; cursor: pointer;
+}
+.dev-spoof button.active { background: #E0B341; color: #101322; font-weight: 700; }
+.dev-spoof button:hover { background: rgba(224,179,65,0.18); }

@@ -45,8 +45,11 @@
     </button>
     <div class="navbar-links" id="navbar-links">
         <ul>
-            <% if (user && user.role == "Admin") { %>
-            <li><a admin-page href="./admin">Admin</a></li>
+            <% var _role = (user && user.role) || ''; %>
+            <% if (_role === 'Admin' || _role === 'League Manager') { %>
+            <li><a admin-page href="./admin"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
+            <% } %>
+            <% if (_role === 'Admin') { %>
             <li league-selector>
                 <div class="dropdown dropdown-nav">
                     <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -77,6 +80,18 @@
                 <% } %>
                 <span class="nav-label">My Team</span>
             </a></li>
+            <% } %>
+            <% if (typeof canSpoof !== 'undefined' && canSpoof) {
+                 var _sp = (typeof spoof !== 'undefined' && spoof) ? spoof : null;
+                 var _cur = !_sp ? 'Admin'
+                     : ((_sp.roles || []).indexOf('League Manager') >= 0 ? 'League Manager'
+                     : ((_sp.roles || []).indexOf('Admin') >= 0 ? 'Admin' : 'member')); %>
+            <li class="dev-spoof" aria-label="Dev role spoof">
+                <span class="dev-spoof-label">Dev · view as</span>
+                <button type="button" data-spoof="Admin" class="<%= _cur === 'Admin' ? 'active' : '' %>">Admin</button>
+                <button type="button" data-spoof="League Manager" class="<%= _cur === 'League Manager' ? 'active' : '' %>">League&nbsp;Mgr</button>
+                <button type="button" data-spoof="member" class="<%= _cur === 'member' ? 'active' : '' %>">Member</button>
+            </li>
             <% } %>
             <li><a href="./logout">Logout</a></li>
         </ul>
@@ -144,6 +159,18 @@
                 a.classList.add('active');
                 a.setAttribute('aria-current', 'page');
             }
+        });
+
+        // --- Dev-only role spoof buttons (rendered only when canSpoof). ---
+        nav.querySelectorAll('.dev-spoof [data-spoof]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var role = btn.getAttribute('data-spoof');
+                fetch('/dev/spoof', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: role })
+                }).then(function () { location.reload(); });
+            });
         });
     })();
 </script>
