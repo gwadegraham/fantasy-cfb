@@ -78,12 +78,12 @@
     <!-- Forward-looking analytics (#210): projected finish + title odds.
          Rendered by standings.js loadProjections(); hidden when a season has no
          remaining games. -->
-    <section class="proj-panel" id="proj-panel" hidden></section>
-
-    <!-- Head-to-head weekly win-bonus standings (#230). Rendered by
-         standings.js loadH2H(); shown only for leagues that have opted in
-         (or with ?h2h=1 for previewing the format). -->
+    <!-- Head-to-head game mode (#230): featured matchup view when the league
+         has opted in (or ?h2h=1 to preview). Rendered by standings.js loadH2H();
+         sits above projections since it's the week-to-week story managers follow. -->
     <section class="h2h-panel" id="h2h-panel" hidden></section>
+
+    <section class="proj-panel" id="proj-panel" hidden></section>
 
     <hr class="hr-subtle">
     <h2 class="highlights-header"><span class="hdr-ic" data-icon="star" data-icon-size="24"></span>League Highlights</h2>

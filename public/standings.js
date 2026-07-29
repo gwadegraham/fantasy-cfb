@@ -272,21 +272,72 @@ async function loadH2H(league, season) {
 function renderH2HPanel(d) {
     const el = document.getElementById('h2h-panel');
     if (!el) return;
+    const byId = {};
+    d.managers.forEach(m => { byId[m.userId] = m; });
+    const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
+
+    // This week's matchups (featured card row).
+    const featured = (d.schedule || []).find(s => s.week === d.featuredWeek);
+    const matchCard = (g) => {
+        const A = byId[g.aId], B = byId[g.bId];
+        return `<div class="h2h-match">
+            <div class="h2h-side${g.winner === 'a' ? ' win' : ''}">${projAvatarHtml(A)}<span class="h2h-mname">${nameOf(A)}</span><span class="h2h-mscore">${g.aScore}</span></div>
+            <span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>
+            <div class="h2h-side right${g.winner === 'b' ? ' win' : ''}"><span class="h2h-mscore">${g.bScore}</span><span class="h2h-mname">${nameOf(B)}</span>${projAvatarHtml(B)}</div>
+        </div>`;
+    };
+    const matchStrip = (featured && featured.games.length)
+        ? `<div class="h2h-week-label">Week ${d.featuredWeek} matchups</div><div class="h2h-matches">${featured.games.map(matchCard).join('')}</div>`
+        : '';
+
+    // Standings rows — each expands to that manager's weekly results.
     const rows = d.managers.map(m => {
         const base = Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10;
-        return `<div class="h2h-row">
+        return `<div class="h2h-row" data-uid="${m.userId}" role="button" tabindex="0" aria-expanded="false">
             <span class="h2h-rank">${m.rank}</span>
             ${projAvatarHtml(m)}
-            <span class="h2h-id"><span class="h2h-name">${escapeHtml(m.franchise || m.name)}</span><span class="h2h-rec">${escapeHtml(m.record)}</span></span>
+            <span class="h2h-id"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${escapeHtml(m.record)}</span></span>
             <span class="h2h-pts"><span class="h2h-base">${base}</span><span class="h2h-bonus">+${m.h2hBonus}</span><b class="h2h-total">${m.adjustedTotal}</b></span>
-        </div>`;
+            <i class="fa-solid fa-chevron-down h2h-caret" aria-hidden="true"></i>
+        </div>
+        <div class="h2h-log" data-log="${m.userId}" hidden></div>`;
     }).join('');
+
+    const logHtml = (uid) => {
+        const items = (d.schedule || []).map(s => {
+            const g = s.games.find(x => x.aId === uid || x.bId === uid);
+            if (!g) return '';
+            const meScore = g.aId === uid ? g.aScore : g.bScore;
+            const oppScore = g.aId === uid ? g.bScore : g.aScore;
+            const opp = byId[g.aId === uid ? g.bId : g.aId];
+            const res = meScore > oppScore ? 'W' : (oppScore > meScore ? 'L' : 'T');
+            return `<div class="h2h-log-row"><span class="h2h-log-wk">Wk ${s.week}</span><span class="h2h-log-res r-${res}">${res}</span><span class="h2h-log-opp">${meScore}–${oppScore} vs ${nameOf(opp)}</span></div>`;
+        }).join('');
+        return items || '<div class="h2h-log-empty">No matchups yet.</div>';
+    };
+
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('checkered', { size: 22 }) : ''}Head-to-Head${preview}</h2>
-        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus into your total. Record is W–L–T; total = points + H2H bonus.</p>
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus. Tap a manager for their weekly results. Record is W–L–T; total = points + H2H bonus.</p>
+        ${matchStrip}
         <div class="h2h-head"><span></span><span></span><span class="h2h-col">pts · bonus · total</span></div>
         <div class="h2h-list">${rows}</div>`;
     el.hidden = false;
+
+    el.querySelectorAll('.h2h-row').forEach(row => {
+        const uid = row.getAttribute('data-uid');
+        const toggle = () => {
+            const log = el.querySelector(`[data-log="${uid}"]`);
+            if (!log) return;
+            const opening = log.hasAttribute('hidden');
+            if (opening) { log.innerHTML = logHtml(uid); log.removeAttribute('hidden'); }
+            else { log.setAttribute('hidden', ''); }
+            row.setAttribute('aria-expanded', String(opening));
+            row.classList.toggle('open', opening);
+        };
+        row.addEventListener('click', toggle);
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the

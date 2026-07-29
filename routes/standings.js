@@ -280,15 +280,27 @@ router.get('/h2h/:league/:season', async (req, res) => {
             adjustedTotal: round(meta[id].cumulative + h[id].bonus)   // cumulative already includes postseason
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
 
-        // The most recent week's matchups (for a "this week" card).
+        // Full schedule with per-week results, so the client can show this
+        // week's matchups AND each manager's week-by-week log. Games reference
+        // manager ids; the client resolves names/avatars from `managers`.
         const sched = scheduleForWeeks(ids, weeks);
-        const latestWeek = weeks[weeks.length - 1];
-        const matchups = (sched[latestWeek] || []).map(([a, b]) => ({
-            a: meta[a], aScore: round(totals[a][latestWeek] || 0),
-            b: meta[b], bScore: round(totals[b][latestWeek] || 0)
-        }));
+        const gameFor = (a, b, w) => {
+            const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
+            return { aId: a, aScore: sa, bId: b, bScore: sb, winner: sa > sb ? 'a' : (sb > sa ? 'b' : 'tie') };
+        };
+        const schedule = weeks.map(w => ({ week: w, games: (sched[w] || []).map(([a, b]) => gameFor(a, b, w)) }));
+        // Feature the latest week with a real slate — at least half the managers
+        // scored — so a finished season's thin final week (a couple of games)
+        // isn't the headline. In-season this naturally lands on the current week.
+        let featuredWeek = weeks[weeks.length - 1];
+        const need = Math.max(1, Math.ceil(ids.length / 2));
+        for (let i = weeks.length - 1; i >= 0; i--) {
+            const w = weeks[i];
+            const active = ids.filter(id => (totals[id][w] || 0) > 0).length;
+            if (active >= need) { featuredWeek = w; break; }
+        }
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks, latestWeek, managers, matchups });
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks, featuredWeek, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

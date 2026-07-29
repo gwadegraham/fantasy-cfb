@@ -660,3 +660,30 @@
     vertical-align: -0.12em;
     margin-right: 0.15em;
 }
+
+/* ---------- H2H featured view: this-week matchups + expandable results ---------- */
+.h2h-week-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: #767D9C; margin: 0.2rem 0 0.5rem; }
+.h2h-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
+.h2h-match { display: flex; align-items: center; gap: 0.5rem; background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.55rem 0.7rem; }
+.h2h-side { display: flex; align-items: center; gap: 0.45rem; flex: 1; min-width: 0; }
+.h2h-side.right { justify-content: flex-end; }
+.h2h-side .pp-avatar { width: 28px; height: 28px; }
+.h2h-mname { font-size: 0.82rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mscore { font-weight: 800; font-variant-numeric: tabular-nums; color: #A4A9C2; }
+.h2h-side.win .h2h-mname { color: #F4F6FB; font-weight: 600; }
+.h2h-side.win .h2h-mscore { color: #5BD08D; }
+.h2h-vs { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; flex-shrink: 0; }
+
+.h2h-row { cursor: pointer; }
+.h2h-caret { color: #767D9C; font-size: 0.8rem; margin-left: 0.5rem; transition: transform 0.2s ease; }
+.h2h-row.open .h2h-caret { transform: rotate(180deg); }
+.h2h-log { background: #12172a; border: 1px solid #2A2E42; border-top: none; border-radius: 0 0 12px 12px; margin: -0.4rem 0 0.55rem; padding: 0.5rem 0.9rem; }
+.h2h-log-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.25rem 0; font-size: 0.82rem; }
+.h2h-log-wk { width: 3rem; color: #767D9C; font-variant-numeric: tabular-nums; }
+.h2h-log-res { width: 1.2rem; text-align: center; font-weight: 800; }
+.h2h-log-res.r-W { color: #5BD08D; }
+.h2h-log-res.r-L { color: #ED5858; }
+.h2h-log-res.r-T { color: #A4A9C2; }
+.h2h-log-opp { color: #C9CEE6; font-variant-numeric: tabular-nums; }
+.h2h-log-empty { color: #767D9C; font-size: 0.82rem; padding: 0.3rem 0; }
+@media (prefers-reduced-motion: reduce) { .h2h-caret { transition: none; } }
