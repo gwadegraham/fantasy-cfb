@@ -1,0 +1,341 @@
+/* Weekly Recap — shared styles for the My Team card, the hero pill, and the
+   once-a-week popup. Loaded app-wide via the navbar partial so the popup can
+   render on any page. Palette matches the app's dark theme. */
+
+/* ---------- Hero pill + collapsible card (My Team) ---------- */
+.profile-chips { display: flex; flex-wrap: wrap; gap: 0.6em; }
+
+.recap-chip-teaser {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #F4F6FB;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.uh-recap {
+    width: 92%;
+    max-width: 720px;
+    margin: 0 auto;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.32s ease;
+}
+.uh-recap.is-open { max-height: 1200px; margin-top: 1.1rem; }
+
+.recap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em 1.5em;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+/* The card header is a section label, not a page title — override the global
+   .header-title (48px) so it doesn't dwarf the card and blow out the spacing. */
+.recap-head .header-title {
+    margin: 0;
+    padding: 0;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    font-weight: 700;
+}
+.recap-week-picker { display: flex; flex-direction: column; gap: 3px; }
+.recap-week-caption {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #767D9C;
+}
+.recap-week-picker select {
+    background: #101322;
+    border: 1px solid #3A3F58;
+    border-radius: 8px;
+    color: #F4F6FB;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+/* ---------- The recap card (shared by My Team + popup) ---------- */
+.recap-card {
+    background: #1A1F33;
+    border: 1px solid #2A2E42;
+    border-radius: 14px;
+    padding: 1.1em 1.25em;
+}
+.recap-narrative {
+    margin: 0 0 1em;
+    font-size: 1.02rem;
+    line-height: 1.5;
+    color: #F4F6FB;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+}
+.recap-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #5BD08D;
+    background: rgba(91, 208, 141, 0.12);
+    border: 1px solid rgba(91, 208, 141, 0.35);
+    border-radius: 20px;
+    padding: 2px 8px;
+}
+.recap-badge svg { width: 0.9em; height: 0.9em; }
+.recap-stats { display: flex; flex-wrap: wrap; gap: 1.75em; }
+.recap-stats .stat { display: flex; flex-direction: column; }
+.recap-stats .stat .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #F4F6FB;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.recap-stats .stat .stat-value img { height: 1.2rem; width: auto; }
+.recap-stats .stat .stat-label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #767D9C;
+    margin-top: 2px;
+}
+.recap-move { font-size: 0.9rem; font-weight: 700; }
+.recap-move.up { color: #5BD08D; }
+.recap-move.down { color: #ED5858; }
+.recap-move.flat { color: #767D9C; }
+
+/* ---------- Weekly popup ---------- */
+.recap-popup-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1em;
+    background: rgba(8, 10, 20, 0);
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+    transition: background 0.28s ease, backdrop-filter 0.28s ease;
+}
+.recap-popup-backdrop.is-in {
+    background: rgba(8, 10, 20, 0.6);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+.recap-popup {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    background: #171B2E;
+    border: 1px solid #2A2E42;
+    border-radius: 18px;
+    padding: 1.5em 1.5em 1.35em;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transform: translateY(22px) scale(0.94);
+    transition: opacity 0.34s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.recap-popup-backdrop.is-in .recap-popup { opacity: 1; transform: translateY(0) scale(1); }
+.recap-popup-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #A4A9C2;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+}
+.recap-popup-close { z-index: 3; }
+.recap-popup-close:hover { color: #F4F6FB; background: #2A2E42; }
+.recap-popup-link {
+    display: inline-block;
+    margin-top: 1.1em;
+    color: #8E8CF0;
+    font-weight: 600;
+    font-size: 0.92rem;
+    text-decoration: none;
+    position: relative;
+    z-index: 3;
+}
+.recap-popup-link:hover { text-decoration: underline; }
+
+/* ---------- Story carousel ---------- */
+.recap-story { max-width: 420px; padding: 2.4em 1.4em 1.5em; overflow: hidden; }
+
+/* Segmented progress bars, Instagram/Wrapped style. */
+.recap-progress {
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    right: 46px;
+    display: flex;
+    gap: 5px;
+    z-index: 3;
+}
+.recap-progress span {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.16);
+    transition: background 0.3s ease;
+}
+.recap-progress span.filled { background: #8E8CF0; }
+
+.recap-story-viewport { overflow: hidden; cursor: pointer; }
+.recap-story-track {
+    display: flex;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.recap-slide {
+    flex: 0 0 100%;
+    min-height: 268px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.45em;
+    /* Generous side padding so titles/numbers never underlap the ‹ › nav
+       buttons (which sit ~46px in from the popup edge). */
+    padding: 0.4em 1.7rem;
+}
+/* Screen-reader-only live region announcing "Slide X of N". */
+.recap-sr {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0);
+    white-space: nowrap; border: 0;
+}
+.recap-slide-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #8E8CF0;
+}
+.recap-slide-kicker svg { width: 1em; height: 1em; }
+.recap-slide-logo { width: 66px; height: 66px; object-fit: contain; margin: 0.1em 0; }
+.recap-slide-logos { display: flex; gap: 0.7em; align-items: center; justify-content: center; flex-wrap: wrap; }
+.recap-slide-logos .recap-slide-logo { width: 54px; height: 54px; }
+.recap-slide-title { font-size: 1.35rem; font-weight: 700; color: #F4F6FB; line-height: 1.2; }
+.recap-slide-big { font-size: 3.1rem; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+.recap-slide-big.good { color: #5BD08D; }
+.recap-slide-big.bad { color: #ED5858; }
+.recap-slide-big.neutral { color: #F4F6FB; }
+.recap-slide-text { margin: 0.2em 0 0; font-size: 1.08rem; line-height: 1.5; color: #F4F6FB; max-width: 320px; }
+.recap-slide-sub { font-size: 0.82rem; color: #A4A9C2; max-width: 300px; }
+
+/* Faint tap-affordance chevrons (visual only). */
+.recap-nav-hint {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 56px;
+    font-size: 1.7rem;
+    line-height: 1;
+    color: rgba(244, 246, 251, 0.4);
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    z-index: 5;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.recap-nav-hint:hover { color: #F4F6FB; background: rgba(255, 255, 255, 0.06); }
+.recap-nav-hint:focus-visible { outline: 2px solid #8E8CF0; outline-offset: 2px; }
+.recap-nav-hint.left { left: 6px; }
+.recap-nav-hint.right { right: 6px; }
+
+/* Per-slide entrance choreography — each element starts hidden and is animated
+   in when its slide becomes .is-active. showSlide() re-arms the class on every
+   navigation, so the beats replay each time you land on a slide. */
+.recap-slide-kicker,
+.recap-slide .recap-slide-logo,
+.recap-slide-title,
+.recap-slide-big,
+.recap-slide-text,
+.recap-slide-sub,
+.recap-slide .recap-popup-link { opacity: 0; }
+
+.recap-slide.is-active .recap-slide-kicker { animation: recap-fade-up 0.45s ease both 0.02s; }
+.recap-slide.is-active .recap-slide-logo { animation: recap-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both 0.12s; }
+.recap-slide.is-active .recap-slide-logos .recap-slide-logo:nth-child(2) { animation-delay: 0.22s; }
+.recap-slide.is-active .recap-slide-logos .recap-slide-logo:nth-child(3) { animation-delay: 0.32s; }
+.recap-slide.is-active .recap-slide-logos .recap-slide-logo:nth-child(4) { animation-delay: 0.42s; }
+.recap-slide.is-active .recap-slide-title { animation: recap-fade-up 0.45s ease both 0.18s; }
+.recap-slide.is-active .recap-slide-big { animation: recap-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both 0.26s; }
+.recap-slide.is-active .recap-slide-text { animation: recap-fade-up 0.5s ease both 0.2s; }
+.recap-slide.is-active .recap-slide-sub { animation: recap-fade-up 0.45s ease both 0.36s; }
+.recap-slide.is-active .recap-popup-link { animation: recap-fade-up 0.45s ease both 0.46s; }
+
+/* The upset "UPSET" lands like a stamp, tilted for swagger. */
+.recap-slide[data-slide-id="upset"].is-active .recap-slide-big { animation: recap-stamp 0.5s cubic-bezier(0.2, 1.4, 0.3, 1) both 0.26s; }
+
+@keyframes recap-fade-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes recap-pop {
+    0%   { opacity: 0; transform: scale(0.6); }
+    60%  { opacity: 1; transform: scale(1.08); }
+    100% { opacity: 1; transform: scale(1); }
+}
+@keyframes recap-pop-in {
+    0%   { opacity: 0; transform: scale(0.3) rotate(-8deg); }
+    70%  { opacity: 1; transform: scale(1.1) rotate(3deg); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes recap-stamp {
+    0%   { opacity: 0; transform: scale(2) rotate(-12deg); }
+    60%  { opacity: 1; transform: scale(0.92) rotate(3deg); }
+    100% { opacity: 1; transform: scale(1) rotate(-4deg); }
+}
+
+@media (max-width: 600px) {
+    .recap-stats { gap: 1.25em; }
+    .recap-narrative { font-size: 0.95rem; }
+    .recap-slide-big { font-size: 2.6rem; }
+    .recap-slide-title { font-size: 1.2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .uh-recap,
+    .recap-popup-backdrop,
+    .recap-popup,
+    .recap-story-track,
+    .recap-progress span { transition: none; }
+    /* Keep every slide element visible with no motion. */
+    .recap-slide-kicker,
+    .recap-slide .recap-slide-logo,
+    .recap-slide-title,
+    .recap-slide-big,
+    .recap-slide-text,
+    .recap-slide-sub,
+    .recap-slide .recap-popup-link { opacity: 1; animation: none !important; }
+}

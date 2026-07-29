@@ -103,7 +103,48 @@ async function getUser() {
         ensureWeekSelected(data[0]);
         displaySchedule(data[0]);
         loadHomeGrades(data[0]);
+        renderRecap(data[0]);
     });
+}
+
+// Weekly Recap on the profile: a "here's your week" card tucked behind a hero
+// pill (like the Draft grade chip). Rendering + the app-wide weekly popup live
+// in public/weekly-recap.js (window.ccRecap); here we just fetch, mount the
+// collapsed card, and wire the pill to expand it.
+async function renderRecap(user) {
+    const el = document.getElementById('uh-recap');
+    const chip = document.querySelector('[recap-chip]');
+    if (!el || !chip || !window.ccRecap || !user || !user.league || !(user.seasons || []).length) return;
+
+    // Recap the latest season that actually has weekly scores, so the pill is
+    // useful in the offseason too (shows last season's finish).
+    const played = (user.seasons || [])
+        .filter(s => (s.weeklyScore || []).length > 0)
+        .sort((a, b) => Number(b.season) - Number(a.season));
+    if (!played.length) return;
+
+    try {
+        const data = await window.ccRecap.fetchRecap(user.league, played[0].season, user._id);
+        if (!data || !(data.recaps || []).length) return;
+        const latest = window.ccRecap.mountInline(el, data);
+
+        // Teaser on the pill: latest week + rank + movement arrow.
+        const teaser = document.querySelector('[recap-chip-teaser]');
+        if (teaser && latest) {
+            const place = latest.rank != null ? escapeHtml(ordinal(latest.rank)) : '';
+            teaser.innerHTML = `${escapeHtml(latest.label)} · ${place} ${window.ccRecap.movement(latest.rankDelta)}`;
+        }
+        chip.hidden = false;
+        if (!chip.dataset.wired) {
+            chip.dataset.wired = '1';
+            chip.addEventListener('click', () => {
+                const open = el.classList.toggle('is-open');
+                chip.setAttribute('aria-expanded', String(open));
+            });
+        }
+    } catch (e) {
+        console.error('weekly recap failed:', e);
+    }
 }
 
 // Draft grade on the profile: just THIS manager's own most-recent-season card,

@@ -507,6 +507,7 @@
     .grade-chip-caret { transition: none; }
 }
 
+
 /* Roster table zebra fix. Odd rows carry no background of their own, so the
    frozen Team / Team Score columns show #101322 while the middle cells let the
    lighter profile card (#1A1F33) bleed through — a two-tone, inconsistent row.
