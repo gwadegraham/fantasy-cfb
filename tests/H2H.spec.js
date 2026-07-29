@@ -128,6 +128,18 @@ describe('matchupWinProb', () => {
         );
         expect(r.a).toBeGreaterThan(0.9);
     });
+    // Live behavior: a game that's already final is fed as a certainty
+    // ({ winProb: 1, pointsIfWin: actualScore }); this shifts the odds vs the
+    // pre-game projection as results bank.
+    test('a banked win shifts the odds vs the pre-game coin flip', () => {
+        const pre = matchupWinProb([{ winProb: 0.5, pointsIfWin: 20 }], [{ winProb: 0.5, pointsIfWin: 20 }]);
+        expect(pre.a).toBeCloseTo(0.5, 10);
+        // A's team already won (locked 20); B's still a coin flip.
+        // A=20 always; B=20 (p.5)→tie, B=0 (p.5)→A wins ⇒ a = .5 + .5·.5 = .75
+        const live = matchupWinProb([{ winProb: 1, pointsIfWin: 20 }], [{ winProb: 0.5, pointsIfWin: 20 }]);
+        expect(live.a).toBeCloseTo(0.75, 10);
+        expect(live.a).toBeGreaterThan(pre.a);
+    });
 });
 
 describe('seasonH2H', () => {

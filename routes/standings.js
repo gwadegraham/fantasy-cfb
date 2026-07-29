@@ -419,19 +419,36 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const entriesFor = (id, w) => (meta[id].teams || [])
             .map(t => projByWeek[w] && projByWeek[w][t.id])
             .filter(Boolean);
-        const oddsFor = (a, b, w) => {
-            const r = matchupWinProb(entriesFor(a, w), entriesFor(b, w));
+        // Live odds recompute as the week plays out: a team whose game is already
+        // FINAL contributes its actual scored points as a certainty; teams still
+        // to play (live/upcoming) keep their projected win-prob × points-if-win.
+        // So the bar shifts toward whoever's banked results are stronger, and by
+        // the time every game is final it reads as the settled 100/0.
+        const liveEntriesFor = (id, w) => (meta[id].teams || []).map(t => {
+            const g = gameTW[t.id] && gameTW[t.id][w];
+            if (!g) return null;                                  // bye — no game this week
+            if (gameStatus(g, now) === 'final') {
+                const s = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+                return { winProb: 1, pointsIfWin: s ? s.score : 0 };   // result locked in
+            }
+            const p = projByWeek[w] && projByWeek[w][t.id];
+            return p ? { winProb: p.winProb, pointsIfWin: p.pointsIfWin } : null;
+        }).filter(Boolean);
+        const oddsFrom = (ea, eb) => {
+            const r = matchupWinProb(ea, eb);
             if (!r) return null;
             const pa = Math.round(r.a * 100);
             return { a: pa, b: 100 - pa };
         };
+        const oddsFor = (a, b, w) => oddsFrom(entriesFor(a, w), entriesFor(b, w));
+        const liveOddsFor = (a, b, w) => oddsFrom(liveEntriesFor(a, w), liveEntriesFor(b, w));
         const gameFor = (a, b, w, live) => {
             const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
             return {
                 aId: a, aScore: sa, aTeams: live ? teamsLive(a, w) : teamsFinal(a, w),
                 bId: b, bScore: sb, bTeams: live ? teamsLive(b, w) : teamsFinal(b, w),
                 winner: live ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
-                winP: oddsFor(a, b, w),
+                winP: live ? liveOddsFor(a, b, w) : oddsFor(a, b, w),
                 final: !live
             };
         };
@@ -457,11 +474,18 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
                 return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null };
             });
+            // Live odds from the doctored slate: final games lock their actual
+            // points, everything else is a neutral coin-flip projection — so the
+            // bar reflects the same live computation the real current week uses.
+            const liveEnt = (teams) => (teams || []).map(t => t.status === 'final'
+                ? { winProb: 1, pointsIfWin: t.score || 0 }
+                : { winProb: 0.5, pointsIfWin: 18 });
             w.games.forEach(g => {
                 g.final = false; g.winner = null;
                 g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
                 const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
                 g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
+                g.winP = mode === 'pregame' ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
             });
             featuredWeek = w.week; currentWeekOut = w.week;
         }

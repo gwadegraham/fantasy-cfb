@@ -765,10 +765,12 @@
 .h2h-mbfill.even { background: #5A6080; }
 .h2h-mbfill:not(.r) { border-radius: 999px 0 0 999px; }
 .h2h-mbfill.r { border-radius: 0 999px 999px 0; }
-.h2h-mbpct { font-size: 0.62rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 2.1rem; flex-shrink: 0; color: #A4A9C2; }
+/* Both percentages share one size + weight — the favorite is distinguished by
+   color only, never by being larger. */
+.h2h-mbpct { font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 2.1rem; flex-shrink: 0; color: #A4A9C2; }
 .h2h-mbpct:last-child { text-align: right; }
-.h2h-mbpct.lead { color: #5BD08D; font-weight: 800; }
-.h2h-mbpct.lose { color: #8A90A8; font-weight: 600; }
+.h2h-mbpct.lead { color: #5BD08D; }
+.h2h-mbpct.lose { color: #8A90A8; }
 .h2h-mpre { grid-column: 1 / -1; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #8A90A8; text-align: center; }
 .h2h-mpre b { color: #C9CEE6; }
 @media (prefers-reduced-motion: reduce) { .h2h-mcaret, .h2h-mbfill { transition: none; } }
