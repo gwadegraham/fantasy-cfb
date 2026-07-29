@@ -313,7 +313,7 @@ function renderH2HPanel(d) {
     const winBar = (g) => {
         const v = barVals(g);
         if (!v) return '';
-        const tone = (mine, other) => mine > other ? 'lead' : mine < other ? 'lose' : 'even';
+        const tone = (mine, other) => mine > other ? 'fav' : mine < other ? 'dog' : 'even';
         return `<div class="h2h-mbar" role="img" aria-label="Win probability ${v.a}% versus ${v.b}%">
             <span class="h2h-mbpct ${tone(v.a, v.b)}">${v.a}%</span>
             <div class="h2h-mbtrack">
