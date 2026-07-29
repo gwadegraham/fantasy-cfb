@@ -103,7 +103,7 @@ function biggestUpsetCard(games, spreadByGameId, draftedNames, metaByName, fanta
         : `${round(best.margin)}-pt dog`;
     const detail = `beat ${escapeHtml(best.loser)} ${winScore}–${loseScore} · ${round(best.margin)}-pt underdog`;
     return {
-        icon: 'upset', title: 'Biggest Upset',
+        icon: 'dice', title: 'Biggest Upset',
         tag: g.week != null ? `week ${g.week}` : 'season',
         name: `${logoImg(meta)}${teamLabel(meta, best.winner)}`,
         value, sub: detail, tone: 'good'
