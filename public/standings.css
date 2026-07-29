@@ -713,3 +713,28 @@
 .h2h-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; }
 .h2h-live { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; }
 .h2h-chip.is-sched { color: #767D9C; font-weight: 600; }
+
+/* Compact, tappable matchup rows (replaces the tall scoreboard cards). */
+.h2h-matches { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.1rem; }
+.h2h-mcard { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; }
+.h2h-mcard.live { border-color: #3A3F58; }
+.h2h-msum { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.75rem; cursor: pointer; }
+.h2h-mside { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }
+.h2h-mside.r { justify-content: flex-end; }
+.h2h-msum .pp-avatar { width: 26px; height: 26px; flex-shrink: 0; }
+.h2h-mnm { font-size: 0.8rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mside.win .h2h-mnm { color: #F4F6FB; font-weight: 700; }
+.h2h-msc { font-size: 1.15rem; font-weight: 800; color: #A4A9C2; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.h2h-mside.win .h2h-msc { color: #5BD08D; }
+.h2h-msep { font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #767D9C; flex-shrink: 0; min-width: 1.6rem; text-align: center; }
+.h2h-mlive { color: #ED5858; font-weight: 800; }
+.h2h-mcaret { color: #767D9C; font-size: 0.72rem; flex-shrink: 0; transition: transform 0.2s ease; }
+.h2h-mcard.open .h2h-mcaret { transform: rotate(180deg); }
+.h2h-mdetail { display: none; grid-template-columns: 1fr 1fr; gap: 0.6rem; padding: 0 0.75rem 0.7rem; }
+.h2h-mcard.open .h2h-mdetail { display: grid; }
+.h2h-mdcol { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.h2h-mdcap { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mchips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.h2h-mfoot { grid-column: 1 / -1; margin-top: 0.2rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
+@media (max-width: 560px) { .h2h-mdetail { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .h2h-mcaret { transition: none; } }

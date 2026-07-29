@@ -293,27 +293,26 @@ function renderH2HPanel(d) {
         const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
         return list.length ? list.map(chip).join('') : '<span class="h2h-chip none">no points</span>';
     };
-    // One matchup card: a mini scoreboard. Final → winner highlighted. In
-    // progress → provisional scores, no winner, and a "games to play" footer.
+    // Compact matchup: a one-line summary (avatars, names, scores, result/LIVE)
+    // that expands on tap to the team-level breakdown. Keeps the list short on
+    // mobile while still one tap from the detail.
     const card = (g) => {
         const A = byId[g.aId], B = byId[g.bId];
         const live = g.final === false;
         const remaining = (g.aTeams || []).concat(g.bTeams || []).filter(t => t.status && t.status !== 'final').length;
-        const side = (m, score, teams, win) => `
-            <div class="h2h-team${win ? ' win' : ''}">
-                <div class="h2h-team-head">${projAvatarHtml(m)}<span class="h2h-tn"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span></div>
-                <div class="h2h-team-score">${score}</div>
-                <div class="h2h-contribs">${contribs(teams, live)}</div>
-            </div>`;
-        const mid = live
-            ? `<div class="h2h-mid"><span class="h2h-vs">vs</span><span class="h2h-live-tag">LIVE</span></div>`
-            : `<div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span></div>`;
-        const foot = live ? `<div class="h2h-match-foot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : '';
-        return `<div class="h2h-match${live ? ' live' : ''}">
-            ${side(A, g.aScore, g.aTeams, g.winner === 'a')}
-            ${mid}
-            ${side(B, g.bScore, g.bTeams, g.winner === 'b')}
-            ${foot}
+        const sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
+        return `<div class="h2h-mcard${live ? ' live' : ''}">
+            <div class="h2h-msum" role="button" tabindex="0" aria-expanded="false">
+                <div class="h2h-mside${g.winner === 'a' ? ' win' : ''}">${projAvatarHtml(A)}<span class="h2h-mnm">${nameOf(A)}</span><span class="h2h-msc">${g.aScore}</span></div>
+                <span class="h2h-msep">${sep}</span>
+                <div class="h2h-mside r${g.winner === 'b' ? ' win' : ''}"><span class="h2h-msc">${g.bScore}</span><span class="h2h-mnm">${nameOf(B)}</span>${projAvatarHtml(B)}</div>
+                <i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>
+            </div>
+            <div class="h2h-mdetail">
+                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(A)}</span><div class="h2h-mchips">${contribs(g.aTeams, live)}</div></div>
+                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(B)}</span><div class="h2h-mchips">${contribs(g.bTeams, live)}</div></div>
+                ${live ? `<div class="h2h-mfoot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : ''}
+            </div>
         </div>`;
     };
 
@@ -347,6 +346,11 @@ function renderH2HPanel(d) {
     const paintWeek = (w) => {
         const s = (d.schedule || []).find(x => x.week === Number(w));
         matchesEl.innerHTML = (s && s.games.length) ? s.games.map(card).join('') : '<p class="h2h-empty">No matchups this week.</p>';
+        matchesEl.querySelectorAll('.h2h-msum').forEach(sum => {
+            const toggle = () => { const open = sum.closest('.h2h-mcard').classList.toggle('open'); sum.setAttribute('aria-expanded', String(open)); };
+            sum.addEventListener('click', toggle);
+            sum.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+        });
     };
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));
