@@ -104,7 +104,94 @@ async function getUser() {
         displaySchedule(data[0]);
         loadHomeGrades(data[0]);
         renderRecap(data[0]);
+        renderCaptain(data[0]);
     });
+}
+
+// Captain picker (#230): the profile owner sets which rostered team to double
+// for the current regular-season week. Behind a hero chip that expands a team
+// grid. Only shown for your own profile, and only when the league has opted in
+// (or ?captain=1 to preview). Weeks already scored are locked.
+async function renderCaptain(user) {
+    const chip = document.querySelector('[captain-chip]');
+    const panel = document.getElementById('uh-captain');
+    if (!chip || !panel || !user || !user.league || !(user.seasons || []).length) return;
+    if (String(currentUserId()) !== String(user._id)) return;   // own profile only
+
+    const preview = new URLSearchParams(location.search).get('captain') === '1';
+    let enabled = false;
+    try {
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.captainEnabled); }
+    } catch (e) { /* fall through to preview gate */ }
+    if (!enabled && !preview) return;
+
+    // Captain is set for the CURRENT season's first unplayed week. In the
+    // offseason (no current-season roster, or every week already scored) there's
+    // nothing to set, so the picker stays hidden — except in preview mode, which
+    // falls back to the latest season that still has an open week.
+    const firstOpenWeek = (s) => {
+        const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
+        for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
+        return null;
+    };
+    const year = new Date().getFullYear();
+    let season = (user.seasons || []).find(s => Number(s.season) === year && (s.teams || []).length);
+    let week = season ? firstOpenWeek(season) : null;
+    if ((!season || week == null) && preview) {
+        const cand = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
+        if (cand) { season = cand; week = firstOpenWeek(cand); }
+    }
+    if (!season || week == null) return;
+
+    let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
+
+    const teamById = {};
+    (season.teams || []).forEach(t => { teamById[t.id] = t; });
+    const teaser = document.querySelector('[captain-chip-teaser]');
+    const setTeaser = () => {
+        const t = pick != null ? teamById[pick] : null;
+        teaser.innerHTML = t
+            ? `<img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)}`
+            : `<span class="captain-unset">Set for Wk ${week}</span>`;
+    };
+    const paint = () => {
+        panel.innerHTML = `
+            <div class="recap-head"><div class="header-title">Captain · Week ${week}</div></div>
+            <div class="recap-card">
+                <p class="captain-note">Pick one team to score <b>2×</b> this week. Locks at kickoff.</p>
+                <div class="captain-grid">${(season.teams || []).map(t => `
+                    <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
+                        <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
+                    </button>`).join('')}</div>
+            </div>`;
+        panel.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
+            const teamId = Number(btn.getAttribute('data-team'));
+            const next = Number(pick) === teamId ? null : teamId;   // click current to clear
+            try {
+                const res = await fetch('/users/me/captain', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ season: season.season, week, teamId: next })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Could not set captain');
+                pick = next;
+                setTeaser(); paint();
+                if (window.ccToast) ccToast.success(next ? `Captain set: ${teamById[next].school}` : 'Captain cleared');
+            } catch (e) { if (window.ccToast) ccToast.error(e.message); }
+        }));
+    };
+
+    setTeaser();
+    paint();
+    chip.hidden = false;
+    if (!chip.dataset.wired) {
+        chip.dataset.wired = '1';
+        chip.addEventListener('click', () => {
+            const open = panel.classList.toggle('is-open');
+            chip.setAttribute('aria-expanded', String(open));
+        });
+    }
 }
 
 // Weekly Recap on the profile: a "here's your week" card tucked behind a hero

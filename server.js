@@ -315,7 +315,7 @@ app.use(['/users', '/draft', '/scoring-config', '/leagues'], (req, res, next) =>
     if (req.method === 'GET') return next();
     // Self-service profile edit is scoped to the caller's own record (identity
     // comes from the session in the handler), so it doesn't need commissioner.
-    if (req.method === 'PATCH' && req.path === '/me/profile') return next();
+    if (req.method === 'PATCH' && (req.path === '/me/profile' || req.path === '/me/captain')) return next();
     return requireCommissioner(req, res, next);
 });
 

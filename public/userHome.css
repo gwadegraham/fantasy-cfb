@@ -520,3 +520,18 @@
    background, so the middle header cells let the lighter card show through. Give
    every header cell the solid base + a divider so the header reads as one bar. */
 .fl-table thead th { background-color: #101322; border-bottom: 1px solid #2A2E42; }
+
+/* ---------- Captain picker (#230) ---------- */
+.captain-chip-teaser { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 700; color: #F4F6FB; text-transform: none; letter-spacing: 0; }
+.captain-chip-teaser img { height: 1.1em; width: auto; }
+.captain-unset { color: #8E8CF0; }
+.uh-captain { width: 92%; max-width: 720px; margin: 0 auto; overflow: hidden; max-height: 0; transition: max-height 0.32s ease; }
+.uh-captain.is-open { max-height: 1600px; margin-top: 1.1rem; }
+.captain-note { margin: 0 0 0.9em; color: #A4A9C2; font-size: 0.9rem; }
+.captain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.6rem; }
+.captain-team { display: flex; align-items: center; gap: 0.5rem; background: #101322; border: 1px solid #2A2E42; border-radius: 10px; padding: 0.5rem 0.7rem; color: #F4F6FB; font: inherit; font-size: 0.85rem; cursor: pointer; text-align: left; transition: border-color 0.15s ease, background 0.15s ease; }
+.captain-team img { height: 24px; width: 24px; object-fit: contain; flex-shrink: 0; }
+.captain-team span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.captain-team:hover { border-color: #3A3F58; background: #151a2e; }
+.captain-team.is-captain { border-color: #8E8CF0; background: rgba(142, 140, 240, 0.14); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .uh-captain { transition: none; } }
