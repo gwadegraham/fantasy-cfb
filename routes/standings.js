@@ -12,6 +12,7 @@ const { resolveConfig } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
+const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the
@@ -148,6 +149,81 @@ router.get('/projections/:league/:season', async (req, res) => {
         }));
 
         res.json({ league, season, managers: payload });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Per-manager Weekly Recap: one "here's your week" card per played week for a
+// single manager — score, rank + movement, vs league average, MVP team, and a
+// one-line narrative. Same math as League Highlights, scoped to one user, plus
+// a layered upset narrative when a rostered team won as a betting underdog.
+// Read-only. The compute lives in modules/weekly-recap.js so a future recap
+// EMAIL can reuse it unchanged.
+router.get('/recap/:league/:season/:userId', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const userId = req.params.userId;
+
+        // `latest` (used by the weekly popup) resolves to the most recent season
+        // the manager actually has weekly scores for — so the popup works during
+        // the season and shows last season's finish in the offseason.
+        let season = req.params.season;
+        if (season === 'latest') {
+            const target = await User.findById(userId);
+            const played = ((target && target.seasons) || [])
+                .filter(s => (s.weeklyScore || []).length > 0)
+                .sort((a, b) => Number(b.season) - Number(a.season));
+            if (!played.length) return res.json({ league, season: null, userId, recaps: [] });
+            season = String(played[0].season);
+        }
+        const seasonNum = Number(season);
+
+        // Whole league for the target season (need nested teams + weeklyScore
+        // for rank/average, so no projection).
+        const users = await User.find({ league: league, 'seasons.season': season });
+        const user = users.find(u => String(u._id) === String(userId));
+        if (!user) return res.json({ league, season: seasonNum, userId, recaps: [] });
+
+        // Upset index: drafted teams' completed regular-season games + spreads,
+        // so a rostered underdog win can flavor that week's narrative.
+        const draftedIds = new Set();
+        users.forEach(u => {
+            const s = (u.seasons || []).find(x => String(x.season) === String(season));
+            ((s && s.teams) || []).forEach(t => draftedIds.add(Number(t.id)));
+        });
+        const idList = [...draftedIds];
+        let upsetByGameId = {};
+        if (idList.length) {
+            const games = await Game.find(
+                { season: seasonNum, seasonType: 'regular', completed: true, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
+                { id: 1, week: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
+            );
+            const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
+            const spreadByGameId = {};
+            betting.forEach(b => {
+                const lines = b.lines || [];
+                const line = lines.find(l => l.provider === 'DraftKings') || lines[0];
+                if (line && typeof line.spread === 'number') spreadByGameId[b.id] = line.spread;
+            });
+
+            // AP Top 25 by week, so the upset narrative can name the beaten
+            // team's rank ("upset of #3 Georgia"). Each Ranking doc is one week.
+            const rankByWeek = {};
+            const rankings = await Ranking.find({ season: seasonNum, seasonType: 'regular' }, { week: 1, polls: 1, _id: 0 });
+            rankings.forEach(rk => {
+                const ap = (rk.polls || []).find(p => p.poll === 'AP Top 25');
+                if (!ap) return;
+                const byTeam = (rankByWeek[rk.week] = rankByWeek[rk.week] || {});
+                (ap.ranks || []).forEach(r => { if (r.school != null && r.rank != null) byTeam[r.school] = r.rank; });
+            });
+
+            upsetByGameId = indexUpsets(games, spreadByGameId, rankByWeek);
+        }
+
+        const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId });
+        const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
+        res.json({ league, ...recap, name });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

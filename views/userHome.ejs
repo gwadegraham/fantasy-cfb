@@ -37,12 +37,20 @@
             <h1 class="franchise-name" profile-franchise></h1>
             <p class="manager-name" profile-manager></p>
             <div class="profile-stats" profile-stats></div>
-            <button type="button" class="grade-chip" profile-grade-chip hidden
-                    aria-expanded="false" aria-controls="uh-grades">
-                <span class="grade-chip-label">Draft grade</span>
-                <span class="grade-chip-letter" profile-grade-letter></span>
-                <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
-            </button>
+            <div class="profile-chips">
+                <button type="button" class="grade-chip" profile-grade-chip hidden
+                        aria-expanded="false" aria-controls="uh-grades">
+                    <span class="grade-chip-label">Draft grade</span>
+                    <span class="grade-chip-letter" profile-grade-letter></span>
+                    <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="grade-chip recap-chip" recap-chip hidden
+                        aria-expanded="false" aria-controls="uh-recap">
+                    <span class="grade-chip-label"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i> Weekly recap</span>
+                    <span class="recap-chip-teaser" recap-chip-teaser></span>
+                    <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
+                </button>
+            </div>
         </div>
         <button type="button" class="edit-profile-btn" edit-profile-btn hidden>
             <i class="fa-solid fa-pen"></i> Edit profile
@@ -50,6 +58,8 @@
     </div>
 
     <section class="uh-grades" id="uh-grades" hidden></section>
+
+    <section class="uh-recap" id="uh-recap"></section>
 
     <div class="modal-backdrop" profile-modal hidden>
         <div class="profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
