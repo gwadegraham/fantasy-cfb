@@ -55,10 +55,6 @@
         // mingcute/diamond-2-line (via Iconify)
         gem: { c: '#6C9BFF', raw: true, svg:
             '<svg class="cc-icon cc-i-gem" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="none" fill-rule="evenodd"><path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z"/><path fill="#6C9BFF" d="M17 3a2 2 0 0 1 1.492.668l.108.132l3.704 4.939a2 2 0 0 1-.012 2.416l-.108.13l-9.259 10.184a1.25 1.25 0 0 1-1.753.096l-.097-.096l-9.259-10.185a2 2 0 0 1-.215-2.407l.095-.138L5.4 3.8a2 2 0 0 1 1.43-.793L7 3zm-2.477 8H9.477L12 17.307zm5.217 0h-3.063l-2.406 6.015zM7.323 11H4.261l5.468 6.015zm5.059-6h-.764l-2 4h4.764zM17 5h-2.382l2 4H20zM9.382 5H7L4 9h3.382z"/></g></svg>' },
-        upset: { c: '#ED5858', sw: 1.6, svg:
-            '<rect x="4" y="4" width="16" height="16" rx="4" fill="currentColor" fill-opacity=".16"/>' +
-            '<g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/>' +
-            '<circle cx="12" cy="12" r="1.3"/><circle cx="8.5" cy="15.5" r="1.3"/><circle cx="15.5" cy="15.5" r="1.3"/></g>' },
         chart: { c: '#22C37A', sw: 1.6, svg:
             '<path d="M4 20V4" stroke-opacity=".45"/><path d="M4 20h16" stroke-opacity=".45"/>' +
             '<rect x="6.8" y="12" width="2.6" height="5" rx=".6" fill="currentColor" fill-opacity=".22"/>' +
