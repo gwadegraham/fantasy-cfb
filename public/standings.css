@@ -730,11 +730,21 @@
 .h2h-mlive { color: #ED5858; font-weight: 800; }
 .h2h-mcaret { color: #767D9C; font-size: 0.72rem; flex-shrink: 0; transition: transform 0.2s ease; }
 .h2h-mcard.open .h2h-mcaret { transform: rotate(180deg); }
-.h2h-mdetail { display: none; grid-template-columns: 1fr 1fr; gap: 0.6rem; padding: 0 0.75rem 0.7rem; }
+/* Expanded detail: a side-by-side face-off (two columns, always) with mirrored
+   rows so both teams' scores hug the center divider — leans into the matchup. */
+.h2h-mdetail { display: none; grid-template-columns: 1fr 1fr; padding: 0 0.75rem 0.7rem; }
 .h2h-mcard.open .h2h-mdetail { display: grid; }
-.h2h-mdcol { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
-.h2h-mdcap { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.h2h-mchips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.h2h-mfoot { grid-column: 1 / -1; margin-top: 0.2rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
-@media (max-width: 560px) { .h2h-mdetail { grid-template-columns: 1fr; } }
+.h2h-mdcol { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; padding-right: 0.7rem; }
+.h2h-mdcol.right { padding-right: 0; padding-left: 0.7rem; border-left: 1px solid #2A2E42; }
+.h2h-mdcap { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.25rem; }
+.h2h-mdcol.right .h2h-mdcap { text-align: right; }
+.h2h-trow { display: flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0; }
+.h2h-trow.empty { color: #767D9C; font-size: 0.72rem; }
+.h2h-tlogo { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
+.h2h-tnm { flex: 1; min-width: 0; font-size: 0.74rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mdcol.right .h2h-tnm { text-align: right; }
+.h2h-tv { font-weight: 700; font-size: 0.78rem; color: #A4A9C2; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.h2h-tv.live { color: #ED5858; font-size: 0.58rem; font-weight: 800; }
+.h2h-tv.sched { color: #767D9C; font-size: 0.6rem; font-weight: 600; }
+.h2h-mfoot { grid-column: 1 / -1; margin-top: 0.4rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
 @media (prefers-reduced-motion: reduce) { .h2h-mcaret { transition: none; } }

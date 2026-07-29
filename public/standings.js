@@ -280,18 +280,22 @@ function renderH2HPanel(d) {
     const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
     const recOf = (m) => escapeHtml((m && m.record) || '');
 
-    // A team chip: final shows points; live shows LIVE; upcoming shows kickoff.
-    const chip = (t) => {
-        const img = `<img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">`;
-        if (t.status === 'live') return `<span class="h2h-chip is-live" title="${escapeHtml(t.school)} — in progress">${img}<span class="h2h-live">LIVE</span></span>`;
-        if (t.status === 'scheduled') return `<span class="h2h-chip is-sched" title="${escapeHtml(t.school)}">${img}${escapeHtml(t.kickoff || 'TBD')}</span>`;
-        return `<span class="h2h-chip" title="${escapeHtml(t.school)}">${img}${t.score != null ? t.score : 0}</span>`;
+    // A team's value: final points, LIVE, or kickoff time.
+    const teamVal = (t) => t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
+        : t.status === 'scheduled' ? `<span class="h2h-tv sched">${escapeHtml(t.kickoff || 'TBD')}</span>`
+        : `<span class="h2h-tv">${t.score != null ? t.score : 0}</span>`;
+    // One team row. The right side mirrors (value → name → logo) so both teams'
+    // scores hug the center divider, like a Sleeper matchup.
+    const teamRow = (t, right) => {
+        const img = `<img class="h2h-tlogo" src="${escapeHtml(t.logo)}" alt="">`;
+        const nm = `<span class="h2h-tnm">${escapeHtml(t.school)}</span>`;
+        return right ? `<div class="h2h-trow">${teamVal(t)}${nm}${img}</div>` : `<div class="h2h-trow">${img}${nm}${teamVal(t)}</div>`;
     };
     // Final weeks show only teams that scored; a live week shows every team with
     // a game (so upcoming/in-progress ones are visible, not mistaken for 0).
-    const contribs = (teams, live) => {
+    const teamList = (teams, live, right) => {
         const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
-        return list.length ? list.map(chip).join('') : '<span class="h2h-chip none">no points</span>';
+        return list.length ? list.map(t => teamRow(t, right)).join('') : '<div class="h2h-trow empty">no points</div>';
     };
     // Compact matchup: a one-line summary (avatars, names, scores, result/LIVE)
     // that expands on tap to the team-level breakdown. Keeps the list short on
@@ -309,8 +313,8 @@ function renderH2HPanel(d) {
                 <i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>
             </div>
             <div class="h2h-mdetail">
-                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(A)}</span><div class="h2h-mchips">${contribs(g.aTeams, live)}</div></div>
-                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(B)}</span><div class="h2h-mchips">${contribs(g.bTeams, live)}</div></div>
+                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(A)}</span>${teamList(g.aTeams, live, false)}</div>
+                <div class="h2h-mdcol right"><span class="h2h-mdcap">${nameOf(B)}</span>${teamList(g.bTeams, live, true)}</div>
                 ${live ? `<div class="h2h-mfoot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : ''}
             </div>
         </div>`;
