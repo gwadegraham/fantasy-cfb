@@ -13,7 +13,7 @@ const { buildRankingProxy, buildPoolContext } = require('../modules/draft-projec
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
-const { seasonH2H, scheduleForWeeks } = require('../modules/h2h');
+const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal } = require('../modules/h2h');
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the
@@ -256,13 +256,14 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         const ids = [], meta = {}, totals = {}, teamDetail = {};
+        const draftedSet = new Set();
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
             if (!s || !(s.weeklyScore || []).length) return;
             const id = String(u._id);
             ids.push(id);
             const logoBy = {};
-            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; return { id: t.id, school: t.school, logo }; });
+            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; draftedSet.add(t.id); return { id: t.id, school: t.school, logo }; });
             meta[id] = {
                 userId: id,
                 name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),
@@ -289,39 +290,94 @@ router.get('/h2h/:league/:season', async (req, res) => {
         });
         if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], schedule: [] });
 
-        const weeks = [...new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)))].filter(w => w <= H2H_LAST_WEEK).sort((a, b) => a - b);
-        const h = seasonH2H(ids, weeks, totals, winBonus);
+        // Game status for in-progress weeks: whether each rostered team's game is
+        // final / live / upcoming, and which weeks are fully complete. Pairings
+        // are computed over the FIXED regular-season range so a week's matchup is
+        // stable whether or not it's been scored yet.
+        const allWeeks = Array.from({ length: H2H_LAST_WEEK }, (_, i) => i + 1);
+        const draftedIds = [...draftedSet];
+        const games = draftedIds.length ? await Game.find(
+            { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_LAST_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
+            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, awayId: 1, _id: 0 }
+        ).lean() : [];
+        const gamesByWeek = {}, gameTW = {};
+        games.forEach(g => {
+            (gamesByWeek[g.week] = gamesByWeek[g.week] || []).push(g);
+            [g.homeId, g.awayId].forEach(tid => {
+                if (!draftedSet.has(tid)) return;
+                const m = gameTW[tid] || (gameTW[tid] = {});
+                if (!m[g.week] || (m[g.week].completed && !g.completed)) m[g.week] = g;   // prefer the unfinished game
+            });
+        });
+        const now = Date.now();
+        const scoredSet = new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)));
+        const weekFinal = {};
+        allWeeks.forEach(w => { weekFinal[w] = isWeekFinal(gamesByWeek[w]) && scoredSet.has(w); });
+        let currentWeek = null;
+        for (const w of allWeeks) { if ((gamesByWeek[w] || []).length && !weekFinal[w]) { currentWeek = w; break; } }
+
+        // Records + win bonus count FINAL weeks only (an in-progress week has no
+        // decided winner yet). Stable pairings over all 14 weeks.
+        const scheduleAll = scheduleForWeeks(ids, allWeeks);
+        const finalWeeks = allWeeks.filter(w => weekFinal[w]);
+        const rec = {}; ids.forEach(id => { rec[id] = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0 }; });
+        finalWeeks.forEach(w => {
+            const wt = {}; ids.forEach(id => { wt[id] = totals[id][w] || 0; });
+            const r = resolveWeek(scheduleAll[w] || [], wt, winBonus);
+            Object.keys(r).forEach(id => {
+                const a = rec[id], x = r[id];
+                if (x.result === 'W') a.wins++; else if (x.result === 'L') a.losses++; else a.ties++;
+                a.bonus += x.bonus; a.pointsFor += x.for; a.pointsAgainst += x.against;
+            });
+        });
         const managers = ids.map(id => ({
             ...meta[id],
-            wins: h[id].wins, losses: h[id].losses, ties: h[id].ties,
-            record: `${h[id].wins}-${h[id].losses}-${h[id].ties}`,
-            h2hBonus: h[id].bonus,
-            pointsFor: round(h[id].pointsFor), pointsAgainst: round(h[id].pointsAgainst),
-            adjustedTotal: round(meta[id].cumulative + h[id].bonus)   // cumulative already includes weeks 15+/postseason
+            wins: rec[id].wins, losses: rec[id].losses, ties: rec[id].ties,
+            record: `${rec[id].wins}-${rec[id].losses}-${rec[id].ties}`,
+            h2hBonus: rec[id].bonus,
+            pointsFor: round(rec[id].pointsFor), pointsAgainst: round(rec[id].pointsAgainst),
+            adjustedTotal: round(meta[id].cumulative + rec[id].bonus)   // cumulative already includes weeks 15+/postseason
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
 
-        // Full schedule with per-week results + each side's contributing teams,
-        // so the client can show matchup cards, a week selector, and personal
-        // matchup detail. Games reference manager ids; meta resolves from `managers`.
-        const sched = scheduleForWeeks(ids, weeks);
-        const teamsFor = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {}).map(t => ({ school: t.school, logo: t.logo, score: round(t.score) })).sort((a, b) => b.score - a.score);
-        const gameFor = (a, b, w) => {
-            const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
-            return { aId: a, aScore: sa, aTeams: teamsFor(a, w), bId: b, bScore: sb, bTeams: teamsFor(b, w), winner: sa > sb ? 'a' : (sb > sa ? 'b' : 'tie') };
+        // Schedule payload: final weeks + the current in-progress week. Final
+        // weeks show scored contributing teams; the current week shows each
+        // rostered team's live game status (final / live / kickoff time).
+        const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
+            .map(t => ({ school: t.school, logo: t.logo, score: round(t.score), status: 'final' }))
+            .sort((a, b) => b.score - a.score);
+        const fmtKick = (g) => {
+            if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
+            const d = new Date(g.startDate); if (isNaN(d.getTime())) return 'TBD';
+            return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         };
-        const schedule = weeks.map(w => ({ week: w, games: (sched[w] || []).map(([a, b]) => gameFor(a, b, w)) }));
-        // Feature the latest week with a real slate — at least half the managers
-        // scored — so a finished season's thin final week (a couple of games)
-        // isn't the headline. In-season this naturally lands on the current week.
-        let featuredWeek = weeks[weeks.length - 1];
-        const need = Math.max(1, Math.ceil(ids.length / 2));
-        for (let i = weeks.length - 1; i >= 0; i--) {
-            const w = weeks[i];
-            const active = ids.filter(id => (totals[id][w] || 0) > 0).length;
-            if (active >= need) { featuredWeek = w; break; }
-        }
+        const statusOrder = { final: 0, live: 1, scheduled: 2 };
+        const teamsLive = (id, w) => (meta[id].teams || []).map(t => {
+            const g = gameTW[t.id] && gameTW[t.id][w];
+            if (!g) return null;   // bye / no game this week
+            const st = gameStatus(g, now);
+            const scored = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+            return { school: t.school, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null };
+        }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks, featuredWeek, managers, schedule });
+        const gameFor = (a, b, w, live) => {
+            const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
+            return {
+                aId: a, aScore: sa, aTeams: live ? teamsLive(a, w) : teamsFinal(a, w),
+                bId: b, bScore: sb, bTeams: live ? teamsLive(b, w) : teamsFinal(b, w),
+                winner: live ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
+                final: !live
+            };
+        };
+        const schedWeeks = finalWeeks.slice();
+        if (currentWeek && !schedWeeks.includes(currentWeek)) schedWeeks.push(currentWeek);
+        schedWeeks.sort((a, b) => a - b);
+        const schedule = schedWeeks.map(w => {
+            const live = (w === currentWeek) && !weekFinal[w];
+            return { week: w, final: !live, games: (scheduleAll[w] || []).map(([a, b]) => gameFor(a, b, w, live)) };
+        });
+        const featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: schedWeeks, featuredWeek, currentWeek, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

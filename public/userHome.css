@@ -557,3 +557,8 @@
 .uh-mu-chip.none { color: #767D9C; font-weight: 400; padding: 2px 8px; }
 @media (max-width: 560px) { .uh-mu-teams { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .uh-h2h { transition: none; } }
+
+/* H2H matchup log in-progress states. */
+.uh-mu-res.r-live { color: #ED5858; font-size: 0.62rem; letter-spacing: 0.04em; width: auto; }
+.uh-mu-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; font-weight: 800; }
+.uh-mu-chip.is-sched { color: #767D9C; font-weight: 600; }

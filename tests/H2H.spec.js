@@ -1,4 +1,4 @@
-const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H } = require('../modules/h2h');
+const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal } = require('../modules/h2h');
 
 describe('buildRoundRobin', () => {
     test('6 managers → 5 rounds, everyone plays everyone exactly once, 3 pairs/round', () => {
@@ -64,6 +64,35 @@ describe('resolveWeek', () => {
         const res = resolveWeek([['a', 'b']], { a: 5 }, 3);
         expect(res.a.result).toBe('W');
         expect(res.b).toMatchObject({ result: 'L', for: 0 });
+    });
+});
+
+describe('gameStatus', () => {
+    const now = Date.parse('2025-09-13T20:00:00Z');
+    test('completed → final', () => {
+        expect(gameStatus({ completed: true, startDate: '2025-09-13T16:00:00Z' }, now)).toBe('final');
+    });
+    test('kickoff in the past, not completed → live', () => {
+        expect(gameStatus({ completed: false, startDate: '2025-09-13T19:30:00Z' }, now)).toBe('live');
+    });
+    test('kickoff in the future → scheduled', () => {
+        expect(gameStatus({ completed: false, startDate: '2025-09-13T23:30:00Z' }, now)).toBe('scheduled');
+    });
+    test('time TBD or unparseable → scheduled', () => {
+        expect(gameStatus({ completed: false, startTimeTbd: true, startDate: '2025-09-13T19:00:00Z' }, now)).toBe('scheduled');
+        expect(gameStatus({ completed: false, startDate: 'not-a-date' }, now)).toBe('scheduled');
+    });
+    test('no game → bye', () => {
+        expect(gameStatus(null, now)).toBe('bye');
+    });
+});
+
+describe('isWeekFinal', () => {
+    test('true only when every game is completed', () => {
+        expect(isWeekFinal([{ completed: true }, { completed: true }])).toBe(true);
+        expect(isWeekFinal([{ completed: true }, { completed: false }])).toBe(false);
+        expect(isWeekFinal([])).toBe(false);   // no games → not a played week
+        expect(isWeekFinal(null)).toBe(false);
     });
 });
 

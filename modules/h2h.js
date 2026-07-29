@@ -82,4 +82,25 @@ function seasonH2H(ids, weeks, totalsByIdWeek, winBonus) {
     return acc;
 }
 
-module.exports = { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H };
+// Classify a game's live state for in-progress matchup display.
+//   completed          -> 'final'
+//   kickoff passed     -> 'live'
+//   kickoff known+future -> 'scheduled'
+//   time TBD / unparseable -> 'scheduled'
+// `now` is a ms timestamp (injected so it's testable).
+function gameStatus(game, now) {
+    if (!game) return 'bye';
+    if (game.completed) return 'final';
+    if (game.startTimeTbd) return 'scheduled';
+    const t = game.startDate ? Date.parse(game.startDate) : NaN;
+    if (isNaN(t)) return 'scheduled';
+    return t <= now ? 'live' : 'scheduled';
+}
+
+// A week is "final" (counts toward records) only once every drafted-team game
+// that week is completed. `games` is the week's games involving rostered teams.
+function isWeekFinal(games) {
+    return Array.isArray(games) && games.length > 0 && games.every(g => g.completed);
+}
+
+module.exports = { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal };

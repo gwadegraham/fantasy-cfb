@@ -705,3 +705,11 @@
 .h2h-log-res.r-T { color: #A4A9C2; }
 .h2h-log-opp { color: #C9CEE6; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .h2h-caret { transition: none; } }
+
+/* H2H in-progress states (live / upcoming games). */
+.h2h-match.live { border-color: #3A3F58; }
+.h2h-live-tag { font-size: 0.56rem; font-weight: 800; letter-spacing: 0.06em; color: #ED5858; }
+.h2h-match-foot { grid-column: 1 / -1; margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
+.h2h-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; }
+.h2h-live { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; }
+.h2h-chip.is-sched { color: #767D9C; font-weight: 600; }

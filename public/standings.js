@@ -277,26 +277,40 @@ function renderH2HPanel(d) {
     const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
     const recOf = (m) => escapeHtml((m && m.record) || '');
 
-    // Contributing-team chips (logo + points) for a matchup side.
-    const contribs = (teams) => {
-        const scored = (teams || []).filter(t => t.score > 0);
-        return scored.length
-            ? scored.map(t => `<span class="h2h-chip"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">${t.score}</span>`).join('')
-            : '<span class="h2h-chip none">no points</span>';
+    // A team chip: final shows points; live shows LIVE; upcoming shows kickoff.
+    const chip = (t) => {
+        const img = `<img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">`;
+        if (t.status === 'live') return `<span class="h2h-chip is-live" title="${escapeHtml(t.school)} — in progress">${img}<span class="h2h-live">LIVE</span></span>`;
+        if (t.status === 'scheduled') return `<span class="h2h-chip is-sched" title="${escapeHtml(t.school)}">${img}${escapeHtml(t.kickoff || 'TBD')}</span>`;
+        return `<span class="h2h-chip" title="${escapeHtml(t.school)}">${img}${t.score != null ? t.score : 0}</span>`;
     };
-    // One matchup card: a mini scoreboard with each side's teams that scored.
+    // Final weeks show only teams that scored; a live week shows every team with
+    // a game (so upcoming/in-progress ones are visible, not mistaken for 0).
+    const contribs = (teams, live) => {
+        const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
+        return list.length ? list.map(chip).join('') : '<span class="h2h-chip none">no points</span>';
+    };
+    // One matchup card: a mini scoreboard. Final → winner highlighted. In
+    // progress → provisional scores, no winner, and a "games to play" footer.
     const card = (g) => {
         const A = byId[g.aId], B = byId[g.bId];
+        const live = g.final === false;
+        const remaining = (g.aTeams || []).concat(g.bTeams || []).filter(t => t.status && t.status !== 'final').length;
         const side = (m, score, teams, win) => `
             <div class="h2h-team${win ? ' win' : ''}">
                 <div class="h2h-team-head">${projAvatarHtml(m)}<span class="h2h-tn"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span></div>
                 <div class="h2h-team-score">${score}</div>
-                <div class="h2h-contribs">${contribs(teams)}</div>
+                <div class="h2h-contribs">${contribs(teams, live)}</div>
             </div>`;
-        return `<div class="h2h-match">
+        const mid = live
+            ? `<div class="h2h-mid"><span class="h2h-vs">vs</span><span class="h2h-live-tag">LIVE</span></div>`
+            : `<div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span></div>`;
+        const foot = live ? `<div class="h2h-match-foot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : '';
+        return `<div class="h2h-match${live ? ' live' : ''}">
             ${side(A, g.aScore, g.aTeams, g.winner === 'a')}
-            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span></div>
+            ${mid}
             ${side(B, g.bScore, g.bTeams, g.winner === 'b')}
+            ${foot}
         </div>`;
     };
 
