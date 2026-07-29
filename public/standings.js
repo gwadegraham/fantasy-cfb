@@ -303,6 +303,34 @@ function renderH2HPanel(d) {
         const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
         return list.length ? list.map(t => teamRow(t, right)).join('') : '<div class="h2h-trow empty">no points</div>';
     };
+    // Win-probability bar values. A finished matchup is settled — the bar fills
+    // fully to the winner (tie = 50/50); an in-progress one shows the projected
+    // pre-game odds. null when there's nothing to project.
+    const barVals = (g) => {
+        if (g.final) return g.winner === 'a' ? { a: 100, b: 0 } : g.winner === 'b' ? { a: 0, b: 100 } : { a: 50, b: 50 };
+        return g.winP ? { a: g.winP.a, b: g.winP.b } : null;
+    };
+    const winBar = (g) => {
+        const v = barVals(g);
+        if (!v) return '';
+        const tone = (mine, other) => mine > other ? 'lead' : mine < other ? 'lose' : 'even';
+        return `<div class="h2h-mbar" role="img" aria-label="Win probability ${v.a}% versus ${v.b}%">
+            <span class="h2h-mbpct ${tone(v.a, v.b)}">${v.a}%</span>
+            <div class="h2h-mbtrack">
+                <span class="h2h-mbfill ${tone(v.a, v.b)}" style="width:${v.a}%"></span>
+                <span class="h2h-mbfill r ${tone(v.b, v.a)}" style="width:${v.b}%"></span>
+            </div>
+            <span class="h2h-mbpct ${tone(v.b, v.a)}">${v.b}%</span>
+        </div>`;
+    };
+    // Retrospective flavor on finished matchups: what the pre-game odds were.
+    const pregameLine = (g, A, B) => {
+        if (!g.final || !g.winP) return '';
+        const favA = g.winP.a >= g.winP.b;
+        const pct = favA ? g.winP.a : g.winP.b;
+        if (pct <= 50) return '<div class="h2h-mpre">Pre-game: even matchup</div>';
+        return `<div class="h2h-mpre">Pre-game odds: <b>${pct}%</b> ${favA ? nameOf(A) : nameOf(B)}</div>`;
+    };
     // Compact matchup: a one-line summary (avatars, names, scores, result/LIVE)
     // that expands on tap to the team-level breakdown. Keeps the list short on
     // mobile while still one tap from the detail.
@@ -318,9 +346,11 @@ function renderH2HPanel(d) {
                 <div class="h2h-mside r${g.winner === 'b' ? ' win' : ''}"><span class="h2h-msc">${g.bScore}</span><span class="h2h-mnm">${nameOf(B)}</span>${projAvatarHtml(B)}</div>
                 <i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>
             </div>
+            ${winBar(g)}
             <div class="h2h-mdetail">
                 <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(A)}</span>${teamList(g.aTeams, live, false)}</div>
                 <div class="h2h-mdcol right"><span class="h2h-mdcap">${nameOf(B)}</span>${teamList(g.bTeams, live, true)}</div>
+                ${pregameLine(g, A, B)}
                 ${live ? `<div class="h2h-mfoot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : ''}
             </div>
         </div>`;
@@ -344,7 +374,7 @@ function renderH2HPanel(d) {
     }).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
-    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('checkered', { size: 22 }) : ''}Head-to-Head${preview}</h2>
+    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('versus', { size: 22 }) : ''}Head-to-Head${preview}</h2>
         <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Tap a manager to see their roster; see your full matchup log on My Team.</p>
         <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
         <div class="h2h-matches" h2h-matches></div>

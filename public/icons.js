@@ -41,6 +41,11 @@
             '<rect x="8.75" y="6.75" width="3.25" height="2.25"/><rect x="15.25" y="6.75" width="3.25" height="2.25"/>' +
             '<rect x="5.5" y="9" width="3.25" height="2.25"/><rect x="12" y="9" width="3.25" height="2.25"/>' +
             '<rect x="8.75" y="11.25" width="3.25" height="2.25"/><rect x="15.25" y="11.25" width="3.25" height="2.25"/></g>' },
+        // Head-to-head face-off: two arrowheads clashing across a center line.
+        versus: { c: '#E0B341', sw: 1.7, svg:
+            '<path d="M4 6.2 10 12 4 17.8Z" fill="currentColor" fill-opacity=".2"/>' +
+            '<path d="M20 6.2 14 12 20 17.8Z" fill="currentColor" fill-opacity=".2"/>' +
+            '<path d="M12 3.4v17.2" stroke-opacity=".5"/>' },
         burst: { c: '#E0B341', sw: 1.6, svg:
             '<path d="M12 3.5 13.7 9l5.5 1.2-4.2 3.4 1.2 5.4L12 16.2 7.8 19l1.2-5.4L4.8 10.2 10.3 9Z" fill="currentColor" fill-opacity=".2"/>' +
             '<path d="M20.5 4.5 19 6M4 4.5 5.5 6M21 14l-1.8-.4M3 14l1.8-.4"/>' },

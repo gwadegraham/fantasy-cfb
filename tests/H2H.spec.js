@@ -1,4 +1,4 @@
-const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal } = require('../modules/h2h');
+const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
 
 describe('buildRoundRobin', () => {
     test('6 managers → 5 rounds, everyone plays everyone exactly once, 3 pairs/round', () => {
@@ -93,6 +93,40 @@ describe('isWeekFinal', () => {
         expect(isWeekFinal([{ completed: true }, { completed: false }])).toBe(false);
         expect(isWeekFinal([])).toBe(false);   // no games → not a played week
         expect(isWeekFinal(null)).toBe(false);
+    });
+});
+
+describe('matchupWinProb', () => {
+    const near = (x, y) => Math.abs(x - y) < 1e-9;
+    test('no games on either side → null', () => {
+        expect(matchupWinProb([], [])).toBeNull();
+    });
+    test('one certain scorer vs a sure zero → 100% / 0%', () => {
+        const r = matchupWinProb([{ winProb: 1, pointsIfWin: 20 }], [{ winProb: 0, pointsIfWin: 30 }]);
+        expect(r.a).toBeCloseTo(1, 10);
+        expect(r.b).toBeCloseTo(0, 10);
+    });
+    test('identical single-team sides → coin flip (tie splits evenly)', () => {
+        const r = matchupWinProb([{ winProb: 0.5, pointsIfWin: 20 }], [{ winProb: 0.5, pointsIfWin: 20 }]);
+        // outcomes: (0,0)→tie, (20,0)→a, (0,20)→b, (20,20)→tie ⇒ a = .25 + .5·.5 = .5
+        expect(r.a).toBeCloseTo(0.5, 10);
+        expect(r.b).toBeCloseTo(0.5, 10);
+    });
+    test('probabilities always sum to 1', () => {
+        const r = matchupWinProb(
+            [{ winProb: 0.7, pointsIfWin: 18 }, { winProb: 0.4, pointsIfWin: 9 }],
+            [{ winProb: 0.55, pointsIfWin: 22 }]
+        );
+        expect(near(r.a + r.b, 1)).toBe(true);
+        expect(r.a).toBeGreaterThan(0);
+        expect(r.a).toBeLessThan(1);
+    });
+    test('a lopsided favorite reads as the favorite', () => {
+        const r = matchupWinProb(
+            [{ winProb: 0.9, pointsIfWin: 25 }, { winProb: 0.85, pointsIfWin: 20 }],
+            [{ winProb: 0.2, pointsIfWin: 12 }]
+        );
+        expect(r.a).toBeGreaterThan(0.9);
     });
 });
 
