@@ -19,28 +19,21 @@
             '<path d="M6 4h12v4a6 6 0 0 1-12 0V4Z" fill="currentColor" fill-opacity=".22"/>' +
             '<path d="M6 5.5H3.5V7a3 3 0 0 0 3 3"/><path d="M18 5.5h2.5V7a3 3 0 0 1-3 3"/>' +
             '<path d="M12 14v2.5"/><path d="M8.5 20h7l-1-3.5h-5Z" fill="currentColor" fill-opacity=".22"/>' },
-        // Two-tone fire (red-orange outer + amber core) — baked, so it stays
-        // fire-colored regardless of any color override.
-        flame: { c: '#EF5A2A', sw: 1.6, svg:
-            '<path d="M13 2.5c.4 2.3-.4 4.1-1.7 5.6-.8.9-1.6 1.9-1.6 3.4 0 0-.6-.7-.6-1.9C7.5 10.6 6.5 12.4 6.5 14.5a5.5 5.5 0 0 0 11 0c0-3.6-2.9-6-4.5-12Z" fill="#EF5A2A" fill-opacity=".18" stroke="#EF5A2A"/>' +
-            '<path d="M12 20a2.7 2.7 0 0 1-2.7-2.7c0-1.5 1.2-2.4 2.7-3.9 1.5 1.5 2.7 2.4 2.7 3.9A2.7 2.7 0 0 1 12 20Z" fill="#F7A81E" fill-opacity=".3" stroke="#F7A81E"/>' },
-        snowflake: { c: '#7FC7FF', sw: 1.6, svg:
-            '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5 4.2 16.5"/>' +
-            '<path d="M12 6l-2-1.6M12 6l2-1.6M12 18l-2 1.6M12 18l2 1.6"/>' +
-            '<path d="M6.6 9.4 6.9 7M6.6 9.4 4.3 9.7M17.4 14.6l.3 2.4M17.4 14.6l2.3.3"/>' },
+        // iconoir/fire-flame (via Iconify)
+        flame: { c: '#EF5A2A', raw: true, svg:
+            '<svg class="cc-icon cc-i-flame" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="none" stroke="#EF5A2A" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M8 18c0 2.415 1.79 3 4 3c3.759 0 5-2.5 2.5-7.5C11 18 10.5 11 11 9c-1.5 3-3 5.818-3 9"/><path d="M12 21c5.05 0 8-2.904 8-7.875C20 8.155 12 3 12 3S4 8.154 4 13.125C4 18.095 6.95 21 12 21"/></g></svg>' },
+        // solar/snowflake-bold-duotone (via Iconify)
+        snowflake: { c: '#7FC7FF', raw: true, svg:
+            '<svg class="cc-icon cc-i-snowflake" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="#7FC7FF" fill-rule="evenodd" clip-rule="evenodd"><path d="M12 1.25a.75.75 0 0 1 .75.75v2.19l1.72-1.72a.75.75 0 1 1 1.06 1.06l-2.78 2.78v11.38l2.78 2.78a.75.75 0 1 1-1.06 1.06l-1.72-1.72V22a.75.75 0 0 1-1.5 0v-2.19l-1.72 1.72a.75.75 0 0 1-1.06-1.06l2.78-2.78V6.31L8.47 3.53a.75.75 0 0 1 1.06-1.06l1.72 1.72V2a.75.75 0 0 1 .75-.75"/><path d="M5.511 4.178a.75.75 0 0 1 .919.53l1.018 3.798L12 11.134l4.552-2.628l1.017-3.798a.75.75 0 1 1 1.45.389l-.63 2.349l1.896-1.095a.75.75 0 0 1 .75 1.3l-1.896 1.094l2.349.63a.75.75 0 1 1-.388 1.448l-3.798-1.018l-3.802 2.196l3.802 2.195l3.798-1.018a.75.75 0 1 1 .388 1.449l-2.35.63l1.897 1.094a.75.75 0 1 1-.75 1.3l-1.896-1.096l.63 2.35a.75.75 0 0 1-1.45.388l-1.017-3.798L12 12.867l-4.553 2.628l-1.017 3.798a.75.75 0 0 1-1.45-.388l.63-2.35l-1.896 1.095a.75.75 0 0 1-.75-1.299l1.896-1.095l-2.349-.629a.75.75 0 0 1 .388-1.449l3.798 1.018L10.5 12L6.698 9.805L2.9 10.823a.75.75 0 1 1-.389-1.449l2.35-.63L2.963 7.65a.75.75 0 0 1 .75-1.299L5.61 7.446l-.629-2.35a.75.75 0 0 1 .53-.918" opacity=".5"/></g></svg>' },
         riser: { c: '#22C37A', svg:
             '<path d="M4 19V5" stroke-opacity=".45"/><path d="M4 19h16" stroke-opacity=".45"/>' +
             '<path d="M6.5 15l4-4 3 3 5-6"/><path d="M15 8h3.5v3.5"/>' },
         heartbreak: { c: '#ED5858', svg:
             '<path d="M12 20S4 14.6 4 9.3A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 8 2.3C20 14.6 12 20 12 20Z" fill="currentColor" fill-opacity=".18"/>' +
             '<path d="M12.4 7 10.6 10.4l2.6 1.8-1.8 3.2"/>' },
-        checkered: { c: '#C9CEE6', sw: 1.6, svg:
-            '<path d="M5.5 3v18"/><path d="M5.5 4.5h13v9h-13Z"/>' +
-            '<g fill="currentColor" stroke="none">' +
-            '<rect x="5.5" y="4.5" width="3.25" height="2.25"/><rect x="12" y="4.5" width="3.25" height="2.25"/>' +
-            '<rect x="8.75" y="6.75" width="3.25" height="2.25"/><rect x="15.25" y="6.75" width="3.25" height="2.25"/>' +
-            '<rect x="5.5" y="9" width="3.25" height="2.25"/><rect x="12" y="9" width="3.25" height="2.25"/>' +
-            '<rect x="8.75" y="11.25" width="3.25" height="2.25"/><rect x="15.25" y="11.25" width="3.25" height="2.25"/></g>' },
+        // bxs/flag-checkered (via Iconify)
+        checkered: { c: '#C9CEE6', raw: true, svg:
+            '<svg class="cc-icon cc-i-checkered" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><path fill="#C9CEE6" d="M4 2v18H3v2h4v-2H6v-5h13a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H6V2zm4 3v2h2V5h2v2h2V5h2v2h2v2h-2v2h2v2h-2v-2h-2v2h-2v-2h-2v2H8v-2H6V9h2V7H6V5z"/><path fill="#C9CEE6" d="M8 9h2v2H8zm4 0h2v2h-2zm-2-2h2v2h-2zm4 0h2v2h-2z"/></svg>' },
         // Head-to-head: Material Symbols "swords-outline-rounded" (Apache 2.0),
         // baked to the suite's gold. Raw + fill-based (it's a filled outline
         // glyph, so it skips the shared stroke wrapper).
@@ -51,18 +44,17 @@
         burst: { c: '#E0B341', sw: 1.6, svg:
             '<path d="M12 3.5 13.7 9l5.5 1.2-4.2 3.4 1.2 5.4L12 16.2 7.8 19l1.2-5.4L4.8 10.2 10.3 9Z" fill="currentColor" fill-opacity=".2"/>' +
             '<path d="M20.5 4.5 19 6M4 4.5 5.5 6M21 14l-1.8-.4M3 14l1.8-.4"/>' },
-        medal: { c: '#E0B341', sw: 1.6, svg:
-            '<path d="M8.5 3 6 8.5M15.5 3 18 8.5"/>' +
-            '<circle cx="12" cy="15" r="5.2" fill="currentColor" fill-opacity=".2"/>' +
-            '<path d="M12 12.6l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2L9.1 14.8l2-.3Z"/>' },
+        // circum/medal (via Iconify)
+        medal: { c: '#E0B341', raw: true, svg:
+            '<svg class="cc-icon cc-i-medal" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><path fill="#E0B341" d="M20.692 3.755a1.52 1.52 0 0 0-1.27-.69h-4.41a1.49 1.49 0 0 0-1.36.87L12 7.485l-1.66-3.55a1.49 1.49 0 0 0-1.36-.87H4.572a1.5 1.5 0 0 0-1.35 2.14l3.73 8.02a5.6 5.6 0 0 0-.46 2.21a5.5 5.5 0 0 0 11 0a5.4 5.4 0 0 0-.46-2.2l3.75-8.03a1.53 1.53 0 0 0-.09-1.45m-16.57 1.03a.53.53 0 0 1 .03-.49a.5.5 0 0 1 .42-.23h4.41a.51.51 0 0 1 .46.29l2.61 5.58h-.06a5.5 5.5 0 0 0-4.43 2.25Zm7.87 15.15a4.5 4.5 0 1 1 4.5-4.5a4.5 4.5 0 0 1-4.5 4.5m7.89-15.15l-3.46 7.4a5.45 5.45 0 0 0-3.21-2.11l-.66-1.42l2-4.3a.51.51 0 0 1 .46-.29h4.41a.48.48 0 0 1 .42.23a.5.5 0 0 1 .04.49"/><path fill="#E0B341" d="m12.077 16.88l1.024.538a.174.174 0 0 0 .253-.184l-.2-1.14a.17.17 0 0 1 .051-.154l.828-.807a.175.175 0 0 0-.1-.3l-1.133-.164a.18.18 0 0 1-.132-.1l-.512-1.037a.174.174 0 0 0-.313 0l-.512 1.037a.17.17 0 0 1-.131.1l-1.145.166a.175.175 0 0 0-.1.3l.828.807a.17.17 0 0 1 .05.154l-.2 1.14a.174.174 0 0 0 .253.184l1.024-.538a.17.17 0 0 1 .167-.002"/></svg>' },
         bolt: { c: '#6C9BFF', sw: 1.6, svg:
             '<path d="M13.5 3 5.5 13.5H11l-1 7.5 8.5-11H13Z" fill="currentColor" fill-opacity=".2"/>' },
-        target: { c: '#6C9BFF', sw: 1.6, svg:
-            '<circle cx="12" cy="12" r="8.3"/><circle cx="12" cy="12" r="4.8" fill="currentColor" fill-opacity=".18"/>' +
-            '<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>' },
-        gem: { c: '#6C9BFF', sw: 1.5, svg:
-            '<path d="M7 4.5h10l3.2 4.2L12 20 3.8 8.7Z" fill="currentColor" fill-opacity=".18"/>' +
-            '<path d="M3.8 8.7h16.4M9 4.5 6.4 8.7 12 20M15 4.5l2.6 4.2L12 20"/>' },
+        // tabler/target-arrow (via Iconify)
+        target: { c: '#6C9BFF', raw: true, svg:
+            '<svg class="cc-icon cc-i-target" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="none" stroke="#6C9BFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0"/><path d="M12 7a5 5 0 1 0 5 5"/><path d="M13 3.055A9 9 0 1 0 20.941 11"/><path d="M15 6v3h3l3-3h-3V3zm0 3l-3 3"/></g></svg>' },
+        // mingcute/diamond-2-line (via Iconify)
+        gem: { c: '#6C9BFF', raw: true, svg:
+            '<svg class="cc-icon cc-i-gem" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="none" fill-rule="evenodd"><path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z"/><path fill="#6C9BFF" d="M17 3a2 2 0 0 1 1.492.668l.108.132l3.704 4.939a2 2 0 0 1-.012 2.416l-.108.13l-9.259 10.184a1.25 1.25 0 0 1-1.753.096l-.097-.096l-9.259-10.185a2 2 0 0 1-.215-2.407l.095-.138L5.4 3.8a2 2 0 0 1 1.43-.793L7 3zm-2.477 8H9.477L12 17.307zm5.217 0h-3.063l-2.406 6.015zM7.323 11H4.261l5.468 6.015zm5.059-6h-.764l-2 4h4.764zM17 5h-2.382l2 4H20zM9.382 5H7L4 9h3.382z"/></g></svg>' },
         upset: { c: '#ED5858', sw: 1.6, svg:
             '<rect x="4" y="4" width="16" height="16" rx="4" fill="currentColor" fill-opacity=".16"/>' +
             '<g fill="currentColor" stroke="none"><circle cx="8.5" cy="8.5" r="1.3"/><circle cx="15.5" cy="8.5" r="1.3"/>' +
@@ -103,6 +95,9 @@
             '<rect x="5" y="4.5" width="14" height="16" rx="2.5" fill="currentColor" fill-opacity=".14"/>' +
             '<rect x="8.5" y="3" width="7" height="3.2" rx="1.2"/>' +
             '<path d="M8.5 10.5h7M8.5 13.5h7M8.5 16.5h4"/>' },
+        // lucide/dices (via Iconify)
+        dice: { c: '#A98BFF', raw: true, svg:
+            '<svg class="cc-icon cc-i-dice" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="__S__" height="__S__" viewBox="0 0 24 24"><g fill="none" stroke="#A98BFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14l3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6M6 18h.01M10 14h.01M15 6h.01M18 9h.01"/></g></svg>' },
         // Multicolor by design — bypasses the currentColor wrapper.
         confetti: { c: '#F4F6FB', raw: true, svg:
             '<svg class="cc-icon cc-i-confetti" width="__S__" height="__S__" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
