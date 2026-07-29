@@ -296,7 +296,7 @@ function renderH2HPanel(d) {
             </div>`;
         return `<div class="h2h-match">
             ${side(A, g.aScore, g.aTeams, g.winner === 'a')}
-            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>${g.winner !== 'tie' ? `<span class="h2h-margin">+${margin}</span>` : ''}</div>
+            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>${g.winner !== 'tie' ? `<span class="h2h-margin">by ${margin}</span>` : ''}</div>
             ${side(B, g.bScore, g.bTeams, g.winner === 'b')}
         </div>`;
     };
