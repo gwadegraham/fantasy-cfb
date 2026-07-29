@@ -105,7 +105,85 @@ async function getUser() {
         loadHomeGrades(data[0]);
         renderRecap(data[0]);
         renderCaptain(data[0]);
+        renderMatchups(data[0]);
     });
+}
+
+// Head-to-Head matchup history (#230): this profile's week-by-week matchups
+// with the team-level breakdown, behind a hero "Matchups" chip. Shown when the
+// league has H2H on (or ?h2h=1 to preview). Public info, like standings.
+async function renderMatchups(user) {
+    const chip = document.querySelector('[matchups-chip]');
+    const panel = document.getElementById('uh-h2h');
+    if (!chip || !panel || !user || !user.league || !(user.seasons || []).length) return;
+
+    const played = (user.seasons || []).filter(s => (s.weeklyScore || []).length > 0).sort((a, b) => Number(b.season) - Number(a.season));
+    if (!played.length) return;
+    const season = played[0].season;
+
+    let enabled = false;
+    try {
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.h2hEnabled); }
+    } catch (e) { /* preview gate below */ }
+    if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return;
+
+    let data;
+    try {
+        data = await fetch(`/standings/h2h/${encodeURIComponent(user.league)}/${encodeURIComponent(season)}`, { headers: { Accept: 'application/json' } }).then(r => r.json());
+    } catch (e) { return; }
+    if (!data || !(data.schedule || []).length) return;
+
+    const byId = {};
+    (data.managers || []).forEach(m => { byId[m.userId] = m; });
+    const uid = String(user._id);
+    const mine = [];
+    (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, g }); });
+    if (!mine.length) return;
+
+    const me = byId[uid];
+    const teaser = document.querySelector('[matchups-chip-teaser]');
+    if (teaser && me) teaser.textContent = me.record;
+
+    const chipRow = (teams) => {
+        const scored = (teams || []).filter(t => t.score > 0);
+        return scored.length
+            ? scored.map(t => `<span class="uh-mu-chip"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">${t.score}</span>`).join('')
+            : '<span class="uh-mu-chip none">no points</span>';
+    };
+    const oppName = (m) => escapeHtml((m && (m.franchise || m.name)) || 'Opponent');
+
+    panel.innerHTML = `
+        <div class="recap-head"><div class="header-title">Your Matchups · ${season}</div></div>
+        <div class="uh-mu-list">${mine.map(({ week, g }) => {
+            const iAmA = g.aId === uid;
+            const meScore = iAmA ? g.aScore : g.bScore;
+            const oppScore = iAmA ? g.bScore : g.aScore;
+            const myTeams = iAmA ? g.aTeams : g.bTeams;
+            const oppTeams = iAmA ? g.bTeams : g.aTeams;
+            const opp = byId[iAmA ? g.bId : g.aId];
+            const res = meScore > oppScore ? 'W' : (oppScore > meScore ? 'L' : 'T');
+            return `<div class="uh-mu">
+                <div class="uh-mu-head">
+                    <span class="uh-mu-wk">Wk ${week}</span>
+                    <span class="uh-mu-res r-${res}">${res}</span>
+                    <span class="uh-mu-line"><b>${meScore}</b>–${oppScore} vs ${oppName(opp)}</span>
+                </div>
+                <div class="uh-mu-teams">
+                    <div class="uh-mu-side"><span class="uh-mu-cap">You</span><div class="uh-mu-chips">${chipRow(myTeams)}</div></div>
+                    <div class="uh-mu-side"><span class="uh-mu-cap">${oppName(opp)}</span><div class="uh-mu-chips">${chipRow(oppTeams)}</div></div>
+                </div>
+            </div>`;
+        }).join('')}</div>`;
+
+    chip.hidden = false;
+    if (!chip.dataset.wired) {
+        chip.dataset.wired = '1';
+        chip.addEventListener('click', () => {
+            const open = panel.classList.toggle('is-open');
+            chip.setAttribute('aria-expanded', String(open));
+        });
+    }
 }
 
 // Captain picker (#230): the profile owner sets which rostered team to double

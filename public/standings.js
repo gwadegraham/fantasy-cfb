@@ -275,63 +275,74 @@ function renderH2HPanel(d) {
     const byId = {};
     d.managers.forEach(m => { byId[m.userId] = m; });
     const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
+    const recOf = (m) => escapeHtml((m && m.record) || '');
 
-    // This week's matchups (featured card row).
-    const featured = (d.schedule || []).find(s => s.week === d.featuredWeek);
-    const matchCard = (g) => {
+    // Contributing-team chips (logo + points) for a matchup side.
+    const contribs = (teams) => {
+        const scored = (teams || []).filter(t => t.score > 0);
+        return scored.length
+            ? scored.map(t => `<span class="h2h-chip"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">${t.score}</span>`).join('')
+            : '<span class="h2h-chip none">no points</span>';
+    };
+    // One matchup card: a mini scoreboard with each side's teams that scored.
+    const card = (g) => {
         const A = byId[g.aId], B = byId[g.bId];
+        const margin = Math.round(Math.abs(g.aScore - g.bScore) * 10) / 10;
+        const side = (m, score, teams, win) => `
+            <div class="h2h-team${win ? ' win' : ''}">
+                <div class="h2h-team-head">${projAvatarHtml(m)}<span class="h2h-tn"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span></div>
+                <div class="h2h-team-score">${score}</div>
+                <div class="h2h-contribs">${contribs(teams)}</div>
+            </div>`;
         return `<div class="h2h-match">
-            <div class="h2h-side${g.winner === 'a' ? ' win' : ''}">${projAvatarHtml(A)}<span class="h2h-mname">${nameOf(A)}</span><span class="h2h-mscore">${g.aScore}</span></div>
-            <span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>
-            <div class="h2h-side right${g.winner === 'b' ? ' win' : ''}"><span class="h2h-mscore">${g.bScore}</span><span class="h2h-mname">${nameOf(B)}</span>${projAvatarHtml(B)}</div>
+            ${side(A, g.aScore, g.aTeams, g.winner === 'a')}
+            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>${g.winner !== 'tie' ? `<span class="h2h-margin">+${margin}</span>` : ''}</div>
+            ${side(B, g.bScore, g.bTeams, g.winner === 'b')}
         </div>`;
     };
-    const matchStrip = (featured && featured.games.length)
-        ? `<div class="h2h-week-label">Week ${d.featuredWeek} matchups</div><div class="h2h-matches">${featured.games.map(matchCard).join('')}</div>`
-        : '';
 
-    // Standings rows — each expands to that manager's weekly results.
+    const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
+
+    // Standings rows — each expands to that manager's 10-team roster.
+    const rosterLogos = (m) => (m.teams || []).map(t =>
+        `<a class="h2h-roster-team" href="/team?team=${t.id}" title="${escapeHtml(t.school)}"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}"></a>`).join('');
     const rows = d.managers.map(m => {
         const base = Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10;
         return `<div class="h2h-row" data-uid="${m.userId}" role="button" tabindex="0" aria-expanded="false">
             <span class="h2h-rank">${m.rank}</span>
             ${projAvatarHtml(m)}
-            <span class="h2h-id"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${escapeHtml(m.record)}</span></span>
+            <span class="h2h-id"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span>
             <span class="h2h-pts"><span class="h2h-base">${base}</span><span class="h2h-bonus">+${m.h2hBonus}</span><b class="h2h-total">${m.adjustedTotal}</b></span>
             <i class="fa-solid fa-chevron-down h2h-caret" aria-hidden="true"></i>
         </div>
-        <div class="h2h-log" data-log="${m.userId}" hidden></div>`;
+        <div class="h2h-roster" data-roster="${m.userId}" hidden><div class="h2h-roster-logos">${rosterLogos(m)}</div></div>`;
     }).join('');
-
-    const logHtml = (uid) => {
-        const items = (d.schedule || []).map(s => {
-            const g = s.games.find(x => x.aId === uid || x.bId === uid);
-            if (!g) return '';
-            const meScore = g.aId === uid ? g.aScore : g.bScore;
-            const oppScore = g.aId === uid ? g.bScore : g.aScore;
-            const opp = byId[g.aId === uid ? g.bId : g.aId];
-            const res = meScore > oppScore ? 'W' : (oppScore > meScore ? 'L' : 'T');
-            return `<div class="h2h-log-row"><span class="h2h-log-wk">Wk ${s.week}</span><span class="h2h-log-res r-${res}">${res}</span><span class="h2h-log-opp">${meScore}–${oppScore} vs ${nameOf(opp)}</span></div>`;
-        }).join('');
-        return items || '<div class="h2h-log-empty">No matchups yet.</div>';
-    };
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('checkered', { size: 22 }) : ''}Head-to-Head${preview}</h2>
-        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus. Tap a manager for their weekly results. Record is W–L–T; total = points + H2H bonus.</p>
-        ${matchStrip}
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Tap a manager to see their roster; see your full matchup log on My Team.</p>
+        <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
+        <div class="h2h-matches" h2h-matches></div>
         <div class="h2h-head"><span></span><span></span><span class="h2h-col">pts · bonus · total</span></div>
         <div class="h2h-list">${rows}</div>`;
     el.hidden = false;
 
+    const matchesEl = el.querySelector('[h2h-matches]');
+    const paintWeek = (w) => {
+        const s = (d.schedule || []).find(x => x.week === Number(w));
+        matchesEl.innerHTML = (s && s.games.length) ? s.games.map(card).join('') : '<p class="h2h-empty">No matchups this week.</p>';
+    };
+    const sel = el.querySelector('[h2h-week]');
+    sel.addEventListener('change', () => paintWeek(sel.value));
+    paintWeek(d.featuredWeek);
+
     el.querySelectorAll('.h2h-row').forEach(row => {
         const uid = row.getAttribute('data-uid');
         const toggle = () => {
-            const log = el.querySelector(`[data-log="${uid}"]`);
-            if (!log) return;
-            const opening = log.hasAttribute('hidden');
-            if (opening) { log.innerHTML = logHtml(uid); log.removeAttribute('hidden'); }
-            else { log.setAttribute('hidden', ''); }
+            const r = el.querySelector(`[data-roster="${uid}"]`);
+            if (!r) return;
+            const opening = r.hasAttribute('hidden');
+            if (opening) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
             row.setAttribute('aria-expanded', String(opening));
             row.classList.toggle('open', opening);
         };

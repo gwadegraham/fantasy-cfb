@@ -246,47 +246,68 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const eng = resolveConfig(league, cfgDoc || null).engagement;
         const winBonus = eng.h2hWinBonus;
 
+        // H2H matchups run the fantasy regular season only. Weeks 15+ (conf
+        // championships, Army/Navy) and the postseason still count toward season
+        // totals, but their thin slates make for unfair matchups — so no H2H past
+        // this cap. Named for easy adjustment.
+        const H2H_LAST_WEEK = 14;
+
         const users = await User.find({ league, 'seasons.season': season });
-        const eff = w => (w.season === 'postseason' || w.week > 16) ? 17 : w.week;
-        const ids = [], meta = {}, totals = {};
+        const isRegular = w => w.season !== 'postseason' && w.week <= 16;
+        const round = v => Math.round(v * 10) / 10;
+        const ids = [], meta = {}, totals = {}, teamDetail = {};
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
             if (!s || !(s.weeklyScore || []).length) return;
             const id = String(u._id);
             ids.push(id);
+            const logoBy = {};
+            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; return { id: t.id, school: t.school, logo }; });
             meta[id] = {
                 userId: id,
                 name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),
                 franchise: s.franchiseName || null,
                 avatarUrl: u.avatarUrl || null, color: u.color || null,
                 initials: (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase(),
-                cumulative: s.cumulativeScore || 0
+                cumulative: s.cumulativeScore || 0,
+                teams: roster
             };
-            const tw = {};
-            (s.weeklyScore || []).forEach(e => { const W = eff(e); if (W > 16) return; tw[W] = (tw[W] || 0) + (e.score || 0); });
+            const tw = {}, twTeams = {};
+            (s.weeklyScore || []).forEach(e => {
+                if (!isRegular(e) || e.week > H2H_LAST_WEEK) return;
+                const w = e.week;
+                tw[w] = (tw[w] || 0) + (e.score || 0);
+                const byTeam = twTeams[w] || (twTeams[w] = {});
+                (e.scoreByTeam || []).forEach(st => {
+                    const k = st.teamId;
+                    if (!byTeam[k]) byTeam[k] = { teamId: st.teamId, school: st.team, logo: logoBy[st.teamId] || null, score: 0 };
+                    byTeam[k].score += (st.score || 0);
+                });
+            });
             totals[id] = tw;
+            teamDetail[id] = twTeams;
         });
-        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], matchups: [] });
+        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], schedule: [] });
 
-        const weeks = [...new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)))].sort((a, b) => a - b);
+        const weeks = [...new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)))].filter(w => w <= H2H_LAST_WEEK).sort((a, b) => a - b);
         const h = seasonH2H(ids, weeks, totals, winBonus);
-        const round = v => Math.round(v * 10) / 10;
         const managers = ids.map(id => ({
             ...meta[id],
             wins: h[id].wins, losses: h[id].losses, ties: h[id].ties,
             record: `${h[id].wins}-${h[id].losses}-${h[id].ties}`,
             h2hBonus: h[id].bonus,
             pointsFor: round(h[id].pointsFor), pointsAgainst: round(h[id].pointsAgainst),
-            adjustedTotal: round(meta[id].cumulative + h[id].bonus)   // cumulative already includes postseason
+            adjustedTotal: round(meta[id].cumulative + h[id].bonus)   // cumulative already includes weeks 15+/postseason
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
 
-        // Full schedule with per-week results, so the client can show this
-        // week's matchups AND each manager's week-by-week log. Games reference
-        // manager ids; the client resolves names/avatars from `managers`.
+        // Full schedule with per-week results + each side's contributing teams,
+        // so the client can show matchup cards, a week selector, and personal
+        // matchup detail. Games reference manager ids; meta resolves from `managers`.
         const sched = scheduleForWeeks(ids, weeks);
+        const teamsFor = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {}).map(t => ({ school: t.school, logo: t.logo, score: round(t.score) })).sort((a, b) => b.score - a.score);
         const gameFor = (a, b, w) => {
             const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
-            return { aId: a, aScore: sa, bId: b, bScore: sb, winner: sa > sb ? 'a' : (sb > sa ? 'b' : 'tie') };
+            return { aId: a, aScore: sa, aTeams: teamsFor(a, w), bId: b, bScore: sb, bTeams: teamsFor(b, w), winner: sa > sb ? 'a' : (sb > sa ? 'b' : 'tie') };
         };
         const schedule = weeks.map(w => ({ week: w, games: (sched[w] || []).map(([a, b]) => gameFor(a, b, w)) }));
         // Feature the latest week with a real slate — at least half the managers
