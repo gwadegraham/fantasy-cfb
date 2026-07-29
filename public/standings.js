@@ -128,6 +128,7 @@ async function getUsers() {
             maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
+            loadH2H(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
@@ -251,6 +252,40 @@ function renderProjPanel(managers) {
     el.innerHTML = `<h2 class="proj-panel-title">${window.ccIcon ? window.ccIcon('crystalball', { size: 22 }) : ''}Projected Finish</h2>
         <p class="proj-panel-note">Projected final points and title odds — banked points plus expected points from each roster's remaining schedule.</p>
         <div class="pp-list">${rows}</div>`;
+    el.hidden = false;
+}
+
+// Head-to-head win-bonus standings (#230). Shown only when the league has
+// opted in (config `enabled`) or when previewing the format via ?h2h=1.
+async function loadH2H(league, season) {
+    if (!league || season == null) return;
+    let data;
+    try {
+        const res = await fetch(`/standings/h2h/${league}/${season}`, { headers: { Accept: 'application/json' } });
+        data = await res.json();
+    } catch (e) { return; }
+    const preview = new URLSearchParams(location.search).get('h2h') === '1';
+    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return;
+    renderH2HPanel(data);
+}
+
+function renderH2HPanel(d) {
+    const el = document.getElementById('h2h-panel');
+    if (!el) return;
+    const rows = d.managers.map(m => {
+        const base = Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10;
+        return `<div class="h2h-row">
+            <span class="h2h-rank">${m.rank}</span>
+            ${projAvatarHtml(m)}
+            <span class="h2h-id"><span class="h2h-name">${escapeHtml(m.franchise || m.name)}</span><span class="h2h-rec">${escapeHtml(m.record)}</span></span>
+            <span class="h2h-pts"><span class="h2h-base">${base}</span><span class="h2h-bonus">+${m.h2hBonus}</span><b class="h2h-total">${m.adjustedTotal}</b></span>
+        </div>`;
+    }).join('');
+    const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
+    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('checkered', { size: 22 }) : ''}Head-to-Head${preview}</h2>
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus into your total. Record is W–L–T; total = points + H2H bonus.</p>
+        <div class="h2h-head"><span></span><span></span><span class="h2h-col">pts · bonus · total</span></div>
+        <div class="h2h-list">${rows}</div>`;
     el.hidden = false;
 }
 
