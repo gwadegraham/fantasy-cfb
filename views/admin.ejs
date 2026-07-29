@@ -287,7 +287,7 @@
     <% } %>
 
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count">5</span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count">6</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -301,6 +301,24 @@
                     <form id="league-name-form">
                         <div><input type="text" league-name-input maxlength="40" placeholder="League name"></div>
                         <div><button type="submit">Save Name</button></div>
+                    </form>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayEngagementContainer()">
+                        <i class="fa-solid fa-bolt" style="padding-right: 5px;"></i>
+                        Weekly Engagement
+                    </button>
+                </div>
+                <div class="sub-container" engagement-container style="display: none">
+                    <p class="function-description">Opt this league into the weekly-engagement format: a head-to-head win bonus and a weekly Captain multiplier. Off by default; other leagues stay classic.</p>
+                    <form id="engagement-form" class="draft-config-form">
+                        <div class="draft-field"><label><input type="checkbox" eng-h2h-enabled> Head-to-head win bonus</label></div>
+                        <div class="draft-field"><label>Win bonus (pts)</label><input type="number" eng-h2h-bonus min="0" max="20" step="1" value="3"></div>
+                        <div class="draft-field"><label><input type="checkbox" eng-captain-enabled> Weekly Captain pick</label></div>
+                        <div class="draft-field"><label>Captain multiplier</label><input type="number" eng-captain-mult min="1.5" max="5" step="0.5" value="2"></div>
+                        <div><button type="submit">Save Engagement</button></div>
                     </form>
                 </div>
             </div>
