@@ -259,12 +259,15 @@ function renderProjPanel(managers) {
 // opted in (config `enabled`) or when previewing the format via ?h2h=1.
 async function loadH2H(league, season) {
     if (!league || season == null) return;
+    const params = new URLSearchParams(location.search);
+    const sim = params.get('h2hSim');   // dev-only in-progress preview (non-prod route honors it)
     let data;
     try {
-        const res = await fetch(`/standings/h2h/${league}/${season}`, { headers: { Accept: 'application/json' } });
+        const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
         data = await res.json();
     } catch (e) { return; }
-    const preview = new URLSearchParams(location.search).get('h2h') === '1';
+    const preview = params.get('h2h') === '1' || !!sim;
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return;
     renderH2HPanel(data);
 }

@@ -375,9 +375,31 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const live = (w === currentWeek) && !weekFinal[w];
             return { week: w, final: !live, games: (scheduleAll[w] || []).map(([a, b]) => gameFor(a, b, w, live)) };
         });
-        const featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+        let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+        let currentWeekOut = currentWeek;
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: schedWeeks, featuredWeek, currentWeek, managers, schedule });
+        // Dev-only preview of the in-progress states (non-production). Doctors the
+        // latest week so the pre-kickoff and mixed live views can be seen on a
+        // finished season: ?h2hSim=pregame (nothing started) | mixed (some final,
+        // some live, some upcoming).
+        if (req.query.h2hSim && process.env.NODE_ENV !== 'production' && schedule.length) {
+            const mode = String(req.query.h2hSim);
+            const w = schedule[schedule.length - 1];
+            w.final = false;
+            const doctor = (arr) => (arr || []).map((t, j) => {
+                const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
+                return { school: t.school, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null };
+            });
+            w.games.forEach(g => {
+                g.final = false; g.winner = null;
+                g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
+                const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
+                g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
+            });
+            featuredWeek = w.week; currentWeekOut = w.week;
+        }
+
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
