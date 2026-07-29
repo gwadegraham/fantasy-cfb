@@ -287,7 +287,6 @@ function renderH2HPanel(d) {
     // One matchup card: a mini scoreboard with each side's teams that scored.
     const card = (g) => {
         const A = byId[g.aId], B = byId[g.bId];
-        const margin = Math.round(Math.abs(g.aScore - g.bScore) * 10) / 10;
         const side = (m, score, teams, win) => `
             <div class="h2h-team${win ? ' win' : ''}">
                 <div class="h2h-team-head">${projAvatarHtml(m)}<span class="h2h-tn"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span></div>
@@ -296,7 +295,7 @@ function renderH2HPanel(d) {
             </div>`;
         return `<div class="h2h-match">
             ${side(A, g.aScore, g.aTeams, g.winner === 'a')}
-            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span>${g.winner !== 'tie' ? `<span class="h2h-margin">by ${margin}</span>` : ''}</div>
+            <div class="h2h-mid"><span class="h2h-vs">${g.winner === 'tie' ? 'TIE' : 'vs'}</span></div>
             ${side(B, g.bScore, g.bTeams, g.winner === 'b')}
         </div>`;
     };
