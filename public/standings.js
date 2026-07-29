@@ -280,82 +280,6 @@ function renderH2HPanel(d) {
     const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
     const recOf = (m) => escapeHtml((m && m.record) || '');
 
-    // A team's value: final points, LIVE, or kickoff time.
-    const teamVal = (t) => t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
-        : t.status === 'scheduled' ? `<span class="h2h-tv sched">${escapeHtml(t.kickoff || 'TBD')}</span>`
-        : `<span class="h2h-tv">${t.score != null ? t.score : 0}</span>`;
-    // One team row. The right side mirrors (value → name → logo) so both teams'
-    // scores hug the center divider, like a Sleeper matchup.
-    const teamRow = (t, right) => {
-        const img = `<img class="h2h-tlogo" src="${escapeHtml(t.logo)}" alt="">`;
-        const nm = `<span class="h2h-tnm"><span class="tnm-full">${escapeHtml(t.school)}</span><span class="tnm-abbr">${escapeHtml(t.abbr || t.school)}</span></span>`;
-        // Opponent context (current week only): "vs ARK" / "@ UGA", plus the game
-        // final score once it's over.
-        const sub = t.opp
-            ? `<span class="h2h-tsub">${escapeHtml(t.ha)} ${escapeHtml(t.opp)}${t.status === 'final' && t.gameScore ? ` · ${escapeHtml(t.gameScore)}` : ''}</span>`
-            : '';
-        const idcol = `<span class="h2h-tid">${nm}${sub}</span>`;
-        return right ? `<div class="h2h-trow">${teamVal(t)}${idcol}${img}</div>` : `<div class="h2h-trow">${img}${idcol}${teamVal(t)}</div>`;
-    };
-    // Final weeks show only teams that scored; a live week shows every team with
-    // a game (so upcoming/in-progress ones are visible, not mistaken for 0).
-    const teamList = (teams, live, right) => {
-        const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
-        return list.length ? list.map(t => teamRow(t, right)).join('') : '<div class="h2h-trow empty">no points</div>';
-    };
-    // Win-probability bar values. A finished matchup is settled — the bar fills
-    // fully to the winner (tie = 50/50); an in-progress one shows the projected
-    // pre-game odds. null when there's nothing to project.
-    const barVals = (g) => {
-        if (g.final) return g.winner === 'a' ? { a: 100, b: 0 } : g.winner === 'b' ? { a: 0, b: 100 } : { a: 50, b: 50 };
-        return g.winP ? { a: g.winP.a, b: g.winP.b } : null;
-    };
-    const winBar = (g) => {
-        const v = barVals(g);
-        if (!v) return '';
-        const tone = (mine, other) => mine > other ? 'fav' : mine < other ? 'dog' : 'even';
-        return `<div class="h2h-mbar" role="img" aria-label="Win probability ${v.a}% versus ${v.b}%">
-            <span class="h2h-mbpct ${tone(v.a, v.b)}">${v.a}%</span>
-            <div class="h2h-mbtrack">
-                <span class="h2h-mbfill ${tone(v.a, v.b)}" style="width:${v.a}%"></span>
-                <span class="h2h-mbfill r ${tone(v.b, v.a)}" style="width:${v.b}%"></span>
-            </div>
-            <span class="h2h-mbpct ${tone(v.b, v.a)}">${v.b}%</span>
-        </div>`;
-    };
-    // Retrospective flavor on finished matchups: what the pre-game odds were.
-    const pregameLine = (g, A, B) => {
-        if (!g.final || !g.winP) return '';
-        const favA = g.winP.a >= g.winP.b;
-        const pct = favA ? g.winP.a : g.winP.b;
-        if (pct <= 50) return '<div class="h2h-mpre">Pre-game: even matchup</div>';
-        return `<div class="h2h-mpre">Pre-game odds: <b>${pct}%</b> ${favA ? nameOf(A) : nameOf(B)}</div>`;
-    };
-    // Compact matchup: a one-line summary (avatars, names, scores, result/LIVE)
-    // that expands on tap to the team-level breakdown. Keeps the list short on
-    // mobile while still one tap from the detail.
-    const card = (g) => {
-        const A = byId[g.aId], B = byId[g.bId];
-        const live = g.final === false;
-        const remaining = (g.aTeams || []).concat(g.bTeams || []).filter(t => t.status && t.status !== 'final').length;
-        const sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
-        return `<div class="h2h-mcard${live ? ' live' : ''}">
-            <div class="h2h-msum" role="button" tabindex="0" aria-expanded="false">
-                <div class="h2h-mside${g.winner === 'a' ? ' win' : ''}">${projAvatarHtml(A)}<span class="h2h-mnm">${nameOf(A)}</span><span class="h2h-msc">${g.aScore}</span></div>
-                <span class="h2h-msep">${sep}</span>
-                <div class="h2h-mside r${g.winner === 'b' ? ' win' : ''}"><span class="h2h-msc">${g.bScore}</span><span class="h2h-mnm">${nameOf(B)}</span>${projAvatarHtml(B)}</div>
-                <i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>
-            </div>
-            ${winBar(g)}
-            <div class="h2h-mdetail">
-                <div class="h2h-mdcol"><span class="h2h-mdcap">${nameOf(A)}</span>${teamList(g.aTeams, live, false)}</div>
-                <div class="h2h-mdcol right"><span class="h2h-mdcap">${nameOf(B)}</span>${teamList(g.bTeams, live, true)}</div>
-                ${pregameLine(g, A, B)}
-                ${live ? `<div class="h2h-mfoot">In progress · ${remaining} game${remaining === 1 ? '' : 's'} to play · scores update as they finish</div>` : ''}
-            </div>
-        </div>`;
-    };
-
     const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
 
     // Standings rows — each expands to that manager's 10-team roster.
@@ -385,12 +309,10 @@ function renderH2HPanel(d) {
     const matchesEl = el.querySelector('[h2h-matches]');
     const paintWeek = (w) => {
         const s = (d.schedule || []).find(x => x.week === Number(w));
-        matchesEl.innerHTML = (s && s.games.length) ? s.games.map(card).join('') : '<p class="h2h-empty">No matchups this week.</p>';
-        matchesEl.querySelectorAll('.h2h-msum').forEach(sum => {
-            const toggle = () => { const open = sum.closest('.h2h-mcard').classList.toggle('open'); sum.setAttribute('aria-expanded', String(open)); };
-            sum.addEventListener('click', toggle);
-            sum.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
-        });
+        matchesEl.innerHTML = (s && s.games.length)
+            ? s.games.map(g => window.ccH2H.matchupCard(g, { byId })).join('')
+            : '<p class="h2h-empty">No matchups this week.</p>';
+        window.ccH2H.wire(matchesEl);
     };
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));

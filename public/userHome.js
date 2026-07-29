@@ -145,41 +145,24 @@ async function renderMatchups(user) {
     const teaser = document.querySelector('[matchups-chip-teaser]');
     if (teaser && me) teaser.textContent = me.record;
 
-    const chipRow = (teams, live) => {
-        const list = live ? (teams || []) : (teams || []).filter(t => t.score > 0);
-        if (!list.length) return '<span class="uh-mu-chip none">no points</span>';
-        return list.map(t => {
-            const img = `<img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}">`;
-            if (t.status === 'live') return `<span class="uh-mu-chip is-live" title="${escapeHtml(t.school)} — in progress">${img}LIVE</span>`;
-            if (t.status === 'scheduled') return `<span class="uh-mu-chip is-sched" title="${escapeHtml(t.school)}">${img}${escapeHtml(t.kickoff || 'TBD')}</span>`;
-            return `<span class="uh-mu-chip" title="${escapeHtml(t.school)}">${img}${t.score != null ? t.score : 0}</span>`;
-        }).join('');
-    };
-    const oppName = (m) => escapeHtml((m && (m.franchise || m.name)) || 'Opponent');
+    // Featured matchup: the current/live week when the season's in progress,
+    // otherwise the most recent one — shown expanded. The rest collapse below,
+    // one tap-to-expand card per week (newest first). Reuses the shared
+    // Standings matchup card, oriented so you're always on the left.
+    if (!window.ccH2H) return;
+    const featuredWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek))
+        ? data.currentWeek
+        : mine[mine.length - 1].week;
+    const featured = mine.find(x => x.week === featuredWk);
+    const rest = mine.filter(x => x.week !== featuredWk).sort((a, b) => b.week - a.week);
+    const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, week: x.week, open });
+    const fLabel = featured && featured.final === false ? 'This week' : 'Latest';
 
     panel.innerHTML = `
-        <div class="recap-head"><div class="header-title">Your Matchups · ${season}</div></div>
-        <div class="uh-mu-list">${mine.map(({ week, final, g }) => {
-            const iAmA = g.aId === uid;
-            const meScore = iAmA ? g.aScore : g.bScore;
-            const oppScore = iAmA ? g.bScore : g.aScore;
-            const myTeams = iAmA ? g.aTeams : g.bTeams;
-            const oppTeams = iAmA ? g.bTeams : g.aTeams;
-            const opp = byId[iAmA ? g.bId : g.aId];
-            const live = !final;
-            const res = live ? 'live' : (meScore > oppScore ? 'W' : (oppScore > meScore ? 'L' : 'T'));
-            return `<div class="uh-mu">
-                <div class="uh-mu-head">
-                    <span class="uh-mu-wk">Wk ${week}</span>
-                    <span class="uh-mu-res r-${res}">${live ? 'LIVE' : res}</span>
-                    <span class="uh-mu-line"><b>${meScore}</b>–${oppScore} vs ${oppName(opp)}${live ? ' · in progress' : ''}</span>
-                </div>
-                <div class="uh-mu-teams">
-                    <div class="uh-mu-side"><span class="uh-mu-cap">You</span><div class="uh-mu-chips">${chipRow(myTeams, live)}</div></div>
-                    <div class="uh-mu-side"><span class="uh-mu-cap">${oppName(opp)}</span><div class="uh-mu-chips">${chipRow(oppTeams, live)}</div></div>
-                </div>
-            </div>`;
-        }).join('')}</div>`;
+        <div class="recap-head"><div class="header-title">Head-to-Head · ${season}</div>${me ? `<span class="uh-h2h-rec">${escapeHtml(me.record)}</span>` : ''}</div>
+        <div class="uh-h2h-featured"><div class="uh-h2h-flabel">${fLabel}</div>${featured ? cardOf(featured, true) : ''}</div>
+        ${rest.length ? `<div class="uh-h2h-log"><div class="uh-h2h-logcap">All weeks</div>${rest.map(x => cardOf(x, false)).join('')}</div>` : ''}`;
+    window.ccH2H.wire(panel);
 
     chip.hidden = false;
     if (!chip.dataset.wired) {

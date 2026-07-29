@@ -536,29 +536,15 @@
 .captain-team.is-captain { border-color: #8E8CF0; background: rgba(142, 140, 240, 0.14); font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .uh-captain { transition: none; } }
 
-/* ---------- H2H matchup history (#230, My Team) ---------- */
+/* ---------- H2H matchups (#230, My Team) ----------
+   Record header, a featured matchup shown expanded, then a collapsed log of the
+   other weeks. The matchup cards themselves come from the shared h2h-card.css. */
 .uh-h2h { width: 92%; max-width: 720px; margin: 0 auto; overflow: hidden; max-height: 0; transition: max-height 0.32s ease; }
-.uh-h2h.is-open { max-height: 5000px; margin-top: 1.1rem; }
-.uh-mu-list { display: flex; flex-direction: column; gap: 0.6rem; }
-.uh-mu { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.7rem 0.9rem; }
-.uh-mu-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.55rem; }
-.uh-mu-wk { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; width: 3rem; }
-.uh-mu-res { width: 1.4rem; text-align: center; font-weight: 800; }
-.uh-mu-res.r-W { color: #5BD08D; }
-.uh-mu-res.r-L { color: #ED5858; }
-.uh-mu-res.r-T { color: #A4A9C2; }
-.uh-mu-line { color: #F4F6FB; font-variant-numeric: tabular-nums; }
-.uh-mu-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-.uh-mu-side { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
-.uh-mu-cap { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.uh-mu-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.uh-mu-chip { display: inline-flex; align-items: center; gap: 3px; background: #101322; border: 1px solid #2A2E42; border-radius: 20px; padding: 2px 7px 2px 3px; font-size: 0.72rem; font-weight: 700; color: #C9CEE6; font-variant-numeric: tabular-nums; }
-.uh-mu-chip img { width: 16px; height: 16px; object-fit: contain; }
-.uh-mu-chip.none { color: #767D9C; font-weight: 400; padding: 2px 8px; }
-@media (max-width: 560px) { .uh-mu-teams { grid-template-columns: 1fr; } }
+.uh-h2h.is-open { max-height: 6000px; margin-top: 1.1rem; }
+.uh-h2h .recap-head { display: flex; align-items: baseline; gap: 0.6rem; }
+.uh-h2h-rec { font-size: 0.85rem; font-weight: 800; color: #C9CEE6; font-variant-numeric: tabular-nums; }
+.uh-h2h-featured { margin-bottom: 1rem; }
+.uh-h2h-flabel, .uh-h2h-logcap { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-bottom: 0.45rem; }
+.uh-h2h-log { display: flex; flex-direction: column; gap: 0.5rem; }
+.uh-h2h-log .uh-h2h-logcap { margin-top: 0.4rem; }
 @media (prefers-reduced-motion: reduce) { .uh-h2h { transition: none; } }
-
-/* H2H matchup log in-progress states. */
-.uh-mu-res.r-live { color: #ED5858; font-size: 0.62rem; letter-spacing: 0.04em; width: auto; }
-.uh-mu-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; font-weight: 800; }
-.uh-mu-chip.is-sched { color: #767D9C; font-weight: 600; }
