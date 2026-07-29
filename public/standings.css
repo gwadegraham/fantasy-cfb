@@ -741,8 +741,11 @@
 .h2h-trow { display: flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0; }
 .h2h-trow.empty { color: #767D9C; font-size: 0.72rem; }
 .h2h-tlogo { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
-.h2h-tnm { flex: 1; min-width: 0; font-size: 0.74rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.h2h-mdcol.right .h2h-tnm { text-align: right; }
+.h2h-tid { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.h2h-mdcol.right .h2h-tid { align-items: flex-end; }
+.h2h-tnm { min-width: 0; max-width: 100%; font-size: 0.74rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-tsub { min-width: 0; max-width: 100%; font-size: 0.6rem; color: #767D9C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mdcol.right .h2h-tnm, .h2h-mdcol.right .h2h-tsub { text-align: right; }
 /* Full school name on desktop; team abbreviation on mobile (tight columns). */
 .tnm-abbr { display: none; }
 @media (max-width: 560px) { .tnm-full { display: none; } .tnm-abbr { display: inline; } }

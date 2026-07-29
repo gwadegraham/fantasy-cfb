@@ -289,7 +289,13 @@ function renderH2HPanel(d) {
     const teamRow = (t, right) => {
         const img = `<img class="h2h-tlogo" src="${escapeHtml(t.logo)}" alt="">`;
         const nm = `<span class="h2h-tnm"><span class="tnm-full">${escapeHtml(t.school)}</span><span class="tnm-abbr">${escapeHtml(t.abbr || t.school)}</span></span>`;
-        return right ? `<div class="h2h-trow">${teamVal(t)}${nm}${img}</div>` : `<div class="h2h-trow">${img}${nm}${teamVal(t)}</div>`;
+        // Opponent context (current week only): "vs ARK" / "@ UGA", plus the game
+        // final score once it's over.
+        const sub = t.opp
+            ? `<span class="h2h-tsub">${escapeHtml(t.ha)} ${escapeHtml(t.opp)}${t.status === 'final' && t.gameScore ? ` · ${escapeHtml(t.gameScore)}` : ''}</span>`
+            : '';
+        const idcol = `<span class="h2h-tid">${nm}${sub}</span>`;
+        return right ? `<div class="h2h-trow">${teamVal(t)}${idcol}${img}</div>` : `<div class="h2h-trow">${img}${idcol}${teamVal(t)}</div>`;
     };
     // Final weeks show only teams that scored; a live week shows every team with
     // a game (so upcoming/in-progress ones are visible, not mistaken for 0).
