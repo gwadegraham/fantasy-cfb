@@ -650,3 +650,13 @@
     .h2h-base { display: none; }
     .h2h-panel-note { font-size: 0.78rem; }
 }
+
+/* Scale the League Highlights star to the heading font — it was a fixed 24px,
+   which read as too small next to the large header. 1em tracks the responsive
+   font-size at every breakpoint. */
+.highlights-header .cc-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.12em;
+    margin-right: 0.15em;
+}
