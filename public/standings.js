@@ -288,7 +288,7 @@ function renderH2HPanel(d) {
     // scores hug the center divider, like a Sleeper matchup.
     const teamRow = (t, right) => {
         const img = `<img class="h2h-tlogo" src="${escapeHtml(t.logo)}" alt="">`;
-        const nm = `<span class="h2h-tnm">${escapeHtml(t.school)}</span>`;
+        const nm = `<span class="h2h-tnm"><span class="tnm-full">${escapeHtml(t.school)}</span><span class="tnm-abbr">${escapeHtml(t.abbr || t.school)}</span></span>`;
         return right ? `<div class="h2h-trow">${teamVal(t)}${nm}${img}</div>` : `<div class="h2h-trow">${img}${nm}${teamVal(t)}</div>`;
     };
     // Final weeks show only teams that scored; a live week shows every team with

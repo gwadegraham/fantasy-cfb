@@ -743,6 +743,9 @@
 .h2h-tlogo { width: 20px; height: 20px; object-fit: contain; flex-shrink: 0; }
 .h2h-tnm { flex: 1; min-width: 0; font-size: 0.74rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .h2h-mdcol.right .h2h-tnm { text-align: right; }
+/* Full school name on desktop; team abbreviation on mobile (tight columns). */
+.tnm-abbr { display: none; }
+@media (max-width: 560px) { .tnm-full { display: none; } .tnm-abbr { display: inline; } }
 .h2h-tv { font-weight: 700; font-size: 0.78rem; color: #A4A9C2; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .h2h-tv.live { color: #ED5858; font-size: 0.58rem; font-weight: 800; }
 .h2h-tv.sched { color: #767D9C; font-size: 0.6rem; font-weight: 600; }

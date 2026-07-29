@@ -262,8 +262,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (!s || !(s.weeklyScore || []).length) return;
             const id = String(u._id);
             ids.push(id);
-            const logoBy = {};
-            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; draftedSet.add(t.id); return { id: t.id, school: t.school, logo }; });
+            const logoBy = {}, abbrBy = {};
+            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
             meta[id] = {
                 userId: id,
                 name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),
@@ -281,7 +281,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 const byTeam = twTeams[w] || (twTeams[w] = {});
                 (e.scoreByTeam || []).forEach(st => {
                     const k = st.teamId;
-                    if (!byTeam[k]) byTeam[k] = { teamId: st.teamId, school: st.team, logo: logoBy[st.teamId] || null, score: 0 };
+                    if (!byTeam[k]) byTeam[k] = { teamId: st.teamId, school: st.team, abbr: abbrBy[st.teamId] || null, logo: logoBy[st.teamId] || null, score: 0 };
                     byTeam[k].score += (st.score || 0);
                 });
             });
@@ -343,7 +343,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
         const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
-            .map(t => ({ school: t.school, logo: t.logo, score: round(t.score), status: 'final' }))
+            .map(t => ({ school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final' }))
             .sort((a, b) => b.score - a.score);
         const fmtKick = (g) => {
             if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
@@ -356,7 +356,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (!g) return null;   // bye / no game this week
             const st = gameStatus(g, now);
             const scored = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
-            return { school: t.school, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null };
+            return { school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null };
         }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         const gameFor = (a, b, w, live) => {
