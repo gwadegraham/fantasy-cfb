@@ -388,7 +388,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             w.final = false;
             const doctor = (arr) => (arr || []).map((t, j) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
-                return { school: t.school, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null };
+                return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null };
             });
             w.games.forEach(g => {
                 g.final = false; g.winner = null;
