@@ -41,18 +41,13 @@
             '<rect x="8.75" y="6.75" width="3.25" height="2.25"/><rect x="15.25" y="6.75" width="3.25" height="2.25"/>' +
             '<rect x="5.5" y="9" width="3.25" height="2.25"/><rect x="12" y="9" width="3.25" height="2.25"/>' +
             '<rect x="8.75" y="11.25" width="3.25" height="2.25"/><rect x="15.25" y="11.25" width="3.25" height="2.25"/></g>' },
-        // Head-to-head: two crossed swords (one sword drawn tip-up, then mirrored
-        // by rotating ±45° about center — blade with a pointed tip, crossguard,
-        // grip and pommel).
-        swords: { c: '#E0B341', sw: 1.5, svg:
-            '<g transform="rotate(45 12 12)">' +
-            '<path d="M12 3.4 12.8 5.6 12.8 12.6 11.2 12.6 11.2 5.6Z" fill="currentColor" fill-opacity=".2"/>' +
-            '<path d="M9.7 12.9H14.3"/><path d="M12 12.9V17.3"/>' +
-            '<circle cx="12" cy="18.3" r="1.05" fill="currentColor" fill-opacity=".2"/></g>' +
-            '<g transform="rotate(-45 12 12)">' +
-            '<path d="M12 3.4 12.8 5.6 12.8 12.6 11.2 12.6 11.2 5.6Z" fill="currentColor" fill-opacity=".2"/>' +
-            '<path d="M9.7 12.9H14.3"/><path d="M12 12.9V17.3"/>' +
-            '<circle cx="12" cy="18.3" r="1.05" fill="currentColor" fill-opacity=".2"/></g>' },
+        // Head-to-head: Material Symbols "swords-outline-rounded" (Apache 2.0),
+        // baked to the suite's gold. Raw + fill-based (it's a filled outline
+        // glyph, so it skips the shared stroke wrapper).
+        swords: { c: '#E0B341', raw: true, svg:
+            '<svg class="cc-icon cc-i-swords" width="__S__" height="__S__" viewBox="0 0 24 24" fill="#E0B341" aria-hidden="true">' +
+            '<path d="m19.05 21.6l-2.925-2.9l-1.5 1.5q-.275.275-.7.275t-.7-.275q-.575-.575-.575-1.425t.575-1.425l4.225-4.225q.575-.575 1.425-.575t1.425.575q.275.275.275.7t-.275.7l-1.5 1.5l2.9 2.925q.3.3.3.7t-.3.7l-1.25 1.25q-.3.3-.7.3t-.7-.3M21.7 6.2L10.65 17.25l.125.1q.575.575.575 1.425t-.575 1.425q-.275.275-.7.275t-.7-.275l-1.5-1.5l-2.925 2.9q-.3.3-.7.3t-.7-.3L2.3 20.35q-.3-.3-.3-.7t.3-.7l2.9-2.925l-1.5-1.5q-.275-.275-.275-.7t.275-.7q.575-.575 1.425-.575t1.425.575l.1.125L17.425 2.475q.275-.275.638-.425t.762-.15H21q.425 0 .713.288T22 2.9v2.575q0 .2-.075.388T21.7 6.2M8.35 9.425l.6-.575l.575-.6l-.575.6zm-2.125.7l-3.65-3.65Q2.3 6.2 2.15 5.838T2 5.075V2.9q0-.425.288-.712T3 1.9h2.175q.4 0 .763.15t.637.425L10.25 6.15q.3.3.288.7t-.313.7q-.3.275-.7.288t-.7-.288L5.175 3.9H4v1.175l3.65 3.65q.275.275.275.688t-.275.712q-.3.3-.712.3t-.713-.3m3.025 5.7L20 5.075V3.9h-1.175L8.075 14.65zm0 0l-.6-.575l-.575-.6l.575.6z"/>' +
+            '</svg>' },
         burst: { c: '#E0B341', sw: 1.6, svg:
             '<path d="M12 3.5 13.7 9l5.5 1.2-4.2 3.4 1.2 5.4L12 16.2 7.8 19l1.2-5.4L4.8 10.2 10.3 9Z" fill="currentColor" fill-opacity=".2"/>' +
             '<path d="M20.5 4.5 19 6M4 4.5 5.5 6M21 14l-1.8-.4M3 14l1.8-.4"/>' },
