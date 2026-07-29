@@ -13,6 +13,7 @@ const { buildRankingProxy, buildPoolContext } = require('../modules/draft-projec
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
+const { seasonH2H, scheduleForWeeks } = require('../modules/h2h');
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the
@@ -224,6 +225,70 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId });
         const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
         res.json({ league, ...recap, name });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Head-to-head weekly win-bonus view (GitHub #230), per-league opt-in. A
+// round-robin schedule pairs managers each regular week; the higher weekly
+// total wins a flat bonus that folds into the season total. Read-only and
+// computed from the stored weeklyScore, so it works on historical seasons too
+// (for proposing the format to a league). `enabled` reflects the league config;
+// the data is returned regardless so it can be previewed before turning on.
+router.get('/h2h/:league/:season', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const season = req.params.season;
+        const seasonNum = Number(season);
+
+        const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+        const eng = resolveConfig(league, cfgDoc || null).engagement;
+        const winBonus = eng.h2hWinBonus;
+
+        const users = await User.find({ league, 'seasons.season': season });
+        const eff = w => (w.season === 'postseason' || w.week > 16) ? 17 : w.week;
+        const ids = [], meta = {}, totals = {};
+        users.forEach(u => {
+            const s = (u.seasons || []).find(x => String(x.season) === String(season));
+            if (!s || !(s.weeklyScore || []).length) return;
+            const id = String(u._id);
+            ids.push(id);
+            meta[id] = {
+                userId: id,
+                name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),
+                franchise: s.franchiseName || null,
+                avatarUrl: u.avatarUrl || null, color: u.color || null,
+                initials: (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase(),
+                cumulative: s.cumulativeScore || 0
+            };
+            const tw = {};
+            (s.weeklyScore || []).forEach(e => { const W = eff(e); if (W > 16) return; tw[W] = (tw[W] || 0) + (e.score || 0); });
+            totals[id] = tw;
+        });
+        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], matchups: [] });
+
+        const weeks = [...new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)))].sort((a, b) => a - b);
+        const h = seasonH2H(ids, weeks, totals, winBonus);
+        const round = v => Math.round(v * 10) / 10;
+        const managers = ids.map(id => ({
+            ...meta[id],
+            wins: h[id].wins, losses: h[id].losses, ties: h[id].ties,
+            record: `${h[id].wins}-${h[id].losses}-${h[id].ties}`,
+            h2hBonus: h[id].bonus,
+            pointsFor: round(h[id].pointsFor), pointsAgainst: round(h[id].pointsAgainst),
+            adjustedTotal: round(meta[id].cumulative + h[id].bonus)   // cumulative already includes postseason
+        })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
+
+        // The most recent week's matchups (for a "this week" card).
+        const sched = scheduleForWeeks(ids, weeks);
+        const latestWeek = weeks[weeks.length - 1];
+        const matchups = (sched[latestWeek] || []).map(([a, b]) => ({
+            a: meta[a], aScore: round(totals[a][latestWeek] || 0),
+            b: meta[b], bScore: round(totals[b][latestWeek] || 0)
+        }));
+
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks, latestWeek, managers, matchups });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
