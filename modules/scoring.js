@@ -1,6 +1,7 @@
 const { internalFetch } = require('./internal-api');
 const { resolveConfig, MODELS } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
+const { resolveCaptain, captainWeeklyBonus } = require('./captain');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -105,11 +106,28 @@ module.exports= {
                 }
             }
 
+            // Captain (weekly N×) for opted-in leagues — regular season only
+            // (the postseason self-selects your teams). The captained team's
+            // points get the multiplier; existing leagues (engagement off) skip
+            // this entirely, so their scoring is unchanged.
+            var captainTeamId = null, captainBonus = 0;
+            if (cfg.engagement && cfg.engagement.captainEnabled && season !== "postseason") {
+                var priorWeekly = (user.seasons[0].weeklyScore || [])
+                    .filter(e => e.season !== "postseason" && parseInt(e.week) < parseInt(week));
+                captainTeamId = resolveCaptain(user.seasons[0].captains, week, user.seasons[0].teams, priorWeekly);
+                captainBonus = captainWeeklyBonus(teamScores, captainTeamId, cfg.engagement.captainMultiplier);
+                score += captainBonus;
+            }
+
             var scoreObject = {
                 "week": week,
                 "score": score,
                 "scoreByTeam": teamScores
             };
+            if (captainTeamId != null && captainBonus > 0) {
+                scoreObject.captainTeamId = captainTeamId;
+                scoreObject.captainBonus = captainBonus;
+            }
 
             if ((season == "postseason")) {
                 scoreObject["season"] = season;
@@ -347,7 +365,8 @@ async function getScoringConfig(league) {
             model: data.model,
             values: data.values,
             combineMode: data.combineMode,
-            disabled: data.disabled
+            disabled: data.disabled,
+            engagement: data.engagement
         });
     } catch (e) { /* fall through to defaults */ }
     return resolveConfig(league, null);
