@@ -1165,7 +1165,7 @@ if (engagementForm) {
             });
             const data = await res.json().catch(() => ({}));
             if (res.status === 200) {
-                successToast.options.text = 'Weekly engagement saved'
+                successToast.options.text = 'Game modes saved'
                     + (data.h2hEnabled ? ` · H2H +${data.h2hWinBonus}` : ' · H2H off')
                     + (data.captainEnabled ? ` · Captain ${data.captainMultiplier}×` : ' · Captain off');
                 successToast.showToast();
