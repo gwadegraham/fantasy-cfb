@@ -114,7 +114,7 @@ async function renderBento(data) {
     document.title = `${franchise || manager} · Campus Clash`;
     const own = currentUserId() && String(currentUserId()) === String(data._id);
     const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-    const tile = (k, label, glance, span) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">›</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
+    const tile = (k, label, glance, span, affordance) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">${affordance || '›'}</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
 
     bento.innerHTML =
         `<div class="uh-tile span2 uh-hero">
@@ -126,11 +126,11 @@ async function renderBento(data) {
             </div>
             ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
         </div>`
-        + tile('matchup', 'This week · matchup', 'Your current H2H matchup', 2)
-        + tile('roster', 'Roster', 'Your 10 teams', 2)
+        + tile('matchup', 'This week · matchup', 'Your current H2H matchup', 2, 'Lineups ›')
+        + tile('roster', 'Roster · top performers', 'Your 10 teams', 2, 'All 10 teams ›')
         + tile('captain', 'Captain', 'Double a team each week', 1)
         + tile('recap', 'Your week', 'Latest recap', 1)
-        + tile('schedule', 'Schedule', 'Up next', 1)
+        + tile('schedule', 'Schedule', 'Up next', 1, 'Full schedule ›')
         + tile('trajectory', 'Trajectory', 'Season points', 1)
         + tile('draft', 'Draft grade', 'Preseason projection', 2)
         + tile('games', 'Games', 'This week’s games', 2);
@@ -176,9 +176,11 @@ function hydrateRoster(user) {
     const top = cards[0];
 
     const g = document.getElementById('uh-glance-roster');
-    if (g) g.innerHTML = top && top.pts > 0
-        ? `<span class="uh-mu-opp">${escapeHtml(top.t.school)}</span> <b class="num">${top.pts}</b> <span class="uh-glance-sub">leads your roster</span>`
-        : 'Your 10 teams';
+    if (g) {
+        g.innerHTML = top && top.pts > 0
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${c.t.logos.at(-1)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            : 'Your 10 teams';
+    }
 
     uhDrawer.roster = (body) => {
         const max = (cards[0] && cards[0].pts) || 1;
@@ -254,6 +256,14 @@ var UH_DRAWERS = {
 };
 // key -> function(bodyEl) that fills the drawer body. Populated by the hydrators.
 var uhDrawer = {};
+
+// Compact win-probability bar for a tile glance (you% on the left).
+function uhMiniBar(youPct) {
+    youPct = Math.round(youPct);
+    const opp = 100 - youPct;
+    const tone = (a, b) => a > b ? 'fav' : a < b ? 'dog' : 'even';
+    return `<span class="uh-mug-bar"><span class="uh-mug-pct ${tone(youPct, opp)}">${youPct}%</span><span class="uh-mug-track"><i class="${tone(youPct, opp)}" style="width:${youPct}%"></i><i class="r ${tone(opp, youPct)}" style="width:${opp}%"></i></span><span class="uh-mug-pct ${tone(opp, youPct)}">${opp}%</span></span>`;
+}
 function openDrawer(key) {
     const title = UH_DRAWERS[key];
     if (title == null) return;
@@ -335,12 +345,23 @@ async function hydrateH2H(user) {
         return { meScore, opScore, nm, res };
     };
 
-    // Matchup tile — this week / latest.
+    // Matchup tile — this week / latest. Rich glance: avatars, scores, win bar.
     if (mTile) mTile.hidden = false;
     const mg = document.getElementById('uh-glance-matchup');
     if (mg && featured) {
+        const g = featured.g, iAmA = g.aId === uid;
         const s = summary(featured);
-        mg.innerHTML = `<span class="uh-mu-glance"><b class="num">${s.meScore}</b><span class="uh-mu-dash">–</span><span class="num">${s.opScore}</span> <span class="uh-mu-opp">${escapeHtml(s.nm)}</span> <span class="uh-res r-${s.res}">${s.res}</span></span>`;
+        const oppM = byId[iAmA ? g.bId : g.aId];
+        const av = (m) => (window.ccH2H.avatar ? window.ccH2H.avatar(m) : '');
+        let youPct = null;
+        if (featured.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
+        else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
+        const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
+        mg.innerHTML = `<span class="uh-mug">
+                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">You</span><span class="uh-mug-sc num${wc}">${s.meScore}</span></span>
+                <span class="uh-mug-vs">${featured.final ? (s.res === 'T' ? 'T' : 'vs') : 'LIVE'}</span>
+                <span class="uh-mug-side r"><span class="uh-mug-sc num${oc}">${s.opScore}</span><span class="uh-mug-nm">${escapeHtml(s.nm)}</span>${av(oppM)}</span>
+            </span>${youPct == null ? '' : uhMiniBar(youPct)}`;
     }
     uhDrawer.matchup = (body) => {
         const lead = `${featured.final === false ? 'This week' : 'Latest'} · Week ${featured.week}${me ? ` · ${escapeHtml(me.record)}` : ''}`;
@@ -409,9 +430,10 @@ async function hydrateCaptain(user) {
     const setGlance = () => {
         if (!g) return;
         const t = pick != null ? teamById[pick] : null;
-        g.innerHTML = t
+        const lead = t
             ? `<span class="uh-cap-glance"><img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">Set for Wk ${week}</span>`;
+        g.innerHTML = lead + `<span class="uh-cap-sub">Doubles this week’s points</span>`;
     };
     const paint = (container) => {
         container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${week}. Tap the current pick to clear. Locks at kickoff.</p>

@@ -637,3 +637,30 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-games-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 11px; color: #767D9C; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
 .uh-games-pick select { background: #12162A; border: 1px solid #2A2E42; border-radius: 8px; color: #F4F6FB; font: inherit; padding: 6px 8px; text-transform: none; letter-spacing: 0; }
 .uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; }
+
+/* Enriched tile glances (#230 redesign polish) */
+.uh-mug { display: flex; align-items: center; gap: 8px; }
+.uh-mug-side { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.uh-mug-side.r { justify-content: flex-end; }
+.uh-mug .h2h-av { width: 26px; height: 26px; }
+.uh-mug-nm { font-size: 13px; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-mug-sc { font-size: 20px; font-weight: 800; color: #A4A9C2; flex: none; font-variant-numeric: tabular-nums; }
+.uh-mug-sc.win { color: #5BD08D; }
+.uh-mug-vs { font-size: 10px; font-weight: 800; letter-spacing: 0.04em; color: #767D9C; flex: none; }
+.uh-mug-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.uh-mug-track { flex: 1; display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: #0c1022; }
+.uh-mug-track i { height: 100%; }
+.uh-mug-track i.fav { background: #22C37A; } .uh-mug-track i.dog { background: #B0454F; } .uh-mug-track i.even { background: #5A6080; }
+.uh-mug-track i:not(.r) { border-radius: 99px 0 0 99px; } .uh-mug-track i.r { border-radius: 0 99px 99px 0; }
+.uh-mug-pct { font-size: 11px; font-weight: 700; color: #A4A9C2; min-width: 2rem; flex: none; font-variant-numeric: tabular-nums; }
+.uh-mug-pct:last-child { text-align: right; }
+.uh-mug-pct.fav { color: #5BD08D; } .uh-mug-pct.dog { color: #8A90A8; }
+
+.uh-rg { display: flex; flex-direction: column; gap: 8px; }
+.uh-rg-row { display: flex; align-items: center; gap: 9px; }
+.uh-rg-row img { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.uh-rg-nm { flex: 1; min-width: 0; color: #C9CEE6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-rg-star { color: #E0B341; font-size: 11px; }
+.uh-rg-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
+
+.uh-cap-sub { display: block; color: #767D9C; font-size: 12px; margin-top: 6px; }
