@@ -188,10 +188,19 @@ function hydrateRoster(user) {
             <img src="${c.t.logos.at(-1)}" alt="">
             <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
             <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
-        body.innerHTML = `<div class="uh-roster-cards">${list}</div>
-            <div class="uh-drawer-cap">Week by week</div>
-            <div class="table-wrapper"><table class="fl-table"><thead user-table-head></thead><tbody user-table-body></tbody></table></div>`;
-        displayTeams(user);
+        body.innerHTML = `<div class="uh-seg">
+                <button type="button" class="uh-seg-btn active" data-view="cards">Sorted</button>
+                <button type="button" class="uh-seg-btn" data-view="grid">Week by week</button>
+            </div>
+            <div class="uh-roster-cards" data-view-panel="cards">${list}</div>
+            <div data-view-panel="grid" hidden><div class="table-wrapper"><table class="fl-table"><thead user-table-head></thead><tbody user-table-body></tbody></table></div></div>`;
+        displayTeams(user);   // fills the grid (hidden until toggled)
+        const segs = body.querySelectorAll('.uh-seg-btn');
+        segs.forEach(b => b.addEventListener('click', () => {
+            segs.forEach(x => x.classList.toggle('active', x === b));
+            const v = b.getAttribute('data-view');
+            body.querySelectorAll('[data-view-panel]').forEach(p => { p.hidden = p.getAttribute('data-view-panel') !== v; });
+        }));
     };
 }
 
@@ -203,7 +212,11 @@ function hydrateTrajectory(user) {
     if (!(season.weeklyScore || []).length) { if (tile) tile.hidden = true; return; }
 
     const g = document.getElementById('uh-glance-trajectory');
-    if (g) g.innerHTML = `<b class="num">${season.cumulativeScore || 0}</b> <span class="uh-glance-sub">total points</span>`;
+    if (g) {
+        let cum = 0; const series = [];
+        (typeof weeklyColumns === 'function' ? weeklyColumns(season) : []).forEach(c => { if (!c.entry) return; cum += c.entry.score || 0; series.push(cum); });
+        g.innerHTML = `<span class="uh-traj-g"><b class="uh-traj-num num">${season.cumulativeScore || 0}</b><span class="uh-glance-sub">total points</span></span>${series.length >= 2 ? `<span class="uh-traj-spark">${uhSpark(series, 260, 34, '#5BD08D')}</span>` : ''}`;
+    }
 
     uhDrawer.trajectory = (body) => {
         body.innerHTML = `<div class="profile-chart-section" profile-chart-section hidden><div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div></div><p class="uh-stub" id="uh-traj-empty" hidden>Not enough scored weeks yet to chart a trend.</p>`;
@@ -263,6 +276,15 @@ function uhMiniBar(youPct) {
     const opp = 100 - youPct;
     const tone = (a, b) => a > b ? 'fav' : a < b ? 'dog' : 'even';
     return `<span class="uh-mug-bar"><span class="uh-mug-pct ${tone(youPct, opp)}">${youPct}%</span><span class="uh-mug-track"><i class="${tone(youPct, opp)}" style="width:${youPct}%"></i><i class="r ${tone(opp, youPct)}" style="width:${opp}%"></i></span><span class="uh-mug-pct ${tone(opp, youPct)}">${opp}%</span></span>`;
+}
+
+// Tiny inline sparkline (cumulative-points trend) for the Trajectory glance.
+function uhSpark(pts, w, h, color) {
+    if (!pts || pts.length < 2) return '';
+    const max = Math.max.apply(null, pts), min = Math.min.apply(null, pts), rng = (max - min) || 1, step = w / (pts.length - 1);
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + (i * step).toFixed(1) + ' ' + (h - ((p - min) / rng) * h).toFixed(1)).join(' ');
+    const ex = w.toFixed(1), ey = (h - ((pts[pts.length - 1] - min) / rng) * h).toFixed(1);
+    return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${ex}" cy="${ey}" r="2.6" fill="${color}"/></svg>`;
 }
 function openDrawer(key) {
     const title = UH_DRAWERS[key];
@@ -330,6 +352,18 @@ async function hydrateH2H(user) {
     if (!mine.length) return hide();
 
     const me = byId[uid];
+
+    // H2H record into the hero, right after Total points.
+    const statsEl = document.getElementById('uh-hero-stats');
+    if (statsEl && me && me.record && !statsEl.querySelector('.uh-hero-rec')) {
+        const rec = document.createElement('div');
+        rec.className = 'stat uh-hero-rec';
+        rec.innerHTML = `<span class="stat-value num">${escapeHtml(me.record)}</span><span class="stat-label">H2H record</span>`;
+        const pts = [...statsEl.querySelectorAll('.stat')].find(s => /total points/i.test(s.textContent));
+        if (pts && pts.nextSibling) statsEl.insertBefore(rec, pts.nextSibling);
+        else statsEl.appendChild(rec);
+    }
+
     const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
     const featuredWk = liveWk != null ? liveWk : mine[mine.length - 1].week;
     const featured = mine.find(x => x.week === featuredWk);
@@ -373,8 +407,11 @@ async function hydrateH2H(user) {
     if (sTile) sTile.hidden = false;
     const sg = document.getElementById('uh-glance-schedule');
     if (sg) {
-        if (liveWk != null) { const s = summary(featured); sg.textContent = `Up next · vs ${s.nm}`; }
-        else sg.textContent = `Full schedule${me ? ' · ' + me.record : ''}`;
+        if (liveWk != null) {
+            const s = summary(featured), fg = featured.g, iAmA = fg.aId === uid;
+            const pct = fg.winP ? (iAmA ? fg.winP.a : fg.winP.b) : null;
+            sg.innerHTML = `<span class="uh-sched-lbl">Up next</span><span class="uh-sched-row"><span class="uh-sched-opp">vs ${escapeHtml(s.nm)}</span>${pct != null ? `<span class="uh-sched-pct">${pct}%</span>` : ''}</span>`;
+        } else sg.innerHTML = `<span class="uh-mu-opp">Full schedule</span>${me ? ` <span class="uh-glance-sub">${escapeHtml(me.record)}</span>` : ''}`;
     }
     uhDrawer.schedule = (body) => {
         const listWeeks = liveWk != null ? rest.filter(x => x.week !== featuredWk) : rest;
@@ -508,7 +545,11 @@ async function hydrateDraft(user) {
 
         const tier = (mine.grade || '').charAt(0).toLowerCase();
         const g = document.getElementById('uh-glance-draft');
-        if (g) g.innerHTML = `<span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-glance-sub">preseason projection</span>`;
+        if (g) g.innerHTML = `<span class="uh-draft-g"><span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-draft-stats">`
+            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>proj pts</span>`
+            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>proj wins</span>`
+            + `<span class="uh-ds"><b class="num">${mine.cfpCount}</b>CFP teams</span>`
+            + `</span></span>`;
 
         let me;
         try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }

@@ -664,3 +664,23 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-rg-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
 
 .uh-cap-sub { display: block; color: #767D9C; font-size: 12px; margin-top: 6px; }
+
+/* Trajectory / Draft / Schedule glances + roster toggle (#230 polish 2) */
+.uh-traj-g { display: flex; align-items: baseline; gap: 8px; }
+.uh-traj-num { font-size: 28px; font-weight: 800; color: #F4F6FB; }
+.uh-traj-spark { display: block; margin-top: 10px; }
+
+.uh-draft-g { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.uh-draft-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.uh-ds { display: flex; flex-direction: column; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #767D9C; }
+.uh-ds b { font-size: 15px; font-weight: 800; color: #F4F6FB; letter-spacing: 0; text-transform: none; }
+
+.uh-sched-lbl { display: block; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: #6C9BFF; font-weight: 800; margin-bottom: 7px; }
+.uh-sched-row { display: flex; align-items: center; }
+.uh-sched-opp { color: #F4F6FB; font-weight: 600; }
+.uh-sched-pct { margin-left: auto; color: #6C9BFF; font-weight: 800; }
+
+.uh-seg { display: flex; gap: 4px; background: #12162A; border: 1px solid #2A2E42; border-radius: 10px; padding: 4px; margin-bottom: 14px; }
+.uh-seg-btn { flex: 1; padding: 8px; border: 0; background: transparent; color: #8A90A8; font: inherit; font-size: 13px; font-weight: 700; border-radius: 7px; cursor: pointer; }
+.uh-seg-btn.active { background: #1A1F33; color: #F4F6FB; }
+.uh-seg-btn:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 1px; }
