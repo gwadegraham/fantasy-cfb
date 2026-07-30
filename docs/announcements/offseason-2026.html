@@ -1,0 +1,399 @@
+<style>
+  :root {
+    /* Campus Clash brand palette — deep navy ground, coral-red primary, gold secondary */
+    --ground:    #101322;   /* app darkest bg */
+    --ground-2:  #171b31;
+    --card:      #1a1f33;    /* app card */
+    --card-hi:   #232a44;    /* hover / elevated */
+    --line:      #2a2e42;    /* app border */
+    --line-soft: rgba(244, 246, 251, 0.07);
+
+    --text:      #f4f6fb;    /* primary text */
+    --dim:       #a4a9c2;    /* muted blue-grey */
+    --faint:     #767d9c;    /* faintest labels */
+
+    --accent:      #ed5858;  /* Campus Clash red — the one bold hue */
+    --accent-deep: #d94a4a;
+    --accent-glow: rgba(237, 88, 88, 0.17);
+
+    --gold:      #e0b341;    /* secondary — stats & "upgraded" */
+    --gold-soft: rgba(224, 179, 65, 0.12);
+    --green:     #5bd08d;    /* positive / brand-new */
+    --green-soft:rgba(91, 208, 141, 0.12);
+
+    --display: "Arial Narrow", "Roboto Condensed", "Oswald", "Helvetica Neue", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Roboto Mono", "Consolas", monospace;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --edge: 1180px;
+  }
+
+  /* Deliberate single-theme: a night game in Campus Clash navy. The toggle stays dark by design. */
+  * { box-sizing: border-box; }
+
+  .page {
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  .wrap { width: 100%; max-width: var(--edge); margin: 0 auto; padding: 0 clamp(20px, 5vw, 56px); }
+
+  /* ---------- HERO ---------- */
+  .hero {
+    position: relative;
+    padding: clamp(56px, 11vw, 128px) 0 clamp(40px, 7vw, 84px);
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  /* primetime red wash from the top + faint yard lines running down the field */
+  .hero::before {
+    content: "";
+    position: absolute; inset: -20% -10% auto -10%; height: 120%;
+    background:
+      radial-gradient(115% 70% at 50% -18%, var(--accent-glow), transparent 58%),
+      repeating-linear-gradient(90deg,
+        transparent 0, transparent 78px,
+        var(--line-soft) 78px, var(--line-soft) 80px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .hero .wrap { position: relative; z-index: 1; }
+
+  .brandbar {
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--dim);
+    margin-bottom: clamp(40px, 8vw, 84px);
+  }
+  .brandbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 12px 2px var(--accent-glow); flex: none; }
+  .brandbar b { color: var(--text); font-weight: 700; letter-spacing: 0.24em; }
+  .brandbar .spacer { flex: 1; }
+  .brandbar .yr { color: var(--accent); }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.32em;
+    text-transform: uppercase; color: var(--accent);
+    display: inline-flex; align-items: center; gap: 12px; margin-bottom: 22px;
+  }
+  .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--accent); display: inline-block; }
+
+  h1.title {
+    font-family: var(--display);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: clamp(3.4rem, 12vw, 8.2rem);
+    line-height: 0.9;
+    letter-spacing: 0.005em;
+    margin: 0 0 26px;
+    text-wrap: balance;
+    color: var(--text);
+  }
+  h1.title .hl { color: var(--accent); display: inline-block; }
+  h1.title .hl::after {
+    content: ""; display: block; height: 6px; margin-top: 6px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    border-radius: 2px;
+  }
+
+  .lede {
+    font-size: clamp(1.05rem, 2.1vw, 1.4rem);
+    color: var(--dim); max-width: 46ch; margin: 0 0 clamp(38px, 6vw, 60px);
+  }
+  .lede strong { color: var(--text); font-weight: 600; }
+
+  /* scoreboard stat strip */
+  .board {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    background: linear-gradient(180deg, var(--card-hi), var(--ground-2));
+    max-width: 620px;
+  }
+  .board .cell { padding: 22px clamp(16px, 3vw, 30px); }
+  .board .cell + .cell { border-left: 1px solid var(--line); }
+  .board .num {
+    font-family: var(--display); font-weight: 700; font-size: clamp(2.6rem, 7vw, 3.9rem);
+    line-height: 1; color: var(--gold); font-variant-numeric: tabular-nums;
+  }
+  .board .lab {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--dim); margin-top: 10px;
+  }
+
+  /* ---------- SECTIONS ---------- */
+  .section { padding: clamp(52px, 9vw, 96px) 0 0; }
+  .section:last-of-type { padding-bottom: clamp(56px, 9vw, 104px); }
+
+  .sec-head { margin-bottom: clamp(28px, 5vw, 44px); }
+  .sec-kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.26em;
+    text-transform: uppercase; color: var(--gold);
+    display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
+  }
+  .sec-kicker .rule { flex: 1; height: 1px; background: var(--line); }
+  .sec-kicker .tag { color: var(--faint); }
+  h2.sec-title {
+    font-family: var(--display); font-weight: 700; text-transform: uppercase;
+    font-size: clamp(2rem, 6vw, 3.3rem); line-height: 0.95; letter-spacing: 0.01em;
+    margin: 0; color: var(--text); text-wrap: balance;
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 18px; }
+
+  .card {
+    position: relative;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 24px 24px;
+    display: flex; flex-direction: column;
+    transition: transform .22s ease, border-color .22s ease, background .22s ease;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 2px;
+    background: linear-gradient(90deg, var(--line), transparent);
+  }
+  .card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(237, 88, 88, 0.45);
+    background: var(--card-hi);
+  }
+
+  .chip {
+    align-self: flex-start;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; font-weight: 600;
+    padding: 5px 10px; border-radius: 6px; margin-bottom: 18px;
+  }
+  .chip.new  { color: var(--green); background: var(--green-soft); border: 1px solid rgba(91,208,141,0.35); }
+  .chip.up   { color: var(--gold);  background: var(--gold-soft);  border: 1px solid rgba(224,179,65,0.35); }
+
+  .card h3 {
+    font-family: var(--display); font-weight: 700; text-transform: uppercase;
+    font-size: 1.62rem; line-height: 1; letter-spacing: 0.01em;
+    margin: 0 0 12px; color: var(--text);
+  }
+  .card p { margin: 0 0 20px; font-size: 0.97rem; color: var(--dim); flex: 1; }
+
+  .find {
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    color: var(--accent); display: flex; gap: 9px; align-items: baseline;
+    padding-top: 16px; border-top: 1px solid var(--line-soft);
+  }
+  .find .arw { color: var(--accent-deep); flex: none; }
+  .find .lab { color: var(--faint); letter-spacing: 0.14em; text-transform: uppercase; }
+  .find b { color: var(--text); font-weight: 600; font-family: var(--body); letter-spacing: 0; }
+
+  /* ---------- KICKOFF FOOTER ---------- */
+  .kickoff {
+    position: relative; overflow: hidden;
+    border-top: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--ground-2), var(--ground));
+    text-align: center;
+    padding: clamp(64px, 11vw, 120px) 0;
+  }
+  .kickoff::before {
+    content: ""; position: absolute; inset: auto -10% -30% -10%; height: 80%;
+    background: radial-gradient(90% 100% at 50% 120%, var(--accent-glow), transparent 60%);
+    pointer-events: none;
+  }
+  .kickoff .wrap { position: relative; }
+  .kickoff .eyebrow { justify-content: center; }
+  .kickoff .eyebrow::before { display: none; }
+  .kickoff h2 {
+    font-family: var(--display); font-weight: 700; text-transform: uppercase;
+    font-size: clamp(2.4rem, 8vw, 5rem); line-height: 0.92; margin: 8px 0 20px;
+    letter-spacing: 0.01em; text-wrap: balance;
+  }
+  .kickoff h2 .hl { color: var(--accent); }
+  .kickoff p { color: var(--dim); max-width: 44ch; margin: 0 auto; font-size: 1.08rem; }
+  .cta {
+    display: inline-flex; align-items: center; margin-top: 30px;
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 600; color: #fff; text-decoration: none;
+    background: var(--accent); padding: 16px 30px; border-radius: 10px;
+    box-shadow: 0 0 0 1px rgba(237,88,88,0.4), 0 12px 34px -10px var(--accent-glow);
+    transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+  }
+  .cta:hover {
+    background: var(--accent-deep); transform: translateY(-3px);
+    box-shadow: 0 0 0 1px rgba(237,88,88,0.5), 0 18px 42px -10px var(--accent-glow);
+  }
+  .cta:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { .cta { transition: none; } }
+
+  /* load-in */
+  @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  .anim { opacity: 0; animation: rise .7s cubic-bezier(.2,.7,.2,1) forwards; }
+  .d1 { animation-delay: .05s; } .d2 { animation-delay: .16s; }
+  .d3 { animation-delay: .28s; } .d4 { animation-delay: .4s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .anim { animation: none; opacity: 1; }
+    .card { transition: none; }
+  }
+
+  @media (max-width: 520px) {
+    .board { grid-template-columns: 1fr; max-width: none; }
+    .board .cell + .cell { border-left: none; border-top: 1px solid var(--line); }
+    .brandbar .spacer { display: none; }
+    .brandbar { flex-wrap: wrap; gap: 8px 12px; }
+  }
+</style>
+
+<div class="page">
+
+  <!-- ===================== HERO ===================== -->
+  <header class="hero">
+    <div class="wrap">
+      <div class="brandbar anim d1">
+        <span class="dot"></span>
+        <b>CAMPUS CLASH</b>
+        <span class="spacer"></span>
+        <span>OFFSEASON&nbsp;/&nbsp;<span class="yr">2026</span></span>
+      </div>
+
+      <div class="eyebrow anim d1">The Offseason Build</div>
+      <h1 class="title anim d2">Season&nbsp;2<br><span class="hl">Is Loaded.</span></h1>
+      <p class="lede anim d3">We spent the whole offseason rebuilding the league from the turf up — new
+        ways to play, new places to go, and a home screen that actually feels like game day.
+        <strong>Here's everything worth knowing before kickoff.</strong></p>
+
+      <div class="board anim d4">
+        <div class="cell"><div class="num">10</div><div class="lab">New&nbsp;&amp;&nbsp;Upgraded</div></div>
+        <div class="cell"><div class="num">2</div><div class="lab">Game&nbsp;Modes</div></div>
+        <div class="cell"><div class="num">5</div><div class="lab">Fresh&nbsp;Screens</div></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ===================== GROUP 1 ===================== -->
+    <section class="section">
+      <div class="sec-head">
+        <div class="sec-kicker"><span>Suit Up</span><span class="tag">// new ways to play</span><span class="rule"></span></div>
+        <h2 class="sec-title">New Ways To Play</h2>
+      </div>
+      <div class="grid">
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Captain Pick</h3>
+          <p>Name one team your Captain each week and its fantasy points count <strong>double</strong>.
+             One high-leverage call that can flip a close week.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>My Team</b> — set your Captain each week.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Head-to-Head</h3>
+          <p>Real weekly matchups against another manager, with a live win-probability bar that
+             swings as scores roll in. Every week now has a rival.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>My Team</b> &amp; <b>Standings</b> — your matchup, live.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Draft Grades</h3>
+          <p>The moment the draft ends, get a grade on your class — built from a per-league
+             projection of expected fantasy points. Bragging rights start early.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br>The <b>Draft Grades</b> page, plus a grade chip on your profile.</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ===================== GROUP 2 ===================== -->
+    <section class="section">
+      <div class="sec-head">
+        <div class="sec-kicker"><span>On The Map</span><span class="tag">// new places to go</span><span class="rule"></span></div>
+        <h2 class="sec-title">New Places To Go</h2>
+      </div>
+      <div class="grid">
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Live Draft Room</h3>
+          <p>A real-time snake draft that updates for everyone at once — with a sortable draft aid,
+             the board on the clock, and full mobile support. Commissioners get an undo.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>Draft Room</b> in the top nav.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Hall of Fame</h3>
+          <p>Every champion, every season, in one place. The league finally has a record book —
+             and a wall to hang the receipts on.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>Hall of Fame</b> in the top nav.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Your Franchise</h3>
+          <p>Name your franchise, add a photo, and get a profile hero with your stats, a cumulative
+             points chart, and your best game and week. Make it yours.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br>Tap your <b>avatar</b> — top-right — to edit.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip up">Rebuilt</span>
+          <h3>My Team Home</h3>
+          <p>A new tile-and-drawer dashboard: matchup, roster, schedule, your week, and trajectory —
+             each a glance up top, the full story one tap away.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>My Team</b> — your new front door.</span></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ===================== GROUP 3 ===================== -->
+    <section class="section">
+      <div class="sec-head">
+        <div class="sec-kicker"><span>Leveled Up</span><span class="tag">// sharper than last year</span><span class="rule"></span></div>
+        <h2 class="sec-title">Old Favorites, Sharper</h2>
+      </div>
+      <div class="grid">
+
+        <article class="card">
+          <span class="chip up">Upgraded</span>
+          <h3>Standings</h3>
+          <p>An animated race chart with real momentum, a set of League Highlight awards
+             (Overachiever, Draft Steal, Biggest Upset, Mr. Reliable), and forward-looking playoff &amp; title odds.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br><b>Standings</b> in the top nav.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip new">New</span>
+          <h3>Weekly Recap</h3>
+          <p>Once a week, a personal recap story drops on your home screen — the highs, the lows,
+             and where you sit. Your season, narrated.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br>Pops up on <b>My Team</b> once a week.</span></div>
+        </article>
+
+        <article class="card">
+          <span class="chip up">Upgraded</span>
+          <h3>Richer Team Data</h3>
+          <p>Team pages and game cards now carry SP+, FPI, talent, returning production, coaches — and
+             the TV network for each game. Scout before you start.</p>
+          <div class="find"><span class="arw">&#9656;</span><span><span class="lab">Find it</span><br>Any <b>Team</b> page &amp; the game cards.</span></div>
+        </article>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== KICKOFF ===================== -->
+  <footer class="kickoff">
+    <div class="wrap">
+      <div class="eyebrow">Kickoff Is Coming</div>
+      <h2>See You In The<br><span class="hl">Draft Room.</span></h2>
+      <a class="cta" href="https://campusclash.io/draft-room">Enter the Draft Room&nbsp;&nbsp;&#9656;</a>
+    </div>
+  </footer>
+
+</div>
