@@ -14,14 +14,22 @@ const scoringConfigSchema = new mongoose.Schema({
     combineMode: { type: String, enum: ['first', 'sum'] },
     disabled: { type: [String], default: [] },
     // Optional weekly-engagement layer (GitHub #230), per-league opt-in.
-    // Head-to-head win bonus + weekly Captain multiplier. Off by default so
-    // existing leagues are unaffected until a commissioner enables them.
+    // DEPRECATED / legacy: a single league-wide engagement blob. Superseded by
+    // engagementBySeason (below) so a league can run the game modes in one
+    // season without altering another. Kept for rollback + reference; the
+    // resolver no longer reads it.
     engagement: {
         h2hEnabled: { type: Boolean, default: false },
         h2hWinBonus: { type: Number, default: 3 },
         captainEnabled: { type: Boolean, default: false },
         captainMultiplier: { type: Number, default: 2 }
     },
+    // Per-season engagement settings, keyed by season (string year), e.g.
+    // { "2026": { h2hEnabled, h2hWinBonus, captainEnabled, captainMultiplier } }.
+    // A season with no entry is fully OFF — enabling a mode for one season never
+    // affects another, and a rescore of a season without an entry adds no
+    // captain/H2H bonus. Stored as Mixed so seasons can be added freely.
+    engagementBySeason: { type: mongoose.Schema.Types.Mixed, default: {} },
     updatedAt: { type: Date, default: Date.now }
 });
 

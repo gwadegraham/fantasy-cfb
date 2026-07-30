@@ -34,9 +34,11 @@ router.patch('/me/profile', async (req, res) => {
         if (clean.prompted !== undefined) user.profilePrompted = clean.prompted;
 
         if (clean.franchiseName !== undefined) {
+            // Only name the active season — never fall back to a prior season.
+            // Before the league drafts the active year there's no entry to name,
+            // so the update is ignored (the client locks the field to match).
             const year = Number(process.env.YEAR);
-            const season = (user.seasons || []).find(s => Number(s.season) === year)
-                || (user.seasons && user.seasons[user.seasons.length - 1]);
+            const season = (user.seasons || []).find(s => Number(s.season) === year);
             if (season) season.franchiseName = clean.franchiseName;
         }
 

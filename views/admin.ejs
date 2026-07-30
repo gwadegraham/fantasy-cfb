@@ -312,8 +312,9 @@
                     </button>
                 </div>
                 <div class="sub-container" engagement-container style="display: none">
-                    <p class="function-description">Turn on optional game modes for this league — Head-to-Head matchups and a weekly Captain. Off by default; other leagues stay classic. The two are independent, so run either, both, or neither.</p>
+                    <p class="function-description">Turn on optional game modes for this league — Head-to-Head matchups and a weekly Captain. Off by default; other leagues stay classic. The two are independent, so run either, both, or neither. Settings are <strong>per season</strong>: choose a season below — turning a mode on for one season never affects another (or alters a past season on a rescore).</p>
                     <form id="engagement-form" class="draft-config-form">
+                        <div class="draft-field"><label>Season</label><select eng-season></select></div>
                         <div class="draft-field"><label><input type="checkbox" eng-h2h-enabled> Head-to-Head <span class="mode-hint">— weekly matchup vs one rival</span></label></div>
                         <div class="draft-field"><label>Win bonus (pts)</label><input type="number" eng-h2h-bonus min="0" max="20" step="1" value="3"></div>
                         <div class="draft-field"><label><input type="checkbox" eng-captain-enabled> Captain <span class="mode-hint">— double one team each week</span></label></div>

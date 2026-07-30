@@ -1,6 +1,11 @@
 var weekCode;
 var userData;
 var isMobile;
+// The one active season (process.env.YEAR via window.APP_YEAR), set by
+// renderBento. Reused renderers (displayTeams/renderProfileChart/
+// displaySchedule/ensureWeekSelected) read it instead of guessing with
+// seasons.at(-1), so every part of the page keys off the same season.
+var uhActiveYear;
 
 // Escapes HTML special chars before interpolating values into innerHTML.
 function escapeHtml(value) {
@@ -97,135 +102,495 @@ async function getUser() {
 
     response.json().then(async data => {
         userData = data[0];
-        renderHero(data[0]);
-        displayTeams(data[0]);
-        renderProfileChart(data[0]);
-        ensureWeekSelected(data[0]);
-        displaySchedule(data[0]);
-        loadHomeGrades(data[0]);
-        renderRecap(data[0]);
-        renderCaptain(data[0]);
-        renderMatchups(data[0]);
+        renderBento(data[0]);
     });
 }
 
-// Head-to-Head matchups (#230): a spotlight banner in the profile hero for the
-// current/latest matchup, plus an always-visible "Head-to-Head" section with the
-// full week-by-week history. Shown when the league has H2H on (or ?h2h=1 to
-// preview). Public info, like standings.
-async function renderMatchups(user) {
-    const banner = document.getElementById('uh-h2h-banner');
-    const panel = document.getElementById('uh-h2h');
-    if (!banner || !panel || !user || !user.league || !(user.seasons || []).length) return;
+// The active season for the whole page: the user's entry matching the server's
+// current season (window.APP_YEAR = process.env.YEAR), else the latest season on
+// the doc. Every tile keys off this ONE value so they never show different
+// seasons at a flip.
+function uhSeasonFor(user, year) {
+    const seasons = (user && user.seasons) || [];
+    return seasons.find(s => String(s.season) === String(year)) || seasons[seasons.length - 1] || {};
+}
 
-    const played = (user.seasons || []).filter(s => (s.weeklyScore || []).length > 0).sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return;
-    const season = played[0].season;
+// ---------- My Team bento (#230 redesign, feat/my-team-redesign) ----------
+// Renders the tile grid; each tile is a glance that opens a slide-over drawer,
+// all keyed off the one active season (uhSeasonFor).
+async function renderBento(data) {
+    const bento = document.getElementById('uh-bento');
+    if (!bento || !data) return;
+    const activeYear = (window.APP_YEAR && String(window.APP_YEAR))
+        || (data.seasons && data.seasons.length ? String(data.seasons[data.seasons.length - 1].season) : String(new Date().getFullYear()));
+    uhActiveYear = activeYear;   // reused renderers read this (see var decl)
+    const season = uhSeasonFor(data, activeYear);
+    const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
+    document.title = `${franchise || manager} · Campus Clash`;
+    const own = currentUserId() && String(currentUserId()) === String(data._id);
+    const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+    // Preseason / undrafted window: the active season (APP_YEAR) hasn't been
+    // drafted for this manager yet — there's no season entry to key tiles off,
+    // so uhSeasonFor is only giving us a prior-season fallback. Rather than mix
+    // last season's data into a half-empty grid, show a dedicated empty state.
+    const hasActiveSeason = (data.seasons || []).some(s => String(s.season) === String(activeYear));
+    if (!hasActiveSeason) {
+        const prior = (data.seasons || [])
+            .filter(s => (s.weeklyScore || []).length)
+            .sort((a, b) => Number(b.season) - Number(a.season))[0];
+        let lastLine = '';
+        if (prior) {
+            const bt = bestTeam(prior);
+            lastLine = `<div class="uh-preseason-last">Last season · <b>${escapeHtml(prior.season)}</b> · ${prior.cumulativeScore || 0} pts`
+                + (bt && bt.total > 0 ? ` · best <b>${escapeHtml(bt.team.school)}</b> (${bt.total})` : '') + `</div>`;
+        }
+        const ball = window.ccIcon ? window.ccIcon('football', { size: 44 }) : '🏈';
+        bento.innerHTML =
+            `<div class="uh-tile span2 uh-hero">
+                <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
+                <div class="uh-hero-meta">
+                    <div class="uh-hero-name">${escapeHtml(franchise)}</div>
+                    <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
+                    <div class="uh-hero-stats"><span class="uh-preseason-pill">${escapeHtml(activeYear)} preseason</span></div>
+                </div>
+                ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+            </div>`
+            + `<div class="uh-tile span2 uh-preseason">
+                    <span class="uh-preseason-icon">${ball}</span>
+                    <h2 class="uh-preseason-h">The ${escapeHtml(activeYear)} season hasn’t kicked off yet</h2>
+                    <p class="uh-preseason-p">Your roster, matchups, and weekly recaps land here once your league’s draft is complete.</p>
+                    ${lastLine}
+                </div>`;
+        renderAvatar(document.getElementById('uh-hero-av'), data);
+        if (own) setupEditModal(data, season, false);   // no season yet → name locked
+        return;
+    }
+
+    const tile = (k, label, glance, span, affordance) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">${affordance || '›'}</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
+
+    bento.innerHTML =
+        `<div class="uh-tile span2 uh-hero">
+            <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
+            <div class="uh-hero-meta">
+                <div class="uh-hero-name">${escapeHtml(franchise)}</div>
+                <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
+                <div class="uh-hero-stats" id="uh-hero-stats"></div>
+            </div>
+            ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+        </div>`
+        + tile('matchup', 'This week · matchup', 'Your current H2H matchup', 2, 'Lineups ›')
+        + tile('roster', 'Roster · top performers', 'Your 10 teams', 2, 'All 10 teams ›')
+        + tile('captain', 'Captain', 'Double a team each week', 1)
+        + tile('recap', 'Your week', 'Latest recap', 1)
+        + tile('schedule', 'Schedule', 'Up next', 1, 'Full schedule ›')
+        + tile('games', 'Games', 'This week’s games', 1, 'This week ›')
+        + tile('trajectory', 'Trajectory', 'Season points', 1)
+        + tile('draft', 'Draft grade', 'Preseason projection', 1);
+
+    renderAvatar(document.getElementById('uh-hero-av'), data);
+    const statsEl = document.getElementById('uh-hero-stats');
+    let sh = '';
+    // Rank only once the active season has scores (preseason ties everyone at 0).
+    if ((season.weeklyScore || []).length) {
+        try { const rank = await computeRank(data); if (rank) sh += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`); } catch (e) { /* rank optional */ }
+    }
+    sh += statTile(String(season.cumulativeScore || 0), 'Total points');
+    const bt = bestTeam(season);
+    if (bt && bt.total > 0) sh += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    statsEl.innerHTML = sh;
+
+    if (own) setupEditModal(data, season, true);
+
+    bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
+    setupDrawer();
+
+    // Hydrate each tile's glance + drawer from the one active season.
+    hydrateH2H(data, activeYear);
+    hydrateCaptain(data, activeYear);
+    hydrateRecap(data, activeYear);
+    hydrateDraft(data, activeYear);
+    hydrateRoster(data, activeYear);
+    hydrateTrajectory(data, activeYear);
+    hydrateGames(data, activeYear);
+}
+
+// Roster → Roster tile. Glance shows your top performer; drawer lists all teams
+// as cards (points + share bar) then the full week-by-week grid (reused
+// displayTeams). Sums per-team points from this season's weekly scoreByTeam.
+function hydrateRoster(user, activeYear) {
+    const tile = document.getElementById('uh-tile-roster');
+    const season = uhSeasonFor(user, activeYear);
+    const teams = season.teams || [];
+    if (!teams.length) { if (tile) tile.hidden = true; return; }
+
+    const totalById = {};
+    (season.weeklyScore || []).forEach(e => (e.scoreByTeam || []).forEach(st => {
+        totalById[st.teamId] = (totalById[st.teamId] || 0) + (st.score || 0);
+    }));
+    const cards = teams.map(t => ({ t, pts: Math.round((totalById[t.id] || 0) * 10) / 10 })).sort((a, b) => b.pts - a.pts);
+    const top = cards[0];
+
+    const g = document.getElementById('uh-glance-roster');
+    if (g) {
+        g.innerHTML = top && top.pts > 0
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${c.t.logos.at(-1)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            : 'Your 10 teams';
+    }
+
+    uhDrawer.roster = (body) => {
+        const max = (cards[0] && cards[0].pts) || 1;
+        const list = cards.map(c => `<a class="uh-rc" href="/team?team=${c.t.id}">
+            <img src="${c.t.logos.at(-1)}" alt="">
+            <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
+            <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
+        body.innerHTML = `<div class="uh-seg">
+                <button type="button" class="uh-seg-btn active" data-view="cards">Sorted</button>
+                <button type="button" class="uh-seg-btn" data-view="grid">Week by week</button>
+            </div>
+            <div class="uh-roster-cards" data-view-panel="cards">${list}</div>
+            <div data-view-panel="grid" hidden><div class="table-wrapper"><table class="fl-table"><thead user-table-head></thead><tbody user-table-body></tbody></table></div></div>`;
+        displayTeams(user);   // fills the grid (hidden until toggled)
+        const segs = body.querySelectorAll('.uh-seg-btn');
+        segs.forEach(b => b.addEventListener('click', () => {
+            segs.forEach(x => x.classList.toggle('active', x === b));
+            const v = b.getAttribute('data-view');
+            body.querySelectorAll('[data-view-panel]').forEach(p => { p.hidden = p.getAttribute('data-view-panel') !== v; });
+        }));
+    };
+}
+
+// Trajectory → Trajectory tile. Glance shows total points; drawer hosts the
+// cumulative-points line chart (reused renderProfileChart).
+function hydrateTrajectory(user, activeYear) {
+    const tile = document.getElementById('uh-tile-trajectory');
+    const season = uhSeasonFor(user, activeYear);
+    if (!(season.weeklyScore || []).length) { if (tile) tile.hidden = true; return; }
+
+    const g = document.getElementById('uh-glance-trajectory');
+    if (g) {
+        let cum = 0; const series = [];
+        (typeof weeklyColumns === 'function' ? weeklyColumns(season) : []).forEach(c => { if (!c.entry) return; cum += c.entry.score || 0; series.push(cum); });
+        g.innerHTML = `<span class="uh-traj-g"><b class="uh-traj-num num">${season.cumulativeScore || 0}</b><span class="uh-glance-sub">total points</span></span>${series.length >= 2 ? `<span class="uh-traj-spark">${uhSpark(series, 260, 34, '#5BD08D')}</span>` : ''}`;
+    }
+
+    uhDrawer.trajectory = async (body) => {
+        body.innerHTML = `<div class="uh-drawer-stats" id="uh-traj-stats"></div>
+            <div class="profile-chart-section" profile-chart-section hidden><div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div></div>
+            <p class="uh-stub" id="uh-traj-empty" hidden>Not enough scored weeks yet to chart a trend.</p>`;
+        renderProfileChart(user);
+        const section = body.querySelector('[profile-chart-section]');
+        if (section && section.hidden) { const e = body.querySelector('#uh-traj-empty'); if (e) e.hidden = false; }
+
+        // Summary row: total points, best single week, finish + gap to the
+        // rest of the league (fetched from the same league standings the hero
+        // rank uses, so it stays scoped to the active season).
+        const statsEl = body.querySelector('#uh-traj-stats');
+        if (!statsEl) return;
+        let bestWk = 0;
+        (season.weeklyScore || []).forEach(w => { if ((w.score || 0) > bestWk) bestWk = w.score || 0; });
+        let html = statTile(String(season.cumulativeScore || 0), 'Total points');
+        if (bestWk > 0) html += statTile(String(bestWk), 'Best week');
+        try {
+            const res = await fetch(`/users/league/${encodeURIComponent(user.league)}`, { headers: { Accept: 'application/json' } });
+            if (res.ok) {
+                const ranked = (await res.json())
+                    .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
+                    .sort((a, b) => b.score - a.score);
+                const idx = ranked.findIndex(r => r.id === user._id);
+                if (idx >= 0) {
+                    html += statTile(`${escapeHtml(ordinal(idx + 1))} of ${ranked.length}`, 'Finish');
+                    if (idx === 0 && ranked[1]) html += statTile(`+${ranked[0].score - ranked[1].score}`, 'Lead over 2nd');
+                    else if (idx > 0) html += statTile(`−${ranked[0].score - ranked[idx].score}`, 'Behind leader');
+                }
+            }
+        } catch (e) { /* stats degrade to points-only */ }
+        statsEl.innerHTML = html;
+    };
+}
+
+// Games → Games tile. Glance names the selected week; drawer hosts a week picker
+// + this week's game cards for your rostered teams (reused displaySchedule).
+async function hydrateGames(user, activeYear) {
+    const tile = document.getElementById('uh-tile-games');
+    const season = uhSeasonFor(user, activeYear);
+    if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
+    // weekCode isn't season-scoped — reset it when the active season changes so a
+    // new season doesn't inherit last season's selected week (e.g. Postseason).
+    if (window.localStorage.getItem('weekSeason') !== String(activeYear)) {
+        window.localStorage.removeItem('weekCode');
+        window.localStorage.removeItem('week');
+        window.localStorage.setItem('weekSeason', String(activeYear));
+    }
+    ensureWeekSelected(user);
+
+    // Resting state: only the logos of your teams that actually play this week.
+    const g = document.getElementById('uh-glance-games');
+    const label = window.localStorage.getItem('week') || 'This week';
+    if (g) g.innerHTML = `<span class="uh-glance-sub uh-games-wk">${escapeHtml(label)}</span>`;
+    if (g) {
+        try {
+            let week = (window.localStorage.getItem('weekCode') || 'week-1').substring(5);
+            let seasonType = 'regular';
+            if (week === '17') { seasonType = 'postseason'; week = 1; }
+            const per = await Promise.all((season.teams || []).map(t =>
+                getGame(seasonType, week, t).then(gs => ({ t, plays: !!(gs && gs.length) })).catch(() => ({ t, plays: false }))));
+            const playing = per.filter(x => x.plays).map(x => x.t);
+            if (playing.length) {
+                const logos = playing.map(t => `<img src="${t.logos.at(-1)}" alt="">`).join('');
+                g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of your teams · ${escapeHtml(label)}</span>`;
+            } else {
+                g.innerHTML = `<span class="uh-glance-sub">No games for your teams · ${escapeHtml(label)}</span>`;
+            }
+        } catch (e) { /* keep the week label */ }
+    }
+
+    uhDrawer.games = (body) => {
+        const weeks = [];
+        for (let w = 1; w <= 16; w++) weeks.push(['week-' + w, 'Week ' + w]);
+        weeks.push(['week-17', 'Postseason']);
+        const cur = window.localStorage.getItem('weekCode') || 'week-1';
+        body.innerHTML = `<label class="uh-games-pick"><select uh-games-week aria-label="Week">${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+            <div class="football-loader" style="display:none"><div class="football-icon">🏈</div><p class="loading-text">Scouting for games...</p></div>
+            <div class="schedule-grid" schedule-body><div id="no-games-container"></div></div>`;
+        const sel = body.querySelector('[uh-games-week]');
+        const run = () => {
+            const loader = body.querySelector('.football-loader'); if (loader) loader.style.display = 'flex';
+            const sb = body.querySelector('[schedule-body]'); if (sb) sb.style.display = 'none';
+            displaySchedule(user);
+        };
+        sel.addEventListener('change', () => {
+            const label = sel.options[sel.selectedIndex].text;
+            window.localStorage.setItem('weekCode', sel.value);
+            window.localStorage.setItem('week', label);
+            const wk = g && g.querySelector('.uh-games-wk'); if (wk) wk.textContent = label;
+            run();
+        });
+        run();
+    };
+}
+
+var UH_DRAWERS = {
+    matchup: 'This week · matchup', roster: 'Roster', captain: 'Captain',
+    recap: 'Your week', schedule: 'Schedule', trajectory: 'Trajectory',
+    draft: 'Draft grade', games: 'Games'
+};
+// key -> function(bodyEl) that fills the drawer body. Populated by the hydrators.
+var uhDrawer = {};
+
+// Compact win-probability bar for a tile glance (you% on the left).
+function uhMiniBar(youPct) {
+    youPct = Math.round(youPct);
+    const opp = 100 - youPct;
+    const tone = (a, b) => a > b ? 'fav' : a < b ? 'dog' : 'even';
+    return `<span class="uh-mug-bar"><span class="uh-mug-pct ${tone(youPct, opp)}">${youPct}%</span><span class="uh-mug-track"><i class="${tone(youPct, opp)}" style="width:${youPct}%"></i><i class="r ${tone(opp, youPct)}" style="width:${opp}%"></i></span><span class="uh-mug-pct ${tone(opp, youPct)}">${opp}%</span></span>`;
+}
+
+// Tiny inline sparkline (cumulative-points trend) for the Trajectory glance.
+function uhSpark(pts, w, h, color) {
+    if (!pts || pts.length < 2) return '';
+    const max = Math.max.apply(null, pts), min = Math.min.apply(null, pts), rng = (max - min) || 1, step = w / (pts.length - 1);
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + (i * step).toFixed(1) + ' ' + (h - ((p - min) / rng) * h).toFixed(1)).join(' ');
+    const ex = w.toFixed(1), ey = (h - ((pts[pts.length - 1] - min) / rng) * h).toFixed(1);
+    return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${ex}" cy="${ey}" r="2.6" fill="${color}"/></svg>`;
+}
+// The tile that opened the drawer, so focus can return to it on close.
+var uhDrawerOpener = null;
+function openDrawer(key) {
+    const title = UH_DRAWERS[key];
+    if (title == null) return;
+    uhDrawerOpener = document.getElementById('uh-tile-' + key) || document.activeElement;
+    document.getElementById('uh-drawer-title').textContent = title;
+    const body = document.getElementById('uh-drawer-body');
+    if (uhDrawer[key]) { body.innerHTML = ''; uhDrawer[key](body); }
+    else body.innerHTML = '<p class="uh-stub">This opens the “' + title + '” detail — wired to real data in the next step.</p>';
+    const d = document.getElementById('uh-drawer');
+    d.hidden = false;
+    document.getElementById('uh-scrim').classList.add('open');
+    document.body.classList.add('uh-drawer-open');   // lock background scroll
+    requestAnimationFrame(() => d.classList.add('open'));
+    document.getElementById('uh-drawer-close').focus();
+}
+function closeDrawer() {
+    const d = document.getElementById('uh-drawer');
+    if (!d || d.hidden) return;
+    d.classList.remove('open');
+    document.getElementById('uh-scrim').classList.remove('open');
+    document.body.classList.remove('uh-drawer-open');
+    setTimeout(() => { d.hidden = true; }, 300);
+    // Return focus to the tile that opened it (accessibility).
+    if (uhDrawerOpener && typeof uhDrawerOpener.focus === 'function') uhDrawerOpener.focus();
+    uhDrawerOpener = null;
+}
+function setupDrawer() {
+    const scrim = document.getElementById('uh-scrim'), close = document.getElementById('uh-drawer-close');
+    if (!scrim || scrim.dataset.wired) return;
+    scrim.dataset.wired = '1';
+    scrim.addEventListener('click', closeDrawer);
+    close.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+}
+
+// Head-to-Head (#230) → Matchup + Schedule tiles. Fetches the league's H2H
+// payload once, fills both tiles' glances, and registers their drawers:
+//  - Matchup: this week's (or latest) matchup, full lineups + win-prob + captain.
+//  - Schedule: up-next (in-season) + the full week-by-week schedule; tap a week
+//    to expand its detail.
+// Both tiles hide when the league doesn't have H2H on (and ?h2h=1 isn't set).
+async function hydrateH2H(user, activeYear) {
+    const mTile = document.getElementById('uh-tile-matchup');
+    const sTile = document.getElementById('uh-tile-schedule');
+    const hide = () => { if (mTile) mTile.hidden = true; if (sTile) sTile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length || !window.ccH2H) return hide();
+
+    const season = activeYear;
 
     let enabled = false;
     try {
-        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league) + '?season=' + encodeURIComponent(season), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.h2hEnabled); }
     } catch (e) { /* preview gate below */ }
-    if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return;
+    if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return hide();
 
     let data;
     try {
         data = await fetch(`/standings/h2h/${encodeURIComponent(user.league)}/${encodeURIComponent(season)}`, { headers: { Accept: 'application/json' } }).then(r => r.json());
-    } catch (e) { return; }
-    if (!data || !(data.schedule || []).length || !window.ccH2H) return;
+    } catch (e) { return hide(); }
+    if (!data || !(data.schedule || []).length) return hide();
 
     const byId = {};
     (data.managers || []).forEach(m => { byId[m.userId] = m; });
     const uid = String(user._id);
     const mine = [];
     (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, g }); });
-    if (!mine.length) return;
+    if (!mine.length) return hide();
 
     const me = byId[uid];
-    const swords = window.ccIcon ? window.ccIcon('swords', { size: 15 }) : '';
-    // Featured matchup = the current/live week in-season, else the most recent.
-    // It headlines the hero banner (collapsed, tap to expand); the rest make up
-    // the history section below (newest first). One shared card, you on the left.
-    const featuredWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek))
-        ? data.currentWeek
-        : mine[mine.length - 1].week;
+
+    // H2H record into the hero, right after Total points.
+    const statsEl = document.getElementById('uh-hero-stats');
+    if (statsEl && me && me.record && !statsEl.querySelector('.uh-hero-rec')) {
+        const rec = document.createElement('div');
+        rec.className = 'stat uh-hero-rec';
+        rec.innerHTML = `<span class="stat-value num">${escapeHtml(me.record)}</span><span class="stat-label">H2H record</span>`;
+        const pts = [...statsEl.querySelectorAll('.stat')].find(s => /total points/i.test(s.textContent));
+        if (pts && pts.nextSibling) statsEl.insertBefore(rec, pts.nextSibling);
+        else statsEl.appendChild(rec);
+    }
+
+    const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
+    const featuredWk = liveWk != null ? liveWk : mine[mine.length - 1].week;
     const featured = mine.find(x => x.week === featuredWk);
-    const rest = mine.filter(x => x.week !== featuredWk).sort((a, b) => b.week - a.week);
+    const rest = mine.slice().sort((a, b) => b.week - a.week);
     const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, week: x.week, open });
-    const fLabel = featured && featured.final === false ? 'This week' : 'Latest matchup';
+    // My-perspective summary of a matchup (for glances).
+    const summary = (x) => {
+        const g = x.g, iAmA = g.aId === uid;
+        const meScore = iAmA ? g.aScore : g.bScore, opScore = iAmA ? g.bScore : g.aScore;
+        const opp = byId[iAmA ? g.bId : g.aId];
+        const nm = (opp && (opp.franchise || opp.name)) || 'Opponent';
+        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : 'LIVE';
+        return { meScore, opScore, nm, res };
+    };
 
-    // Hero spotlight banner: the featured matchup + your record.
-    banner.innerHTML = `<div class="uh-h2h-blabel">${swords}<span>${fLabel}</span>${me ? `<span class="uh-h2h-brec">${escapeHtml(me.record)}</span>` : ''}</div>${featured ? cardOf(featured, false) : ''}`;
-    banner.hidden = false;
-    window.ccH2H.wire(banner);
+    // Matchup tile — this week / latest. Rich glance: avatars, scores, win bar.
+    if (mTile) mTile.hidden = false;
+    const mg = document.getElementById('uh-glance-matchup');
+    if (mg && featured) {
+        const g = featured.g, iAmA = g.aId === uid;
+        const s = summary(featured);
+        const oppM = byId[iAmA ? g.bId : g.aId];
+        const av = (m) => (window.ccH2H.avatar ? window.ccH2H.avatar(m) : '');
+        let youPct = null;
+        if (featured.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
+        else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
+        const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
+        mg.innerHTML = `<span class="uh-mug">
+                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">You</span><span class="uh-mug-sc num${wc}">${s.meScore}</span></span>
+                <span class="uh-mug-vs">${featured.final ? (s.res === 'T' ? 'T' : 'vs') : 'LIVE'}</span>
+                <span class="uh-mug-side r"><span class="uh-mug-sc num${oc}">${s.opScore}</span><span class="uh-mug-nm">${escapeHtml(s.nm)}</span>${av(oppM)}</span>
+            </span>${youPct == null ? '' : uhMiniBar(youPct)}`;
+    }
+    uhDrawer.matchup = (body) => {
+        const lead = `${featured.final === false ? 'This week' : 'Latest'} · Week ${featured.week}${me ? ` · ${escapeHtml(me.record)}` : ''}`;
+        body.innerHTML = `<div class="uh-drawer-lead">${lead}</div>` + cardOf(featured, true);
+        window.ccH2H.wire(body);
+    };
 
-    // Always-visible history section (no chip).
-    panel.innerHTML = `
-        <div class="recap-head"><div class="header-title">Head-to-Head · ${season}</div></div>
-        ${rest.length ? `<div class="uh-h2h-log">${rest.map(x => cardOf(x, false)).join('')}</div>` : '<p class="uh-h2h-empty">No other matchups yet this season.</p>'}`;
-    panel.classList.add('is-open');
-    window.ccH2H.wire(panel);
+    // Schedule tile — up next (in-season) + full schedule.
+    if (sTile) sTile.hidden = false;
+    const sg = document.getElementById('uh-glance-schedule');
+    if (sg) {
+        if (liveWk != null) {
+            const s = summary(featured), fg = featured.g, iAmA = fg.aId === uid;
+            const pct = fg.winP ? (iAmA ? fg.winP.a : fg.winP.b) : null;
+            sg.innerHTML = `<span class="uh-sched-lbl">Up next</span><span class="uh-sched-row"><span class="uh-sched-opp">vs ${escapeHtml(s.nm)}</span>${pct != null ? `<span class="uh-sched-pct">${pct}%</span>` : ''}</span>`;
+        } else sg.innerHTML = `<span class="uh-mu-opp">Full schedule</span>${me ? ` <span class="uh-glance-sub">${escapeHtml(me.record)}</span>` : ''}`;
+    }
+    uhDrawer.schedule = (body) => {
+        const listWeeks = liveWk != null ? rest.filter(x => x.week !== featuredWk) : rest;
+        const lead = liveWk != null ? `<div class="uh-drawer-lead">This week</div>` + cardOf(featured, true) : '';
+        body.innerHTML = lead + `<div class="uh-drawer-cap">Full schedule · tap a week</div><div class="uh-h2h-log">${listWeeks.map(x => cardOf(x, false)).join('')}</div>`;
+        window.ccH2H.wire(body);
+    };
 }
 
 // Captain picker (#230): the profile owner sets which rostered team to double
 // for the current regular-season week. Behind a hero chip that expands a team
 // grid. Only shown for your own profile, and only when the league has opted in
 // (or ?captain=1 to preview). Weeks already scored are locked.
-async function renderCaptain(user) {
-    const chip = document.querySelector('[captain-chip]');
-    const panel = document.getElementById('uh-captain');
-    if (!chip || !panel || !user || !user.league || !(user.seasons || []).length) return;
-    if (String(currentUserId()) !== String(user._id)) return;   // own profile only
+// Captain (#230) → Captain tile. Own profile only, and only when the league has
+// Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
+// picker (set/clear a 2× team for the current open week).
+async function hydrateCaptain(user, activeYear) {
+    const tile = document.getElementById('uh-tile-captain');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length) return hide();
+    if (String(currentUserId()) !== String(user._id)) return hide();   // own profile only
 
     const preview = new URLSearchParams(location.search).get('captain') === '1';
     let enabled = false;
     try {
-        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league) + '?season=' + encodeURIComponent(activeYear), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.captainEnabled); }
     } catch (e) { /* fall through to preview gate */ }
-    if (!enabled && !preview) return;
+    if (!enabled && !preview) return hide();
 
-    // Captain is set for the CURRENT season's first unplayed week. In the
-    // offseason (no current-season roster, or every week already scored) there's
-    // nothing to set, so the picker stays hidden — except in preview mode, which
-    // falls back to the latest season that still has an open week.
+    // Captain is set for the active season's next unplayed regular week. The
+    // active season is the server's authoritative YEAR (window.APP_YEAR), the
+    // same season every other tile keys off. No roster or no open week
+    // (finished season) → nothing to set → hide.
     const firstOpenWeek = (s) => {
         const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
         for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
         return null;
     };
-    const year = new Date().getFullYear();
-    let season = (user.seasons || []).find(s => Number(s.season) === year && (s.teams || []).length);
-    let week = season ? firstOpenWeek(season) : null;
-    if ((!season || week == null) && preview) {
-        const cand = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
-        if (cand) { season = cand; week = firstOpenWeek(cand); }
-    }
-    if (!season || week == null) return;
+    const season = uhSeasonFor(user, activeYear);
+    const week = (season.teams || []).length ? firstOpenWeek(season) : null;
+    if (!(season.teams || []).length || week == null) return hide();
 
     let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
-
     const teamById = {};
     (season.teams || []).forEach(t => { teamById[t.id] = t; });
-    const teaser = document.querySelector('[captain-chip-teaser]');
-    const setTeaser = () => {
+    if (tile) tile.hidden = false;
+
+    const g = document.getElementById('uh-glance-captain');
+    const setGlance = () => {
+        if (!g) return;
         const t = pick != null ? teamById[pick] : null;
-        teaser.innerHTML = t
-            ? `<img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)}`
+        const lead = t
+            ? `<span class="uh-cap-glance"><img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">Set for Wk ${week}</span>`;
+        g.innerHTML = lead + `<span class="uh-cap-sub">Doubles this week’s points</span>`;
     };
-    const paint = () => {
-        panel.innerHTML = `
-            <div class="recap-head"><div class="header-title">Captain · Week ${week}</div></div>
-            <div class="recap-card">
-                <p class="captain-note">Pick one team to score <b>2×</b> this week. Locks at kickoff.</p>
-                <div class="captain-grid">${(season.teams || []).map(t => `
-                    <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
-                        <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
-                    </button>`).join('')}</div>
-            </div>`;
-        panel.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
+    const paint = (container) => {
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${week}. Tap the current pick to clear. Locks at kickoff.</p>
+            <div class="captain-grid">${(season.teams || []).map(t => `
+                <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
+                    <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
+                </button>`).join('')}</div>`;
+        container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
             const teamId = Number(btn.getAttribute('data-team'));
             const next = Number(pick) === teamId ? null : teamId;   // click current to clear
             try {
@@ -236,112 +601,77 @@ async function renderCaptain(user) {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Could not set captain');
                 pick = next;
-                setTeaser(); paint();
+                setGlance(); paint(container);
                 if (window.ccToast) ccToast.success(next ? `Captain set: ${teamById[next].school}` : 'Captain cleared');
             } catch (e) { if (window.ccToast) ccToast.error(e.message); }
         }));
     };
 
-    setTeaser();
-    paint();
-    chip.hidden = false;
-    if (!chip.dataset.wired) {
-        chip.dataset.wired = '1';
-        chip.addEventListener('click', () => {
-            const open = panel.classList.toggle('is-open');
-            chip.setAttribute('aria-expanded', String(open));
-        });
-    }
+    setGlance();
+    uhDrawer.captain = (body) => paint(body);
 }
 
-// Weekly Recap on the profile: a "here's your week" card tucked behind a hero
-// pill (like the Draft grade chip). Rendering + the app-wide weekly popup live
-// in public/weekly-recap.js (window.ccRecap); here we just fetch, mount the
-// collapsed card, and wire the pill to expand it.
-async function renderRecap(user) {
-    const el = document.getElementById('uh-recap');
-    const chip = document.querySelector('[recap-chip]');
-    if (!el || !chip || !window.ccRecap || !user || !user.league || !(user.seasons || []).length) return;
-
-    // Recap the latest season that actually has weekly scores, so the pill is
-    // useful in the offseason too (shows last season's finish).
-    const played = (user.seasons || [])
-        .filter(s => (s.weeklyScore || []).length > 0)
-        .sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return;
+// Weekly Recap (#212) → Your Week tile. Glance shows the latest week's narrative;
+// drawer mounts the full "Your Week" card (week selector + story) via ccRecap.
+async function hydrateRecap(user, activeYear) {
+    const tile = document.getElementById('uh-tile-recap');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!window.ccRecap || !user || !user.league || !(user.seasons || []).length) return hide();
 
     try {
-        const data = await window.ccRecap.fetchRecap(user.league, played[0].season, user._id);
-        if (!data || !(data.recaps || []).length) return;
-        const latest = window.ccRecap.mountInline(el, data);
+        const data = await window.ccRecap.fetchRecap(user.league, activeYear, user._id);
+        if (!data || !(data.recaps || []).length) return hide();
+        if (tile) tile.hidden = false;
 
-        // Teaser on the pill: latest week + rank + movement arrow.
-        const teaser = document.querySelector('[recap-chip-teaser]');
-        if (teaser && latest) {
-            const place = latest.rank != null ? escapeHtml(ordinal(latest.rank)) : '';
-            teaser.innerHTML = `${escapeHtml(latest.label)} · ${place} ${window.ccRecap.movement(latest.rankDelta)}`;
+        const latest = data.recaps[data.recaps.length - 1];
+        const g = document.getElementById('uh-glance-recap');
+        if (g && latest) {
+            const place = latest.rank != null ? ` · ${escapeHtml(ordinal(latest.rank))} ${window.ccRecap.movement(latest.rankDelta)}` : '';
+            g.innerHTML = latest.narrative ? escapeHtml(latest.narrative) : `${escapeHtml(latest.label)}${place}`;
         }
-        chip.hidden = false;
-        if (!chip.dataset.wired) {
-            chip.dataset.wired = '1';
-            chip.addEventListener('click', () => {
-                const open = el.classList.toggle('is-open');
-                chip.setAttribute('aria-expanded', String(open));
-            });
-        }
+        uhDrawer.recap = (body) => { window.ccRecap.mountInline(body, data); };
     } catch (e) {
         console.error('weekly recap failed:', e);
+        hide();
     }
 }
 
-// Draft grade on the profile: just THIS manager's own most-recent-season card,
-// surfaced as a color-coded chip in the hero that expands the detail on demand.
-// Preseason blend of roster strength + draft value (see modules/draft-grades.js).
-async function loadHomeGrades(user) {
-    const el = document.getElementById('uh-grades');
-    const chip = document.querySelector('[profile-grade-chip]');
-    if (!el || !chip || !user || !user.league || !(user.seasons || []).length) return;
-    const season = user.seasons.at(-1).season;
+// Draft grade → Draft grade tile. Glance shows the color-coded letter; drawer
+// renders this manager's full draft-grade card (reused from draftGrades.js).
+async function hydrateDraft(user, activeYear) {
+    const tile = document.getElementById('uh-tile-draft');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length) return hide();
+    const season = activeYear;
     try {
         const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
             headers: { 'Accept': 'application/json' }
         });
         const data = await res.json();
-        // Show only the profile owner's card; hide the chip entirely if this
-        // manager didn't draft that season.
         const mine = (data.managers || []).find(m => String(m.userId) === String(user._id));
-        if (!mine) return;   // chip stays hidden
+        if (!mine) return hide();   // didn't draft that season
+        if (tile) tile.hidden = false;
 
         const tier = (mine.grade || '').charAt(0).toLowerCase();
-        chip.classList.add('gg-tier-' + tier);
-        document.querySelector('[profile-grade-letter]').textContent = mine.grade;
-        chip.hidden = false;
+        const g = document.getElementById('uh-glance-draft');
+        if (g) g.innerHTML = `<span class="uh-draft-g"><span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-draft-stats">`
+            + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>proj pts</span>`
+            + `<span class="uh-ds"><b class="num">${mine.projWins}</b>proj wins</span>`
+            + `<span class="uh-ds"><b class="num">${mine.cfpCount}</b>CFP teams</span>`
+            + `</span></span>`;
 
-        // "you" tag keys off the logged-in viewer, not the profile owner, so it
-        // only appears when you're looking at your own profile.
-        let me;
-        try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }
-        me = me || window.localStorage.getItem('userId') || user._id;
-        if (typeof renderDraftGradeCard === 'function') {
-            renderDraftGradeCard(el, mine, {
-                currentUserId: me,
-                note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
-            });
-        }
-        // Reveal the panel but keep it collapsed via CSS max-height, so the
-        // first expand animates (display:none can't transition).
-        el.hidden = false;
-
-        // Chip toggles the detail panel (collapsed by default).
-        if (!chip.dataset.wired) {
-            chip.dataset.wired = '1';
-            chip.addEventListener('click', () => {
-                const open = el.classList.toggle('is-open');
-                chip.setAttribute('aria-expanded', String(open));
-            });
-        }
+        uhDrawer.draft = (body) => {
+            if (typeof renderDraftGradeCard === 'function') {
+                // No currentUserId → no "you" tag / red highlight (it's always
+                // your own grade on My Team).
+                renderDraftGradeCard(body, mine, {
+                    note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+                });
+            }
+        };
     } catch (e) {
-        console.error('home grades failed:', e);
+        console.error('draft grade failed:', e);
+        hide();
     }
 }
 
@@ -350,7 +680,7 @@ async function loadHomeGrades(user) {
 // displaySchedule never reads a null weekCode) on a fresh visit.
 function ensureWeekSelected(data) {
     if (window.localStorage.getItem('weekCode') && window.localStorage.getItem('week')) return;
-    const weekly = (data.seasons.at(-1) || {}).weeklyScore || [];
+    const weekly = uhSeasonFor(data, uhActiveYear).weeklyScore || [];
     let maxWeek = 0, hasPost = false;
     weekly.forEach(w => {
         if (w.season === 'postseason' || w.week > 16) hasPost = true;
@@ -447,40 +777,31 @@ function currentUserId() {
     catch (e) { return window.localStorage.getItem('userId'); }
 }
 
-async function renderHero(data) {
-    const season = data.seasons.at(-1) || {};
+// Refresh the bento hero tile's identity after a profile edit (name/avatar),
+// without re-fetching/re-rendering the whole grid.
+function refreshHeroIdentity(data, season) {
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
-    const franchise = season.franchiseName;
-
-    document.querySelector('[profile-franchise]').textContent = franchise || `${data.firstName || 'Unnamed'}'s Team`;
-    document.querySelector('[profile-manager]').textContent = franchise ? `Managed by ${manager}` : manager;
+    const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
+    const av = document.getElementById('uh-hero-av');
+    if (av) renderAvatar(av, data);
+    const nameEl = document.querySelector('.uh-hero-name');
+    if (nameEl) nameEl.textContent = franchise;
+    const subEl = document.querySelector('.uh-hero-sub');
+    if (subEl) subEl.textContent = franchise && season.franchiseName ? `Managed by ${manager}` : manager;
     document.title = `${franchise || manager} · Campus Clash`;
-    renderAvatar(document.querySelector('[profile-avatar]'), data);
-
-    const statsEl = document.querySelector('[profile-stats]');
-    let html = '';
-    const rank = await computeRank(data);
-    if (rank) html += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`);
-    html += statTile(String(season.cumulativeScore || 0), 'Total points');
-    const bt = bestTeam(season);
-    if (bt && bt.total > 0) {
-        html += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
-    }
-    statsEl.innerHTML = html;
-
-    // Edit is only offered on the viewer's own profile (the endpoint enforces
-    // this too, from the session).
-    if (currentUserId() && String(currentUserId()) === String(data._id)) {
-        setupEditModal(data, season);
-    }
 }
 
 // ---------- Edit modal (franchise name + avatar upload) ----------
 
-function setupEditModal(data, season) {
+function setupEditModal(data, season, franchiseEditable) {
+    // Franchise name is per-season — until the active season exists on the doc
+    // (i.e. the league has drafted), there's nothing to name, so the field is
+    // locked and only the avatar can be changed.
+    franchiseEditable = franchiseEditable !== false;
     const btn = document.querySelector('[edit-profile-btn]');
     const modal = document.querySelector('[profile-modal]');
     const nameInput = document.querySelector('[profile-name-input]');
+    const nameNote = document.querySelector('[profile-name-note]');
     const modalAvatar = document.querySelector('[profile-modal-avatar]');
     const fileInput = document.querySelector('[profile-file-input]');
     const uploadBtn = document.querySelector('[profile-upload-btn]');
@@ -500,7 +821,16 @@ function setupEditModal(data, season) {
 
     function open() {
         pendingAvatar = undefined;
-        nameInput.value = season.franchiseName || '';
+        if (franchiseEditable) {
+            nameInput.value = season.franchiseName || '';
+            nameInput.disabled = false;
+            nameInput.placeholder = 'Name your team';
+        } else {
+            nameInput.value = '';
+            nameInput.disabled = true;
+            nameInput.placeholder = 'Available after the draft';
+        }
+        if (nameNote) { nameNote.textContent = franchiseEditable ? '' : 'You can name your team once your league drafts this season.'; nameNote.hidden = franchiseEditable; }
         renderAvatar(modalAvatar, data);
         showError('');
         // Set the upload control's state every open so a missing Cloudinary
@@ -548,7 +878,8 @@ function setupEditModal(data, season) {
     saveBtn.addEventListener('click', async () => {
         showError('');
         saveBtn.disabled = true;
-        const body = { franchiseName: nameInput.value };
+        const body = {};
+        if (franchiseEditable) body.franchiseName = nameInput.value;
         if (pendingAvatar !== undefined) body.avatarUrl = pendingAvatar;
         try {
             const res = await fetch('/users/me/profile', {
@@ -559,8 +890,8 @@ function setupEditModal(data, season) {
             const out = await res.json();
             if (!res.ok) throw new Error(out.message || 'Save failed');
             data.avatarUrl = out.avatarUrl;
-            season.franchiseName = out.franchiseName;
-            renderHero(data);
+            if (franchiseEditable) season.franchiseName = out.franchiseName;
+            refreshHeroIdentity(data, season);
             close();
         } catch (e) {
             showError(e.message || 'Save failed.');
@@ -613,7 +944,7 @@ function columnTeamScore(entry, teamSchool) {
 function displayTeams(data) {
     const head = document.querySelector('[user-table-head]');
     const body = document.querySelector('[user-table-body]');
-    const season = data.seasons.at(-1) || {};
+    const season = uhSeasonFor(data, uhActiveYear);
     const teams = season.teams || [];
     const columns = weeklyColumns(season);
 
@@ -674,7 +1005,7 @@ function renderProfileChart(data) {
     const canvas = document.getElementById('profile-chart');
     if (!section || !canvas || typeof Chart === 'undefined') return;
 
-    const season = data.seasons.at(-1) || {};
+    const season = uhSeasonFor(data, uhActiveYear);
     const cols = weeklyColumns(season);
     let cum = 0;
     const labels = [], points = [];
@@ -927,7 +1258,7 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
     // A rostered team's points for this game -> a green badge cell, or '' at 0.
     const badgeCell = (id, rostered) => {
         if (!rostered) return '';
-        const pts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, id, game.id);
+        const pts = teamGameScoreById(uhSeasonFor(userData, uhActiveYear).weeklyScore, id, game.id);
         return pts > 0 ? `<td class="score-added"><strong style="color: #22C37A;">+${pts}</strong></td>` : '';
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
@@ -958,7 +1289,7 @@ async function displaySchedule(data) {
     let week = window.localStorage.getItem('weekCode').substring(5);
     let seasonType = 'regular';
     let rankingsInfo;
-    const seasonYear = data.seasons.at(-1).season;
+    const seasonYear = uhSeasonFor(data, uhActiveYear).season;
 
     if (week == '17') {
         rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
@@ -971,7 +1302,7 @@ async function displaySchedule(data) {
     const allBettingLines = await getAllBettingLines(seasonYear) || [];
 
     // Fetch each roster team's games in parallel, then all logos in one request.
-    const teamsList = data.seasons.at(-1).teams;
+    const teamsList = uhSeasonFor(data, uhActiveYear).teams || [];
     const rosteredIds = new Set(teamsList.map(t => t.id));
     const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
 

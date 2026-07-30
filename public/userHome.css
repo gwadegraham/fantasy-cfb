@@ -386,6 +386,8 @@
 .field span { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #A4A9C2; }
 .field input { background: #101322; border: 1px solid #3A3F58; border-radius: 8px; padding: 10px 12px; color: #F4F6FB; font: inherit; }
 .field input:focus { outline: none; border-color: #8E8CF0; }
+.field input:disabled { opacity: 0.5; cursor: not-allowed; }
+.field .field-note { text-transform: none; letter-spacing: 0; font-size: 0.72rem; color: #767D9C; }
 .avatar-edit { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
 .avatar-edit-controls { display: flex; flex-direction: column; gap: 6px; }
 .upload-status { font-size: 0.75rem; color: #767D9C; }
@@ -551,3 +553,166 @@
 .uh-h2h { width: 92%; max-width: 720px; margin: 1.5rem auto 0; }
 .uh-h2h-log { display: flex; flex-direction: column; gap: 0.5rem; }
 .uh-h2h-empty { color: #767D9C; font-size: 0.85rem; }
+
+/* ---------- My Team bento (#230 redesign, feat/my-team-redesign) ---------- */
+.uh-bento { width: 92%; max-width: 1000px; margin: 1.5em auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .uh-bento { grid-template-columns: 1fr; } }
+.uh-tile { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 14px; padding: 16px; text-align: left; color: inherit; font: inherit; min-width: 0; }
+button.uh-tile { display: flex; flex-direction: column; cursor: pointer; transition: border-color 0.15s ease, transform 0.12s ease; }
+button.uh-tile:hover { border-color: #3A3F58; }
+button.uh-tile:active { transform: scale(0.992); }
+button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; }
+.uh-tile.span2 { grid-column: 1 / -1; }
+.uh-tlabel { display: flex; align-items: center; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: #767D9C; font-weight: 700; margin-bottom: 10px; }
+.uh-chev { margin-left: auto; color: #767D9C; }
+.uh-glance { color: #C9CEE6; font-size: 14px; }
+.uh-stub { color: #767D9C; font-size: 14px; line-height: 1.5; }
+
+.uh-hero { display: flex; align-items: center; gap: 16px; }
+.uh-hero-av { width: 56px; height: 56px; flex: none; }
+.uh-hero-meta { min-width: 0; flex: 1; }
+.uh-hero-name { font-size: 20px; font-weight: 800; color: #F4F6FB; line-height: 1.1; }
+.uh-hero-sub { font-size: 13px; color: #767D9C; margin-top: 2px; }
+.uh-hero-stats { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
+.uh-hero-stats .stat { display: flex; flex-direction: column; }
+.uh-hero-stats .stat-value { font-size: 1.15rem; font-weight: 800; color: #F4F6FB; display: flex; align-items: center; gap: 6px; }
+.uh-hero-stats .stat-value img { height: 1.1rem; width: auto; }
+.uh-hero-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-top: 2px; }
+/* Preseason / undrafted-window empty state (active season not yet drafted). */
+.uh-preseason-pill { display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #E0B341; border: 1px solid rgba(224,179,65,0.4); border-radius: 99px; padding: 3px 10px; }
+.uh-preseason { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 40px 24px; }
+.uh-preseason-icon { display: inline-flex; opacity: 0.85; margin-bottom: 4px; }
+.uh-preseason-h { font-size: 18px; font-weight: 800; color: #F4F6FB; margin: 0; text-wrap: balance; }
+.uh-preseason-p { font-size: 14px; color: #A4A9C2; line-height: 1.5; margin: 0; max-width: 34ch; }
+.uh-preseason-last { margin-top: 10px; font-size: 12px; color: #767D9C; }
+.uh-preseason-last b { color: #C9CEE6; font-weight: 700; }
+.uh-edit { margin-left: auto; align-self: flex-start; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #2A2E42; background: transparent; color: #C9CEE6; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.uh-edit:hover { border-color: #3A3F58; color: #F4F6FB; }
+.uh-edit:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; }
+
+.uh-scrim { position: fixed; inset: 0; background: rgba(4,6,14,0.6); opacity: 0; pointer-events: none; transition: opacity 0.25s ease; z-index: 1200; }
+.uh-scrim.open { opacity: 1; pointer-events: auto; }
+.uh-drawer { position: fixed; z-index: 1201; background: #1A1F33; border: 1px solid #2A2E42; display: flex; flex-direction: column; top: 0; right: 0; height: 100vh; width: min(440px, 92vw); border-radius: 18px 0 0 18px; transform: translateX(102%); transition: transform 0.3s cubic-bezier(0.2,0.8,0.2,1); overscroll-behavior: contain; }
+.uh-drawer.open { transform: translateX(0); }
+@media (max-width: 640px) { .uh-drawer { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: auto; max-height: 86vh; border-radius: 20px 20px 0 0; transform: translateY(102%); } .uh-drawer.open { transform: translateY(0); } }
+.uh-drawer-grab { display: none; }
+@media (max-width: 640px) { .uh-drawer-grab { display: block; width: 38px; height: 4px; border-radius: 99px; background: #3A3F58; margin: 8px auto 0; } }
+.uh-drawer-head { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; border-bottom: 1px solid #2A2E42; flex: none; }
+.uh-drawer-title { font-size: 16px; font-weight: 800; color: #F4F6FB; }
+.uh-drawer-close { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; border: 1px solid #2A2E42; background: transparent; color: #C9CEE6; cursor: pointer; font-size: 16px; }
+.uh-drawer-close:hover { color: #F4F6FB; border-color: #3A3F58; }
+.uh-drawer-body { padding: 18px; overflow-y: auto; }
+/* Lock the background from scrolling behind the open drawer. */
+body.uh-drawer-open { overflow: hidden; }
+/* Trajectory drawer summary row (total / best week / finish / gap). */
+.uh-drawer-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; }
+.uh-drawer-stats .stat { display: flex; flex-direction: column; }
+.uh-drawer-stats .stat-value { font-size: 1.15rem; font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; }
+.uh-drawer-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .uh-scrim, .uh-drawer, button.uh-tile { transition: none; } }
+
+/* Bento tile glances + drawer content (#230 redesign) */
+.uh-mu-glance { display: flex; align-items: center; gap: 6px; font-size: 15px; color: #F4F6FB; font-weight: 700; min-width: 0; }
+.uh-mu-glance .num { font-variant-numeric: tabular-nums; }
+.uh-mu-dash { color: #767D9C; }
+.uh-mu-opp { color: #C9CEE6; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uh-res { font-size: 10px; font-weight: 800; letter-spacing: 0.03em; border-radius: 99px; padding: 1px 7px; flex: none; }
+.uh-res.r-W { color: #5BD08D; background: rgba(34,195,122,0.12); }
+.uh-res.r-L { color: #ED5858; background: rgba(237,88,88,0.12); }
+.uh-res.r-T { color: #A4A9C2; background: rgba(164,169,194,0.12); }
+.uh-res.r-LIVE { color: #ED5858; background: rgba(237,88,88,0.12); }
+.uh-drawer-lead { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #767D9C; font-weight: 700; margin-bottom: 10px; }
+.uh-drawer-cap { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #767D9C; font-weight: 700; margin: 18px 0 10px; }
+.uh-drawer-body .uh-h2h-log { display: flex; flex-direction: column; gap: 8px; }
+
+/* Draft / Captain / Recap tile glances (#230 redesign) */
+.uh-grade { font-size: 26px; font-weight: 800; color: #C9CEE6; line-height: 1; }
+.uh-grade.gg-tier-a { color: #22C37A; }
+.uh-grade.gg-tier-b { color: #6C9BFF; }
+.uh-grade.gg-tier-c { color: #E0B341; }
+.uh-grade.gg-tier-d, .uh-grade.gg-tier-f { color: #ED5858; }
+.uh-glance-sub { color: #767D9C; font-size: 12px; margin-left: 8px; }
+.uh-cap-glance { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #F4F6FB; font-weight: 600; }
+.uh-cap-glance img { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.uh-cap-2x { font-size: 10px; font-weight: 800; color: #E0B341; border: 1px solid rgba(224,179,65,0.4); border-radius: 99px; padding: 1px 6px; flex: none; }
+#uh-glance-recap { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+
+/* Roster + Trajectory drawer content (#230 redesign) */
+.uh-roster-cards { display: flex; flex-direction: column; gap: 8px; }
+.uh-rc { display: flex; align-items: center; gap: 11px; background: #12162A; border: 1px solid #2A2E42; border-radius: 11px; padding: 10px; text-decoration: none; }
+.uh-rc:hover { border-color: #3A3F58; }
+.uh-rc img { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.uh-rc-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.uh-rc-nm { color: #F4F6FB; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-rc-bar { height: 4px; border-radius: 99px; background: #0c1022; overflow: hidden; }
+.uh-rc-bar i { display: block; height: 100%; background: #5BD08D; }
+.uh-rc-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
+.uh-drawer-body .table-wrapper { overflow-x: auto; margin: 0; }
+.uh-drawer-body .profile-chart-wrap { height: 220px; position: relative; }
+
+/* Games drawer (#230 redesign) */
+.uh-games-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 11px; color: #767D9C; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+.uh-games-pick select { background: #12162A; border: 1px solid #2A2E42; border-radius: 8px; color: #F4F6FB; font: inherit; padding: 6px 8px; text-transform: none; letter-spacing: 0; }
+.uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; }
+
+/* Enriched tile glances (#230 redesign polish) */
+.uh-mug { display: flex; align-items: center; gap: 8px; }
+.uh-mug-side { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.uh-mug-side.r { justify-content: flex-end; }
+.uh-mug .h2h-av { width: 26px; height: 26px; }
+.uh-mug-nm { font-size: 13px; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-mug-sc { font-size: 20px; font-weight: 800; color: #A4A9C2; flex: none; font-variant-numeric: tabular-nums; }
+.uh-mug-sc.win { color: #5BD08D; }
+.uh-mug-vs { font-size: 10px; font-weight: 800; letter-spacing: 0.04em; color: #767D9C; flex: none; }
+.uh-mug-bar { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.uh-mug-track { flex: 1; display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: #0c1022; }
+.uh-mug-track i { height: 100%; }
+.uh-mug-track i.fav { background: #22C37A; } .uh-mug-track i.dog { background: #B0454F; } .uh-mug-track i.even { background: #5A6080; }
+.uh-mug-track i:not(.r) { border-radius: 99px 0 0 99px; } .uh-mug-track i.r { border-radius: 0 99px 99px 0; }
+.uh-mug-pct { font-size: 11px; font-weight: 700; color: #A4A9C2; min-width: 2rem; flex: none; font-variant-numeric: tabular-nums; }
+.uh-mug-pct:last-child { text-align: right; }
+.uh-mug-pct.fav { color: #5BD08D; } .uh-mug-pct.dog { color: #8A90A8; }
+
+.uh-rg { display: flex; flex-direction: column; gap: 8px; }
+.uh-rg-row { display: flex; align-items: center; gap: 9px; }
+.uh-rg-row img { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.uh-rg-nm { flex: 1; min-width: 0; color: #C9CEE6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-rg-star { color: #E0B341; font-size: 11px; }
+.uh-rg-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
+
+.uh-cap-sub { display: block; color: #767D9C; font-size: 12px; margin-top: 6px; }
+
+/* Trajectory / Draft / Schedule glances + roster toggle (#230 polish 2) */
+.uh-traj-g { display: flex; align-items: baseline; gap: 8px; }
+.uh-traj-num { font-size: 28px; font-weight: 800; color: #F4F6FB; }
+.uh-traj-spark { display: block; margin-top: 10px; }
+
+.uh-draft-g { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.uh-draft-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.uh-ds { display: flex; flex-direction: column; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: #767D9C; }
+.uh-ds b { font-size: 15px; font-weight: 800; color: #F4F6FB; letter-spacing: 0; text-transform: none; }
+
+.uh-sched-lbl { display: block; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: #6C9BFF; font-weight: 800; margin-bottom: 7px; }
+.uh-sched-row { display: flex; align-items: center; }
+.uh-sched-opp { color: #F4F6FB; font-weight: 600; }
+.uh-sched-pct { margin-left: auto; color: #6C9BFF; font-weight: 800; }
+
+.uh-seg { display: flex; gap: 4px; background: #12162A; border: 1px solid #2A2E42; border-radius: 10px; padding: 4px; margin-bottom: 14px; }
+.uh-seg-btn { flex: 1; padding: 8px; border: 0; background: transparent; color: #8A90A8; font: inherit; font-size: 13px; font-weight: 700; border-radius: 7px; cursor: pointer; }
+.uh-seg-btn.active { background: #1A1F33; color: #F4F6FB; }
+.uh-seg-btn:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 1px; }
+
+/* Games tile glance + card sizing inside the drawer (#230 polish 3) */
+.uh-games-logos { display: flex; flex-wrap: wrap; gap: 6px; }
+.uh-games-logos img { width: 24px; height: 24px; object-fit: contain; }
+.uh-games-wk { display: block; margin-top: 8px; }
+.uh-games-pick { display: block; margin-bottom: 14px; }
+.uh-games-pick select { background: #12162A; border: 1px solid #2A2E42; border-radius: 8px; color: #F4F6FB; font: inherit; padding: 8px 10px; }
+/* In the drawer the grid is a vertical column, so the card's flex-basis (340px)
+   must not become its height — size cards to content, full width. */
+.uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+.uh-drawer-body .game-card { flex: 0 0 auto; width: 100%; max-width: 100%; }
+
+/* Draft-grade card in the drawer: plain page-style border (no tier left-accent
+   or "you" highlight — it's always your own grade on My Team). */
+.uh-drawer-body .gg-card { border-left: 1px solid #2A2E42; box-shadow: none; }
