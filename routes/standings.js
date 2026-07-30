@@ -392,7 +392,21 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
         const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
-            .map(t => ({ school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId) }))
+            .map(t => {
+                // Opponent + final CFB score for the retrospective sub-line (same
+                // source the live week uses), so past matchup rows aren't bare.
+                const g = gameTW[t.teamId] && gameTW[t.teamId][w];
+                let opp = '', ha = 'vs', gameScore = null;
+                if (g) {
+                    const isHome = g.homeId === t.teamId;
+                    opp = oppAbbrById[isHome ? g.awayId : g.homeId] || (isHome ? g.awayTeam : g.homeTeam) || '';
+                    ha = isHome ? 'vs' : '@';
+                    if (g.completed && g.homePoints != null && g.awayPoints != null) {
+                        gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
+                    }
+                }
+                return { school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId), opp, ha, gameScore };
+            })
             .sort((a, b) => b.score - a.score);
         const fmtKick = (g) => {
             if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
