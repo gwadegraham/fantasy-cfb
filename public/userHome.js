@@ -405,20 +405,18 @@ async function hydrateCaptain(user) {
     } catch (e) { /* fall through to preview gate */ }
     if (!enabled && !preview) return hide();
 
-    // Current season's first unplayed week (preview falls back to the latest
-    // season with an open week).
+    // Captain is set for the active season's next unplayed regular week. Use the
+    // latest season that has a roster AND an open week (consistent with every
+    // other tile, which keys off seasons.at(-1) — not the wall-clock year, which
+    // is ahead of the data in the offseason). No open week (finished season) →
+    // nothing to set → hide.
     const firstOpenWeek = (s) => {
         const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
         for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
         return null;
     };
-    const year = new Date().getFullYear();
-    let season = (user.seasons || []).find(s => Number(s.season) === year && (s.teams || []).length);
-    let week = season ? firstOpenWeek(season) : null;
-    if ((!season || week == null) && preview) {
-        const cand = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
-        if (cand) { season = cand; week = firstOpenWeek(cand); }
-    }
+    const season = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
+    const week = season ? firstOpenWeek(season) : null;
     if (!season || week == null) return hide();
 
     let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
