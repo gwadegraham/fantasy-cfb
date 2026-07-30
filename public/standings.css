@@ -628,3 +628,91 @@
     .pp-title { min-width: auto; }
     .pp-points { gap: 0.3rem; }
 }
+
+/* ---------- Head-to-Head win-bonus panel (#230) ---------- */
+.h2h-panel { width: 92%; max-width: 960px; margin: 1.25rem auto 0; box-sizing: border-box; }
+.h2h-panel-title { font-size: 1.2rem; font-weight: 700; color: #F4F6FB; margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.4rem; }
+.h2h-preview-tag { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #8E8CF0; background: rgba(142,140,240,0.14); border: 1px solid rgba(142,140,240,0.4); border-radius: 20px; padding: 2px 8px; }
+.h2h-panel-note { color: #A4A9C2; font-size: 0.82rem; margin: 0 0 0.9rem; }
+.h2h-head { display: flex; justify-content: flex-end; padding: 0 1rem 0.3rem; }
+.h2h-col { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; }
+.h2h-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.h2h-row { display: flex; align-items: center; gap: 0.9rem; background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.6rem 1rem; }
+.h2h-rank { font-weight: 800; color: #A4A9C2; width: 1.4rem; text-align: center; font-variant-numeric: tabular-nums; }
+.h2h-id { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.h2h-name { font-weight: 600; color: #F4F6FB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-rec { font-size: 0.72rem; color: #767D9C; font-variant-numeric: tabular-nums; }
+.h2h-pts { display: flex; align-items: baseline; gap: 0.6rem; font-variant-numeric: tabular-nums; margin-left: auto; }
+.h2h-base { color: #A4A9C2; font-size: 0.9rem; }
+.h2h-bonus { color: #5BD08D; font-weight: 700; font-size: 0.85rem; }
+.h2h-total { color: #F4F6FB; font-size: 1.15rem; font-weight: 800; min-width: 2.6rem; text-align: right; }
+@media (max-width: 600px) {
+    .h2h-base { display: none; }
+    .h2h-panel-note { font-size: 0.78rem; }
+}
+
+/* Scale the League Highlights star to the heading font — it was a fixed 24px,
+   which read as too small next to the large header. 1em tracks the responsive
+   font-size at every breakpoint. */
+.highlights-header .cc-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.12em;
+    margin-right: 0.15em;
+}
+
+/* ---------- H2H featured view: week selector + matchup scoreboards ---------- */
+.h2h-week-bar { display: flex; align-items: center; gap: 0.6rem; margin: 0.2rem 0 0.7rem; }
+.h2h-week-cap { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: #767D9C; }
+.h2h-week-bar select { background: #101322; border: 1px solid #3A3F58; border-radius: 8px; color: #F4F6FB; font: inherit; font-size: 0.85rem; padding: 5px 9px; cursor: pointer; }
+.h2h-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
+.h2h-empty { color: #767D9C; font-size: 0.85rem; }
+
+.h2h-match { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 0.4rem; background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.7rem 0.8rem; }
+.h2h-team { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.h2h-team:last-child { align-items: flex-end; text-align: right; }
+.h2h-team-head { display: flex; align-items: center; gap: 0.45rem; min-width: 0; max-width: 100%; }
+.h2h-team:last-child .h2h-team-head { flex-direction: row-reverse; }
+.h2h-team-head .pp-avatar { width: 30px; height: 30px; flex-shrink: 0; }
+.h2h-tn { display: flex; flex-direction: column; min-width: 0; }
+.h2h-team .h2h-name { font-size: 0.85rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-team .h2h-rec { font-size: 0.68rem; color: #767D9C; font-variant-numeric: tabular-nums; }
+.h2h-team.win .h2h-name { color: #F4F6FB; font-weight: 700; }
+.h2h-team-score { font-size: 1.5rem; font-weight: 800; color: #A4A9C2; font-variant-numeric: tabular-nums; line-height: 1; }
+.h2h-team.win .h2h-team-score { color: #5BD08D; }
+.h2h-contribs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.h2h-team:last-child .h2h-contribs { justify-content: flex-end; }
+.h2h-chip { display: inline-flex; align-items: center; gap: 3px; background: #101322; border: 1px solid #2A2E42; border-radius: 20px; padding: 2px 7px 2px 3px; font-size: 0.72rem; font-weight: 700; color: #C9CEE6; font-variant-numeric: tabular-nums; }
+.h2h-chip img { width: 16px; height: 16px; object-fit: contain; }
+.h2h-chip.none { color: #767D9C; font-weight: 400; padding: 2px 8px; }
+.h2h-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 0.35rem; }
+.h2h-vs { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; }
+
+.h2h-row { cursor: pointer; }
+.h2h-caret { color: #767D9C; font-size: 0.8rem; margin-left: 0.5rem; transition: transform 0.2s ease; }
+.h2h-row.open .h2h-caret { transform: rotate(180deg); }
+.h2h-roster { background: #12172a; border: 1px solid #2A2E42; border-top: none; border-radius: 0 0 12px 12px; margin: -0.4rem 0 0.55rem; padding: 0.6rem 0.9rem; }
+.h2h-roster-logos { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.h2h-roster-team { display: inline-flex; }
+.h2h-roster-team img { width: 30px; height: 30px; object-fit: contain; }
+
+/* Per-matchup log (used on the My Team matchup view). */
+.h2h-log-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.25rem 0; font-size: 0.82rem; }
+.h2h-log-wk { width: 3rem; color: #767D9C; font-variant-numeric: tabular-nums; }
+.h2h-log-res { width: 1.2rem; text-align: center; font-weight: 800; }
+.h2h-log-res.r-W { color: #5BD08D; }
+.h2h-log-res.r-L { color: #ED5858; }
+.h2h-log-res.r-T { color: #A4A9C2; }
+.h2h-log-opp { color: #C9CEE6; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .h2h-caret { transition: none; } }
+
+/* H2H in-progress states (live / upcoming games). */
+.h2h-match.live { border-color: #3A3F58; }
+.h2h-live-tag { font-size: 0.56rem; font-weight: 800; letter-spacing: 0.06em; color: #ED5858; }
+.h2h-match-foot { grid-column: 1 / -1; margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
+.h2h-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; }
+.h2h-live { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; }
+.h2h-chip.is-sched { color: #767D9C; font-weight: 600; }
+
+/* Compact, tappable matchup rows (replaces the tall scoreboard cards). */
+.h2h-matches { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.1rem; }

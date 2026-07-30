@@ -13,6 +13,15 @@ const scoringConfigSchema = new mongoose.Schema({
     // conditions are switched off (by condition key).
     combineMode: { type: String, enum: ['first', 'sum'] },
     disabled: { type: [String], default: [] },
+    // Optional weekly-engagement layer (GitHub #230), per-league opt-in.
+    // Head-to-head win bonus + weekly Captain multiplier. Off by default so
+    // existing leagues are unaffected until a commissioner enables them.
+    engagement: {
+        h2hEnabled: { type: Boolean, default: false },
+        h2hWinBonus: { type: Number, default: 3 },
+        captainEnabled: { type: Boolean, default: false },
+        captainMultiplier: { type: Number, default: 2 }
+    },
     updatedAt: { type: Date, default: Date.now }
 });
 

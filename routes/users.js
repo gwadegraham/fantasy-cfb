@@ -53,6 +53,42 @@ router.patch('/me/profile', async (req, res) => {
     }
 });
 
+// Self-service Captain pick (#230): the logged-in manager sets/clears their
+// captained team for a regular-season week. Locks once the week is scored.
+router.patch('/me/captain', async (req, res) => {
+    const oidcUser = req.oidc && req.oidc.user;
+    const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
+    const userId = meta && meta.userId;
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    const week = parseInt(req.body.week, 10);
+    const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
+    const seasonYear = Number(req.body.season) || Number(process.env.YEAR);
+    if (!Number.isInteger(week) || week < 1 || week > 16) {
+        return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
+    }
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+        const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
+        if (!season) return res.status(404).json({ message: 'No roster for that season.' });
+        if (teamId != null && !(season.teams || []).some(t => Number(t.id) === teamId)) {
+            return res.status(400).json({ message: 'That team is not on your roster.' });
+        }
+        // Lock: once a week has been scored, its captain can't change.
+        if ((season.weeklyScore || []).some(e => e.season !== 'postseason' && Number(e.week) === week)) {
+            return res.status(409).json({ message: 'That week is already scored — captain is locked.' });
+        }
+        if (!Array.isArray(season.captains)) season.captains = [];
+        season.captains = season.captains.filter(c => Number(c.week) !== week);   // drop any existing pick for the week
+        if (teamId != null) season.captains.push({ week, teamId });
+        await user.save();
+        res.json({ season: seasonYear, week, teamId, captains: season.captains });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting All
 router.get('/', async (req, res) => {
     try {

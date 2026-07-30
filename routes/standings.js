@@ -9,10 +9,11 @@ const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig } = require('../modules/scoring-defaults');
-const { buildRankingProxy, buildPoolContext } = require('../modules/draft-projection');
+const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
+const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the
@@ -224,6 +225,272 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId });
         const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
         res.json({ league, ...recap, name });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Head-to-head weekly win-bonus view (GitHub #230), per-league opt-in. A
+// round-robin schedule pairs managers each regular week; the higher weekly
+// total wins a flat bonus that folds into the season total. Read-only and
+// computed from the stored weeklyScore, so it works on historical seasons too
+// (for proposing the format to a league). `enabled` reflects the league config;
+// the data is returned regardless so it can be previewed before turning on.
+router.get('/h2h/:league/:season', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const season = req.params.season;
+        const seasonNum = Number(season);
+
+        const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+        const eng = resolveConfig(league, cfgDoc || null).engagement;
+        const winBonus = eng.h2hWinBonus;
+
+        // H2H matchups run the fantasy regular season only. Weeks 15+ (conf
+        // championships, Army/Navy) and the postseason still count toward season
+        // totals, but their thin slates make for unfair matchups — so no H2H past
+        // this cap. Named for easy adjustment.
+        const H2H_LAST_WEEK = 14;
+
+        const users = await User.find({ league, 'seasons.season': season });
+        const isRegular = w => w.season !== 'postseason' && w.week <= 16;
+        const round = v => Math.round(v * 10) / 10;
+        const ids = [], meta = {}, totals = {}, teamDetail = {};
+        const draftedSet = new Set();
+        users.forEach(u => {
+            const s = (u.seasons || []).find(x => String(x.season) === String(season));
+            if (!s || !(s.weeklyScore || []).length) return;
+            const id = String(u._id);
+            ids.push(id);
+            const logoBy = {}, abbrBy = {};
+            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
+            meta[id] = {
+                userId: id,
+                name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),
+                franchise: s.franchiseName || null,
+                avatarUrl: u.avatarUrl || null, color: u.color || null,
+                initials: (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase(),
+                cumulative: s.cumulativeScore || 0,
+                teams: roster
+            };
+            const tw = {}, twTeams = {};
+            (s.weeklyScore || []).forEach(e => {
+                if (!isRegular(e) || e.week > H2H_LAST_WEEK) return;
+                const w = e.week;
+                tw[w] = (tw[w] || 0) + (e.score || 0);
+                const byTeam = twTeams[w] || (twTeams[w] = {});
+                (e.scoreByTeam || []).forEach(st => {
+                    const k = st.teamId;
+                    if (!byTeam[k]) byTeam[k] = { teamId: st.teamId, school: st.team, abbr: abbrBy[st.teamId] || null, logo: logoBy[st.teamId] || null, score: 0 };
+                    byTeam[k].score += (st.score || 0);
+                });
+            });
+            totals[id] = tw;
+            teamDetail[id] = twTeams;
+        });
+        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], schedule: [] });
+
+        // Game status for in-progress weeks: whether each rostered team's game is
+        // final / live / upcoming, and which weeks are fully complete. Pairings
+        // are computed over the FIXED regular-season range so a week's matchup is
+        // stable whether or not it's been scored yet.
+        const allWeeks = Array.from({ length: H2H_LAST_WEEK }, (_, i) => i + 1);
+        const draftedIds = [...draftedSet];
+        const games = draftedIds.length ? await Game.find(
+            { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_LAST_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
+            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, _id: 0 }
+        ).lean() : [];
+        // Opponent abbreviations (opponents aren't always rostered, so look them
+        // up from the Team collection).
+        const oppAbbrById = {};
+        const gameTeamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]).filter(x => x != null))];
+        if (gameTeamIds.length) {
+            const tdocs = await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
+            tdocs.forEach(td => { oppAbbrById[td.id] = td.abbreviation || null; });
+        }
+        // Projected pre-game win probability per matchup, from the same SP+ model
+        // the draft-grade / standings projections use. For finished weeks it's a
+        // retrospective "what were the odds"; for the in-progress week it drives
+        // the live win-probability bar. Only drafted teams are projected, but all
+        // teams load so opponents' SP+ is available for the pool context.
+        const projByWeek = {};
+        if (draftedIds.length) {
+            const allTeams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+            const teamsById = {};
+            allTeams.forEach(t => { teamsById[String(t.id)] = t; });
+            const regGames = await Game.find(
+                { season: seasonNum, seasonType: 'regular' },
+                { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
+                  completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
+            const gamesByTeam = {};
+            regGames.forEach(g => {
+                [g.homeId, g.awayId].forEach(tid => {
+                    if (draftedSet.has(tid)) (gamesByTeam[tid] = gamesByTeam[tid] || []).push(g);
+                });
+            });
+            const cfg = resolveConfig(league, cfgDoc ? {
+                model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
+            } : null);
+            const apDoc = await Ranking.findOne({ season: seasonNum, seasonType: 'regular' }).sort({ week: 1 }).lean();
+            const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
+            const rankings = buildRankingProxy(seasonNum, teamsById, apPoll);
+            const poolCtx = buildPoolContext(teamsById, seasonNum);
+            draftedIds.forEach(tid => {
+                const team = teamsById[String(tid)];
+                if (!team) return;
+                const proj = projectTeamPoints(team, gamesByTeam[tid] || [], poolCtx, rankings, cfg, seasonNum, { perGame: true });
+                (proj.perGame || []).forEach(pg => {
+                    if (pg.week == null) return;
+                    (projByWeek[pg.week] = projByWeek[pg.week] || {})[tid] = { winProb: pg.winProb, pointsIfWin: pg.pointsIfWin };
+                });
+            });
+        }
+
+        const gamesByWeek = {}, gameTW = {};
+        games.forEach(g => {
+            (gamesByWeek[g.week] = gamesByWeek[g.week] || []).push(g);
+            [g.homeId, g.awayId].forEach(tid => {
+                if (!draftedSet.has(tid)) return;
+                const m = gameTW[tid] || (gameTW[tid] = {});
+                if (!m[g.week] || (m[g.week].completed && !g.completed)) m[g.week] = g;   // prefer the unfinished game
+            });
+        });
+        const now = Date.now();
+        const scoredSet = new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)));
+        const weekFinal = {};
+        allWeeks.forEach(w => { weekFinal[w] = isWeekFinal(gamesByWeek[w]) && scoredSet.has(w); });
+        let currentWeek = null;
+        for (const w of allWeeks) { if ((gamesByWeek[w] || []).length && !weekFinal[w]) { currentWeek = w; break; } }
+
+        // Records + win bonus count FINAL weeks only (an in-progress week has no
+        // decided winner yet). Stable pairings over all 14 weeks.
+        const scheduleAll = scheduleForWeeks(ids, allWeeks);
+        const finalWeeks = allWeeks.filter(w => weekFinal[w]);
+        const rec = {}; ids.forEach(id => { rec[id] = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0 }; });
+        finalWeeks.forEach(w => {
+            const wt = {}; ids.forEach(id => { wt[id] = totals[id][w] || 0; });
+            const r = resolveWeek(scheduleAll[w] || [], wt, winBonus);
+            Object.keys(r).forEach(id => {
+                const a = rec[id], x = r[id];
+                if (x.result === 'W') a.wins++; else if (x.result === 'L') a.losses++; else a.ties++;
+                a.bonus += x.bonus; a.pointsFor += x.for; a.pointsAgainst += x.against;
+            });
+        });
+        const managers = ids.map(id => ({
+            ...meta[id],
+            wins: rec[id].wins, losses: rec[id].losses, ties: rec[id].ties,
+            record: `${rec[id].wins}-${rec[id].losses}-${rec[id].ties}`,
+            h2hBonus: rec[id].bonus,
+            pointsFor: round(rec[id].pointsFor), pointsAgainst: round(rec[id].pointsAgainst),
+            adjustedTotal: round(meta[id].cumulative + rec[id].bonus)   // cumulative already includes weeks 15+/postseason
+        })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
+
+        // Schedule payload: final weeks + the current in-progress week. Final
+        // weeks show scored contributing teams; the current week shows each
+        // rostered team's live game status (final / live / kickoff time).
+        const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
+            .map(t => ({ school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final' }))
+            .sort((a, b) => b.score - a.score);
+        const fmtKick = (g) => {
+            if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
+            const d = new Date(g.startDate); if (isNaN(d.getTime())) return 'TBD';
+            return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        };
+        const statusOrder = { final: 0, live: 1, scheduled: 2 };
+        const teamsLive = (id, w) => (meta[id].teams || []).map(t => {
+            const g = gameTW[t.id] && gameTW[t.id][w];
+            if (!g) return null;   // bye / no game this week
+            const st = gameStatus(g, now);
+            const scored = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+            const isHome = g.homeId === t.id;
+            const oppId = isHome ? g.awayId : g.homeId;
+            const opp = oppAbbrById[oppId] || (isHome ? g.awayTeam : g.homeTeam) || '';
+            let gameScore = null;
+            if (g.completed && g.homePoints != null && g.awayPoints != null) {
+                gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
+            }
+            return { school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore };
+        }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
+
+        // Projected pre-game odds for a matchup: each manager's teams that play
+        // that week, run through the win-probability model. Integer percents that
+        // sum to 100 (or null when neither side has a projectable game).
+        const entriesFor = (id, w) => (meta[id].teams || [])
+            .map(t => projByWeek[w] && projByWeek[w][t.id])
+            .filter(Boolean);
+        // Live odds recompute as the week plays out: a team whose game is already
+        // FINAL contributes its actual scored points as a certainty; teams still
+        // to play (live/upcoming) keep their projected win-prob × points-if-win.
+        // So the bar shifts toward whoever's banked results are stronger, and by
+        // the time every game is final it reads as the settled 100/0.
+        const liveEntriesFor = (id, w) => (meta[id].teams || []).map(t => {
+            const g = gameTW[t.id] && gameTW[t.id][w];
+            if (!g) return null;                                  // bye — no game this week
+            if (gameStatus(g, now) === 'final') {
+                const s = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+                return { winProb: 1, pointsIfWin: s ? s.score : 0 };   // result locked in
+            }
+            const p = projByWeek[w] && projByWeek[w][t.id];
+            return p ? { winProb: p.winProb, pointsIfWin: p.pointsIfWin } : null;
+        }).filter(Boolean);
+        const oddsFrom = (ea, eb) => {
+            const r = matchupWinProb(ea, eb);
+            if (!r) return null;
+            const pa = Math.round(r.a * 100);
+            return { a: pa, b: 100 - pa };
+        };
+        const oddsFor = (a, b, w) => oddsFrom(entriesFor(a, w), entriesFor(b, w));
+        const liveOddsFor = (a, b, w) => oddsFrom(liveEntriesFor(a, w), liveEntriesFor(b, w));
+        const gameFor = (a, b, w, live) => {
+            const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
+            return {
+                aId: a, aScore: sa, aTeams: live ? teamsLive(a, w) : teamsFinal(a, w),
+                bId: b, bScore: sb, bTeams: live ? teamsLive(b, w) : teamsFinal(b, w),
+                winner: live ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
+                winP: live ? liveOddsFor(a, b, w) : oddsFor(a, b, w),
+                final: !live
+            };
+        };
+        const schedWeeks = finalWeeks.slice();
+        if (currentWeek && !schedWeeks.includes(currentWeek)) schedWeeks.push(currentWeek);
+        schedWeeks.sort((a, b) => a - b);
+        const schedule = schedWeeks.map(w => {
+            const live = (w === currentWeek) && !weekFinal[w];
+            return { week: w, final: !live, games: (scheduleAll[w] || []).map(([a, b]) => gameFor(a, b, w, live)) };
+        });
+        let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+        let currentWeekOut = currentWeek;
+
+        // Dev-only preview of the in-progress states (non-production). Doctors the
+        // latest week so the pre-kickoff and mixed live views can be seen on a
+        // finished season: ?h2hSim=pregame (nothing started) | mixed (some final,
+        // some live, some upcoming).
+        if (req.query.h2hSim && process.env.NODE_ENV !== 'production' && schedule.length) {
+            const mode = String(req.query.h2hSim);
+            const w = schedule[schedule.length - 1];
+            w.final = false;
+            const doctor = (arr) => (arr || []).map((t, j) => {
+                const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
+                return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null };
+            });
+            // Live odds from the doctored slate: final games lock their actual
+            // points, everything else is a neutral coin-flip projection — so the
+            // bar reflects the same live computation the real current week uses.
+            const liveEnt = (teams) => (teams || []).map(t => t.status === 'final'
+                ? { winProb: 1, pointsIfWin: t.score || 0 }
+                : { winProb: 0.5, pointsIfWin: 18 });
+            w.games.forEach(g => {
+                g.final = false; g.winner = null;
+                g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
+                const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
+                g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
+                g.winP = mode === 'pregame' ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
+            });
+            featuredWeek = w.week; currentWeekOut = w.week;
+        }
+
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

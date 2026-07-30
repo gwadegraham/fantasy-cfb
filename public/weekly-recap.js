@@ -41,7 +41,7 @@
             const logos = tied.map(t => t.logo ? `<img src="${escapeHtml(t.logo)}" alt="">` : '').join('');
             tiles.push(statTile(`${logos}${r.mvpTeam.score}`, `MVP: ${tied.map(t => t.school).join(' & ')}`));
         }
-        const badge = r.isUpset ? `<span class="recap-badge">${window.ccIcon ? window.ccIcon('upset', { size: 16 }) : ''} Upset</span>` : '';
+        const badge = r.isUpset ? `<span class="recap-badge">${window.ccIcon ? window.ccIcon('dice', { size: 16 }) : ''} Upset</span>` : '';
         return `
             <p class="recap-narrative">${escapeHtml(r.narrative)}${badge}</p>
             <div class="recap-stats">${tiles.join('')}</div>`;

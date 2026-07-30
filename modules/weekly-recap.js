@@ -314,7 +314,7 @@ function buildSlides(r) {
     // The upset (with AP rank when the loser was ranked).
     if (r.upset) {
         const foe = `${r.upset.loserRank ? '#' + r.upset.loserRank + ' ' : ''}${r.upset.loser}`;
-        slides.push({ id: 'upset', icon: 'upset', kicker: 'Upset alert', title: r.upset.team, big: 'UPSET', logo: r.upset.logo, sub: `beat ${foe} as a ${r.upset.margin}-pt underdog`, tone: 'good' });
+        slides.push({ id: 'upset', icon: 'dice', kicker: 'Upset alert', title: r.upset.team, big: 'UPSET', logo: r.upset.logo, sub: `beat ${foe} as a ${r.upset.margin}-pt underdog`, tone: 'good' });
     }
 
     // Momentum — a single beat. On the finale, wrap the season (the postseason

@@ -18,7 +18,7 @@ router.get('/:league', async (req, res) => {
     try {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
         const overrides = doc
-            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled }
+            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement }
             : null;
         res.json(withFields(resolveConfig(req.params.league, overrides)));
     } catch (err) {
@@ -54,6 +54,38 @@ router.post('/', async (req, res) => {
         res.json(withFields(resolveConfig(league, {
             model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled
         })));
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Toggle the weekly-engagement layer (#230) for a league without touching the
+// scoring values. Commissioner-gated + scoped to the caller's own league.
+router.patch('/:league/engagement', async (req, res) => {
+    try {
+        const league = req.params.league;
+        if (!canManageLeague(req, league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        const b = req.body || {};
+        const clamp = (v, lo, hi, dflt) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+        };
+        const engagement = {
+            h2hEnabled: !!b.h2hEnabled,
+            h2hWinBonus: clamp(b.h2hWinBonus, 0, 20, 3),
+            captainEnabled: !!b.captainEnabled,
+            captainMultiplier: clamp(b.captainMultiplier, 1.5, 5, 2)
+        };
+        const doc = await ScoringConfig.findOneAndUpdate(
+            { league },
+            { $set: { league, engagement, updatedAt: new Date() } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+        res.json(resolveConfig(league, {
+            model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement
+        }).engagement);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }

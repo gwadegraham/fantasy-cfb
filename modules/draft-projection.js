@@ -204,7 +204,7 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts
     reg.forEach((g, i) => {
         const pts = evaluate(cfg.model, teamId, synthWin(g, teamId), rankings, cfg);
         regular += probs[i] * pts;
-        if (opts.perGame) perGame.push({ winProb: probs[i], pointsIfWin: pts });
+        if (opts.perGame) perGame.push({ week: g.week, winProb: probs[i], pointsIfWin: pts });
     });
     const projWins = probs.reduce((a, b) => a + b, 0);
 

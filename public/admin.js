@@ -1127,6 +1127,59 @@ function displayEnrichmentContainer() { toggleSub('enrichment-container'); }
 function displayApiCallsContainer() { toggleSub('api-calls-container'); }
 function displayLeagueNameContainer() { if (toggleSub('league-name-container')) loadLeagueName(); }
 
+function displayEngagementContainer() { if (toggleSub('engagement-container')) loadEngagement(); }
+
+// Prefill the engagement toggles from the active league's saved config.
+async function loadEngagement() {
+    try {
+        var code = getDraftLeagueCode();
+        var cfg = await fetch('/scoring-config/' + encodeURIComponent(code), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+        var e = (cfg && cfg.engagement) || {};
+        var h2h = document.querySelector('[eng-h2h-enabled]');
+        var bonus = document.querySelector('[eng-h2h-bonus]');
+        var cap = document.querySelector('[eng-captain-enabled]');
+        var mult = document.querySelector('[eng-captain-mult]');
+        if (h2h) h2h.checked = !!e.h2hEnabled;
+        if (bonus) bonus.value = (e.h2hWinBonus != null ? e.h2hWinBonus : 3);
+        if (cap) cap.checked = !!e.captainEnabled;
+        if (mult) mult.value = (e.captainMultiplier != null ? e.captainMultiplier : 2);
+    } catch (e) { /* leave defaults */ }
+}
+
+const engagementForm = document.getElementById('engagement-form');
+if (engagementForm) {
+    engagementForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const code = getDraftLeagueCode();
+        const body = {
+            h2hEnabled: document.querySelector('[eng-h2h-enabled]').checked,
+            h2hWinBonus: Number(document.querySelector('[eng-h2h-bonus]').value),
+            captainEnabled: document.querySelector('[eng-captain-enabled]').checked,
+            captainMultiplier: Number(document.querySelector('[eng-captain-mult]').value)
+        };
+        try {
+            const res = await fetch('/scoring-config/' + encodeURIComponent(code) + '/engagement', {
+                method: 'PATCH',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 200) {
+                successToast.options.text = 'Game modes saved'
+                    + (data.h2hEnabled ? ` · H2H +${data.h2hWinBonus}` : ' · H2H off')
+                    + (data.captainEnabled ? ` · Captain ${data.captainMultiplier}×` : ' · Captain off');
+                successToast.showToast();
+            } else {
+                failToast.options.text = (data && data.message) || ('Could not save engagement | ' + res.status);
+                failToast.showToast();
+            }
+        } catch (err) {
+            failToast.options.text = 'Engagement save failed: ' + err.message;
+            failToast.showToast();
+        }
+    });
+}
+
 // Prefill the league-name field with the current name for the active league.
 async function loadLeagueName() {
     try {

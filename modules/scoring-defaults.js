@@ -139,11 +139,18 @@ function resolveConfig(league, overrides) {
         ? overrides.combineMode
         : modelDef.structure.combineMode;
     const disabled = (overrides && Array.isArray(overrides.disabled)) ? overrides.disabled.slice() : [];
+    const eng = (overrides && overrides.engagement) || {};
     return {
         model,
         combineMode,
         values: Object.assign({}, modelDef.defaults, (overrides && overrides.values) || {}),
-        disabled
+        disabled,
+        engagement: {
+            h2hEnabled: !!eng.h2hEnabled,
+            h2hWinBonus: typeof eng.h2hWinBonus === 'number' ? eng.h2hWinBonus : 3,
+            captainEnabled: !!eng.captainEnabled,
+            captainMultiplier: typeof eng.captainMultiplier === 'number' ? eng.captainMultiplier : 2
+        }
     };
 }
 

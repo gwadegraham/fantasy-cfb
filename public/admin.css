@@ -775,3 +775,6 @@ select[scoring-config-combine-mode] { width: 100%; }
     .sub-container { transition: opacity 0.2s ease; }
     .button-container button::after { transition: border-color 0.18s ease; }
 }
+
+/* Secondary hint text next to a Game Mode toggle label (#230). */
+.mode-hint { color: #767D9C; font-weight: 400; font-size: 0.85em; }

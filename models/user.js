@@ -84,7 +84,12 @@ const weeklyScoreSchema = new mongoose.Schema({
     },
     season: {
         type: String
-    }
+    },
+    // Weekly-engagement (#230): which team was captained this week and the
+    // extra points it contributed (already included in `score`). Absent when
+    // the league hasn't opted into Captain.
+    captainTeamId: { type: Number },
+    captainBonus: { type: Number }
 });
 
 const teamSchema = new mongoose.Schema({
@@ -163,6 +168,12 @@ const seasonSchema = new mongoose.Schema({
     },
     weeklyScore: {
         type: [weeklyScoreSchema]
+    },
+    // Optional weekly-engagement layer (#230): the manager's Captain pick per
+    // week (teamId doubled in scoring for opted-in leagues). Empty otherwise.
+    captains: {
+        type: [{ week: Number, teamId: Number }],
+        default: undefined
     }
 });
 

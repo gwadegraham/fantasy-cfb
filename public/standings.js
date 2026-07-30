@@ -128,6 +128,7 @@ async function getUsers() {
             maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
+            loadH2H(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
@@ -252,6 +253,84 @@ function renderProjPanel(managers) {
         <p class="proj-panel-note">Projected final points and title odds — banked points plus expected points from each roster's remaining schedule.</p>
         <div class="pp-list">${rows}</div>`;
     el.hidden = false;
+}
+
+// Head-to-head win-bonus standings (#230). Shown only when the league has
+// opted in (config `enabled`) or when previewing the format via ?h2h=1.
+async function loadH2H(league, season) {
+    if (!league || season == null) return;
+    const params = new URLSearchParams(location.search);
+    const sim = params.get('h2hSim');   // dev-only in-progress preview (non-prod route honors it)
+    let data;
+    try {
+        const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        data = await res.json();
+    } catch (e) { return; }
+    const preview = params.get('h2h') === '1' || !!sim;
+    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return;
+    renderH2HPanel(data);
+}
+
+function renderH2HPanel(d) {
+    const el = document.getElementById('h2h-panel');
+    if (!el) return;
+    const byId = {};
+    d.managers.forEach(m => { byId[m.userId] = m; });
+    const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
+    const recOf = (m) => escapeHtml((m && m.record) || '');
+
+    const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
+
+    // Standings rows — each expands to that manager's 10-team roster.
+    const rosterLogos = (m) => (m.teams || []).map(t =>
+        `<a class="h2h-roster-team" href="/team?team=${t.id}" title="${escapeHtml(t.school)}"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}"></a>`).join('');
+    const rows = d.managers.map(m => {
+        const base = Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10;
+        return `<div class="h2h-row" data-uid="${m.userId}" role="button" tabindex="0" aria-expanded="false">
+            <span class="h2h-rank">${m.rank}</span>
+            ${projAvatarHtml(m)}
+            <span class="h2h-id"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span>
+            <span class="h2h-pts"><span class="h2h-base">${base}</span><span class="h2h-bonus">+${m.h2hBonus}</span><b class="h2h-total">${m.adjustedTotal}</b></span>
+            <i class="fa-solid fa-chevron-down h2h-caret" aria-hidden="true"></i>
+        </div>
+        <div class="h2h-roster" data-roster="${m.userId}" hidden><div class="h2h-roster-logos">${rosterLogos(m)}</div></div>`;
+    }).join('');
+
+    const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
+    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}Head-to-Head${preview}</h2>
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Tap a manager to see their roster; see your full matchup log on My Team.</p>
+        <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
+        <div class="h2h-matches" h2h-matches></div>
+        <div class="h2h-head"><span></span><span></span><span class="h2h-col">pts · bonus · total</span></div>
+        <div class="h2h-list">${rows}</div>`;
+    el.hidden = false;
+
+    const matchesEl = el.querySelector('[h2h-matches]');
+    const paintWeek = (w) => {
+        const s = (d.schedule || []).find(x => x.week === Number(w));
+        matchesEl.innerHTML = (s && s.games.length)
+            ? s.games.map(g => window.ccH2H.matchupCard(g, { byId })).join('')
+            : '<p class="h2h-empty">No matchups this week.</p>';
+        window.ccH2H.wire(matchesEl);
+    };
+    const sel = el.querySelector('[h2h-week]');
+    sel.addEventListener('change', () => paintWeek(sel.value));
+    paintWeek(d.featuredWeek);
+
+    el.querySelectorAll('.h2h-row').forEach(row => {
+        const uid = row.getAttribute('data-uid');
+        const toggle = () => {
+            const r = el.querySelector(`[data-roster="${uid}"]`);
+            if (!r) return;
+            const opening = r.hasAttribute('hidden');
+            if (opening) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
+            row.setAttribute('aria-expanded', String(opening));
+            row.classList.toggle('open', opening);
+        };
+        row.addEventListener('click', toggle);
+        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the
