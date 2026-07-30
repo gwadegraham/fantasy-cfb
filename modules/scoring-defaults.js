@@ -76,8 +76,8 @@ const STRUCTURES = {
     graham: {
         combineMode: 'sum',
         regularWin: [
-            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Non-con win vs. unranked opponent' },
-            { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win vs. unranked opponent', additive: true },
+            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any win (base points)' },
+            { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win', additive: true },
             { condition: 'rankedTop25Bonus', pointsKey: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
             { condition: 'rankedTop10Bonus', pointsKey: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
             { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true }

@@ -455,9 +455,58 @@
 }
 [scoring-config-fields] .draft-status-row:first-child { margin-top: 4px; }
 
-/* Combine-mode dropdown: full width so "Sum all bonuses" isn't truncated on
-   mobile (the shared .sub-container select is only 45% wide there). */
-select[scoring-config-combine-mode] { width: 100%; }
+/* Combine mode: two plain-language radio cards + a live worked example, in
+   place of the old jargon dropdown ("First match wins (priority)"). */
+.combine-mode-q { font-size: 0.9em; margin-bottom: 4px; }
+.combine-mode { display: flex; flex-direction: column; gap: 8px; }
+
+.mode-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #2A2E42;
+    border-radius: 6px;
+    background: #101322;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.mode-card:hover { border-color: #5B6690; }
+.mode-card.is-active { border-color: #ED5858; background: rgba(237, 88, 88, 0.08); }
+.mode-card input[type="radio"] { margin: 3px 0 0; accent-color: #ED5858; flex: 0 0 auto; }
+.mode-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mode-card-title { font-weight: 600; font-size: 0.92em; }
+.mode-card-desc { font-size: 0.82em; color: #A4A9C2; line-height: 1.35; }
+
+.combine-example {
+    margin-top: 6px;
+    border: 1px solid #2A2E42;
+    border-radius: 6px;
+    background: #0C0F1C;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.combine-example-head { font-size: 0.82em; color: #A4A9C2; }
+.combine-example-head b { color: #F4F6FB; font-weight: 600; }
+.combine-example-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+}
+.combine-example-row.is-active {
+    border-color: rgba(237, 88, 88, 0.5);
+    background: rgba(237, 88, 88, 0.06);
+}
+.cx-label { font-size: 0.85em; font-weight: 600; min-width: 130px; }
+.cx-val { font-variant-numeric: tabular-nums; font-weight: 700; color: #E0B341; font-size: 0.9em; }
+.cx-note { font-size: 0.78em; color: #767D9C; }
+
 .scoring-field .num-stepper { flex: none; }
 
 /* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a

@@ -1581,21 +1581,96 @@ async function displayScoringConfigContainer() {
     if (toggleSub('scoring-config-container')) await loadScoringConfig();
 }
 
-async function loadScoringConfig() {
+// Loads the resolved scoring config for the current league. Pass a `model` to
+// preview a different rule shape (Fixed = claunts, Stacking = graham); the
+// server returns that shape's rules and its own default values.
+async function loadScoringConfig(model) {
     var leagueCode = getDraftLeagueCode();
-    var res = await fetch(`/scoring-config/${leagueCode}`, { headers: { 'Accept': 'application/json' } });
-    scoringConfigData = await res.json();   // { league, model, combineMode, values, disabled, fields }
-    document.querySelector('[scoring-config-model]').textContent =
-        (leagueCode === 'graham-league' ? 'Graham' : 'Claunts') + ' — ' + scoringConfigData.model + ' model';
-    var mode = document.querySelector('[scoring-config-combine-mode]');
-    if (mode) mode.value = scoringConfigData.combineMode || 'first';
+    var url = `/scoring-config/${leagueCode}` + (model ? `?model=${encodeURIComponent(model)}` : '');
+    var res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    scoringConfigData = await res.json();   // { league, model, combineMode, values, disabled, fields, example }
     document.querySelector('[scoring-config-note]').style.display = 'none';
+    applyScoringConfig();
+}
+
+// Plain-language name for each rule shape (the league's `model`).
+var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values' };
+
+// Reflects the loaded config into the UI: header, selected shape, rule rows,
+// and the worked example. Shared by load and save.
+function applyScoringConfig() {
+    var leagueCode = getDraftLeagueCode();
+    var leagueName = (leagueCode === 'graham-league' ? 'Graham' : 'Claunts') + ' League';
+    document.querySelector('[scoring-config-model]').textContent =
+        leagueName + ' — ' + (SHAPE_LABEL[scoringConfigData.model] || scoringConfigData.model);
+    setShape(scoringConfigData.model);
     renderScoringFields();
+    renderShapeExample();
+}
+
+// Rule shape is a two-card radio bound to the league's model (claunts/graham).
+function getShape() {
+    var checked = document.querySelector('[scoring-config-shape] input[name="rule-shape"]:checked');
+    return checked ? checked.value : ((scoringConfigData && scoringConfigData.model) || 'claunts');
+}
+
+function setShape(model) {
+    document.querySelectorAll('[scoring-config-shape] input[name="rule-shape"]').forEach(function (r) {
+        r.checked = (r.value === model);
+    });
+    document.querySelectorAll('[scoring-config-shape] .mode-card').forEach(function (c) {
+        c.classList.toggle('is-active', c.getAttribute('data-model') === model);
+    });
+}
+
+// Current points for a matched example rule: the live input value if present
+// (so the example tracks unsaved edits), else the saved-value fallback.
+function exPoints(m) {
+    var inp = document.querySelector('[scoring-config-fields] input[data-key="' + m.key + '"]');
+    if (inp) {
+        var v = parseFloat(inp.value);
+        if (!isNaN(v)) return v;
+    }
+    return m.points;
+}
+
+// A one-line worked example for the SELECTED shape, recomputed from the live
+// point inputs. Fixed: the single category the win lands in. Stacking: the base
+// plus every qualifying bonus, added up.
+function renderShapeExample() {
+    var box = document.querySelector('[scoring-config-example]');
+    if (!box) return;
+    var ex = scoringConfigData && scoringConfigData.example;
+    if (!ex || !ex.matched || !ex.matched.length) {
+        box.innerHTML = '';
+        box.style.display = 'none';
+        return;
+    }
+    box.style.display = '';
+    var stacking = scoringConfigData.combineMode === 'sum';
+    var pts = ex.matched.map(exPoints);
+    var plural = function (n) { return n + ' pt' + (n === 1 ? '' : 's'); };
+    var body;
+    if (stacking) {
+        var sum = pts.reduce(function (a, b) { return a + b; }, 0);
+        body = '<div class="combine-example-row is-active">' +
+            '<span class="cx-val">' + plural(sum) + '</span>' +
+            '<span class="cx-note">' + pts.join(' + ') + ' = ' + sum + '</span>' +
+        '</div>';
+    } else {
+        body = '<div class="combine-example-row is-active">' +
+            '<span class="cx-val">' + plural(pts[0]) + '</span>' +
+            '<span class="cx-note">counts as &ldquo;' + ex.matched[0].label + '&rdquo;</span>' +
+        '</div>';
+    }
+    box.innerHTML =
+        '<div class="combine-example-head">Example &mdash; a <b>' + ex.scenario + '</b> scores&hellip;</div>' + body;
 }
 
 // Renders the value inputs grouped by regular vs postseason. Postseason events
-// get an enable/disable checkbox (Option A: commissioners tune points + toggle
-// events + flip combine mode; they do not add/reorder rules or pick conditions).
+// get an enable/disable checkbox. A "+" marks a bonus that adds on top of the
+// others; whether a rule stacks is a property of the shape's rules, so it's
+// read straight from each field's `additive` flag.
 function renderScoringFields() {
     var wrap = document.querySelector('[scoring-config-fields]');
     var vals = scoringConfigData.values || {};
@@ -1636,10 +1711,17 @@ function renderScoringFields() {
             var v = parseInt(inp.value, 10);
             if (isNaN(v)) v = 0;
             inp.value = Math.max(0, v + delta);
+            renderShapeExample();
         }
         st.querySelector('.step-up').addEventListener('click', function () { step(1); });
         st.querySelector('.step-dn').addEventListener('click', function () { step(-1); });
     });
+
+    // Keep the worked example in sync as point values are typed. Assigned (not
+    // added) so repeated renders don't stack duplicate listeners.
+    wrap.oninput = function (e) {
+        if (e.target && e.target.matches && e.target.matches('input[data-key]')) renderShapeExample();
+    };
 }
 
 async function saveScoringConfig() {
@@ -1652,23 +1734,19 @@ async function saveScoringConfig() {
     document.querySelectorAll('[scoring-config-fields] .scoring-toggle').forEach(function (cb) {
         if (!cb.checked) disabled.push(cb.getAttribute('data-condition'));
     });
-    var modeEl = document.querySelector('[scoring-config-combine-mode]');
-    var combineMode = modeEl ? modeEl.value : undefined;
 
     var res = await fetch('/scoring-config', {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            league: leagueCode, model: scoringConfigData.model,
-            values: values, combineMode: combineMode, disabled: disabled
+            league: leagueCode, model: getShape(),
+            values: values, disabled: disabled
         })
     });
     var data = await res.json();
     if (res.status === 200) {
         scoringConfigData = data;
-        var modeReload = document.querySelector('[scoring-config-combine-mode]');
-        if (modeReload) modeReload.value = scoringConfigData.combineMode || 'first';
-        renderScoringFields();
+        applyScoringConfig();
         document.querySelector('[scoring-config-note]').style.display = 'block';
         successToast.options.text = 'Scoring config saved';
         successToast.showToast();
@@ -1682,3 +1760,12 @@ const scoringConfigForm = document.getElementById('scoring-config-form');
 if (scoringConfigForm) {
     scoringConfigForm.addEventListener('submit', function (e) { e.preventDefault(); saveScoringConfig(); });
 }
+
+// Switching the rule shape reloads that shape's rules + values from the server
+// (Fixed and Stacking have entirely different rule sets), then re-renders.
+document.querySelectorAll('[scoring-config-shape] input[name="rule-shape"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+        setShape(r.value);
+        loadScoringConfig(r.value);
+    });
+});
