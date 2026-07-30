@@ -151,6 +151,9 @@ async function renderBento(data) {
 
     // Hydrate each tile's glance + drawer from real data.
     hydrateH2H(data);
+    hydrateCaptain(data);
+    hydrateRecap(data);
+    hydrateDraft(data);
 }
 
 var UH_DRAWERS = {
@@ -273,11 +276,14 @@ async function hydrateH2H(user) {
 // for the current regular-season week. Behind a hero chip that expands a team
 // grid. Only shown for your own profile, and only when the league has opted in
 // (or ?captain=1 to preview). Weeks already scored are locked.
-async function renderCaptain(user) {
-    const chip = document.querySelector('[captain-chip]');
-    const panel = document.getElementById('uh-captain');
-    if (!chip || !panel || !user || !user.league || !(user.seasons || []).length) return;
-    if (String(currentUserId()) !== String(user._id)) return;   // own profile only
+// Captain (#230) → Captain tile. Own profile only, and only when the league has
+// Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
+// picker (set/clear a 2× team for the current open week).
+async function hydrateCaptain(user) {
+    const tile = document.getElementById('uh-tile-captain');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length) return hide();
+    if (String(currentUserId()) !== String(user._id)) return hide();   // own profile only
 
     const preview = new URLSearchParams(location.search).get('captain') === '1';
     let enabled = false;
@@ -285,12 +291,10 @@ async function renderCaptain(user) {
         const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.captainEnabled); }
     } catch (e) { /* fall through to preview gate */ }
-    if (!enabled && !preview) return;
+    if (!enabled && !preview) return hide();
 
-    // Captain is set for the CURRENT season's first unplayed week. In the
-    // offseason (no current-season roster, or every week already scored) there's
-    // nothing to set, so the picker stays hidden — except in preview mode, which
-    // falls back to the latest season that still has an open week.
+    // Current season's first unplayed week (preview falls back to the latest
+    // season with an open week).
     const firstOpenWeek = (s) => {
         const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
         for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
@@ -303,30 +307,28 @@ async function renderCaptain(user) {
         const cand = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
         if (cand) { season = cand; week = firstOpenWeek(cand); }
     }
-    if (!season || week == null) return;
+    if (!season || week == null) return hide();
 
     let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
-
     const teamById = {};
     (season.teams || []).forEach(t => { teamById[t.id] = t; });
-    const teaser = document.querySelector('[captain-chip-teaser]');
-    const setTeaser = () => {
+    if (tile) tile.hidden = false;
+
+    const g = document.getElementById('uh-glance-captain');
+    const setGlance = () => {
+        if (!g) return;
         const t = pick != null ? teamById[pick] : null;
-        teaser.innerHTML = t
-            ? `<img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)}`
+        g.innerHTML = t
+            ? `<span class="uh-cap-glance"><img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">Set for Wk ${week}</span>`;
     };
-    const paint = () => {
-        panel.innerHTML = `
-            <div class="recap-head"><div class="header-title">Captain · Week ${week}</div></div>
-            <div class="recap-card">
-                <p class="captain-note">Pick one team to score <b>2×</b> this week. Locks at kickoff.</p>
-                <div class="captain-grid">${(season.teams || []).map(t => `
-                    <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
-                        <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
-                    </button>`).join('')}</div>
-            </div>`;
-        panel.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
+    const paint = (container) => {
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${week}. Tap the current pick to clear. Locks at kickoff.</p>
+            <div class="captain-grid">${(season.teams || []).map(t => `
+                <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
+                    <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
+                </button>`).join('')}</div>`;
+        container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
             const teamId = Number(btn.getAttribute('data-team'));
             const next = Number(pick) === teamId ? null : teamId;   // click current to clear
             try {
@@ -337,112 +339,80 @@ async function renderCaptain(user) {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Could not set captain');
                 pick = next;
-                setTeaser(); paint();
+                setGlance(); paint(container);
                 if (window.ccToast) ccToast.success(next ? `Captain set: ${teamById[next].school}` : 'Captain cleared');
             } catch (e) { if (window.ccToast) ccToast.error(e.message); }
         }));
     };
 
-    setTeaser();
-    paint();
-    chip.hidden = false;
-    if (!chip.dataset.wired) {
-        chip.dataset.wired = '1';
-        chip.addEventListener('click', () => {
-            const open = panel.classList.toggle('is-open');
-            chip.setAttribute('aria-expanded', String(open));
-        });
-    }
+    setGlance();
+    uhDrawer.captain = (body) => paint(body);
 }
 
-// Weekly Recap on the profile: a "here's your week" card tucked behind a hero
-// pill (like the Draft grade chip). Rendering + the app-wide weekly popup live
-// in public/weekly-recap.js (window.ccRecap); here we just fetch, mount the
-// collapsed card, and wire the pill to expand it.
-async function renderRecap(user) {
-    const el = document.getElementById('uh-recap');
-    const chip = document.querySelector('[recap-chip]');
-    if (!el || !chip || !window.ccRecap || !user || !user.league || !(user.seasons || []).length) return;
+// Weekly Recap (#212) → Your Week tile. Glance shows the latest week's narrative;
+// drawer mounts the full "Your Week" card (week selector + story) via ccRecap.
+async function hydrateRecap(user) {
+    const tile = document.getElementById('uh-tile-recap');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!window.ccRecap || !user || !user.league || !(user.seasons || []).length) return hide();
 
-    // Recap the latest season that actually has weekly scores, so the pill is
-    // useful in the offseason too (shows last season's finish).
     const played = (user.seasons || [])
         .filter(s => (s.weeklyScore || []).length > 0)
         .sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return;
+    if (!played.length) return hide();
 
     try {
         const data = await window.ccRecap.fetchRecap(user.league, played[0].season, user._id);
-        if (!data || !(data.recaps || []).length) return;
-        const latest = window.ccRecap.mountInline(el, data);
+        if (!data || !(data.recaps || []).length) return hide();
+        if (tile) tile.hidden = false;
 
-        // Teaser on the pill: latest week + rank + movement arrow.
-        const teaser = document.querySelector('[recap-chip-teaser]');
-        if (teaser && latest) {
-            const place = latest.rank != null ? escapeHtml(ordinal(latest.rank)) : '';
-            teaser.innerHTML = `${escapeHtml(latest.label)} · ${place} ${window.ccRecap.movement(latest.rankDelta)}`;
+        const latest = data.recaps[data.recaps.length - 1];
+        const g = document.getElementById('uh-glance-recap');
+        if (g && latest) {
+            const place = latest.rank != null ? ` · ${escapeHtml(ordinal(latest.rank))} ${window.ccRecap.movement(latest.rankDelta)}` : '';
+            g.innerHTML = latest.narrative ? escapeHtml(latest.narrative) : `${escapeHtml(latest.label)}${place}`;
         }
-        chip.hidden = false;
-        if (!chip.dataset.wired) {
-            chip.dataset.wired = '1';
-            chip.addEventListener('click', () => {
-                const open = el.classList.toggle('is-open');
-                chip.setAttribute('aria-expanded', String(open));
-            });
-        }
+        uhDrawer.recap = (body) => { window.ccRecap.mountInline(body, data); };
     } catch (e) {
         console.error('weekly recap failed:', e);
+        hide();
     }
 }
 
-// Draft grade on the profile: just THIS manager's own most-recent-season card,
-// surfaced as a color-coded chip in the hero that expands the detail on demand.
-// Preseason blend of roster strength + draft value (see modules/draft-grades.js).
-async function loadHomeGrades(user) {
-    const el = document.getElementById('uh-grades');
-    const chip = document.querySelector('[profile-grade-chip]');
-    if (!el || !chip || !user || !user.league || !(user.seasons || []).length) return;
+// Draft grade → Draft grade tile. Glance shows the color-coded letter; drawer
+// renders this manager's full draft-grade card (reused from draftGrades.js).
+async function hydrateDraft(user) {
+    const tile = document.getElementById('uh-tile-draft');
+    const hide = () => { if (tile) tile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length) return hide();
     const season = user.seasons.at(-1).season;
     try {
         const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
             headers: { 'Accept': 'application/json' }
         });
         const data = await res.json();
-        // Show only the profile owner's card; hide the chip entirely if this
-        // manager didn't draft that season.
         const mine = (data.managers || []).find(m => String(m.userId) === String(user._id));
-        if (!mine) return;   // chip stays hidden
+        if (!mine) return hide();   // didn't draft that season
+        if (tile) tile.hidden = false;
 
         const tier = (mine.grade || '').charAt(0).toLowerCase();
-        chip.classList.add('gg-tier-' + tier);
-        document.querySelector('[profile-grade-letter]').textContent = mine.grade;
-        chip.hidden = false;
+        const g = document.getElementById('uh-glance-draft');
+        if (g) g.innerHTML = `<span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-glance-sub">preseason projection</span>`;
 
-        // "you" tag keys off the logged-in viewer, not the profile owner, so it
-        // only appears when you're looking at your own profile.
         let me;
         try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }
         me = me || window.localStorage.getItem('userId') || user._id;
-        if (typeof renderDraftGradeCard === 'function') {
-            renderDraftGradeCard(el, mine, {
-                currentUserId: me,
-                note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
-            });
-        }
-        // Reveal the panel but keep it collapsed via CSS max-height, so the
-        // first expand animates (display:none can't transition).
-        el.hidden = false;
-
-        // Chip toggles the detail panel (collapsed by default).
-        if (!chip.dataset.wired) {
-            chip.dataset.wired = '1';
-            chip.addEventListener('click', () => {
-                const open = el.classList.toggle('is-open');
-                chip.setAttribute('aria-expanded', String(open));
-            });
-        }
+        uhDrawer.draft = (body) => {
+            if (typeof renderDraftGradeCard === 'function') {
+                renderDraftGradeCard(body, mine, {
+                    currentUserId: me,
+                    note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+                });
+            }
+        };
     } catch (e) {
-        console.error('home grades failed:', e);
+        console.error('draft grade failed:', e);
+        hide();
     }
 }
 
