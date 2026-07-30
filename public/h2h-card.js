@@ -38,7 +38,9 @@
     // scores hug the center divider, like a Sleeper matchup.
     function teamRow(t, right) {
         var img = '<img class="h2h-tlogo" src="' + esc(t.logo) + '" alt="">';
-        var nm = '<span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>';
+        // Captain doubles this team's points — mark it so the inflated score reads.
+        var cap = t.captain ? '<span class="h2h-capx" title="Captain — points doubled">★2×</span>' : '';
+        var nm = '<span class="h2h-tnmline"><span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>' + cap + '</span>';
         var sub = t.opp
             ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';

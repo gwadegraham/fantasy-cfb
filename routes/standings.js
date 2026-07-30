@@ -255,7 +255,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const users = await User.find({ league, 'seasons.season': season });
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
-        const ids = [], meta = {}, totals = {}, teamDetail = {};
+        const ids = [], meta = {}, totals = {}, teamDetail = {}, caps = {};
         const draftedSet = new Set();
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
@@ -287,6 +287,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
             });
             totals[id] = tw;
             teamDetail[id] = twTeams;
+            caps[id] = {};
+            (s.captains || []).forEach(c => { if (c && c.week != null) caps[id][c.week] = c.teamId; });
         });
         if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], schedule: [] });
 
@@ -390,7 +392,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
         const teamsFinal = (id, w) => Object.values((teamDetail[id] && teamDetail[id][w]) || {})
-            .map(t => ({ school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final' }))
+            .map(t => ({ school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId) }))
             .sort((a, b) => b.score - a.score);
         const fmtKick = (g) => {
             if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
@@ -410,7 +412,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.completed && g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore };
+            return { school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: !!(caps[id] && caps[id][w] === t.id) };
         }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
@@ -472,7 +474,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             w.final = false;
             const doctor = (arr) => (arr || []).map((t, j) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
-                return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null };
+                return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null, captain: j === 0 };
             });
             // Live odds from the doctored slate: final games lock their actual
             // points, everything else is a neutral coin-flip projection — so the
