@@ -156,6 +156,7 @@ async function renderBento(data) {
     hydrateDraft(data);
     hydrateRoster(data);
     hydrateTrajectory(data);
+    hydrateGames(data);
 }
 
 // Roster → Roster tile. Glance shows your top performer; drawer lists all teams
@@ -207,6 +208,42 @@ function hydrateTrajectory(user) {
         renderProfileChart(user);
         const section = body.querySelector('[profile-chart-section]');
         if (section && section.hidden) { const e = body.querySelector('#uh-traj-empty'); if (e) e.hidden = false; }
+    };
+}
+
+// Games → Games tile. Glance names the selected week; drawer hosts a week picker
+// + this week's game cards for your rostered teams (reused displaySchedule).
+function hydrateGames(user) {
+    const tile = document.getElementById('uh-tile-games');
+    const season = (user.seasons || []).at(-1) || {};
+    if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
+    ensureWeekSelected(user);
+
+    const g = document.getElementById('uh-glance-games');
+    if (g) g.textContent = `${window.localStorage.getItem('week') || 'This week'} · your teams`;
+
+    uhDrawer.games = (body) => {
+        const weeks = [];
+        for (let w = 1; w <= 16; w++) weeks.push(['week-' + w, 'Week ' + w]);
+        weeks.push(['week-17', 'Postseason']);
+        const cur = window.localStorage.getItem('weekCode') || 'week-1';
+        body.innerHTML = `<label class="uh-games-pick"><span>Week</span><select uh-games-week>${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+            <div class="football-loader" style="display:none"><div class="football-icon">🏈</div><p class="loading-text">Scouting for games...</p></div>
+            <div class="schedule-grid" schedule-body><div id="no-games-container"></div></div>`;
+        const sel = body.querySelector('[uh-games-week]');
+        const run = () => {
+            const loader = body.querySelector('.football-loader'); if (loader) loader.style.display = 'flex';
+            const sb = body.querySelector('[schedule-body]'); if (sb) sb.style.display = 'none';
+            displaySchedule(user);
+        };
+        sel.addEventListener('change', () => {
+            const label = sel.options[sel.selectedIndex].text;
+            window.localStorage.setItem('weekCode', sel.value);
+            window.localStorage.setItem('week', label);
+            if (g) g.textContent = `${label} · your teams`;
+            run();
+        });
+        run();
     };
 }
 

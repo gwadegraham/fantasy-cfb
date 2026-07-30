@@ -632,3 +632,8 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-rc-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
 .uh-drawer-body .table-wrapper { overflow-x: auto; margin: 0; }
 .uh-drawer-body .profile-chart-wrap { height: 220px; position: relative; }
+
+/* Games drawer (#230 redesign) */
+.uh-games-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 11px; color: #767D9C; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+.uh-games-pick select { background: #12162A; border: 1px solid #2A2E42; border-radius: 8px; color: #F4F6FB; font: inherit; padding: 6px 8px; text-transform: none; letter-spacing: 0; }
+.uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; }
