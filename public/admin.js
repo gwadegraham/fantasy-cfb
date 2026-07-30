@@ -1685,6 +1685,9 @@ function renderScoringFields() {
         // regardless of the win shape, so a "+" there just reads as a
         // contradiction — omit it and let the postseason list stand plainly.
         var showPlus = f.additive && f.group === 'regular';
+        // A stacking note sits directly under the row it describes, so "this" /
+        // "these points" clearly refers to that rule.
+        var note = f.stacksNote ? `<div class="scoring-note">${f.stacksNote}</div>` : '';
         return `<div class="draft-field scoring-field${f.enabled ? '' : ' scoring-disabled'}" data-condition="${f.condition}">
             <label>${toggle}${showPlus ? '+ ' : ''}${f.label}</label>
             <div class="num-stepper">
@@ -1692,18 +1695,14 @@ function renderScoringFields() {
                 <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
                 <button type="button" class="step-up" tabindex="-1" aria-label="Increase points">+</button>
             </div>
-        </div>`;
+        </div>${note}`;
     }
 
     var regular = fields.filter(function (f) { return f.group === 'regular'; });
     var post = fields.filter(function (f) { return f.group === 'postseason'; });
-    // Notes for postseason events that stack on top of another event (their
-    // combining doesn't fit the plain "+" convention used for regular wins).
-    var stackNotes = post.filter(function (f) { return f.stacksNote; })
-        .map(function (f) { return '<div class="scoring-note">' + f.stacksNote + '</div>'; }).join('');
     wrap.innerHTML =
         '<div class="draft-status-row">Regular season</div>' + regular.map(fieldRow).join('') +
-        '<div class="draft-status-row">Postseason</div>' + stackNotes + post.map(fieldRow).join('');
+        '<div class="draft-status-row">Postseason</div>' + post.map(fieldRow).join('');
 
     // Grey out a postseason row when its event is disabled.
     wrap.querySelectorAll('.scoring-toggle').forEach(function (cb) {
