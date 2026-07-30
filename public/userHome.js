@@ -109,13 +109,14 @@ async function getUser() {
     });
 }
 
-// Head-to-Head matchup history (#230): this profile's week-by-week matchups
-// with the team-level breakdown, behind a hero "Matchups" chip. Shown when the
-// league has H2H on (or ?h2h=1 to preview). Public info, like standings.
+// Head-to-Head matchups (#230): a spotlight banner in the profile hero for the
+// current/latest matchup, plus an always-visible "Head-to-Head" section with the
+// full week-by-week history. Shown when the league has H2H on (or ?h2h=1 to
+// preview). Public info, like standings.
 async function renderMatchups(user) {
-    const chip = document.querySelector('[matchups-chip]');
+    const banner = document.getElementById('uh-h2h-banner');
     const panel = document.getElementById('uh-h2h');
-    if (!chip || !panel || !user || !user.league || !(user.seasons || []).length) return;
+    if (!banner || !panel || !user || !user.league || !(user.seasons || []).length) return;
 
     const played = (user.seasons || []).filter(s => (s.weeklyScore || []).length > 0).sort((a, b) => Number(b.season) - Number(a.season));
     if (!played.length) return;
@@ -132,7 +133,7 @@ async function renderMatchups(user) {
     try {
         data = await fetch(`/standings/h2h/${encodeURIComponent(user.league)}/${encodeURIComponent(season)}`, { headers: { Accept: 'application/json' } }).then(r => r.json());
     } catch (e) { return; }
-    if (!data || !(data.schedule || []).length) return;
+    if (!data || !(data.schedule || []).length || !window.ccH2H) return;
 
     const byId = {};
     (data.managers || []).forEach(m => { byId[m.userId] = m; });
@@ -142,36 +143,29 @@ async function renderMatchups(user) {
     if (!mine.length) return;
 
     const me = byId[uid];
-    const teaser = document.querySelector('[matchups-chip-teaser]');
-    if (teaser && me) teaser.textContent = me.record;
-
-    // Featured matchup: the current/live week when the season's in progress,
-    // otherwise the most recent one — shown expanded. The rest collapse below,
-    // one tap-to-expand card per week (newest first). Reuses the shared
-    // Standings matchup card, oriented so you're always on the left.
-    if (!window.ccH2H) return;
+    const swords = window.ccIcon ? window.ccIcon('swords', { size: 15 }) : '';
+    // Featured matchup = the current/live week in-season, else the most recent.
+    // It headlines the hero banner (collapsed, tap to expand); the rest make up
+    // the history section below (newest first). One shared card, you on the left.
     const featuredWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek))
         ? data.currentWeek
         : mine[mine.length - 1].week;
     const featured = mine.find(x => x.week === featuredWk);
     const rest = mine.filter(x => x.week !== featuredWk).sort((a, b) => b.week - a.week);
     const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, week: x.week, open });
-    const fLabel = featured && featured.final === false ? 'This week' : 'Latest';
+    const fLabel = featured && featured.final === false ? 'This week' : 'Latest matchup';
 
+    // Hero spotlight banner: the featured matchup + your record.
+    banner.innerHTML = `<div class="uh-h2h-blabel">${swords}<span>${fLabel}</span>${me ? `<span class="uh-h2h-brec">${escapeHtml(me.record)}</span>` : ''}</div>${featured ? cardOf(featured, false) : ''}`;
+    banner.hidden = false;
+    window.ccH2H.wire(banner);
+
+    // Always-visible history section (no chip).
     panel.innerHTML = `
-        <div class="recap-head"><div class="header-title">Head-to-Head · ${season}</div>${me ? `<span class="uh-h2h-rec">${escapeHtml(me.record)}</span>` : ''}</div>
-        <div class="uh-h2h-featured"><div class="uh-h2h-flabel">${fLabel}</div>${featured ? cardOf(featured, true) : ''}</div>
-        ${rest.length ? `<div class="uh-h2h-log"><div class="uh-h2h-logcap">All weeks</div>${rest.map(x => cardOf(x, false)).join('')}</div>` : ''}`;
+        <div class="recap-head"><div class="header-title">Head-to-Head · ${season}</div></div>
+        ${rest.length ? `<div class="uh-h2h-log">${rest.map(x => cardOf(x, false)).join('')}</div>` : '<p class="uh-h2h-empty">No other matchups yet this season.</p>'}`;
+    panel.classList.add('is-open');
     window.ccH2H.wire(panel);
-
-    chip.hidden = false;
-    if (!chip.dataset.wired) {
-        chip.dataset.wired = '1';
-        chip.addEventListener('click', () => {
-            const open = panel.classList.toggle('is-open');
-            chip.setAttribute('aria-expanded', String(open));
-        });
-    }
 }
 
 // Captain picker (#230): the profile owner sets which rostered team to double

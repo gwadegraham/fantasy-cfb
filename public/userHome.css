@@ -537,14 +537,17 @@
 @media (prefers-reduced-motion: reduce) { .uh-captain { transition: none; } }
 
 /* ---------- H2H matchups (#230, My Team) ----------
-   Record header, a featured matchup shown expanded, then a collapsed log of the
-   other weeks. The matchup cards themselves come from the shared h2h-card.css. */
-.uh-h2h { width: 92%; max-width: 720px; margin: 0 auto; overflow: hidden; max-height: 0; transition: max-height 0.32s ease; }
-.uh-h2h.is-open { max-height: 6000px; margin-top: 1.1rem; }
-.uh-h2h .recap-head { display: flex; align-items: baseline; gap: 0.6rem; }
-.uh-h2h-rec { font-size: 0.85rem; font-weight: 800; color: #C9CEE6; font-variant-numeric: tabular-nums; }
-.uh-h2h-featured { margin-bottom: 1rem; }
-.uh-h2h-flabel, .uh-h2h-logcap { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-bottom: 0.45rem; }
+   A spotlight banner in the profile hero for the current/latest matchup, plus an
+   always-visible "Head-to-Head" history section. Cards come from h2h-card.css. */
+
+/* Hero spotlight banner (inside .profile-meta). */
+.uh-h2h-banner { margin-top: 1em; padding-top: 0.9em; border-top: 1px solid #2A2E42; }
+.uh-h2h-blabel { display: flex; align-items: center; gap: 0.4rem; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9aa0bd; margin-bottom: 0.5rem; }
+.uh-h2h-blabel svg { flex-shrink: 0; }
+.uh-h2h-brec { margin-left: auto; color: #C9CEE6; font-weight: 800; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .uh-h2h-blabel { justify-content: center; } .uh-h2h-brec { margin-left: 0.5rem; } }
+
+/* Always-visible history section. */
+.uh-h2h { width: 92%; max-width: 720px; margin: 1.5rem auto 0; }
 .uh-h2h-log { display: flex; flex-direction: column; gap: 0.5rem; }
-.uh-h2h-log .uh-h2h-logcap { margin-top: 0.4rem; }
-@media (prefers-reduced-motion: reduce) { .uh-h2h { transition: none; } }
+.uh-h2h-empty { color: #767D9C; font-size: 0.85rem; }
