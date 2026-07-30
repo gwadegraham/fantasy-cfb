@@ -31,46 +31,9 @@
         var CLOUDINARY = <%- JSON.stringify(cloudinary || { cloudName: '', uploadPreset: '' }) %>;
     </script>
 
-    <div class="profile-hero" profile-hero>
-        <div class="avatar avatar-lg" profile-avatar></div>
-        <div class="profile-meta">
-            <h1 class="franchise-name" profile-franchise></h1>
-            <p class="manager-name" profile-manager></p>
-            <div class="profile-stats" profile-stats></div>
-            <div class="profile-chips">
-                <button type="button" class="grade-chip" profile-grade-chip hidden
-                        aria-expanded="false" aria-controls="uh-grades">
-                    <span class="grade-chip-label">Draft grade</span>
-                    <span class="grade-chip-letter" profile-grade-letter></span>
-                    <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="grade-chip recap-chip" recap-chip hidden
-                        aria-expanded="false" aria-controls="uh-recap">
-                    <span class="grade-chip-label"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i> Weekly recap</span>
-                    <span class="recap-chip-teaser" recap-chip-teaser></span>
-                    <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="grade-chip captain-chip" captain-chip hidden
-                        aria-expanded="false" aria-controls="uh-captain">
-                    <span class="grade-chip-label"><i class="fa-solid fa-star" aria-hidden="true"></i> Captain</span>
-                    <span class="captain-chip-teaser" captain-chip-teaser></span>
-                    <i class="fa-solid fa-chevron-down grade-chip-caret" aria-hidden="true"></i>
-                </button>
-            </div>
-            <div class="uh-h2h-banner" id="uh-h2h-banner" hidden></div>
-        </div>
-        <button type="button" class="edit-profile-btn" edit-profile-btn hidden>
-            <i class="fa-solid fa-pen"></i> Edit profile
-        </button>
-    </div>
-
-    <section class="uh-grades" id="uh-grades" hidden></section>
-
-    <section class="uh-recap" id="uh-recap"></section>
-
-    <section class="uh-captain" id="uh-captain"></section>
-
-    <section class="uh-h2h" id="uh-h2h"></section>
+    <!-- My Team bento (#230 redesign, feat/my-team-redesign). Tiles rendered by
+         renderBento(); each opens the slide-over drawer below. -->
+    <div class="uh-bento" id="uh-bento"></div>
 
     <div class="modal-backdrop" profile-modal hidden>
         <div class="profile-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
@@ -94,64 +57,13 @@
             </div>
         </div>
     </div>
-    <div class="content">
-        <div class="get-users-container" get-users-container>
-            <div class="table-wrapper">
-                <table class="fl-table">
-                    <thead user-table-head></thead>
-                    <tbody user-table-body>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <div class="profile-chart-section" profile-chart-section hidden>
-        <div class="header"><div class="header-title">Season Progress</div></div>
-        <div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div>
-    </div>
-    <hr class="hr-subtle">
-    <div class="header">
-        <div class="header-title" poll-name>
-            Games
-        </div>
-    </div>
-    <div class="dropdown dropdownWeek">
-        <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButtonWeek" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-            Week X
-        </button>
-        <div class="dropdown-menu dropdown-menu-week" aria-labelledby="dropdownMenuButton">
-            <a class="dropdown-item dropdown-week selected" value="week-1">Week 1</a>
-            <a class="dropdown-item dropdown-week" value="week-2">Week 2</a>
-            <a class="dropdown-item dropdown-week" value="week-3">Week 3</a>
-            <a class="dropdown-item dropdown-week" value="week-4">Week 4</a>
-            <a class="dropdown-item dropdown-week" value="week-5">Week 5</a>
-            <a class="dropdown-item dropdown-week" value="week-6">Week 6</a>
-            <a class="dropdown-item dropdown-week" value="week-7">Week 7</a>
-            <a class="dropdown-item dropdown-week" value="week-8">Week 8</a>
-            <a class="dropdown-item dropdown-week" value="week-9">Week 9</a>
-            <a class="dropdown-item dropdown-week" value="week-10">Week 10</a>
-            <a class="dropdown-item dropdown-week" value="week-11">Week 11</a>
-            <a class="dropdown-item dropdown-week" value="week-12">Week 12</a>
-            <a class="dropdown-item dropdown-week" value="week-13">Week 13</a>
-            <a class="dropdown-item dropdown-week" value="week-14">Week 14</a>
-            <a class="dropdown-item dropdown-week" value="week-15">Week 15</a>
-            <a class="dropdown-item dropdown-week" value="week-16">Week 16</a>
-            <a class="dropdown-item dropdown-week" value="week-17">Postseason</a>
-        </div>
-        </div>
-    <div class="game-content">
-        <div class="football-loader">
-            <div class="football-icon">🏈</div>
-            <p class="loading-text">Scouting for games...</p>
-        </div>
-        <div class="get-users-container">
-            <div class="schedule-wrapper" schedule-container>
-                <div class="schedule-grid" schedule-body>
-                    <div id="no-games-container"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+
+    <div class="uh-scrim" id="uh-scrim"></div>
+    <aside class="uh-drawer" id="uh-drawer" role="dialog" aria-modal="true" aria-label="Detail" hidden>
+        <div class="uh-drawer-grab"></div>
+        <div class="uh-drawer-head"><span class="uh-drawer-title" id="uh-drawer-title"></span><button class="uh-drawer-close" id="uh-drawer-close" type="button" aria-label="Close">✕</button></div>
+        <div class="uh-drawer-body" id="uh-drawer-body"></div>
+    </aside>
 
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>

@@ -97,16 +97,89 @@ async function getUser() {
 
     response.json().then(async data => {
         userData = data[0];
-        renderHero(data[0]);
-        displayTeams(data[0]);
-        renderProfileChart(data[0]);
-        ensureWeekSelected(data[0]);
-        displaySchedule(data[0]);
-        loadHomeGrades(data[0]);
-        renderRecap(data[0]);
-        renderCaptain(data[0]);
-        renderMatchups(data[0]);
+        renderBento(data[0]);
     });
+}
+
+// ---------- My Team bento (#230 redesign, feat/my-team-redesign) ----------
+// Renders the tile grid; each tile opens the slide-over drawer. STAGE 2 (shell):
+// the hero tile shows real identity + edit; the other tiles open placeholder
+// drawers that the next stage wires to the real renderers.
+async function renderBento(data) {
+    const bento = document.getElementById('uh-bento');
+    if (!bento || !data) return;
+    const season = data.seasons.at(-1) || {};
+    const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
+    document.title = `${franchise || manager} · Campus Clash`;
+    const own = currentUserId() && String(currentUserId()) === String(data._id);
+    const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+    const tile = (k, label, glance, span) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">›</span></span><span class="uh-glance">${glance}</span></button>`;
+
+    bento.innerHTML =
+        `<div class="uh-tile span2 uh-hero">
+            <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
+            <div class="uh-hero-meta">
+                <div class="uh-hero-name">${escapeHtml(franchise)}</div>
+                <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
+                <div class="uh-hero-stats" id="uh-hero-stats"></div>
+            </div>
+            ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+        </div>`
+        + tile('matchup', 'This week · matchup', 'Your current H2H matchup', 2)
+        + tile('roster', 'Roster', 'Your 10 teams', 2)
+        + tile('captain', 'Captain', 'Double a team each week', 1)
+        + tile('recap', 'Your week', 'Latest recap', 1)
+        + tile('schedule', 'Schedule', 'Up next', 1)
+        + tile('trajectory', 'Trajectory', 'Season points', 1)
+        + tile('draft', 'Draft grade', 'Preseason projection', 2)
+        + tile('games', 'Games', 'This week’s games', 2);
+
+    renderAvatar(document.getElementById('uh-hero-av'), data);
+    const statsEl = document.getElementById('uh-hero-stats');
+    let sh = '';
+    try { const rank = await computeRank(data); if (rank) sh += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`); } catch (e) { /* rank optional */ }
+    sh += statTile(String(season.cumulativeScore || 0), 'Total points');
+    const bt = bestTeam(season);
+    if (bt && bt.total > 0) sh += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    statsEl.innerHTML = sh;
+
+    if (own) setupEditModal(data, season);
+
+    bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
+    setupDrawer();
+}
+
+var UH_DRAWERS = {
+    matchup: 'This week · matchup', roster: 'Roster', captain: 'Captain',
+    recap: 'Your week', schedule: 'Schedule', trajectory: 'Trajectory',
+    draft: 'Draft grade', games: 'Games'
+};
+function openDrawer(key) {
+    const title = UH_DRAWERS[key];
+    if (title == null) return;
+    document.getElementById('uh-drawer-title').textContent = title;
+    document.getElementById('uh-drawer-body').innerHTML = '<p class="uh-stub">This opens the “' + title + '” detail — wired to real data in the next step.</p>';
+    const d = document.getElementById('uh-drawer');
+    d.hidden = false;
+    document.getElementById('uh-scrim').classList.add('open');
+    requestAnimationFrame(() => d.classList.add('open'));
+    document.getElementById('uh-drawer-close').focus();
+}
+function closeDrawer() {
+    const d = document.getElementById('uh-drawer');
+    if (!d) return;
+    d.classList.remove('open');
+    document.getElementById('uh-scrim').classList.remove('open');
+    setTimeout(() => { d.hidden = true; }, 300);
+}
+function setupDrawer() {
+    const scrim = document.getElementById('uh-scrim'), close = document.getElementById('uh-drawer-close');
+    if (!scrim || scrim.dataset.wired) return;
+    scrim.dataset.wired = '1';
+    scrim.addEventListener('click', closeDrawer);
+    close.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 }
 
 // Head-to-Head matchups (#230): a spotlight banner in the profile hero for the
