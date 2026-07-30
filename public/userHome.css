@@ -576,6 +576,14 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-hero-stats .stat-value { font-size: 1.15rem; font-weight: 800; color: #F4F6FB; display: flex; align-items: center; gap: 6px; }
 .uh-hero-stats .stat-value img { height: 1.1rem; width: auto; }
 .uh-hero-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-top: 2px; }
+/* Preseason / undrafted-window empty state (active season not yet drafted). */
+.uh-preseason-pill { display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #E0B341; border: 1px solid rgba(224,179,65,0.4); border-radius: 99px; padding: 3px 10px; }
+.uh-preseason { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 40px 24px; }
+.uh-preseason-icon { display: inline-flex; opacity: 0.85; margin-bottom: 4px; }
+.uh-preseason-h { font-size: 18px; font-weight: 800; color: #F4F6FB; margin: 0; text-wrap: balance; }
+.uh-preseason-p { font-size: 14px; color: #A4A9C2; line-height: 1.5; margin: 0; max-width: 34ch; }
+.uh-preseason-last { margin-top: 10px; font-size: 12px; color: #767D9C; }
+.uh-preseason-last b { color: #C9CEE6; font-weight: 700; }
 .uh-edit { margin-left: auto; align-self: flex-start; width: 36px; height: 36px; border-radius: 10px; border: 1px solid #2A2E42; background: transparent; color: #C9CEE6; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .uh-edit:hover { border-color: #3A3F58; color: #F4F6FB; }
 .uh-edit:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; }

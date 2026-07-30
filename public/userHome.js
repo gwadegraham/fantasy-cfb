@@ -124,6 +124,44 @@ async function renderBento(data) {
     document.title = `${franchise || manager} · Campus Clash`;
     const own = currentUserId() && String(currentUserId()) === String(data._id);
     const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+    // Preseason / undrafted window: the active season (APP_YEAR) hasn't been
+    // drafted for this manager yet — there's no season entry to key tiles off,
+    // so uhSeasonFor is only giving us a prior-season fallback. Rather than mix
+    // last season's data into a half-empty grid, show a dedicated empty state.
+    const hasActiveSeason = (data.seasons || []).some(s => String(s.season) === String(activeYear));
+    if (!hasActiveSeason) {
+        const prior = (data.seasons || [])
+            .filter(s => (s.weeklyScore || []).length)
+            .sort((a, b) => Number(b.season) - Number(a.season))[0];
+        let lastLine = '';
+        if (prior) {
+            const bt = bestTeam(prior);
+            lastLine = `<div class="uh-preseason-last">Last season · <b>${escapeHtml(prior.season)}</b> · ${prior.cumulativeScore || 0} pts`
+                + (bt && bt.total > 0 ? ` · best <b>${escapeHtml(bt.team.school)}</b> (${bt.total})` : '') + `</div>`;
+        }
+        const ball = window.ccIcon ? window.ccIcon('football', { size: 44 }) : '🏈';
+        bento.innerHTML =
+            `<div class="uh-tile span2 uh-hero">
+                <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
+                <div class="uh-hero-meta">
+                    <div class="uh-hero-name">${escapeHtml(franchise)}</div>
+                    <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
+                    <div class="uh-hero-stats"><span class="uh-preseason-pill">${escapeHtml(activeYear)} preseason</span></div>
+                </div>
+                ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+            </div>`
+            + `<div class="uh-tile span2 uh-preseason">
+                    <span class="uh-preseason-icon">${ball}</span>
+                    <h2 class="uh-preseason-h">The ${escapeHtml(activeYear)} season hasn’t kicked off yet</h2>
+                    <p class="uh-preseason-p">Your roster, matchups, and weekly recaps land here once your league’s draft is complete.</p>
+                    ${lastLine}
+                </div>`;
+        renderAvatar(document.getElementById('uh-hero-av'), data);
+        if (own) setupEditModal(data, season);
+        return;
+    }
+
     const tile = (k, label, glance, span, affordance) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">${affordance || '›'}</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
 
     bento.innerHTML =
