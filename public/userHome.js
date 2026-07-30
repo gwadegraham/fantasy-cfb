@@ -154,6 +154,60 @@ async function renderBento(data) {
     hydrateCaptain(data);
     hydrateRecap(data);
     hydrateDraft(data);
+    hydrateRoster(data);
+    hydrateTrajectory(data);
+}
+
+// Roster → Roster tile. Glance shows your top performer; drawer lists all teams
+// as cards (points + share bar) then the full week-by-week grid (reused
+// displayTeams). Sums per-team points from this season's weekly scoreByTeam.
+function hydrateRoster(user) {
+    const tile = document.getElementById('uh-tile-roster');
+    const season = (user.seasons || []).at(-1) || {};
+    const teams = season.teams || [];
+    if (!teams.length) { if (tile) tile.hidden = true; return; }
+
+    const totalById = {};
+    (season.weeklyScore || []).forEach(e => (e.scoreByTeam || []).forEach(st => {
+        totalById[st.teamId] = (totalById[st.teamId] || 0) + (st.score || 0);
+    }));
+    const cards = teams.map(t => ({ t, pts: Math.round((totalById[t.id] || 0) * 10) / 10 })).sort((a, b) => b.pts - a.pts);
+    const top = cards[0];
+
+    const g = document.getElementById('uh-glance-roster');
+    if (g) g.innerHTML = top && top.pts > 0
+        ? `<span class="uh-mu-opp">${escapeHtml(top.t.school)}</span> <b class="num">${top.pts}</b> <span class="uh-glance-sub">leads your roster</span>`
+        : 'Your 10 teams';
+
+    uhDrawer.roster = (body) => {
+        const max = (cards[0] && cards[0].pts) || 1;
+        const list = cards.map(c => `<a class="uh-rc" href="/team?team=${c.t.id}">
+            <img src="${c.t.logos.at(-1)}" alt="">
+            <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
+            <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
+        body.innerHTML = `<div class="uh-roster-cards">${list}</div>
+            <div class="uh-drawer-cap">Week by week</div>
+            <div class="table-wrapper"><table class="fl-table"><thead user-table-head></thead><tbody user-table-body></tbody></table></div>`;
+        displayTeams(user);
+    };
+}
+
+// Trajectory → Trajectory tile. Glance shows total points; drawer hosts the
+// cumulative-points line chart (reused renderProfileChart).
+function hydrateTrajectory(user) {
+    const tile = document.getElementById('uh-tile-trajectory');
+    const season = (user.seasons || []).at(-1) || {};
+    if (!(season.weeklyScore || []).length) { if (tile) tile.hidden = true; return; }
+
+    const g = document.getElementById('uh-glance-trajectory');
+    if (g) g.innerHTML = `<b class="num">${season.cumulativeScore || 0}</b> <span class="uh-glance-sub">total points</span>`;
+
+    uhDrawer.trajectory = (body) => {
+        body.innerHTML = `<div class="profile-chart-section" profile-chart-section hidden><div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div></div><p class="uh-stub" id="uh-traj-empty" hidden>Not enough scored weeks yet to chart a trend.</p>`;
+        renderProfileChart(user);
+        const section = body.querySelector('[profile-chart-section]');
+        if (section && section.hidden) { const e = body.querySelector('#uh-traj-empty'); if (e) e.hidden = false; }
+    };
 }
 
 var UH_DRAWERS = {

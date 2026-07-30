@@ -619,3 +619,16 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-cap-glance img { width: 22px; height: 22px; object-fit: contain; flex: none; }
 .uh-cap-2x { font-size: 10px; font-weight: 800; color: #E0B341; border: 1px solid rgba(224,179,65,0.4); border-radius: 99px; padding: 1px 6px; flex: none; }
 #uh-glance-recap { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+
+/* Roster + Trajectory drawer content (#230 redesign) */
+.uh-roster-cards { display: flex; flex-direction: column; gap: 8px; }
+.uh-rc { display: flex; align-items: center; gap: 11px; background: #12162A; border: 1px solid #2A2E42; border-radius: 11px; padding: 10px; text-decoration: none; }
+.uh-rc:hover { border-color: #3A3F58; }
+.uh-rc img { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.uh-rc-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.uh-rc-nm { color: #F4F6FB; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uh-rc-bar { height: 4px; border-radius: 99px; background: #0c1022; overflow: hidden; }
+.uh-rc-bar i { display: block; height: 100%; background: #5BD08D; }
+.uh-rc-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
+.uh-drawer-body .table-wrapper { overflow-x: auto; margin: 0; }
+.uh-drawer-body .profile-chart-wrap { height: 220px; position: relative; }
