@@ -1,6 +1,11 @@
 var weekCode;
 var userData;
 var isMobile;
+// The one active season (process.env.YEAR via window.APP_YEAR), set by
+// renderBento. Reused renderers (displayTeams/renderProfileChart/
+// displaySchedule/ensureWeekSelected) read it instead of guessing with
+// seasons.at(-1), so every part of the page keys off the same season.
+var uhActiveYear;
 
 // Escapes HTML special chars before interpolating values into innerHTML.
 function escapeHtml(value) {
@@ -118,6 +123,7 @@ async function renderBento(data) {
     if (!bento || !data) return;
     const activeYear = (window.APP_YEAR && String(window.APP_YEAR))
         || (data.seasons && data.seasons.length ? String(data.seasons[data.seasons.length - 1].season) : String(new Date().getFullYear()));
+    uhActiveYear = activeYear;   // reused renderers read this (see var decl)
     const season = uhSeasonFor(data, activeYear);
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
@@ -674,7 +680,7 @@ async function hydrateDraft(user, activeYear) {
 // displaySchedule never reads a null weekCode) on a fresh visit.
 function ensureWeekSelected(data) {
     if (window.localStorage.getItem('weekCode') && window.localStorage.getItem('week')) return;
-    const weekly = (data.seasons.at(-1) || {}).weeklyScore || [];
+    const weekly = uhSeasonFor(data, uhActiveYear).weeklyScore || [];
     let maxWeek = 0, hasPost = false;
     weekly.forEach(w => {
         if (w.season === 'postseason' || w.week > 16) hasPost = true;
@@ -938,7 +944,7 @@ function columnTeamScore(entry, teamSchool) {
 function displayTeams(data) {
     const head = document.querySelector('[user-table-head]');
     const body = document.querySelector('[user-table-body]');
-    const season = data.seasons.at(-1) || {};
+    const season = uhSeasonFor(data, uhActiveYear);
     const teams = season.teams || [];
     const columns = weeklyColumns(season);
 
@@ -999,7 +1005,7 @@ function renderProfileChart(data) {
     const canvas = document.getElementById('profile-chart');
     if (!section || !canvas || typeof Chart === 'undefined') return;
 
-    const season = data.seasons.at(-1) || {};
+    const season = uhSeasonFor(data, uhActiveYear);
     const cols = weeklyColumns(season);
     let cum = 0;
     const labels = [], points = [];
@@ -1252,7 +1258,7 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
     // A rostered team's points for this game -> a green badge cell, or '' at 0.
     const badgeCell = (id, rostered) => {
         if (!rostered) return '';
-        const pts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, id, game.id);
+        const pts = teamGameScoreById(uhSeasonFor(userData, uhActiveYear).weeklyScore, id, game.id);
         return pts > 0 ? `<td class="score-added"><strong style="color: #22C37A;">+${pts}</strong></td>` : '';
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
@@ -1283,7 +1289,7 @@ async function displaySchedule(data) {
     let week = window.localStorage.getItem('weekCode').substring(5);
     let seasonType = 'regular';
     let rankingsInfo;
-    const seasonYear = data.seasons.at(-1).season;
+    const seasonYear = uhSeasonFor(data, uhActiveYear).season;
 
     if (week == '17') {
         rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
@@ -1296,7 +1302,7 @@ async function displaySchedule(data) {
     const allBettingLines = await getAllBettingLines(seasonYear) || [];
 
     // Fetch each roster team's games in parallel, then all logos in one request.
-    const teamsList = data.seasons.at(-1).teams;
+    const teamsList = uhSeasonFor(data, uhActiveYear).teams || [];
     const rosteredIds = new Set(teamsList.map(t => t.id));
     const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
 
