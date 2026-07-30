@@ -228,18 +228,31 @@ function hydrateTrajectory(user) {
 
 // Games → Games tile. Glance names the selected week; drawer hosts a week picker
 // + this week's game cards for your rostered teams (reused displaySchedule).
-function hydrateGames(user) {
+async function hydrateGames(user) {
     const tile = document.getElementById('uh-tile-games');
     const season = (user.seasons || []).at(-1) || {};
     if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
     ensureWeekSelected(user);
 
-    // Resting state: a strip of your team logos + the selected week.
+    // Resting state: only the logos of your teams that actually play this week.
     const g = document.getElementById('uh-glance-games');
+    const label = window.localStorage.getItem('week') || 'This week';
+    if (g) g.innerHTML = `<span class="uh-glance-sub uh-games-wk">${escapeHtml(label)}</span>`;
     if (g) {
-        const label = window.localStorage.getItem('week') || 'This week';
-        const logos = (season.teams || []).map(t => `<img src="${t.logos.at(-1)}" alt="">`).join('');
-        g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${escapeHtml(label)}</span>`;
+        try {
+            let week = (window.localStorage.getItem('weekCode') || 'week-1').substring(5);
+            let seasonType = 'regular';
+            if (week === '17') { seasonType = 'postseason'; week = 1; }
+            const per = await Promise.all((season.teams || []).map(t =>
+                getGame(seasonType, week, t).then(gs => ({ t, plays: !!(gs && gs.length) })).catch(() => ({ t, plays: false }))));
+            const playing = per.filter(x => x.plays).map(x => x.t);
+            if (playing.length) {
+                const logos = playing.map(t => `<img src="${t.logos.at(-1)}" alt="">`).join('');
+                g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of your teams · ${escapeHtml(label)}</span>`;
+            } else {
+                g.innerHTML = `<span class="uh-glance-sub">No games for your teams · ${escapeHtml(label)}</span>`;
+            }
+        } catch (e) { /* keep the week label */ }
     }
 
     uhDrawer.games = (body) => {
