@@ -101,14 +101,24 @@ async function getUser() {
     });
 }
 
+// The active season for the whole page: the user's entry matching the server's
+// current season (window.APP_YEAR = process.env.YEAR), else the latest season on
+// the doc. Every tile keys off this ONE value so they never show different
+// seasons at a flip.
+function uhSeasonFor(user, year) {
+    const seasons = (user && user.seasons) || [];
+    return seasons.find(s => String(s.season) === String(year)) || seasons[seasons.length - 1] || {};
+}
+
 // ---------- My Team bento (#230 redesign, feat/my-team-redesign) ----------
-// Renders the tile grid; each tile opens the slide-over drawer. STAGE 2 (shell):
-// the hero tile shows real identity + edit; the other tiles open placeholder
-// drawers that the next stage wires to the real renderers.
+// Renders the tile grid; each tile is a glance that opens a slide-over drawer,
+// all keyed off the one active season (uhSeasonFor).
 async function renderBento(data) {
     const bento = document.getElementById('uh-bento');
     if (!bento || !data) return;
-    const season = data.seasons.at(-1) || {};
+    const activeYear = (window.APP_YEAR && String(window.APP_YEAR))
+        || (data.seasons && data.seasons.length ? String(data.seasons[data.seasons.length - 1].season) : String(new Date().getFullYear()));
+    const season = uhSeasonFor(data, activeYear);
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
     document.title = `${franchise || manager} · Campus Clash`;
@@ -138,7 +148,10 @@ async function renderBento(data) {
     renderAvatar(document.getElementById('uh-hero-av'), data);
     const statsEl = document.getElementById('uh-hero-stats');
     let sh = '';
-    try { const rank = await computeRank(data); if (rank) sh += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`); } catch (e) { /* rank optional */ }
+    // Rank only once the active season has scores (preseason ties everyone at 0).
+    if ((season.weeklyScore || []).length) {
+        try { const rank = await computeRank(data); if (rank) sh += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`); } catch (e) { /* rank optional */ }
+    }
     sh += statTile(String(season.cumulativeScore || 0), 'Total points');
     const bt = bestTeam(season);
     if (bt && bt.total > 0) sh += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
@@ -149,22 +162,22 @@ async function renderBento(data) {
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
 
-    // Hydrate each tile's glance + drawer from real data.
-    hydrateH2H(data);
-    hydrateCaptain(data);
-    hydrateRecap(data);
-    hydrateDraft(data);
-    hydrateRoster(data);
-    hydrateTrajectory(data);
-    hydrateGames(data);
+    // Hydrate each tile's glance + drawer from the one active season.
+    hydrateH2H(data, activeYear);
+    hydrateCaptain(data, activeYear);
+    hydrateRecap(data, activeYear);
+    hydrateDraft(data, activeYear);
+    hydrateRoster(data, activeYear);
+    hydrateTrajectory(data, activeYear);
+    hydrateGames(data, activeYear);
 }
 
 // Roster → Roster tile. Glance shows your top performer; drawer lists all teams
 // as cards (points + share bar) then the full week-by-week grid (reused
 // displayTeams). Sums per-team points from this season's weekly scoreByTeam.
-function hydrateRoster(user) {
+function hydrateRoster(user, activeYear) {
     const tile = document.getElementById('uh-tile-roster');
-    const season = (user.seasons || []).at(-1) || {};
+    const season = uhSeasonFor(user, activeYear);
     const teams = season.teams || [];
     if (!teams.length) { if (tile) tile.hidden = true; return; }
 
@@ -206,9 +219,9 @@ function hydrateRoster(user) {
 
 // Trajectory → Trajectory tile. Glance shows total points; drawer hosts the
 // cumulative-points line chart (reused renderProfileChart).
-function hydrateTrajectory(user) {
+function hydrateTrajectory(user, activeYear) {
     const tile = document.getElementById('uh-tile-trajectory');
-    const season = (user.seasons || []).at(-1) || {};
+    const season = uhSeasonFor(user, activeYear);
     if (!(season.weeklyScore || []).length) { if (tile) tile.hidden = true; return; }
 
     const g = document.getElementById('uh-glance-trajectory');
@@ -228,10 +241,17 @@ function hydrateTrajectory(user) {
 
 // Games → Games tile. Glance names the selected week; drawer hosts a week picker
 // + this week's game cards for your rostered teams (reused displaySchedule).
-async function hydrateGames(user) {
+async function hydrateGames(user, activeYear) {
     const tile = document.getElementById('uh-tile-games');
-    const season = (user.seasons || []).at(-1) || {};
+    const season = uhSeasonFor(user, activeYear);
     if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
+    // weekCode isn't season-scoped — reset it when the active season changes so a
+    // new season doesn't inherit last season's selected week (e.g. Postseason).
+    if (window.localStorage.getItem('weekSeason') !== String(activeYear)) {
+        window.localStorage.removeItem('weekCode');
+        window.localStorage.removeItem('week');
+        window.localStorage.setItem('weekSeason', String(activeYear));
+    }
     ensureWeekSelected(user);
 
     // Resting state: only the logos of your teams that actually play this week.
@@ -339,15 +359,13 @@ function setupDrawer() {
 //  - Schedule: up-next (in-season) + the full week-by-week schedule; tap a week
 //    to expand its detail.
 // Both tiles hide when the league doesn't have H2H on (and ?h2h=1 isn't set).
-async function hydrateH2H(user) {
+async function hydrateH2H(user, activeYear) {
     const mTile = document.getElementById('uh-tile-matchup');
     const sTile = document.getElementById('uh-tile-schedule');
     const hide = () => { if (mTile) mTile.hidden = true; if (sTile) sTile.hidden = true; };
     if (!user || !user.league || !(user.seasons || []).length || !window.ccH2H) return hide();
 
-    const played = (user.seasons || []).filter(s => (s.weeklyScore || []).length > 0).sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return hide();
-    const season = played[0].season;
+    const season = activeYear;
 
     let enabled = false;
     try {
@@ -446,7 +464,7 @@ async function hydrateH2H(user) {
 // Captain (#230) → Captain tile. Own profile only, and only when the league has
 // Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
 // picker (set/clear a 2× team for the current open week).
-async function hydrateCaptain(user) {
+async function hydrateCaptain(user, activeYear) {
     const tile = document.getElementById('uh-tile-captain');
     const hide = () => { if (tile) tile.hidden = true; };
     if (!user || !user.league || !(user.seasons || []).length) return hide();
@@ -460,19 +478,18 @@ async function hydrateCaptain(user) {
     } catch (e) { /* fall through to preview gate */ }
     if (!enabled && !preview) return hide();
 
-    // Captain is set for the active season's next unplayed regular week. Use the
-    // latest season that has a roster AND an open week (consistent with every
-    // other tile, which keys off seasons.at(-1) — not the wall-clock year, which
-    // is ahead of the data in the offseason). No open week (finished season) →
-    // nothing to set → hide.
+    // Captain is set for the active season's next unplayed regular week. The
+    // active season is the server's authoritative YEAR (window.APP_YEAR), the
+    // same season every other tile keys off. No roster or no open week
+    // (finished season) → nothing to set → hide.
     const firstOpenWeek = (s) => {
         const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
         for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
         return null;
     };
-    const season = (user.seasons || []).slice().reverse().find(s => (s.teams || []).length && firstOpenWeek(s) != null);
-    const week = season ? firstOpenWeek(season) : null;
-    if (!season || week == null) return hide();
+    const season = uhSeasonFor(user, activeYear);
+    const week = (season.teams || []).length ? firstOpenWeek(season) : null;
+    if (!(season.teams || []).length || week == null) return hide();
 
     let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
     const teamById = {};
@@ -517,18 +534,13 @@ async function hydrateCaptain(user) {
 
 // Weekly Recap (#212) → Your Week tile. Glance shows the latest week's narrative;
 // drawer mounts the full "Your Week" card (week selector + story) via ccRecap.
-async function hydrateRecap(user) {
+async function hydrateRecap(user, activeYear) {
     const tile = document.getElementById('uh-tile-recap');
     const hide = () => { if (tile) tile.hidden = true; };
     if (!window.ccRecap || !user || !user.league || !(user.seasons || []).length) return hide();
 
-    const played = (user.seasons || [])
-        .filter(s => (s.weeklyScore || []).length > 0)
-        .sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return hide();
-
     try {
-        const data = await window.ccRecap.fetchRecap(user.league, played[0].season, user._id);
+        const data = await window.ccRecap.fetchRecap(user.league, activeYear, user._id);
         if (!data || !(data.recaps || []).length) return hide();
         if (tile) tile.hidden = false;
 
@@ -547,11 +559,11 @@ async function hydrateRecap(user) {
 
 // Draft grade → Draft grade tile. Glance shows the color-coded letter; drawer
 // renders this manager's full draft-grade card (reused from draftGrades.js).
-async function hydrateDraft(user) {
+async function hydrateDraft(user, activeYear) {
     const tile = document.getElementById('uh-tile-draft');
     const hide = () => { if (tile) tile.hidden = true; };
     if (!user || !user.league || !(user.seasons || []).length) return hide();
-    const season = user.seasons.at(-1).season;
+    const season = activeYear;
     try {
         const res = await fetch('/draft/grades/' + encodeURIComponent(user.league) + '/' + encodeURIComponent(season), {
             headers: { 'Accept': 'application/json' }
