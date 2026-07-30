@@ -231,11 +231,38 @@ function hydrateTrajectory(user, activeYear) {
         g.innerHTML = `<span class="uh-traj-g"><b class="uh-traj-num num">${season.cumulativeScore || 0}</b><span class="uh-glance-sub">total points</span></span>${series.length >= 2 ? `<span class="uh-traj-spark">${uhSpark(series, 260, 34, '#5BD08D')}</span>` : ''}`;
     }
 
-    uhDrawer.trajectory = (body) => {
-        body.innerHTML = `<div class="profile-chart-section" profile-chart-section hidden><div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div></div><p class="uh-stub" id="uh-traj-empty" hidden>Not enough scored weeks yet to chart a trend.</p>`;
+    uhDrawer.trajectory = async (body) => {
+        body.innerHTML = `<div class="uh-drawer-stats" id="uh-traj-stats"></div>
+            <div class="profile-chart-section" profile-chart-section hidden><div class="profile-chart-wrap"><canvas id="profile-chart"></canvas></div></div>
+            <p class="uh-stub" id="uh-traj-empty" hidden>Not enough scored weeks yet to chart a trend.</p>`;
         renderProfileChart(user);
         const section = body.querySelector('[profile-chart-section]');
         if (section && section.hidden) { const e = body.querySelector('#uh-traj-empty'); if (e) e.hidden = false; }
+
+        // Summary row: total points, best single week, finish + gap to the
+        // rest of the league (fetched from the same league standings the hero
+        // rank uses, so it stays scoped to the active season).
+        const statsEl = body.querySelector('#uh-traj-stats');
+        if (!statsEl) return;
+        let bestWk = 0;
+        (season.weeklyScore || []).forEach(w => { if ((w.score || 0) > bestWk) bestWk = w.score || 0; });
+        let html = statTile(String(season.cumulativeScore || 0), 'Total points');
+        if (bestWk > 0) html += statTile(String(bestWk), 'Best week');
+        try {
+            const res = await fetch(`/users/league/${encodeURIComponent(user.league)}`, { headers: { Accept: 'application/json' } });
+            if (res.ok) {
+                const ranked = (await res.json())
+                    .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
+                    .sort((a, b) => b.score - a.score);
+                const idx = ranked.findIndex(r => r.id === user._id);
+                if (idx >= 0) {
+                    html += statTile(`${escapeHtml(ordinal(idx + 1))} of ${ranked.length}`, 'Finish');
+                    if (idx === 0 && ranked[1]) html += statTile(`+${ranked[0].score - ranked[1].score}`, 'Lead over 2nd');
+                    else if (idx > 0) html += statTile(`−${ranked[0].score - ranked[idx].score}`, 'Behind leader');
+                }
+            }
+        } catch (e) { /* stats degrade to points-only */ }
+        statsEl.innerHTML = html;
     };
 }
 
@@ -324,9 +351,12 @@ function uhSpark(pts, w, h, color) {
     const ex = w.toFixed(1), ey = (h - ((pts[pts.length - 1] - min) / rng) * h).toFixed(1);
     return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${ex}" cy="${ey}" r="2.6" fill="${color}"/></svg>`;
 }
+// The tile that opened the drawer, so focus can return to it on close.
+var uhDrawerOpener = null;
 function openDrawer(key) {
     const title = UH_DRAWERS[key];
     if (title == null) return;
+    uhDrawerOpener = document.getElementById('uh-tile-' + key) || document.activeElement;
     document.getElementById('uh-drawer-title').textContent = title;
     const body = document.getElementById('uh-drawer-body');
     if (uhDrawer[key]) { body.innerHTML = ''; uhDrawer[key](body); }
@@ -334,15 +364,20 @@ function openDrawer(key) {
     const d = document.getElementById('uh-drawer');
     d.hidden = false;
     document.getElementById('uh-scrim').classList.add('open');
+    document.body.classList.add('uh-drawer-open');   // lock background scroll
     requestAnimationFrame(() => d.classList.add('open'));
     document.getElementById('uh-drawer-close').focus();
 }
 function closeDrawer() {
     const d = document.getElementById('uh-drawer');
-    if (!d) return;
+    if (!d || d.hidden) return;
     d.classList.remove('open');
     document.getElementById('uh-scrim').classList.remove('open');
+    document.body.classList.remove('uh-drawer-open');
     setTimeout(() => { d.hidden = true; }, 300);
+    // Return focus to the tile that opened it (accessibility).
+    if (uhDrawerOpener && typeof uhDrawerOpener.focus === 'function') uhDrawerOpener.focus();
+    uhDrawerOpener = null;
 }
 function setupDrawer() {
     const scrim = document.getElementById('uh-scrim'), close = document.getElementById('uh-drawer-close');

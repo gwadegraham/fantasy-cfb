@@ -592,6 +592,13 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-drawer-close { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; border: 1px solid #2A2E42; background: transparent; color: #C9CEE6; cursor: pointer; font-size: 16px; }
 .uh-drawer-close:hover { color: #F4F6FB; border-color: #3A3F58; }
 .uh-drawer-body { padding: 18px; overflow-y: auto; }
+/* Lock the background from scrolling behind the open drawer. */
+body.uh-drawer-open { overflow: hidden; }
+/* Trajectory drawer summary row (total / best week / finish / gap). */
+.uh-drawer-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; }
+.uh-drawer-stats .stat { display: flex; flex-direction: column; }
+.uh-drawer-stats .stat-value { font-size: 1.15rem; font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; }
+.uh-drawer-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .uh-scrim, .uh-drawer, button.uh-tile { transition: none; } }
 
 /* Bento tile glances + drawer content (#230 redesign) */
