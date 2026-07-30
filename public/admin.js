@@ -1680,8 +1680,13 @@ function renderScoringFields() {
         var toggle = f.toggleable
             ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" ${f.enabled ? 'checked' : ''} title="Enable this event">`
             : '';
+        // "+" marks a regular-season bonus that stacks (only meaningful in the
+        // Stacking shape). Postseason events combine on their own rules
+        // regardless of the win shape, so a "+" there just reads as a
+        // contradiction — omit it and let the postseason list stand plainly.
+        var showPlus = f.additive && f.group === 'regular';
         return `<div class="draft-field scoring-field${f.enabled ? '' : ' scoring-disabled'}" data-condition="${f.condition}">
-            <label>${toggle}${f.additive ? '+ ' : ''}${f.label}</label>
+            <label>${toggle}${showPlus ? '+ ' : ''}${f.label}</label>
             <div class="num-stepper">
                 <button type="button" class="step-dn" tabindex="-1" aria-label="Decrease points">&#8722;</button>
                 <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
