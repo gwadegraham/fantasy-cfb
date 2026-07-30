@@ -609,32 +609,18 @@ function currentUserId() {
     catch (e) { return window.localStorage.getItem('userId'); }
 }
 
-async function renderHero(data) {
-    const season = data.seasons.at(-1) || {};
+// Refresh the bento hero tile's identity after a profile edit (name/avatar),
+// without re-fetching/re-rendering the whole grid.
+function refreshHeroIdentity(data, season) {
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
-    const franchise = season.franchiseName;
-
-    document.querySelector('[profile-franchise]').textContent = franchise || `${data.firstName || 'Unnamed'}'s Team`;
-    document.querySelector('[profile-manager]').textContent = franchise ? `Managed by ${manager}` : manager;
+    const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
+    const av = document.getElementById('uh-hero-av');
+    if (av) renderAvatar(av, data);
+    const nameEl = document.querySelector('.uh-hero-name');
+    if (nameEl) nameEl.textContent = franchise;
+    const subEl = document.querySelector('.uh-hero-sub');
+    if (subEl) subEl.textContent = franchise && season.franchiseName ? `Managed by ${manager}` : manager;
     document.title = `${franchise || manager} · Campus Clash`;
-    renderAvatar(document.querySelector('[profile-avatar]'), data);
-
-    const statsEl = document.querySelector('[profile-stats]');
-    let html = '';
-    const rank = await computeRank(data);
-    if (rank) html += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`);
-    html += statTile(String(season.cumulativeScore || 0), 'Total points');
-    const bt = bestTeam(season);
-    if (bt && bt.total > 0) {
-        html += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
-    }
-    statsEl.innerHTML = html;
-
-    // Edit is only offered on the viewer's own profile (the endpoint enforces
-    // this too, from the session).
-    if (currentUserId() && String(currentUserId()) === String(data._id)) {
-        setupEditModal(data, season);
-    }
 }
 
 // ---------- Edit modal (franchise name + avatar upload) ----------
@@ -722,7 +708,7 @@ function setupEditModal(data, season) {
             if (!res.ok) throw new Error(out.message || 'Save failed');
             data.avatarUrl = out.avatarUrl;
             season.franchiseName = out.franchiseName;
-            renderHero(data);
+            refreshHeroIdentity(data, season);
             close();
         } catch (e) {
             showError(e.message || 'Save failed.');
