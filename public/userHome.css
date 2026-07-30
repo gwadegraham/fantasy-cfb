@@ -593,3 +593,17 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-drawer-close:hover { color: #F4F6FB; border-color: #3A3F58; }
 .uh-drawer-body { padding: 18px; overflow-y: auto; }
 @media (prefers-reduced-motion: reduce) { .uh-scrim, .uh-drawer, button.uh-tile { transition: none; } }
+
+/* Bento tile glances + drawer content (#230 redesign) */
+.uh-mu-glance { display: flex; align-items: center; gap: 6px; font-size: 15px; color: #F4F6FB; font-weight: 700; min-width: 0; }
+.uh-mu-glance .num { font-variant-numeric: tabular-nums; }
+.uh-mu-dash { color: #767D9C; }
+.uh-mu-opp { color: #C9CEE6; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uh-res { font-size: 10px; font-weight: 800; letter-spacing: 0.03em; border-radius: 99px; padding: 1px 7px; flex: none; }
+.uh-res.r-W { color: #5BD08D; background: rgba(34,195,122,0.12); }
+.uh-res.r-L { color: #ED5858; background: rgba(237,88,88,0.12); }
+.uh-res.r-T { color: #A4A9C2; background: rgba(164,169,194,0.12); }
+.uh-res.r-LIVE { color: #ED5858; background: rgba(237,88,88,0.12); }
+.uh-drawer-lead { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #767D9C; font-weight: 700; margin-bottom: 10px; }
+.uh-drawer-cap { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #767D9C; font-weight: 700; margin: 18px 0 10px; }
+.uh-drawer-body .uh-h2h-log { display: flex; flex-direction: column; gap: 8px; }

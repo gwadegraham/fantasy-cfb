@@ -114,7 +114,7 @@ async function renderBento(data) {
     document.title = `${franchise || manager} · Campus Clash`;
     const own = currentUserId() && String(currentUserId()) === String(data._id);
     const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-    const tile = (k, label, glance, span) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">›</span></span><span class="uh-glance">${glance}</span></button>`;
+    const tile = (k, label, glance, span) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">›</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
 
     bento.innerHTML =
         `<div class="uh-tile span2 uh-hero">
@@ -148,6 +148,9 @@ async function renderBento(data) {
 
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
+
+    // Hydrate each tile's glance + drawer from real data.
+    hydrateH2H(data);
 }
 
 var UH_DRAWERS = {
@@ -155,11 +158,15 @@ var UH_DRAWERS = {
     recap: 'Your week', schedule: 'Schedule', trajectory: 'Trajectory',
     draft: 'Draft grade', games: 'Games'
 };
+// key -> function(bodyEl) that fills the drawer body. Populated by the hydrators.
+var uhDrawer = {};
 function openDrawer(key) {
     const title = UH_DRAWERS[key];
     if (title == null) return;
     document.getElementById('uh-drawer-title').textContent = title;
-    document.getElementById('uh-drawer-body').innerHTML = '<p class="uh-stub">This opens the “' + title + '” detail — wired to real data in the next step.</p>';
+    const body = document.getElementById('uh-drawer-body');
+    if (uhDrawer[key]) { body.innerHTML = ''; uhDrawer[key](body); }
+    else body.innerHTML = '<p class="uh-stub">This opens the “' + title + '” detail — wired to real data in the next step.</p>';
     const d = document.getElementById('uh-drawer');
     d.hidden = false;
     document.getElementById('uh-scrim').classList.add('open');
@@ -182,17 +189,20 @@ function setupDrawer() {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 }
 
-// Head-to-Head matchups (#230): a spotlight banner in the profile hero for the
-// current/latest matchup, plus an always-visible "Head-to-Head" section with the
-// full week-by-week history. Shown when the league has H2H on (or ?h2h=1 to
-// preview). Public info, like standings.
-async function renderMatchups(user) {
-    const banner = document.getElementById('uh-h2h-banner');
-    const panel = document.getElementById('uh-h2h');
-    if (!banner || !panel || !user || !user.league || !(user.seasons || []).length) return;
+// Head-to-Head (#230) → Matchup + Schedule tiles. Fetches the league's H2H
+// payload once, fills both tiles' glances, and registers their drawers:
+//  - Matchup: this week's (or latest) matchup, full lineups + win-prob + captain.
+//  - Schedule: up-next (in-season) + the full week-by-week schedule; tap a week
+//    to expand its detail.
+// Both tiles hide when the league doesn't have H2H on (and ?h2h=1 isn't set).
+async function hydrateH2H(user) {
+    const mTile = document.getElementById('uh-tile-matchup');
+    const sTile = document.getElementById('uh-tile-schedule');
+    const hide = () => { if (mTile) mTile.hidden = true; if (sTile) sTile.hidden = true; };
+    if (!user || !user.league || !(user.seasons || []).length || !window.ccH2H) return hide();
 
     const played = (user.seasons || []).filter(s => (s.weeklyScore || []).length > 0).sort((a, b) => Number(b.season) - Number(a.season));
-    if (!played.length) return;
+    if (!played.length) return hide();
     const season = played[0].season;
 
     let enabled = false;
@@ -200,45 +210,63 @@ async function renderMatchups(user) {
         const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.h2hEnabled); }
     } catch (e) { /* preview gate below */ }
-    if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return;
+    if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return hide();
 
     let data;
     try {
         data = await fetch(`/standings/h2h/${encodeURIComponent(user.league)}/${encodeURIComponent(season)}`, { headers: { Accept: 'application/json' } }).then(r => r.json());
-    } catch (e) { return; }
-    if (!data || !(data.schedule || []).length || !window.ccH2H) return;
+    } catch (e) { return hide(); }
+    if (!data || !(data.schedule || []).length) return hide();
 
     const byId = {};
     (data.managers || []).forEach(m => { byId[m.userId] = m; });
     const uid = String(user._id);
     const mine = [];
     (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, g }); });
-    if (!mine.length) return;
+    if (!mine.length) return hide();
 
     const me = byId[uid];
-    const swords = window.ccIcon ? window.ccIcon('swords', { size: 15 }) : '';
-    // Featured matchup = the current/live week in-season, else the most recent.
-    // It headlines the hero banner (collapsed, tap to expand); the rest make up
-    // the history section below (newest first). One shared card, you on the left.
-    const featuredWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek))
-        ? data.currentWeek
-        : mine[mine.length - 1].week;
+    const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
+    const featuredWk = liveWk != null ? liveWk : mine[mine.length - 1].week;
     const featured = mine.find(x => x.week === featuredWk);
-    const rest = mine.filter(x => x.week !== featuredWk).sort((a, b) => b.week - a.week);
+    const rest = mine.slice().sort((a, b) => b.week - a.week);
     const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, week: x.week, open });
-    const fLabel = featured && featured.final === false ? 'This week' : 'Latest matchup';
+    // My-perspective summary of a matchup (for glances).
+    const summary = (x) => {
+        const g = x.g, iAmA = g.aId === uid;
+        const meScore = iAmA ? g.aScore : g.bScore, opScore = iAmA ? g.bScore : g.aScore;
+        const opp = byId[iAmA ? g.bId : g.aId];
+        const nm = (opp && (opp.franchise || opp.name)) || 'Opponent';
+        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : 'LIVE';
+        return { meScore, opScore, nm, res };
+    };
 
-    // Hero spotlight banner: the featured matchup + your record.
-    banner.innerHTML = `<div class="uh-h2h-blabel">${swords}<span>${fLabel}</span>${me ? `<span class="uh-h2h-brec">${escapeHtml(me.record)}</span>` : ''}</div>${featured ? cardOf(featured, false) : ''}`;
-    banner.hidden = false;
-    window.ccH2H.wire(banner);
+    // Matchup tile — this week / latest.
+    if (mTile) mTile.hidden = false;
+    const mg = document.getElementById('uh-glance-matchup');
+    if (mg && featured) {
+        const s = summary(featured);
+        mg.innerHTML = `<span class="uh-mu-glance"><b class="num">${s.meScore}</b><span class="uh-mu-dash">–</span><span class="num">${s.opScore}</span> <span class="uh-mu-opp">${escapeHtml(s.nm)}</span> <span class="uh-res r-${s.res}">${s.res}</span></span>`;
+    }
+    uhDrawer.matchup = (body) => {
+        const lead = `${featured.final === false ? 'This week' : 'Latest'} · Week ${featured.week}${me ? ` · ${escapeHtml(me.record)}` : ''}`;
+        body.innerHTML = `<div class="uh-drawer-lead">${lead}</div>` + cardOf(featured, true);
+        window.ccH2H.wire(body);
+    };
 
-    // Always-visible history section (no chip).
-    panel.innerHTML = `
-        <div class="recap-head"><div class="header-title">Head-to-Head · ${season}</div></div>
-        ${rest.length ? `<div class="uh-h2h-log">${rest.map(x => cardOf(x, false)).join('')}</div>` : '<p class="uh-h2h-empty">No other matchups yet this season.</p>'}`;
-    panel.classList.add('is-open');
-    window.ccH2H.wire(panel);
+    // Schedule tile — up next (in-season) + full schedule.
+    if (sTile) sTile.hidden = false;
+    const sg = document.getElementById('uh-glance-schedule');
+    if (sg) {
+        if (liveWk != null) { const s = summary(featured); sg.textContent = `Up next · vs ${s.nm}`; }
+        else sg.textContent = `Full schedule${me ? ' · ' + me.record : ''}`;
+    }
+    uhDrawer.schedule = (body) => {
+        const listWeeks = liveWk != null ? rest.filter(x => x.week !== featuredWk) : rest;
+        const lead = liveWk != null ? `<div class="uh-drawer-lead">This week</div>` + cardOf(featured, true) : '';
+        body.innerHTML = lead + `<div class="uh-drawer-cap">Full schedule · tap a week</div><div class="uh-h2h-log">${listWeeks.map(x => cardOf(x, false)).join('')}</div>`;
+        window.ccH2H.wire(body);
+    };
 }
 
 // Captain picker (#230): the profile owner sets which rostered team to double
