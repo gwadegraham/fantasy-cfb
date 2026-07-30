@@ -695,3 +695,7 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
    must not become its height — size cards to content, full width. */
 .uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; padding: 0; }
 .uh-drawer-body .game-card { flex: 0 0 auto; width: 100%; max-width: 100%; }
+
+/* Draft-grade card in the drawer: plain page-style border (no tier left-accent
+   or "you" highlight — it's always your own grade on My Team). */
+.uh-drawer-body .gg-card { border-left: 1px solid #2A2E42; box-shadow: none; }

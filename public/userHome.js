@@ -569,13 +569,11 @@ async function hydrateDraft(user) {
             + `<span class="uh-ds"><b class="num">${mine.cfpCount}</b>CFP teams</span>`
             + `</span></span>`;
 
-        let me;
-        try { me = userState.user_metadata.metadata.userId; } catch (e) { /* fall through */ }
-        me = me || window.localStorage.getItem('userId') || user._id;
         uhDrawer.draft = (body) => {
             if (typeof renderDraftGradeCard === 'function') {
+                // No currentUserId → no "you" tag / red highlight (it's always
+                // your own grade on My Team).
                 renderDraftGradeCard(body, mine, {
-                    currentUserId: me,
                     note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
                 });
             }
