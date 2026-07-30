@@ -158,7 +158,7 @@ async function renderBento(data) {
                     ${lastLine}
                 </div>`;
         renderAvatar(document.getElementById('uh-hero-av'), data);
-        if (own) setupEditModal(data, season);
+        if (own) setupEditModal(data, season, false);   // no season yet → name locked
         return;
     }
 
@@ -195,7 +195,7 @@ async function renderBento(data) {
     if (bt && bt.total > 0) sh += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
     statsEl.innerHTML = sh;
 
-    if (own) setupEditModal(data, season);
+    if (own) setupEditModal(data, season, true);
 
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
@@ -787,10 +787,15 @@ function refreshHeroIdentity(data, season) {
 
 // ---------- Edit modal (franchise name + avatar upload) ----------
 
-function setupEditModal(data, season) {
+function setupEditModal(data, season, franchiseEditable) {
+    // Franchise name is per-season — until the active season exists on the doc
+    // (i.e. the league has drafted), there's nothing to name, so the field is
+    // locked and only the avatar can be changed.
+    franchiseEditable = franchiseEditable !== false;
     const btn = document.querySelector('[edit-profile-btn]');
     const modal = document.querySelector('[profile-modal]');
     const nameInput = document.querySelector('[profile-name-input]');
+    const nameNote = document.querySelector('[profile-name-note]');
     const modalAvatar = document.querySelector('[profile-modal-avatar]');
     const fileInput = document.querySelector('[profile-file-input]');
     const uploadBtn = document.querySelector('[profile-upload-btn]');
@@ -810,7 +815,16 @@ function setupEditModal(data, season) {
 
     function open() {
         pendingAvatar = undefined;
-        nameInput.value = season.franchiseName || '';
+        if (franchiseEditable) {
+            nameInput.value = season.franchiseName || '';
+            nameInput.disabled = false;
+            nameInput.placeholder = 'Name your team';
+        } else {
+            nameInput.value = '';
+            nameInput.disabled = true;
+            nameInput.placeholder = 'Available after the draft';
+        }
+        if (nameNote) { nameNote.textContent = franchiseEditable ? '' : 'You can name your team once your league drafts this season.'; nameNote.hidden = franchiseEditable; }
         renderAvatar(modalAvatar, data);
         showError('');
         // Set the upload control's state every open so a missing Cloudinary
@@ -858,7 +872,8 @@ function setupEditModal(data, season) {
     saveBtn.addEventListener('click', async () => {
         showError('');
         saveBtn.disabled = true;
-        const body = { franchiseName: nameInput.value };
+        const body = {};
+        if (franchiseEditable) body.franchiseName = nameInput.value;
         if (pendingAvatar !== undefined) body.avatarUrl = pendingAvatar;
         try {
             const res = await fetch('/users/me/profile', {
@@ -869,7 +884,7 @@ function setupEditModal(data, season) {
             const out = await res.json();
             if (!res.ok) throw new Error(out.message || 'Save failed');
             data.avatarUrl = out.avatarUrl;
-            season.franchiseName = out.franchiseName;
+            if (franchiseEditable) season.franchiseName = out.franchiseName;
             refreshHeroIdentity(data, season);
             close();
         } catch (e) {

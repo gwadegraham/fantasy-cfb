@@ -386,6 +386,8 @@
 .field span { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #A4A9C2; }
 .field input { background: #101322; border: 1px solid #3A3F58; border-radius: 8px; padding: 10px 12px; color: #F4F6FB; font: inherit; }
 .field input:focus { outline: none; border-color: #8E8CF0; }
+.field input:disabled { opacity: 0.5; cursor: not-allowed; }
+.field .field-note { text-transform: none; letter-spacing: 0; font-size: 0.72rem; color: #767D9C; }
 .avatar-edit { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
 .avatar-edit-controls { display: flex; flex-direction: column; gap: 6px; }
 .upload-status { font-size: 0.75rem; color: #767D9C; }
