@@ -1127,13 +1127,30 @@ function displayEnrichmentContainer() { toggleSub('enrichment-container'); }
 function displayApiCallsContainer() { toggleSub('api-calls-container'); }
 function displayLeagueNameContainer() { if (toggleSub('league-name-container')) loadLeagueName(); }
 
-function displayEngagementContainer() { if (toggleSub('engagement-container')) loadEngagement(); }
+function displayEngagementContainer() { if (toggleSub('engagement-container')) { setEngagementSeasonOptions(); loadEngagement(); } }
 
-// Prefill the engagement toggles from the active league's saved config.
+// Populate the engagement season selector once (next season down a few years),
+// defaulting to the current year. Reloads the toggles when the season changes,
+// since each season has its own settings.
+function setEngagementSeasonOptions() {
+    var sel = document.querySelector('[eng-season]');
+    if (!sel || sel.dataset.ready) return;
+    var y = new Date().getFullYear();
+    var str = '';
+    for (var yr = y + 1; yr >= y - 3; yr--) str += '<option value="' + yr + '"' + (yr === y ? ' selected' : '') + '>' + yr + '</option>';
+    sel.innerHTML = str;
+    sel.dataset.ready = '1';
+    sel.addEventListener('change', loadEngagement);
+}
+
+// Prefill the engagement toggles from the active league's saved config for the
+// selected season.
 async function loadEngagement() {
     try {
         var code = getDraftLeagueCode();
-        var cfg = await fetch('/scoring-config/' + encodeURIComponent(code), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+        var seasonSel = document.querySelector('[eng-season]');
+        var season = (seasonSel && seasonSel.value) || new Date().getFullYear();
+        var cfg = await fetch('/scoring-config/' + encodeURIComponent(code) + '?season=' + encodeURIComponent(season), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
         var e = (cfg && cfg.engagement) || {};
         var h2h = document.querySelector('[eng-h2h-enabled]');
         var bonus = document.querySelector('[eng-h2h-bonus]');
@@ -1151,7 +1168,9 @@ if (engagementForm) {
     engagementForm.addEventListener('submit', async function (event) {
         event.preventDefault();
         const code = getDraftLeagueCode();
+        const seasonSel = document.querySelector('[eng-season]');
         const body = {
+            season: (seasonSel && seasonSel.value) || String(new Date().getFullYear()),
             h2hEnabled: document.querySelector('[eng-h2h-enabled]').checked,
             h2hWinBonus: Number(document.querySelector('[eng-h2h-bonus]').value),
             captainEnabled: document.querySelector('[eng-captain-enabled]').checked,
@@ -1165,7 +1184,7 @@ if (engagementForm) {
             });
             const data = await res.json().catch(() => ({}));
             if (res.status === 200) {
-                successToast.options.text = 'Game modes saved'
+                successToast.options.text = `Game modes saved · ${data.season || body.season}`
                     + (data.h2hEnabled ? ` · H2H +${data.h2hWinBonus}` : ' · H2H off')
                     + (data.captainEnabled ? ` · Captain ${data.captainMultiplier}×` : ' · Captain off');
                 successToast.showToast();

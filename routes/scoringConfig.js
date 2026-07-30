@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig, fieldsForModel } = require('../modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
 
 // Attaches the ordered field metadata (for the admin form + rules page) to a
@@ -17,10 +17,19 @@ function withFields(cfg) {
 router.get('/:league', async (req, res) => {
     try {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
+        const bySeason = (doc && doc.engagementBySeason) || {};
         const overrides = doc
-            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement }
+            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement, engagementBySeason: bySeason }
             : null;
-        res.json(withFields(resolveConfig(req.params.league, overrides)));
+        // `engagement` is resolved for the requested season (default: the active
+        // YEAR) so callers get the right game-mode state without knowing the
+        // per-season storage. `engagementBySeason` is the full map for the admin.
+        const season = req.query.season || process.env.YEAR;
+        const cfg = withFields(resolveConfig(req.params.league, overrides));
+        cfg.engagement = engagementForSeason(bySeason, season);
+        cfg.engagementBySeason = bySeason;
+        cfg.season = String(season);
+        res.json(cfg);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -59,8 +68,10 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Toggle the weekly-engagement layer (#230) for a league without touching the
-// scoring values. Commissioner-gated + scoped to the caller's own league.
+// Toggle the weekly-engagement layer (#230) for a league, PER SEASON, without
+// touching the scoring values. Commissioner-gated + scoped to the caller's own
+// league. The `season` (body, default active YEAR) selects which season's game
+// modes are being set — other seasons are untouched.
 router.patch('/:league/engagement', async (req, res) => {
     try {
         const league = req.params.league;
@@ -68,6 +79,10 @@ router.patch('/:league/engagement', async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
         const b = req.body || {};
+        const season = String(b.season || process.env.YEAR);
+        if (!/^\d{4}$/.test(season)) {
+            return res.status(400).json({ message: 'A four-digit season is required.' });
+        }
         const clamp = (v, lo, hi, dflt) => {
             const n = Number(v);
             return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
@@ -78,14 +93,15 @@ router.patch('/:league/engagement', async (req, res) => {
             captainEnabled: !!b.captainEnabled,
             captainMultiplier: clamp(b.captainMultiplier, 1.5, 5, 2)
         };
+        // Set only this season's slot in the map (dot-path) so the other seasons'
+        // settings are preserved.
         const doc = await ScoringConfig.findOneAndUpdate(
             { league },
-            { $set: { league, engagement, updatedAt: new Date() } },
+            { $set: { league, ['engagementBySeason.' + season]: engagement, updatedAt: new Date() } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
-        res.json(resolveConfig(league, {
-            model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement
-        }).engagement);
+        const saved = engagementForSeason(doc.engagementBySeason, season);
+        res.json(Object.assign({ season }, saved));
     } catch (err) {
         res.status(400).json({ message: err.message });
     }

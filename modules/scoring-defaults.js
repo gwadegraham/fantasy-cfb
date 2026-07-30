@@ -139,22 +139,45 @@ function resolveConfig(league, overrides) {
         ? overrides.combineMode
         : modelDef.structure.combineMode;
     const disabled = (overrides && Array.isArray(overrides.disabled)) ? overrides.disabled.slice() : [];
-    const eng = (overrides && overrides.engagement) || {};
     return {
         model,
         combineMode,
         values: Object.assign({}, modelDef.defaults, (overrides && overrides.values) || {}),
         disabled,
-        engagement: {
-            h2hEnabled: !!eng.h2hEnabled,
-            h2hWinBonus: typeof eng.h2hWinBonus === 'number' ? eng.h2hWinBonus : 3,
-            captainEnabled: !!eng.captainEnabled,
-            captainMultiplier: typeof eng.captainMultiplier === 'number' ? eng.captainMultiplier : 2
-        }
+        // Legacy flat engagement (deprecated — see engagementBySeason). Kept in
+        // the resolved shape for back-compat with any old reader.
+        engagement: normalizeEngagement((overrides && overrides.engagement) || {}),
+        // Raw per-season map, passed through untouched for engagementForSeason().
+        engagementBySeason: (overrides && overrides.engagementBySeason) || {}
     };
+}
+
+// Engagement (game modes) defaults: everything off, with the standard bonus /
+// multiplier values used when a mode is turned on.
+const ENGAGEMENT_DEFAULTS = { h2hEnabled: false, h2hWinBonus: 3, captainEnabled: false, captainMultiplier: 2 };
+
+// Coerce a stored/partial engagement object into a complete, well-typed one.
+function normalizeEngagement(e) {
+    e = e || {};
+    return {
+        h2hEnabled: !!e.h2hEnabled,
+        h2hWinBonus: typeof e.h2hWinBonus === 'number' ? e.h2hWinBonus : ENGAGEMENT_DEFAULTS.h2hWinBonus,
+        captainEnabled: !!e.captainEnabled,
+        captainMultiplier: typeof e.captainMultiplier === 'number' ? e.captainMultiplier : ENGAGEMENT_DEFAULTS.captainMultiplier
+    };
+}
+
+// Resolve the engagement (game-mode) settings for ONE season from a per-season
+// map. A season with no explicit entry is fully OFF — this is what keeps each
+// season independent: turning a mode on for 2026 leaves 2025 (no entry) off, so
+// even a rescore of 2025 adds no captain/H2H bonus.
+function engagementForSeason(bySeason, season) {
+    const entry = bySeason && (bySeason[String(season)] || bySeason[Number(season)]);
+    return normalizeEngagement(entry || {});
 }
 
 module.exports = {
     CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS, LEAGUES,
-    modelForLeague, fieldsForModel, resolveConfig
+    modelForLeague, fieldsForModel, resolveConfig,
+    ENGAGEMENT_DEFAULTS, normalizeEngagement, engagementForSeason
 };

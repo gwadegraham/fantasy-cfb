@@ -8,7 +8,7 @@ const Betting = require('../models/bettingLine');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig } = require('../modules/scoring-defaults');
+const { resolveConfig, engagementForSeason } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
@@ -243,7 +243,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const seasonNum = Number(season);
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
-        const eng = resolveConfig(league, cfgDoc || null).engagement;
+        // Engagement is per-season: resolve H2H on/off + win bonus for THIS season
+        // (a season with no entry is off), so one season's setting never leaks.
+        const eng = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
         const winBonus = eng.h2hWinBonus;
 
         // H2H matchups run the fantasy regular season only. Weeks 15+ (conf

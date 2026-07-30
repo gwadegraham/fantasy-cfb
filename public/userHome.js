@@ -448,7 +448,7 @@ async function hydrateH2H(user, activeYear) {
 
     let enabled = false;
     try {
-        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league) + '?season=' + encodeURIComponent(season), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.h2hEnabled); }
     } catch (e) { /* preview gate below */ }
     if (!enabled && new URLSearchParams(location.search).get('h2h') !== '1') return hide();
@@ -552,7 +552,7 @@ async function hydrateCaptain(user, activeYear) {
     const preview = new URLSearchParams(location.search).get('captain') === '1';
     let enabled = false;
     try {
-        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league), { headers: { Accept: 'application/json' } });
+        const r = await fetch('/scoring-config/' + encodeURIComponent(user.league) + '?season=' + encodeURIComponent(activeYear), { headers: { Accept: 'application/json' } });
         if (r.ok) { const c = await r.json(); enabled = !!(c.engagement && c.engagement.captainEnabled); }
     } catch (e) { /* fall through to preview gate */ }
     if (!enabled && !preview) return hide();
