@@ -507,6 +507,16 @@
 .cx-val { font-variant-numeric: tabular-nums; font-weight: 700; color: #E0B341; font-size: 0.9em; }
 .cx-note { font-size: 0.78em; color: #767D9C; }
 
+/* Small explanatory note under the Postseason header for events that stack. */
+.scoring-note {
+    font-size: 0.8em;
+    color: #A4A9C2;
+    margin: 0 0 6px;
+    padding-left: 14px;
+    position: relative;
+}
+.scoring-note::before { content: "\21B3"; position: absolute; left: 0; color: #767D9C; }
+
 .scoring-field .num-stepper { flex: none; }
 
 /* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a

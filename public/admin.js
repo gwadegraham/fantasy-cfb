@@ -1697,9 +1697,13 @@ function renderScoringFields() {
 
     var regular = fields.filter(function (f) { return f.group === 'regular'; });
     var post = fields.filter(function (f) { return f.group === 'postseason'; });
+    // Notes for postseason events that stack on top of another event (their
+    // combining doesn't fit the plain "+" convention used for regular wins).
+    var stackNotes = post.filter(function (f) { return f.stacksNote; })
+        .map(function (f) { return '<div class="scoring-note">' + f.stacksNote + '</div>'; }).join('');
     wrap.innerHTML =
         '<div class="draft-status-row">Regular season</div>' + regular.map(fieldRow).join('') +
-        '<div class="draft-status-row">Postseason</div>' + post.map(fieldRow).join('');
+        '<div class="draft-status-row">Postseason</div>' + stackNotes + post.map(fieldRow).join('');
 
     // Grey out a postseason row when its event is disabled.
     wrap.querySelectorAll('.scoring-toggle').forEach(function (cb) {
