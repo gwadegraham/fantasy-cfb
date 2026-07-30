@@ -131,9 +131,9 @@ async function renderBento(data) {
         + tile('captain', 'Captain', 'Double a team each week', 1)
         + tile('recap', 'Your week', 'Latest recap', 1)
         + tile('schedule', 'Schedule', 'Up next', 1, 'Full schedule ›')
+        + tile('games', 'Games', 'This week’s games', 1, 'This week ›')
         + tile('trajectory', 'Trajectory', 'Season points', 1)
-        + tile('draft', 'Draft grade', 'Preseason projection', 2)
-        + tile('games', 'Games', 'This week’s games', 2);
+        + tile('draft', 'Draft grade', 'Preseason projection', 1);
 
     renderAvatar(document.getElementById('uh-hero-av'), data);
     const statsEl = document.getElementById('uh-hero-stats');
@@ -234,15 +234,20 @@ function hydrateGames(user) {
     if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
     ensureWeekSelected(user);
 
+    // Resting state: a strip of your team logos + the selected week.
     const g = document.getElementById('uh-glance-games');
-    if (g) g.textContent = `${window.localStorage.getItem('week') || 'This week'} · your teams`;
+    if (g) {
+        const label = window.localStorage.getItem('week') || 'This week';
+        const logos = (season.teams || []).map(t => `<img src="${t.logos.at(-1)}" alt="">`).join('');
+        g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${escapeHtml(label)}</span>`;
+    }
 
     uhDrawer.games = (body) => {
         const weeks = [];
         for (let w = 1; w <= 16; w++) weeks.push(['week-' + w, 'Week ' + w]);
         weeks.push(['week-17', 'Postseason']);
         const cur = window.localStorage.getItem('weekCode') || 'week-1';
-        body.innerHTML = `<label class="uh-games-pick"><span>Week</span><select uh-games-week>${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        body.innerHTML = `<label class="uh-games-pick"><select uh-games-week aria-label="Week">${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
             <div class="football-loader" style="display:none"><div class="football-icon">🏈</div><p class="loading-text">Scouting for games...</p></div>
             <div class="schedule-grid" schedule-body><div id="no-games-container"></div></div>`;
         const sel = body.querySelector('[uh-games-week]');
@@ -255,7 +260,7 @@ function hydrateGames(user) {
             const label = sel.options[sel.selectedIndex].text;
             window.localStorage.setItem('weekCode', sel.value);
             window.localStorage.setItem('week', label);
-            if (g) g.textContent = `${label} · your teams`;
+            const wk = g && g.querySelector('.uh-games-wk'); if (wk) wk.textContent = label;
             run();
         });
         run();

@@ -684,3 +684,14 @@ button.uh-tile:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; 
 .uh-seg-btn { flex: 1; padding: 8px; border: 0; background: transparent; color: #8A90A8; font: inherit; font-size: 13px; font-weight: 700; border-radius: 7px; cursor: pointer; }
 .uh-seg-btn.active { background: #1A1F33; color: #F4F6FB; }
 .uh-seg-btn:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 1px; }
+
+/* Games tile glance + card sizing inside the drawer (#230 polish 3) */
+.uh-games-logos { display: flex; flex-wrap: wrap; gap: 6px; }
+.uh-games-logos img { width: 24px; height: 24px; object-fit: contain; }
+.uh-games-wk { display: block; margin-top: 8px; }
+.uh-games-pick { display: block; margin-bottom: 14px; }
+.uh-games-pick select { background: #12162A; border: 1px solid #2A2E42; border-radius: 8px; color: #F4F6FB; font: inherit; padding: 8px 10px; }
+/* In the drawer the grid is a vertical column, so the card's flex-basis (340px)
+   must not become its height — size cards to content, full width. */
+.uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+.uh-drawer-body .game-card { flex: 0 0 auto; width: 100%; max-width: 100%; }
