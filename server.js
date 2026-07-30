@@ -262,7 +262,7 @@ app.get('/userHome', async function(req, res) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
 
-        res.render('userHome', {user, userState, cloudinary: cloudinaryConfig()});
+        res.render('userHome', {user, userState, year: process.env.YEAR, cloudinary: cloudinaryConfig()});
     } else {
         res.redirect("/login");
     }
