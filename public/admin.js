@@ -426,11 +426,17 @@ async function loadSeasonRoster() {
         var yearEl = document.querySelector('[season-roster-year]');
         if (yearEl) yearEl.textContent = data.season || 'current';
         if (!res.ok || !Array.isArray(data.players)) { if (list) list.textContent = 'Could not load the roster.'; return; }
-        list.innerHTML = data.players.map(function (p) {
+        // Once the season is underway the roster is locked for League Managers
+        // (removing a scored player would drop that year's data). Show a banner
+        // and disable the toggles; the server enforces it regardless.
+        var banner = data.locked
+            ? '<div class="scoring-locked"><span data-icon="lock" data-icon-size="16"></span>The roster is locked once the season is underway. Contact an admin to change it.</div>'
+            : '';
+        list.innerHTML = banner + data.players.map(function (p) {
             var color = /^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#5B6690';
             var name = escHtml(p.firstName + ' ' + p.lastName);
             return '<label class="roster-row">' +
-                '<input type="checkbox" class="scoring-toggle roster-toggle" data-id="' + escHtml(p._id) + '" data-name="' + name + '" data-scored="' + !!p.scored + '"' + (p.inSeason ? ' checked' : '') + '>' +
+                '<input type="checkbox" class="scoring-toggle roster-toggle" data-id="' + escHtml(p._id) + '" data-name="' + name + '" data-scored="' + !!p.scored + '"' + (p.inSeason ? ' checked' : '') + (data.locked ? ' disabled' : '') + '>' +
                 '<span class="roster-dot" style="background:' + color + '"></span>' +
                 '<span class="roster-name">' + name + '</span>' +
             '</label>';

@@ -4,6 +4,8 @@ const User = require('../models/user');
 const scoring = require('../modules/scoring');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
+const { effectiveRoles } = require('../modules/dev-role');
+const { hasScoredGames } = require('../modules/season-status');
 
 // Distinct, vibrant avatar/display colors for managers — same family as the
 // app's accent palette. A new player gets one not already used in the league.
@@ -154,7 +156,11 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
             const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
             return { _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color, inSeason: !!s, scored };
         }).sort((a, b) => (a.firstName + ' ' + a.lastName).localeCompare(b.firstName + ' ' + b.lastName));
-        res.json({ season: String(year), players });
+        // Once the season is underway, only an admin can change the roster —
+        // removing a scored player would drop that year's data (needs a rescore).
+        const isAdmin = effectiveRoles(req).includes('Admin');
+        const seasonUnderway = await hasScoredGames(leagueCode, year);
+        res.json({ season: String(year), isAdmin, editable: isAdmin || !seasonUnderway, locked: !isAdmin && seasonUnderway, players });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -319,6 +325,11 @@ router.post('/:id/season-membership', async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
         const year = Number(process.env.YEAR);
+        // Locked once the season is underway (would drop scored data); admins
+        // only, since applying it needs a rescore.
+        if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(user.league, year)) {
+            return res.status(423).json({ message: 'The roster is locked once the season is underway. Ask an admin to change it.' });
+        }
         const has = (user.seasons || []).some(s => Number(s.season) === year);
         if (included && !has) {
             user.seasons.push({ season: year });
