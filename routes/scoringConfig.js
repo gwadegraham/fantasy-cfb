@@ -2,13 +2,18 @@ const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
+const { explainRegularWin } = require('../modules/scoring');
 const { canManageLeague } = require('../modules/league-access');
 
-// Attaches the ordered field metadata (for the admin form + rules page) to a
-// resolved config. `fields` reflect the resolved `disabled` set via each
-// field's `enabled` flag.
+// Attaches the ordered field metadata (for the admin form + rules page) and a
+// plain-language combine-mode `example` to a resolved config. `fields` reflect
+// the resolved `disabled` set via each field's `enabled` flag; `example` is
+// computed from the live point values so it tracks edits.
 function withFields(cfg) {
-    return Object.assign({}, cfg, { fields: fieldsForModel(cfg.model, cfg.disabled) });
+    return Object.assign({}, cfg, {
+        fields: fieldsForModel(cfg.model, cfg.disabled),
+        example: explainRegularWin(cfg.model, cfg.values)
+    });
 }
 
 // Resolved config (defaults-merged) for a league — always returns usable
@@ -18,9 +23,17 @@ router.get('/:league', async (req, res) => {
     try {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
         const bySeason = (doc && doc.engagementBySeason) || {};
-        const overrides = doc
+        let overrides = doc
             ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement, engagementBySeason: bySeason }
             : null;
+        // `?model=` lets the admin preview a different rule shape (Fixed =
+        // claunts, Stacking = graham): force that model and drop the saved
+        // combineMode so the shape's own default combine behavior applies,
+        // never a stale one from the other shape.
+        const requestedModel = req.query.model;
+        if (requestedModel === 'claunts' || requestedModel === 'graham') {
+            overrides = Object.assign({}, overrides, { model: requestedModel, combineMode: undefined });
+        }
         // `engagement` is resolved for the requested season (default: the active
         // YEAR) so callers get the right game-mode state without knowing the
         // per-season storage. `engagementBySeason` is the full map for the admin.
@@ -36,18 +49,20 @@ router.get('/:league', async (req, res) => {
 });
 
 // Upsert a league's scoring config (commissioner-gated via the mutation gate).
-// Accepts point `values`, a `combineMode` override, and a `disabled` list of
-// postseason condition keys.
+// Accepts a rule-shape `model` (Fixed = claunts, Stacking = graham), point
+// `values`, and a `disabled` list of postseason condition keys. The combine
+// behavior is derived from the model's default — it is NOT a separate setting,
+// so a nonsensical shape/mode combo can't be saved.
 router.post('/', async (req, res) => {
     try {
-        const { league, model, values, combineMode, disabled } = req.body;
+        const { league, model, values, disabled } = req.body;
         if (!league) {
             return res.status(400).json({ message: 'league is required' });
         }
         if (!canManageLeague(req, league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
-        const resolved = resolveConfig(league, { model, values, combineMode, disabled });
+        const resolved = resolveConfig(league, { model, values, disabled });
         const doc = await ScoringConfig.findOneAndUpdate(
             { league },
             { $set: {

@@ -14,7 +14,7 @@ const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
-const { leagueCodeFor } = require('./modules/league-access');
+const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
@@ -196,9 +196,15 @@ app.get('/rules', async (req, res) => {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
 
-        // Render the rules from the league's scoring config so the page can
-        // never drift from the engine.
-        const leagueCode = user.league === 'gg' ? 'graham-league' : 'claunts-league';
+        // Show the caller's own league by default. Honor ?league= only when the
+        // caller may view that league (Admins: any; League Managers: their own),
+        // mirroring the Admin-only league switcher on the other pages — so a URL
+        // can't reveal a league the user isn't entitled to. Render the rules from
+        // the resolved config so the page can never drift from the engine.
+        const ownLeague = leagueCodeFor(req.effUser);
+        const requested = req.query.league;
+        const canView = LEAGUES.some(l => l.code === requested) && canManageLeague(req, requested);
+        const leagueCode = canView ? requested : ownLeague;
         let cfg;
         try {
             const doc = await ScoringConfig.findOne({ league: leagueCode });
@@ -210,7 +216,7 @@ app.get('/rules', async (req, res) => {
         }
         const fields = fieldsForModel(cfg.model, cfg.disabled);
 
-        res.render('scoringRules', { user, userState, cfg, fields });
+        res.render('scoringRules', { user, userState, cfg, fields, leagueCode });
     } else {
         res.redirect("/login");
     }

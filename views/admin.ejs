@@ -382,15 +382,28 @@
                     </button>
                 </div>
                 <div class="sub-container" scoring-config-container style="display: none">
-                    <p class="function-description">Tune this league's point values, bonus-stacking mode, and postseason events.</p>
+                    <p class="function-description">Choose how this league scores wins, then tune the point values and postseason events.</p>
                     <form id="scoring-config-form" class="draft-config-form">
-                        <div class="draft-status-row">League: <span scoring-config-model></span></div>
-                        <div class="draft-field">
-                            <label>Regular-season combine mode</label>
-                            <select scoring-config-combine-mode>
-                                <option value="first">First match wins (priority)</option>
-                                <option value="sum">Sum all bonuses (additive)</option>
-                            </select>
+                        <div class="draft-status-row"><span scoring-config-model></span></div>
+                        <div class="draft-field combine-mode-field">
+                            <label class="combine-mode-q">How does this league score wins?</label>
+                            <div class="combine-mode" scoring-config-shape>
+                                <label class="mode-card" data-model="claunts">
+                                    <input type="radio" name="rule-shape" value="claunts">
+                                    <span class="mode-card-text">
+                                        <span class="mode-card-title">Fixed win values</span>
+                                        <span class="mode-card-desc">Each win counts as one category, with a set value for each kind of win.</span>
+                                    </span>
+                                </label>
+                                <label class="mode-card" data-model="graham">
+                                    <input type="radio" name="rule-shape" value="graham">
+                                    <span class="mode-card-text">
+                                        <span class="mode-card-title">Stacking win values</span>
+                                        <span class="mode-card-desc">Every win starts with a base, then stacks a bonus for each thing it qualifies for.</span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div class="combine-example" scoring-config-example aria-live="polite"></div>
                         </div>
                         <div scoring-config-fields></div>
                         <div class="draft-config-actions">

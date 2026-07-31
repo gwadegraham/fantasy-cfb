@@ -471,3 +471,42 @@ function evaluate(model, team, game, rankings, cfg) {
 // calculateScoreV1/V2 do, and stays byte-for-byte consistent with live scoring.
 module.exports.evaluate = evaluate;
 module.exports.normalizeCfg = normalizeCfg;
+
+// One signature winning game per model, used to build a plain-language "worked
+// example" of the two combine modes for the admin UI. Only the WHICH-rules-fire
+// mapping is authored here; the points come from the league's live values, so
+// the example stays correct as a commissioner edits them.
+var EXAMPLE_SCENARIOS = {
+    // Non-conference win over a top-10 team → matches the ranked-win rule and
+    // the base-win rule.
+    claunts: { label: 'a non-conference win over a top-10 team',
+        ctx: { isConference: false, rankVal: 2, isPowerFiveUpset: false } },
+    // Conference win over a top-10 team → stacks base + conference + top-10 win.
+    graham: { label: 'a conference win over a top-10 team',
+        ctx: { isConference: true, rankVal: 2, isPowerFiveUpset: false } }
+};
+
+// Runs the model's signature win through the REAL condition detectors and
+// reports which regular-win rules it matches, in the model's priority order.
+// Each match carries its point `key` so the admin can recompute the example
+// live from the (possibly-unsaved) input values; `points` is the saved-value
+// fallback. The client derives the per-mode totals ('first' = only the first
+// match; 'sum' = every match added).
+function explainRegularWin(model, values) {
+    var structure = (MODELS[model] || MODELS.claunts).structure;
+    var scn = EXAMPLE_SCENARIOS[model] || EXAMPLE_SCENARIOS.claunts;
+    var ctx = Object.assign({
+        game: { seasonType: 'regular', notes: '' },
+        team: 'example', isRegular: true, won: true, opponent: 'Opponent'
+    }, scn.ctx);
+    var matched = [];
+    for (var i = 0; i < structure.regularWin.length; i++) {
+        var rr = structure.regularWin[i];
+        var det = CONDITIONS[rr.condition];
+        if (det && det(ctx)) {
+            matched.push({ key: rr.pointsKey, label: rr.label, points: pointsOf(values, rr.pointsKey) });
+        }
+    }
+    return { scenario: scn.label, matched: matched };
+}
+module.exports.explainRegularWin = explainRegularWin;

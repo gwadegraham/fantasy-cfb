@@ -47,10 +47,14 @@ const GRAHAM_DEFAULTS = {
 //   matching rule's points win (Claunts: a conference win scores 2 even vs a
 //   ranked team). Under 'sum' the points of every matching rule are added
 //   (Graham: base + conference + ranked + upset bonuses stack).
-// postseason: ordered independent events. The engine walks them in order and a
-//   non-`additive` match stops evaluation — this reproduces the old elif
+// postseason: ordered independent events. The engine walks them in ARRAY order
+//   and a non-`additive` match stops evaluation — this reproduces the old elif
 //   precedence (e.g. a Rose Bowl quarterfinal scores the CFP value, not a bowl
-//   appearance). `additive: true` rules add their points and keep going.
+//   appearance). `additive: true` rules add their points and keep going. This
+//   array order is EVALUATION order and must not be reshuffled for cosmetics.
+//   `displayOrder` gives the chronological order the UI lists events in
+//   (conference championship -> bowls -> playoff rounds), independent of the
+//   engine order; `stacksNote` explains an additive event on the admin form.
 //
 // `condition` is the detector key (scoring-detectors.js CONDITIONS); `pointsKey`
 // indexes the point value; `label` drives the admin form and rules page.
@@ -64,32 +68,32 @@ const STRUCTURES = {
             { condition: 'baseWin', pointsKey: 'nonConfWinUnranked', label: 'Non-conference win vs. unranked opponent' }
         ],
         postseason: [
-            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
-            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
-            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance' },
-            { condition: 'cfpFirstRoundLoss', pointsKey: 'cfpAppearance', label: 'CFP appearance (first-round exit)' },
-            { condition: 'bowlAppearance', pointsKey: 'bowlAppearance', label: 'Non-playoff bowl appearance', additive: true },
-            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win' },
-            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win' }
+            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance', displayOrder: 5 },
+            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance', displayOrder: 6 },
+            { condition: 'nationalChampionship', pointsKey: 'nationalChampionship', label: 'National Championship appearance', displayOrder: 7 },
+            { condition: 'cfpFirstRoundLoss', pointsKey: 'cfpAppearance', label: 'CFP appearance (first-round exit)', displayOrder: 4 },
+            { condition: 'bowlAppearance', pointsKey: 'bowlAppearance', label: 'Non-playoff bowl appearance', additive: true, displayOrder: 2, stacksNote: 'A bowl win also earns these bowl-appearance points.' },
+            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win', displayOrder: 3 },
+            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win', displayOrder: 1 }
         ]
     },
     graham: {
         combineMode: 'sum',
         regularWin: [
-            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Non-con win vs. unranked opponent' },
-            { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win vs. unranked opponent', additive: true },
+            { condition: 'baseWin', pointsKey: 'baseWin', label: 'Any win (base points)' },
+            { condition: 'confBonus', pointsKey: 'confBonus', label: 'Conference win', additive: true },
             { condition: 'rankedTop25Bonus', pointsKey: 'rankedTop25Bonus', label: 'Win vs. opponent ranked #11–25', additive: true },
             { condition: 'rankedTop10Bonus', pointsKey: 'rankedTop10Bonus', label: 'Win vs. opponent ranked #1–10', additive: true },
             { condition: 'nonP5UpsetBonus', pointsKey: 'nonP5UpsetBonus', label: 'Non P5 team beats a P5 team', additive: true }
         ],
         postseason: [
-            { condition: 'cfpFirstRound', pointsKey: 'cfpFirstRound', label: 'CFP First Round appearance' },
-            { condition: 'cfpQuarterfinalTop4Bonus', pointsKey: 'cfpQuarterfinalTop4Bonus', label: 'CFP Quarterfinal — top-4 seed bye bonus', additive: true },
-            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance' },
-            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance' },
-            { condition: 'nationalChampionshipWin', pointsKey: 'nationalChampionship', label: 'National Championship win' },
-            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win' },
-            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win' }
+            { condition: 'cfpFirstRound', pointsKey: 'cfpFirstRound', label: 'CFP First Round appearance', displayOrder: 3 },
+            { condition: 'cfpQuarterfinalTop4Bonus', pointsKey: 'cfpQuarterfinalTop4Bonus', label: 'CFP Quarterfinal — top-4 seed bye bonus', additive: true, displayOrder: 5, stacksNote: 'A top-4 seed earns this on top of the CFP Quarterfinal appearance.' },
+            { condition: 'cfpQuarterfinal', pointsKey: 'cfpQuarterfinal', label: 'CFP Quarterfinal appearance', displayOrder: 4 },
+            { condition: 'cfpSemifinal', pointsKey: 'cfpSemifinal', label: 'CFP Semifinal appearance', displayOrder: 6 },
+            { condition: 'nationalChampionshipWin', pointsKey: 'nationalChampionship', label: 'National Championship win', displayOrder: 7 },
+            { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win', displayOrder: 2 },
+            { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win', displayOrder: 1 }
         ]
     }
 };
@@ -122,10 +126,15 @@ function fieldsForModel(model, disabled) {
         key: r.pointsKey, condition: r.condition, label: r.label,
         additive: !!r.additive, group: 'regular', toggleable: false, enabled: true
     }));
+    // Postseason fields are sorted into chronological `displayOrder` for the UI
+    // (conference championship -> bowls -> playoff rounds). This is display-only:
+    // the engine iterates structure.postseason in its own evaluation order.
     const post = structure.postseason.map(r => ({
         key: r.pointsKey, condition: r.condition, label: r.label,
-        additive: !!r.additive, group: 'postseason', toggleable: true, enabled: !off.has(r.condition)
-    }));
+        additive: !!r.additive, group: 'postseason', toggleable: true, enabled: !off.has(r.condition),
+        stacksNote: r.stacksNote || null,
+        displayOrder: typeof r.displayOrder === 'number' ? r.displayOrder : 0
+    })).sort((a, b) => a.displayOrder - b.displayOrder);
     return regular.concat(post);
 }
 

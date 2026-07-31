@@ -37,6 +37,15 @@
         margin-bottom: 0.75rem;
     }
 
+    /* Sub-note under a postseason rule that stacks on top of another event. */
+    .scoring-subnote {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.85em;
+        font-style: italic;
+        color: #A4A9C2;
+    }
+
     .rules-section li i {
         color: #F4F6FB;
         margin-right: 0.6rem;

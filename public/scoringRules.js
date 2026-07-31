@@ -1,49 +1,48 @@
-var leagueCode;
+// Keep the Scoring Rules page in step with the app-wide league selection. The
+// page is server-rendered from ?league= (Admins only, gated) or the caller's
+// own league; #scoring-league carries whichever league the server used.
+window.onload = function () {
+    var el = document.getElementById('scoring-league');
+    var rendered = el && el.getAttribute('data-code');
+    if (!rendered) return;
 
-window.onload = async function () {
-    // The navbar partial (views/partials/navbar.ejs) owns its hamburger and the
-    // "My team" link + userId caching.
-    const response = await fetch(`/profile`, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-    });
+    var roles = (userState && userState.user_metadata && userState.user_metadata.roles) || [];
+    var isAdmin = roles.indexOf('Admin') !== -1;
+    var hasParam = /[?&]league=/.test(window.location.search);
+    var stored = window.localStorage.getItem('leagueCode');
 
-    response.json().then(async data => {
+    // Admin who selected another league elsewhere but reached /rules with no
+    // ?league=: jump to that league so Scoring matches the rest of the app.
+    // Guarded (a valid, switchable league that differs from what rendered) so it
+    // cannot loop — after the redirect the URL carries ?league=, and the server
+    // renders that same league for an Admin.
+    if (isAdmin && !hasParam && stored && stored !== rendered
+        && document.querySelector('[league-selector] a[value="' + stored + '"]')) {
+        window.location.replace('/rules?league=' + encodeURIComponent(stored));
+        return;
+    }
 
-        // Only set leagueCode from metaData if it's not already stored
-        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
-            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-            window.localStorage.setItem("leagueCode", newLeagueCode);
-        }
-
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
-            const leagueCode = window.localStorage.getItem("leagueCode");
-
-            if (leagueCode && (leagueCode != "undefined")) {
-                const currentSelectedLeague = window.sessionStorage.getItem("league");
-                if (currentSelectedLeague) {
-                    $("#dropdownMenuButton").text(currentSelectedLeague);
-                }
-            }
-        }
-    });
+    // Otherwise reflect the rendered league in the dropdown label + sticky
+    // storage, so the label always matches the rules shown.
+    window.localStorage.setItem('leagueCode', rendered);
+    var item = document.querySelector('[league-selector] a[value="' + rendered + '"]');
+    if (item) {
+        window.sessionStorage.setItem('league', item.textContent);
+        $('#dropdownMenuButton').text(item.textContent).val(rendered);
+    }
 };
 
+// Picking a league navigates to that league's rules via the server param (the
+// page is server-rendered, so a plain reload wouldn't switch it).
 if ($("[league-selector]")) {
-    setTimeout(() => {
-        $("[league-selector] a").click(function(){
-            $(this).parents(".dropdown").find('.btn').html($(this).text());
-            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-            var selectedLeague = $("#dropdownMenuButton").text();
-            var selectedLeagueCode = $("#dropdownMenuButton").val();
-            window.sessionStorage.setItem("league", selectedLeague);
-            window.localStorage.setItem("leagueCode", selectedLeagueCode);
-            window.location.reload();
+    setTimeout(function () {
+        $("[league-selector] a").click(function () {
+            var code = $(this).attr('value');
+            window.sessionStorage.setItem('league', $(this).text());
+            window.localStorage.setItem('leagueCode', code);
+            window.location.href = '/rules?league=' + encodeURIComponent(code);
         });
-    }, "200");
+    }, 200);
 }
 
 

@@ -22,6 +22,7 @@
             var userState = <%- userState %>;
         </script>
     <% } %>
+    <span id="scoring-league" data-code="<%= leagueCode %>" hidden></span>
 
   <div class="rules-container">
     <h1 class="header-title"><span data-icon="book" data-icon-size="26"></span>Scoring Rules</h1>
@@ -58,7 +59,8 @@
       <ul class="scoring-list">
         <% fields.filter(function(f){ return f.group === 'postseason' && f.enabled; }).forEach(function(f){ var v = cfg.values[f.key]; %>
           <li>
-            <% if (f.additive) { %><i class="fas fa-plus"></i><% } %><%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
+            <%= v %> <%= v === 1 ? 'pt' : 'pts' %> — <%= f.label %>
+            <% if (f.stacksNote) { %><span class="scoring-subnote"><%= f.stacksNote %></span><% } %>
           </li>
         <% }); %>
       </ul>
