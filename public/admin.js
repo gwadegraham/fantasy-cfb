@@ -441,6 +441,7 @@ async function loadSeasonRoster() {
                 '<span class="roster-name">' + name + '</span>' +
             '</label>';
         }).join('');
+        list.classList.toggle('is-locked', !!data.locked);
     } catch (err) {
         if (list) list.textContent = 'Could not load the roster.';
     }
@@ -1644,6 +1645,12 @@ function applyScoringLock() {
     var form = document.getElementById('scoring-config-form');
     if (!form) return;
     form.querySelectorAll('input, button').forEach(function (el) { el.disabled = locked; });
+    // Dim the editable areas so the disabled state is obvious (the disabled
+    // attribute alone doesn't visibly change the custom-styled controls).
+    var fields = form.querySelector('[scoring-config-fields]');
+    if (fields) fields.classList.toggle('is-locked', locked);
+    var shape = form.querySelector('[scoring-config-shape]');
+    if (shape) shape.classList.toggle('is-locked', locked);
     var banner = form.querySelector('[scoring-config-locked]');
     if (banner) banner.style.display = locked ? 'flex' : 'none';
     var actions = form.querySelector('.draft-config-actions');
