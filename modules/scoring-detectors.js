@@ -115,6 +115,14 @@ const CONDITIONS = {
     rankedTop10Bonus: (ctx) => ctx.won && ctx.isRegular && ctx.rankVal === 2 && !isConferenceChampion(ctx.game),
     nonP5UpsetBonus: (ctx) => ctx.won && ctx.isRegular && ctx.isPowerFiveUpset && !isConferenceChampion(ctx.game),
 
+    // Optional finer Fixed-shape categories: conference/non-conference wins
+    // split by opponent rank. rankVal is 2 for #1-10, 1 for #11-25, 0 unranked.
+    confRankedWin: (ctx) => ctx.won && ctx.isRegular && ctx.isConference && ctx.rankVal > 0 && !isConferenceChampion(ctx.game),
+    confWinTop10: (ctx) => ctx.won && ctx.isRegular && ctx.isConference && ctx.rankVal === 2 && !isConferenceChampion(ctx.game),
+    confWinTop25: (ctx) => ctx.won && ctx.isRegular && ctx.isConference && ctx.rankVal === 1 && !isConferenceChampion(ctx.game),
+    nonConfWinTop10: (ctx) => ctx.won && ctx.isRegular && !ctx.isConference && ctx.rankVal === 2 && !isConferenceChampion(ctx.game),
+    nonConfWinTop25: (ctx) => ctx.won && ctx.isRegular && !ctx.isConference && ctx.rankVal === 1 && !isConferenceChampion(ctx.game),
+
     // Conference championship (regular-season titled game), win only.
     confChampionship: (ctx) => ctx.won && isConferenceChampion(ctx.game),
 

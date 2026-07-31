@@ -13,6 +13,10 @@ const scoringConfigSchema = new mongoose.Schema({
     // conditions are switched off (by condition key).
     combineMode: { type: String, enum: ['first', 'sum'] },
     disabled: { type: [String], default: [] },
+    // Opt-in list for default-off rules (the finer Fixed-shape win categories).
+    // A condition here is ON; absence keeps a default-off rule OFF — so adding a
+    // new default-off rule never changes an existing league's scoring.
+    enabled: { type: [String], default: [] },
     // Optional weekly-engagement layer (GitHub #230), per-league opt-in.
     // DEPRECATED / legacy: a single league-wide engagement blob. Superseded by
     // engagementBySeason (below) so a league can run the game modes in one

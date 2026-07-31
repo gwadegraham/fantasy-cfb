@@ -17,6 +17,13 @@ const CLAUNTS_DEFAULTS = {
     nonConfWinUnranked: 1,
     nonConfWinRanked: 3,
     confWin: 2,
+    // Optional finer categories (off by default; starting values a commissioner
+    // can tune before enabling).
+    confWinRanked: 3,
+    confWinTop25: 3,
+    confWinTop10: 4,
+    nonConfWinTop25: 3,
+    nonConfWinTop10: 4,
     confChampionship: 6,
     bowlAppearance: 4,
     bowlWin: 5,
@@ -62,9 +69,18 @@ const GRAHAM_DEFAULTS = {
 const STRUCTURES = {
     claunts: {
         combineMode: 'first',
+        // Ordered most-specific -> most-general (first match wins). The tiered /
+        // ranked conference + non-conference categories are optional (defaultOff)
+        // so Claunts scores exactly as before until a commissioner opts in; when
+        // enabled they sit above the flat categories and take precedence.
         regularWin: [
+            { condition: 'confWinTop10', pointsKey: 'confWinTop10', label: 'Conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true },
+            { condition: 'confWinTop25', pointsKey: 'confWinTop25', label: 'Conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true },
+            { condition: 'confRankedWin', pointsKey: 'confWinRanked', label: 'Conference win vs. a ranked opponent', toggleable: true, defaultOff: true },
             { condition: 'conferenceWin', pointsKey: 'confWin', label: 'Conference win' },
-            { condition: 'nonConfRankedWin', pointsKey: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent' },
+            { condition: 'nonConfWinTop10', pointsKey: 'nonConfWinTop10', label: 'Non-conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true },
+            { condition: 'nonConfWinTop25', pointsKey: 'nonConfWinTop25', label: 'Non-conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true },
+            { condition: 'nonConfRankedWin', pointsKey: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent', toggleable: true },
             { condition: 'baseWin', pointsKey: 'nonConfWinUnranked', label: 'Non-conference win vs. unranked opponent' }
         ],
         postseason: [
@@ -116,22 +132,31 @@ const LEAGUES = [
     { code: 'graham-league', name: 'Graham League' }
 ];
 
-// Flat, ordered field metadata for the admin form + rules page. Regular-win
-// fields carry group 'regular'; postseason fields group 'postseason' and are
-// toggleable (enable/disable). `enabled` reflects the resolved `disabled` set.
-function fieldsForModel(model, disabled) {
+// Whether a rule is on for a config. A `defaultOff` rule is off unless its
+// condition is explicitly in the `enabled` opt-in list; every other rule is on
+// unless explicitly in the `disabled` list. Non-toggleable rules never appear in
+// either list, so they resolve to on. Shared by the admin display and the engine
+// so the two never disagree.
+function ruleEnabled(rule, disabled, enabled) {
+    if (rule.defaultOff) return (enabled || []).indexOf(rule.condition) !== -1;
+    return (disabled || []).indexOf(rule.condition) === -1;
+}
+
+// Flat, ordered field metadata for the admin form + rules page. Each field
+// carries `toggleable`, `defaultOff`, and its resolved `enabled` state (from the
+// `disabled` + `enabled` lists). Regular-win fields keep engine/priority order;
+// postseason fields are sorted into chronological `displayOrder` for the UI.
+function fieldsForModel(model, disabled, enabled) {
     const structure = (MODELS[model] || MODELS.claunts).structure;
-    const off = new Set(disabled || []);
-    const regular = structure.regularWin.map(r => ({
+    const field = (r, group, extra) => Object.assign({
         key: r.pointsKey, condition: r.condition, label: r.label,
-        additive: !!r.additive, group: 'regular', toggleable: false, enabled: true
-    }));
-    // Postseason fields are sorted into chronological `displayOrder` for the UI
-    // (conference championship -> bowls -> playoff rounds). This is display-only:
-    // the engine iterates structure.postseason in its own evaluation order.
-    const post = structure.postseason.map(r => ({
-        key: r.pointsKey, condition: r.condition, label: r.label,
-        additive: !!r.additive, group: 'postseason', toggleable: true, enabled: !off.has(r.condition),
+        additive: !!r.additive, group,
+        toggleable: !!r.toggleable, defaultOff: !!r.defaultOff,
+        enabled: ruleEnabled(r, disabled, enabled)
+    }, extra || {});
+    const regular = structure.regularWin.map(r => field(r, 'regular'));
+    const post = structure.postseason.map(r => field(r, 'postseason', {
+        toggleable: true,                       // postseason events are always toggleable
         stacksNote: r.stacksNote || null,
         displayOrder: typeof r.displayOrder === 'number' ? r.displayOrder : 0
     })).sort((a, b) => a.displayOrder - b.displayOrder);
@@ -148,11 +173,14 @@ function resolveConfig(league, overrides) {
         ? overrides.combineMode
         : modelDef.structure.combineMode;
     const disabled = (overrides && Array.isArray(overrides.disabled)) ? overrides.disabled.slice() : [];
+    const enabled = (overrides && Array.isArray(overrides.enabled)) ? overrides.enabled.slice() : [];
     return {
         model,
         combineMode,
         values: Object.assign({}, modelDef.defaults, (overrides && overrides.values) || {}),
         disabled,
+        // Opt-in list for defaultOff rules (finer Fixed-shape win categories).
+        enabled,
         // Legacy flat engagement (deprecated — see engagementBySeason). Kept in
         // the resolved shape for back-compat with any old reader.
         engagement: normalizeEngagement((overrides && overrides.engagement) || {}),
@@ -187,6 +215,6 @@ function engagementForSeason(bySeason, season) {
 
 module.exports = {
     CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS, LEAGUES,
-    modelForLeague, fieldsForModel, resolveConfig,
+    modelForLeague, fieldsForModel, resolveConfig, ruleEnabled,
     ENGAGEMENT_DEFAULTS, normalizeEngagement, engagementForSeason
 };

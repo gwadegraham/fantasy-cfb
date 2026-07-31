@@ -43,7 +43,7 @@ router.get('/grades/:league/:season', async (req, res) => {
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const config = resolveConfig(league, cfgDoc ? {
             model: cfgDoc.model, values: cfgDoc.values,
-            combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
+            combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled, enabled: cfgDoc.enabled
         } : null);
 
         const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();

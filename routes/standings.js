@@ -124,7 +124,7 @@ router.get('/projections/:league/:season', async (req, res) => {
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const cfg = resolveConfig(league, cfgDoc ? {
-            model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
+            model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled, enabled: cfgDoc.enabled
         } : null);
         const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
         const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;

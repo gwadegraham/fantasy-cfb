@@ -1,5 +1,5 @@
 const { internalFetch } = require('./internal-api');
-const { resolveConfig, MODELS, engagementForSeason } = require('./scoring-defaults');
+const { resolveConfig, MODELS, engagementForSeason, ruleEnabled } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
 // Configure API key authorization: ApiKeyAuth
@@ -359,16 +359,18 @@ async function getScoringConfig(league) {
             method: 'GET', headers: { 'Accept': 'application/json' }
         });
         var data = await res.json();
-        // Forward the FULL config — model, values, combineMode AND disabled — so
-        // the scoring jobs honor a commissioner's structural changes (combine
-        // mode, disabled postseason events), not just point values. Dropping
-        // combineMode/disabled here made computed scores silently ignore
-        // structural config while the rules page still showed it.
+        // Forward the FULL config — model, values, combineMode, disabled AND
+        // enabled — so the scoring jobs honor every structural change a
+        // commissioner makes (combine mode, disabled postseason events, opted-in
+        // finer win categories), not just point values. Dropping any of these
+        // here would make computed scores silently ignore structural config while
+        // the rules page still showed it.
         if (data && data.values) return resolveConfig(league, {
             model: data.model,
             values: data.values,
             combineMode: data.combineMode,
             disabled: data.disabled,
+            enabled: data.enabled,
             engagement: data.engagement,
             engagementBySeason: data.engagementBySeason
         });
@@ -410,9 +412,9 @@ async function getRankingsForGame(game, week, season, cache) {
 // all postseason events enabled.
 function normalizeCfg(model, cfg) {
     if (cfg && typeof cfg === 'object' && cfg.values && typeof cfg.values === 'object') {
-        return { combineMode: cfg.combineMode, values: cfg.values, disabled: cfg.disabled || [] };
+        return { combineMode: cfg.combineMode, values: cfg.values, disabled: cfg.disabled || [], enabled: cfg.enabled || [] };
     }
-    return { combineMode: undefined, values: cfg || {}, disabled: [] };
+    return { combineMode: undefined, values: cfg || {}, disabled: [], enabled: [] };
 }
 
 function pointsOf(values, key) {
@@ -428,20 +430,21 @@ function pointsOf(values, key) {
 function evaluate(model, team, game, rankings, cfg) {
     var structure = (MODELS[model] || MODELS.claunts).structure;
     var values = cfg.values || {};
-    var disabled = new Set(cfg.disabled || []);
+    var disabled = cfg.disabled || [];
+    var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
     var ctx = buildContext(team, game, rankings);
 
-    // 1. Postseason events, in order. Each enabled matching rule adds its
-    //    points; a non-additive match stops evaluation. This first-match-stop
-    //    reproduces the old elif precedence (bracket rounds short-circuit the
-    //    bowl/regular paths, so a CFP game at a bowl venue never double-counts).
+    // 1. Postseason events, in order. Each ON matching rule adds its points; a
+    //    non-additive match stops evaluation. This first-match-stop reproduces
+    //    the old elif precedence (bracket rounds short-circuit the bowl/regular
+    //    paths, so a CFP game at a bowl venue never double-counts).
     var score = 0;
     var matchedPost = false;
     for (var i = 0; i < structure.postseason.length; i++) {
         var pr = structure.postseason[i];
-        if (disabled.has(pr.condition)) continue;
+        if (!ruleEnabled(pr, disabled, enabled)) continue;
         var pd = CONDITIONS[pr.condition];
         if (pd && pd(ctx)) {
             score += pointsOf(values, pr.pointsKey);
@@ -451,11 +454,13 @@ function evaluate(model, team, game, rankings, cfg) {
     }
     if (matchedPost) return score;
 
-    // 2. Regular-win group (only if no postseason event matched). Combine mode
-    //    'sum' adds every matching rule (Graham); 'first' takes the first match
-    //    in priority order (Claunts).
+    // 2. Regular-win group (only if no postseason event matched). Off rules
+    //    (a disabled default-on, or a not-opted-in default-off category) are
+    //    skipped. Combine mode 'sum' adds every matching rule (Graham); 'first'
+    //    takes the first match in priority order (Claunts).
     for (var j = 0; j < structure.regularWin.length; j++) {
         var rr = structure.regularWin[j];
+        if (!ruleEnabled(rr, disabled, enabled)) continue;
         var rd = CONDITIONS[rr.condition];
         if (rd && rd(ctx)) {
             score += pointsOf(values, rr.pointsKey);
@@ -488,11 +493,13 @@ var EXAMPLE_SCENARIOS = {
 
 // Runs the model's signature win through the REAL condition detectors and
 // reports which regular-win rules it matches, in the model's priority order.
-// Each match carries its point `key` so the admin can recompute the example
-// live from the (possibly-unsaved) input values; `points` is the saved-value
-// fallback. The client derives the per-mode totals ('first' = only the first
-// match; 'sum' = every match added).
-function explainRegularWin(model, values) {
+// Off rules (a disabled default-on, or a not-opted-in default-off category) are
+// skipped so the example matches how the win actually scores. Each match carries
+// its point `key` so the admin can recompute the example live from the
+// (possibly-unsaved) input values; `points` is the saved-value fallback. The
+// client derives the per-mode totals ('first' = only the first match; 'sum' =
+// every match added).
+function explainRegularWin(model, values, disabled, enabled) {
     var structure = (MODELS[model] || MODELS.claunts).structure;
     var scn = EXAMPLE_SCENARIOS[model] || EXAMPLE_SCENARIOS.claunts;
     var ctx = Object.assign({
@@ -502,6 +509,7 @@ function explainRegularWin(model, values) {
     var matched = [];
     for (var i = 0; i < structure.regularWin.length; i++) {
         var rr = structure.regularWin[i];
+        if (!ruleEnabled(rr, disabled || [], enabled || [])) continue;
         var det = CONDITIONS[rr.condition];
         if (det && det(ctx)) {
             matched.push({ key: rr.pointsKey, label: rr.label, points: pointsOf(values, rr.pointsKey) });

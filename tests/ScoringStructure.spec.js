@@ -46,6 +46,48 @@ describe('combine mode override', () => {
     });
 });
 
+describe('Fixed-shape optional win categories (Claunts)', () => {
+    it('are off by default, so scoring is unchanged', async () => {
+        mockRankings([{ school: 'Opp', rank: 5 }]); // #5 => top-10
+        const cfg = resolveConfig('claunts-league', null);
+        // A conference win vs a top-10 opponent still scores the flat Conference win (2).
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: true, awayConf: 'SEC' }), 5, 2025, cfg)).toBe(2);
+        // A non-conference win vs a top-10 opponent still scores the flat ranked win (3).
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: false }), 5, 2025, cfg)).toBe(3);
+    });
+
+    it('opting into "Conference win vs #1-10" scores it above the flat conference win', async () => {
+        mockRankings([{ school: 'Opp', rank: 5 }]);
+        const cfg = resolveConfig('claunts-league', { enabled: ['confWinTop10'] });
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: true, awayConf: 'SEC' }), 5, 2025, cfg)).toBe(4);
+    });
+
+    it('a conference win outside the opted-in tier falls back to the flat conference win', async () => {
+        mockRankings([{ school: 'Opp', rank: 15 }]); // #15 => #11-25, not top-10
+        const cfg = resolveConfig('claunts-league', { enabled: ['confWinTop10'] });
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: true, awayConf: 'SEC' }), 5, 2025, cfg)).toBe(2);
+    });
+
+    it('non-conference tiers (flat ranked rule turned off) score by rank', async () => {
+        const cfg = resolveConfig('claunts-league', {
+            enabled: ['nonConfWinTop10', 'nonConfWinTop25'], disabled: ['nonConfRankedWin']
+        });
+        mockRankings([{ school: 'Opp', rank: 5 }]);    // top-10
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: false }), 5, 2025, cfg)).toBe(4);
+        mockRankings([{ school: 'Opp', rank: 15 }]);   // #11-25
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: false }), 5, 2025, cfg)).toBe(3);
+        mockRankings([]);                               // unranked -> base win
+        expect(await scoring.calculateScoreV1(1, homeWin({ conf: false }), 5, 2025, cfg)).toBe(1);
+    });
+
+    it('fieldsForModel marks the new categories toggleable + off by default, on when opted in', () => {
+        const off = fieldsForModel('claunts', [], []).find(f => f.condition === 'confWinTop10');
+        expect(off).toMatchObject({ toggleable: true, defaultOff: true, enabled: false, group: 'regular' });
+        const on = fieldsForModel('claunts', [], ['confWinTop10']).find(f => f.condition === 'confWinTop10');
+        expect(on.enabled).toBe(true);
+    });
+});
+
 describe('disabled postseason events', () => {
     it('disabling bowlWin (Claunts) leaves only the bowl appearance points', async () => {
         mockRankings([]);
