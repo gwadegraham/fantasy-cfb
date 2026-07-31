@@ -385,6 +385,10 @@
                     <p class="function-description">Choose how this league scores wins, then tune the point values and postseason events.</p>
                     <form id="scoring-config-form" class="draft-config-form">
                         <div class="draft-status-row"><span scoring-config-model></span></div>
+                        <div scoring-config-locked class="scoring-locked" style="display:none">
+                            <span data-icon="lock" data-icon-size="16"></span>
+                            Scoring is locked once the season is underway. Contact an admin to change it &mdash; the change needs a full-season re-score.
+                        </div>
                         <div class="draft-field combine-mode-field">
                             <label class="combine-mode-q">How does this league score wins?</label>
                             <div class="combine-mode" scoring-config-shape>

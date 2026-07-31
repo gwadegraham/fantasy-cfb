@@ -1606,6 +1606,21 @@ function applyScoringConfig() {
     setShape(scoringConfigData.model);
     renderScoringFields();
     renderShapeExample();
+    applyScoringLock();
+}
+
+// League Managers can't change scoring once the season is underway (server
+// enforces this too). When locked, disable every control, hide Save, and show
+// the "contact an admin" banner so it's clear before they try.
+function applyScoringLock() {
+    var locked = !!(scoringConfigData && scoringConfigData.locked);
+    var form = document.getElementById('scoring-config-form');
+    if (!form) return;
+    form.querySelectorAll('input, button').forEach(function (el) { el.disabled = locked; });
+    var banner = form.querySelector('[scoring-config-locked]');
+    if (banner) banner.style.display = locked ? 'flex' : 'none';
+    var actions = form.querySelector('.draft-config-actions');
+    if (actions) actions.style.display = locked ? 'none' : '';
 }
 
 // Rule shape is a two-card radio bound to the league's model (claunts/graham).
@@ -1781,7 +1796,13 @@ async function saveScoringConfig() {
     if (res.status === 200) {
         scoringConfigData = data;
         applyScoringConfig();
-        document.querySelector('[scoring-config-note]').style.display = 'block';
+        // Admins can re-score; League Managers can't (and only reach save
+        // pre-season anyway), so don't tell them to run a rescore.
+        var note = document.querySelector('[scoring-config-note]');
+        note.textContent = data.isAdmin
+            ? 'Saved. Run a full-season rescore to apply this to existing scores.'
+            : 'Saved. Your changes take effect when scores are next calculated.';
+        note.style.display = 'block';
         successToast.options.text = 'Scoring config saved';
         successToast.showToast();
     } else {
