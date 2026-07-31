@@ -518,3 +518,44 @@ function explainRegularWin(model, values, disabled, enabled) {
     return { scenario: scn.label, matched: matched };
 }
 module.exports.explainRegularWin = explainRegularWin;
+
+// Like evaluate(), but for a REAL game: returns the rule(s) that fired (label +
+// points) plus the total, instead of a bare number. Mirrors evaluate()'s order
+// and skip logic exactly, so `total` equals evaluate()'s score for the same
+// inputs (locked by a parity test). Powers the member-facing "why did this game
+// score this?" breakdown.
+function explainGame(model, team, game, rankings, cfg) {
+    var structure = (MODELS[model] || MODELS.claunts).structure;
+    var values = cfg.values || {};
+    var disabled = cfg.disabled || [];
+    var enabled = cfg.enabled || [];
+    var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
+        ? cfg.combineMode : structure.combineMode;
+    var ctx = buildContext(team, game, rankings);
+    var matched = [];
+    var add = function (r, group) {
+        matched.push({ key: r.pointsKey, label: r.label, points: pointsOf(values, r.pointsKey), group: group });
+    };
+
+    var matchedPost = false;
+    for (var i = 0; i < structure.postseason.length; i++) {
+        var pr = structure.postseason[i];
+        if (!ruleEnabled(pr, disabled, enabled)) continue;
+        var pd = CONDITIONS[pr.condition];
+        if (pd && pd(ctx)) { add(pr, 'postseason'); matchedPost = true; if (!pr.additive) break; }
+    }
+    if (!matchedPost) {
+        for (var j = 0; j < structure.regularWin.length; j++) {
+            var rr = structure.regularWin[j];
+            if (!ruleEnabled(rr, disabled, enabled)) continue;
+            var rd = CONDITIONS[rr.condition];
+            if (rd && rd(ctx)) { add(rr, 'regular'); if (combineMode !== 'sum') break; }
+        }
+    }
+    return { matched: matched, total: matched.reduce(function (s, m) { return s + m.points; }, 0) };
+}
+module.exports.explainGame = explainGame;
+// Exposed so the per-game breakdown route can reuse the EXACT scoring inputs
+// (resolved config + the game's week rankings) the scoring jobs use.
+module.exports.getScoringConfig = getScoringConfig;
+module.exports.getRankingsForGame = getRankingsForGame;

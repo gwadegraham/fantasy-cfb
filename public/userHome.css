@@ -465,6 +465,37 @@
 .game-card .gc-score { text-align: left; white-space: nowrap; padding-left: 0.9em; width: 1%; }
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
 
+/* The "+N" badge is a button: tap to reveal the scoring breakdown. Looks like
+   the old badge, but signals it's tappable (pointer + dotted underline). */
+.game-card .score-explain {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: #22C37A;
+    cursor: pointer;
+    border-bottom: 1px dotted rgba(34, 195, 122, 0.6);
+}
+.game-card .score-explain:hover,
+.game-card .score-explain.is-open { border-bottom-style: solid; }
+.game-card .score-explain:focus-visible { outline: 2px solid #64B5F6; outline-offset: 2px; }
+
+/* Per-game scoring breakdown revealed under the card. */
+.game-card .gc-breakdown {
+    margin-top: 0.6em;
+    padding-top: 0.6em;
+    border-top: 1px solid #2A2E42;
+    font-size: 0.82em;
+    color: #A4A9C2;
+    text-align: left;
+}
+.game-card .gc-breakdown .bd-row { display: flex; gap: 0.5em; align-items: baseline; }
+.game-card .gc-breakdown .bd-pts { color: #22C37A; font-weight: 700; font-variant-numeric: tabular-nums; }
+.game-card .gc-breakdown .bd-label { color: #F4F6FB; }
+.game-card .gc-breakdown .bd-note { margin-top: 0.4em; color: #E0B341; font-style: italic; }
+
 /* Draft grades review section on the profile (cards styled by draftGrades.css). */
 /* Draft-grade chip in the profile hero → expands the detail panel below. */
 .grade-chip {

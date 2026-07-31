@@ -457,6 +457,20 @@
 
 /* Combine mode: two plain-language radio cards + a live worked example, in
    place of the old jargon dropdown ("First match wins (priority)"). */
+/* Shown to a League Manager when scoring is locked (season underway). */
+.scoring-locked {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85em;
+    color: #E0B341;
+    background: rgba(224, 179, 65, 0.10);
+    border: 1px solid rgba(224, 179, 65, 0.35);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+}
+
 .combine-mode-q { font-size: 0.9em; margin-bottom: 4px; }
 .combine-mode { display: flex; flex-direction: column; gap: 8px; }
 
