@@ -1,9 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
+const User = require('../models/user');
+const Game = require('../models/game');
 const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
-const { explainRegularWin } = require('../modules/scoring');
+const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame } = require('../modules/scoring');
 const { canManageLeague } = require('../modules/league-access');
+const { effectiveRoles } = require('../modules/dev-role');
+
+// True once at least one drafted-team game has been scored in `season` for this
+// league — used to lock scoring edits for League Managers mid-season.
+async function hasScoredGames(league, season) {
+    const hit = await User.exists({
+        league,
+        seasons: { $elemMatch: { season: Number(season), 'weeklyScore.scoreByTeam.0': { $exists: true } } }
+    });
+    return !!hit;
+}
 
 // Attaches the ordered field metadata (for the admin form + rules page) and a
 // plain-language combine-mode `example` to a resolved config. `fields` reflect
@@ -42,7 +55,45 @@ router.get('/:league', async (req, res) => {
         cfg.engagement = engagementForSeason(bySeason, season);
         cfg.engagementBySeason = bySeason;
         cfg.season = String(season);
+        // Whether this caller may still edit scoring. Admins always can (they can
+        // trigger a rescore). League Managers are locked out once the season has a
+        // scored game — they must ask an admin. Only computed for a signed-in
+        // manager (skipped for regular members and internal token calls).
+        cfg.editable = false;
+        cfg.locked = false;
+        cfg.isAdmin = false;
+        if (req.oidc && req.oidc.isAuthenticated && req.oidc.isAuthenticated() && canManageLeague(req, req.params.league)) {
+            cfg.isAdmin = effectiveRoles(req).includes('Admin');
+            if (cfg.isAdmin) {
+                cfg.editable = true;
+            } else {
+                const scored = await hasScoredGames(req.params.league, season);
+                cfg.editable = !scored;
+                cfg.locked = scored;
+            }
+        }
         res.json(cfg);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Per-game scoring breakdown: which rule(s) earned a rostered team its points
+// for one game. Reuses the EXACT engine inputs (resolved config + the game's
+// week rankings) the scoring jobs use, so the breakdown reconciles with the
+// banked per-game score (barring rankings/rules changing after it was scored).
+router.get('/:league/explain', async (req, res) => {
+    try {
+        const teamId = Number(req.query.teamId);
+        const gameId = Number(req.query.gameId);
+        if (!Number.isFinite(teamId) || !Number.isFinite(gameId)) {
+            return res.status(400).json({ message: 'teamId and gameId are required' });
+        }
+        const game = await Game.findOne({ id: gameId }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+        const cfg = await getScoringConfig(req.params.league);
+        const rankings = await getRankingsForGame(game, game.week, game.season);
+        res.json(explainGame(cfg.model, teamId, game, rankings, cfg));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -62,6 +113,12 @@ router.post('/', async (req, res) => {
         }
         if (!canManageLeague(req, league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        // League Managers can't change scoring once the season is underway — a
+        // change would need a full-season rescore, which only an admin can run.
+        // Admins are exempt (they can rescore).
+        if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(league, process.env.YEAR)) {
+            return res.status(423).json({ message: 'Scoring is locked once the season is underway. Ask an admin to change it — the change needs a re-score.' });
         }
         const resolved = resolveConfig(league, { model, values, disabled, enabled });
         const doc = await ScoringConfig.findOneAndUpdate(

@@ -1187,6 +1187,44 @@ function teamGameScoreById(weeklyScore, teamId, gameId) {
     return 0;
 }
 
+// Tap a game card's "+N" badge to reveal WHICH scoring rule earned the points.
+// Lazily fetches the breakdown (server reuses the real engine on the game's
+// week rankings + the league's config) and shows it under the card; tapping
+// again hides it. Delegated so it covers every game card on the page.
+document.addEventListener('click', async function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('.score-explain');
+    if (!btn) return;
+    var card = btn.closest('.game-card');
+    if (!card) return;
+    var open = card.querySelector('.gc-breakdown');
+    if (open) { open.remove(); btn.classList.remove('is-open'); return; }
+    var league = (typeof userData !== 'undefined' && userData && userData.league) || '';
+    var teamId = btn.getAttribute('data-team');
+    var gameId = btn.getAttribute('data-game');
+    var banked = Number(btn.getAttribute('data-pts'));
+    var box = document.createElement('div');
+    box.className = 'gc-breakdown';
+    box.textContent = 'Loading…';
+    card.appendChild(box);
+    btn.classList.add('is-open');
+    try {
+        var res = await fetch('/scoring-config/' + encodeURIComponent(league) + '/explain?teamId='
+            + encodeURIComponent(teamId) + '&gameId=' + encodeURIComponent(gameId), { headers: { Accept: 'application/json' } });
+        var data = await res.json();
+        if (!res.ok || !data || !Array.isArray(data.matched)) { box.textContent = 'Breakdown unavailable.'; return; }
+        if (!data.matched.length) { box.textContent = 'No scoring rule applied to this game.'; return; }
+        var rows = data.matched.map(function (m) {
+            return '<div class="bd-row"><span class="bd-pts">+' + m.points + '</span><span class="bd-label">' + m.label + '</span></div>';
+        }).join('');
+        var note = (typeof data.total === 'number' && data.total !== banked)
+            ? '<div class="bd-note">Scoring rules or rankings changed since this game was scored, so this differs from the banked +' + banked + '.</div>'
+            : '';
+        box.innerHTML = rows + note;
+    } catch (err) {
+        box.textContent = 'Breakdown unavailable.';
+    }
+});
+
 // Fetch every team logo the week's games need in ONE request, returning a
 // { teamId: <img html> } map. Replaces the old per-game POST to
 // /teams/teamLogos (one round-trip per game); missing teams fall back to the
@@ -1259,7 +1297,9 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
     const badgeCell = (id, rostered) => {
         if (!rostered) return '';
         const pts = teamGameScoreById(uhSeasonFor(userData, uhActiveYear).weeklyScore, id, game.id);
-        return pts > 0 ? `<td class="score-added"><strong style="color: #22C37A;">+${pts}</strong></td>` : '';
+        // The badge is a button: tap to reveal WHY this team earned these points
+        // (which scoring rule fired). See the delegated handler below.
+        return pts > 0 ? `<td class="score-added"><button type="button" class="score-explain" data-team="${id}" data-game="${game.id}" data-pts="${pts}" title="Why these points?"><strong>+${pts}</strong></button></td>` : '';
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
 
