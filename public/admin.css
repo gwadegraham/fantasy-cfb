@@ -503,7 +503,6 @@
     border-color: rgba(237, 88, 88, 0.5);
     background: rgba(237, 88, 88, 0.06);
 }
-.cx-label { font-size: 0.85em; font-weight: 600; min-width: 130px; }
 .cx-val { font-variant-numeric: tabular-nums; font-weight: 700; color: #E0B341; font-size: 0.9em; }
 .cx-note { font-size: 0.78em; color: #767D9C; }
 
