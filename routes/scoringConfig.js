@@ -1,22 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
-const User = require('../models/user');
 const Game = require('../models/game');
 const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame } = require('../modules/scoring');
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
-
-// True once at least one drafted-team game has been scored in `season` for this
-// league — used to lock scoring edits for League Managers mid-season.
-async function hasScoredGames(league, season) {
-    const hit = await User.exists({
-        league,
-        seasons: { $elemMatch: { season: Number(season), 'weeklyScore.scoreByTeam.0': { $exists: true } } }
-    });
-    return !!hit;
-}
+const { hasScoredGames } = require('../modules/season-status');
 
 // Attaches the ordered field metadata (for the admin form + rules page) and a
 // plain-language combine-mode `example` to a resolved config. `fields` reflect

@@ -457,6 +457,34 @@
 
 /* Combine mode: two plain-language radio cards + a live worked example, in
    place of the old jargon dropdown ("First match wins (priority)"). */
+/* Locked state (season underway): make disabled controls clearly non-editable.
+   The custom-styled inputs don't change on the `disabled` attribute alone, so
+   dim them + show a not-allowed cursor, and dim the section as a whole. */
+.draft-config-form input:disabled,
+.num-stepper button:disabled,
+.scoring-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+.num-stepper input[type="number"]:disabled { opacity: 0.5; }
+[scoring-config-fields].is-locked,
+[scoring-config-shape].is-locked { opacity: 0.75; }
+[scoring-config-shape].is-locked .mode-card { cursor: not-allowed; }
+[scoring-config-shape].is-locked .mode-card:hover { border-color: #2A2E42; background: #101322; }
+.season-roster-list.is-locked .roster-row { opacity: 0.6; cursor: not-allowed; }
+.season-roster-list.is-locked .roster-row:hover { background: none; }
+
+/* Season roster: include/exclude checklist (reuses .scoring-toggle checkbox). */
+.season-roster-list { display: flex; flex-direction: column; gap: 4px; }
+.roster-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.roster-row:hover { background: #101322; }
+.roster-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.roster-name { font-size: 0.95em; }
+
 /* Shown to a League Manager when scoring is locked (season underway). */
 .scoring-locked {
     display: flex;

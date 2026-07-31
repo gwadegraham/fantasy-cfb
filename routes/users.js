@@ -4,6 +4,20 @@ const User = require('../models/user');
 const scoring = require('../modules/scoring');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
+const { effectiveRoles } = require('../modules/dev-role');
+const { hasScoredGames } = require('../modules/season-status');
+
+// Distinct, vibrant avatar/display colors for managers — same family as the
+// app's accent palette. A new player gets one not already used in the league.
+const USER_COLORS = ['#ED5858', '#E0B341', '#71D28D', '#64B5F6', '#8E8CF0', '#F27E3F', '#4FC3C7', '#EC6FA6', '#9CCC65', '#C97BE0'];
+
+async function pickUnusedColor(league) {
+    const users = await User.find({ league }, { color: 1 }).lean();
+    const used = new Set(users.map(u => String(u.color || '').toUpperCase()));
+    const free = USER_COLORS.filter(c => !used.has(c.toUpperCase()));
+    const pool = free.length ? free : USER_COLORS;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
 
 // Self-service profile edit: a signed-in user updates THEIR OWN franchise name
 // / avatar / onboarding flag. The identity comes from the Auth0 session (never
@@ -124,6 +138,34 @@ router.get('/league/:leagueCodeReq/all', async (req, res) => {
     }
 });
 
+// Full league roster with active-season membership, for the admin "Season
+// Roster" toggle. `inSeason` = has an entry for the active season; `scored` =
+// that season already has banked points (so removing them would drop this
+// year's scores — the UI confirms before doing that).
+router.get('/league/:leagueCodeReq/roster', async (req, res) => {
+    const leagueCode = req.params.leagueCodeReq;
+    if (!canManageLeague(req, leagueCode)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+    try {
+        const year = Number(process.env.YEAR);
+        const users = await User.find({ league: leagueCode },
+            { firstName: 1, lastName: 1, color: 1, 'seasons.season': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
+        const players = users.map(u => {
+            const s = (u.seasons || []).find(x => Number(x.season) === year);
+            const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
+            return { _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color, inSeason: !!s, scored };
+        }).sort((a, b) => (a.firstName + ' ' + a.lastName).localeCompare(b.firstName + ' ' + b.lastName));
+        // Once the season is underway, only an admin can change the roster —
+        // removing a scored player would drop that year's data (needs a rescore).
+        const isAdmin = effectiveRoles(req).includes('Admin');
+        const seasonUnderway = await hasScoredGames(leagueCode, year);
+        res.json({ season: String(year), isAdmin, editable: isAdmin || !seasonUnderway, locked: !isAdmin && seasonUnderway, players });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
@@ -187,11 +229,20 @@ router.post('/', async (req, res) => {
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
 
+    // A new player joins the ACTIVE season (process.env.YEAR) with an empty
+    // roster — the draft fills it. Server-owned so it can't drift to the wall-
+    // clock calendar year. `color` is auto-assigned from the palette when the
+    // caller doesn't supply one (the admin form no longer does).
+    const seasons = (Array.isArray(req.body.seasons) && req.body.seasons.length)
+        ? req.body.seasons
+        : [{ season: Number(process.env.YEAR) }];
+    const color = req.body.color || await pickUnusedColor(req.body.league);
+
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
-        seasons: req.body.seasons,
-        color: req.body.color,
+        seasons: seasons,
+        color: color,
         league: req.body.league,
         lastUpdated: centralTime
     });
@@ -261,17 +312,35 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
     }
 });
 
-//Deleting One
-router.delete('/:id', getUser, async (req, res) => {
-    // A League Manager may only remove players from their own league.
-    if (!canManageLeague(req, res.user.league)) {
-        return res.status(403).json({ message: 'Forbidden: not your league' });
-    }
+// Include or exclude a player for the ACTIVE season, without touching any other
+// season. This is the non-destructive replacement for hard-deleting a manager:
+// unchecking only drops their current-season entry, so all prior seasons,
+// scores, and draft history are preserved.
+router.post('/:id/season-membership', async (req, res) => {
     try {
-        await res.user.deleteOne();
-        res.json({message: 'Deleted User'});
+        const included = !!(req.body && req.body.included);
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        if (!canManageLeague(req, user.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        const year = Number(process.env.YEAR);
+        // Locked once the season is underway (would drop scored data); admins
+        // only, since applying it needs a rescore.
+        if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(user.league, year)) {
+            return res.status(423).json({ message: 'The roster is locked once the season is underway. Ask an admin to change it.' });
+        }
+        const has = (user.seasons || []).some(s => Number(s.season) === year);
+        if (included && !has) {
+            user.seasons.push({ season: year });
+        } else if (!included && has) {
+            user.seasons = user.seasons.filter(s => Number(s.season) !== year);
+        }
+        user.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
+        await user.save();
+        res.json({ inSeason: (user.seasons || []).some(s => Number(s.season) === year) });
     } catch (err) {
-        res.status(500).json({message: err.message});
+        res.status(400).json({ message: err.message });
     }
 });
 
