@@ -371,33 +371,15 @@ if (createForm) {
     
         const firstName = document.querySelector('[first-name]').value;
         const lastName = document.querySelector('[last-name]').value;
-        const displayColor = document.querySelector('[display-color]').value;
-        const teams = [];
-        const teamDocuments = [];
-        document.querySelectorAll('[team-options]').forEach(
-            team => {
-                teams.push(team.value);
-                var temp = teamList.find((element) => element.id == team.value);
-                teamDocuments.push(temp);
-            }
-        );
 
+        // Color and the active-season roster entry are assigned server-side —
+        // the manager just provides a name; the draft fills the roster.
         var userBody = {
             firstName: firstName,
             lastName: lastName,
-            color: displayColor,
-            seasons: [
-                {
-                    season: new Date().getFullYear()
-                }
-            ],
             league: leagueCode
         };
 
-        if (teamDocuments[0] != null) {
-            userBody.seasons[0].teams = JSON.stringify(teamDocuments);
-        }
-    
         const response = await fetch("/users", {
             method: 'POST',
             headers: {

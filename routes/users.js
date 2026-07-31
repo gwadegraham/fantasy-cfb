@@ -5,6 +5,18 @@ const scoring = require('../modules/scoring');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
 
+// Distinct, vibrant avatar/display colors for managers — same family as the
+// app's accent palette. A new player gets one not already used in the league.
+const USER_COLORS = ['#ED5858', '#E0B341', '#71D28D', '#64B5F6', '#8E8CF0', '#F27E3F', '#4FC3C7', '#EC6FA6', '#9CCC65', '#C97BE0'];
+
+async function pickUnusedColor(league) {
+    const users = await User.find({ league }, { color: 1 }).lean();
+    const used = new Set(users.map(u => String(u.color || '').toUpperCase()));
+    const free = USER_COLORS.filter(c => !used.has(c.toUpperCase()));
+    const pool = free.length ? free : USER_COLORS;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // Self-service profile edit: a signed-in user updates THEIR OWN franchise name
 // / avatar / onboarding flag. The identity comes from the Auth0 session (never
 // from the client), so a user can only edit their own record. This route is
@@ -187,11 +199,20 @@ router.post('/', async (req, res) => {
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
 
+    // A new player joins the ACTIVE season (process.env.YEAR) with an empty
+    // roster — the draft fills it. Server-owned so it can't drift to the wall-
+    // clock calendar year. `color` is auto-assigned from the palette when the
+    // caller doesn't supply one (the admin form no longer does).
+    const seasons = (Array.isArray(req.body.seasons) && req.body.seasons.length)
+        ? req.body.seasons
+        : [{ season: Number(process.env.YEAR) }];
+    const color = req.body.color || await pickUnusedColor(req.body.league);
+
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
-        seasons: req.body.seasons,
-        color: req.body.color,
+        seasons: seasons,
+        color: color,
         league: req.body.league,
         lastUpdated: centralTime
     });
