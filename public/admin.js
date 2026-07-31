@@ -1664,7 +1664,7 @@ function renderShapeExample() {
         '</div>';
     }
     box.innerHTML =
-        '<div class="combine-example-head">Example &mdash; a <b>' + ex.scenario + '</b> scores&hellip;</div>' + body;
+        '<div class="combine-example-head">Example &mdash; <b>' + ex.scenario + '</b> scores&hellip;</div>' + body;
 }
 
 // Renders the value inputs grouped by regular vs postseason. Postseason events
