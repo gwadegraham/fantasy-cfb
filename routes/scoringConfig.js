@@ -11,8 +11,8 @@ const { canManageLeague } = require('../modules/league-access');
 // computed from the live point values so it tracks edits.
 function withFields(cfg) {
     return Object.assign({}, cfg, {
-        fields: fieldsForModel(cfg.model, cfg.disabled),
-        example: explainRegularWin(cfg.model, cfg.values)
+        fields: fieldsForModel(cfg.model, cfg.disabled, cfg.enabled),
+        example: explainRegularWin(cfg.model, cfg.values, cfg.disabled, cfg.enabled)
     });
 }
 
@@ -24,7 +24,7 @@ router.get('/:league', async (req, res) => {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
         const bySeason = (doc && doc.engagementBySeason) || {};
         let overrides = doc
-            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, engagement: doc.engagement, engagementBySeason: bySeason }
+            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: bySeason }
             : null;
         // `?model=` lets the admin preview a different rule shape (Fixed =
         // claunts, Stacking = graham): force that model and drop the saved
@@ -50,19 +50,20 @@ router.get('/:league', async (req, res) => {
 
 // Upsert a league's scoring config (commissioner-gated via the mutation gate).
 // Accepts a rule-shape `model` (Fixed = claunts, Stacking = graham), point
-// `values`, and a `disabled` list of postseason condition keys. The combine
-// behavior is derived from the model's default — it is NOT a separate setting,
-// so a nonsensical shape/mode combo can't be saved.
+// `values`, a `disabled` list (default-on rules turned off), and an `enabled`
+// list (default-off finer win categories turned on). The combine behavior is
+// derived from the model's default — it is NOT a separate setting, so a
+// nonsensical shape/mode combo can't be saved.
 router.post('/', async (req, res) => {
     try {
-        const { league, model, values, disabled } = req.body;
+        const { league, model, values, disabled, enabled } = req.body;
         if (!league) {
             return res.status(400).json({ message: 'league is required' });
         }
         if (!canManageLeague(req, league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
-        const resolved = resolveConfig(league, { model, values, disabled });
+        const resolved = resolveConfig(league, { model, values, disabled, enabled });
         const doc = await ScoringConfig.findOneAndUpdate(
             { league },
             { $set: {
@@ -71,12 +72,13 @@ router.post('/', async (req, res) => {
                 values: resolved.values,
                 combineMode: resolved.combineMode,
                 disabled: resolved.disabled,
+                enabled: resolved.enabled,
                 updatedAt: new Date()
             } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         res.json(withFields(resolveConfig(league, {
-            model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled
+            model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled
         })));
     } catch (err) {
         res.status(400).json({ message: err.message });

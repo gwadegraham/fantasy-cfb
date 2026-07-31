@@ -1677,8 +1677,9 @@ function renderScoringFields() {
     var fields = scoringConfigData.fields || [];
 
     function fieldRow(f) {
+        var rankAttrs = f.rankGroup ? ` data-rank-group="${f.rankGroup}" data-rank-flat="${!!f.rankFlat}"` : '';
         var toggle = f.toggleable
-            ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" ${f.enabled ? 'checked' : ''} title="Enable this event">`
+            ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" data-default-off="${!!f.defaultOff}"${rankAttrs} ${f.enabled ? 'checked' : ''} title="Enable this rule">`
             : '';
         // "+" marks a regular-season bonus that stacks (only meaningful in the
         // Stacking shape). Postseason events combine on their own rules
@@ -1704,11 +1705,29 @@ function renderScoringFields() {
         '<div class="draft-status-row">Regular season</div>' + regular.map(fieldRow).join('') +
         '<div class="draft-status-row">Postseason</div>' + post.map(fieldRow).join('');
 
-    // Grey out a postseason row when its event is disabled.
+    // Grey out a row when its rule is off.
+    function syncToggleRow(cb) {
+        var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
+        if (row) row.classList.toggle('scoring-disabled', !cb.checked);
+    }
     wrap.querySelectorAll('.scoring-toggle').forEach(function (cb) {
         cb.addEventListener('change', function () {
-            var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
-            if (row) row.classList.toggle('scoring-disabled', !cb.checked);
+            // Within a rank group, the flat "vs ranked" rule and the tiered
+            // "#1-10 / #11-25" rules are mutually exclusive: turning one kind on
+            // turns the other kind off. (Two tiers can still coexist.)
+            var group = cb.getAttribute('data-rank-group');
+            if (cb.checked && group) {
+                var isFlat = cb.getAttribute('data-rank-flat') === 'true';
+                wrap.querySelectorAll('.scoring-toggle[data-rank-group="' + group + '"]').forEach(function (other) {
+                    if (other === cb) return;
+                    var otherFlat = other.getAttribute('data-rank-flat') === 'true';
+                    if (isFlat !== otherFlat && other.checked) {
+                        other.checked = false;
+                        syncToggleRow(other);
+                    }
+                });
+            }
+            syncToggleRow(cb);
         });
     });
 
@@ -1738,9 +1757,16 @@ async function saveScoringConfig() {
     document.querySelectorAll('[scoring-config-fields] input[data-key]').forEach(function (inp) {
         values[inp.getAttribute('data-key')] = parseFloat(inp.value);
     });
-    var disabled = [];
+    // Default-on rules that are unchecked go in `disabled`; default-off rules
+    // (the finer opt-in categories) that are checked go in `enabled`.
+    var disabled = [], enabled = [];
     document.querySelectorAll('[scoring-config-fields] .scoring-toggle').forEach(function (cb) {
-        if (!cb.checked) disabled.push(cb.getAttribute('data-condition'));
+        var cond = cb.getAttribute('data-condition');
+        if (cb.getAttribute('data-default-off') === 'true') {
+            if (cb.checked) enabled.push(cond);
+        } else if (!cb.checked) {
+            disabled.push(cond);
+        }
     });
 
     var res = await fetch('/scoring-config', {
@@ -1748,7 +1774,7 @@ async function saveScoringConfig() {
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
             league: leagueCode, model: getShape(),
-            values: values, disabled: disabled
+            values: values, disabled: disabled, enabled: enabled
         })
     });
     var data = await res.json();

@@ -209,12 +209,12 @@ app.get('/rules', async (req, res) => {
         try {
             const doc = await ScoringConfig.findOne({ league: leagueCode });
             cfg = resolveConfig(leagueCode, doc
-                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled }
+                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled }
                 : null);
         } catch (err) {
             cfg = resolveConfig(leagueCode, null);
         }
-        const fields = fieldsForModel(cfg.model, cfg.disabled);
+        const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
 
         res.render('scoringRules', { user, userState, cfg, fields, leagueCode });
     } else {
