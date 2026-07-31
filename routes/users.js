@@ -136,6 +136,30 @@ router.get('/league/:leagueCodeReq/all', async (req, res) => {
     }
 });
 
+// Full league roster with active-season membership, for the admin "Season
+// Roster" toggle. `inSeason` = has an entry for the active season; `scored` =
+// that season already has banked points (so removing them would drop this
+// year's scores — the UI confirms before doing that).
+router.get('/league/:leagueCodeReq/roster', async (req, res) => {
+    const leagueCode = req.params.leagueCodeReq;
+    if (!canManageLeague(req, leagueCode)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+    try {
+        const year = Number(process.env.YEAR);
+        const users = await User.find({ league: leagueCode },
+            { firstName: 1, lastName: 1, color: 1, 'seasons.season': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
+        const players = users.map(u => {
+            const s = (u.seasons || []).find(x => Number(x.season) === year);
+            const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
+            return { _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color, inSeason: !!s, scored };
+        }).sort((a, b) => (a.firstName + ' ' + a.lastName).localeCompare(b.firstName + ' ' + b.lastName));
+        res.json({ season: String(year), players });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
@@ -282,17 +306,30 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
     }
 });
 
-//Deleting One
-router.delete('/:id', getUser, async (req, res) => {
-    // A League Manager may only remove players from their own league.
-    if (!canManageLeague(req, res.user.league)) {
-        return res.status(403).json({ message: 'Forbidden: not your league' });
-    }
+// Include or exclude a player for the ACTIVE season, without touching any other
+// season. This is the non-destructive replacement for hard-deleting a manager:
+// unchecking only drops their current-season entry, so all prior seasons,
+// scores, and draft history are preserved.
+router.post('/:id/season-membership', async (req, res) => {
     try {
-        await res.user.deleteOne();
-        res.json({message: 'Deleted User'});
+        const included = !!(req.body && req.body.included);
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        if (!canManageLeague(req, user.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        const year = Number(process.env.YEAR);
+        const has = (user.seasons || []).some(s => Number(s.season) === year);
+        if (included && !has) {
+            user.seasons.push({ season: year });
+        } else if (!included && has) {
+            user.seasons = user.seasons.filter(s => Number(s.season) !== year);
+        }
+        user.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
+        await user.save();
+        res.json({ inSeason: (user.seasons || []).some(s => Number(s.season) === year) });
     } catch (err) {
-        res.status(500).json({message: err.message});
+        res.status(400).json({ message: err.message });
     }
 });
 

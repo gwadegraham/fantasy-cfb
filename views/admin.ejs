@@ -439,20 +439,14 @@
             </div>
             <div class="function-container">
                 <div class="button-container">
-                    <button onclick="displayRemoveUserContainer()">
-                        <i class="fa-solid fa-user-minus" style="padding-right: 5px;"></i>
-                        Remove a Player
+                    <button onclick="displaySeasonRosterContainer()">
+                        <i class="fa-solid fa-users" style="padding-right: 5px;"></i>
+                        Season Roster
                     </button>
                 </div>
-                <div class="sub-container" remove-user-container style="display: none">
-                    <p class="function-description">Remove a manager from this league.</p>
-                    <form id="remove-form">
-                        <div class="user-container" user-container>
-                            <select class="user-picker" id="user-picker" user-options>
-                            </select>
-                        </div>
-                        <button type="submit">Remove Player</button>
-                    </form>
+                <div class="sub-container" season-roster-container style="display: none">
+                    <p class="function-description">Choose which managers are in the <span season-roster-year>current</span> season. Unchecking removes a manager from this season only &mdash; their past seasons, scores, and draft history are kept.</p>
+                    <div season-roster-list class="season-roster-list"></div>
                 </div>
             </div>
         </div>

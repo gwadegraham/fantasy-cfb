@@ -457,6 +457,20 @@
 
 /* Combine mode: two plain-language radio cards + a live worked example, in
    place of the old jargon dropdown ("First match wins (priority)"). */
+/* Season roster: include/exclude checklist (reuses .scoring-toggle checkbox). */
+.season-roster-list { display: flex; flex-direction: column; gap: 4px; }
+.roster-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.roster-row:hover { background: #101322; }
+.roster-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.roster-name { font-size: 0.95em; }
+
 /* Shown to a League Manager when scoring is locked (season underway). */
 .scoring-locked {
     display: flex;

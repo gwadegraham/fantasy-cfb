@@ -407,38 +407,77 @@ if (createForm) {
     });
 }
 
-const removeForm = document.getElementById('remove-form');
-
-if (removeForm) {
-    removeForm.addEventListener('submit', async function(event) {
-        event.preventDefault();
-
-        const userId = document.querySelector('[user-options]').value;
-    
-        const response = await fetch("/users/" + userId, {
-            method: 'DELETE',
-            headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-            }
-        });
-    
-        response.json().then(data => {
-            if (data.message == 'Deleted User') {
-                removeForm.reset();
-                getUsers();
-                displayRemoveUserContainer();
-
-                successToast.options.text = "User successfully deleted"
-                successToast.showToast();
-            } else {
-                failToast.options.text = response.status + " User could not be deleted";
-                failToast.showToast();
-            }
-
-        });
+// Season roster: an include/exclude checklist for the active season. Replaces
+// the old destructive "Remove a Player" (which hard-deleted the whole record).
+// Toggling only adds/drops the player's current-season entry — history is kept.
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
 }
+
+async function loadSeasonRoster() {
+    var leagueCode = getDraftLeagueCode();
+    var list = document.querySelector('[season-roster-list]');
+    if (list) list.textContent = 'Loading…';
+    try {
+        var res = await fetch('/users/league/' + encodeURIComponent(leagueCode) + '/roster', { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        var yearEl = document.querySelector('[season-roster-year]');
+        if (yearEl) yearEl.textContent = data.season || 'current';
+        if (!res.ok || !Array.isArray(data.players)) { if (list) list.textContent = 'Could not load the roster.'; return; }
+        list.innerHTML = data.players.map(function (p) {
+            var color = /^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#5B6690';
+            var name = escHtml(p.firstName + ' ' + p.lastName);
+            return '<label class="roster-row">' +
+                '<input type="checkbox" class="scoring-toggle roster-toggle" data-id="' + escHtml(p._id) + '" data-name="' + name + '" data-scored="' + !!p.scored + '"' + (p.inSeason ? ' checked' : '') + '>' +
+                '<span class="roster-dot" style="background:' + color + '"></span>' +
+                '<span class="roster-name">' + name + '</span>' +
+            '</label>';
+        }).join('');
+    } catch (err) {
+        if (list) list.textContent = 'Could not load the roster.';
+    }
+}
+
+// Toggle a player's active-season membership. Confirms before removing someone
+// who already has points this season (that year's scores would be dropped).
+document.addEventListener('change', async function (e) {
+    var cb = e.target;
+    if (!cb || !cb.classList || !cb.classList.contains('roster-toggle')) return;
+    var included = cb.checked;
+    var name = cb.getAttribute('data-name');
+    if (!included && cb.getAttribute('data-scored') === 'true') {
+        if (!window.confirm('Remove ' + name + ' from this season? Their scores for this year will be dropped — past seasons and records are kept.')) {
+            cb.checked = true;
+            return;
+        }
+    }
+    cb.disabled = true;
+    try {
+        var res = await fetch('/users/' + encodeURIComponent(cb.getAttribute('data-id')) + '/season-membership', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ included: included })
+        });
+        var data = await res.json();
+        if (!res.ok) {
+            cb.checked = !included;
+            failToast.options.text = data.message || 'Could not update the roster';
+            failToast.showToast();
+        } else {
+            cb.checked = !!data.inSeason;
+            successToast.options.text = name + (data.inSeason ? ' added to the season' : ' removed from this season');
+            successToast.showToast();
+        }
+    } catch (err) {
+        cb.checked = !included;
+        failToast.options.text = 'Could not update the roster';
+        failToast.showToast();
+    } finally {
+        cb.disabled = false;
+    }
+});
 
 const calculateForm = document.getElementById('score-form')
 
@@ -1092,7 +1131,7 @@ function toggleSub(attr) {
 
 function displayCreateUserContainer() { toggleSub('create-user-container'); }
 
-function displayRemoveUserContainer() { toggleSub('remove-user-container'); }
+function displaySeasonRosterContainer() { if (toggleSub('season-roster-container')) loadSeasonRoster(); }
 
 function displayTeamContainer() { toggleSub('calculate-team-score-container'); }
 
