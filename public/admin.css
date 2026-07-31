@@ -587,13 +587,14 @@
 .scoring-toggle:checked::after {
     content: '';
     position: absolute;
-    left: 5px;
-    top: 2px;
+    left: 50%;
+    top: 50%;
     width: 4px;
     height: 8px;
     border: solid #0C0F1C;
     border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
+    /* -60% Y nudges up so the checkmark's descending tail reads as centered. */
+    transform: translate(-50%, -60%) rotate(45deg);
 }
 .scoring-toggle:focus-visible {
     outline: 2px solid #64B5F6;

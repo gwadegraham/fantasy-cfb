@@ -1677,8 +1677,9 @@ function renderScoringFields() {
     var fields = scoringConfigData.fields || [];
 
     function fieldRow(f) {
+        var rankAttrs = f.rankGroup ? ` data-rank-group="${f.rankGroup}" data-rank-flat="${!!f.rankFlat}"` : '';
         var toggle = f.toggleable
-            ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" data-default-off="${!!f.defaultOff}" ${f.enabled ? 'checked' : ''} title="Enable this rule">`
+            ? `<input type="checkbox" class="scoring-toggle" data-condition="${f.condition}" data-default-off="${!!f.defaultOff}"${rankAttrs} ${f.enabled ? 'checked' : ''} title="Enable this rule">`
             : '';
         // "+" marks a regular-season bonus that stacks (only meaningful in the
         // Stacking shape). Postseason events combine on their own rules
@@ -1704,11 +1705,29 @@ function renderScoringFields() {
         '<div class="draft-status-row">Regular season</div>' + regular.map(fieldRow).join('') +
         '<div class="draft-status-row">Postseason</div>' + post.map(fieldRow).join('');
 
-    // Grey out a postseason row when its event is disabled.
+    // Grey out a row when its rule is off.
+    function syncToggleRow(cb) {
+        var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
+        if (row) row.classList.toggle('scoring-disabled', !cb.checked);
+    }
     wrap.querySelectorAll('.scoring-toggle').forEach(function (cb) {
         cb.addEventListener('change', function () {
-            var row = wrap.querySelector('.scoring-field[data-condition="' + cb.getAttribute('data-condition') + '"]');
-            if (row) row.classList.toggle('scoring-disabled', !cb.checked);
+            // Within a rank group, the flat "vs ranked" rule and the tiered
+            // "#1-10 / #11-25" rules are mutually exclusive: turning one kind on
+            // turns the other kind off. (Two tiers can still coexist.)
+            var group = cb.getAttribute('data-rank-group');
+            if (cb.checked && group) {
+                var isFlat = cb.getAttribute('data-rank-flat') === 'true';
+                wrap.querySelectorAll('.scoring-toggle[data-rank-group="' + group + '"]').forEach(function (other) {
+                    if (other === cb) return;
+                    var otherFlat = other.getAttribute('data-rank-flat') === 'true';
+                    if (isFlat !== otherFlat && other.checked) {
+                        other.checked = false;
+                        syncToggleRow(other);
+                    }
+                });
+            }
+            syncToggleRow(cb);
         });
     });
 

@@ -74,13 +74,13 @@ const STRUCTURES = {
         // so Claunts scores exactly as before until a commissioner opts in; when
         // enabled they sit above the flat categories and take precedence.
         regularWin: [
-            { condition: 'confWinTop10', pointsKey: 'confWinTop10', label: 'Conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true },
-            { condition: 'confWinTop25', pointsKey: 'confWinTop25', label: 'Conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true },
-            { condition: 'confRankedWin', pointsKey: 'confWinRanked', label: 'Conference win vs. a ranked opponent', toggleable: true, defaultOff: true },
+            { condition: 'confWinTop10', pointsKey: 'confWinTop10', label: 'Conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true, rankGroup: 'conference' },
+            { condition: 'confWinTop25', pointsKey: 'confWinTop25', label: 'Conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true, rankGroup: 'conference' },
+            { condition: 'confRankedWin', pointsKey: 'confWinRanked', label: 'Conference win vs. a ranked opponent', toggleable: true, defaultOff: true, rankGroup: 'conference', rankFlat: true },
             { condition: 'conferenceWin', pointsKey: 'confWin', label: 'Conference win' },
-            { condition: 'nonConfWinTop10', pointsKey: 'nonConfWinTop10', label: 'Non-conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true },
-            { condition: 'nonConfWinTop25', pointsKey: 'nonConfWinTop25', label: 'Non-conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true },
-            { condition: 'nonConfRankedWin', pointsKey: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent', toggleable: true },
+            { condition: 'nonConfWinTop10', pointsKey: 'nonConfWinTop10', label: 'Non-conference win vs. opponent ranked #1–10', toggleable: true, defaultOff: true, rankGroup: 'nonconference' },
+            { condition: 'nonConfWinTop25', pointsKey: 'nonConfWinTop25', label: 'Non-conference win vs. opponent ranked #11–25', toggleable: true, defaultOff: true, rankGroup: 'nonconference' },
+            { condition: 'nonConfRankedWin', pointsKey: 'nonConfWinRanked', label: 'Non-conference win vs. ranked opponent', toggleable: true, rankGroup: 'nonconference', rankFlat: true },
             { condition: 'baseWin', pointsKey: 'nonConfWinUnranked', label: 'Non-conference win vs. unranked opponent' }
         ],
         postseason: [
@@ -152,6 +152,9 @@ function fieldsForModel(model, disabled, enabled) {
         key: r.pointsKey, condition: r.condition, label: r.label,
         additive: !!r.additive, group,
         toggleable: !!r.toggleable, defaultOff: !!r.defaultOff,
+        // Mutual-exclusivity hints for the admin: within a rankGroup the flat
+        // "vs ranked" rule and the tiered "#1-10 / #11-25" rules can't both be on.
+        rankGroup: r.rankGroup || null, rankFlat: !!r.rankFlat,
         enabled: ruleEnabled(r, disabled, enabled)
     }, extra || {});
     const regular = structure.regularWin.map(r => field(r, 'regular'));
