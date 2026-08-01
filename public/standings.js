@@ -156,13 +156,19 @@ async function renderStandingsSection(data, league, season) {
     let enabled = false;
     if (league && season != null) {
         try {
-            const res = await fetch(`/standings/h2h/${league}/${season}/enabled`, { headers: { Accept: 'application/json' } });
+            // Bound the check with a timeout so a slow/hung /enabled can't leave
+            // the table blank — on timeout (or error) we fall back to classic.
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 2500);
+            const res = await fetch(`/standings/h2h/${league}/${season}/enabled`, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+            clearTimeout(timer);
             const j = await res.json();
             enabled = !!(j && j.enabled);
-        } catch (e) { /* treat as classic on failure */ }
+        } catch (e) { /* timeout or error → treat as classic */ }
     }
 
     if (!enabled && !preview) { displayUsers(data); return; }
+    hideLegacyH2HSchedule();   // hide the unrelated lower schedule ASAP (before it paints)
     showStandingsLoading();
     loadH2H(league, season, data);   // renders H2H, or falls back to classic
 }
@@ -175,7 +181,7 @@ function showStandingsLoading() {
     if (head) head.innerHTML = '';
     if (!body) return;
     let rows = '';
-    for (let i = 0; i < 6; i++) rows += '<tr class="std-skel-row"><td colspan="5"><span class="std-skel"></span></td></tr>';
+    for (let i = 0; i < 6; i++) rows += '<tr class="std-skel-row"><td colspan="6"><span class="std-skel"></span></td></tr>';
     body.innerHTML = rows;
 }
 
@@ -393,7 +399,6 @@ async function loadH2H(league, season, fallbackData) {
     } catch (e) { return renderClassic(); }
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
     renderStandingsTable(h2hRows(data), { h2h: true });
-    hideLegacyH2HSchedule();
 
     // 2) Matchups: the heavier win-prob payload, loaded after the table into its
     //    own module below.
