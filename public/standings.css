@@ -847,4 +847,12 @@
     /* Shrink the name so the team-logo strip takes the slack in the middle. */
     .fl-table.mode-h2h .standings-row .name-cell { width: 1%; white-space: nowrap; }
     .mode-h2h .h2h-teams-cell { width: auto; }
+
+    /* Desktop has room: bump the Total sub-line (gap + base/bonus) up a touch,
+       and give the Total column a gutter so the numbers aren't flush to the
+       table's right edge. */
+    .mode-h2h .standings-row .score-sub .gap { font-size: 0.8rem; }
+    .mode-h2h .standings-row .score-sub .score-math { font-size: 0.78rem; }
+    .mode-h2h .standings-row .score-cell,
+    .fl-table.mode-h2h thead th.score-head { padding-right: 1.6rem; }
 }
