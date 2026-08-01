@@ -278,6 +278,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const season = req.params.season;
         const seasonNum = Number(season);
 
+        // Standings-only mode returns just the ranked managers, skipping the
+        // matchup win-prob work (all-teams + all-games loads + projections +
+        // schedule build). The client fetches the full payload separately for
+        // the matchup cards, so the standings table paints without waiting on it.
+        // The default (no param) response is unchanged — My Team also consumes it.
+        const standingsOnly = req.query.standingsOnly === '1' || req.query.standingsOnly === 'true';
+
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         // Engagement is per-season: resolve H2H on/off + win bonus for THIS season
         // (a season with no entry is off), so one season's setting never leaks.
@@ -290,7 +297,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // this cap. Named for easy adjustment.
         const H2H_LAST_WEEK = 14;
 
-        const users = await User.find({ league, 'seasons.season': season });
+        // .lean(): the handler only reads plain fields (no doc methods/virtuals),
+        // so skip Mongoose hydration of these heavy weeklyScore docs.
+        const users = await User.find({ league, 'seasons.season': season }).lean();
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         const ids = [], meta = {}, totals = {}, teamDetail = {}, caps = {};
@@ -344,7 +353,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // up from the Team collection).
         const oppAbbrById = {};
         const gameTeamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]).filter(x => x != null))];
-        if (gameTeamIds.length) {
+        if (!standingsOnly && gameTeamIds.length) {
             const tdocs = await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
             tdocs.forEach(td => { oppAbbrById[td.id] = td.abbreviation || null; });
         }
@@ -354,12 +363,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // the live win-probability bar. Only drafted teams are projected, but all
         // teams load so opponents' SP+ is available for the pool context.
         const projByWeek = {};
-        if (draftedIds.length) {
+        if (!standingsOnly && draftedIds.length) {
             const allTeams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
             const teamsById = {};
             allTeams.forEach(t => { teamsById[String(t.id)] = t; });
+            // Only drafted teams' games feed the projections (gamesByTeam below
+            // keeps just those), so filter in the query instead of loading the
+            // whole season and discarding most of it — same resulting set.
             const regGames = await Game.find(
-                { season: seasonNum, seasonType: 'regular' },
+                { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
                 { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
                   completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
                   awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
@@ -425,6 +437,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
             pointsFor: round(rec[id].pointsFor), pointsAgainst: round(rec[id].pointsAgainst),
             adjustedTotal: round(meta[id].cumulative + rec[id].bonus)   // cumulative already includes weeks 15+/postseason
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
+
+        // Standings-only: the ranked table is ready; return before the matchup
+        // win-prob build (which needs the projections skipped above).
+        if (standingsOnly) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, managers });
 
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each

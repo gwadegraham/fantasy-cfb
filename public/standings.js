@@ -381,15 +381,36 @@ async function loadH2H(league, season, fallbackData) {
     if (!league || season == null) return renderClassic();
     const params = new URLSearchParams(location.search);
     const sim = params.get('h2hSim');   // dev-only in-progress preview (non-prod route honors it)
+    const preview = params.get('h2h') === '1' || !!sim;
+    const simQ = sim ? `&h2hSim=${encodeURIComponent(sim)}` : '';
+
+    // 1) Standings-only: fast (skips the matchup win-prob compute), so the table
+    //    paints without waiting ~1s on projections.
     let data;
+    try {
+        const res = await fetch(`/standings/h2h/${league}/${season}?standingsOnly=1${simQ}`, { headers: { Accept: 'application/json' } });
+        data = await res.json();
+    } catch (e) { return renderClassic(); }
+    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
+    renderStandingsTable(h2hRows(data), { h2h: true });
+    hideLegacyH2HSchedule();
+
+    // 2) Matchups: the heavier win-prob payload, loaded after the table into its
+    //    own module below.
+    loadH2HMatchups(league, season, sim);
+}
+
+// Fetches the full H2H payload (schedule + win-prob) and renders the weekly
+// matchup cards. Kept separate from the standings render so the table isn't
+// blocked on the projection compute. Best-effort: if it fails, the standings
+// table is already up and only the matchups module is missing.
+async function loadH2HMatchups(league, season, sim) {
     try {
         const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
-        data = await res.json();
-    } catch (e) { return renderClassic(); }
-    const preview = params.get('h2h') === '1' || !!sim;
-    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
-    renderH2H(data);
+        const d = await res.json();
+        if (d && (d.schedule || []).length) renderH2HMatchups(d);
+    } catch (e) { /* matchups are best-effort */ }
 }
 
 // Maps the H2H payload's managers (already ranked by adjusted total, server-side)
@@ -419,15 +440,6 @@ function h2hRows(d) {
         base: Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10,
         bonus: m.h2hBonus
     }));
-}
-
-// Head-to-head view (#230). Folds the win-bonus standings into the main table
-// (ranked by points + bonus) and renders the weekly matchup cards as their own
-// module below. Shown when the league has opted in, or when previewing via ?h2h=1.
-function renderH2H(d) {
-    renderStandingsTable(h2hRows(d), { h2h: true });
-    renderH2HMatchups(d);
-    hideLegacyH2HSchedule();
 }
 
 // When the H2H game mode is on, hide the separate lower "Head to Head" schedule
