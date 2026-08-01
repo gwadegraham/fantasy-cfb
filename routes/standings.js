@@ -8,12 +8,48 @@ const Betting = require('../models/bettingLine');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
+const JobRun = require('../models/jobRun');
 const { resolveConfig, engagementForSeason } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
+
+// The scoring jobs that actually refresh standings data (see modules/score-job.js).
+const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores'];
+
+// The honest "data as of" time for the standings: the most recent SUCCESSFUL
+// scoring run. Unlike user.lastUpdated — which is bumped by unrelated writes
+// (roster toggles, draft/season assignment, new managers) and isn't gated on job
+// success — this only moves when a scoring job actually completed. Returns the
+// run record, or null if no scoring job has ever succeeded.
+router.get('/last-updated', async (req, res) => {
+    try {
+        const run = await JobRun.findOne(
+            { jobName: { $in: SCORING_JOBS }, status: 'success' },
+            { finishedAt: 1, startedAt: 1, jobName: 1, week: 1, seasonType: 1, season: 1 },
+            { sort: { finishedAt: -1 } }
+        ).lean();
+        res.json(run || null);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Lightweight "is H2H on for this league/season?" — reads ONLY the config doc,
+// not the heavy /h2h payload (schedule + win-prob compute). The client uses this
+// to pick the standings layout before first paint, so an H2H league doesn't
+// flash the classic table while the full payload loads.
+router.get('/h2h/:league/:season/enabled', async (req, res) => {
+    try {
+        const cfg = await ScoringConfig.findOne({ league: req.params.league }).lean();
+        const eng = engagementForSeason(cfg && cfg.engagementBySeason, req.params.season);
+        res.json({ enabled: !!eng.h2hEnabled });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the

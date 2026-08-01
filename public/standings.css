@@ -5,6 +5,7 @@
         width: 95%;
         flex-direction: row;
         align-self: flex-start;
+        align-items: center;
         margin-left: 1em;
         justify-content: space-between;
     }
@@ -14,9 +15,8 @@
     }
 
     .last-updated {
-        font-size: 0.5rem;
-        margin-right: 2em;
-        color: #ed5858;
+        margin: 0 0.5em 0 0;
+        color: inherit;
     }
 
     .team-item {
@@ -433,8 +433,10 @@
 /* Ranked table: movement, medals, crown, gap-to-leader */
 .rank-num { font-weight: 700; margin-right: 5px; }
 /* Left gutter on every rank cell so the digit clears the leader's gold rail
-   (applied to all rows so the numbers stay vertically aligned). */
-.standings-row .rank-cell { padding-left: 12px; }
+   (applied to all rows so the numbers stay vertically aligned). The right
+   padding keeps the rank/movement from butting against the avatar — the
+   .fl-table th/td rules zero out cell padding otherwise. */
+.standings-row .rank-cell { padding-left: 12px; padding-right: 14px; }
 .move { font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
 .move.up { color: #5BD08D; }
 .move.down { color: #ED5858; }
@@ -661,20 +663,7 @@
 .h2h-panel-title { font-size: 1.2rem; font-weight: 700; color: #F4F6FB; margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.4rem; }
 .h2h-preview-tag { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #8E8CF0; background: rgba(142,140,240,0.14); border: 1px solid rgba(142,140,240,0.4); border-radius: 20px; padding: 2px 8px; }
 .h2h-panel-note { color: #A4A9C2; font-size: 0.82rem; margin: 0 0 0.9rem; }
-.h2h-head { display: flex; justify-content: flex-end; padding: 0 1rem 0.3rem; }
-.h2h-col { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767D9C; }
-.h2h-list { display: flex; flex-direction: column; gap: 0.55rem; }
-.h2h-row { display: flex; align-items: center; gap: 0.9rem; background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.6rem 1rem; }
-.h2h-rank { font-weight: 800; color: #A4A9C2; width: 1.4rem; text-align: center; font-variant-numeric: tabular-nums; }
-.h2h-id { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.h2h-name { font-weight: 600; color: #F4F6FB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.h2h-rec { font-size: 0.72rem; color: #767D9C; font-variant-numeric: tabular-nums; }
-.h2h-pts { display: flex; align-items: baseline; gap: 0.6rem; font-variant-numeric: tabular-nums; margin-left: auto; }
-.h2h-base { color: #A4A9C2; font-size: 0.9rem; }
-.h2h-bonus { color: #5BD08D; font-weight: 700; font-size: 0.85rem; }
-.h2h-total { color: #F4F6FB; font-size: 1.15rem; font-weight: 800; min-width: 2.6rem; text-align: right; }
 @media (max-width: 600px) {
-    .h2h-base { display: none; }
     .h2h-panel-note { font-size: 0.78rem; }
 }
 
@@ -695,34 +684,6 @@
 .h2h-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
 .h2h-empty { color: #767D9C; font-size: 0.85rem; }
 
-.h2h-match { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 0.4rem; background: #1A1F33; border: 1px solid #2A2E42; border-radius: 12px; padding: 0.7rem 0.8rem; }
-.h2h-team { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
-.h2h-team:last-child { align-items: flex-end; text-align: right; }
-.h2h-team-head { display: flex; align-items: center; gap: 0.45rem; min-width: 0; max-width: 100%; }
-.h2h-team:last-child .h2h-team-head { flex-direction: row-reverse; }
-.h2h-team-head .pp-avatar { width: 30px; height: 30px; flex-shrink: 0; }
-.h2h-tn { display: flex; flex-direction: column; min-width: 0; }
-.h2h-team .h2h-name { font-size: 0.85rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.h2h-team .h2h-rec { font-size: 0.68rem; color: #767D9C; font-variant-numeric: tabular-nums; }
-.h2h-team.win .h2h-name { color: #F4F6FB; font-weight: 700; }
-.h2h-team-score { font-size: 1.5rem; font-weight: 800; color: #A4A9C2; font-variant-numeric: tabular-nums; line-height: 1; }
-.h2h-team.win .h2h-team-score { color: #5BD08D; }
-.h2h-contribs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.h2h-team:last-child .h2h-contribs { justify-content: flex-end; }
-.h2h-chip { display: inline-flex; align-items: center; gap: 3px; background: #101322; border: 1px solid #2A2E42; border-radius: 20px; padding: 2px 7px 2px 3px; font-size: 0.72rem; font-weight: 700; color: #C9CEE6; font-variant-numeric: tabular-nums; }
-.h2h-chip img { width: 16px; height: 16px; object-fit: contain; }
-.h2h-chip.none { color: #767D9C; font-weight: 400; padding: 2px 8px; }
-.h2h-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 0.35rem; }
-.h2h-vs { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #767D9C; }
-
-.h2h-row { cursor: pointer; }
-.h2h-caret { color: #767D9C; font-size: 0.8rem; margin-left: 0.5rem; transition: transform 0.2s ease; }
-.h2h-row.open .h2h-caret { transform: rotate(180deg); }
-.h2h-roster { background: #12172a; border: 1px solid #2A2E42; border-top: none; border-radius: 0 0 12px 12px; margin: -0.4rem 0 0.55rem; padding: 0.6rem 0.9rem; }
-.h2h-roster-logos { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.h2h-roster-team { display: inline-flex; }
-.h2h-roster-team img { width: 30px; height: 30px; object-fit: contain; }
-
 /* Per-matchup log (used on the My Team matchup view). */
 .h2h-log-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.25rem 0; font-size: 0.82rem; }
 .h2h-log-wk { width: 3rem; color: #767D9C; font-variant-numeric: tabular-nums; }
@@ -731,15 +692,159 @@
 .h2h-log-res.r-L { color: #ED5858; }
 .h2h-log-res.r-T { color: #A4A9C2; }
 .h2h-log-opp { color: #C9CEE6; font-variant-numeric: tabular-nums; }
-@media (prefers-reduced-motion: reduce) { .h2h-caret { transition: none; } }
 
-/* H2H in-progress states (live / upcoming games). */
-.h2h-match.live { border-color: #3A3F58; }
-.h2h-live-tag { font-size: 0.56rem; font-weight: 800; letter-spacing: 0.06em; color: #ED5858; }
-.h2h-match-foot { grid-column: 1 / -1; margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #767D9C; text-align: center; }
-.h2h-chip.is-live { border-color: rgba(237, 88, 88, 0.45); color: #ED5858; }
-.h2h-live { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.04em; }
-.h2h-chip.is-sched { color: #767D9C; font-weight: 600; }
-
-/* Compact, tappable matchup rows (replaces the tall scoreboard cards). */
+/* Matchup cards stack in a single column; the cards themselves are styled in
+   h2h-card.css. Overrides the grid set on .h2h-matches above. */
 .h2h-matches { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.1rem; }
+
+/* ================================================================= */
+/* H2H standings table (#230): the compact merged layout — rank ·     */
+/* name · record · total · expand-caret, with a roster drawer. ALL of */
+/* the styling below is scoped to .mode-h2h so the points-only table  */
+/* keeps its original full-width classic layout (logos in the middle).*/
+/* The leader gold, movement, gap and score count-up are inherited    */
+/* from the shared .standings-row markup.                              */
+/* ================================================================= */
+
+/* Ranking note above the table — only rendered in H2H mode. */
+.standings-rank-note {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    margin: 0 20px 0.7rem; padding: 4px 12px;
+    font-size: 0.72rem; color: #A4A9C2;
+    background: #12172a; border: 1px solid #2A2E42; border-radius: 20px;
+}
+/* Top margin keeps the chip clear of the "Last Updated" pill that sits at the
+   bottom-right of the header row on narrow screens. */
+.standings-rank-note { margin-top: 0.35rem; }
+.standings-rank-note::before { content: "\2694\FE0F"; }
+.standings-rank-note[hidden] { display: none; }
+
+/* Compact rows: tighter line-height, and every column but the name shrinks to
+   content so the name hugs the left and record/total/caret group on the right. */
+.mode-h2h .standings-row td { line-height: 1.35; }
+.mode-h2h .standings-row .rank-cell,
+.mode-h2h .standings-row .rec-cell,
+.mode-h2h .standings-row .score-cell,
+.mode-h2h .standings-row .expand-cell { width: 1%; }
+.mode-h2h .standings-row .rank-cell { text-align: left; white-space: nowrap; }
+.mode-h2h .standings-row .name-cell { text-align: left; width: auto; }
+.mode-h2h .standings-row .name-cell a { display: inline-flex; align-items: center; gap: 8px; width: auto; height: auto; }
+.mode-h2h .standings-row .std-name { white-space: nowrap; font-weight: 600; color: #F4F6FB; }
+.mode-h2h .standings-row .name-cell a:hover .std-name { color: #8E8CF0; }
+
+/* Base row background. Excludes medal-1 so the gold leader tint (defined
+   earlier) still wins on the leader row. Also neutralises the global zebra,
+   which would mis-stripe now that each manager renders two <tr> (row + drawer). */
+.fl-table.mode-h2h tbody .standings-row:not(.medal-1) td { background: #141a30; }
+.fl-table.mode-h2h tbody .standings-row td { border-bottom: 1px solid #20263e; }
+.fl-table.mode-h2h tbody tr:nth-child(even) { background: none; }
+
+/* Record column. Scoped under .fl-table thead th so it beats the mobile
+   breakpoint rule that left-aligns headers. */
+.fl-table.mode-h2h thead th.rec-head { text-align: right; padding-right: 1.5em; }
+.mode-h2h .standings-row .rec-cell { text-align: right; padding-right: 1.5em; color: #C9CEE6; font-size: 0.85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Total column: big number over a stacked sub-line (gap + base·bonus). */
+.fl-table.mode-h2h thead th.score-head { text-align: right; }
+.mode-h2h .standings-row .score-cell { text-align: right; white-space: nowrap; }
+.mode-h2h .standings-row .score-num { font-weight: 800; font-size: 1.1em; color: #F4F6FB; font-variant-numeric: tabular-nums; }
+.mode-h2h .standings-row .score-sub { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; margin-top: 2px; }
+.mode-h2h .standings-row .score-sub .gap { font-size: 0.66rem; }
+.mode-h2h .standings-row .score-sub .score-math { font-size: 0.64rem; color: #767D9C; font-variant-numeric: tabular-nums; }
+.mode-h2h .standings-row .score-sub .score-math .bonus { color: #5BD08D; font-weight: 700; }
+
+/* Expand caret — the only roster toggle (row stays non-interactive so the name
+   link and drawer team links keep working). */
+.mode-h2h .standings-row .expand-cell { text-align: right; }
+.mode-h2h .std-caret {
+    appearance: none; background: none; border: none; color: #767D9C; cursor: pointer;
+    padding: 6px 8px; font-size: 0.9rem; line-height: 1;
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+.mode-h2h .std-caret:hover { color: #C9CEE6; }
+.mode-h2h .std-caret.open { color: #8E8CF0; transform: rotate(180deg); }
+.mode-h2h .std-caret:focus-visible { outline: 2px solid #64B5F6; outline-offset: 2px; border-radius: 6px; }
+
+/* Roster drawer: the hidden sibling row revealed by the caret. */
+.fl-table.mode-h2h tbody .std-roster-row td { background: #0f1426; border-bottom: 1px solid #20263e; padding: 0.5em 1em 0.75em; }
+.fl-table.mode-h2h .std-roster-logos { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.fl-table.mode-h2h .std-team { display: inline-flex; width: auto; height: auto; }
+.fl-table.mode-h2h .std-roster-logos img { height: 30px; width: auto; margin: 0; object-fit: contain; }
+.mode-h2h .std-team:hover img { filter: drop-shadow(0 0 4px rgba(142, 140, 240, 0.8)); }
+
+@media (prefers-reduced-motion: reduce) { .mode-h2h .std-caret { transition: none; } }
+
+/* Mobile: drop the base+bonus math line to keep rows readable; gap + record stay. */
+@media (max-width: 767px) {
+    .mode-h2h .standings-row .score-sub .score-math { display: none; }
+    .fl-table.mode-h2h .std-roster-logos img { height: 22px; }
+}
+
+/* ---------- "Data as of" freshness badge (last successful scoring run) ------- */
+.lu-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 3px 11px 3px 9px;
+    border-radius: 20px;
+    background: rgba(91, 208, 141, 0.09);
+    border: 1px solid rgba(91, 208, 141, 0.28);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: #A4A9C2;
+    white-space: nowrap;
+    cursor: default;
+}
+.lu-badge .lu-text b { color: #DCEFE4; font-weight: 700; }
+.lu-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #5BD08D;
+    box-shadow: 0 0 6px rgba(91, 208, 141, 0.7);
+}
+@media (prefers-reduced-motion: no-preference) {
+    .lu-dot { animation: lu-pulse 2.6s ease-in-out infinite; }
+}
+@keyframes lu-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(91, 208, 141, 0.55); }
+    50% { box-shadow: 0 0 0 5px rgba(91, 208, 141, 0); }
+}
+
+/* ---------- Standings loading skeleton (shown while the H2H payload loads) --- */
+.fl-table tbody tr.std-skel-row { background: none; }
+.std-skel-row td { padding: 0.5rem 20px; border: none; background: none; }
+.std-skel {
+    display: block;
+    height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #141a30 25%, #222a48 37%, #141a30 63%);
+    background-size: 400% 100%;
+    opacity: 0.85;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .std-skel { animation: std-skel-shimmer 1.3s ease-in-out infinite; }
+}
+@keyframes std-skel-shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+}
+
+/* ---------- H2H: inline roster on desktop, caret drawer on mobile ------------ */
+/* The Teams column and the caret column both live in the H2H markup; CSS toggles
+   which one shows at the 64em breakpoint. Mobile has no room for logos next to
+   Record/Total, so it keeps the tap-to-expand drawer; desktop has room, so it
+   shows the roster inline in the middle (filling the void) and drops the caret. */
+.mode-h2h .h2h-teams-cell,
+.fl-table.mode-h2h thead th.h2h-teams-head { display: none; }
+
+@media only screen and (min-width: 64em) {
+    .mode-h2h .h2h-teams-cell,
+    .fl-table.mode-h2h thead th.h2h-teams-head { display: table-cell; }
+    .mode-h2h .expand-cell,
+    .fl-table.mode-h2h thead th.h2h-caret-head { display: none; }
+    /* Shrink the name so the team-logo strip takes the slack in the middle. */
+    .fl-table.mode-h2h .standings-row .name-cell { width: 1%; white-space: nowrap; }
+    .mode-h2h .h2h-teams-cell { width: auto; }
+}
