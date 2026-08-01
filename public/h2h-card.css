@@ -65,4 +65,15 @@
 .h2h-mbpct.dog { color: #8A90A8; }
 .h2h-mpre { grid-column: 1 / -1; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #2A2E42; font-size: 0.66rem; color: #8A90A8; text-align: center; }
 .h2h-mpre b { color: #C9CEE6; }
+/* Clickable manager (→ profile) and team (→ team page) links inside the card.
+   display:contents keeps the card's flex layout exactly as-is; the hover/focus
+   cue lives on the child text/logo (a display:contents box can't be outlined). */
+.h2h-mlink, .h2h-tlink { display: contents; color: inherit; text-decoration: none; }
+.h2h-mlink .h2h-mnm, .h2h-mlink .h2h-av,
+.h2h-tlink .h2h-tnm, .h2h-tlink .h2h-tlogo { cursor: pointer; }
+.h2h-mlink:hover .h2h-mnm, .h2h-tlink:hover .h2h-tnm { color: #8E8CF0; }
+.h2h-tlink:hover .h2h-tlogo { filter: drop-shadow(0 0 3px rgba(142, 140, 240, 0.7)); }
+.h2h-mlink:focus-visible .h2h-mnm,
+.h2h-tlink:focus-visible .h2h-tnm { outline: 2px solid #64B5F6; outline-offset: 2px; border-radius: 4px; }
+
 @media (prefers-reduced-motion: reduce) { .h2h-mcaret, .h2h-mbfill { transition: none; } }
