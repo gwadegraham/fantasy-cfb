@@ -547,7 +547,12 @@
 }
 
 /* Path to the Championship: responsive canvas + Points/Rank toggle */
-.chart-canvas-wrap { position: relative; height: 340px; width: 100%; max-width: 1000px; margin: 0 auto; padding: 0 10px; box-sizing: border-box; }
+/* Body is a centered column flexbox, so a width-less .chart-container shrinks to
+   its content (~580px) and the chart never gets to use its max-width. Stretch it
+   (capped + centered, matching the other sections) so "Path to the Championship"
+   can grow on wider screens. */
+.chart-container { width: 100%; max-width: 1200px; box-sizing: border-box; }
+.chart-canvas-wrap { position: relative; height: 340px; width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 10px; box-sizing: border-box; }
 .chart-mode-toggle { display: flex; justify-content: center; margin: 10px 0 4px; }
 .chart-mode-toggle button { background: #1A1F33; color: #AEB4CC; border: 1px solid #2A2E42; padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
 .chart-mode-toggle button:first-child { border-radius: 8px 0 0 8px; }
