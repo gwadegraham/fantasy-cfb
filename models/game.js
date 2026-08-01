@@ -124,4 +124,11 @@ const gameSchema = new mongoose.Schema({
     },
 });
 
+// Indexes for the standings / H2H / highlights lookups, which all filter by
+// season + seasonType (+ week), and by home/away team id via $or. Without these
+// every season lookup scans the whole Game collection. Non-unique, additive.
+gameSchema.index({ season: 1, seasonType: 1, week: 1 });
+gameSchema.index({ season: 1, seasonType: 1, homeId: 1 });
+gameSchema.index({ season: 1, seasonType: 1, awayId: 1 });
+
 module.exports = mongoose.model('Game', gameSchema);

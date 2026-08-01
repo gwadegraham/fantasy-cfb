@@ -195,4 +195,8 @@ const teamSchema = new mongoose.Schema({
 
 
 
+// Teams are looked up by the CFBD numeric `id` (not _id) throughout the app
+// (opponent abbrevs, per-team season scores). Non-unique, additive.
+teamSchema.index({ id: 1 });
+
 module.exports = mongoose.model('Team', teamSchema);

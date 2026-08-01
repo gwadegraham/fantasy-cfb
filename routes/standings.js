@@ -8,12 +8,48 @@ const Betting = require('../models/bettingLine');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
+const JobRun = require('../models/jobRun');
 const { resolveConfig, engagementForSeason } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
+
+// The scoring jobs that actually refresh standings data (see modules/score-job.js).
+const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores'];
+
+// The honest "data as of" time for the standings: the most recent SUCCESSFUL
+// scoring run. Unlike user.lastUpdated — which is bumped by unrelated writes
+// (roster toggles, draft/season assignment, new managers) and isn't gated on job
+// success — this only moves when a scoring job actually completed. Returns the
+// run record, or null if no scoring job has ever succeeded.
+router.get('/last-updated', async (req, res) => {
+    try {
+        const run = await JobRun.findOne(
+            { jobName: { $in: SCORING_JOBS }, status: 'success' },
+            { finishedAt: 1, startedAt: 1, jobName: 1, week: 1, seasonType: 1, season: 1 },
+            { sort: { finishedAt: -1 } }
+        ).lean();
+        res.json(run || null);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Lightweight "is H2H on for this league/season?" — reads ONLY the config doc,
+// not the heavy /h2h payload (schedule + win-prob compute). The client uses this
+// to pick the standings layout before first paint, so an H2H league doesn't
+// flash the classic table while the full payload loads.
+router.get('/h2h/:league/:season/enabled', async (req, res) => {
+    try {
+        const cfg = await ScoringConfig.findOne({ league: req.params.league }).lean();
+        const eng = engagementForSeason(cfg && cfg.engagementBySeason, req.params.season);
+        res.json({ enabled: !!eng.h2hEnabled });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 // Advanced league highlights that need data the Standings payload doesn't carry
 // (records/xWins, games+rankings, draft order). Read-only; returns cards in the
@@ -242,6 +278,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const season = req.params.season;
         const seasonNum = Number(season);
 
+        // Standings-only mode returns just the ranked managers, skipping the
+        // matchup win-prob work (all-teams + all-games loads + projections +
+        // schedule build). The client fetches the full payload separately for
+        // the matchup cards, so the standings table paints without waiting on it.
+        // The default (no param) response is unchanged — My Team also consumes it.
+        const standingsOnly = req.query.standingsOnly === '1' || req.query.standingsOnly === 'true';
+
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         // Engagement is per-season: resolve H2H on/off + win bonus for THIS season
         // (a season with no entry is off), so one season's setting never leaks.
@@ -254,7 +297,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // this cap. Named for easy adjustment.
         const H2H_LAST_WEEK = 14;
 
-        const users = await User.find({ league, 'seasons.season': season });
+        // .lean(): the handler only reads plain fields (no doc methods/virtuals),
+        // so skip Mongoose hydration of these heavy weeklyScore docs.
+        const users = await User.find({ league, 'seasons.season': season }).lean();
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         const ids = [], meta = {}, totals = {}, teamDetail = {}, caps = {};
@@ -308,7 +353,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // up from the Team collection).
         const oppAbbrById = {};
         const gameTeamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]).filter(x => x != null))];
-        if (gameTeamIds.length) {
+        if (!standingsOnly && gameTeamIds.length) {
             const tdocs = await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
             tdocs.forEach(td => { oppAbbrById[td.id] = td.abbreviation || null; });
         }
@@ -318,12 +363,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // the live win-probability bar. Only drafted teams are projected, but all
         // teams load so opponents' SP+ is available for the pool context.
         const projByWeek = {};
-        if (draftedIds.length) {
+        if (!standingsOnly && draftedIds.length) {
             const allTeams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
             const teamsById = {};
             allTeams.forEach(t => { teamsById[String(t.id)] = t; });
+            // Only drafted teams' games feed the projections (gamesByTeam below
+            // keeps just those), so filter in the query instead of loading the
+            // whole season and discarding most of it — same resulting set.
             const regGames = await Game.find(
-                { season: seasonNum, seasonType: 'regular' },
+                { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
                 { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
                   completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
                   awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
@@ -390,6 +438,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
             adjustedTotal: round(meta[id].cumulative + rec[id].bonus)   // cumulative already includes weeks 15+/postseason
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
 
+        // Standings-only: the ranked table is ready; return before the matchup
+        // win-prob build (which needs the projections skipped above).
+        if (standingsOnly) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, managers });
+
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
         // rostered team's live game status (final / live / kickoff time).
@@ -407,7 +459,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId), opp, ha, gameScore };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId), opp, ha, gameScore };
             })
             .sort((a, b) => b.score - a.score);
         const fmtKick = (g) => {
@@ -428,7 +480,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.completed && g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: !!(caps[id] && caps[id][w] === t.id) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: !!(caps[id] && caps[id][w] === t.id) };
         }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
@@ -490,7 +542,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             w.final = false;
             const doctor = (arr) => (arr || []).map((t, j) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
-                return { school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null, captain: j === 0 };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null, captain: j === 0 };
             });
             // Live odds from the doctored slate: final games lock their actual
             // points, everything else is a neutral coin-flip projection — so the

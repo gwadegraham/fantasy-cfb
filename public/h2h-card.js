@@ -28,6 +28,12 @@
     }
     function nameOf(m) { return esc((m && (m.franchise || m.name)) || '—'); }
 
+    // Optional link wrappers: a manager avatar/name links to their profile, a
+    // team logo/name to the team page. display:contents (h2h-card.css) keeps the
+    // card layout unchanged. No id -> no link (e.g. the dev sim's fake rows).
+    function manLink(id, inner) { return id != null ? '<a class="h2h-mlink" href="/userHome?user=' + esc(id) + '">' + inner + '</a>' : inner; }
+    function teamLink(id, inner) { return id != null ? '<a class="h2h-tlink" href="/team?team=' + esc(id) + '">' + inner + '</a>' : inner; }
+
     // A team's value: final points, LIVE, or kickoff time.
     function teamVal(t) {
         return t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
@@ -37,10 +43,11 @@
     // One team row; the right column mirrors (value → name → logo) so both teams'
     // scores hug the center divider, like a Sleeper matchup.
     function teamRow(t, right) {
-        var img = '<img class="h2h-tlogo" src="' + esc(t.logo) + '" alt="">';
+        var img = teamLink(t.teamId, '<img class="h2h-tlogo" src="' + esc(t.logo) + '" alt="">');
         // Captain doubles this team's points — mark it so the inflated score reads.
         var cap = t.captain ? '<span class="h2h-capx" title="Captain — points doubled">★2×</span>' : '';
-        var nm = '<span class="h2h-tnmline"><span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>' + cap + '</span>';
+        var tnm = teamLink(t.teamId, '<span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>');
+        var nm = '<span class="h2h-tnmline">' + tnm + cap + '</span>';
         var sub = t.opp
             ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';
@@ -108,9 +115,9 @@
         return '<div class="h2h-mcard' + (live ? ' live' : '') + (opts.open ? ' open' : '') + '">'
             + '<div class="h2h-msum" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '">'
             + wk
-            + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + avatar(A) + '<span class="h2h-mnm">' + aName + '</span><span class="h2h-msc">' + g.aScore + '</span></div>'
+            + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + manLink(g.aId, avatar(A) + '<span class="h2h-mnm">' + aName + '</span>') + '<span class="h2h-msc">' + g.aScore + '</span></div>'
             + '<span class="h2h-msep">' + sep + '</span>'
-            + '<div class="h2h-mside r' + (g.winner === 'b' ? ' win' : '') + '"><span class="h2h-msc">' + g.bScore + '</span><span class="h2h-mnm">' + bName + '</span>' + avatar(B) + '</div>'
+            + '<div class="h2h-mside r' + (g.winner === 'b' ? ' win' : '') + '"><span class="h2h-msc">' + g.bScore + '</span>' + manLink(g.bId, '<span class="h2h-mnm">' + bName + '</span>' + avatar(B)) + '</div>'
             + '<i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>'
             + '</div>'
             + winBar(g)
@@ -127,12 +134,15 @@
         container.querySelectorAll('.h2h-msum').forEach(function (sum) {
             if (sum.dataset.wired) return;
             sum.dataset.wired = '1';
-            var toggle = function () {
+            var toggle = function (e) {
+                // Let clicks/keys on an inner link (manager / team) navigate
+                // instead of toggling the card.
+                if (e && e.target && e.target.closest && e.target.closest('a')) return;
                 var open = sum.closest('.h2h-mcard').classList.toggle('open');
                 sum.setAttribute('aria-expanded', String(open));
             };
             sum.addEventListener('click', toggle);
-            sum.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+            sum.addEventListener('keydown', function (e) { if (e.target && e.target.closest && e.target.closest('a')) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); } });
         });
     }
 

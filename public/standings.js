@@ -1,5 +1,5 @@
 import { setChartData } from './weekByWeek.js';
-import { rankedRows, buildStandingsRowsHtml, buildHighlights, buildHighlightsHtml } from './standings-insights.js';
+import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml } from './standings-insights.js';
 
 // Escapes HTML special chars before interpolating user-controlled values
 // (player/team names) into innerHTML, preventing stored/second-order XSS.
@@ -121,14 +121,15 @@ async function getUsers() {
                     $("#dropdownMenuButtonWeek").text('Week ' + cw);
                 }
             }
-            displayUsers(data);
+            // Standings table: decide the layout before painting so an H2H
+            // league doesn't flash the classic table then swap (see below).
+            renderStandingsSection(data, leagueCode, data[0]?.seasons?.[0]?.season);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
             maybeCelebrateWeeklyWin(data);
             loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
-            loadH2H(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too.
@@ -139,9 +140,95 @@ async function getUsers() {
 }
 
 function displayUsers(data) {
-    const userTableBody = document.querySelector('[user-table-body]');
-    userTableBody.innerHTML = buildStandingsRowsHtml(rankedRows(data));
-    animateScores(userTableBody);
+    // Base render: ranked by cumulative points. loadH2H() re-renders this same
+    // table with adjusted totals + a Record column when the league runs H2H.
+    renderStandingsTable(rankedRows(data), { h2h: false });
+}
+
+// Picks the standings layout BEFORE the first paint so an H2H league doesn't
+// render the classic table and then flash to the (heavier, ~1s) H2H view. A
+// cheap /enabled check decides: non-H2H leagues render classic immediately;
+// H2H leagues show a loading skeleton, then loadH2H swaps in the real table.
+async function renderStandingsSection(data, league, season) {
+    const params = new URLSearchParams(location.search);
+    const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
+
+    let enabled = false;
+    if (league && season != null) {
+        try {
+            // Bound the check with a timeout so a slow/hung /enabled can't leave
+            // the table blank — on timeout (or error) we fall back to classic.
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 2500);
+            const res = await fetch(`/standings/h2h/${league}/${season}/enabled`, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+            clearTimeout(timer);
+            const j = await res.json();
+            enabled = !!(j && j.enabled);
+        } catch (e) { /* timeout or error → treat as classic */ }
+    }
+
+    if (!enabled && !preview) { displayUsers(data); return; }
+    hideLegacyH2HSchedule();   // hide the unrelated lower schedule ASAP (before it paints)
+    showStandingsLoading();
+    loadH2H(league, season, data);   // renders H2H, or falls back to classic
+}
+
+// Shimmer placeholder shown in the table while the H2H payload loads, so the
+// H2H view arrives once instead of flashing in over the classic table.
+function showStandingsLoading() {
+    const head = document.querySelector('[user-table-head]');
+    const body = document.querySelector('[user-table-body]');
+    if (head) head.innerHTML = '';
+    if (!body) return;
+    let rows = '';
+    for (let i = 0; i < 6; i++) rows += '<tr class="std-skel-row"><td colspan="6"><span class="std-skel"></span></td></tr>';
+    body.innerHTML = rows;
+}
+
+// Paints the standings table (header + rows) for a given mode and wires the
+// per-row roster expanders. One template drives both the points-only and the
+// Head-to-Head views; `h2h` toggles the Record column, the "Total" heading, the
+// base+bonus sub-line, and the ranking note above the table.
+function renderStandingsTable(rows, opts) {
+    const h2h = !!(opts && opts.h2h);
+    const head = document.querySelector('[user-table-head]');
+    const body = document.querySelector('[user-table-body]');
+    // Mode class drives layout: the H2H table fills the width (Record fills the
+    // middle); the points-only table has fewer columns, so it centres at its
+    // content width instead of stretching name and score to opposite edges.
+    const table = (head && head.closest('table')) || (body && body.closest('table'));
+    if (table) { table.classList.toggle('mode-h2h', h2h); table.classList.toggle('mode-plain', !h2h); }
+    if (head) head.innerHTML = standingsHeadHtml(h2h);
+    if (body) {
+        body.innerHTML = buildStandingsRowsHtml(rows, { h2h });
+        animateScores(body);
+        wireRosterToggles(body);
+    }
+    const note = document.querySelector('[standings-rank-note]');
+    if (note) {
+        note.textContent = h2h ? 'Ranked by total points + H2H bonuses' : '';
+        note.hidden = !h2h;
+    }
+}
+
+// Each row's caret button toggles the hidden roster row that follows it. The
+// caret (not the whole row) is the only expander, so the manager-name link and
+// the team logos inside the drawer stay independently clickable. The <button>
+// gives keyboard/screen-reader support for free.
+function wireRosterToggles(root) {
+    root.querySelectorAll('.std-caret').forEach(btn => {
+        if (btn.dataset.wired) return;
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', () => {
+            const row = btn.closest('tr');
+            const drawer = row && row.nextElementSibling;
+            if (!drawer || !drawer.classList.contains('std-roster-row')) return;
+            const opening = drawer.hasAttribute('hidden');
+            if (opening) drawer.removeAttribute('hidden'); else drawer.setAttribute('hidden', '');
+            btn.setAttribute('aria-expanded', String(opening));
+            btn.classList.toggle('open', opening);
+        });
+    });
 }
 
 // Brief count-up on each score for a little life on load. Respects reduced-motion.
@@ -162,22 +249,58 @@ function animateScores(root) {
     });
 }
 
-function displayLastUpdated(data) {
-    var lastUpdatedTime = new Date(data[0]?.lastUpdated);
+// "Data as of" freshness badge. Prefers the last SUCCESSFUL scoring run
+// (/standings/last-updated → JobRun) — the honest refresh time — and only falls
+// back to the legacy per-user `lastUpdated` string if no run history exists yet
+// (fresh DB / pre-JobRun data), so the stamp never goes blank.
+async function displayLastUpdated(data) {
+    const el = document.querySelector('[last-updated]');
+    if (!el) return;
 
-    if (lastUpdatedTime != "Invalid Date") {
-        var hours = lastUpdatedTime.getHours() % 12;
-        hours = hours ? hours : 12;
+    let when = null;   // Date to display
+    let run = null;    // JobRun record when available (drives the tooltip detail)
+    try {
+        const res = await fetch('/standings/last-updated', { headers: { Accept: 'application/json' } });
+        run = res.ok ? await res.json() : null;
+        if (run && (run.finishedAt || run.startedAt)) when = new Date(run.finishedAt || run.startedAt);
+    } catch (e) { /* fall back to the legacy stamp below */ }
 
-        var minutes = lastUpdatedTime.getMinutes();
-        minutes = minutes < 10 ? ("0" + minutes) : minutes;
-
-        var amPm = lastUpdatedTime.getHours() >= 12 ? 'PM' : 'AM';
-        var formatTime = `${lastUpdatedTime.getMonth()+1}/${lastUpdatedTime.getDate()} at ${hours}:${minutes} ${amPm}`;
-
-        const lastUpdated = document.querySelector('[last-updated]');
-        lastUpdated.innerHTML = `Last Updated ${formatTime}`;
+    if (!when || isNaN(when.getTime())) {
+        const legacy = new Date(data && data[0] && data[0].lastUpdated);
+        when = isNaN(legacy.getTime()) ? null : legacy;
+        run = null;
     }
+    if (!when) { el.hidden = true; return; }
+    el.hidden = false;
+
+    const abs = formatStamp(when);
+    const detail = run
+        ? `Last successful scoring update — ${abs}${run.week != null ? ` · week ${run.week}` : ''}`
+        : `Last updated — ${abs}`;
+    el.innerHTML = `<span class="lu-badge" title="${escapeHtml(detail)}">`
+        + `<span class="lu-dot" aria-hidden="true"></span>`
+        + `<span class="lu-text">Updated <b>${escapeHtml(relativeTime(when))}</b></span>`
+        + `</span>`;
+}
+
+// Absolute stamp, e.g. "7/23 at 11:58 PM" (shown in the badge's hover tooltip).
+function formatStamp(d) {
+    let hours = d.getHours() % 12; hours = hours || 12;
+    let minutes = d.getMinutes(); minutes = minutes < 10 ? ('0' + minutes) : minutes;
+    const amPm = d.getHours() >= 12 ? 'PM' : 'AM';
+    return `${d.getMonth() + 1}/${d.getDate()} at ${hours}:${minutes} ${amPm}`;
+}
+
+// Compact relative time for the badge label ("just now", "2h ago", "5mo ago").
+function relativeTime(d) {
+    const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+    if (s < 90) return 'just now';
+    const units = [['y', 31536000], ['mo', 2592000], ['w', 604800], ['d', 86400], ['h', 3600], ['m', 60]];
+    for (const [label, secs] of units) {
+        const n = Math.floor(s / secs);
+        if (n >= 1) return `${n}${label} ago`;
+    }
+    return 'just now';
 }
 
 // Advanced highlights (Overachiever, Draft Steal, Giant Killer) come from the
@@ -257,53 +380,101 @@ function renderProjPanel(managers) {
 
 // Head-to-head win-bonus standings (#230). Shown only when the league has
 // opted in (config `enabled`) or when previewing the format via ?h2h=1.
-async function loadH2H(league, season) {
-    if (!league || season == null) return;
+async function loadH2H(league, season, fallbackData) {
+    // If H2H can't render (bad params, fetch error, or not actually enabled),
+    // fall back to the classic table so a skeleton shown by the caller resolves.
+    const renderClassic = () => { if (fallbackData) displayUsers(fallbackData); };
+    if (!league || season == null) return renderClassic();
     const params = new URLSearchParams(location.search);
     const sim = params.get('h2hSim');   // dev-only in-progress preview (non-prod route honors it)
+    const preview = params.get('h2h') === '1' || !!sim;
+    const simQ = sim ? `&h2hSim=${encodeURIComponent(sim)}` : '';
+
+    // 1) Standings-only: fast (skips the matchup win-prob compute), so the table
+    //    paints without waiting ~1s on projections.
     let data;
+    try {
+        const res = await fetch(`/standings/h2h/${league}/${season}?standingsOnly=1${simQ}`, { headers: { Accept: 'application/json' } });
+        data = await res.json();
+    } catch (e) { return renderClassic(); }
+    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
+    renderStandingsTable(h2hRows(data), { h2h: true });
+
+    // 2) Matchups: the heavier win-prob payload, loaded after the table into its
+    //    own module below.
+    loadH2HMatchups(league, season, sim);
+}
+
+// Fetches the full H2H payload (schedule + win-prob) and renders the weekly
+// matchup cards. Kept separate from the standings render so the table isn't
+// blocked on the projection compute. Best-effort: if it fails, the standings
+// table is already up and only the matchups module is missing.
+async function loadH2HMatchups(league, season, sim) {
     try {
         const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
-        data = await res.json();
-    } catch (e) { return; }
-    const preview = params.get('h2h') === '1' || !!sim;
-    if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return;
-    renderH2HPanel(data);
+        const d = await res.json();
+        if (d && (d.schedule || []).length) renderH2HMatchups(d);
+    } catch (e) { /* matchups are best-effort */ }
 }
 
-function renderH2HPanel(d) {
+// Maps the H2H payload's managers (already ranked by adjusted total, server-side)
+// into the shared standings-row shape. Rank is by points + win bonus, so the
+// gap-to-leader is measured against the leader's adjusted total, and base/bonus
+// feed the sub-line. Movement is the same points-based rank change the classic
+// table shows — it doesn't depend on H2H records — so reuse the ranked league
+// data (usersData) and attach each manager's delta by id.
+function h2hRows(d) {
+    const managers = (d.managers || []).slice();
+    const leader = managers.length ? managers[0].adjustedTotal : 0;
+    const deltaById = {};
+    try { rankedRows(usersData || []).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
+    return managers.map((m, i) => ({
+        rank: m.rank != null ? m.rank : i + 1,
+        id: m.userId,
+        name: m.name,
+        franchise: m.franchise,
+        avatarUrl: m.avatarUrl || null,
+        initials: m.initials,
+        color: m.color,
+        teams: m.teams || [],
+        score: m.adjustedTotal,
+        gap: i === 0 ? 0 : Math.round((leader - m.adjustedTotal) * 10) / 10,
+        delta: deltaById[m.userId] != null ? deltaById[m.userId] : null,
+        record: m.record || '',
+        base: Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10,
+        bonus: m.h2hBonus
+    }));
+}
+
+// When the H2H game mode is on, hide the separate lower "Head to Head" schedule
+// section (the CFB games where two managers' drafted teams happen to meet). It's
+// an unrelated, older sense of "head-to-head" and showing both is confusing.
+function hideLegacyH2HSchedule() {
+    const pollHeader = document.querySelector('[poll-name]');
+    const headerWrap = pollHeader && pollHeader.closest('.header');
+    const els = [headerWrap, document.querySelector('.dropdownWeek'), document.querySelector('.game-content')];
+    // The divider directly above that section goes too, so we don't leave a
+    // stray rule between the highlights and the chart.
+    if (headerWrap) {
+        const prev = headerWrap.previousElementSibling;
+        if (prev && prev.classList && prev.classList.contains('hr-subtle')) els.push(prev);
+    }
+    els.forEach(el => { if (el) el.style.display = 'none'; });
+}
+
+function renderH2HMatchups(d) {
     const el = document.getElementById('h2h-panel');
     if (!el) return;
     const byId = {};
-    d.managers.forEach(m => { byId[m.userId] = m; });
-    const nameOf = (m) => escapeHtml((m && (m.franchise || m.name)) || '—');
-    const recOf = (m) => escapeHtml((m && m.record) || '');
-
+    (d.managers || []).forEach(m => { byId[m.userId] = m; });
     const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
 
-    // Standings rows — each expands to that manager's 10-team roster.
-    const rosterLogos = (m) => (m.teams || []).map(t =>
-        `<a class="h2h-roster-team" href="/team?team=${t.id}" title="${escapeHtml(t.school)}"><img src="${escapeHtml(t.logo)}" alt="${escapeHtml(t.school)}"></a>`).join('');
-    const rows = d.managers.map(m => {
-        const base = Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10;
-        return `<div class="h2h-row" data-uid="${m.userId}" role="button" tabindex="0" aria-expanded="false">
-            <span class="h2h-rank">${m.rank}</span>
-            ${projAvatarHtml(m)}
-            <span class="h2h-id"><span class="h2h-name">${nameOf(m)}</span><span class="h2h-rec">${recOf(m)}</span></span>
-            <span class="h2h-pts"><span class="h2h-base">${base}</span><span class="h2h-bonus">+${m.h2hBonus}</span><b class="h2h-total">${m.adjustedTotal}</b></span>
-            <i class="fa-solid fa-chevron-down h2h-caret" aria-hidden="true"></i>
-        </div>
-        <div class="h2h-roster" data-roster="${m.userId}" hidden><div class="h2h-roster-logos">${rosterLogos(m)}</div></div>`;
-    }).join('');
-
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
-    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}Head-to-Head${preview}</h2>
-        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Tap a manager to see their roster; see your full matchup log on My Team.</p>
+    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}This Week's Matchups${preview}</h2>
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.</p>
         <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
-        <div class="h2h-matches" h2h-matches></div>
-        <div class="h2h-head"><span></span><span></span><span class="h2h-col">pts · bonus · total</span></div>
-        <div class="h2h-list">${rows}</div>`;
+        <div class="h2h-matches" h2h-matches></div>`;
     el.hidden = false;
 
     const matchesEl = el.querySelector('[h2h-matches]');
@@ -317,20 +488,6 @@ function renderH2HPanel(d) {
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));
     paintWeek(d.featuredWeek);
-
-    el.querySelectorAll('.h2h-row').forEach(row => {
-        const uid = row.getAttribute('data-uid');
-        const toggle = () => {
-            const r = el.querySelector(`[data-roster="${uid}"]`);
-            if (!r) return;
-            const opening = r.hasAttribute('hidden');
-            if (opening) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
-            row.setAttribute('aria-expanded', String(opening));
-            row.classList.toggle('open', opening);
-        };
-        row.addEventListener('click', toggle);
-        row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
-    });
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the

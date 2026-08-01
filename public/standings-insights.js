@@ -85,22 +85,92 @@ function movementHtml(delta) {
     return `<span class="move flat" title="No change">–</span>`;
 }
 
-export function buildStandingsRowsHtml(rows) {
-    return rows.map(r => {
-        const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
-        const logos = r.teams.map(t =>
-            `<a href="/team?team=${t.id}"><img src="${t.logos.at(-1)}" alt="${escapeHtml(t.mascot)}"></a>`
-        ).join('');
-        const gap = r.rank === 1
-            ? '<span class="gap leader">Leader</span>'
-            : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
-        return `<tr class="standings-row${medal}">
-            <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
-            <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
-            <td class="team-item"><div class="team-logos">${logos}</div></td>
-            <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gap}</th>
+// One team's clickable logo for the expandable roster drawer. Handles both row
+// shapes: classic rows carry teams as { id, logos:[…], mascot }; the H2H payload
+// carries { id, logo, school }.
+function teamLogoLink(t) {
+    const src = t.logo != null ? t.logo : ((t.logos && t.logos.at) ? t.logos.at(-1) : '');
+    const label = t.school || t.mascot || '';
+    return `<a class="std-team" href="/team?team=${t.id}" title="${escapeHtml(label)}"><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"></a>`;
+}
+
+// Header row for the standings table. Points-only mode keeps the classic
+// header (blank, blank, Teams, Score); H2H mode swaps in Record + Total and a
+// trailing cell for the expand caret.
+export function standingsHeadHtml(h2h) {
+    if (h2h) {
+        // Teams column shows inline on desktop; the caret column shows on mobile.
+        // Both stay in the markup and are toggled by CSS at the 64em breakpoint.
+        return `<tr>
+            <th class="team-header"></th>
+            <th class="team-header"></th>
+            <th class="team-header h2h-teams-head" style="text-align: center;">Teams</th>
+            <th class="team-header rec-head">Record</th>
+            <th class="team-header score-head">Total</th>
+            <th class="team-header h2h-caret-head"></th>
         </tr>`;
+    }
+    return `<tr>
+        <th class="sticky-header team-header"></th>
+        <th class="sticky-header team-header"></th>
+        <th class="team-header" style="text-align: center;">Teams</th>
+        <th class="sticky-header-score team-header">Score</th>
+    </tr>`;
+}
+
+// The leader/movement/gap treatment is shared; only the middle differs.
+function gapHtml(r) {
+    return r.rank === 1
+        ? '<span class="gap leader">Leader</span>'
+        : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
+}
+
+// The inline team-logo strip (the classic middle column). Handles both team
+// shapes: classic rows carry { logos:[…], mascot }; the H2H payload carries
+// { logo, school }.
+function inlineTeamLogos(teams) {
+    return (teams || []).map(t => {
+        const src = t.logo != null ? t.logo : (t.logos && t.logos.at ? t.logos.at(-1) : '');
+        return `<a href="/team?team=${t.id}"><img src="${src}" alt="${escapeHtml(t.school || t.mascot || '')}"></a>`;
     }).join('');
+}
+
+// Classic full-width standings row (points-only): rank · avatar/name · the
+// team-logo strip filling the middle · score. This is the original layout — the
+// logos are what make the wide row read as full, not empty.
+function classicRowHtml(r) {
+    const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
+    return `<tr class="standings-row${medal}">
+        <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
+        <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
+        <td class="team-item"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
+        <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gapHtml(r)}</th>
+    </tr>`;
+}
+
+// Compact H2H row: rank · avatar/name · record · total (with base+bonus) ·
+// expand caret, plus a hidden sibling row holding the full clickable roster.
+// Reuses the classic `.standings-row.medal-1` / `.rank-num` / `.score-num`
+// classes so the leader animation and score count-up carry over.
+function h2hRowHtml(r) {
+    const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
+    const logos = (r.teams || []).map(teamLogoLink).join('');
+    const who = escapeHtml(r.franchise || r.name);
+    return `<tr class="standings-row${medal}">
+        <td class="rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</td>
+        <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span></a></td>
+        <td class="team-item h2h-teams-cell"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
+        <td class="rec-cell">${escapeHtml(r.record || '—')}</td>
+        <td class="score-cell"><span class="score-num" data-count="${r.score}">${r.score}</span><span class="score-sub">${gapHtml(r)}<span class="score-math">${r.base} <span class="bonus">+${r.bonus}</span></span></span></td>
+        <td class="expand-cell"><button type="button" class="std-caret" aria-expanded="false" aria-label="Show ${who}'s teams"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></td>
+    </tr>
+    <tr class="std-roster-row" hidden><td colspan="6"><div class="std-roster-logos">${logos}</div></td></tr>`;
+}
+
+// Points-only keeps the original wide layout; H2H uses the compact merged rows.
+export function buildStandingsRowsHtml(rows, opts) {
+    const h2h = !!(opts && opts.h2h);
+    return rows.map(h2h ? h2hRowHtml : classicRowHtml).join('');
 }
 
 // --- league highlights -------------------------------------------------------
