@@ -1378,7 +1378,7 @@ function getSelectedDraftSeason() {
 function populateDraftSeasonOptions() {
     var sel = document.querySelector('[draft-season]');
     if (!sel) return;
-    var currentYear = new Date().getFullYear();
+    var currentYear = Number(window.APP_YEAR) || new Date().getFullYear();   // active season, not wall clock
     var str = '';
     for (var y = currentYear + 1; y >= currentYear - 3; y--) {
         str += `<option value="${y}">${y}</option>`;

@@ -21,6 +21,7 @@
 </head>
 <body>
     <%- include('partials/navbar') %>
+    <script>window.APP_YEAR = "<%= year %>";</script>
     <% if (userState) { %>
         <script>
             var userState = <%- userState %>;
