@@ -543,6 +543,22 @@ async function hydrateH2H(user, activeYear) {
 // Captain (#230) → Captain tile. Own profile only, and only when the league has
 // Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
 // picker (set/clear a 2× team for the current open week).
+// Kickoff-lock display helpers (Central time, matching the app's schedule).
+function uhFmtLock(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' });
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+    return `${day} ${time}`;
+}
+function uhTimeLeft(iso) {
+    if (!iso) return '';
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return '';
+    const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    return d ? `${d}d ${h}h` : (h ? `${h}h ${m}m` : `${m}m`);
+}
+
 async function hydrateCaptain(user, activeYear) {
     const tile = document.getElementById('uh-tile-captain');
     const hide = () => { if (tile) tile.hidden = true; };
@@ -557,50 +573,73 @@ async function hydrateCaptain(user, activeYear) {
     } catch (e) { /* fall through to preview gate */ }
     if (!enabled && !preview) return hide();
 
-    // Captain is set for the active season's next unplayed regular week. The
-    // active season is the server's authoritative YEAR (window.APP_YEAR), the
-    // same season every other tile keys off. No roster or no open week
-    // (finished season) → nothing to set → hide.
-    const firstOpenWeek = (s) => {
-        const scored = new Set((s.weeklyScore || []).filter(e => e.season !== 'postseason' && e.week <= 16).map(e => Number(e.week)));
-        for (let w = 1; w <= 16; w++) if (!scored.has(w)) return w;
-        return null;
-    };
-    const season = uhSeasonFor(user, activeYear);
-    const week = (season.teams || []).length ? firstOpenWeek(season) : null;
-    if (!(season.teams || []).length || week == null) return hide();
+    // The server owns the lock rule: which regular week is in focus, when it
+    // locks (the manager's own first kickoff), the current pick, and whether it's
+    // already locked. No focus week (season over / no schedule) → nothing to show.
+    let state;
+    try {
+        const r = await fetch('/users/me/captain?season=' + encodeURIComponent(activeYear), { headers: { Accept: 'application/json' } });
+        if (!r.ok) return hide();
+        state = await r.json();
+    } catch (e) { return hide(); }
+    if (!state || state.week == null) return hide();
 
-    let pick = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
+    const season = uhSeasonFor(user, activeYear);
     const teamById = {};
     (season.teams || []).forEach(t => { teamById[t.id] = t; });
+    if (!(season.teams || []).length) return hide();
     if (tile) tile.hidden = false;
 
     const g = document.getElementById('uh-glance-captain');
     const setGlance = () => {
         if (!g) return;
-        const t = pick != null ? teamById[pick] : null;
+        const t = state.teamId != null ? teamById[state.teamId] : null;
         const lead = t
             ? `<span class="uh-cap-glance"><img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
-            : `<span class="captain-unset">Set for Wk ${week}</span>`;
-        g.innerHTML = lead + `<span class="uh-cap-sub">Doubles this week’s points</span>`;
+            : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
+        let sub;
+        if (state.locked) sub = 'Locked for this week';
+        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt)}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
+        else sub = 'Doubles this week’s points';
+        g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
     const paint = (container) => {
-        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${week}. Tap the current pick to clear. Locks at kickoff.</p>
+        if (state.locked) {
+            const t = state.teamId != null ? teamById[state.teamId] : null;
+            container.innerHTML = `<p class="captain-note">Locked — your first team of Week ${state.week} has kicked off. `
+                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`) + `</p>`
+                + `<div class="captain-grid">${(season.teams || []).map(tm => `
+                    <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">
+                        <img src="${tm.logos.at(-1)}" alt=""><span>${escapeHtml(tm.school)}</span>
+                    </div>`).join('')}</div>`;
+            return;
+        }
+        const lockLine = state.lockAt
+            ? ` Locks ${uhFmtLock(state.lockAt)} — when your first team kicks off${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
+            : ' Locks when your first team kicks off.';
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}</p>
             <div class="captain-grid">${(season.teams || []).map(t => `
-                <button type="button" class="captain-team${Number(pick) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(pick) === Number(t.id)}">
+                <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">
                     <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
                 </button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
             const teamId = Number(btn.getAttribute('data-team'));
-            const next = Number(pick) === teamId ? null : teamId;   // click current to clear
+            const next = Number(state.teamId) === teamId ? null : teamId;   // click current to clear
             try {
                 const res = await fetch('/users/me/captain', {
                     method: 'PATCH', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                    body: JSON.stringify({ season: season.season, week, teamId: next })
+                    body: JSON.stringify({ season: state.season, week: state.week, teamId: next })
                 });
                 const data = await res.json();
+                if (res.status === 409) {
+                    // Kicked off between load and click — re-sync to the locked state.
+                    state.locked = true;
+                    setGlance(); paint(container);
+                    if (window.ccToast) ccToast.error(data.message || 'Captain is locked for this week.');
+                    return;
+                }
                 if (!res.ok) throw new Error(data.message || 'Could not set captain');
-                pick = next;
+                state.teamId = next;
                 setGlance(); paint(container);
                 if (window.ccToast) ccToast.success(next ? `Captain set: ${teamById[next].school}` : 'Captain cleared');
             } catch (e) { if (window.ccToast) ccToast.error(e.message); }

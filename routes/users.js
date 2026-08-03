@@ -1,11 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/user');
+const Game = require('../models/game');
 const scoring = require('../modules/scoring');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
+const { captainLockMs, captainFocusWeek } = require('../modules/captain');
+
+// A week's Captain edits close when the manager's earliest game finishes; the
+// tile keeps that week in focus for this long after its last kickoff before
+// advancing to the next week.
+const CAPTAIN_WEEK_GRACE_MS = 6 * 60 * 60 * 1000;
+
+// The manager's regular-season games for a season, projected to the fields the
+// kickoff-lock helpers need. Shared by the GET and PATCH captain handlers.
+function captainGamesQuery(season, teamIds) {
+    return Game.find(
+        { season, seasonType: 'regular', $or: [{ homeId: { $in: teamIds } }, { awayId: { $in: teamIds } }] },
+        { week: 1, homeId: 1, awayId: 1, startDate: 1, startTimeTbd: 1, seasonType: 1, completed: 1 }
+    ).lean();
+}
 
 // Distinct, vibrant avatar/display colors for managers — same family as the
 // app's accent palette. A new player gets one not already used in the league.
@@ -69,8 +85,45 @@ router.patch('/me/profile', async (req, res) => {
     }
 });
 
+// The Captain state the tile renders from: which regular-season week the manager
+// can currently act on, when it locks (their first kickoff, ISO), their current
+// pick, and whether that week has already locked. `week` is null once the season
+// is out of reach. Single source of truth for the lock rule.
+router.get('/me/captain', async (req, res) => {
+    const oidcUser = req.oidc && req.oidc.user;
+    const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
+    const userId = meta && meta.userId;
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    const seasonYear = Number(req.query.season) || Number(process.env.YEAR);
+    const none = { season: seasonYear, week: null, lockAt: null, teamId: null, locked: true };
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+        const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
+        if (!season || !(season.teams || []).length) return res.json(none);
+
+        const teamIds = (season.teams || []).map(t => Number(t.id));
+        const games = await captainGamesQuery(seasonYear, teamIds);
+        const focus = captainFocusWeek(games, teamIds, Date.now(), CAPTAIN_WEEK_GRACE_MS);
+        if (!focus) return res.json(none);
+
+        const pick = ((season.captains || []).find(c => Number(c.week) === focus.week) || {}).teamId;
+        res.json({
+            season: seasonYear,
+            week: focus.week,
+            lockAt: new Date(focus.first).toISOString(),
+            teamId: pick != null ? Number(pick) : null,
+            locked: Date.now() >= focus.first
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Self-service Captain pick (#230): the logged-in manager sets/clears their
-// captained team for a regular-season week. Locks once the week is scored.
+// captained team for a regular-season week. Locks at the kickoff of their own
+// earliest team that week (not the league-wide first game).
 router.patch('/me/captain', async (req, res) => {
     const oidcUser = req.oidc && req.oidc.user;
     const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
@@ -88,13 +141,23 @@ router.patch('/me/captain', async (req, res) => {
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season) return res.status(404).json({ message: 'No roster for that season.' });
-        if (teamId != null && !(season.teams || []).some(t => Number(t.id) === teamId)) {
+        const teamIds = (season.teams || []).map(t => Number(t.id));
+        if (teamId != null && !teamIds.includes(teamId)) {
             return res.status(400).json({ message: 'That team is not on your roster.' });
         }
-        // Lock: once a week has been scored, its captain can't change.
-        if ((season.weeklyScore || []).some(e => e.season !== 'postseason' && Number(e.week) === week)) {
-            return res.status(409).json({ message: 'That week is already scored — captain is locked.' });
+
+        // Lock: the manager's earliest team of the week has kicked off.
+        const weekGames = (await captainGamesQuery(seasonYear, teamIds)).filter(g => Number(g.week) === week);
+        const lockMs = captainLockMs(weekGames, teamIds);
+        if (lockMs != null && Date.now() >= lockMs) {
+            return res.status(409).json({ message: "That week's captain is locked — your first team has kicked off." });
         }
+        // Safety backstop: if a kickoff can't be determined (schedule missing) but
+        // the week already has a completed game, never allow retro-editing it.
+        if (lockMs == null && weekGames.some(g => g.completed === true)) {
+            return res.status(409).json({ message: 'That week is locked.' });
+        }
+
         if (!Array.isArray(season.captains)) season.captains = [];
         season.captains = season.captains.filter(c => Number(c.week) !== week);   // drop any existing pick for the week
         if (teamId != null) season.captains.push({ week, teamId });
