@@ -55,6 +55,12 @@ Admin → **Ingest Full Schedule / Schedule**. **The most-forgotten step.**
 compute from postseason points only — a full, **convincing-but-wrong** payload
 with no error and no empty state. Load it and spot-check before draft day.
 
+> Postseason (mid-December, once the bowl/CFP bracket is published): re-hit the
+> same route with `{ "seasonType": "postseason" }` to preload the bowl schedule.
+> Not required for scoring (the nightly job pulls postseason games itself), but
+> it lets the **live poller** detect day-1 postseason kickoffs the first
+> afternoon rather than waiting for that night's job.
+
 ### 5. Configure Engagement (per league) — `POST /scoring-config/:league/engagement`
 Admin → **Engagement**, pick season **2026** in the dropdown. Set H2H + Captain
 per league. *If skipped:* `engagementForSeason` returns OFF defaults, so both

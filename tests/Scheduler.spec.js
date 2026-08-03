@@ -11,9 +11,11 @@ describe('scheduler config', () => {
         expect(JOB_SCHEDULES.find(s => s.job === 'live-scores')).toBeUndefined();
     });
 
-    it('live poller fires every 10 min on Thu/Fri/Sat, gated by env', () => {
+    it('live poller fires every 10 min, every day (phase gates decide), gated by env', () => {
         expect(LIVE_POLL_SCHEDULE.job).toBe('live-scores');
-        expect(LIVE_POLL_SCHEDULE.rule).toEqual({ dayOfWeek: [4, 5, 6], minute: [0, 10, 20, 30, 40, 50] });
+        // No dayOfWeek — postseason games run any day; the module's phase-aware
+        // gates restrict regular-season polling to Thu/Fri/Sat.
+        expect(LIVE_POLL_SCHEDULE.rule).toEqual({ minute: [0, 10, 20, 30, 40, 50] });
 
         const prev = process.env.LIVE_POLL_ENABLED;
         process.env.LIVE_POLL_ENABLED = 'true';
@@ -43,11 +45,12 @@ describe('scheduler config', () => {
         expect(rule.dayOfWeek).toBe(6);
     });
 
-    it('leaves hour unset for an every-hour rule (live poller)', () => {
+    it('leaves hour and dayOfWeek unset for the every-day live poller', () => {
         const rule = toRule(LIVE_POLL_SCHEDULE.rule);
-        expect(rule.dayOfWeek).toEqual([4, 5, 6]);
         expect(rule.minute).toEqual([0, 10, 20, 30, 40, 50]);
-        // hour was never assigned, so node-schedule treats it as "any hour".
+        // Neither hour nor dayOfWeek assigned → node-schedule treats them as
+        // "any", so the poller fires every 10 min, every day.
         expect(rule.hour == null).toBe(true);
+        expect(rule.dayOfWeek == null).toBe(true);
     });
 });

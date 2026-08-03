@@ -1,31 +1,29 @@
 // Game-day live scoring poller.
 //
 // Refreshes scores frequently during games so standings feel "live" WITHOUT
-// blowing the CFBD monthly budget. The scheduler fires this every 10 min on
-// Thu/Fri/Sat, but it only spends a CFBD call when a game is genuinely in
-// progress. Three independent guards, cheapest first:
+// blowing the CFBD monthly budget. The scheduler fires this every 10 min, every
+// day, but it only spends a CFBD call when a game is genuinely in progress.
+// Three independent guards, cheapest first:
 //
-//   1. cadence / day — Saturday every 10 min; Thu/Fri every 20; nothing else.
-//      Pure arithmetic, no I/O.
-//   2. games-live gate — poll only if some active-season REGULAR game kicked off
-//      within the last MAX_GAME_HOURS and isn't marked completed. Read from the
-//      local Game collection (the full schedule is ingested preseason), so it
-//      costs 0 CFBD calls. This alone means August, empty nights, and finished
-//      slates spend nothing, and the 6h tail stops a game whose `completed` flag
-//      never flips from polling forever.
+//   1. games-live gate + PHASE — read the local Game collection (0 CFBD calls,
+//      the schedule is ingested ahead of time) for any active-season game that
+//      kicked off within the last MAX_GAME_HOURS and isn't completed. Regular
+//      and postseason don't overlap in time, so at most one phase is live. This
+//      is what makes August, empty days, and finished slates spend nothing, and
+//      the 6h tail stops a stuck `completed` flag from polling forever.
+//   2. cadence — depends on the live phase:
+//        • regular    → Thu/Fri/Sat only (Sat every 10 min, Thu/Fri every 20).
+//        • postseason → every 10 min, ANY day. Bowls/CFP run Mon–Sat (the
+//          national championship is a Monday) and are sparse + high-value, so
+//          they get the tighter cadence on whatever day they fall.
 //   3. hard ceiling — skip if CFBD's own remainingCalls has fallen to the
 //      reserved buffer (default 100), so headroom for manual admin work is never
-//      touched. remainingCalls is authoritative (counts ALL usage) and cached so
-//      the check is ~free.
+//      touched. remainingCalls is authoritative (counts ALL usage).
 //
 // Each actual poll runs the shared scoring pipeline with betting off (calendar
-// is cached → ~1 CFBD call) and records a JobRun (no email) so the standings
-// "last updated" badge advances during live play.
-//
-// Regular season only: the postseason path in runFullUpdate retrieves games
-// per-team (many calls per poll), which is too expensive to poll frequently, so
-// bowls/CFP stay on the daily 11pm job. A mass postseason pull would let the
-// poller cover the playoff too — a good follow-up.
+// cached, postseason mass-pulled → ~1 CFBD call) and records a JobRun (no email)
+// so the standings "last updated" badge advances during live play. runFullUpdate
+// picks the regular vs postseason pull from the calendar, matching the phase.
 
 const Game = require('../models/game');
 const { runFullUpdate } = require('./score-update');
@@ -50,8 +48,17 @@ function isOnCadence(dow, minute) {
     return false;
 }
 
+// Whether this fire is on-cadence for the live phase.
+//   postseason → every 10 min, any day (the scheduler fires on 10-min marks).
+//   regular    → Thu/Fri/Sat only, at the regular cadence above.
+function cadenceOk(phase, dow, minute) {
+    if (phase === 'postseason') return minute % 10 === 0;
+    if (phase === 'regular') return isLivePollDay(dow) && isOnCadence(dow, minute);
+    return false;
+}
+
 // Any game in progress right now? Kicked off within maxHours and not yet final.
-// `games` are already-narrowed active-season regular candidates from the DB.
+// `games` are already-narrowed active-season candidates (one phase) from the DB.
 function anyGameInProgress(games, nowMs, maxHours) {
     const windowMs = maxHours * 3600 * 1000;
     return (games || []).some(g => {
@@ -62,17 +69,19 @@ function anyGameInProgress(games, nowMs, maxHours) {
     });
 }
 
-// Final poll/skip verdict from already-gathered inputs. remainingCalls === null
-// means "unknown" (info check failed) — we don't block scoring on that; the
-// games-live gate still bounds the spend.
-function decide({ dow, minute, gameLive, remainingCalls, buffer }) {
-    if (!isLivePollDay(dow)) return { poll: false, reason: 'not a live-poll day' };
-    if (!isOnCadence(dow, minute)) return { poll: false, reason: 'off-cadence' };
-    if (!gameLive) return { poll: false, reason: 'no game in progress' };
+// Final poll/skip verdict from already-gathered inputs. `phase` is the live
+// phase ('regular' | 'postseason' | null). remainingCalls === null means
+// "unknown" (info check failed) — we don't block scoring on that; the games-live
+// gate still bounds the spend.
+function decide({ dow, minute, phase, remainingCalls, buffer }) {
+    if (!phase) return { poll: false, reason: 'no game in progress' };
+    if (!cadenceOk(phase, dow, minute)) {
+        return { poll: false, reason: phase === 'regular' ? 'regular game, off-cadence / not Thu-Fri-Sat' : 'off-cadence' };
+    }
     if (remainingCalls != null && remainingCalls <= buffer) {
         return { poll: false, reason: `ceiling reached: ${remainingCalls} CFBD calls left (buffer ${buffer})` };
     }
-    return { poll: true, reason: 'game in progress' };
+    return { poll: true, reason: `${phase} game in progress` };
 }
 
 // America/Chicago day-of-week + minute, without a tz library.
@@ -115,31 +124,35 @@ async function run() {
     const nowMs = now.getTime();
     const { dow, minute } = centralNow(now);
 
-    // Cheap gates first — avoid the DB / CFBD when it isn't even our cadence.
-    if (!isLivePollDay(dow)) return { skipped: 'not a live-poll day' };
-    if (!isOnCadence(dow, minute)) return { skipped: 'off-cadence' };
-
-    // Games-live gate (DB only). Not-completed regular games that have already
-    // kicked off — normally just the current slate's live/unfinalized games. The
-    // 6h tail is applied in JS so a stuck `completed` flag can't poll forever.
+    // Games-live gate (DB only, 0 CFBD calls). Not-completed games that have
+    // already kicked off — normally just the current slate's live/unfinalized
+    // games. The 6h tail (applied in JS) stops a stuck `completed` flag from
+    // polling forever. Regular and postseason never overlap in time, so at most
+    // one phase is live; postseason wins if somehow both look live.
     const season = Number(process.env.YEAR);
     const candidates = await Game.find(
-        { season, seasonType: 'regular', completed: { $ne: true }, startDate: { $lte: now.toISOString() } },
-        { startDate: 1, completed: 1 }
+        { season, completed: { $ne: true }, startDate: { $lte: now.toISOString() } },
+        { startDate: 1, completed: 1, seasonType: 1 }
     ).lean();
-    const gameLive = anyGameInProgress(candidates, nowMs, MAX_GAME_HOURS);
-    if (!gameLive) return { skipped: 'no game in progress' };
+    const postLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'postseason'), nowMs, MAX_GAME_HOURS);
+    const regLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'regular'), nowMs, MAX_GAME_HOURS);
+    const phase = postLive ? 'postseason' : (regLive ? 'regular' : null);
+    if (!phase) return { skipped: 'no game in progress' };
+
+    // Cadence for the live phase (pure). Off-cadence fires cost nothing more.
+    if (!cadenceOk(phase, dow, minute)) return { skipped: 'off-cadence' };
 
     // Hard ceiling (authoritative CFBD remainingCalls).
     const remaining = await currentRemaining();
-    const decision = decide({ dow, minute, gameLive, remainingCalls: remaining, buffer: CALL_BUFFER });
+    const decision = decide({ dow, minute, phase, remainingCalls: remaining, buffer: CALL_BUFFER });
     if (!decision.poll) {
         console.log(`live-poll skip — ${decision.reason}`);
         return { skipped: decision.reason };
     }
 
-    // Poll: shared pipeline, betting off (calendar cached → ~1 CFBD call).
-    console.log(`live-poll: game in progress, refreshing scores (${remaining == null ? 'calls left unknown' : remaining + ' calls left'})`);
+    // Poll: shared pipeline, betting off (calendar cached / postseason mass-pull
+    // → ~1 CFBD call).
+    console.log(`live-poll: ${phase} game in progress, refreshing scores (${remaining == null ? 'calls left unknown' : remaining + ' calls left'})`);
     const id = await startRun(JOB_NAME, { season: process.env.YEAR });
     try {
         const r = await runFullUpdate({ withBetting: false });
@@ -160,7 +173,7 @@ async function run() {
 module.exports = {
     run, JOB_NAME,
     // exported for tests
-    isLivePollDay, isOnCadence, anyGameInProgress, decide, centralNow,
+    isLivePollDay, isOnCadence, cadenceOk, anyGameInProgress, decide, centralNow,
     _resetRemaining: () => { lastKnownRemaining = null; }
 };
 
