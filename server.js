@@ -228,7 +228,7 @@ app.get('/draft-room', (req, res) => {
         user.isDraft = false;
         const userState = safeJson(req.effUser);
 
-        res.render('draftRoom', {user, userState});
+        res.render('draftRoom', {user, userState, year: process.env.YEAR});
     } else {
         res.redirect("/login");
     }

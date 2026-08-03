@@ -8,13 +8,27 @@ const User = require('../models/user');
 // manager's year-by-year record. Read-only; no new data — cumulativeScore,
 // draftPosition and franchiseName already live on user.seasons.
 //
-// A season counts as "completed" once at least one manager has a
-// cumulativeScore (excludes the in-progress current season, which has none).
+// A season is "finished" (and thus crownable) once it is a PAST season relative
+// to the active season, or its postseason has been scored (bowls / CFP played).
+// This keeps the in-progress current season out of the Hall of Fame — otherwise
+// it would crown the live points leader the moment scoring begins.
 router.get('/:league', async (req, res) => {
     try {
         const league = req.params.league;
         const users = await User.find({ league },
             { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons: 1 }).lean();
+
+        // A season-year with a scored postseason entry has wrapped. Combined with
+        // "any past season", this crowns a season as soon as it truly finishes
+        // (even before the YEAR flip) and never before.
+        const activeYear = Number(process.env.YEAR);
+        const postseasonScored = {};
+        users.forEach(u => (u.seasons || []).forEach(s => {
+            if ((s.weeklyScore || []).some(w => w && w.season === 'postseason' && w.score != null)) {
+                postseasonScored[s.season] = true;
+            }
+        }));
+        const seasonFinished = (yr) => Number(yr) < activeYear || !!postseasonScored[yr];
 
         const fullName = (u) => `${u.firstName || ''} ${u.lastName || ''}`.trim();
         const initials = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
@@ -29,7 +43,8 @@ router.get('/:league', async (req, res) => {
         const bySeason = {};
         users.forEach(u => {
             (u.seasons || []).forEach(s => {
-                if (s.cumulativeScore == null) return;      // in-progress / never scored
+                if (s.cumulativeScore == null) return;      // never scored
+                if (!seasonFinished(s.season)) return;      // season still in progress → no champion yet
                 (bySeason[s.season] = bySeason[s.season] || []).push({
                     userId: String(u._id), name: fullName(u),
                     franchise: s.franchiseName || null,

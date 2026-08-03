@@ -11,7 +11,7 @@ var myUserId;
 var isCommish = false;
 var leagueCode;
 var leagueVersion = 'V2';
-var season = new Date().getFullYear();
+var season = Number(window.APP_YEAR) || new Date().getFullYear();   // active season, not wall clock
 var isMobile = false;
 var countdownTimer;
 var justPickedKey = null;    // "userId-round" of the pick to animate in once
@@ -115,7 +115,7 @@ async function getMembers() {
 }
 
 async function getRecruitingRankings() {
-    const res = await fetch(`/recruiting/${new Date().getFullYear()}`, { headers: { 'Accept': 'application/json' } });
+    const res = await fetch(`/recruiting/${season}`, { headers: { 'Accept': 'application/json' } });
     return res.json().catch(() => []);
 }
 
@@ -132,7 +132,7 @@ async function getTeams() {
 }
 
 function buildPool(teams, recruiting) {
-    var yr = new Date().getFullYear();
+    var yr = season;   // active season (window.APP_YEAR), not wall clock
     pool = teams.map(t => {
         var conf = '-', score = null, xwins = 0, sp = null, spRank = null;
         if (t.seasons && t.seasons.length) {
