@@ -1,5 +1,4 @@
 const { internalFetch } = require('./internal-api');
-const { withRetry } = require('./retry');
 
 // Configure CFB Data
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -8,6 +7,7 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
+const { getCalendar } = require('./cfbd-calendar');
 const retrieveGamesModule = require('./retrieve-games.js');
 const scoringModule = require('./scoring.js');
 const teamScoringModule = require('./team-scoring.js');
@@ -22,8 +22,10 @@ const bettingModule = require('./betting.js');
 // Returns { week, seasonType } for logging.
 async function runFullUpdate({ withBetting = false } = {}) {
 
-    var gamesApi = new cfb.GamesApi();
-    var calendar = await withRetry(() => gamesApi.getCalendar(process.env.YEAR), { label: 'getCalendar' });
+    // Cached per-season (modules/cfbd-calendar.js): the week windows are static
+    // intra-day, so frequent polls reuse one fetch instead of spending a CFBD
+    // call each time just to compute the current week.
+    var calendar = await getCalendar(process.env.YEAR);
     var weekNumber = 1;
     var isPostseason = false;
 
