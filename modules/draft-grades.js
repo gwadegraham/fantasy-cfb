@@ -9,6 +9,7 @@
 // drafted.
 
 const { resolveConfig } = require('./scoring-defaults');
+const { pickLogo } = require('../public/logo.js');
 const {
     buildRankingProxy, buildPoolContext, projectTeamPoints, computeLeagueBands,
     spFor, winsFor
@@ -78,7 +79,7 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
         const proj = projByTeam[String(p.team.id)] || { total: 0, projWins: 0, makeProb: 0 };
         return {
             userId: String(p.userId), teamId: String(p.team.id), overall: p.overall, round: p.round,
-            school: p.team.school, logo: (p.team.logos || [])[0],
+            school: p.team.school, logo: pickLogo(p.team.logos),
             points: proj.total, wins: proj.projWins, makeProb: proj.makeProb || 0,
             reg: proj.regular || 0,                                   // regular-season floor
             post: (proj.cfp || 0) + (proj.confChamp || 0) + (proj.bowl || 0)  // postseason upside

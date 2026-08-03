@@ -437,7 +437,7 @@ function renderTicker() {
     // Chronological order (defensive sort in case picks aren't stored ordered).
     var ordered = draft.picks.slice().sort(function (a, b) { return (a.overall || 0) - (b.overall || 0); });
     var chips = ordered.map(function (p) {
-        var logo = (p.team.logos && p.team.logos.length) ? p.team.logos.at(-1) : '';
+        var logo = (p.team.logos && p.team.logos.length) ? ccLogo(p.team.logos) : '';
         return `<a class="pick-chip" href="/team?team=${p.team.id}" target="_blank" rel="noopener"><span class="pk">#${p.overall}</span>`
             + `<img src="${logo}" alt="">${escapeHtml(p.team.school)}</a>`;
     }).join('');
@@ -515,7 +515,7 @@ function renderBoard() {
             var cls = isClock ? 'draft-board-cell on-clock-cell' : 'draft-board-cell';
             if (pick) {
                 var freshCls = (justPickedKey === String(userId) + '-' + round) ? ' just-picked' : '';
-                bodyStr += `<td class="${cls}${freshCls}"><a href="/team?team=${pick.team.id}" target="_blank" rel="noopener" title="${escapeHtml(pick.team.school)}"><img src="${pick.team.logos ? pick.team.logos.at(-1) : ''}" alt="${escapeHtml(pick.team.school)}"></a></td>`;
+                bodyStr += `<td class="${cls}${freshCls}"><a href="/team?team=${pick.team.id}" target="_blank" rel="noopener" title="${escapeHtml(pick.team.school)}"><img src="${pick.team.logos ? ccLogo(pick.team.logos) : ''}" alt="${escapeHtml(pick.team.school)}"></a></td>`;
             } else {
                 bodyStr += `<td class="${cls}"></td>`;
             }

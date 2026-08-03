@@ -662,13 +662,13 @@ async function parseTeamLogos (game, allTeamLogos) {
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            awayTeamLogo = '<img src="' + awayTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
+            awayTeamLogo = '<img src="' + ccLogo(awayTeamLogo.logos) + '" style="padding-right: 5px;">';
         }
 
         if (homeTeamLogo == null) {
             homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            homeTeamLogo = '<img src="' + homeTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
+            homeTeamLogo = '<img src="' + ccLogo(homeTeamLogo.logos) + '" style="padding-right: 5px;">';
         }
 
         const logoResponse = {awayTeamLogo, homeTeamLogo};

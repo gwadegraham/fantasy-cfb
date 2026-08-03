@@ -537,7 +537,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
     const html = `
 
         <div class="team-header">
-            <img class="team-logo" src="${team.logos.at(-1)}" alt="${team.school}" />
+            <img class="team-logo" src="${ccLogo(team.logos)}" alt="${team.school}" />
             <div class="team-meta">
             <div class="team-name-row">
                 <h2 class="team-name">${team.school} ${team.mascot}</h2>
@@ -662,10 +662,10 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 }
             }
 
-            var homeLogo = logos.find((team) => team.id == game.homeId)?.logos.at(-1);
+            var homeLogo = ccLogo((logos.find((team) => team.id == game.homeId))?.logos);
             homeLogo = homeLogo ? `<img src="${homeLogo}" alt="${game.homeTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
-            var awayLogo = logos.find((team) => team.id == game.awayId)?.logos.at(-1);
+            var awayLogo = ccLogo((logos.find((team) => team.id == game.awayId))?.logos);
             awayLogo = awayLogo ? `<img src="${awayLogo}" alt="${game.awayTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
             var pollName = 'Playoff Committee Rankings';
@@ -798,7 +798,7 @@ function renderNextGame(schedule, logos, teamId) {
     var isHome = game.homeId == teamId;
     var oppName = isHome ? game.awayTeam : game.homeTeam;
     var oppId = isHome ? game.awayId : game.homeId;
-    var oppLogoUrl = logos.find(t => t.id == oppId)?.logos.at(-1);
+    var oppLogoUrl = ccLogo((logos.find(t => t.id == oppId))?.logos);
     var oppLogo = oppLogoUrl ? `<img src="${oppLogoUrl}" alt="${oppName}">` : '<i class="fa-solid fa-helmet-un"></i>';
     var prefix = game.neutralSite ? 'vs' : (isHome ? 'vs' : '@');
 
@@ -884,7 +884,7 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
         `;
 
         standings.forEach((team, index) => {
-            var teamLogo = logos.find((logo) => logo.id == team.teamId)?.logos.at(-1);
+            var teamLogo = ccLogo((logos.find((logo) => logo.id == team.teamId))?.logos);
             teamLogo = teamLogo ? `<img src="${teamLogo}" alt="${team.mascot}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
             var isViewedTeam = team.team == teamData.school;

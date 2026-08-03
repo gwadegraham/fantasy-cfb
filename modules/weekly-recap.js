@@ -6,6 +6,8 @@
 // optional upset index) and hands it here. Kept DB-free so it's unit-testable
 // AND so a future weekly-recap EMAIL job can reuse it verbatim — no rework.
 
+const { pickLogo } = require('../public/logo.js');
+
 function ordinal(n) {
     const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -132,7 +134,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
     (mySeason.teams || []).forEach(t => { metaBySchool[t.school] = t; });
     const logoFor = (school) => {
         const m = metaBySchool[school];
-        return m && m.logos && m.logos.length ? m.logos[m.logos.length - 1] : null;
+        return (m && pickLogo(m.logos)) || null;
     };
 
     // Distinct effective weeks across the whole league, ascending — so "the

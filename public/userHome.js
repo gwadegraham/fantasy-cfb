@@ -198,7 +198,7 @@ async function renderBento(data) {
     }
     sh += statTile(String(season.cumulativeScore || 0), 'Total points');
     const bt = bestTeam(season);
-    if (bt && bt.total > 0) sh += statTile(`<img src="${bt.team.logos.at(-1)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    if (bt && bt.total > 0) sh += statTile(`<img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
     statsEl.innerHTML = sh;
 
     if (own) setupEditModal(data, season, true);
@@ -235,14 +235,14 @@ function hydrateRoster(user, activeYear) {
     const g = document.getElementById('uh-glance-roster');
     if (g) {
         g.innerHTML = top && top.pts > 0
-            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${c.t.logos.at(-1)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
             : 'Your 10 teams';
     }
 
     uhDrawer.roster = (body) => {
         const max = (cards[0] && cards[0].pts) || 1;
         const list = cards.map(c => `<a class="uh-rc" href="/team?team=${c.t.id}">
-            <img src="${c.t.logos.at(-1)}" alt="">
+            <img src="${ccLogo(c.t.logos)}" alt="">
             <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
             <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
         body.innerHTML = `<div class="uh-seg">
@@ -338,7 +338,7 @@ async function hydrateGames(user, activeYear) {
                 getGame(seasonType, week, t).then(gs => ({ t, plays: !!(gs && gs.length) })).catch(() => ({ t, plays: false }))));
             const playing = per.filter(x => x.plays).map(x => x.t);
             if (playing.length) {
-                const logos = playing.map(t => `<img src="${t.logos.at(-1)}" alt="">`).join('');
+                const logos = playing.map(t => `<img src="${ccLogo(t.logos)}" alt="">`).join('');
                 g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of your teams · ${escapeHtml(label)}</span>`;
             } else {
                 g.innerHTML = `<span class="uh-glance-sub">No games for your teams · ${escapeHtml(label)}</span>`;
@@ -595,7 +595,7 @@ async function hydrateCaptain(user, activeYear) {
         if (!g) return;
         const t = state.teamId != null ? teamById[state.teamId] : null;
         const lead = t
-            ? `<span class="uh-cap-glance"><img src="${t.logos.at(-1)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
+            ? `<span class="uh-cap-glance"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
@@ -610,7 +610,7 @@ async function hydrateCaptain(user, activeYear) {
                 + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`) + `</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
                     <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">
-                        <img src="${tm.logos.at(-1)}" alt=""><span>${escapeHtml(tm.school)}</span>
+                        <img src="${ccLogo(tm.logos)}" alt=""><span>${escapeHtml(tm.school)}</span>
                     </div>`).join('')}</div>`;
             return;
         }
@@ -620,7 +620,7 @@ async function hydrateCaptain(user, activeYear) {
         container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}</p>
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">
-                    <img src="${t.logos.at(-1)}" alt=""><span>${escapeHtml(t.school)}</span>
+                    <img src="${ccLogo(t.logos)}" alt=""><span>${escapeHtml(t.school)}</span>
                 </button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
             const teamId = Number(btn.getAttribute('data-team'));
@@ -1017,7 +1017,7 @@ function displayTeams(data) {
         });
         const refLink = `/team?team=${team.id}`;
         str += '<tr><th class="team-header sticky-header" scope="row">'
-            + '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + escapeHtml(team.mascot) + '">'
+            + '<a href="' + refLink + '"><img src="' + ccLogo(team.logos) + '" alt="' + escapeHtml(team.mascot) + '">'
             + escapeHtml(team.school) + '</a></th>'
             + cells
             + '<th class="sticky-header-score">' + totalScore + '</th></tr>';
@@ -1170,13 +1170,13 @@ async function getTeamLogos (game) {
         if (awayTeamLogo == null) {
             awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            awayTeamLogo = '<img src="' + awayTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
+            awayTeamLogo = '<img src="' + ccLogo(awayTeamLogo.logos) + '" style="padding-right: 5px;">';
         }
 
         if (homeTeamLogo == null) {
             homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
         } else {
-            homeTeamLogo = '<img src="' + homeTeamLogo.logos.at(-1) + '" style="padding-right: 5px;">';
+            homeTeamLogo = '<img src="' + ccLogo(homeTeamLogo.logos) + '" style="padding-right: 5px;">';
         }
 
         const logoResponse = {awayTeamLogo, homeTeamLogo};
@@ -1280,7 +1280,7 @@ async function batchTeamLogos(games) {
         });
         if (res.status === 200) {
             (await res.json()).forEach(t => {
-                if (t && t.logos && t.logos.length) map[t.id] = '<img src="' + t.logos.at(-1) + '" style="padding-right: 5px;">';
+                if (t && t.logos && t.logos.length) map[t.id] = '<img src="' + ccLogo(t.logos) + '" style="padding-right: 5px;">';
             });
         }
     } catch (e) { /* fall back to helmet icons */ }
