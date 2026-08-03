@@ -37,7 +37,6 @@ const JOB_NAME = 'live-scores';
 // Tunables (env-overridable).
 const MAX_GAME_HOURS = Number(process.env.LIVE_POLL_MAX_GAME_HOURS) || 6;
 const CALL_BUFFER = Number(process.env.LIVE_POLL_CALL_BUFFER) || 100;
-const INFO_TTL_MS = Number(process.env.LIVE_POLL_INFO_TTL_MS) || 30 * 60 * 1000;
 
 // ---- pure decision helpers (unit-tested) ------------------------------------
 
@@ -87,25 +86,24 @@ function centralNow(now) {
     return { dow, minute: Number(map.minute) };
 }
 
-// ---- CFBD remaining-calls, cached so the ceiling check is ~free -------------
-// remainingCalls only decreases as calls are spent, so between refreshes we
-// subtract the polls we've made to stay on the conservative side.
-let infoState = { at: 0, remaining: null, pollsSince: 0 };
+// ---- CFBD remaining-calls, learned for free from the poll response ----------
+// CFBD returns the remaining monthly call count in the `x-calllimit-remaining`
+// header on every response; runFullUpdate surfaces it from the games pull. So
+// after the first poll this stays fresh with zero extra calls. On a cold start
+// (process just booted, nothing polled yet) we seed it once from /games/info so
+// we never poll blind near the ceiling.
+let lastKnownRemaining = null;
 
-async function remainingCalls(nowMs) {
-    if (infoState.remaining == null || (nowMs - infoState.at) >= INFO_TTL_MS) {
-        try {
-            const res = await internalFetch(`${process.env.URL}/games/info`, { headers: { Accept: 'application/json' } });
-            const data = await res.json();
-            if (res.ok && data && typeof data.remainingCalls === 'number') {
-                infoState = { at: nowMs, remaining: data.remainingCalls, pollsSince: 0 };
-            }
-        } catch (e) {
-            console.log('live-poll: remainingCalls check failed:', e.message);
-        }
+async function currentRemaining() {
+    if (lastKnownRemaining != null) return lastKnownRemaining;
+    try {
+        const res = await internalFetch(`${process.env.URL}/games/info`, { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        if (res.ok && data && typeof data.remainingCalls === 'number') lastKnownRemaining = data.remainingCalls;
+    } catch (e) {
+        console.log('live-poll: seed remainingCalls failed:', e.message);
     }
-    if (infoState.remaining == null) return null;
-    return infoState.remaining - infoState.pollsSince;
+    return lastKnownRemaining;
 }
 
 // ---- orchestration ----------------------------------------------------------
@@ -132,8 +130,8 @@ async function run() {
     const gameLive = anyGameInProgress(candidates, nowMs, MAX_GAME_HOURS);
     if (!gameLive) return { skipped: 'no game in progress' };
 
-    // Hard ceiling (authoritative CFBD remainingCalls, cached).
-    const remaining = await remainingCalls(nowMs);
+    // Hard ceiling (authoritative CFBD remainingCalls).
+    const remaining = await currentRemaining();
     const decision = decide({ dow, minute, gameLive, remainingCalls: remaining, buffer: CALL_BUFFER });
     if (!decision.poll) {
         console.log(`live-poll skip — ${decision.reason}`);
@@ -145,7 +143,8 @@ async function run() {
     const id = await startRun(JOB_NAME, { season: process.env.YEAR });
     try {
         const r = await runFullUpdate({ withBetting: false });
-        infoState.pollsSince += 1;
+        // Keep the ceiling fresh for free from this poll's own CFBD response.
+        if (typeof r.remainingCalls === 'number') lastKnownRemaining = r.remainingCalls;
         await finishRun(id, 'success',
             `Live update ${r.seasonType} wk ${r.week} · ${r.gamesNew} new / ${r.gamesUpdated} updated`,
             { week: r.week, seasonType: r.seasonType });
@@ -162,7 +161,7 @@ module.exports = {
     run, JOB_NAME,
     // exported for tests
     isLivePollDay, isOnCadence, anyGameInProgress, decide, centralNow,
-    _resetInfoState: () => { infoState = { at: 0, remaining: null, pollsSince: 0 }; }
+    _resetRemaining: () => { lastKnownRemaining = null; }
 };
 
 if (require.main === module) { run().then(r => { console.log('live-poll result:', r); process.exit(0); }); }

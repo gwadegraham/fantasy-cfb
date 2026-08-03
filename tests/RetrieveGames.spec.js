@@ -33,13 +33,19 @@ describe('dedupeGamesById', () => {
 });
 
 describe('massCreateInputError', () => {
-    it('rejects a missing week (the dropdown-unselected case that crashed the server)', () => {
-        expect(massCreateInputError('', 'regular')).toBe('week and seasonType are required');
-        expect(massCreateInputError(undefined, 'regular')).toBe('week and seasonType are required');
+    it('rejects a missing week for regular season (the dropdown-unselected case that crashed the server)', () => {
+        expect(massCreateInputError('', 'regular')).toBe('week is required for regular-season requests');
+        expect(massCreateInputError(undefined, 'regular')).toBe('week is required for regular-season requests');
     });
 
     it('rejects a missing seasonType', () => {
-        expect(massCreateInputError('5', '')).toBe('week and seasonType are required');
+        expect(massCreateInputError('5', '')).toBe('seasonType is required');
+        expect(massCreateInputError('', '')).toBe('seasonType is required');
+    });
+
+    it('allows a missing week for postseason (whole slate pulled in one call)', () => {
+        expect(massCreateInputError('', 'postseason')).toBeNull();
+        expect(massCreateInputError(undefined, 'postseason')).toBeNull();
     });
 
     it('passes valid inputs', () => {

@@ -117,22 +117,22 @@ router.post('/week/mass-create', async (req, res) => {
     var allNewGames = [];
     var allExistingGames = [];
     var year = process.env.YEAR;
-    var opts = {
-        'week': req.body.week,
-        'seasonType': req.body.seasonType,
-        'division': 'fbs'
-    };
 
     // Reject a missing week/seasonType before hitting CFBD: an empty week makes
     // CFBD return a 400 JSON object instead of an array, and iterating that
     // object below throws "not iterable" — an unhandled rejection in this async
-    // handler, which crashes the Node process.
+    // handler, which crashes the Node process. (Week is optional for postseason —
+    // see massCreateInputError.)
     var inputError = massCreateInputError(req.body.week, req.body.seasonType);
     if (inputError) {
         return res.status(400).json({ message: inputError });
     }
 
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}&week=${req.body.week}&seasonType=${req.body.seasonType}&division=fbs`, {
+    // Regular season fetches a single week; postseason omits the week to pull
+    // the whole slate (every CFP round) in one call. `classification` is the
+    // current CFBD param (the old `division` alias still works but is legacy).
+    const weekParam = req.body.seasonType === 'postseason' ? '' : `&week=${req.body.week}`;
+    const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}${weekParam}&seasonType=${req.body.seasonType}&classification=fbs`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -146,6 +146,11 @@ router.post('/week/mass-create', async (req, res) => {
     if (responseError) {
         return res.status(400).json({ message: responseError });
     }
+
+    // CFBD reports remaining monthly calls on every response — surface it so the
+    // live poller's ceiling can read it for free instead of a separate /info hit.
+    const remHeader = response.headers.get('x-calllimit-remaining');
+    const remainingCalls = remHeader != null ? Number(remHeader) : undefined;
 
     for (const game of gameData) {
         var alreadyExists = await Game.find({ id: game.id });
@@ -205,7 +210,8 @@ router.post('/week/mass-create', async (req, res) => {
 
             var returnedGames = {
                 newGames: newGames,
-                existingGames: allExistingGames
+                existingGames: allExistingGames,
+                remainingCalls: remainingCalls
             };
 
             return res.status(201).json(returnedGames);
@@ -228,7 +234,7 @@ router.post('/:season/schedule', async (req, res) => {
     }
     const season = req.params.season;
 
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=regular&division=fbs`, {
+    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=regular&classification=fbs`, {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
     });

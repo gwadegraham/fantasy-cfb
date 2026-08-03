@@ -1,13 +1,4 @@
 const { internalFetch } = require('./internal-api');
-const { withRetry } = require('./retry');
-// Configure API key authorization: ApiKeyAuth
-const CFBD_API_KEY = process.env.CFBD_API_KEY;
-var cfb = require('cfb.js');
-var defaultClient = cfb.ApiClient.instance;
-var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
-ApiKeyAuth.apiKey = CFBD_API_KEY;
-
-var gamesApi = new cfb.GamesApi();
 
 // Dedupes games by id. Two teams in the same league can play each other, so the
 // same game gets collected twice; [...new Set(objects)] does NOT dedupe those
@@ -31,8 +22,14 @@ function dedupeGamesById(games) {
 // rejected BEFORE calling CFBD: an empty week makes CFBD return a 400 JSON
 // object instead of an array, and iterating that object throws "not iterable"
 // — an unhandled rejection that crashes the Node process.
+//
+// seasonType is always required. A week is required for regular-season pulls (we
+// fetch one week at a time), but NOT for postseason: CFBD returns the whole
+// postseason slate in one call when week is omitted, and it can span several
+// weeks (12-team CFP), so we pull every round at once.
 function massCreateInputError(week, seasonType) {
-    if (!week || !seasonType) return 'week and seasonType are required';
+    if (!seasonType) return 'seasonType is required';
+    if (seasonType !== 'postseason' && !week) return 'week is required for regular-season requests';
     return null;
 }
 
@@ -70,32 +67,14 @@ module.exports = {
         return uniqueTeams;
     },
 
-    retrieveGames: async (teams, week) => {
-        var allGameData = [];
-        var year = process.env.YEAR;
-        var opts = {
-            'week': week,
-            'seasonType': "regular",
-            'division': "fbs"
-        };
-
-        for (const team of teams) {
-            opts.team = team;
-
-            try {
-                var gameData = await withRetry(() => gamesApi.getGames(year, opts), { label: `getGames(${team})` });
-                for (let x = 0; x < gameData.length; x++) {
-                    allGameData.push(gameData[x]);
-                }
-            } catch (err) {
-                console.log(`❌ Skipping team ${team} after repeated getGames failures: ${err.message || err}`);
-            }
-        }
-
-        return dedupeGamesById(allGameData);
-    },
-
+    // Ingest a whole slate in ONE CFBD call via the /games/week/mass-create
+    // route. Regular season fetches a single week; postseason omits the week to
+    // pull every CFP round at once. Returns { newGames, existingGames,
+    // remainingCalls } — remainingCalls comes from CFBD's x-calllimit-remaining
+    // header so callers can track the budget for free.
     massRetrieveGames: async (week, seasonType) => {
+        const payload = { seasonType };
+        if (week != null && week !== '') payload.week = String(week);
 
         const response = await internalFetch(`${process.env.URL}/games/week/mass-create`, {
             method: 'POST',
@@ -103,10 +82,7 @@ module.exports = {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
             },
-            body: `{
-            "week": "${week}",
-            "seasonType": "${seasonType}"
-            }`
+            body: JSON.stringify(payload)
         });
 
         var dataToReturn;
@@ -121,31 +97,6 @@ module.exports = {
         });
 
         return dataToReturn;
-    },
-
-    retrievePostseasonGames: async (teams, week) => {
-        var allGameData = [];
-        var year = process.env.YEAR;
-        var opts = {
-            'week': week,
-            'seasonType': "postseason",
-            'division': "fbs"
-        };
-
-        for (const team of teams) {
-            opts.team = team;
-
-            try {
-                var gameData = await withRetry(() => gamesApi.getGames(year, opts), { label: `getGames(${team})` });
-                for (let x = 0; x < gameData.length; x++) {
-                    allGameData.push(gameData[x]);
-                }
-            } catch (err) {
-                console.log(`❌ Skipping team ${team} after repeated getGames failures: ${err.message || err}`);
-            }
-        }
-
-        return dedupeGamesById(allGameData);
     },
 
     retrieveGameBySeasonWeekTeam: async (season, week, team) => {
@@ -171,29 +122,6 @@ module.exports = {
         }
     
         return games;
-    },
-
-    saveGames: async (games) => {
-
-        for (const game of games) {
-            var savedGamePromise = await internalFetch(process.env.URL + "/games", {
-                method: 'POST',
-                headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(game),
-            });
-
-            var savedGame = await savedGamePromise;
-            var response = await savedGame.json();
-
-            if (savedGame.status == 201) {
-                console.log("successfully created game with ID: ", response.id);
-            } else {
-                console.log(response.message);
-            }
-        }
     },
 
     // Exported for testing.
