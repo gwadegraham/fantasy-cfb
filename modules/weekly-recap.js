@@ -129,13 +129,12 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
         .map(u => { const s = seasonOf(u, season); return s ? { userId: String(u._id), weekly: s.weeklyScore || [] } : null; })
         .filter(Boolean);
 
-    // Roster meta by school name (scoreByTeam[].team is the school string).
-    const metaBySchool = {};
-    (mySeason.teams || []).forEach(t => { metaBySchool[t.school] = t; });
-    const logoFor = (school) => {
-        const m = metaBySchool[school];
-        return (m && pickLogo(m.logos)) || null;
-    };
+    // Roster meta by stable teamId (rename-safe), with a school-name fallback for
+    // any legacy scoreByTeam entry stored without a teamId.
+    const metaById = {}, metaBySchool = {};
+    (mySeason.teams || []).forEach(t => { metaById[t.id] = t; metaBySchool[t.school] = t; });
+    const metaOf = (teamId, school) => (teamId != null && metaById[teamId]) || metaBySchool[school] || null;
+    const logoOf = (teamId, school) => { const m = metaOf(teamId, school); return (m && pickLogo(m.logos)) || null; };
 
     // Distinct effective weeks across the whole league, ascending — so "the
     // previous week" for rank movement is the real prior week, not W-1 (which
@@ -203,7 +202,8 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
         // so the MVP is a team's total for the week, not a single game.
         const teamAgg = {};
         (entry.scoreByTeam || []).forEach(st => {
-            const t = teamAgg[st.team] || (teamAgg[st.team] = { school: st.team, score: 0, logo: logoFor(st.team) });
+            const key = st.teamId != null ? 'id:' + st.teamId : 'nm:' + st.team;
+            const t = teamAgg[key] || (teamAgg[key] = { school: st.team, score: 0, logo: logoOf(st.teamId, st.team) });
             t.score = round(t.score + (st.score || 0));
         });
         const teams = Object.values(teamAgg);
@@ -225,7 +225,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
             (entry.scoreByTeam || []).forEach(st => {
                 const u = st.gameId != null ? upsetByGameId[st.gameId] : null;
                 if (u && u.winner === st.team && (!upset || u.margin > upset.margin)) {
-                    upset = { team: st.team, loser: u.loser, loserRank: u.loserRank, margin: u.margin, fantasy: round(st.score || 0), logo: logoFor(st.team) };
+                    upset = { team: st.team, loser: u.loser, loserRank: u.loserRank, margin: u.margin, fantasy: round(st.score || 0), logo: logoOf(st.teamId, st.team) };
                 }
             });
         }

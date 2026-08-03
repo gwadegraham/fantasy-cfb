@@ -784,7 +784,7 @@ function bestTeam(season) {
     let best = null;
     (season.teams || []).forEach(t => {
         let total = 0;
-        weekly.forEach(w => (w.scoreByTeam || []).forEach(st => { if (st.team === t.school) total += (st.score || 0); }));
+        weekly.forEach(w => (w.scoreByTeam || []).forEach(st => { if (Number(st.teamId) === Number(t.id) || st.team === t.school) total += (st.score || 0); }));
         if (!best || total > best.total) best = { team: t, total };
     });
     return best;
@@ -973,9 +973,11 @@ function weeklyColumns(season) {
 }
 
 // The points a team banked in one column (bye / not yet played -> null).
-function columnTeamScore(entry, teamSchool) {
+// Matches by stable teamId (rename-safe), falling back to the school string for
+// any legacy entry stored without a teamId. `team` is the roster team {id, school}.
+function columnTeamScore(entry, team) {
     if (!entry) return null;
-    const games = (entry.scoreByTeam || []).filter(o => o.team === teamSchool);
+    const games = (entry.scoreByTeam || []).filter(o => Number(o.teamId) === Number(team.id) || o.team === team.school);
     if (!games.length) return null;
     return games.reduce((s, g) => s + (g.score || 0), 0);
 }
@@ -999,7 +1001,7 @@ function displayTeams(data) {
     // Highlight the season's best single team-game and best week (top weekly
     // total) — the standout cells, tie-inclusive.
     let bestGame = 0;
-    teams.forEach(t => columns.forEach(c => { const s = columnTeamScore(c.entry, t.school); if (s != null && s > bestGame) bestGame = s; }));
+    teams.forEach(t => columns.forEach(c => { const s = columnTeamScore(c.entry, t); if (s != null && s > bestGame) bestGame = s; }));
     let bestWeek = 0;
     columns.forEach(c => { if (c.entry && (c.entry.score || 0) > bestWeek) bestWeek = c.entry.score || 0; });
 
@@ -1008,7 +1010,7 @@ function displayTeams(data) {
         let totalScore = 0;
         let cells = '';
         columns.forEach(c => {
-            const s = columnTeamScore(c.entry, team.school);
+            const s = columnTeamScore(c.entry, team);
             if (!c.entry) { cells += '<td class="cell-future"></td>'; return; }   // week not played yet
             if (s == null) { cells += '<td class="cell-bye">–</td>'; return; }    // bye / no game
             totalScore += s;
