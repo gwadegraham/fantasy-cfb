@@ -216,6 +216,17 @@ async function renderBento(data) {
     hydrateGames(data, activeYear);
 }
 
+// Captain's "C" patch — a gold badge (matching the matchup's ★2×) marking the
+// team a manager is doubling. Inline SVG so it scales crisply at any row size.
+function captainPatch(px) {
+    return `<svg class="uh-cap-patch" viewBox="0 0 24 24" width="${px}" height="${px}" role="img" aria-label="Captain">`
+        + '<title>Captain</title>'
+        + '<rect x="1.5" y="1.5" width="21" height="21" rx="5.5" fill="#E0B341"/>'
+        + '<text x="12" y="14.6" text-anchor="middle" font-family="system-ui,-apple-system,\'Segoe UI\',sans-serif" font-weight="800" font-size="13" fill="#20263C">C</text>'
+        + '<text x="12" y="20.4" text-anchor="middle" font-family="system-ui,-apple-system,\'Segoe UI\',sans-serif" font-size="4.4" letter-spacing="0.3" fill="#20263C">★★★★</text>'
+        + '</svg>';
+}
+
 // Roster → Roster tile. Glance shows your top performer; drawer lists all teams
 // as cards (points + share bar) then the full week-by-week grid (reused
 // displayTeams). Sums per-team points from this season's weekly scoreByTeam.
@@ -232,10 +243,19 @@ function hydrateRoster(user, activeYear) {
     const cards = teams.map(t => ({ t, pts: Math.round((totalById[t.id] || 0) * 10) / 10 })).sort((a, b) => b.pts - a.pts);
     const top = cards[0];
 
+    // The team currently being doubled: the effective captain of the latest
+    // scored regular week (same source the matchup card badges). Only present for
+    // captain-enabled leagues once a week has scored, so it self-gates.
+    const capEntry = (season.weeklyScore || [])
+        .filter(e => e.season !== 'postseason' && e.captainTeamId != null)
+        .sort((a, b) => Number(b.week) - Number(a.week))[0];
+    const captainId = capEntry ? Number(capEntry.captainTeamId) : null;
+    const capMark = (id, px) => (captainId != null && Number(id) === captainId) ? captainPatch(px) : '';
+
     const g = document.getElementById('uh-glance-roster');
     if (g) {
         g.innerHTML = top && top.pts > 0
-            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${c.t.logos.at(-1)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${c.t.logos.at(-1)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${capMark(c.t.id, 13)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
             : 'Your 10 teams';
     }
 
@@ -244,7 +264,7 @@ function hydrateRoster(user, activeYear) {
         const list = cards.map(c => `<a class="uh-rc" href="/team?team=${c.t.id}">
             <img src="${c.t.logos.at(-1)}" alt="">
             <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
-            <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
+            ${capMark(c.t.id, 16)}<span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
         body.innerHTML = `<div class="uh-seg">
                 <button type="button" class="uh-seg-btn active" data-view="cards">Sorted</button>
                 <button type="button" class="uh-seg-btn" data-view="grid">Week by week</button>

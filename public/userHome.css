@@ -714,6 +714,9 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-rg-row img { width: 22px; height: 22px; object-fit: contain; flex: none; }
 .uh-rg-nm { flex: 1; min-width: 0; color: #C9CEE6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .uh-rg-star { color: #E0B341; font-size: 11px; }
+/* Captain's C patch marker (roster glance + drawer). */
+.uh-cap-patch { flex: none; vertical-align: -2px; margin-left: 4px; }
+.uh-rc > .uh-cap-patch { margin-left: 0; margin-right: 8px; align-self: center; }
 .uh-rg-pts { font-weight: 800; color: #F4F6FB; font-variant-numeric: tabular-nums; flex: none; }
 
 .uh-cap-sub { display: block; color: #767D9C; font-size: 12px; margin-top: 6px; }
