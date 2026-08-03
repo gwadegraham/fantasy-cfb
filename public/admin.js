@@ -263,7 +263,8 @@ function timeAgo(iso) {
 }
 
 var JOB_LABELS = {
-    'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday'
+    'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
+    'live-scores': 'Live'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -288,8 +289,16 @@ function renderAdminStatus(el, s, api, year, jobs) {
     // Automated-job last-run summary (green success, red error, amber running).
     var jobsBlock = '';
     if (jobs && jobs.length) {
-        var order = ['daily-scores', 'saturday-scores', 'sunday-scores'];
-        var sorted = jobs.slice().sort(function (a, b) { return order.indexOf(a.jobName) - order.indexOf(b.jobName); });
+        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores'];
+        // Collapse to the latest run per job — the live poller writes a run every
+        // few minutes on game days, so showing raw history would bury the others.
+        var latest = {};
+        jobs.forEach(function (j) {
+            var prev = latest[j.jobName];
+            if (!prev || new Date(j.startedAt) > new Date(prev.startedAt)) latest[j.jobName] = j;
+        });
+        var sorted = Object.keys(latest).map(function (k) { return latest[k]; })
+            .sort(function (a, b) { return order.indexOf(a.jobName) - order.indexOf(b.jobName); });
         var jobItems = sorted.map(function (j) {
             var dot = j.status === 'success' ? 'g' : (j.status === 'error' ? 'r' : 'a');
             var label = JOB_LABELS[j.jobName] || j.jobName;
