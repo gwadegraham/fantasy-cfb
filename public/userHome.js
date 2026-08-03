@@ -226,7 +226,7 @@ function captainPatch(px) {
     return `<svg class="uh-cap-patch" viewBox="0 0 24 24" width="${px}" height="${px}" role="img" aria-label="Captain">`
         + '<title>Captain</title>'
         + '<rect x="1.5" y="1.5" width="21" height="21" rx="5.5" fill="#E0B341"/>'
-        + '<path d="M16.3 7 L16.3 6.6 Q16.3 6 15.7 6 L9.5 6 Q7 6 7 8.5 L7 10.5 Q7 13 9.5 13 L15.7 13 Q16.3 13 16.3 12.4 L16.3 12" fill="none" stroke="#20263C" stroke-width="3.2" stroke-linecap="butt" stroke-linejoin="round"/>'
+        + '<path d="M6 4H18V7H9V11.5H18V14.5H6Z" fill="#20263C"/>'
         + `<g fill="#20263C">${stars}</g>`
         + '</svg>';
 }
