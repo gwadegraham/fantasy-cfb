@@ -283,24 +283,21 @@ router.patch('/:id', getUser, async (req, res) => {
 //Updating new Season & Teams for One
 router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
 
-    var newSeason = {
-        "season": req.body.season,
-        "teams": req.body.teams
-    };
-
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
     res.user.lastUpdated = centralTime;
 
-    console.log("res.user", res.user)
-
     if (req.body.season != null && req.body.teams != null) {
-        var seasonExist = res.user.seasons.findIndex(x => x.season == newSeason.season);
+        var seasonExist = res.user.seasons.findIndex(x => x.season == req.body.season);
 
         if (seasonExist > -1) {
-            res.user.seasons[seasonExist] = newSeason;
+            // Merge: replace only the drafted teams and keep the rest of the
+            // season (franchiseName, captains, cumulativeScore, weeklyScore,
+            // draftPosition). Overwriting the whole subdoc wiped those.
+            res.user.seasons[seasonExist].teams = req.body.teams;
+            res.user.markModified('seasons');
         } else {
-            res.user.seasons.push(newSeason);
+            res.user.seasons.push({ season: req.body.season, teams: req.body.teams });
         }
     }
 
