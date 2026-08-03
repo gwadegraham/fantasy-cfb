@@ -1,4 +1,25 @@
 const { buildJobEmailHtml } = require('../modules/job-mailer');
+const { emailOnSuccess } = require('../modules/score-job');
+
+describe('emailOnSuccess (scoring jobs are failure-only by default)', () => {
+    const prev = process.env.JOB_EMAIL_ON_SUCCESS;
+    afterEach(() => {
+        if (prev === undefined) delete process.env.JOB_EMAIL_ON_SUCCESS;
+        else process.env.JOB_EMAIL_ON_SUCCESS = prev;
+    });
+
+    it('defaults to off (no email on a healthy run)', () => {
+        delete process.env.JOB_EMAIL_ON_SUCCESS;
+        expect(emailOnSuccess()).toBe(false);
+    });
+
+    it('opts in only for the exact string "true"', () => {
+        process.env.JOB_EMAIL_ON_SUCCESS = 'true';
+        expect(emailOnSuccess()).toBe(true);
+        process.env.JOB_EMAIL_ON_SUCCESS = 'yes';
+        expect(emailOnSuccess()).toBe(false);
+    });
+});
 
 describe('buildJobEmailHtml', () => {
     it('renders a success run report with the stat rows', () => {
