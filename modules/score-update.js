@@ -14,6 +14,16 @@ const teamScoringModule = require('./team-scoring.js');
 const recordsModule = require('./records.js');
 const bettingModule = require('./betting.js');
 
+// Distinct postseason weeks present in a mass-pull result, ascending. The
+// 12-team CFP spreads across several postseason weeks and scoring keys entries
+// by (season, week), so we score each one. Falls back to [1] when no weeks are
+// present (e.g. schedule not loaded yet) to preserve the historical behavior.
+function postseasonWeeksToScore(massResult) {
+    const games = [].concat((massResult && massResult.newGames) || [], (massResult && massResult.existingGames) || []);
+    const weeks = [...new Set(games.map(g => g.week).filter(w => w != null))].sort((a, b) => a - b);
+    return weeks.length ? weeks : [1];
+}
+
 // The shared "update everything for the current week" pipeline that the daily /
 // Saturday / Sunday jobs all run. Determines the current week from the CFBD
 // calendar, ensures rankings exist, pulls games, then updates scores, cumulative
@@ -103,18 +113,25 @@ async function runFullUpdate({ withBetting = false } = {}) {
     var teamCount = 0;
     var gamesNew = 0;
     var gamesUpdated = 0;
+    var remainingCalls;
 
     if (isPostseason) {
-        var teams = await retrieveGamesModule.retrieveTeams();
-        teamCount = teams.length;
-        console.log("number of returned teams", teamCount);
+        // One CFBD call pulls the whole postseason slate (all CFP rounds).
+        var games = await retrieveGamesModule.massRetrieveGames(null, "postseason");
+        gamesNew = games.newGames.length;
+        gamesUpdated = games.existingGames.length;
+        remainingCalls = games.remainingCalls;
+        console.log("number of returned new games", gamesNew);
+        console.log("number of returned existing games", gamesUpdated);
 
-        var games = await retrieveGamesModule.retrievePostseasonGames(teams, 1);
-        gamesNew = games.length;
-        console.log("number of returned games", gamesNew);
+        // The 12-team CFP spans several postseason weeks, and scoring keys each
+        // entry by (season, week) — so score every week present, not just week 1.
+        var postWeeks = postseasonWeeksToScore(games);
+        for (const pw of postWeeks) {
+            await scoringModule.updateScores("postseason", pw);
+        }
+        week = postWeeks[postWeeks.length - 1];   // report the latest for logging
 
-        await retrieveGamesModule.saveGames(games);
-        await scoringModule.updateScores("postseason", 1);
         await scoringModule.updateCumulativeScores();
         await teamScoringModule.updateAllTeamScores();
         await recordsModule.updateAllTeamRecords();
@@ -127,6 +144,7 @@ async function runFullUpdate({ withBetting = false } = {}) {
         var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
         gamesNew = games.newGames.length;
         gamesUpdated = games.existingGames.length;
+        remainingCalls = games.remainingCalls;
         console.log("number of returned new games", gamesNew);
         console.log("number of returned existing games", gamesUpdated);
 
@@ -137,7 +155,7 @@ async function runFullUpdate({ withBetting = false } = {}) {
         if (withBetting) await bettingModule.updateAllBettingLines();
     }
 
-    return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated };
+    return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-module.exports = { runFullUpdate };
+module.exports = { runFullUpdate, postseasonWeeksToScore };
