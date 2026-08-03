@@ -16,8 +16,10 @@ const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
 
-// The scoring jobs that actually refresh standings data (see modules/score-job.js).
-const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores'];
+// The scoring jobs that actually refresh standings data (see modules/score-job.js
+// and modules/live-poll.js). 'live-scores' is the game-day live poller, so the
+// "data as of" time advances during live play too.
+const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores'];
 
 // The honest "data as of" time for the standings: the most recent SUCCESSFUL
 // scoring run. Unlike user.lastUpdated — which is bumped by unrelated writes

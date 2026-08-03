@@ -15,19 +15,37 @@ const JOB_SCHEDULES = [
     { job: 'enrichment', modulePath: '../update-enrichment-job', rule: { dayOfWeek: 2, hour: 5, minute: 30 } }
 ];
 
+// Opt-in game-day live poller (modules/live-poll.js). Fires every 10 min on
+// Thu/Fri/Sat; the module's own gates decide whether to actually spend a CFBD
+// call (game in progress + cadence + under the call ceiling). Kept OUT of the
+// always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true so it can be
+// switched on/off independently of the core scoring jobs.
+const LIVE_POLL_SCHEDULE = {
+    job: 'live-scores', modulePath: '../modules/live-poll',
+    rule: { dayOfWeek: [4, 5, 6], minute: [0, 10, 20, 30, 40, 50] }
+};
+
+function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }
+
 function toRule(spec) {
     const r = new schedule.RecurrenceRule();
     if (spec.dayOfWeek != null) r.dayOfWeek = spec.dayOfWeek;
-    r.hour = spec.hour;
-    r.minute = spec.minute;
+    // Leave hour unset for jobs that run every hour (e.g. the live poller); an
+    // unset field means "any" in node-schedule.
+    if (spec.hour != null) r.hour = spec.hour;
+    if (spec.minute != null) r.minute = spec.minute;
     r.tz = TZ;
     return r;
 }
 
 // Registers the recurring jobs. Each job's own run() already logs and emails;
-// we just guard against an unhandled rejection here.
+// we just guard against an unhandled rejection here. The live poller is included
+// only when LIVE_POLL_ENABLED=true.
 function start() {
-    JOB_SCHEDULES.forEach(function (s) {
+    const schedules = JOB_SCHEDULES.slice();
+    if (livePollEnabled()) schedules.push(LIVE_POLL_SCHEDULE);
+
+    schedules.forEach(function (s) {
         const mod = require(s.modulePath);
         schedule.scheduleJob(toRule(s.rule), function () {
             Promise.resolve().then(function () { return mod.run(); })
@@ -37,4 +55,4 @@ function start() {
     });
 }
 
-module.exports = { start, JOB_SCHEDULES, TZ, toRule };
+module.exports = { start, JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule };
