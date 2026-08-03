@@ -1,4 +1,7 @@
-const { captainForWeek, autoCaptainTeamId, resolveCaptain, captainWeeklyBonus } = require('../modules/captain');
+const {
+    captainForWeek, autoCaptainTeamId, resolveCaptain, captainWeeklyBonus,
+    captainWeekWindow, captainLockMs, captainFocusWeek
+} = require('../modules/captain');
 
 const roster = [{ id: 1, school: 'Oregon' }, { id: 2, school: 'Duke' }, { id: 3, school: 'Iowa' }];
 
@@ -51,5 +54,98 @@ describe('captainWeeklyBonus', () => {
     test('no captain / not found → 0', () => {
         expect(captainWeeklyBonus([{ teamId: 1, score: 10 }], null, 2)).toBe(0);
         expect(captainWeeklyBonus([{ teamId: 1, score: 10 }], 99, 2)).toBe(0);
+    });
+});
+
+const iso = (s) => new Date(s).toISOString();
+const ms = (s) => Date.parse(s);
+
+describe('captainWeekWindow', () => {
+    // Manager rosters teams 1 & 3. Week games below involve various teams.
+    const games = [
+        { homeId: 1, awayId: 50, startDate: iso('2026-09-05T16:00:00Z'), startTimeTbd: false }, // team 1, Sat 11am CT
+        { homeId: 3, awayId: 51, startDate: iso('2026-09-04T23:30:00Z'), startTimeTbd: false }, // team 3, Fri 6:30pm CT (earliest)
+        { homeId: 9, awayId: 8, startDate: iso('2026-09-03T20:00:00Z'), startTimeTbd: false }   // neither team — ignored
+    ];
+
+    test('first = earliest of the manager’s own games; last = latest', () => {
+        const w = captainWeekWindow(games, [1, 3]);
+        expect(w.first).toBe(ms('2026-09-04T23:30:00Z'));   // team 3 Friday
+        expect(w.last).toBe(ms('2026-09-05T16:00:00Z'));    // team 1 Saturday
+    });
+
+    test('ignores games not involving the manager’s teams', () => {
+        expect(captainWeekWindow(games, [9]).first).toBe(ms('2026-09-03T20:00:00Z'));
+    });
+
+    test('null when the manager has no game that week', () => {
+        expect(captainWeekWindow(games, [77])).toBeNull();
+        expect(captainWeekWindow([], [1])).toBeNull();
+    });
+
+    test('excludes TBD-kickoff games while a firm-time game exists (no early lock)', () => {
+        const g = [
+            { homeId: 1, awayId: 5, startDate: iso('2026-09-05T00:00:00Z'), startTimeTbd: true },  // placeholder, would lock too early
+            { homeId: 3, awayId: 6, startDate: iso('2026-09-05T19:00:00Z'), startTimeTbd: false }
+        ];
+        expect(captainWeekWindow(g, [1, 3]).first).toBe(ms('2026-09-05T19:00:00Z'));
+    });
+
+    test('falls back to TBD games when no firm-time game exists', () => {
+        const g = [{ homeId: 1, awayId: 5, startDate: iso('2026-09-05T17:00:00Z'), startTimeTbd: true }];
+        expect(captainWeekWindow(g, [1]).first).toBe(ms('2026-09-05T17:00:00Z'));
+    });
+});
+
+describe('captainLockMs', () => {
+    test('is the manager’s earliest kickoff', () => {
+        const g = [
+            { homeId: 1, awayId: 5, startDate: iso('2026-09-05T16:00:00Z'), startTimeTbd: false },
+            { homeId: 3, awayId: 6, startDate: iso('2026-09-04T23:30:00Z'), startTimeTbd: false }
+        ];
+        expect(captainLockMs(g, [1, 3])).toBe(ms('2026-09-04T23:30:00Z'));
+    });
+    test('null on a bye', () => {
+        expect(captainLockMs([], [1])).toBeNull();
+    });
+});
+
+describe('captainFocusWeek', () => {
+    const GRACE = 6 * 3600 * 1000;
+    // Manager (team 1) plays wk1 Sat 9/5, wk2 Sat 9/12.
+    const games = [
+        { seasonType: 'regular', week: 1, homeId: 1, awayId: 5, startDate: iso('2026-09-05T17:00:00Z'), startTimeTbd: false },
+        { seasonType: 'regular', week: 2, homeId: 1, awayId: 6, startDate: iso('2026-09-12T17:00:00Z'), startTimeTbd: false }
+    ];
+
+    test('before wk1 kickoff → focus wk1 (editable)', () => {
+        const f = captainFocusWeek(games, [1], ms('2026-09-02T12:00:00Z'), GRACE);
+        expect(f.week).toBe(1);
+        expect(ms('2026-09-02T12:00:00Z') < f.first).toBe(true);
+    });
+
+    test('during wk1 games → still wk1 (shown locked, not advanced yet)', () => {
+        const f = captainFocusWeek(games, [1], ms('2026-09-05T18:00:00Z'), GRACE);
+        expect(f.week).toBe(1);
+    });
+
+    test('after wk1 finishes (+grace) → advances to wk2', () => {
+        const f = captainFocusWeek(games, [1], ms('2026-09-06T02:00:00Z'), GRACE);
+        expect(f.week).toBe(2);
+    });
+
+    test('skips weeks the manager does not play', () => {
+        const byeGames = [{ seasonType: 'regular', week: 4, homeId: 1, awayId: 5, startDate: iso('2026-09-26T17:00:00Z'), startTimeTbd: false }];
+        const f = captainFocusWeek(byeGames, [1], ms('2026-09-01T12:00:00Z'), GRACE);
+        expect(f.week).toBe(4);
+    });
+
+    test('null once every played week is done', () => {
+        expect(captainFocusWeek(games, [1], ms('2026-12-01T12:00:00Z'), GRACE)).toBeNull();
+    });
+
+    test('ignores postseason games', () => {
+        const g = [{ seasonType: 'postseason', week: 1, homeId: 1, awayId: 5, startDate: iso('2026-12-20T17:00:00Z'), startTimeTbd: false }];
+        expect(captainFocusWeek(g, [1], ms('2026-09-01T12:00:00Z'), GRACE)).toBeNull();
     });
 });

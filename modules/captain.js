@@ -53,4 +53,54 @@ function captainWeeklyBonus(scoreByTeam, captainTeamId, multiplier) {
     return Math.round(base * (mult - 1) * 10) / 10;
 }
 
-module.exports = { captainForWeek, autoCaptainTeamId, resolveCaptain, captainWeeklyBonus };
+// --- Per-manager kickoff lock (spec: captain locks when the manager's own
+// first team of the week kicks off, not at the league-wide first game). ---
+
+// First & last kickoff (ms since epoch) among a manager's rostered teams in a
+// set of week games, or null if they don't play that week. `weekGames` =
+// regular-season games for one week as { homeId, awayId, startDate, startTimeTbd }.
+// TBD-kickoff games carry a placeholder startDate that only firms up ~12 days
+// out, so they're excluded while any firm-time game exists — a placeholder must
+// never lock the pick early.
+function captainWeekWindow(weekGames, teamIds) {
+    const ids = new Set((teamIds || []).map(Number));
+    const mine = (weekGames || []).filter(g => ids.has(Number(g.homeId)) || ids.has(Number(g.awayId)));
+    if (!mine.length) return null;
+    const firm = mine.filter(g => !g.startTimeTbd);
+    const pool = firm.length ? firm : mine;
+    const times = pool.map(g => Date.parse(g.startDate)).filter(t => !Number.isNaN(t));
+    if (!times.length) return null;
+    return { first: Math.min.apply(null, times), last: Math.max.apply(null, times) };
+}
+
+// The lock instant for a week: the manager's earliest kickoff. null = no game
+// (or no usable kickoff) that week → nothing to lock.
+function captainLockMs(weekGames, teamIds) {
+    const w = captainWeekWindow(weekGames, teamIds);
+    return w ? w.first : null;
+}
+
+// The week the Captain tile should focus on: the earliest regular-season week
+// (1..16) the manager plays that isn't over yet (now < last kickoff + grace).
+// So a week stays in focus through its games — editable before the manager's
+// first kickoff, then shown locked — and only advances to the next week once
+// this week's games are done. Returns { week, first, last } or null at season end.
+// `games` = the manager's regular-season games across the season.
+function captainFocusWeek(games, teamIds, nowMs, graceMs) {
+    const byWeek = {};
+    (games || []).forEach(g => {
+        if (g.seasonType !== 'regular') return;
+        const w = Number(g.week);
+        if (w >= 1 && w <= 16) (byWeek[w] = byWeek[w] || []).push(g);
+    });
+    for (let w = 1; w <= 16; w++) {
+        const win = captainWeekWindow(byWeek[w], teamIds);
+        if (win && nowMs < win.last + graceMs) return { week: w, first: win.first, last: win.last };
+    }
+    return null;
+}
+
+module.exports = {
+    captainForWeek, autoCaptainTeamId, resolveCaptain, captainWeeklyBonus,
+    captainWeekWindow, captainLockMs, captainFocusWeek
+};

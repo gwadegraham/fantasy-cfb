@@ -567,6 +567,11 @@
 .captain-team span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .captain-team:hover { border-color: #3A3F58; background: #151a2e; }
 .captain-team.is-captain { border-color: #8E8CF0; background: rgba(142, 140, 240, 0.14); font-weight: 700; }
+/* Locked week: cells are read-only (no pointer, no hover lift). */
+.captain-team.is-locked { cursor: default; opacity: 0.6; }
+.captain-team.is-locked.is-captain { opacity: 1; }
+.captain-team.is-locked:hover { border-color: #2A2E42; background: #101322; }
+.captain-team.is-locked.is-captain:hover { border-color: #8E8CF0; background: rgba(142, 140, 240, 0.14); }
 @media (prefers-reduced-motion: reduce) { .uh-captain { transition: none; } }
 
 /* ---------- H2H matchups (#230, My Team) ----------
