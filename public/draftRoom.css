@@ -233,6 +233,9 @@
     font-weight: 700;
     margin: 0;
 }
+/* Size the leading icon to the label text (scales with the responsive font)
+   instead of the fixed 18px baked into ccIcon. */
+.draft-live-label .cc-icon { width: 1em; height: 1em; }
 
 .draft-start-btn {
     background-color: #71d28d;
