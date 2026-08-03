@@ -8,8 +8,10 @@ const JOB_SCHEDULES = [
     { job: 'daily-scores', modulePath: '../update-daily-scores-job', rule: { hour: 23, minute: 0 } },
     { job: 'saturday-scores', modulePath: '../update-saturday-scores-job', rule: { dayOfWeek: 6, hour: [15, 18, 22], minute: 0 } },
     { job: 'sunday-scores', modulePath: '../update-sunday-scores-job', rule: { dayOfWeek: 0, hour: [3, 6], minute: 0 } },
-    // Weekly enrichment (SP+/FPI/talent/returning/coaches + broadcast outlets).
-    // Tuesday morning, after the weekend's ratings have refreshed. ~6 CFBD calls.
+    // Weekly enrichment (SP+/FPI ratings + broadcast outlets). Tuesday morning,
+    // after the weekend's ratings have refreshed. ~3 CFBD calls. Season-fixed
+    // fields (talent/returning/coaches) are pulled preseason instead — run
+    // `node update-enrichment-job.js <year> preseason` before the season/draft.
     { job: 'enrichment', modulePath: '../update-enrichment-job', rule: { dayOfWeek: 2, hour: 5, minute: 30 } }
 ];
 
