@@ -15,6 +15,7 @@ const { buildProjections, simulateTitleOdds } = require('../modules/standings-pr
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
+const { pickLogo } = require('../public/logo.js');
 
 // The scoring jobs that actually refresh standings data (see modules/score-job.js
 // and modules/live-poll.js). 'live-scores' is the game-day live poller, so the
@@ -312,7 +313,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const id = String(u._id);
             ids.push(id);
             const logoBy = {}, abbrBy = {};
-            const roster = (s.teams || []).map(t => { const logo = (t.logos || []).slice(-1)[0] || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
+            const roster = (s.teams || []).map(t => { const logo = pickLogo(t.logos) || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
             meta[id] = {
                 userId: id,
                 name: `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim(),

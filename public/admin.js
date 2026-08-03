@@ -182,7 +182,7 @@ function displayUsers(data) {
             var refLink = `/team?team=${team.id}`;
 
             str += '<div>';
-            str += '<a href="' + refLink + '"><img src="' + team.logos.at(-1) + '" alt="' + team.mascot + '">'
+            str += '<a href="' + refLink + '"><img src="' + ccLogo(team.logos) + '" alt="' + team.mascot + '">'
             str += '</div></a>';
         }
         str += '</td></tr>';

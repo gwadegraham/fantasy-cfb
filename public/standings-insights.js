@@ -89,7 +89,7 @@ function movementHtml(delta) {
 // shapes: classic rows carry teams as { id, logos:[…], mascot }; the H2H payload
 // carries { id, logo, school }.
 function teamLogoLink(t) {
-    const src = t.logo != null ? t.logo : ((t.logos && t.logos.at) ? t.logos.at(-1) : '');
+    const src = t.logo != null ? t.logo : ((t.logos && t.logos.at) ? ccLogo(t.logos) : '');
     const label = t.school || t.mascot || '';
     return `<a class="std-team" href="/team?team=${t.id}" title="${escapeHtml(label)}"><img src="${escapeHtml(src)}" alt="${escapeHtml(label)}"></a>`;
 }
@@ -130,7 +130,7 @@ function gapHtml(r) {
 // { logo, school }.
 function inlineTeamLogos(teams) {
     return (teams || []).map(t => {
-        const src = t.logo != null ? t.logo : (t.logos && t.logos.at ? t.logos.at(-1) : '');
+        const src = t.logo != null ? t.logo : (t.logos && t.logos.at ? ccLogo(t.logos) : '');
         return `<a href="/team?team=${t.id}"><img src="${src}" alt="${escapeHtml(t.school || t.mascot || '')}"></a>`;
     }).join('');
 }
@@ -187,7 +187,7 @@ function teamTotals(users) {
                     if (st.team === team.school) total += (st.score || 0);
                 });
             });
-            totals.push({ team: team.mascot, school: team.school, owner: initialName(u), logo: team.logos.at(-1), score: total });
+            totals.push({ team: team.mascot, school: team.school, owner: initialName(u), logo: ccLogo(team.logos), score: total });
         });
     });
     return totals.sort((a, b) => b.score - a.score);

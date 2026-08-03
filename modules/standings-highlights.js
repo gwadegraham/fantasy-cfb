@@ -4,6 +4,8 @@
 // DB-free so it's unit-testable. Each builder returns a highlight card in the
 // same shape the client renderer (buildHighlightsHtml) expects, or null.
 
+const { pickLogo } = require('../public/logo.js');
+
 function escapeHtml(v) {
     return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -13,7 +15,8 @@ function ordinal(n) {
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 function logoImg(meta) {
-    return (meta && meta.logos && meta.logos.length) ? `<img src="${meta.logos[meta.logos.length - 1]}" class="hl-logo">` : '';
+    const src = meta && pickLogo(meta.logos);
+    return src ? `<img src="${src}" class="hl-logo">` : '';
 }
 function teamLabel(meta, fallback) {
     return escapeHtml((meta && meta.mascot) || fallback || '');
