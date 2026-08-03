@@ -56,6 +56,11 @@
 
 .gg-card-head { display: flex; align-items: center; gap: 0.7rem; }
 
+/* Manager block links through to their profile; keep the flex layout the
+   plain avatar + who used to have, and only underline the name on hover. */
+.gg-who-link { display: flex; align-items: center; gap: 0.7rem; flex: 1; min-width: 0; text-decoration: none; color: inherit; }
+.gg-who-link:hover .gg-name, .gg-who-link:focus-visible .gg-name { text-decoration: underline; }
+
 .gg-avatar {
     width: 40px;
     height: 40px;
@@ -115,6 +120,8 @@
 .gg-steal .gg-pick-label { color: #22C37A; }
 .gg-bust .gg-pick-label { color: #ED5858; }
 .gg-pick-team { display: flex; align-items: center; gap: 0.4rem; font-weight: 600; color: #F4F6FB; }
+.gg-tlink { text-decoration: none; }
+.gg-tlink:hover, .gg-tlink:focus-visible { text-decoration: underline; }
 .gg-logo { height: 18px; width: 18px; object-fit: contain; }
 .gg-pick-meta { color: #A4A9C2; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 

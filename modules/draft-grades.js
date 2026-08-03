@@ -34,7 +34,7 @@ function displayName(u) {
 
 function pickView(p) {
     return p ? {
-        school: p.school, round: p.round, overall: p.overall,
+        teamId: p.teamId, school: p.school, round: p.round, overall: p.overall,
         points: Math.round(p.points), value: p.value, logo: p.logo || null
     } : null;
 }
@@ -77,7 +77,7 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
     const picks = (draft.picks || []).map(p => {
         const proj = projByTeam[String(p.team.id)] || { total: 0, projWins: 0, makeProb: 0 };
         return {
-            userId: String(p.userId), overall: p.overall, round: p.round,
+            userId: String(p.userId), teamId: String(p.team.id), overall: p.overall, round: p.round,
             school: p.team.school, logo: (p.team.logos || [])[0],
             points: proj.total, wins: proj.projWins, makeProb: proj.makeProb || 0,
             reg: proj.regular || 0,                                   // regular-season floor

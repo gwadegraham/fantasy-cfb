@@ -24,9 +24,13 @@
         if (!p) return '';
         var cls = kind === 'best' ? 'gg-steal' : 'gg-bust';
         var label = kind === 'best' ? 'Best value' : 'Biggest reach';
+        var teamInner = logo(p.logo) + esc(p.school);
+        var team = p.teamId != null
+            ? '<a class="gg-pick-team gg-tlink" href="/team?team=' + esc(p.teamId) + '" target="_blank" rel="noopener">' + teamInner + '</a>'
+            : '<span class="gg-pick-team">' + teamInner + '</span>';
         return '<div class="gg-pick ' + cls + '">'
             + '<span class="gg-pick-label">' + label + '</span>'
-            + '<span class="gg-pick-team">' + logo(p.logo) + esc(p.school) + '</span>'
+            + team
             + '<span class="gg-pick-meta">R' + p.round + ' · ' + p.points + ' proj pts · ' + signed(p.value) + ' slots</span>'
             + '</div>';
     }
@@ -52,13 +56,17 @@
     function card(m, currentUserId) {
         var tier = (m.grade || '').charAt(0).toLowerCase();
         var you = (currentUserId && String(m.userId) === String(currentUserId)) ? ' gg-you' : '';
+        var whoInner = avatar(m)
+            + '<div class="gg-who">'
+            +   '<span class="gg-name">' + esc(m.franchise || m.name) + (you ? ' <span class="gg-youtag">you</span>' : '') + '</span>'
+            +   (m.franchise ? '<span class="gg-sub">' + esc(m.name) + '</span>' : '')
+            + '</div>';
+        var who = m.userId != null
+            ? '<a class="gg-who-link" href="/userHome?user=' + esc(m.userId) + '" target="_blank" rel="noopener">' + whoInner + '</a>'
+            : whoInner;
         return '<div class="gg-card gg-tier-' + esc(tier) + you + '">'
             + '<div class="gg-card-head">'
-            +   avatar(m)
-            +   '<div class="gg-who">'
-            +     '<span class="gg-name">' + esc(m.franchise || m.name) + (you ? ' <span class="gg-youtag">you</span>' : '') + '</span>'
-            +     (m.franchise ? '<span class="gg-sub">' + esc(m.name) + '</span>' : '')
-            +   '</div>'
+            +   who
             +   '<span class="gg-grade">' + esc(m.grade) + '</span>'
             + '</div>'
             + '<div class="gg-stats">'
