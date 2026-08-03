@@ -264,13 +264,28 @@ router.post('/:season/enrich', async (req, res) => {
 
     const norm = (s) => String(s == null ? '' : s).toLowerCase().trim();
 
+    // Enrichment splits into two cadences (see modules/scheduler.js):
+    //   weekly    — SP+/FPI ratings, which move every week all season
+    //   preseason — talent, returning production, coaches: FIXED for the whole
+    //               season, so re-pulling them weekly just burns CFBD budget
+    // Default 'all' keeps the admin button and preseason prep pulling everything
+    // in one shot. Only the requested endpoints are fetched, so scope=weekly
+    // costs 2 CFBD calls instead of 5.
+    const scope = (req.body && req.body.scope) || 'all';
+    if (!['all', 'weekly', 'preseason'].includes(scope)) {
+        return res.status(400).json({ message: `Invalid scope '${scope}' (expected all|weekly|preseason)` });
+    }
+    const wantWeekly = scope === 'all' || scope === 'weekly';
+    const wantPreseason = scope === 'all' || scope === 'preseason';
+    const NONE = Promise.resolve([]);
+
     try {
         const [sp, fpi, talent, returning, coaches] = await Promise.all([
-            cfbd(`/ratings/sp?year=${season}`),
-            cfbd(`/ratings/fpi?year=${season}`),
-            cfbd(`/talent?year=${season}`),
-            cfbd(`/player/returning?year=${season}`),
-            cfbd(`/coaches?year=${season}`)
+            wantWeekly ? cfbd(`/ratings/sp?year=${season}`) : NONE,
+            wantWeekly ? cfbd(`/ratings/fpi?year=${season}`) : NONE,
+            wantPreseason ? cfbd(`/talent?year=${season}`) : NONE,
+            wantPreseason ? cfbd(`/player/returning?year=${season}`) : NONE,
+            wantPreseason ? cfbd(`/coaches?year=${season}`) : NONE
         ]);
 
         // Build lookup maps keyed by normalized team name.
@@ -338,7 +353,7 @@ router.post('/:season/enrich', async (req, res) => {
         }
 
         res.status(200).json({
-            season, updated,
+            season, scope, updated,
             counts: {
                 sp: (sp || []).length, fpi: (fpi || []).length, talent: (talent || []).length,
                 returning: (returning || []).length, coaches: (coaches || []).length

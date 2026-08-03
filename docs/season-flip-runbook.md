@@ -8,7 +8,7 @@ it must come **after** you flip `YEAR`. Substitute the new year for `2026` below
 ## TL;DR checklist
 
 Stage anytime (explicit season — safe to do before the flip):
-- [ ] **Enrich teams** for 2026 (SP+ / FPI / talent / conference)
+- [ ] **Enrich teams** for 2026 — full/preseason mode (SP+ / FPI / talent / returning / coaches / conference)
 - [ ] **Expected Wins** for 2026 (needs the season subdoc from Enrich first)
 - [ ] **CFP Odds** for 2026 (manual paste — make + champ boards)
 - [ ] **Ingest the full 2026 schedule** ← easy to forget; grades are silently wrong without it
@@ -27,11 +27,18 @@ After the flip (writes to the active season):
 
 ## Step detail
 
-### 1. Enrich teams — `POST /teams/2026/enrich`
-Admin → **Enrichment** (or `node update-enrichment-job.js 2026`). Creates each
-team's 2026 season subdoc with SP+/FPI/talent/coach/conference.
+### 1. Enrich teams — `POST /teams/2026/enrich` (full/preseason)
+Admin → **Enrichment** (or `node update-enrichment-job.js 2026 preseason`).
+Creates each team's 2026 season subdoc with SP+/FPI/talent/coach/conference.
+The `preseason` mode (scope=all) is required here — it pulls the season-fixed
+fields (talent, returning production, coaches) that the *weekly* Tuesday job no
+longer fetches. Run it once before the draft.
 *If skipped:* the draft pool and grades silently fall back to **2025** ratings.
 SP+ itself falls back to the prior year until CFBD publishes the new season.
+
+> Note: the scheduled Tuesday enrichment runs `scope=weekly` (SP+/FPI + media
+> only, ~3 CFBD calls) all season. Talent/returning/coaches don't change
+> in-season, so they're pulled once here rather than every week.
 
 ### 2. Expected Wins — `POST /teams/2026/expectedWins`
 Admin → **Expected Wins**. Reads `json/expectedWins2026.json` (already present).
