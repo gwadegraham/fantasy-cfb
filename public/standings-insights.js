@@ -184,7 +184,9 @@ function teamTotals(users) {
             let total = 0;
             weekly(u).forEach(wk => {
                 (wk.scoreByTeam || []).forEach(st => {
-                    if (st.team === team.school) total += (st.score || 0);
+                    // Match by stable teamId (rename-safe); fall back to the school
+                    // string for any legacy entry stored without a teamId.
+                    if (Number(st.teamId) === Number(team.id) || st.team === team.school) total += (st.score || 0);
                 });
             });
             totals.push({ team: team.mascot, school: team.school, owner: initialName(u), logo: ccLogo(team.logos), score: total });
