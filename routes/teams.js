@@ -3,7 +3,10 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const Team = require('../models/team');
+const User = require('../models/user');
+const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
+const { logosById, applyLogos } = require('../modules/team-refresh');
 
 //Getting All
 router.get('/', async (req, res) => {
@@ -482,9 +485,36 @@ router.post('/refresh', async (req, res) => {
             console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams");
             const newCreatedTeams = await Team.insertMany(newTeams);
 
+            // Propagate the fresh logos into the denormalized copies the app
+            // actually renders from — user rosters (seasons[].teams[]) and draft
+            // picks (picks[].team) — otherwise Standings / My Team / Draft Room
+            // keep showing the old logos even though the teams collection updated.
+            // Global (not year-scoped): a team's logo is the same across seasons.
+            const map = logosById(allTeams);
+
+            let rostersSynced = 0;
+            const users = await User.find({ 'seasons.teams.0': { $exists: true } });
+            for (const u of users) {
+                let changed = 0;
+                (u.seasons || []).forEach(s => { changed += applyLogos(s.teams, map); });
+                if (changed) { await u.save(); rostersSynced++; }
+            }
+
+            let draftsSynced = 0;
+            const drafts = await Draft.find({ 'picks.0': { $exists: true } });
+            for (const d of drafts) {
+                // picks[].team is Mixed, so mutate the team objects then flag the
+                // path for mongoose to persist.
+                const changed = applyLogos((d.picks || []).map(p => p.team), map);
+                if (changed) { d.markModified('picks'); await d.save(); draftsSynced++; }
+            }
+            console.log(`Logo propagation: ${rostersSynced} rosters, ${draftsSynced} drafts updated`);
+
             var returnedTeams = {
                 newTeams: newCreatedTeams,
-                refreshedTeams: refreshedTeams
+                refreshedTeams: refreshedTeams,
+                rostersSynced: rostersSynced,
+                draftsSynced: draftsSynced
             };
 
             return res.status(201).json(returnedTeams);
