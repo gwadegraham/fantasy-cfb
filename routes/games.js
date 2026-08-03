@@ -224,17 +224,22 @@ router.post('/week/mass-create', async (req, res) => {
     }
 });
 
-// Bulk-ingest a full regular-season FBS schedule in one CFBD call. Preseason
-// prerequisite for draft grades (the projection reads each team's schedule).
+// Bulk-ingest a full FBS schedule in one CFBD call. Preseason prerequisite for
+// draft grades (the projection reads each team's schedule) and for the live
+// poller's games-live gate (it needs kickoff times in the DB ahead of time).
 // Upserts by game id, so it's safe to re-run and future games (no scores yet)
-// store fine. One shot instead of looping /week/mass-create over 15 weeks.
+// store fine. One shot instead of looping /week/mass-create over the weeks.
+// Defaults to the regular season; pass { seasonType: 'postseason' } to preload
+// the bowl/CFP schedule once the bracket is published (so day-1 postseason games
+// are live-pollable). `postseason` omits the week param to pull every round.
 router.post('/:season/schedule', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({ message: 'Invalid season' });
     }
     const season = req.params.season;
+    const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
 
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=regular&classification=fbs`, {
+    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=${seasonType}&classification=fbs`, {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
     });
@@ -258,7 +263,7 @@ router.post('/:season/schedule', async (req, res) => {
             catch (err) { console.log('Error updating game', filter.id, err.message); }
         }
     }
-    return res.status(201).json({ season: Number(season), created, updated, total: gameData.length });
+    return res.status(201).json({ season: Number(season), seasonType, created, updated, total: gameData.length });
 });
 
 // Populate broadcast info (TV/web outlet) onto existing game docs from CFBD

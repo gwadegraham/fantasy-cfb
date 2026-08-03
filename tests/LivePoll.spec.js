@@ -1,4 +1,4 @@
-const { isLivePollDay, isOnCadence, anyGameInProgress, decide } = require('../modules/live-poll');
+const { isLivePollDay, isOnCadence, cadenceOk, anyGameInProgress, decide } = require('../modules/live-poll');
 
 // Day-of-week: Sun=0 ... Sat=6.
 describe('isLivePollDay', () => {
@@ -30,6 +30,27 @@ describe('isOnCadence', () => {
     it('never polls on a non-live-poll day', () => {
         expect(isOnCadence(0, 0)).toBe(false);
         expect(isOnCadence(2, 20)).toBe(false);
+    });
+});
+
+describe('cadenceOk (phase-aware)', () => {
+    it('regular: Thu/Fri/Sat only, at the regular cadence', () => {
+        expect(cadenceOk('regular', 6, 10)).toBe(true);   // Sat @10
+        expect(cadenceOk('regular', 4, 20)).toBe(true);   // Thu @20
+        expect(cadenceOk('regular', 4, 10)).toBe(false);  // Thu off-cadence
+        expect(cadenceOk('regular', 1, 0)).toBe(false);   // Monday — no regular polling
+        expect(cadenceOk('regular', 0, 0)).toBe(false);   // Sunday
+    });
+
+    it('postseason: every 10 min, ANY day (incl. the Monday championship)', () => {
+        expect(cadenceOk('postseason', 1, 0)).toBe(true);   // Monday @00
+        expect(cadenceOk('postseason', 1, 30)).toBe(true);  // Monday @30
+        expect(cadenceOk('postseason', 3, 40)).toBe(true);  // Wednesday bowl
+        expect(cadenceOk('postseason', 6, 10)).toBe(true);  // Saturday
+    });
+
+    it('no phase never polls', () => {
+        expect(cadenceOk(null, 6, 0)).toBe(false);
     });
 });
 
@@ -70,19 +91,23 @@ describe('anyGameInProgress', () => {
 });
 
 describe('decide', () => {
-    const base = { dow: 6, minute: 0, gameLive: true, remainingCalls: 500, buffer: 100 };
+    const base = { dow: 6, minute: 0, phase: 'regular', remainingCalls: 500, buffer: 100 };
 
-    it('polls when it is the cadence, a game is live, and under the ceiling', () => {
+    it('polls a live regular game on the cadence, under the ceiling', () => {
         expect(decide(base)).toMatchObject({ poll: true });
     });
 
-    it('skips off-day and off-cadence', () => {
-        expect(decide({ ...base, dow: 1 }).poll).toBe(false);
-        expect(decide({ ...base, dow: 4, minute: 10 }).poll).toBe(false);
+    it('polls a live postseason game any day (Monday championship)', () => {
+        expect(decide({ ...base, phase: 'postseason', dow: 1, minute: 30 })).toMatchObject({ poll: true });
+    });
+
+    it('skips a regular game off its day/cadence', () => {
+        expect(decide({ ...base, dow: 1 }).poll).toBe(false);          // Monday
+        expect(decide({ ...base, dow: 4, minute: 10 }).poll).toBe(false); // Thu off-cadence
     });
 
     it('skips when no game is in progress', () => {
-        expect(decide({ ...base, gameLive: false })).toMatchObject({ poll: false, reason: 'no game in progress' });
+        expect(decide({ ...base, phase: null })).toMatchObject({ poll: false, reason: 'no game in progress' });
     });
 
     it('skips at or below the call buffer (protects manual-admin headroom)', () => {

@@ -15,14 +15,16 @@ const JOB_SCHEDULES = [
     { job: 'enrichment', modulePath: '../update-enrichment-job', rule: { dayOfWeek: 2, hour: 5, minute: 30 } }
 ];
 
-// Opt-in game-day live poller (modules/live-poll.js). Fires every 10 min on
-// Thu/Fri/Sat; the module's own gates decide whether to actually spend a CFBD
-// call (game in progress + cadence + under the call ceiling). Kept OUT of the
-// always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true so it can be
-// switched on/off independently of the core scoring jobs.
+// Opt-in game-day live poller (modules/live-poll.js). Fires every 10 min, every
+// day; the module's own phase-aware gates decide whether to actually spend a
+// CFBD call (a regular game live on Thu/Fri/Sat, or a postseason game live any
+// day — bowls/CFP run Mon–Sat — plus under the call ceiling). Firing daily is
+// cheap: the games-live gate is a local DB check, so non-game times cost nothing.
+// Kept OUT of the always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true
+// so it can be switched on/off independently of the core scoring jobs.
 const LIVE_POLL_SCHEDULE = {
     job: 'live-scores', modulePath: '../modules/live-poll',
-    rule: { dayOfWeek: [4, 5, 6], minute: [0, 10, 20, 30, 40, 50] }
+    rule: { minute: [0, 10, 20, 30, 40, 50] }
 };
 
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }
