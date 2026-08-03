@@ -217,13 +217,17 @@ async function renderBento(data) {
 }
 
 // Captain's "C" patch — a gold badge (matching the matchup's ★2×) marking the
-// team a manager is doubling. Inline SVG so it scales crisply at any row size.
+// team a manager is doubling. A blocky, squared-off C over four inset stars,
+// echoing the classic captaincy patch. All-vector so it scales crisply at any
+// row size and the stars keep clear padding from the badge edges.
 function captainPatch(px) {
+    const STAR = 'M0,-1L.225,-.309L.951,-.309L.363,.118L.588,.809L0,.382L-.588,.809L-.363,.118L-.951,-.309L-.225,-.309Z';
+    const stars = [7.2, 10.4, 13.6, 16.8].map(cx => `<path transform="translate(${cx} 18) scale(1.5)" d="${STAR}"/>`).join('');
     return `<svg class="uh-cap-patch" viewBox="0 0 24 24" width="${px}" height="${px}" role="img" aria-label="Captain">`
         + '<title>Captain</title>'
         + '<rect x="1.5" y="1.5" width="21" height="21" rx="5.5" fill="#E0B341"/>'
-        + '<text x="12" y="14.6" text-anchor="middle" font-family="system-ui,-apple-system,\'Segoe UI\',sans-serif" font-weight="800" font-size="13" fill="#20263C">C</text>'
-        + '<text x="12" y="20.4" text-anchor="middle" font-family="system-ui,-apple-system,\'Segoe UI\',sans-serif" font-size="4.4" letter-spacing="0.3" fill="#20263C">★★★★</text>'
+        + '<path d="M6 4H18V7H9V11.5H18V14.5H6Z" fill="#20263C"/>'
+        + `<g fill="#20263C">${stars}</g>`
         + '</svg>';
 }
 
