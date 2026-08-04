@@ -247,6 +247,14 @@ function renderPreseason(bento, data, activeYear, ctx) {
         try { window.localStorage.setItem('cc_seen_rules_' + activeYear, '1'); } catch (e) { /* private mode */ }
     });
 
+    // Franchise history: expand/collapse the teams beyond the first four.
+    bento.querySelectorAll('.uh-hist-more').forEach(btn => btn.addEventListener('click', () => {
+        const teams = btn.closest('.uh-hist-teams');
+        if (!teams) return;
+        const open = teams.classList.toggle('is-open');
+        btn.textContent = open ? 'Show less' : btn.getAttribute('data-more');
+    }));
+
     hydratePreseasonDraft(data, activeYear);
     hydratePreseasonModes(data, activeYear);
 }
@@ -309,12 +317,15 @@ function preHistoryHtml(data, activeYear) {
         const bestId = (best && best.total > 0) ? best.team.id : null;
         const ordered = (bestId != null ? [best.team] : [])
             .concat(teams.filter(t => bestId == null || Number(t.id) !== Number(bestId)));
-        const chips = ordered.slice(0, 4).map(t => {
+        // Render every team; chips past the first 4 are hidden until the manager
+        // taps "+N more" (wired in renderPreseason to toggle the row open).
+        const chips = ordered.map((t, i) => {
             const isBest = bestId != null && Number(t.id) === Number(bestId);
             const pts = isBest ? ` <span class="uh-hist-pts num">${best.total}</span>` : '';
-            return `<span class="uh-hist-chip${isBest ? ' r1' : ''}">${isBest ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}${pts}</span>`;
+            return `<span class="uh-hist-chip${isBest ? ' r1' : ''}${i >= 4 ? ' uh-hist-extra' : ''}">${isBest ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}${pts}</span>`;
         }).join('');
-        const more = ordered.length > 4 ? `<span class="uh-hist-chip more">+${ordered.length - 4} more</span>` : '';
+        const moreN = ordered.length - 4;
+        const more = moreN > 0 ? `<button type="button" class="uh-hist-more" data-more="+${moreN} more">+${moreN} more</button>` : '';
         const fran = s.franchiseName ? escapeHtml(s.franchiseName) : `<span class="uh-hist-none">Unnamed franchise</span>`;
         return `<div class="uh-hist-row">
             <div class="uh-hist-year num">’${String(s.season).slice(2)}</div>

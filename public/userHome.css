@@ -827,9 +827,13 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-hist-fran { font-size: 12.5px; font-weight: 700; color: #F4F6FB; margin-bottom: 7px; }
 .uh-hist-none { color: #767D9C; font-weight: 600; font-style: italic; }
 .uh-hist-teams { display: flex; flex-wrap: wrap; gap: 6px; }
-.uh-hist-chip { font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 7px; background: #101322; border: 1px solid #2A2E42; color: #A4A9C2; white-space: nowrap; }
+.uh-hist-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 7px; background: #101322; border: 1px solid #2A2E42; color: #A4A9C2; white-space: nowrap; }
 .uh-hist-chip.r1 { color: #F4F6FB; border-color: #3A3F58; }
 .uh-hist-star { color: #E0B341; font-size: 10px; margin-right: 2px; }
 .uh-hist-pts { color: #5BD08D; font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 4px; }
-.uh-hist-chip.more { color: #767D9C; background: transparent; border-style: dashed; }
+.uh-hist-extra { display: none; }
+.uh-hist-teams.is-open .uh-hist-extra { display: inline-flex; }
+.uh-hist-more { font: inherit; font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 7px; background: transparent; border: 1px dashed #3A3F58; color: #767D9C; cursor: pointer; white-space: nowrap; }
+.uh-hist-more:hover { color: #C9CEE6; border-color: #4A4F68; }
+.uh-hist-more:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; }
 .uh-hist-note { font-size: 11.5px; color: #767D9C; margin: 12px 0 0; }
