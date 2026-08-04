@@ -157,7 +157,7 @@ function buildPool(teams, recruiting) {
             var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
             if (r) rank = r.rank;
         }
-        return { id: t.id, name: t.school, logo: (t.logos || []).at(-1), conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
+        return { id: t.id, name: t.school, logo: (t.logos || []).length ? ccLogo(t.logos) : '', conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
     });
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
