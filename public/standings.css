@@ -875,3 +875,18 @@
    card edge. Restore the right gutter the caret column used to provide. */
 .mode-h2h.std-no-teams .standings-row .score-cell,
 .fl-table.mode-h2h.std-no-teams thead th.score-head { padding-right: 1.25em; }
+
+/* Preseason, before any team is drafted, the table has only rank/name/record/
+   total columns. But .fl-table is width:100% of the 1200px wrapper, so on wide
+   screens (iPad landscape, desktop) the browser dumped the leftover ~700px into
+   the Total column — flinging "Total" to the far edge with a big empty gap.
+   Cap it to a compact, left-aligned card and let the name column take the slack
+   so Total stays snug. Automatically reverts once the draft fills the teams
+   column and .std-no-teams drops. :has() left-aligns the whole card cleanly; the
+   table max-width is the fallback where :has isn't supported. */
+.fl-table.std-no-teams,
+.fl-table.mode-h2h.std-no-teams { max-width: 600px; }
+.table-wrapper:has(.std-no-teams) { max-width: 600px; margin-left: 0; margin-right: auto; }
+
+/* The empty "Teams" header lingered even though its column is hidden. */
+.fl-table.std-no-teams .h2h-teams-head { display: none; }
