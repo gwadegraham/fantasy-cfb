@@ -875,3 +875,25 @@
    card edge. Restore the right gutter the caret column used to provide. */
 .mode-h2h.std-no-teams .standings-row .score-cell,
 .fl-table.mode-h2h.std-no-teams thead th.score-head { padding-right: 1.25em; }
+
+/* Preseason card. With the Teams column hidden, the H2H table only needs room
+   for rank / name / record / total — left unchecked it stretches the full
+   width of the wrapper and reads as a sparse, lopsided band on tablets and
+   desktops. Cap it and center it so it presents as a tidy card at every width
+   (below 640px it just fills the screen as before). */
+.fl-table.std-no-teams {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+}
+/* On desktop the base .mode-h2h rules re-show the Teams header and shrink the
+   name-cell to a nub so a logo strip can fill the middle. There's no strip in
+   preseason, so beat both (extra .std-no-teams class = higher specificity):
+   keep the Teams header hidden and let the name-cell keep its width. */
+@media only screen and (min-width: 64em) {
+    .fl-table.mode-h2h.std-no-teams thead th.h2h-teams-head { display: none; }
+    .fl-table.mode-h2h.std-no-teams .standings-row .name-cell {
+        width: auto;
+        white-space: nowrap;
+    }
+}
