@@ -419,7 +419,7 @@ async function hydratePreseasonModes(user, activeYear) {
         <div class="uh-mode-d">Each week, name one of your teams captain — its points count <b>double</b>. A boom-or-bust roster swings games.</div>
     </div>`);
     if (eng.h2hEnabled) cards.push(`<div class="uh-mode">
-        <div class="uh-mode-h"><span class="uh-mode-i h2h">⚔</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
+        <div class="uh-mode-h"><span class="uh-mode-i h2h">${window.ccIcon ? window.ccIcon('swords', { size: 16 }) : '⚔'}</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
         <div class="uh-mode-d">You’re matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus on top of your points.</div>
     </div>`);
 

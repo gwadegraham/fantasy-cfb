@@ -811,10 +811,10 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-mode-h { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; color: #F4F6FB; }
 .uh-mode-i { width: 28px; height: 28px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; }
 .uh-mode-i.cap { background: rgba(142,140,240,0.16); color: #8E8CF0; }
-.uh-mode-i.h2h { background: rgba(232,105,95,0.16); color: #E8695F; }
+.uh-mode-i.h2h { background: rgba(224,179,65,0.16); color: #E0B341; }
 .uh-mode-b { margin-left: auto; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 7px; font-variant-numeric: tabular-nums; }
 .uh-mode-b.cap { color: #8E8CF0; background: rgba(142,140,240,0.14); }
-.uh-mode-b.h2h { color: #E8695F; background: rgba(232,105,95,0.14); }
+.uh-mode-b.h2h { color: #E0B341; background: rgba(224,179,65,0.14); }
 .uh-mode-d { font-size: 12.5px; line-height: 1.5; color: #A4A9C2; margin-top: 10px; }
 .uh-mode-d b { color: #F4F6FB; font-weight: 600; }
 
