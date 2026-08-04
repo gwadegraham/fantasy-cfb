@@ -845,13 +845,19 @@
 .fl-table.mode-h2h thead th.h2h-teams-head { display: none; }
 
 @media only screen and (min-width: 64em) {
-    .mode-h2h .h2h-teams-cell,
-    .fl-table.mode-h2h thead th.h2h-teams-head { display: table-cell; }
+    /* Only re-show the teams column and shrink the name when teams actually
+       exist. Preseason (.std-no-teams) has no logo strip to fill the middle, so
+       re-showing the teams HEADER (while its body cell stays hidden) shifted the
+       columns and stranded "Total" in a wide empty column. Excluding
+       .std-no-teams keeps the teams column fully hidden and lets the name cell
+       absorb the slack, so Total stays snug. */
+    .mode-h2h:not(.std-no-teams) .h2h-teams-cell,
+    .fl-table.mode-h2h:not(.std-no-teams) thead th.h2h-teams-head { display: table-cell; }
     .mode-h2h .expand-cell,
     .fl-table.mode-h2h thead th.h2h-caret-head { display: none; }
     /* Shrink the name so the team-logo strip takes the slack in the middle. */
-    .fl-table.mode-h2h .standings-row .name-cell { width: 1%; white-space: nowrap; }
-    .mode-h2h .h2h-teams-cell { width: auto; }
+    .fl-table.mode-h2h:not(.std-no-teams) .standings-row .name-cell { width: 1%; white-space: nowrap; }
+    .mode-h2h:not(.std-no-teams) .h2h-teams-cell { width: auto; }
 
     /* Desktop has room: bump the Total sub-line (gap + base/bonus) up a touch,
        and give the Total column a gutter so the numbers aren't flush to the
