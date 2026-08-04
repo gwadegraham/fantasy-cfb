@@ -274,7 +274,12 @@ body {
     transform: translateY(-9px) rotate(-45deg);
 }
 
-@media (max-width: 600px) {
+/* Collapse the horizontal nav to a hamburger below the desktop content
+   breakpoint (64em / 1024px). The full row of links needs ~716px, so on tablet
+   portrait (768–1023px) and in iPad Split View it would otherwise overflow or
+   crowd the edge (Logout got cut off). This keeps nav + content switching to
+   "desktop mode" at the same width. */
+@media (max-width: 63.99em) {
     .toggle-button {
         display: flex;
     }
