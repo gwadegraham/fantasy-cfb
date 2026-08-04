@@ -480,18 +480,24 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
 
     // Win/loss form strip + expected-wins comparison.
     var form = computeForm(schedule, team.id);
+    var played = form.length;   // completed games — 0 means the season hasn't started
     var wins = record?.total?.wins ?? form.filter(f => f.win).length;
     var expected = seasonObj.expectedWins;
     var formStrip = form.slice(-6).map(f =>
         `<span class="form-dot ${f.win ? 'form-win' : 'form-loss'}" title="${f.us}-${f.them}">${f.win ? 'W' : 'L'}</span>`
     ).join('');
 
-    var expectedHtml = (expected != null)
-        ? `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
-             <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
-                ${wins - expected >= 0 ? '▲' : '▼'} ${Math.abs(wins - expected).toFixed(1)}
-             </span></p>`
-        : '';
+    // Preseason (no games yet): show the projection on its own — a red "actual vs
+    // expected" delta against zero wins reads as a shortfall the team hasn't had.
+    var expectedHtml = '';
+    if (expected != null) {
+        expectedHtml = (played === 0)
+            ? `<p class="score expected-wins">${Number(expected).toFixed(1)} projected wins</p>`
+            : `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
+                 <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
+                    ${wins - expected >= 0 ? '▲' : '▼'} ${Math.abs(wins - expected).toFixed(1)}
+                 </span></p>`;
+    }
 
     // "Drafted by" — ties the team back to its fantasy manager for the season.
     var ownerHtml = owner
@@ -501,8 +507,9 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
            </a>`
         : `<span class="team-owner team-owner--undrafted"><i class="fa-solid fa-user-slash"></i> Undrafted</span>`;
 
-    // National fantasy-scoring rank alongside the raw point total.
-    var rankHtml = fantasyRank
+    // National fantasy-scoring rank alongside the raw point total — only once the
+    // team has actually scored (a rank at 0 points is an arbitrary preseason tie).
+    var rankHtml = (fantasyRank && seasonScore > 0)
         ? `<span class="fantasy-rank">#<span data-countup="${fantasyRank.rank}">0</span> of ${fantasyRank.total}</span>`
         : '';
 
@@ -529,7 +536,13 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
     if (seasonObj.returningProduction != null) {
         outlookChips.push(`<span class="outlook-chip" title="Share of last season's production (PPA) returning">${seasonObj.returningProduction}% returning</span>`);
     }
-    var outlookHtml = outlookChips.length ? `<div><h4>${window.ccIcon ? window.ccIcon('chart', { size: 21 }) : ''} Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div></div>` : '';
+    // Preseason: SP+/talent/returning are season-fixed and land only once CFBD
+    // publishes them (FPI/coach arrive earlier). When they're still missing on a
+    // not-yet-started season, note it so the lone FPI chip doesn't read as broken.
+    var outlookNote = (played === 0 && seasonObj.spRank == null && outlookChips.length)
+        ? `<p class="outlook-note">SP+, talent &amp; returning production post closer to kickoff.</p>`
+        : '';
+    var outlookHtml = outlookChips.length ? `<div><h4>${window.ccIcon ? window.ccIcon('chart', { size: 21 }) : ''} Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div>${outlookNote}</div>` : '';
 
     // Set the tab title to the team being viewed.
     document.title = `${team.school} ${team.mascot} · Campus Clash`;

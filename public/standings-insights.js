@@ -42,6 +42,9 @@ export function rankedRows(users) {
     }
 
     const leader = sorted.length ? cum(sorted[0]) : 0;
+    // Preseason: nobody has scored yet, so there's no real leader or ranking —
+    // rows render as a flat tie (no crown, no medals) instead of an arbitrary #1.
+    const preseason = leader <= 0;
     return sorted.map((u, i) => ({
         rank: i + 1,
         id: u._id,
@@ -53,6 +56,7 @@ export function rankedRows(users) {
         teams: season(u).teams || [],
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
+        preseason: preseason,
         delta: (prevRankById && prevRankById[u._id] != null) ? (prevRankById[u._id] - i) : null
     }));
 }
@@ -104,7 +108,7 @@ export function standingsHeadHtml(h2h) {
         return `<tr>
             <th class="team-header"></th>
             <th class="team-header"></th>
-            <th class="team-header h2h-teams-head" style="text-align: center;">Teams</th>
+            <th class="team-header h2h-teams-head teams-col" style="text-align: center;">Teams</th>
             <th class="team-header rec-head">Record</th>
             <th class="team-header score-head">Total</th>
             <th class="team-header h2h-caret-head"></th>
@@ -113,13 +117,14 @@ export function standingsHeadHtml(h2h) {
     return `<tr>
         <th class="sticky-header team-header"></th>
         <th class="sticky-header team-header"></th>
-        <th class="team-header" style="text-align: center;">Teams</th>
+        <th class="team-header teams-col" style="text-align: center;">Teams</th>
         <th class="sticky-header-score team-header">Score</th>
     </tr>`;
 }
 
 // The leader/movement/gap treatment is shared; only the middle differs.
 function gapHtml(r) {
+    if (r.preseason) return '<span class="gap">Tied</span>';
     return r.rank === 1
         ? '<span class="gap leader">Leader</span>'
         : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
@@ -139,7 +144,7 @@ function inlineTeamLogos(teams) {
 // team-logo strip filling the middle · score. This is the original layout — the
 // logos are what make the wide row read as full, not empty.
 function classicRowHtml(r) {
-    const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
+    const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     return `<tr class="standings-row${medal}">
         <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
         <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
@@ -153,7 +158,7 @@ function classicRowHtml(r) {
 // Reuses the classic `.standings-row.medal-1` / `.rank-num` / `.score-num`
 // classes so the leader animation and score count-up carry over.
 function h2hRowHtml(r) {
-    const medal = r.rank <= 3 ? ` medal-${r.rank}` : '';
+    const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     const logos = (r.teams || []).map(teamLogoLink).join('');
     const who = escapeHtml(r.franchise || r.name);
     return `<tr class="standings-row${medal}">

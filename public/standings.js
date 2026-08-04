@@ -132,9 +132,13 @@ async function getUsers() {
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
-            // Chart is responsive now, so show it on mobile too.
-            setChartData(data);
-            document.querySelector('[chart-container]').removeAttribute("style");
+            // Chart is responsive now, so show it on mobile too — but only once
+            // the season has scored weeks. Preseason has nothing to plot, so the
+            // chart stays hidden instead of showing an empty axis.
+            if (latestWeek(data) > 0) {
+                setChartData(data);
+                document.querySelector('[chart-container]').removeAttribute("style");
+            }
         }
     });
 }
@@ -197,7 +201,12 @@ function renderStandingsTable(rows, opts) {
     // middle); the points-only table has fewer columns, so it centres at its
     // content width instead of stretching name and score to opposite edges.
     const table = (head && head.closest('table')) || (body && body.closest('table'));
-    if (table) { table.classList.toggle('mode-h2h', h2h); table.classList.toggle('mode-plain', !h2h); }
+    if (table) {
+        table.classList.toggle('mode-h2h', h2h);
+        table.classList.toggle('mode-plain', !h2h);
+        // Preseason / undrafted: no rosters yet, so hide the empty Teams column.
+        table.classList.toggle('std-no-teams', !rows.some(r => (r.teams || []).length));
+    }
     if (head) head.innerHTML = standingsHeadHtml(h2h);
     if (body) {
         body.innerHTML = buildStandingsRowsHtml(rows, { h2h });
@@ -427,6 +436,7 @@ async function loadH2HMatchups(league, season, sim) {
 function h2hRows(d) {
     const managers = (d.managers || []).slice();
     const leader = managers.length ? managers[0].adjustedTotal : 0;
+    const preseason = leader <= 0;   // no points scored yet → flat tie, no crown
     const deltaById = {};
     try { rankedRows(usersData || []).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
     return managers.map((m, i) => ({
@@ -440,6 +450,7 @@ function h2hRows(d) {
         teams: m.teams || [],
         score: m.adjustedTotal,
         gap: i === 0 ? 0 : Math.round((leader - m.adjustedTotal) * 10) / 10,
+        preseason: preseason,
         delta: deltaById[m.userId] != null ? deltaById[m.userId] : null,
         record: m.record || '',
         base: Math.round((m.adjustedTotal - m.h2hBonus) * 10) / 10,
