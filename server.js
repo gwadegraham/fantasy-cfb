@@ -53,6 +53,7 @@ function buildUserContext(oidcUser) {
 
 // Routing
 const path = require('path')
+const fs = require('fs')
 
 const config = {
   authRequired: false,
@@ -162,6 +163,29 @@ db.on('error', (error) => console.error(error));
 db.on('open', () => console.log('Connected to Database'));
 
 
+
+// Public, no-login landing page for the season announcement. Same source that
+// gets published as a claude.ai artifact (docs/announcements/offseason-2026.html),
+// but wrapped in a standalone HTML shell and served from our own domain so it
+// can actually be emailed/shared and opened on any device — the claude.ai
+// artifact is private (owner-only) and 404s for anyone else. authRequired is
+// false, and this handler doesn't gate on auth, so it needs no login.
+app.get('/season-2', (req, res) => {
+    try {
+        const fragment = fs.readFileSync(path.join(__dirname, 'docs/announcements/offseason-2026.html'), 'utf8');
+        res.type('html').send(
+            '<!DOCTYPE html><html lang="en"><head>'
+            + '<meta charset="utf-8">'
+            + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            + '<meta name="robots" content="noindex">'
+            + '<title>Campus Clash — Season 2 Is Loaded</title>'
+            + '<style>html,body{margin:0;background:#101322}</style>'
+            + '</head><body>' + fragment + '</body></html>'
+        );
+    } catch (err) {
+        res.status(404).send('Announcement not found.');
+    }
+});
 
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
