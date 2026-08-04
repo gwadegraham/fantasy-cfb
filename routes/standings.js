@@ -205,17 +205,21 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         const league = req.params.league;
         const userId = req.params.userId;
 
-        // `latest` (used by the weekly popup) resolves to the most recent season
-        // the manager actually has weekly scores for — so the popup works during
-        // the season and shows last season's finish in the offseason.
+        // `latest` (used by the weekly popup) resolves to the ACTIVE season only
+        // (process.env.YEAR). Until that season has a scored week there's nothing
+        // to recap, so return empty and the popup stays silent through the
+        // preseason — it fires once the season actually starts. (Previously this
+        // fell back to the most recent scored season, which surfaced last year's
+        // finish during the new preseason.)
         let season = req.params.season;
         if (season === 'latest') {
+            season = String(process.env.YEAR);
             const target = await User.findById(userId);
-            const played = ((target && target.seasons) || [])
-                .filter(s => (s.weeklyScore || []).length > 0)
-                .sort((a, b) => Number(b.season) - Number(a.season));
-            if (!played.length) return res.json({ league, season: null, userId, recaps: [] });
-            season = String(played[0].season);
+            const active = ((target && target.seasons) || [])
+                .find(s => String(s.season) === season);
+            if (!active || !((active.weeklyScore || []).length)) {
+                return res.json({ league, season: null, userId, recaps: [] });
+            }
         }
         const seasonNum = Number(season);
 
