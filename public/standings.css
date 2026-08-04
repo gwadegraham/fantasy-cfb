@@ -892,7 +892,13 @@
    table max-width is the fallback where :has isn't supported. */
 .fl-table.std-no-teams,
 .fl-table.mode-h2h.std-no-teams { max-width: 600px; }
-.table-wrapper:has(.std-no-teams) { max-width: 600px; margin-left: 0; margin-right: auto; }
+/* Shrink the wrapper to the table's CONTENT width (not a fixed cap) so there's
+   no leftover space for a column to stretch into — that stray slack was what
+   left a big empty gap between the manager name and Record/Total. `fit-content`
+   makes it a tidy compact card at every width; max-width:100% keeps it from
+   overflowing on narrow screens. (:has ships broadly now; where it's missing,
+   the .fl-table max-width above still caps the table.) */
+.table-wrapper:has(.std-no-teams) { width: fit-content; max-width: 100%; margin-left: 0; margin-right: auto; }
 
 /* The empty "Teams" header lingered even though its column is hidden. */
 .fl-table.std-no-teams .h2h-teams-head { display: none; }
