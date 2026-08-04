@@ -175,13 +175,14 @@ async function getTeamFantasyRank(teamId, seasonYear, leagueCode) {
 
         // Claunts league scores on V1, Graham on V2 (matches the header score).
         const key = (leagueCode === 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-        const scored = teams
-            .map(t => ({ id: t.id, score: Number(t.seasons?.[0]?.[key]) || 0 }))
-            .sort((a, b) => b.score - a.score);
+        const scored = teams.map(t => ({ id: t.id, score: Number(t.seasons?.[0]?.[key]) || 0 }));
 
-        const idx = scored.findIndex(t => String(t.id) === String(teamId));
-        if (idx === -1) return null;
-        return { rank: idx + 1, total: scored.length };
+        const me = scored.find(t => String(t.id) === String(teamId));
+        if (!me) return null;
+        // Standard competition ranking: tied teams share a rank (count only teams
+        // strictly ahead), so two teams at 41 pts are both #2, not #2 and #3.
+        const rank = scored.filter(t => t.score > me.score).length + 1;
+        return { rank, total: scored.length };
     } catch (e) {
         return null;
     }
@@ -863,13 +864,22 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
             return dataMap.get(team.teamId) || team;
         });
 
-        // Sort: conference wins → overall wins → overall losses
+        // Sort: conference win % → conference wins → overall wins → overall
+        // losses. Real CFB standings order by conference winning percentage, so a
+        // 4-0 team sits above a 5-1 (raw wins would wrongly flip them mid-season,
+        // before byes even out the games played). A 0-0 team is treated as .000.
+        const confPct = (t) => {
+            const g = t.conferenceGames.wins + t.conferenceGames.losses;
+            return g > 0 ? t.conferenceGames.wins / g : 0;
+        };
         updatedStandings.sort((a, b) => {
+            const pa = confPct(a), pb = confPct(b);
+            if (pb !== pa) return pb - pa;
             if (b.conferenceGames.wins !== a.conferenceGames.wins) {
-            return b.conferenceGames.wins - a.conferenceGames.wins;
+                return b.conferenceGames.wins - a.conferenceGames.wins;
             }
             if (b.total.wins !== a.total.wins) {
-            return b.total.wins - a.total.wins;
+                return b.total.wins - a.total.wins;
             }
             return a.total.losses - b.total.losses;
         });
