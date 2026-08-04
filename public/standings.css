@@ -869,3 +869,9 @@
 .std-no-teams .team-item,
 .std-no-teams .h2h-caret-head,
 .std-no-teams .expand-cell { display: none; }
+
+/* With the expand caret hidden, the H2H Total column becomes the last cell, and
+   the mobile `.fl-table td` rule zeroes its right padding — so "0 Tied" jams the
+   card edge. Restore the right gutter the caret column used to provide. */
+.mode-h2h.std-no-teams .standings-row .score-cell,
+.fl-table.mode-h2h.std-no-teams thead th.score-head { padding-right: 1.25em; }
