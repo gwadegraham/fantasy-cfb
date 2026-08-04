@@ -227,7 +227,7 @@ function renderPreseason(bento, data, activeYear, ctx) {
                 <div class="uh-pd-body"><p class="uh-stub">Checking the draft schedule…</p></div>
             </div>`
         // get draft-ready checklist
-        + preChecklistHtml(hasName, hasPhoto)
+        + preChecklistHtml(hasName, hasPhoto, activeYear)
         // last season recap
         + preRecapHtml(prior)
         // new game modes (hydrated async; hidden until confirmed on)
@@ -240,23 +240,34 @@ function renderPreseason(bento, data, activeYear, ctx) {
     // it onto; before that only the photo can be set.
     if (own) setupEditModal(data, activeEntry || {}, !!activeEntry);
 
+    // Mark the scoring rules as reviewed (per season) when the manager opens them
+    // — flips the checklist item to done on their next visit.
+    const rulesLink = document.getElementById('uh-rules-link');
+    if (rulesLink) rulesLink.addEventListener('click', () => {
+        try { window.localStorage.setItem('cc_seen_rules_' + activeYear, '1'); } catch (e) { /* private mode */ }
+    });
+
     hydratePreseasonDraft(data, activeYear);
     hydratePreseasonModes(data, activeYear);
 }
 
-function preChecklistHtml(hasName, hasPhoto) {
-    const done = (hasName ? 1 : 0) + (hasPhoto ? 1 : 0);
-    const pct = Math.round((done / 2) * 100);
+function preChecklistHtml(hasName, hasPhoto, activeYear) {
+    // "Reviewed the rules" is tracked per-season in localStorage, flipped on when
+    // the manager opens /rules from the Read link (wired in renderPreseason).
+    let seenRules = false;
+    try { seenRules = window.localStorage.getItem('cc_seen_rules_' + activeYear) === '1'; } catch (e) { /* private mode */ }
+    const done = (hasName ? 1 : 0) + (hasPhoto ? 1 : 0) + (seenRules ? 1 : 0);
+    const pct = Math.round((done / 3) * 100);
     const row = (isDone, title, desc, go) =>
         `<li class="${isDone ? 'is-done' : ''}"><span class="uh-box ${isDone ? 'done' : 'todo'}">${isDone ? '✓' : '○'}</span>`
         + `<span class="uh-ci"><span class="uh-ci-t">${title}</span><span class="uh-ci-d">${desc}</span></span>${go || ''}</li>`;
     return `<div class="uh-tile uh-pre-check">
         <span class="uh-tlabel">Get draft-ready</span>
-        <div class="uh-check-prog"><span class="uh-bar"><i style="width:${pct}%"></i></span><b>${done} / 2</b></div>
+        <div class="uh-check-prog"><span class="uh-bar"><i style="width:${pct}%"></i></span><b>${done} / 3</b></div>
         <ul class="uh-checks">
             ${row(hasName, 'Name your franchise', hasName ? 'Set — you’re on the board.' : 'Stand out in the standings.')}
             ${row(hasPhoto, 'Add a profile photo', hasPhoto ? 'Looking sharp.' : 'Put a face to the trash talk.')}
-            ${row(false, 'Review the scoring rules', 'Know how bonuses stack before you pick.', '<a class="uh-ci-go" href="/rules">Read ›</a>')}
+            ${row(seenRules, 'Review the scoring rules', seenRules ? 'Reviewed — you know how bonuses stack.' : 'Know how bonuses stack before you pick.', seenRules ? '' : '<a class="uh-ci-go" id="uh-rules-link" href="/rules">Read ›</a>')}
         </ul>
     </div>`;
 }
@@ -292,9 +303,18 @@ function preHistoryHtml(data, activeYear) {
     if (!past.length) return '';
     const rows = past.map(s => {
         const teams = s.teams || [];
-        const chips = teams.slice(0, 4).map((t, i) =>
-            `<span class="uh-hist-chip${i === 0 ? ' r1' : ''}">${i === 0 ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}</span>`).join('');
-        const more = teams.length > 4 ? `<span class="uh-hist-chip more">+${teams.length - 4} more</span>` : '';
+        // Star the season's top scorer (not the draft-order first pick). Lead with
+        // it (starred, with its points), then the rest in draft order.
+        const best = bestTeam(s);
+        const bestId = (best && best.total > 0) ? best.team.id : null;
+        const ordered = (bestId != null ? [best.team] : [])
+            .concat(teams.filter(t => bestId == null || Number(t.id) !== Number(bestId)));
+        const chips = ordered.slice(0, 4).map(t => {
+            const isBest = bestId != null && Number(t.id) === Number(bestId);
+            const pts = isBest ? ` <span class="uh-hist-pts num">${best.total}</span>` : '';
+            return `<span class="uh-hist-chip${isBest ? ' r1' : ''}">${isBest ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}${pts}</span>`;
+        }).join('');
+        const more = ordered.length > 4 ? `<span class="uh-hist-chip more">+${ordered.length - 4} more</span>` : '';
         const fran = s.franchiseName ? escapeHtml(s.franchiseName) : `<span class="uh-hist-none">Unnamed franchise</span>`;
         return `<div class="uh-hist-row">
             <div class="uh-hist-year num">’${String(s.season).slice(2)}</div>
@@ -304,7 +324,7 @@ function preHistoryHtml(data, activeYear) {
     return `<div class="uh-tile span2 uh-pre-hist">
         <span class="uh-tlabel">Your franchise history</span>
         <div class="uh-hist">${rows}</div>
-        <p class="uh-hist-note">★ marks your first pick that year</p>
+        <p class="uh-hist-note">★ marks your top scorer that year</p>
     </div>`;
 }
 
