@@ -766,3 +766,18 @@
     white-space: nowrap;
     cursor: default;
 }
+
+/* Mobile: the conference standings table has four columns (Rank / Team / Conf /
+   Overall) and the table lives inside .team-card.schedule with overflow:hidden
+   (used for the collapse animation), so any horizontal overflow is clipped
+   rather than scrolled — on a phone that lopped the "Overall" header (and its
+   values) off the right edge. Give the columns back the ~35px they needed:
+   trim the card's side padding on both paired cards (schedule + standings) so
+   they stay visually consistent, tighten the cell padding, and shrink the
+   header font a touch. Long names like "Michigan State" still fit on one line
+   with headroom to spare. Desktop (>=64em) is untouched — it has ample room. */
+@media only screen and (max-width: 63.99em) {
+    .team-card.schedule { padding-left: 1em; padding-right: 1em; }
+    .standings-table .standingColumn { padding: 0.5rem 0.3rem; }
+    .standings-table thead .standingColumn { font-size: 0.82rem; }
+}
