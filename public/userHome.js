@@ -131,40 +131,16 @@ async function renderBento(data) {
     const own = currentUserId() && String(currentUserId()) === String(data._id);
     const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
-    // Preseason / undrafted window: the active season (APP_YEAR) hasn't been
-    // drafted for this manager yet — there's no season entry to key tiles off,
-    // so uhSeasonFor is only giving us a prior-season fallback. Rather than mix
-    // last season's data into a half-empty grid, show a dedicated empty state.
-    const hasActiveSeason = (data.seasons || []).some(s => String(s.season) === String(activeYear));
-    if (!hasActiveSeason) {
-        const prior = (data.seasons || [])
-            .filter(s => (s.weeklyScore || []).length)
-            .sort((a, b) => Number(b.season) - Number(a.season))[0];
-        let lastLine = '';
-        if (prior) {
-            const bt = bestTeam(prior);
-            lastLine = `<div class="uh-preseason-last">Last season · <b>${escapeHtml(prior.season)}</b> · ${prior.cumulativeScore || 0} pts`
-                + (bt && bt.total > 0 ? ` · best <b>${escapeHtml(bt.team.school)}</b> (${bt.total})` : '') + `</div>`;
-        }
-        const ball = window.ccIcon ? window.ccIcon('football', { size: 44 }) : '🏈';
-        bento.innerHTML =
-            `<div class="uh-tile span2 uh-hero">
-                <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
-                <div class="uh-hero-meta">
-                    <div class="uh-hero-name">${escapeHtml(franchise)}</div>
-                    <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
-                    <div class="uh-hero-stats"><span class="uh-preseason-pill">${escapeHtml(activeYear)} preseason</span></div>
-                </div>
-                ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
-            </div>`
-            + `<div class="uh-tile span2 uh-preseason">
-                    <span class="uh-preseason-icon">${ball}</span>
-                    <h2 class="uh-preseason-h">The ${escapeHtml(activeYear)} season hasn’t kicked off yet</h2>
-                    <p class="uh-preseason-p">Your roster, matchups, and weekly recaps land here once your league’s draft is complete.</p>
-                    ${lastLine}
-                </div>`;
-        renderAvatar(document.getElementById('uh-hero-av'), data);
-        if (own) setupEditModal(data, season, false);   // no season yet → name locked
+    // Preseason: the active season (APP_YEAR) hasn't been *drafted* for this
+    // manager yet — either there's no season entry at all, or the Season Roster
+    // created one with an empty roster. Either way there's no roster or scoring to
+    // key the live tiles off, so render a dedicated preseason grid (draft
+    // countdown, get-ready checklist, last season, new game modes, franchise
+    // history) instead of a bento that silently empties itself.
+    const activeEntry = (data.seasons || []).find(s => String(s.season) === String(activeYear));
+    const isPreseason = !activeEntry || !((activeEntry.teams || []).length);
+    if (isPreseason) {
+        renderPreseason(bento, data, activeYear, { manager, own, pencil, activeEntry });
         return;
     }
 
@@ -214,6 +190,212 @@ async function renderBento(data) {
     hydrateRoster(data, activeYear);
     hydrateTrajectory(data, activeYear);
     hydrateGames(data, activeYear);
+}
+
+// ---------- Preseason My Team ----------
+// The active season exists but hasn't been drafted (empty roster) — or doesn't
+// exist yet. Instead of a self-emptying live grid, build a purposeful preseason
+// page from data we already have: a draft countdown, a get-ready checklist, last
+// season's recap, the league's new game modes (if any), and franchise history.
+var uhCountdownTimer = null;
+
+function renderPreseason(bento, data, activeYear, ctx) {
+    const { manager, own, pencil, activeEntry } = ctx;
+    const franchise = (activeEntry && activeEntry.franchiseName) || `${data.firstName || 'Unnamed'}'s Team`;
+    const hasName = !!(activeEntry && activeEntry.franchiseName);
+    const hasPhoto = !!(data.avatarUrl);
+
+    // Last completed season (with scores) for the recap tile.
+    const prior = (data.seasons || [])
+        .filter(s => String(s.season) !== String(activeYear) && (s.weeklyScore || []).length)
+        .sort((a, b) => Number(b.season) - Number(a.season))[0];
+
+    bento.innerHTML =
+        // identity
+        `<div class="uh-tile span2 uh-hero">
+            <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
+            <div class="uh-hero-meta">
+                <div class="uh-hero-name">${escapeHtml(franchise)}</div>
+                <div class="uh-hero-sub">Managed by ${escapeHtml(manager)}</div>
+                <div class="uh-hero-stats"><span class="uh-preseason-pill">${escapeHtml(activeYear)} preseason</span></div>
+            </div>
+            ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+        </div>`
+        // draft countdown (hydrated async)
+        + `<div class="uh-tile span2 uh-pre-draft" id="uh-pre-draft">
+                <span class="uh-tlabel">Your draft</span>
+                <div class="uh-pd-body"><p class="uh-stub">Checking the draft schedule…</p></div>
+            </div>`
+        // get draft-ready checklist
+        + preChecklistHtml(hasName, hasPhoto)
+        // last season recap
+        + preRecapHtml(prior)
+        // new game modes (hydrated async; hidden until confirmed on)
+        + `<div class="uh-tile span2 uh-pre-modes" id="uh-pre-modes" hidden></div>`
+        // franchise history
+        + preHistoryHtml(data, activeYear);
+
+    renderAvatar(document.getElementById('uh-hero-av'), data);
+    // Name is editable only once the manager has an active-season entry to write
+    // it onto; before that only the photo can be set.
+    if (own) setupEditModal(data, activeEntry || {}, !!activeEntry);
+
+    hydratePreseasonDraft(data, activeYear);
+    hydratePreseasonModes(data, activeYear);
+}
+
+function preChecklistHtml(hasName, hasPhoto) {
+    const done = (hasName ? 1 : 0) + (hasPhoto ? 1 : 0);
+    const pct = Math.round((done / 2) * 100);
+    const row = (isDone, title, desc, go) =>
+        `<li class="${isDone ? 'is-done' : ''}"><span class="uh-box ${isDone ? 'done' : 'todo'}">${isDone ? '✓' : '○'}</span>`
+        + `<span class="uh-ci"><span class="uh-ci-t">${title}</span><span class="uh-ci-d">${desc}</span></span>${go || ''}</li>`;
+    return `<div class="uh-tile uh-pre-check">
+        <span class="uh-tlabel">Get draft-ready</span>
+        <div class="uh-check-prog"><span class="uh-bar"><i style="width:${pct}%"></i></span><b>${done} / 2</b></div>
+        <ul class="uh-checks">
+            ${row(hasName, 'Name your franchise', hasName ? 'Set — you’re on the board.' : 'Stand out in the standings.')}
+            ${row(hasPhoto, 'Add a profile photo', hasPhoto ? 'Looking sharp.' : 'Put a face to the trash talk.')}
+            ${row(false, 'Review the scoring rules', 'Know how bonuses stack before you pick.', '<a class="uh-ci-go" href="/rules">Read ›</a>')}
+        </ul>
+    </div>`;
+}
+
+function preRecapHtml(prior) {
+    if (!prior) {
+        return `<div class="uh-tile uh-pre-recap">
+            <span class="uh-tlabel">Your history</span>
+            <p class="uh-stub">This is your first Campus Clash season — welcome. Your story starts at the draft.</p>
+        </div>`;
+    }
+    const bt = bestTeam(prior);
+    let cum = 0; const series = [];
+    weeklyColumns(prior).forEach(c => { if (!c.entry) return; cum += c.entry.score || 0; series.push(cum); });
+    const spark = series.length >= 2 ? `<div class="uh-pre-spark">${uhSpark(series, 240, 40, '#5BD08D')}</div>` : '';
+    const bestStat = (bt && bt.total > 0)
+        ? `<div class="uh-pre-stat"><span class="uh-pre-stat-v"><img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}</span><span class="uh-pre-stat-k">Best: ${escapeHtml(bt.team.school)}</span></div>`
+        : '';
+    return `<div class="uh-tile uh-pre-recap">
+        <span class="uh-tlabel">Your ${escapeHtml(prior.season)} season</span>
+        <div class="uh-pre-recap-stats">
+            <div class="uh-pre-stat"><span class="uh-pre-stat-v num">${prior.cumulativeScore || 0}</span><span class="uh-pre-stat-k">Total points</span></div>
+            ${bestStat}
+        </div>
+        ${spark}
+    </div>`;
+}
+
+function preHistoryHtml(data, activeYear) {
+    const past = (data.seasons || [])
+        .filter(s => String(s.season) !== String(activeYear) && (s.teams || []).length)
+        .sort((a, b) => Number(b.season) - Number(a.season));
+    if (!past.length) return '';
+    const rows = past.map(s => {
+        const teams = s.teams || [];
+        const chips = teams.slice(0, 4).map((t, i) =>
+            `<span class="uh-hist-chip${i === 0 ? ' r1' : ''}">${i === 0 ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}</span>`).join('');
+        const more = teams.length > 4 ? `<span class="uh-hist-chip more">+${teams.length - 4} more</span>` : '';
+        const fran = s.franchiseName ? escapeHtml(s.franchiseName) : `<span class="uh-hist-none">Unnamed franchise</span>`;
+        return `<div class="uh-hist-row">
+            <div class="uh-hist-year num">’${String(s.season).slice(2)}</div>
+            <div class="uh-hist-body"><div class="uh-hist-fran">${fran}</div><div class="uh-hist-teams">${chips}${more}</div></div>
+        </div>`;
+    }).join('');
+    return `<div class="uh-tile span2 uh-pre-hist">
+        <span class="uh-tlabel">Your franchise history</span>
+        <div class="uh-hist">${rows}</div>
+        <p class="uh-hist-note">★ marks your first pick that year</p>
+    </div>`;
+}
+
+// Draft countdown tile: fetch the league's draft for the active season, then
+// show a live countdown + format/pick meta + a Draft Room CTA (or a graceful
+// "not scheduled yet" state).
+async function hydratePreseasonDraft(user, activeYear) {
+    const wrap = document.getElementById('uh-pre-draft');
+    if (!wrap) return;
+    const body = wrap.querySelector('.uh-pd-body');
+    let draft = null;
+    try {
+        const r = await fetch(`/draft/${encodeURIComponent(user.league)}/${encodeURIComponent(activeYear)}`, { headers: { Accept: 'application/json' } });
+        if (r.ok) draft = await r.json();
+    } catch (e) { /* fall through to the not-scheduled state */ }
+
+    if (!draft || !draft._id) {
+        body.innerHTML = `<h2 class="uh-pd-h">Draft not scheduled yet</h2>
+            <p class="uh-pd-sub">Your commissioner hasn’t set the ${escapeHtml(activeYear)} draft date. Hang tight — it’ll show up here.</p>`;
+        return;
+    }
+
+    const order = (draft.draftOrder || []).map(String);
+    const myPick = order.indexOf(String(user._id));
+    const managers = order.length;
+    const when = draft.scheduledAt ? new Date(draft.scheduledAt) : null;
+    const fmtDate = when ? when.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) : null;
+    const meta = [
+        fmtDate ? `<span>📅 <b>${escapeHtml(fmtDate)}</b></span>` : '',
+        `<span>${draft.snake ? '🐍 <b>Snake</b>' : '<b>Linear</b>'} · ${draft.totalRounds || 10} rounds</span>`,
+        managers ? `<span>👥 <b>${managers}</b> managers</span>` : '',
+        myPick >= 0 ? `<span>🎯 You pick <b>${escapeHtml(ordinal(myPick + 1))}</b></span>` : ''
+    ].filter(Boolean).join('');
+    const cta = `<a class="uh-pd-cta" href="/draft-room">Enter the Draft Room →</a>`;
+
+    if (when && when.getTime() > Date.now()) {
+        body.innerHTML = `<h2 class="uh-pd-h">Draft night is almost here</h2>
+            <div class="uh-clock">
+                ${['Days', 'Hrs', 'Min', 'Sec'].map((l, i) => `<div class="uh-unit"><div class="uh-unit-n num" data-u="${i}">–</div><div class="uh-unit-l">${l}</div></div>`).join('')}
+            </div>
+            <div class="uh-pd-meta">${meta}</div>${cta}`;
+        startCountdown(when.getTime(), wrap);
+    } else {
+        body.innerHTML = `<h2 class="uh-pd-h">Your draft is set up</h2>
+            <div class="uh-pd-meta">${meta}</div>${cta}`;
+    }
+}
+
+function startCountdown(targetMs, wrap) {
+    if (uhCountdownTimer) { clearInterval(uhCountdownTimer); uhCountdownTimer = null; }
+    const set = (i, v) => { const el = wrap.querySelector(`[data-u="${i}"]`); if (el) el.textContent = v; };
+    const p2 = n => String(n).padStart(2, '0');
+    const tick = () => {
+        let s = Math.max(0, Math.floor((targetMs - Date.now()) / 1000));
+        set(0, Math.floor(s / 86400)); s %= 86400;
+        set(1, p2(Math.floor(s / 3600))); s %= 3600;
+        set(2, p2(Math.floor(s / 60)));
+        set(3, p2(s % 60));
+        if (targetMs - Date.now() <= 0 && uhCountdownTimer) { clearInterval(uhCountdownTimer); uhCountdownTimer = null; }
+    };
+    tick();
+    uhCountdownTimer = setInterval(tick, 1000);
+}
+
+// New game modes tile: only for leagues that have H2H and/or Captain on for the
+// active season. Reads the same per-season engagement config the scoring job and
+// standings use, so it stays in lockstep (and never shows for a classic league).
+async function hydratePreseasonModes(user, activeYear) {
+    const tile = document.getElementById('uh-pre-modes');
+    if (!tile || !user.league) return;
+    let eng = null;
+    try {
+        const r = await fetch(`/scoring-config/${encodeURIComponent(user.league)}?season=${encodeURIComponent(activeYear)}`, { headers: { Accept: 'application/json' } });
+        if (r.ok) { const c = await r.json(); eng = c.engagement || null; }
+    } catch (e) { /* stays hidden */ }
+    if (!eng || !(eng.h2hEnabled || eng.captainEnabled)) return;
+
+    const cards = [];
+    if (eng.captainEnabled) cards.push(`<div class="uh-mode">
+        <div class="uh-mode-h"><span class="uh-mode-i cap">©</span>Captain pick<span class="uh-mode-b cap">×${eng.captainMultiplier || 2}</span></div>
+        <div class="uh-mode-d">Each week, name one of your teams captain — its points count <b>double</b>. A boom-or-bust roster swings games.</div>
+    </div>`);
+    if (eng.h2hEnabled) cards.push(`<div class="uh-mode">
+        <div class="uh-mode-h"><span class="uh-mode-i h2h">⚔</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
+        <div class="uh-mode-d">You’re matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus on top of your points.</div>
+    </div>`);
+
+    tile.innerHTML = `<span class="uh-tlabel">New in ${escapeHtml(activeYear)}<span class="uh-mode-only">This league</span></span>
+        <p class="uh-modes-intro">${cards.length > 1 ? 'Two new ways' : 'A new way'} to score this season — worth knowing before you draft.</p>
+        <div class="uh-modes">${cards.join('')}</div>`;
+    tile.hidden = false;
 }
 
 // Roster → Roster tile. Glance shows your top performer; drawer lists all teams

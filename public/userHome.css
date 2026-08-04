@@ -752,3 +752,83 @@ body.uh-drawer-open { overflow: hidden; }
 /* Draft-grade card in the drawer: plain page-style border (no tier left-accent
    or "you" highlight — it's always your own grade on My Team). */
 .uh-drawer-body .gg-card { border-left: 1px solid #2A2E42; box-shadow: none; }
+
+/* ============================================================
+   Preseason My Team (feat/my-team-preseason)
+   Draft countdown · get-ready checklist · last season · new
+   game modes · franchise history. Tokens mirror the bento above
+   (#1A1F33 tile, #101322 inset, #2A2E42 border, #8E8CF0 purple,
+   #6C9BFF blue, #5BD08D green, #E0B341 gold).
+   ============================================================ */
+
+/* draft countdown */
+.uh-pre-draft { display: flex; flex-direction: column; background: linear-gradient(180deg, #1d2540, #1A1F33); border-color: rgba(108,155,255,0.28); }
+.uh-pre-draft .uh-tlabel { color: #6C9BFF; }
+.uh-pd-h { font-size: 19px; font-weight: 800; color: #F4F6FB; margin: 2px 0 0; text-wrap: balance; }
+.uh-pd-sub { font-size: 14px; color: #A4A9C2; margin: 8px 0 0; line-height: 1.5; }
+.uh-clock { display: flex; gap: 10px; margin: 16px 0 4px; }
+.uh-unit { flex: 1; background: #101322; border: 1px solid #2A2E42; border-radius: 12px; padding: 12px 6px; text-align: center; }
+.uh-unit-n { font-size: 28px; font-weight: 800; color: #fff; line-height: 1; font-variant-numeric: tabular-nums; }
+.uh-unit-l { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #767D9C; margin-top: 7px; }
+.uh-pd-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #A4A9C2; font-size: 12.5px; margin-top: 14px; }
+.uh-pd-meta b { color: #F4F6FB; font-weight: 600; }
+.uh-pd-cta { margin-top: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 12px; background: linear-gradient(180deg, #7aa2f5, #6C9BFF); color: #08122a; font-weight: 700; font-size: 14px; text-decoration: none; }
+.uh-pd-cta:hover { filter: brightness(1.05); }
+
+/* get draft-ready checklist */
+.uh-check-prog { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.uh-bar { flex: 1; height: 7px; border-radius: 99px; background: #2A2E42; overflow: hidden; }
+.uh-bar > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #5BD08D, #8ee9bb); }
+.uh-check-prog b { font-size: 12px; font-weight: 700; color: #5BD08D; font-variant-numeric: tabular-nums; }
+.uh-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.uh-checks li { display: flex; align-items: center; gap: 12px; padding: 10px 2px; }
+.uh-checks li + li { border-top: 1px solid #2A2E42; }
+.uh-box { width: 22px; height: 22px; border-radius: 7px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+.uh-box.done { background: #5BD08D; color: #08210f; }
+.uh-box.todo { border: 1.5px dashed #3A3F58; color: #767D9C; }
+.uh-ci { flex: 1; min-width: 0; }
+.uh-ci-t { display: block; font-size: 13.5px; font-weight: 600; color: #F4F6FB; }
+.uh-ci-d { display: block; font-size: 12px; color: #767D9C; margin-top: 1px; }
+.uh-checks li.is-done .uh-ci-t { color: #A4A9C2; }
+.uh-ci-go { font-size: 12px; font-weight: 700; color: #6C9BFF; white-space: nowrap; text-decoration: none; }
+.uh-ci-go:hover { text-decoration: underline; }
+
+/* last-season recap */
+.uh-pre-recap-stats { display: flex; gap: 12px; margin-bottom: 12px; }
+.uh-pre-stat { flex: 1; background: #101322; border: 1px solid #2A2E42; border-radius: 12px; padding: 11px 12px; }
+.uh-pre-stat-v { font-size: 20px; font-weight: 800; color: #F4F6FB; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.uh-pre-stat-v img { height: 18px; width: auto; }
+.uh-pre-stat-k { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #767D9C; margin-top: 6px; }
+.uh-pre-spark { margin-top: 2px; }
+
+/* new game modes */
+.uh-pre-modes .uh-tlabel { color: #8E8CF0; }
+.uh-mode-only { margin-left: 8px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8E8CF0; background: rgba(142,140,240,0.14); border: 1px solid rgba(142,140,240,0.32); padding: 3px 6px; border-radius: 6px; }
+.uh-modes-intro { font-size: 13px; color: #A4A9C2; margin: 0 0 12px; }
+.uh-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .uh-modes { grid-template-columns: 1fr; } }
+.uh-mode { background: #101322; border: 1px solid #2A2E42; border-radius: 12px; padding: 14px; }
+.uh-mode-h { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 700; color: #F4F6FB; }
+.uh-mode-i { width: 28px; height: 28px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; }
+.uh-mode-i.cap { background: rgba(142,140,240,0.16); color: #8E8CF0; }
+.uh-mode-i.h2h { background: rgba(232,105,95,0.16); color: #E8695F; }
+.uh-mode-b { margin-left: auto; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 7px; font-variant-numeric: tabular-nums; }
+.uh-mode-b.cap { color: #8E8CF0; background: rgba(142,140,240,0.14); }
+.uh-mode-b.h2h { color: #E8695F; background: rgba(232,105,95,0.14); }
+.uh-mode-d { font-size: 12.5px; line-height: 1.5; color: #A4A9C2; margin-top: 10px; }
+.uh-mode-d b { color: #F4F6FB; font-weight: 600; }
+
+/* franchise history */
+.uh-hist { display: flex; flex-direction: column; }
+.uh-hist-row { display: flex; align-items: baseline; gap: 14px; padding: 12px 2px; }
+.uh-hist-row + .uh-hist-row { border-top: 1px solid #2A2E42; }
+.uh-hist-year { font-size: 15px; font-weight: 800; color: #767D9C; width: 36px; flex: none; }
+.uh-hist-body { flex: 1; min-width: 0; }
+.uh-hist-fran { font-size: 12.5px; font-weight: 700; color: #F4F6FB; margin-bottom: 7px; }
+.uh-hist-none { color: #767D9C; font-weight: 600; font-style: italic; }
+.uh-hist-teams { display: flex; flex-wrap: wrap; gap: 6px; }
+.uh-hist-chip { font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 7px; background: #101322; border: 1px solid #2A2E42; color: #A4A9C2; white-space: nowrap; }
+.uh-hist-chip.r1 { color: #F4F6FB; border-color: #3A3F58; }
+.uh-hist-star { color: #E0B341; font-size: 10px; margin-right: 2px; }
+.uh-hist-chip.more { color: #767D9C; background: transparent; border-style: dashed; }
+.uh-hist-note { font-size: 11.5px; color: #767D9C; margin: 12px 0 0; }
