@@ -326,10 +326,12 @@ function preHistoryHtml(data, activeYear) {
         }).join('');
         const moreN = ordered.length - 4;
         const more = moreN > 0 ? `<button type="button" class="uh-hist-more" data-more="+${moreN} more">+${moreN} more</button>` : '';
-        const fran = s.franchiseName ? escapeHtml(s.franchiseName) : `<span class="uh-hist-none">Unnamed franchise</span>`;
+        // Seasons before franchise naming existed have no name — show nothing
+        // rather than a hollow "Unnamed franchise" label.
+        const franHtml = s.franchiseName ? `<div class="uh-hist-fran">${escapeHtml(s.franchiseName)}</div>` : '';
         return `<div class="uh-hist-row">
             <div class="uh-hist-year num">’${String(s.season).slice(2)}</div>
-            <div class="uh-hist-body"><div class="uh-hist-fran">${fran}</div><div class="uh-hist-teams">${chips}${more}</div></div>
+            <div class="uh-hist-body">${franHtml}<div class="uh-hist-teams">${chips}${more}</div></div>
         </div>`;
     }).join('');
     return `<div class="uh-tile span2 uh-pre-hist">
