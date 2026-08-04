@@ -754,6 +754,7 @@
 
 /* Outlook ratings as accent-tinted chips (SP+/FPI/talent/returning). */
 .outlook-chips { display: flex; flex-wrap: wrap; gap: 0.4em; margin-top: 0.35em; }
+.outlook-note { font-size: 0.72rem; color: #767D9C; margin: 0.5em 0 0; line-height: 1.4; }
 .outlook-chip {
     font-size: 0.8rem;
     font-weight: 700;
