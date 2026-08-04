@@ -170,7 +170,7 @@ db.on('open', () => console.log('Connected to Database'));
 // can actually be emailed/shared and opened on any device — the claude.ai
 // artifact is private (owner-only) and 404s for anyone else. authRequired is
 // false, and this handler doesn't gate on auth, so it needs no login.
-app.get('/season-2', (req, res) => {
+app.get('/season-preview', (req, res) => {
     try {
         const fragment = fs.readFileSync(path.join(__dirname, 'docs/announcements/offseason-2026.html'), 'utf8');
         res.type('html').send(
