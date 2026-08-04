@@ -26,6 +26,16 @@ function latestWeek(users) {
     return max;
 }
 
+// True once the season has REAL scoring — some manager has banked non-zero
+// points. The nightly scoring job seeds a zero-point weekly entry as soon as a
+// week's games exist (even with undrafted, 0-team rosters), so "a weekly entry
+// exists" fires too early. The highlights panel and the points chart gate on
+// this instead, so they stay hidden until the season is actually underway.
+function seasonHasScoring(users) {
+    return (users || []).some(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || [])
+        .some(w => (w.score || 0) !== 0));
+}
+
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
         // true for mobile device
@@ -128,14 +138,17 @@ async function getUsers() {
             displayLastUpdated(data);
             displayHighlights(data);
             maybeCelebrateWeeklyWin(data);
-            loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
+            // Server "advanced" highlights append to the same panel — skip them
+            // too until there's real scoring, or they'd re-populate the panel
+            // displayHighlights just hid.
+            if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
             displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too — but only once
-            // the season has scored weeks. Preseason has nothing to plot, so the
-            // chart stays hidden instead of showing an empty axis.
-            if (latestWeek(data) > 0) {
+            // the season has real scoring. A zero-point week the nightly job seeds
+            // has nothing to plot, so the chart stays hidden until points land.
+            if (seasonHasScoring(data)) {
                 setChartData(data);
                 document.querySelector('[chart-container]').removeAttribute("style");
             }
@@ -333,9 +346,10 @@ function displayHighlights(users) {
     const container = document.querySelector('.highlights-container');
     const header = document.querySelector('.highlights-header');
     // Hide the whole section (header + its leading divider) when there's nothing
-    // to show yet — e.g. preseason, before any games are scored — so we don't
-    // leave a bare "League Highlights" heading over empty space.
-    if (!cards.length) {
+    // to show yet — e.g. preseason, before any real points are scored — so we
+    // don't leave a bare "League Highlights" heading over empty space (or worse,
+    // "winners" and "streaks" computed from all-zero weeks the nightly job seeds).
+    if (!cards.length || !seasonHasScoring(users)) {
         if (header) header.style.display = 'none';
         if (container) container.style.display = 'none';
         const hr = header && header.previousElementSibling;
