@@ -157,7 +157,7 @@ function buildPool(teams, recruiting) {
             var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
             if (r) rank = r.rank;
         }
-        return { id: t.id, name: t.school, logo: (t.logos || []).length ? ccLogo(t.logos) : '', conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
+        return { id: t.id, name: t.school, color: t.color, logo: (t.logos || []).length ? ccLogo(t.logos) : '', conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
     });
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
@@ -254,8 +254,10 @@ function renderPool() {
         var spCell = p.spRank == null
             ? '<span class="muted">—</span>'
             : `<span class="sp-badge" title="SP+ rating ${p.sp}">#${p.spRank}</span>`;
+        var accent = (p.color && window.ccTeamAccent) ? ccTeamAccent(p.color) : '';
+        var teamCellStyle = accent ? ` style="box-shadow: inset 3px 0 0 ${accent}"` : '';
         return `<tr class="${drafted ? 'drafted' : ''}">
-            <td><a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a></td>
+            <td${teamCellStyle}><a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a></td>
             <td>${escapeHtml(p.conf)}</td>
             <td class="num">${spCell}</td>
             <td class="num">${badge}</td>
@@ -282,7 +284,9 @@ function renderPool() {
                 ? `<img class="pc-conf-logo" src="${cl}" alt="${escapeHtml(p.conf)}" title="${escapeHtml(p.conf)}">`
                 : `<span class="pc-conf">${escapeHtml(p.conf)}</span>`;
             var ptsLabel = p.scoreYear ? `'${String(p.scoreYear).slice(-2)} pts` : 'pts';
-            return `<div class="pool-card${drafted ? ' drafted' : ''}">
+            var accent = (p.color && window.ccTeamAccent) ? ccTeamAccent(p.color) : '';
+            var cardStyle = accent ? ` style="border-left: 3px solid ${accent}"` : '';
+            return `<div class="pool-card${drafted ? ' drafted' : ''}"${cardStyle}>
                 ${action}
                 <div class="pool-card-main">
                     <a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>
@@ -523,7 +527,12 @@ function renderBoard() {
             var cls = isClock ? 'draft-board-cell on-clock-cell' : 'draft-board-cell';
             if (pick) {
                 var freshCls = (justPickedKey === String(userId) + '-' + round) ? ' just-picked' : '';
-                bodyStr += `<td class="${cls}${freshCls}"><a href="/team?team=${pick.team.id}" target="_blank" rel="noopener" title="${escapeHtml(pick.team.school)}"><img src="${pick.team.logos ? ccLogo(pick.team.logos) : ''}" alt="${escapeHtml(pick.team.school)}"></a></td>`;
+                // Tint the cell in the drafted team's color so the board reads as a
+                // mosaic of everyone's rosters. Skip when it's the on-clock cell so
+                // the active-pick highlight isn't overridden.
+                var tint = (!isClock && pick.team.color && window.ccTeamTint) ? ccTeamTint(pick.team.color, 0.20) : '';
+                var cellStyle = tint ? ` style="background-color: ${tint}"` : '';
+                bodyStr += `<td class="${cls}${freshCls}"${cellStyle}><a href="/team?team=${pick.team.id}" target="_blank" rel="noopener" title="${escapeHtml(pick.team.school)}"><img src="${pick.team.logos ? ccLogo(pick.team.logos) : ''}" alt="${escapeHtml(pick.team.school)}"></a></td>`;
             } else {
                 bodyStr += `<td class="${cls}"></td>`;
             }

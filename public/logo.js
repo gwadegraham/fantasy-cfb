@@ -11,8 +11,14 @@
 // becomes the dark-*16px* logo on the new one — blurry everywhere. pickLogo
 // chooses by variant + resolution instead, so it's correct on both shapes.
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.ccLogo = factory().pickLogo;
+    if (typeof module === 'object' && module.exports) { module.exports = factory(); }
+    else {
+        var cc = factory();
+        root.ccLogo = cc.pickLogo;
+        root.ccTeamColor = cc.teamColor;    // strong: legible as text on dark
+        root.ccTeamAccent = cc.teamAccent;  // hue-true: accent bars/tints
+        root.ccTeamTint = cc.teamTint;      // rgba wash of the accent color
+    }
 }(typeof self !== 'undefined' ? self : this, function () {
     // The pixel size from a logo URL — the path segment before the filename
     // (".../500/333.png" -> 500; ESPN's ".../500-dark/333.png" -> 500). 0 if none.
@@ -41,5 +47,44 @@
         return best.u;
     }
 
-    return { pickLogo: pickLogo, logoSize: logoSize };
+    // ---- Team colors ---------------------------------------------------------
+    // CFBD gives each team a `color`/`alt_color` hex (sometimes without the '#').
+    // The app is dark-themed, so a raw navy/black team color would disappear.
+    // teamColor() lightens very dark colors until they read on #101322 (mirrors
+    // team.js readableOnDark), and teamTint() returns an rgba wash of it. Used as
+    // an *accent* only (bars, tints) — never for body text or large fills.
+    function hexToRgb(hex) {
+        if (typeof hex !== 'string') return null;
+        var m = hex.trim().replace('#', '');
+        if (m.length === 3) m = m.split('').map(function (c) { return c + c; }).join('');
+        if (!/^[0-9a-fA-F]{6}$/.test(m)) return null;
+        return { r: parseInt(m.slice(0, 2), 16), g: parseInt(m.slice(2, 4), 16), b: parseInt(m.slice(4, 6), 16) };
+    }
+    function luminance(r, g, b) {
+        var a = [r, g, b].map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+        return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+    }
+    // Lighten toward white until the color clears `minLum`. A high floor makes a
+    // color readable as *text* (but desaturates strong-but-dark hues like scarlet
+    // into pink); a low floor just rescues near-black/navy while keeping saturated
+    // colors true — right for a decorative accent bar/tint.
+    function lift(hex, minLum, step) {
+        var rgb = hexToRgb(hex);
+        if (!rgb) return null;
+        var r = rgb.r, g = rgb.g, b = rgb.b, guard = 0;
+        while (luminance(r, g, b) < minLum && guard < 14) {
+            r = r + (255 - r) * step; g = g + (255 - g) * step; b = b + (255 - b) * step; guard++;
+        }
+        var h = function (v) { return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0'); };
+        return '#' + h(r) + h(g) + h(b);
+    }
+    function teamColor(hex) { return lift(hex, 0.22, 0.18); }   // legible as text
+    function teamAccent(hex) { return lift(hex, 0.10, 0.12); }  // hue-true bar/tint
+    function teamTint(hex, alpha) {
+        var rgb = hexToRgb(teamAccent(hex));
+        if (!rgb) return '';
+        return 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + (alpha == null ? 0.16 : alpha) + ')';
+    }
+
+    return { pickLogo: pickLogo, logoSize: logoSize, teamColor: teamColor, teamAccent: teamAccent, teamTint: teamTint };
 }));
