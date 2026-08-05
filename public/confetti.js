@@ -160,11 +160,11 @@ var removeConfetti; //call to stop the confetti animation and remove all confett
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		for (var i = parts.length - 1; i >= 0; i--) {
 			var p = parts[i];
-			p.vy += 0.3;                 // gravity
+			p.vy += 0.12;                // gravity (lower = slower fall / more float)
 			p.vx *= 0.985; p.vy *= 0.985; // air drag
 			p.x += p.vx; p.y += p.vy;
 			p.rot += p.rotSpeed;
-			p.life -= 0.012;
+			p.life -= 0.007;             // fade slower so they linger while drifting down
 			if (p.life <= 0 || p.y > canvas.height + 40) { parts.splice(i, 1); continue; }
 			ctx.save();
 			ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
