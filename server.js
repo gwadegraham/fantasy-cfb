@@ -14,6 +14,7 @@ const requireAuthOrToken = require('./modules/require-auth');
 const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
+const identityGuard = require('./modules/identity-guard');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
@@ -81,6 +82,11 @@ app.use((req, res, next) => {
     res.locals.spoof = devRole.readSpoof(req); // {roles, league} | null, for the dev widget
     next();
 });
+
+// Identity-match guard. Refuses to serve a session whose login email doesn't
+// match the franchise its Auth0 pointer resolves to (see modules/identity-guard).
+// Runs on the REAL identity so dev role-spoofing can't trigger a false block.
+app.use(identityGuard({ User }));
 
 // Per-request league display names (editable via /leagues) for the navbar
 // switcher — HTML GETs only, falling back to the hardcoded defaults.
