@@ -360,7 +360,7 @@
 .group-count {
     background: var(--cc-surface);
     border: 1px solid var(--cc-border);
-    color: #AEB4CC;
+    color: var(--cc-muted-bright);
     border-radius: 20px;
     padding: 1px 8px;
     font-size: 0.7rem;
@@ -417,7 +417,7 @@
 .ss-job-meta { color: var(--cc-muted-2); }
 .admin-status .ss-note {
     margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
-    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: #AEB4CC;
+    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: var(--cc-muted-bright);
 }
 .admin-status.ok .ss-note { color: var(--cc-success); }
 .admin-status.warn .ss-note { color: var(--cc-amber); }
@@ -451,7 +451,7 @@
 [scoring-config-fields] .draft-status-row {
     margin: 18px 0 10px;
     font-weight: 500;
-    color: #AEB4CC;
+    color: var(--cc-muted-bright);
 }
 [scoring-config-fields] .draft-status-row:first-child { margin-top: 4px; }
 
@@ -513,7 +513,7 @@
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
 }
-.mode-card:hover { border-color: #5B6690; }
+.mode-card:hover { border-color: var(--cc-border-2); }
 .mode-card.is-active { border-color: var(--cc-accent); background: rgba(237, 88, 88, 0.08); }
 .mode-card input[type="radio"] { margin: 3px 0 0; accent-color: var(--cc-accent); flex: 0 0 auto; }
 .mode-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -594,7 +594,7 @@
     border: none;
     border-radius: 0;
     background-color: var(--cc-surface);
-    color: #AEB4CC;
+    color: var(--cc-muted-bright);
     font-size: 1.05rem;
     line-height: 1;
     cursor: pointer;
@@ -615,13 +615,13 @@
     width: 18px;
     height: 18px;
     margin: 0;
-    border: 1px solid #3A4060;
+    border: 1px solid var(--cc-border-2);
     border-radius: 5px;
     background-color: var(--cc-bg);
     cursor: pointer;
     position: relative;
 }
-.scoring-toggle:hover { border-color: #5B6690; }
+.scoring-toggle:hover { border-color: var(--cc-border-2); }
 .scoring-toggle:checked {
     background-color: var(--cc-success);
     border-color: var(--cc-success);
@@ -788,7 +788,7 @@
 }
 .button-container button:hover {
     background-color: #212843;
-    border-color: #3a4162;
+    border-color: var(--cc-border-2);
 }
 /* Caret chevron on the right, rotates down when the panel is open. */
 .button-container button::after {
@@ -804,7 +804,7 @@
 }
 .function-container.is-open .button-container button {
     background-color: #212843;
-    border-color: #3a4162;
+    border-color: var(--cc-border-2);
 }
 .function-container.is-open .button-container button::after {
     transform: rotate(45deg);
@@ -830,7 +830,7 @@
     box-sizing: border-box;
     transition: background-color 0.18s ease, transform 0.08s ease;
 }
-.sub-container button:hover { background-color: #d94a4a; }
+.sub-container button:hover { background-color: var(--cc-danger); }
 .sub-container button:active { transform: translateY(1px); }
 
 /* Full-width form with no horizontal margin — the base rules give it

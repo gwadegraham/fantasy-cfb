@@ -394,7 +394,7 @@
 }
 
 .form-win { background-color: var(--cc-success); }
-.form-loss { background-color: #b5423f; }
+.form-loss { background-color: var(--cc-danger); }
 
 /* Expected-wins comparison */
 .expected-wins {
@@ -409,7 +409,7 @@
 
 .ew-delta { font-weight: 700; }
 .ew-up { color: var(--cc-success); }
-.ew-down { color: #d27171; }
+.ew-down { color: var(--cc-danger-text); }
 
 /* Weekly points bar chart (uses data previously collected but never shown) */
 .weekly-scores {
@@ -456,7 +456,7 @@
 
 .week-bar-label {
     font-size: 0.65rem;
-    color: #6f7492;
+    color: var(--cc-muted-2);
 }
 
 /* Next-game hero card */
@@ -501,7 +501,7 @@
 }
 
 .next-game-opp i {
-    color: #6f7492;
+    color: var(--cc-muted-2);
 }
 
 .next-game-date, .next-game-venue {
@@ -519,7 +519,7 @@
 
 .stadium-chips .chip {
     font-size: 0.72rem;
-    color: #cfd3e6 !important;
+    color: var(--cc-muted-bright) !important;
     background-color: var(--cc-bg);
     border: 1px solid var(--cc-border);
     border-radius: 999px;
@@ -614,7 +614,7 @@
     color: var(--cc-text);
 }
 .result-win { background-color: rgba(63, 157, 90, 0.22); border: 1px solid var(--cc-success); }
-.result-loss { background-color: rgba(181, 66, 63, 0.22); border: 1px solid #b5423f; }
+.result-loss { background-color: color-mix(in srgb, var(--cc-danger) 22%, transparent); border: 1px solid var(--cc-danger); }
 .result-tie { background-color: rgba(164, 169, 194, 0.18); border: 1px solid var(--cc-muted); }
 
 /* Standings team cell: keep the logo and (possibly wrapping) name aligned as

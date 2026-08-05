@@ -52,7 +52,7 @@
 }
 .recap-week-picker select {
     background: var(--cc-bg);
-    border: 1px solid #3A3F58;
+    border: 1px solid var(--cc-border-2);
     border-radius: 8px;
     color: var(--cc-text);
     font: inherit;

@@ -6,23 +6,30 @@
    whole app, change a value here — not scattered hexes.
    ========================================================================== */
 :root {
-    /* Surfaces */
+    /* Surfaces (dark → light) */
     --cc-bg:         #101322;   /* page background */
     --cc-surface:    #1A1F33;   /* cards / raised panels */
     --cc-surface-2:  #171B31;   /* alt table rows / secondary panels */
+    --cc-surface-3:  #343954;   /* elevated / hover fills */
 
-    /* Lines & text */
+    /* Lines */
     --cc-border:     #2A2E42;   /* hairlines, dividers, card borders */
-    --cc-text:       #F4F6FB;   /* primary text */
-    --cc-muted:      #A4A9C2;   /* secondary / muted text (meets AA on dark) */
-    --cc-muted-2:    #767D9C;   /* dimmer muted — low contrast; see a11y pass */
+    --cc-border-2:   #3A3F58;   /* lighter / elevated dividers & focus borders */
+
+    /* Text (bright → dim). All meet WCAG AA for small text on the surfaces. */
+    --cc-text:        #F4F6FB;  /* primary text */
+    --cc-muted-bright:#C9CEE6;  /* high-emphasis secondary (values, key labels) */
+    --cc-muted:       #A4A9C2;  /* standard secondary / muted text */
+    --cc-muted-2:     #8A90A8;  /* dim captions (raised from #767D9C to pass AA) */
 
     /* Semantic accents */
-    --cc-accent:      #ed5858;  /* brand red — primary accent */
+    --cc-accent:      #ed5858;  /* brand red — identity/active nav, "YOU", errors */
     --cc-interactive: #8E8CF0;  /* interactive/active state: chart tabs, carets */
     --cc-success:     #22C37A;  /* wins / positive */
     --cc-info:        #6C9BFF;  /* info / neutral highlight, focus rings */
     --cc-amber:       #E0B341;  /* leaders / awards / attention */
+    --cc-danger:      #B5423F;  /* negative fills/borders: losses, underdog, delete */
+    --cc-danger-text: #D27171;  /* negative text on dark (kept light for legibility) */
 
     /* Radius scale */
     --cc-r-sm:   6px;

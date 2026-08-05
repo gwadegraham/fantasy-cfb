@@ -8,12 +8,12 @@
 .h2h-av.initials { font-weight: 700; color: #fff; font-size: 0.72rem; }
 
 .h2h-mcard { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: 12px; }
-.h2h-mcard.live { border-color: #3A3F58; }
+.h2h-mcard.live { border-color: var(--cc-border-2); }
 .h2h-msum { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.75rem; cursor: pointer; }
 .h2h-mwk { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; min-width: 2.2rem; }
 .h2h-mside { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }
 .h2h-mside.r { justify-content: flex-end; }
-.h2h-mnm { font-size: 0.8rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-mnm { font-size: 0.8rem; color: var(--cc-muted-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .h2h-mside.win .h2h-mnm { color: var(--cc-text); font-weight: 700; }
 .h2h-msc { font-size: 1.15rem; font-weight: 800; color: var(--cc-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .h2h-mside.win .h2h-msc { color: var(--cc-success); }
@@ -36,7 +36,7 @@
 .h2h-mdcol.right .h2h-tid { align-items: flex-end; }
 .h2h-tnmline { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .h2h-mdcol.right .h2h-tnmline { justify-content: flex-end; }
-.h2h-tnm { min-width: 0; font-size: 0.74rem; color: #C9CEE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h2h-tnm { min-width: 0; font-size: 0.74rem; color: var(--cc-muted-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Captain marker — this team's points are doubled into the matchup total. */
 .h2h-capx { flex: none; font-size: 0.5rem; font-weight: 800; letter-spacing: .02em; color: var(--cc-amber); border: 1px solid rgba(224,179,65,.45); border-radius: 99px; padding: 0 4px; line-height: 1.5; }
 .h2h-tsub { min-width: 0; max-width: 100%; font-size: 0.6rem; color: var(--cc-muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -54,7 +54,7 @@
 .h2h-mbtrack { flex: 1; display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #12162599; }
 .h2h-mbfill { height: 100%; transition: width 0.4s ease; }
 .h2h-mbfill.fav { background: var(--cc-success); }
-.h2h-mbfill.dog { background: #B0454F; }
+.h2h-mbfill.dog { background: var(--cc-danger); }
 .h2h-mbfill.even { background: #5A6080; }
 .h2h-mbfill:not(.r) { border-radius: 999px 0 0 999px; }
 .h2h-mbfill.r { border-radius: 0 999px 999px 0; }
@@ -62,9 +62,9 @@
 .h2h-mbpct { font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 2.1rem; flex-shrink: 0; color: var(--cc-muted); }
 .h2h-mbpct:last-child { text-align: right; }
 .h2h-mbpct.fav { color: var(--cc-success); }
-.h2h-mbpct.dog { color: #8A90A8; }
-.h2h-mpre { grid-column: 1 / -1; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--cc-border); font-size: 0.66rem; color: #8A90A8; text-align: center; }
-.h2h-mpre b { color: #C9CEE6; }
+.h2h-mbpct.dog { color: var(--cc-muted-2); }
+.h2h-mpre { grid-column: 1 / -1; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--cc-border); font-size: 0.66rem; color: var(--cc-muted-2); text-align: center; }
+.h2h-mpre b { color: var(--cc-muted-bright); }
 /* Clickable manager (→ profile) and team (→ team page) links inside the card.
    display:contents keeps the card's flex layout exactly as-is; the hover/focus
    cue lives on the child text/logo (a display:contents box can't be outlined). */

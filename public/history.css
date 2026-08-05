@@ -52,7 +52,7 @@
 .hof-mgr-sub { color: var(--cc-muted); font-size: 0.76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hof-youtag { color: var(--cc-accent); border: 1px solid var(--cc-accent); border-radius: 999px; font-size: 0.58rem; padding: 1px 6px; text-transform: uppercase; letter-spacing: 0.05em; vertical-align: middle; }
 .hof-mgr-titles { min-width: 3rem; text-align: center; font-size: 0.95rem; letter-spacing: -3px; }
-.hof-none { color: #4A4F68; letter-spacing: 0; }
+.hof-none { color: var(--cc-muted-2); letter-spacing: 0; }
 .hof-stat { display: flex; flex-direction: column; align-items: center; min-width: 3.4rem; }
 .hof-stat b { color: var(--cc-text); font-size: 1.02rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hof-stat small { color: var(--cc-muted); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; }

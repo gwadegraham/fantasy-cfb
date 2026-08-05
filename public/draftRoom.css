@@ -134,7 +134,7 @@
 
     .modal-footer .btn-primary:hover {
         color: var(--cc-text);
-        background-color: #ac3e3e;
+        background-color: var(--cc-danger);
         border-color: var(--cc-border);
     }
 
@@ -173,7 +173,7 @@
     .submit-draft-container button:hover {
         transition: 0.7s;
         color: var(--cc-text);
-        background-color: #ac3e3e;
+        background-color: var(--cc-danger);
     }
 
     .submit-draft-container button:disabled {
@@ -303,7 +303,7 @@
 
 #draft-board-head th {
     background: #0f1220;
-    color: #9aa4bf;
+    color: var(--cc-muted);
     font-size: 0.85em;
     font-weight: 700;
     padding: 10px 6px;
@@ -424,7 +424,7 @@
 .draft-pick-btn:hover:not(:disabled) { background-color: var(--cc-success); }
 .draft-pick-btn:disabled {
     background-color: #2a2f42;
-    color: #6b7280;
+    color: var(--cc-muted-2);
     cursor: not-allowed;
 }
 [user-table-body] tr.drafted { opacity: 0.35; }
@@ -438,18 +438,18 @@
     border-radius: 6px; padding: 8px 10px; font-size: 0.95em;
 }
 .pool-spacer { flex: 1; }
-.pool-count { color: #9aa4bf; font-size: 0.9em; }
-.pool-toggle { display: flex; align-items: center; gap: 6px; color: #9aa4bf; font-size: 0.9em; cursor: pointer; }
+.pool-count { color: var(--cc-muted); font-size: 0.9em; }
+.pool-toggle { display: flex; align-items: center; gap: 6px; color: var(--cc-muted); font-size: 0.9em; cursor: pointer; }
 
 .pool-table-wrap { overflow-x: auto; border: 1px solid var(--cc-border); border-radius: 10px; }
 table.pool-table { width: 100%; border-collapse: collapse; background: #131725; }
 .pool-table thead th {
-    position: sticky; top: 0; background: #0f1220; color: #9aa4bf;
+    position: sticky; top: 0; background: #0f1220; color: var(--cc-muted);
     font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px;
     padding: 10px 12px; text-align: left; cursor: pointer; user-select: none; white-space: nowrap;
 }
 .pool-table thead th.num { text-align: right; }
-.pool-table thead th .arrow { color: #4b5573; margin-left: 4px; font-size: 0.9em; }
+.pool-table thead th .arrow { color: var(--cc-muted-2); margin-left: 4px; font-size: 0.9em; }
 .pool-table thead th.sorted .arrow { color: var(--cc-info); }
 .pool-table thead th:first-child, .pool-table tbody td:first-child { width: 210px; }
 .pool-table tbody td { padding: 7px 12px; border-top: 1px solid #1e2333; font-size: 0.92em; color: var(--cc-text); text-align: left; }
@@ -460,16 +460,16 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .team-cell img { width: 26px; height: 26px; object-fit: contain; }
 
 .rank-badge { display: inline-block; min-width: 26px; text-align: center; padding: 2px 7px;
-    border-radius: 10px; font-weight: 700; font-size: 0.85em; background: #263043; color: #9aa4bf; }
+    border-radius: 10px; font-weight: 700; font-size: 0.85em; background: #263043; color: var(--cc-muted); }
 .rank-badge.top25 { background: #1f3a5c; color: var(--cc-info); }
 .rank-badge.top10 { background: var(--cc-amber); color: var(--cc-bg); }
-.muted { color: #5b6480; }
+.muted { color: var(--cc-muted-2); }
 
 .xwins-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .xwins-bar { width: 70px; height: 6px; background: #232838; border-radius: 3px; overflow: hidden; display: inline-block; flex: 0 0 auto; }
 .xwins-fill { height: 100%; background: var(--cc-success); display: block; }
 
-.drafted-chip { background: #2a2f42; color: #6b7280; border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
+.drafted-chip { background: #2a2f42; color: var(--cc-muted-2); border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
 
 /* ---------- Mobile pool cards (Sleeper-style; shown <=768px) ---------- */
 .pool-cards { display: none; }   /* desktop uses the table */
@@ -489,7 +489,7 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .pool-card-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .pool-card-main .team-cell { font-size: 1.02em; white-space: normal; }
 .pool-card-main .team-cell img { width: 30px; height: 30px; }
-.pool-card-meta { display: flex; align-items: center; gap: 8px; color: #9aa4bf; font-size: 0.82em; min-width: 0; }
+.pool-card-meta { display: flex; align-items: center; gap: 8px; color: var(--cc-muted); font-size: 0.82em; min-width: 0; }
 .pc-conf { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Fixed box + contain so every conference logo occupies the same footprint,
    regardless of aspect ratio (wide wordmarks like ACC no longer dominate). */
@@ -497,12 +497,12 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .pool-card-stats { display: flex; gap: 14px; text-align: center; flex: 0 0 auto; }
 .pool-card-stats span { display: flex; flex-direction: column; line-height: 1.1; }
 .pool-card-stats b { color: var(--cc-text); font-size: 0.98em; font-variant-numeric: tabular-nums; }
-.pool-card-stats small { color: #6b7280; font-size: 0.66em; text-transform: uppercase; letter-spacing: .04em; }
+.pool-card-stats small { color: var(--cc-muted-2); font-size: 0.66em; text-transform: uppercase; letter-spacing: .04em; }
 
 /* ---------- Commissioner undo ---------- */
 .draft-undo-btn {
     background: transparent;
-    color: #ed8a8a;
+    color: var(--cc-danger-text);
     border: 1px solid var(--cc-accent);
     border-radius: 8px;
     padding: 8px 18px;

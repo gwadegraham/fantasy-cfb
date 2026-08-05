@@ -442,7 +442,7 @@
 .move.down { color: var(--cc-accent); }
 .move.flat { color: var(--cc-muted-2); }
 .standings-row.medal-1 .rank-num { color: var(--cc-amber); }
-.standings-row.medal-2 .rank-num { color: #C7CCDB; }
+.standings-row.medal-2 .rank-num { color: var(--cc-muted-bright); }
 .standings-row.medal-3 .rank-num { color: #D8925B; }
 .crown { font-size: 0.85rem; margin-right: 2px; }
 
@@ -486,7 +486,7 @@
 }
 .highlight-title { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .hl-icon { font-size: 1.05rem; }
-.hl-tag { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: #AEB4CC; background: var(--cc-border); border-radius: 20px; padding: 2px 8px; font-weight: 500; }
+.hl-tag { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted-bright); background: var(--cc-border); border-radius: 20px; padding: 2px 8px; font-weight: 500; }
 .highlight-info { display: flex; flex-direction: column; gap: 4px; align-items: center; }
 .highlight-info .hl-name { font-size: 0.95rem; color: var(--cc-text); display: flex; align-items: center; gap: 6px; }
 .highlight-info .hl-name .hl-logo { max-height: 1.1rem; width: auto; vertical-align: middle; }
@@ -507,14 +507,14 @@
     font: inherit;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #C9CEE6;
+    color: var(--cc-muted-bright);
     background: var(--cc-border);
-    border: 1px solid #3A3F58;
+    border: 1px solid var(--cc-border-2);
     border-radius: 20px;
     line-height: 1.4;
     cursor: pointer;
 }
-.hl-more:hover { background: #343954; color: var(--cc-text); }
+.hl-more:hover { background: var(--cc-surface-3); color: var(--cc-text); }
 .hl-more[aria-expanded="true"] { background: var(--cc-interactive); border-color: var(--cc-interactive); color: #fff; }
 .hl-popover {
     position: absolute;
@@ -528,11 +528,11 @@
     max-width: min(240px, 42vw);
     padding: 10px 12px;
     background: #232840;
-    border: 1px solid #3A3F58;
+    border: 1px solid var(--cc-border-2);
     border-radius: 10px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.45);
     font-size: 0.82rem;
-    color: #C9CEE6;
+    color: var(--cc-muted-bright);
     line-height: 1.5;
     text-align: left;
     white-space: normal;
@@ -542,7 +542,7 @@
     font-size: 0.66rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #8E93AE;
+    color: var(--cc-muted-2);
     margin-bottom: 4px;
 }
 
@@ -554,7 +554,7 @@
 .chart-container { width: 100%; max-width: 1200px; box-sizing: border-box; }
 .chart-canvas-wrap { position: relative; height: 340px; width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 10px; box-sizing: border-box; }
 .chart-mode-toggle { display: flex; justify-content: center; margin: 10px 0 4px; }
-.chart-mode-toggle button { background: var(--cc-surface); color: #AEB4CC; border: 1px solid var(--cc-border); padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
+.chart-mode-toggle button { background: var(--cc-surface); color: var(--cc-muted-bright); border: 1px solid var(--cc-border); padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
 .chart-mode-toggle button:first-child { border-radius: 8px 0 0 8px; }
 .chart-mode-toggle button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
 .chart-mode-toggle button.active { background: var(--cc-interactive); color: #fff; border-color: var(--cc-interactive); }
@@ -649,7 +649,7 @@
 .pp-sub { color: var(--cc-muted); font-size: 0.76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-points { display: flex; align-items: center; gap: 0.45rem; font-variant-numeric: tabular-nums; }
 .pp-cur { color: var(--cc-muted); }
-.pp-arrow { color: #4A4F68; font-size: 0.72rem; }
+.pp-arrow { color: var(--cc-muted-2); font-size: 0.72rem; }
 .pp-proj { color: var(--cc-info); font-weight: 800; font-size: 1.05rem; }
 .pp-title { display: flex; align-items: center; gap: 0.55rem; min-width: 8.5rem; justify-content: flex-end; }
 .pp-bar { flex: 1; min-width: 54px; max-width: 110px; height: 6px; background: var(--cc-border); border-radius: 3px; overflow: hidden; }
@@ -685,7 +685,7 @@
 /* ---------- H2H featured view: week selector + matchup scoreboards ---------- */
 .h2h-week-bar { display: flex; align-items: center; gap: 0.6rem; margin: 0.2rem 0 0.7rem; }
 .h2h-week-cap { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--cc-muted-2); }
-.h2h-week-bar select { background: var(--cc-bg); border: 1px solid #3A3F58; border-radius: 8px; color: var(--cc-text); font: inherit; font-size: 0.85rem; padding: 5px 9px; cursor: pointer; }
+.h2h-week-bar select { background: var(--cc-bg); border: 1px solid var(--cc-border-2); border-radius: 8px; color: var(--cc-text); font: inherit; font-size: 0.85rem; padding: 5px 9px; cursor: pointer; }
 .h2h-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
 .h2h-empty { color: var(--cc-muted-2); font-size: 0.85rem; }
 
@@ -696,7 +696,7 @@
 .h2h-log-res.r-W { color: var(--cc-success); }
 .h2h-log-res.r-L { color: var(--cc-accent); }
 .h2h-log-res.r-T { color: var(--cc-muted); }
-.h2h-log-opp { color: #C9CEE6; font-variant-numeric: tabular-nums; }
+.h2h-log-opp { color: var(--cc-muted-bright); font-variant-numeric: tabular-nums; }
 
 /* Matchup cards stack in a single column; the cards themselves are styled in
    h2h-card.css. Overrides the grid set on .h2h-matches above. */
@@ -747,7 +747,7 @@
 /* Record column. Scoped under .fl-table thead th so it beats the mobile
    breakpoint rule that left-aligns headers. */
 .fl-table.mode-h2h thead th.rec-head { text-align: right; padding-right: 1.5em; }
-.mode-h2h .standings-row .rec-cell { text-align: right; padding-right: 1.5em; color: #C9CEE6; font-size: 0.85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mode-h2h .standings-row .rec-cell { text-align: right; padding-right: 1.5em; color: var(--cc-muted-bright); font-size: 0.85em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Total column: big number over a stacked sub-line (gap + base·bonus). */
 .fl-table.mode-h2h thead th.score-head { text-align: right; }
@@ -766,7 +766,7 @@
     padding: 6px 8px; font-size: 0.9rem; line-height: 1;
     transition: transform 0.2s ease, color 0.2s ease;
 }
-.mode-h2h .std-caret:hover { color: #C9CEE6; }
+.mode-h2h .std-caret:hover { color: var(--cc-muted-bright); }
 .mode-h2h .std-caret.open { color: var(--cc-interactive); transform: rotate(180deg); }
 .mode-h2h .std-caret:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; border-radius: 6px; }
 
