@@ -22,10 +22,10 @@
 
     .button-container button {
         border-radius: 5px;
-        background-color: #1A1F33;
-        color: #F4F6FB;
+        background-color: var(--cc-surface);
+        color: var(--cc-text);
         border: none;
-        box-shadow: 0px 0px 2px 2px #1A1F33;
+        box-shadow: 0px 0px 2px 2px var(--cc-surface);
         padding: 10px;
         width: 100%;
         min-height: 30px;
@@ -34,7 +34,7 @@
 
     .button-container button:hover, .sub-container button:hover {
         transition: 0.7s;
-        background-color: #2A2E42;
+        background-color: var(--cc-border);
     }
 
     .sub-container {
@@ -46,7 +46,7 @@
         align-items: center;
         display: flex;
         justify-content: center;
-        background-color: #1A1F33;
+        background-color: var(--cc-surface);
         width: 30%;
         margin: auto;
         border-radius: 5px;
@@ -71,18 +71,18 @@
     }
 
     .sub-container input {
-        color: #F4F6FB;
-        background-color: #101322;
+        color: var(--cc-text);
+        background-color: var(--cc-bg);
         border-top: none;
         border-left: none;
         border-right: none;
     }
 
     .sub-container select {
-        color: #F4F6FB;
-        background-color: #101322;
+        color: var(--cc-text);
+        background-color: var(--cc-bg);
         border: none;
-        border-bottom: 1px solid #F4F6FB;
+        border-bottom: 1px solid var(--cc-text);
         width: 45%;
         margin-bottom: 0.25em;
         margin-top: 0.25em;
@@ -94,8 +94,8 @@
 
     .sub-container button {
         border-radius: 5px;
-        background-color: #ed5858;
-        color: #F4F6FB;
+        background-color: var(--cc-accent);
+        color: var(--cc-text);
         border: none;
         box-shadow: 0px 0px 2px 2px #444;
         margin-top: 10px;
@@ -106,7 +106,7 @@
     }
 
     .display-color {
-        background-color: #101322;
+        background-color: var(--cc-bg);
     }
 
     .header {
@@ -189,7 +189,7 @@
     flex-direction: column;
     gap: 10px;
     width: 100%;
-    color: #F4F6FB;
+    color: var(--cc-text);
 }
 
 .draft-config-form .draft-field {
@@ -205,9 +205,9 @@
 .draft-config-form select,
 .draft-config-form input[type="datetime-local"],
 .draft-config-form input[type="number"] {
-    color: #F4F6FB;
-    background-color: #101322;
-    border: 1px solid #2A2E42;
+    color: var(--cc-text);
+    background-color: var(--cc-bg);
+    border: 1px solid var(--cc-border);
     border-radius: 4px;
     padding: 6px;
     width: 100%;
@@ -245,12 +245,12 @@
     font-weight: 600;
     padding: 2px 8px;
     border-radius: 10px;
-    background-color: #2A2E42;
+    background-color: var(--cc-border);
 }
 
-.draft-status-badge.status-active { background-color: #71d28d; color: #101322; }
-.draft-status-badge.status-complete { background-color: #64b5f6; color: #101322; }
-.draft-status-badge.status-scheduled { background-color: #ed5858; color: #fff; }
+.draft-status-badge.status-active { background-color: var(--cc-success); color: var(--cc-bg); }
+.draft-status-badge.status-complete { background-color: var(--cc-info); color: var(--cc-bg); }
+.draft-status-badge.status-scheduled { background-color: var(--cc-accent); color: #fff; }
 
 .draft-order-header {
     display: flex;
@@ -281,8 +281,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    background-color: #101322;
-    border: 1px solid #2A2E42;
+    background-color: var(--cc-bg);
+    border: 1px solid var(--cc-border);
     border-radius: 4px;
     padding: 6px 8px;
 }
@@ -312,13 +312,13 @@
     align-items: center;
     justify-content: center;
     background-color: #232842;
-    color: #F4F6FB;
-    border: 1px solid #2A2E42;
+    color: var(--cc-text);
+    border: 1px solid var(--cc-border);
     border-radius: 8px;
     box-shadow: none;
 }
 .draft-order-move button:hover {
-    background-color: #2A2E42;
+    background-color: var(--cc-border);
 }
 
 .draft-config-actions {
@@ -328,7 +328,7 @@
 }
 
 .draft-config-actions button[draft-reset-btn] {
-    background-color: #ed5858;
+    background-color: var(--cc-accent);
 }
 
 /* ---------- Admin console redesign: groups, status strip ---------- */
@@ -344,7 +344,7 @@
     align-items: center;
     gap: 10px;
     padding: 0 0.25em 0.55em;
-    border-bottom: 1px solid #2A2E42;
+    border-bottom: 1px solid var(--cc-border);
     margin-bottom: 0.9em;
 }
 
@@ -352,15 +352,15 @@
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.13em;
-    color: #767D9C;
+    color: var(--cc-muted-2);
     margin: 0;
     font-weight: 500;
 }
 
 .group-count {
-    background: #1A1F33;
-    border: 1px solid #2A2E42;
-    color: #AEB4CC;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted-bright);
     border-radius: 20px;
     padding: 1px 8px;
     font-size: 0.7rem;
@@ -371,7 +371,7 @@
     align-items: center;
     gap: 6px;
     font-size: 0.7rem;
-    color: #64B5F6;
+    color: var(--cc-info);
     padding: 5px 0.5em 0;
 }
 .job-tag i { font-size: 0.75rem; }
@@ -384,10 +384,10 @@
        centers via auto margins once there's room (see media query below). */
     margin: 0 16px 1.75em;
     background: #141A2E;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
     border-radius: 12px;
     padding: 14px 16px;
-    color: #F4F6FB;
+    color: var(--cc-text);
 }
 @media (min-width: 1132px) {
     .admin-status { margin-left: auto; margin-right: auto; }
@@ -396,36 +396,36 @@
 .admin-status .ss-head {
     display: flex; align-items: center; gap: 8px;
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.13em;
-    color: #767D9C; margin-bottom: 11px;
+    color: var(--cc-muted-2); margin-bottom: 11px;
 }
 .admin-status .ss-row { display: flex; flex-wrap: wrap; gap: 20px; }
 .admin-status .ss-item { display: flex; flex-direction: column; gap: 2px; }
-.admin-status .ss-item small { color: #767D9C; font-size: 0.68rem; }
+.admin-status .ss-item small { color: var(--cc-muted-2); font-size: 0.68rem; }
 .admin-status .ss-item b { font-weight: 500; font-size: 1rem; display: flex; align-items: center; gap: 7px; }
 .admin-status .dot { width: 7px; height: 7px; border-radius: 50%; }
-.admin-status .dot.g { background: #71D28D; }
-.admin-status .dot.b { background: #64B5F6; }
-.admin-status .dot.a { background: #F2C14E; }
-.admin-status .dot.r { background: #ED5858; }
+.admin-status .dot.g { background: var(--cc-success); }
+.admin-status .dot.b { background: var(--cc-info); }
+.admin-status .dot.a { background: var(--cc-amber); }
+.admin-status .dot.r { background: var(--cc-accent); }
 
 /* Automated-jobs last-run summary. */
 .ss-jobs { margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741; }
-.ss-jobs > small { color: #767D9C; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.ss-jobs > small { color: var(--cc-muted-2); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
 .ss-jobs-row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 8px; }
 .ss-job { display: flex; align-items: center; gap: 7px; font-size: 0.82rem; }
 .ss-job b { font-weight: 500; }
-.ss-job-meta { color: #767D9C; }
+.ss-job-meta { color: var(--cc-muted-2); }
 .admin-status .ss-note {
     margin-top: 12px; padding-top: 11px; border-top: 1px solid #222741;
-    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: #AEB4CC;
+    font-size: 0.82rem; display: flex; gap: 8px; align-items: flex-start; color: var(--cc-muted-bright);
 }
-.admin-status.ok .ss-note { color: #71D28D; }
-.admin-status.warn .ss-note { color: #F2C14E; }
+.admin-status.ok .ss-note { color: var(--cc-success); }
+.admin-status.warn .ss-note { color: var(--cc-amber); }
 .admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
 
 /* Highlight the Update Scores tool when results are waiting to be scored. */
 .function-container.attn .button-container button {
-    box-shadow: inset 3px 0 0 #F2C14E, 0px 0px 2px 2px #1A1F33;
+    box-shadow: inset 3px 0 0 var(--cc-amber), 0px 0px 2px 2px var(--cc-surface);
 }
 
 /* Scoring config: label and its (small) value input on one row, so each rule
@@ -451,7 +451,7 @@
 [scoring-config-fields] .draft-status-row {
     margin: 18px 0 10px;
     font-weight: 500;
-    color: #AEB4CC;
+    color: var(--cc-muted-bright);
 }
 [scoring-config-fields] .draft-status-row:first-child { margin-top: 4px; }
 
@@ -467,7 +467,7 @@
 [scoring-config-fields].is-locked,
 [scoring-config-shape].is-locked { opacity: 0.75; }
 [scoring-config-shape].is-locked .mode-card { cursor: not-allowed; }
-[scoring-config-shape].is-locked .mode-card:hover { border-color: #2A2E42; background: #101322; }
+[scoring-config-shape].is-locked .mode-card:hover { border-color: var(--cc-border); background: var(--cc-bg); }
 .season-roster-list.is-locked .roster-row { opacity: 0.6; cursor: not-allowed; }
 .season-roster-list.is-locked .roster-row:hover { background: none; }
 
@@ -481,7 +481,7 @@
     border-radius: 6px;
     cursor: pointer;
 }
-.roster-row:hover { background: #101322; }
+.roster-row:hover { background: var(--cc-bg); }
 .roster-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .roster-name { font-size: 0.95em; }
 
@@ -491,7 +491,7 @@
     align-items: center;
     gap: 8px;
     font-size: 0.85em;
-    color: #E0B341;
+    color: var(--cc-amber);
     background: rgba(224, 179, 65, 0.10);
     border: 1px solid rgba(224, 179, 65, 0.35);
     border-radius: 6px;
@@ -507,22 +507,22 @@
     align-items: flex-start;
     gap: 10px;
     padding: 10px 12px;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
     border-radius: 6px;
-    background: #101322;
+    background: var(--cc-bg);
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
 }
-.mode-card:hover { border-color: #5B6690; }
-.mode-card.is-active { border-color: #ED5858; background: rgba(237, 88, 88, 0.08); }
-.mode-card input[type="radio"] { margin: 3px 0 0; accent-color: #ED5858; flex: 0 0 auto; }
+.mode-card:hover { border-color: var(--cc-border-2); }
+.mode-card.is-active { border-color: var(--cc-accent); background: rgba(237, 88, 88, 0.08); }
+.mode-card input[type="radio"] { margin: 3px 0 0; accent-color: var(--cc-accent); flex: 0 0 auto; }
 .mode-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mode-card-title { font-weight: 600; font-size: 0.92em; }
-.mode-card-desc { font-size: 0.82em; color: #A4A9C2; line-height: 1.35; }
+.mode-card-desc { font-size: 0.82em; color: var(--cc-muted); line-height: 1.35; }
 
 .combine-example {
     margin-top: 6px;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
     border-radius: 6px;
     background: #0C0F1C;
     padding: 10px 12px;
@@ -530,8 +530,8 @@
     flex-direction: column;
     gap: 6px;
 }
-.combine-example-head { font-size: 0.82em; color: #A4A9C2; }
-.combine-example-head b { color: #F4F6FB; font-weight: 600; }
+.combine-example-head { font-size: 0.82em; color: var(--cc-muted); }
+.combine-example-head b { color: var(--cc-text); font-weight: 600; }
 .combine-example-row {
     display: flex;
     align-items: baseline;
@@ -545,18 +545,18 @@
     border-color: rgba(237, 88, 88, 0.5);
     background: rgba(237, 88, 88, 0.06);
 }
-.cx-val { font-variant-numeric: tabular-nums; font-weight: 700; color: #E0B341; font-size: 0.9em; }
-.cx-note { font-size: 0.78em; color: #767D9C; }
+.cx-val { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--cc-amber); font-size: 0.9em; }
+.cx-note { font-size: 0.78em; color: var(--cc-muted-2); }
 
 /* Small explanatory note under the Postseason header for events that stack. */
 .scoring-note {
     font-size: 0.8em;
-    color: #A4A9C2;
+    color: var(--cc-muted);
     margin: 0 0 6px;
     padding-left: 14px;
     position: relative;
 }
-.scoring-note::before { content: "\21B3"; position: absolute; left: 0; color: #767D9C; }
+.scoring-note::before { content: "\21B3"; position: absolute; left: 0; color: var(--cc-muted-2); }
 
 .scoring-field .num-stepper { flex: none; }
 
@@ -565,10 +565,10 @@
 .num-stepper {
     display: inline-flex;
     align-items: stretch;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
     border-radius: 8px;
     overflow: hidden;
-    background-color: #101322;
+    background-color: var(--cc-bg);
 }
 .num-stepper input[type="number"] {
     width: 44px;
@@ -576,7 +576,7 @@
     border: none;
     border-radius: 0;
     background-color: transparent;
-    color: #F4F6FB;
+    color: var(--cc-text);
     padding: 7px 0;
     -moz-appearance: textfield;
     appearance: textfield;
@@ -593,8 +593,8 @@
     margin: 0;
     border: none;
     border-radius: 0;
-    background-color: #1A1F33;
-    color: #AEB4CC;
+    background-color: var(--cc-surface);
+    color: var(--cc-muted-bright);
     font-size: 1.05rem;
     line-height: 1;
     cursor: pointer;
@@ -603,9 +603,9 @@
     align-items: center;
     justify-content: center;
 }
-.num-stepper button:hover { background-color: #2A2E42; color: #F4F6FB; }
-.num-stepper .step-dn { border-right: 1px solid #2A2E42; }
-.num-stepper .step-up { border-left: 1px solid #2A2E42; }
+.num-stepper button:hover { background-color: var(--cc-border); color: var(--cc-text); }
+.num-stepper .step-dn { border-right: 1px solid var(--cc-border); }
+.num-stepper .step-up { border-left: 1px solid var(--cc-border); }
 
 /* Enable/disable toggles for postseason events: themed checkbox, green = on. */
 .scoring-toggle {
@@ -615,16 +615,16 @@
     width: 18px;
     height: 18px;
     margin: 0;
-    border: 1px solid #3A4060;
+    border: 1px solid var(--cc-border-2);
     border-radius: 5px;
-    background-color: #101322;
+    background-color: var(--cc-bg);
     cursor: pointer;
     position: relative;
 }
-.scoring-toggle:hover { border-color: #5B6690; }
+.scoring-toggle:hover { border-color: var(--cc-border-2); }
 .scoring-toggle:checked {
-    background-color: #71D28D;
-    border-color: #71D28D;
+    background-color: var(--cc-success);
+    border-color: var(--cc-success);
 }
 .scoring-toggle:checked::after {
     content: '';
@@ -639,13 +639,13 @@
     transform: translate(-50%, -60%) rotate(45deg);
 }
 .scoring-toggle:focus-visible {
-    outline: 2px solid #64B5F6;
+    outline: 2px solid var(--cc-info);
     outline-offset: 2px;
 }
 
 /* Short explanation shown inside an admin function's expanded panel. */
 .function-description {
-    color: #A4A9C2;
+    color: var(--cc-muted);
     font-size: 0.85rem;
     line-height: 1.5;
     max-width: 46ch;
@@ -655,9 +655,9 @@
 /* --- CFP odds ingestion (Market odds) --- */
 .sub-container textarea[cfp-odds-text] {
     width: 100%;
-    background-color: #101322;
-    color: #F4F6FB;
-    border: 1px solid #2A2E42;
+    background-color: var(--cc-bg);
+    color: var(--cc-text);
+    border: 1px solid var(--cc-border);
     border-radius: 5px;
     padding: 0.5em;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -667,9 +667,9 @@
 .cfp-odds-controls { display: flex; gap: 0.6em; }
 #cfp-odds-commit:disabled { opacity: 0.45; cursor: not-allowed; }
 .cfp-odds-results { width: 100%; text-align: left; margin-top: 0.75em; }
-.cfp-odds-summary { color: #F4F6FB; font-weight: 600; margin-bottom: 0.5em; }
+.cfp-odds-summary { color: var(--cc-text); font-weight: 600; margin-bottom: 0.5em; }
 .cfp-unmatched {
-    color: #E0B341;
+    color: var(--cc-amber);
     font-size: 0.8rem;
     background-color: rgba(224, 179, 65, 0.1);
     border: 1px solid rgba(224, 179, 65, 0.35);
@@ -679,12 +679,12 @@
     line-height: 1.5;
 }
 .cfp-odds-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.cfp-odds-table th, .cfp-odds-table td { padding: 0.3em 0.6em; border-bottom: 1px solid #2A2E42; text-align: left; }
+.cfp-odds-table th, .cfp-odds-table td { padding: 0.3em 0.6em; border-bottom: 1px solid var(--cc-border); text-align: left; }
 .cfp-odds-table th {
-    color: #A4A9C2; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--cc-muted); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
 }
 .cfp-odds-table .cfp-num { font-variant-numeric: tabular-nums; text-align: right; }
-.cfp-odds-table tbody tr:hover { background-color: #171B31; }
+.cfp-odds-table tbody tr:hover { background-color: var(--cc-surface-2); }
 
 /* -------------------------------------------------------------------------
    Admin "working" overlay loader (markup injected by block_screen in
@@ -696,7 +696,7 @@
     flex-flow: column nowrap;
     align-items: center;
     gap: 0.9rem;
-    color: #F4F6FB;
+    color: var(--cc-text);
     text-align: center;
     padding: 1rem;
 }
@@ -745,7 +745,7 @@
 /* Caption under the "Score All Weeks" button explaining what it runs. */
 .all-weeks-note {
     font-size: 0.72rem;
-    color: #A4A9C2;
+    color: var(--cc-muted);
     line-height: 1.4;
     margin-top: 0.4em;
     max-width: 22em;
@@ -776,9 +776,9 @@
     align-items: center;
     gap: 0.55em;
     text-align: left;
-    background-color: #1A1F33;
-    color: #F4F6FB;
-    border: 1px solid #2A2E42;
+    background-color: var(--cc-surface);
+    color: var(--cc-text);
+    border: 1px solid var(--cc-border);
     border-radius: 10px;
     box-shadow: none;
     padding: 0.7em 0.95em;
@@ -788,7 +788,7 @@
 }
 .button-container button:hover {
     background-color: #212843;
-    border-color: #3a4162;
+    border-color: var(--cc-border-2);
 }
 /* Caret chevron on the right, rotates down when the panel is open. */
 .button-container button::after {
@@ -797,29 +797,29 @@
     flex: 0 0 auto;
     width: 0.5em;
     height: 0.5em;
-    border-right: 2px solid #767D9C;
-    border-bottom: 2px solid #767D9C;
+    border-right: 2px solid var(--cc-muted-2);
+    border-bottom: 2px solid var(--cc-muted-2);
     transform: rotate(-45deg);
     transition: transform 0.25s ease, border-color 0.18s ease;
 }
 .function-container.is-open .button-container button {
     background-color: #212843;
-    border-color: #3a4162;
+    border-color: var(--cc-border-2);
 }
 .function-container.is-open .button-container button::after {
     transform: rotate(45deg);
-    border-color: #F4F6FB;
+    border-color: var(--cc-text);
 }
 
 /* Keep the "unscored results" highlight working with the new flat button. */
 .function-container.attn .button-container button {
-    box-shadow: inset 3px 0 0 #F2C14E;
+    box-shadow: inset 3px 0 0 var(--cc-amber);
     border-color: #F2C14E66;
 }
 
 /* --- Action (submit) buttons inside a panel --- */
 .sub-container button {
-    background-color: #ed5858;
+    background-color: var(--cc-accent);
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -830,7 +830,7 @@
     box-sizing: border-box;
     transition: background-color 0.18s ease, transform 0.08s ease;
 }
-.sub-container button:hover { background-color: #d94a4a; }
+.sub-container button:hover { background-color: var(--cc-danger); }
 .sub-container button:active { transform: translateY(1px); }
 
 /* Full-width form with no horizontal margin — the base rules give it
@@ -848,9 +848,9 @@
 .sub-container form:not(.draft-config-form) select,
 .sub-container form:not(.draft-config-form) input[type="text"],
 .sub-container form:not(.draft-config-form) input[type="number"] {
-    background-color: #101322;
-    color: #F4F6FB;
-    border: 1px solid #2A2E42;
+    background-color: var(--cc-bg);
+    color: var(--cc-text);
+    border: 1px solid var(--cc-border);
     border-radius: 8px;
     padding: 0.5em 0.65em;
     font-size: 0.88rem;
@@ -862,7 +862,7 @@
 .sub-container form:not(.draft-config-form) select:focus,
 .sub-container form:not(.draft-config-form) input:focus {
     outline: none;
-    border-color: #6C9BFF;
+    border-color: var(--cc-info);
     box-shadow: 0 0 0 2px rgba(108, 155, 255, 0.25);
 }
 
@@ -878,4 +878,4 @@
 }
 
 /* Secondary hint text next to a Game Mode toggle label (#230). */
-.mode-hint { color: #767D9C; font-weight: 400; font-size: 0.85em; }
+.mode-hint { color: var(--cc-muted-2); font-weight: 400; font-size: 0.85em; }

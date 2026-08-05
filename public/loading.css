@@ -4,20 +4,20 @@
     align-items: center;
     justify-content: center;
     padding: 2em;
-    color: #F4F6FB;
+    color: var(--cc-text);
 }
 
 .football-icon {
 	font-size: 3rem;
 	animation: spin-bounce 1.4s infinite ease-in-out;
-	color: #ed5858;
-	filter: drop-shadow(0 0 8px #ed5858);
+	color: var(--cc-accent);
+	filter: drop-shadow(0 0 8px var(--cc-accent));
 }
 
 .loading-text {
 	margin-top: 1em;
 	font-size: 1rem;
-	color: #F4F6FB;
+	color: var(--cc-text);
 	font-weight: 500;
 	animation: blink 2s infinite;
 }
@@ -58,7 +58,7 @@
 	height: 6px;
 	margin-top: 1.1em;
 	border-radius: 3px;
-	background: linear-gradient(90deg, #1c2237 0%, #1c2237 42%, #ed5858 50%, #1c2237 58%, #1c2237 100%);
+	background: linear-gradient(90deg, #1c2237 0%, #1c2237 42%, var(--cc-accent) 50%, #1c2237 58%, #1c2237 100%);
 	background-size: 260% 100%;
 	animation: yard-sweep 1.3s ease-in-out infinite;
 }

@@ -1,8 +1,48 @@
+/* ============================================================================
+   Campus Clash design tokens — the single source of truth for the palette.
+   Prefer var(--cc-*) over raw hex in every stylesheet. Values were chosen to
+   preserve the current look while collapsing the many near-duplicate shades
+   that had crept in per page (3 blues, 4 greens, 2 golds, etc.). To retune the
+   whole app, change a value here — not scattered hexes.
+   ========================================================================== */
+:root {
+    /* Surfaces (dark → light) */
+    --cc-bg:         #101322;   /* page background */
+    --cc-surface:    #1A1F33;   /* cards / raised panels */
+    --cc-surface-2:  #171B31;   /* alt table rows / secondary panels */
+    --cc-surface-3:  #343954;   /* elevated / hover fills */
+
+    /* Lines */
+    --cc-border:     #2A2E42;   /* hairlines, dividers, card borders */
+    --cc-border-2:   #3A3F58;   /* lighter / elevated dividers & focus borders */
+
+    /* Text (bright → dim). All meet WCAG AA for small text on the surfaces. */
+    --cc-text:        #F4F6FB;  /* primary text */
+    --cc-muted-bright:#C9CEE6;  /* high-emphasis secondary (values, key labels) */
+    --cc-muted:       #A4A9C2;  /* standard secondary / muted text */
+    --cc-muted-2:     #8A90A8;  /* dim captions (raised from #767D9C to pass AA) */
+
+    /* Semantic accents */
+    --cc-accent:      #ed5858;  /* brand red — identity/active nav, "YOU", errors */
+    --cc-interactive: #8E8CF0;  /* interactive/active state: chart tabs, carets */
+    --cc-success:     #22C37A;  /* wins / positive */
+    --cc-info:        #6C9BFF;  /* info / neutral highlight, focus rings */
+    --cc-amber:       #E0B341;  /* leaders / awards / attention */
+    --cc-danger:      #B5423F;  /* negative fills/borders: losses, underdog, delete */
+    --cc-danger-text: #D27171;  /* negative text on dark (kept light for legibility) */
+
+    /* Radius scale */
+    --cc-r-sm:   6px;
+    --cc-r-md:   10px;
+    --cc-r-lg:   14px;
+    --cc-r-pill: 999px;
+}
+
 * {
     box-sizing: border-box;
     font-family: "Poppins", sans-serif;
     font-style: normal;
-    color: #F4F6FB;
+    color: var(--cc-text);
 }
 
 button {
@@ -14,7 +54,7 @@ button {
     padding-left: 0.5rem;
 }
 .fa-helmet-un {
-    color: #ed5858;
+    color: var(--cc-accent);
 }
 
 /* ---- Toasts (Toastify) ------------------------------------------------------
@@ -27,13 +67,13 @@ button {
     gap: 10px;
     max-width: 360px;
     padding: 14px 16px;
-    background: #1A1F33;
-    color: #F4F6FB;
+    background: var(--cc-surface);
+    color: var(--cc-text);
     font-size: 0.9rem;
     font-weight: 500;
     line-height: 1.35;
-    border: 1px solid #2A2E42;
-    border-left: 4px solid #A4A9C2;   /* accent color set per type below */
+    border: 1px solid var(--cc-border);
+    border-left: 4px solid var(--cc-muted);   /* accent color set per type below */
     border-radius: 10px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
@@ -47,18 +87,18 @@ button {
     flex: 0 0 auto;
 }
 
-.cc-toast--success { border-left-color: #22C37A; }
-.cc-toast--success::before { content: "\f058"; color: #22C37A; }   /* circle-check */
+.cc-toast--success { border-left-color: var(--cc-success); }
+.cc-toast--success::before { content: "\f058"; color: var(--cc-success); }   /* circle-check */
 
-.cc-toast--error { border-left-color: #ED5858; }
-.cc-toast--error::before { content: "\f06a"; color: #ED5858; }     /* circle-exclamation */
+.cc-toast--error { border-left-color: var(--cc-accent); }
+.cc-toast--error::before { content: "\f06a"; color: var(--cc-accent); }     /* circle-exclamation */
 
-.cc-toast--info { border-left-color: #4A90D9; }
-.cc-toast--info::before { content: "\f05a"; color: #4A90D9; }      /* circle-info */
+.cc-toast--info { border-left-color: var(--cc-info); }
+.cc-toast--info::before { content: "\f05a"; color: var(--cc-info); }      /* circle-info */
 
 /* Close button: quiet by default, brightens on hover. */
 .toastify.cc-toast .toast-close {
-    color: #A4A9C2;
+    color: var(--cc-muted);
     opacity: 0.85;
     font-size: 1.15rem;
     line-height: 1;
@@ -67,7 +107,7 @@ button {
     align-self: flex-start;
 }
 .toastify.cc-toast .toast-close:hover {
-    color: #F4F6FB;
+    color: var(--cc-text);
     opacity: 1;
 }
 
@@ -79,7 +119,7 @@ button {
 }
 
 body {
-    background-color: #101322 !important;
+    background-color: var(--cc-bg) !important;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -93,9 +133,9 @@ body {
     width: 100%;
     justify-content: space-between;
     align-items: center;
-    background-color: #101322;
-    color: #F4F6FB;
-    border-bottom: 1px solid #2A2E42;
+    background-color: var(--cc-bg);
+    color: var(--cc-text);
+    border-bottom: 1px solid var(--cc-border);
 }
 
 /* Stay reachable on long pages. #navbar (id) beats Bootstrap's own
@@ -119,9 +159,9 @@ body {
 
 /* Current page indicator */
 .navbar-links li a.active {
-    color: #ed5858;
+    color: var(--cc-accent);
     font-weight: 700;
-    box-shadow: inset 0 -2px 0 #ed5858;
+    box-shadow: inset 0 -2px 0 var(--cc-accent);
 }
 
 .navbar-links ul {
@@ -136,7 +176,7 @@ body {
 
 .navbar-links li a {
     text-decoration: none;
-    color: #F4F6FB;
+    color: var(--cc-text);
     padding: 1rem;
     display: block;
     position: relative;
@@ -164,7 +204,7 @@ body {
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
 }
 
 .nav-avatar img {
@@ -177,7 +217,7 @@ body {
 .nav-avatar-initials {
     font-size: 0.8rem;
     font-weight: 700;
-    color: #F4F6FB;
+    color: var(--cc-text);
 }
 
 /* "My Team" label: hidden on desktop (avatar speaks for itself), revealed in
@@ -197,7 +237,7 @@ body {
     right: 1rem;
     bottom: 0.5rem;
     height: 2px;
-    background-color: #ed5858;
+    background-color: var(--cc-accent);
     transform: scaleX(0);
     transform-origin: center;
 }
@@ -221,17 +261,17 @@ body {
 }
 
 .dropdown-menu, #dropdownMenuButton {
-    background-color: #101322  !important;
+    background-color: var(--cc-bg)  !important;
     border: none;
 }
 
 #dropdownMenuButtonWeek {
-    background-color: #101322 !important;
+    background-color: var(--cc-bg) !important;
     margin-top: 10px;
 }
 
 .dropdown-week {
-    color: #F4F6FB !important;
+    color: var(--cc-text) !important;
 }
 
 .toggle-button {
@@ -253,7 +293,7 @@ body {
 .toggle-button .bar {
     height: 3px;
     width: 100%;
-    background-color: #F4F6FB;
+    background-color: var(--cc-text);
     border-radius: 10px;
 }
 
@@ -301,7 +341,7 @@ body {
 
     .navbar-links li {
         text-align: center;
-        border-bottom: 1px solid #23273D; /* dividers so the stacked items read as a menu */
+        border-bottom: 1px solid var(--cc-border); /* dividers so the stacked items read as a menu */
     }
 
     .navbar-links li:last-child {
@@ -317,15 +357,15 @@ body {
        than blending into the page (its background is otherwise transparent). */
     .navbar-links.active {
         display: flex;
-        background-color: #171B31;
-        border-top: 1px solid #2A2E42;
+        background-color: var(--cc-surface-2);
+        border-top: 1px solid var(--cc-border);
         box-shadow: 0px 10px 12px -7px rgba(0, 0, 0, 0.6);
     }
 
     /* On mobile the full-width underline reads as a divider, so mark the current
        page with a left accent bar (inset shadow = no layout shift) instead. */
     .navbar-links li a.active {
-        box-shadow: inset 3px 0 0 #ed5858;
+        box-shadow: inset 3px 0 0 var(--cc-accent);
     }
 
     /* Same reasoning for hover: a bottom sweep would look like a row divider in
@@ -354,7 +394,7 @@ body {
 .container {
     max-width: 90%;
     width: 1200px;
-    background-color: #F4F6FB;
+    background-color: var(--cc-text);
     box-shadow: 0 5px 10px black;
     border-radius: 5px;
     padding: 30px;
@@ -371,7 +411,7 @@ body {
 }
 
 .header-title {
-    color: #F4F6FB;
+    color: var(--cc-text);
     justify-content: center;
     padding: 35px;
     font-size: 3rem;
@@ -392,7 +432,7 @@ footer {
 }
 
 .cfb-data {
-    color: #ed5858;
+    color: var(--cc-accent);
     font-size: 1.5rem;
 }
 
@@ -425,14 +465,14 @@ footer {
     position: sticky;
     left: 0;
     z-index: 3;
-    background-color: #101322;
+    background-color: var(--cc-bg);
 }
 
 .sticky-header-score {
     position: sticky;
     right: 0;
     z-index: 2;
-    background-color: #101322;
+    background-color: var(--cc-bg);
 }
 
 .team-score-header {
@@ -500,11 +540,11 @@ footer {
 }
 
 .fl-table tr:nth-child(even) {
-    background: #171b31;
+    background: var(--cc-surface-2);
 }
 
 .fl-table tr:nth-child(even) .sticky-header, .fl-table tr:nth-child(even) .sticky-header-score {
-    background: #171b31;
+    background: var(--cc-surface-2);
 }
 
 .schedule-table {
@@ -526,11 +566,11 @@ footer {
 }
 
 .game-table {
-    background-color: #1A1F33;
+    background-color: var(--cc-surface);
     padding: 1em;
     border-radius: 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
 }
 
 .game-table img {
@@ -547,7 +587,7 @@ footer {
    same. Only rendered when the game has a stored outlet. */
 .game-broadcast {
     font-size: 0.75em;
-    color: #A4A9C2;
+    color: var(--cc-muted);
     padding-left: 0.5em !important;
     white-space: nowrap;
 }
@@ -582,7 +622,7 @@ footer {
     .table-wrapper:before{
         text-align: right;
         font-size: 11px;
-        color: #F4F6FB;
+        color: var(--cc-text);
         padding: 0 0 10px;
     }
 
@@ -621,7 +661,7 @@ footer {
     }
 
     .fl-table tr:nth-child(even) {
-        background: #171b31;
+        background: var(--cc-surface-2);
     }
 
     .fl-table tbody td, .sticky-header {
@@ -689,10 +729,10 @@ footer {
 /* Dev-only role-spoof switcher in the navbar (rendered only in non-production
    for a real Admin). Amber signals "development tool". */
 .dev-spoof { display: flex; align-items: center; gap: 4px; }
-.dev-spoof-label { font-size: 0.68rem; color: #E0B341; text-transform: uppercase; letter-spacing: 0.04em; }
+.dev-spoof-label { font-size: 0.68rem; color: var(--cc-amber); text-transform: uppercase; letter-spacing: 0.04em; }
 .dev-spoof button {
     font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;
-    border: 1px solid rgba(224,179,65,0.4); background: transparent; color: #E0B341; cursor: pointer;
+    border: 1px solid rgba(224,179,65,0.4); background: transparent; color: var(--cc-amber); cursor: pointer;
 }
-.dev-spoof button.active { background: #E0B341; color: #101322; font-weight: 700; }
+.dev-spoof button.active { background: var(--cc-amber); color: var(--cc-bg); font-weight: 700; }
 .dev-spoof button:hover { background: rgba(224,179,65,0.18); }
