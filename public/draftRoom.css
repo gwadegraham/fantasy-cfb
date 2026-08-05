@@ -349,10 +349,13 @@
     vertical-align: middle;
 }
 
-/* Current pick: filled highlight instead of a floaty thin outline */
+/* Current pick: filled highlight instead of a floaty thin outline. Uses the
+   "interactive/active" color (not brand red, which reads as an error) so the
+   live pick is legible as "on the clock now", consistent with the green
+   "you're up" / start / pick affordances. */
 .on-clock-cell {
-    background-color: rgba(237, 88, 88, 0.18) !important;
-    box-shadow: inset 0 0 0 2px var(--cc-accent);
+    background-color: color-mix(in srgb, var(--cc-interactive) 18%, transparent) !important;
+    box-shadow: inset 0 0 0 2px var(--cc-interactive);
     border-radius: 4px;
 }
 
@@ -379,7 +382,7 @@
 }
 
 @keyframes dr-pick-reveal { 0% { opacity: 0; transform: rotateY(90deg) scale(.6); } 60% { opacity: 1; transform: rotateY(0) scale(1.14); } 100% { transform: scale(1); } }
-@keyframes dr-cell-pulse { 0%, 100% { box-shadow: inset 0 0 0 2px var(--cc-accent); } 50% { box-shadow: inset 0 0 0 2px var(--cc-accent), 0 0 12px rgba(237, 88, 88, .6); } }
+@keyframes dr-cell-pulse { 0%, 100% { box-shadow: inset 0 0 0 2px var(--cc-interactive); } 50% { box-shadow: inset 0 0 0 2px var(--cc-interactive), 0 0 12px color-mix(in srgb, var(--cc-interactive) 60%, transparent); } }
 @keyframes dr-clock-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(113, 210, 141, .4); } 50% { box-shadow: 0 0 0 6px rgba(113, 210, 141, 0); } }
 @keyframes dr-ticker { to { transform: translateX(-50%); } }
 
