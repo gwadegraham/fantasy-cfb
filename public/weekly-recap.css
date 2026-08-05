@@ -11,7 +11,7 @@
     gap: 4px;
     font-size: 0.8rem;
     font-weight: 700;
-    color: #F4F6FB;
+    color: var(--cc-text);
     text-transform: none;
     letter-spacing: 0;
 }
@@ -48,13 +48,13 @@
     font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #767D9C;
+    color: var(--cc-muted-2);
 }
 .recap-week-picker select {
-    background: #101322;
+    background: var(--cc-bg);
     border: 1px solid #3A3F58;
     border-radius: 8px;
-    color: #F4F6FB;
+    color: var(--cc-text);
     font: inherit;
     font-size: 0.85rem;
     padding: 6px 10px;
@@ -63,8 +63,8 @@
 
 /* ---------- The recap card (shared by My Team + popup) ---------- */
 .recap-card {
-    background: #1A1F33;
-    border: 1px solid #2A2E42;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
     border-radius: 14px;
     padding: 1.1em 1.25em;
 }
@@ -72,7 +72,7 @@
     margin: 0 0 1em;
     font-size: 1.02rem;
     line-height: 1.5;
-    color: #F4F6FB;
+    color: var(--cc-text);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -86,7 +86,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #5BD08D;
+    color: var(--cc-success);
     background: rgba(91, 208, 141, 0.12);
     border: 1px solid rgba(91, 208, 141, 0.35);
     border-radius: 20px;
@@ -98,7 +98,7 @@
 .recap-stats .stat .stat-value {
     font-size: 1.25rem;
     font-weight: 700;
-    color: #F4F6FB;
+    color: var(--cc-text);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -108,13 +108,13 @@
     font-size: 0.66rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #767D9C;
+    color: var(--cc-muted-2);
     margin-top: 2px;
 }
 .recap-move { font-size: 0.9rem; font-weight: 700; }
-.recap-move.up { color: #5BD08D; }
-.recap-move.down { color: #ED5858; }
-.recap-move.flat { color: #767D9C; }
+.recap-move.up { color: var(--cc-success); }
+.recap-move.down { color: var(--cc-accent); }
+.recap-move.flat { color: var(--cc-muted-2); }
 
 /* ---------- Weekly popup ---------- */
 .recap-popup-backdrop {
@@ -140,7 +140,7 @@
     width: 100%;
     max-width: 460px;
     background: #171B2E;
-    border: 1px solid #2A2E42;
+    border: 1px solid var(--cc-border);
     border-radius: 18px;
     padding: 1.5em 1.5em 1.35em;
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
@@ -155,7 +155,7 @@
     right: 12px;
     background: transparent;
     border: none;
-    color: #A4A9C2;
+    color: var(--cc-muted);
     font-size: 1.5rem;
     line-height: 1;
     cursor: pointer;
@@ -163,11 +163,11 @@
     border-radius: 8px;
 }
 .recap-popup-close { z-index: 3; }
-.recap-popup-close:hover { color: #F4F6FB; background: #2A2E42; }
+.recap-popup-close:hover { color: var(--cc-text); background: var(--cc-border); }
 .recap-popup-link {
     display: inline-block;
     margin-top: 1.1em;
-    color: #8E8CF0;
+    color: var(--cc-interactive);
     font-weight: 600;
     font-size: 0.92rem;
     text-decoration: none;
@@ -196,7 +196,7 @@
     background: rgba(255, 255, 255, 0.16);
     transition: background 0.3s ease;
 }
-.recap-progress span.filled { background: #8E8CF0; }
+.recap-progress span.filled { background: var(--cc-interactive); }
 
 .recap-story-viewport { overflow: hidden; cursor: pointer; }
 .recap-story-track {
@@ -232,19 +232,19 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #8E8CF0;
+    color: var(--cc-interactive);
 }
 .recap-slide-kicker svg { width: 1em; height: 1em; }
 .recap-slide-logo { width: 66px; height: 66px; object-fit: contain; margin: 0.1em 0; }
 .recap-slide-logos { display: flex; gap: 0.7em; align-items: center; justify-content: center; flex-wrap: wrap; }
 .recap-slide-logos .recap-slide-logo { width: 54px; height: 54px; }
-.recap-slide-title { font-size: 1.35rem; font-weight: 700; color: #F4F6FB; line-height: 1.2; }
+.recap-slide-title { font-size: 1.35rem; font-weight: 700; color: var(--cc-text); line-height: 1.2; }
 .recap-slide-big { font-size: 3.1rem; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
-.recap-slide-big.good { color: #5BD08D; }
-.recap-slide-big.bad { color: #ED5858; }
-.recap-slide-big.neutral { color: #F4F6FB; }
-.recap-slide-text { margin: 0.2em 0 0; font-size: 1.08rem; line-height: 1.5; color: #F4F6FB; max-width: 320px; }
-.recap-slide-sub { font-size: 0.82rem; color: #A4A9C2; max-width: 300px; }
+.recap-slide-big.good { color: var(--cc-success); }
+.recap-slide-big.bad { color: var(--cc-accent); }
+.recap-slide-big.neutral { color: var(--cc-text); }
+.recap-slide-text { margin: 0.2em 0 0; font-size: 1.08rem; line-height: 1.5; color: var(--cc-text); max-width: 320px; }
+.recap-slide-sub { font-size: 0.82rem; color: var(--cc-muted); max-width: 300px; }
 
 /* Faint tap-affordance chevrons (visual only). */
 .recap-nav-hint {
@@ -267,8 +267,8 @@
     -webkit-tap-highlight-color: transparent;
     transition: color 0.15s ease, background 0.15s ease;
 }
-.recap-nav-hint:hover { color: #F4F6FB; background: rgba(255, 255, 255, 0.06); }
-.recap-nav-hint:focus-visible { outline: 2px solid #8E8CF0; outline-offset: 2px; }
+.recap-nav-hint:hover { color: var(--cc-text); background: rgba(255, 255, 255, 0.06); }
+.recap-nav-hint:focus-visible { outline: 2px solid var(--cc-interactive); outline-offset: 2px; }
 .recap-nav-hint.left { left: 6px; }
 .recap-nav-hint.right { right: 6px; }
 
