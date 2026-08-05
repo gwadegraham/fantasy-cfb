@@ -353,13 +353,21 @@ function onPickMade({ pick, state }) {
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
     // No per-pick toast — the board pick-reveal and the ticker already show it.
-    // Celebrate your own pick with a short confetti burst in white + the
-    // drafted team's colour.
-    if (String(pick.userId) === String(myUserId) && !ccReduced() && typeof startConfetti === 'function') {
-        var tc = pick.team && pick.team.color;
-        if (tc && tc.charAt(0) !== '#') tc = '#' + tc;
-        startConfetti(tc ? ['#ffffff', tc] : undefined);
-        setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+    // Celebrate your own pick with a confetti burst that erupts from the logo
+    // that just landed on the board, in white + the drafted team's colour.
+    if (String(pick.userId) === String(myUserId) && !ccReduced()) {
+        var raw = pick.team && pick.team.color;
+        var tc = (raw && window.ccTeamAccent) ? ccTeamAccent(raw) : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
+        var colors = tc ? ['#ffffff', tc, tc] : undefined;   // weight toward the team color
+        // renderAll() above has already drawn the new pick's cell (.just-picked).
+        var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
+        if (cell && typeof window.ccBurst === 'function') {
+            var r = cell.getBoundingClientRect();
+            window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
+        } else if (typeof startConfetti === 'function') {   // fallback: the old rain
+            startConfetti(colors);
+            setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+        }
     }
 }
 
