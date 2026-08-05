@@ -156,10 +156,10 @@ async function renderBento(data) {
             </div>
             ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
         </div>`
-        + tile('matchup', 'This week · matchup', 'Your current H2H matchup', 2, 'Lineups ›')
-        + tile('roster', 'Roster · top performers', 'Your 10 teams', 2, 'All 10 teams ›')
+        + tile('matchup', 'This week · matchup', uhPoss(own, true) + ' current H2H matchup', 2, 'Lineups ›')
+        + tile('roster', 'Roster · top performers', uhPoss(own, true) + ' 10 teams', 2, 'All 10 teams ›')
         + tile('captain', 'Captain', 'Double a team each week', 1)
-        + tile('recap', 'Your week', 'Latest recap', 1)
+        + tile('recap', own ? 'Your week' : 'Their week', 'Latest recap', 1)
         + tile('schedule', 'Schedule', 'Up next', 1, 'Full schedule ›')
         + tile('games', 'Games', 'This week’s games', 1, 'This week ›')
         + tile('trajectory', 'Trajectory', 'Season points', 1)
@@ -182,6 +182,10 @@ async function renderBento(data) {
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
 
+    // Recap drawer title tracks whose profile this is (the tile itself is
+    // hidden on other managers' profiles — see hydrateRecap).
+    UH_DRAWERS.recap = own ? 'Your week' : 'Their week';
+
     // Hydrate each tile's glance + drawer from the one active season.
     hydrateH2H(data, activeYear);
     hydrateCaptain(data, activeYear);
@@ -201,6 +205,7 @@ var uhCountdownTimer = null;
 
 function renderPreseason(bento, data, activeYear, ctx) {
     const { manager, own, pencil, activeEntry } = ctx;
+    const name = data.firstName || 'This manager';
     const franchise = (activeEntry && activeEntry.franchiseName) || `${data.firstName || 'Unnamed'}'s Team`;
     const hasName = !!(activeEntry && activeEntry.franchiseName);
     const hasPhoto = !!(data.avatarUrl);
@@ -223,17 +228,17 @@ function renderPreseason(bento, data, activeYear, ctx) {
         </div>`
         // draft countdown (hydrated async)
         + `<div class="uh-tile span2 uh-pre-draft" id="uh-pre-draft">
-                <span class="uh-tlabel">Your draft</span>
+                <span class="uh-tlabel">${uhPoss(own, true)} draft</span>
                 <div class="uh-pd-body"><p class="uh-stub">Checking the draft schedule…</p></div>
             </div>`
-        // get draft-ready checklist
-        + preChecklistHtml(hasName, hasPhoto, activeYear)
+        // get draft-ready checklist — a personal to-do, so own profile only
+        + (own ? preChecklistHtml(hasName, hasPhoto, activeYear) : '')
         // last season recap
-        + preRecapHtml(prior)
+        + preRecapHtml(prior, own, name)
         // new game modes (hydrated async; hidden until confirmed on)
         + `<div class="uh-tile span2 uh-pre-modes" id="uh-pre-modes" hidden></div>`
         // franchise history
-        + preHistoryHtml(data, activeYear);
+        + preHistoryHtml(data, activeYear, own);
 
     renderAvatar(document.getElementById('uh-hero-av'), data);
     // Name is editable only once the manager has an active-season entry to write
@@ -280,11 +285,14 @@ function preChecklistHtml(hasName, hasPhoto, activeYear) {
     </div>`;
 }
 
-function preRecapHtml(prior) {
+function preRecapHtml(prior, own, name) {
     if (!prior) {
+        const firstNote = own
+            ? 'This is your first Campus Clash season — welcome. Your story starts at the draft.'
+            : `This is ${escapeHtml(name)}’s first Campus Clash season. Their story starts at the draft.`;
         return `<div class="uh-tile uh-pre-recap">
-            <span class="uh-tlabel">Your history</span>
-            <p class="uh-stub">This is your first Campus Clash season — welcome. Your story starts at the draft.</p>
+            <span class="uh-tlabel">${uhPoss(own, true)} history</span>
+            <p class="uh-stub">${firstNote}</p>
         </div>`;
     }
     const bt = bestTeam(prior);
@@ -295,7 +303,7 @@ function preRecapHtml(prior) {
         ? `<div class="uh-pre-stat"><span class="uh-pre-stat-v"><img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}</span><span class="uh-pre-stat-k">Best: ${escapeHtml(bt.team.school)}</span></div>`
         : '';
     return `<div class="uh-tile uh-pre-recap">
-        <span class="uh-tlabel">Your ${escapeHtml(prior.season)} season</span>
+        <span class="uh-tlabel">${uhPoss(own, true)} ${escapeHtml(prior.season)} season</span>
         <div class="uh-pre-recap-stats">
             <div class="uh-pre-stat"><span class="uh-pre-stat-v num">${prior.cumulativeScore || 0}</span><span class="uh-pre-stat-k">Total points</span></div>
             ${bestStat}
@@ -304,7 +312,7 @@ function preRecapHtml(prior) {
     </div>`;
 }
 
-function preHistoryHtml(data, activeYear) {
+function preHistoryHtml(data, activeYear, own) {
     const past = (data.seasons || [])
         .filter(s => String(s.season) !== String(activeYear) && (s.teams || []).length)
         .sort((a, b) => Number(b.season) - Number(a.season));
@@ -335,9 +343,9 @@ function preHistoryHtml(data, activeYear) {
         </div>`;
     }).join('');
     return `<div class="uh-tile span2 uh-pre-hist">
-        <span class="uh-tlabel">Your franchise history</span>
+        <span class="uh-tlabel">${uhPoss(own, true)} franchise history</span>
         <div class="uh-hist">${rows}</div>
-        <p class="uh-hist-note">★ marks your top scorer that year</p>
+        <p class="uh-hist-note">★ marks ${uhPoss(own)} top scorer that year</p>
     </div>`;
 }
 
@@ -347,6 +355,8 @@ function preHistoryHtml(data, activeYear) {
 async function hydratePreseasonDraft(user, activeYear) {
     const wrap = document.getElementById('uh-pre-draft');
     if (!wrap) return;
+    const own = uhOwns(user);
+    const name = user.firstName || 'This manager';
     const body = wrap.querySelector('.uh-pd-body');
     let draft = null;
     try {
@@ -356,7 +366,7 @@ async function hydratePreseasonDraft(user, activeYear) {
 
     if (!draft || !draft._id) {
         body.innerHTML = `<h2 class="uh-pd-h">Draft not scheduled yet</h2>
-            <p class="uh-pd-sub">Your commissioner hasn’t set the ${escapeHtml(activeYear)} draft date. Hang tight — it’ll show up here.</p>`;
+            <p class="uh-pd-sub">${own ? 'Your' : 'The'} commissioner hasn’t set the ${escapeHtml(activeYear)} draft date. Hang tight — it’ll show up here.</p>`;
         return;
     }
 
@@ -369,7 +379,7 @@ async function hydratePreseasonDraft(user, activeYear) {
         fmtDate ? `<span>📅 <b>${escapeHtml(fmtDate)}</b></span>` : '',
         `<span>${draft.snake ? '🐍 <b>Snake</b>' : '<b>Linear</b>'} · ${draft.totalRounds || 10} rounds</span>`,
         managers ? `<span>👥 <b>${managers}</b> managers</span>` : '',
-        myPick >= 0 ? `<span>🎯 You pick <b>${escapeHtml(ordinal(myPick + 1))}</b></span>` : ''
+        myPick >= 0 ? `<span>🎯 ${own ? 'You pick' : escapeHtml(name) + ' picks'} <b>${escapeHtml(ordinal(myPick + 1))}</b></span>` : ''
     ].filter(Boolean).join('');
     const cta = `<a class="uh-pd-cta" href="/draft-room">Enter the Draft Room →</a>`;
 
@@ -381,7 +391,7 @@ async function hydratePreseasonDraft(user, activeYear) {
             <div class="uh-pd-meta">${meta}</div>${cta}`;
         startCountdown(when.getTime(), wrap);
     } else {
-        body.innerHTML = `<h2 class="uh-pd-h">Your draft is set up</h2>
+        body.innerHTML = `<h2 class="uh-pd-h">${uhPoss(own, true)} draft is set up</h2>
             <div class="uh-pd-meta">${meta}</div>${cta}`;
     }
 }
@@ -415,18 +425,19 @@ async function hydratePreseasonModes(user, activeYear) {
     } catch (e) { /* stays hidden */ }
     if (!eng || !(eng.h2hEnabled || eng.captainEnabled)) return;
 
+    const own = uhOwns(user);
     const cards = [];
     if (eng.captainEnabled) cards.push(`<div class="uh-mode">
         <div class="uh-mode-h"><span class="uh-mode-i cap">©</span>Captain pick<span class="uh-mode-b cap">×${eng.captainMultiplier || 2}</span></div>
-        <div class="uh-mode-d">Each week, name one of your teams captain — its points count <b>double</b>. A boom-or-bust roster swings games.</div>
+        <div class="uh-mode-d">Each week, ${own ? 'name one of your teams' : 'a manager names one team'} captain — its points count <b>double</b>. A boom-or-bust roster swings games.</div>
     </div>`);
     if (eng.h2hEnabled) cards.push(`<div class="uh-mode">
         <div class="uh-mode-h"><span class="uh-mode-i h2h">${window.ccIcon ? window.ccIcon('swords', { size: 16 }) : '⚔'}</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
-        <div class="uh-mode-d">You’re matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus on top of your points.</div>
+        <div class="uh-mode-d">${own ? 'You’re' : 'Each manager is'} matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus${own ? ' on top of your points' : ''}.</div>
     </div>`);
 
     tile.innerHTML = `<span class="uh-tlabel">New in ${escapeHtml(activeYear)}<span class="uh-mode-only">This league</span></span>
-        <p class="uh-modes-intro">${cards.length > 1 ? 'Two new ways' : 'A new way'} to score this season — worth knowing before you draft.</p>
+        <p class="uh-modes-intro">${cards.length > 1 ? 'Two new ways' : 'A new way'} to score this season — worth knowing before the draft.</p>
         <div class="uh-modes">${cards.join('')}</div>`;
     tile.hidden = false;
 }
@@ -451,7 +462,7 @@ function hydrateRoster(user, activeYear) {
     if (g) {
         g.innerHTML = top && top.pts > 0
             ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
-            : 'Your 10 teams';
+            : (uhOwns(user) ? 'Your 10 teams' : 'Their 10 teams');
     }
 
     uhDrawer.roster = (body) => {
@@ -554,9 +565,9 @@ async function hydrateGames(user, activeYear) {
             const playing = per.filter(x => x.plays).map(x => x.t);
             if (playing.length) {
                 const logos = playing.map(t => `<img src="${ccLogo(t.logos)}" alt="">`).join('');
-                g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of your teams · ${escapeHtml(label)}</span>`;
+                g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of ${uhPoss(uhOwns(user))} teams · ${escapeHtml(label)}</span>`;
             } else {
-                g.innerHTML = `<span class="uh-glance-sub">No games for your teams · ${escapeHtml(label)}</span>`;
+                g.innerHTML = `<span class="uh-glance-sub">No games for ${uhPoss(uhOwns(user))} teams · ${escapeHtml(label)}</span>`;
             }
         } catch (e) { /* keep the week label */ }
     }
@@ -585,6 +596,13 @@ async function hydrateGames(user, activeYear) {
         run();
     };
 }
+
+// Second-person copy ("Your", "You") only fits the viewer's own profile. When
+// viewing another manager, fall back to neutral third-person ("Their"). These
+// are function declarations so they hoist for use by the render/hydrate fns
+// defined above. Ownership is resolved from the profile user's _id vs. session.
+function uhOwns(user) { return !!(user && currentUserId() && String(currentUserId()) === String(user._id)); }
+function uhPoss(own, cap) { return own ? (cap ? 'Your' : 'your') : (cap ? 'Their' : 'their'); }
 
 var UH_DRAWERS = {
     matchup: 'This week · matchup', roster: 'Roster', captain: 'Captain',
@@ -682,6 +700,9 @@ async function hydrateH2H(user, activeYear) {
     if (!mine.length) return hide();
 
     const me = byId[uid];
+    // On your own profile your side reads "You"; on another manager's profile a
+    // name fits better than "You", so label it with their first name.
+    const youLabel = uhOwns(user) ? 'You' : (user.firstName || (me && me.name) || 'Manager');
 
     // H2H record into the hero, right after Total points.
     const statsEl = document.getElementById('uh-hero-stats');
@@ -698,7 +719,7 @@ async function hydrateH2H(user, activeYear) {
     const featuredWk = liveWk != null ? liveWk : mine[mine.length - 1].week;
     const featured = mine.find(x => x.week === featuredWk);
     const rest = mine.slice().sort((a, b) => b.week - a.week);
-    const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, week: x.week, open });
+    const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, youLabel, week: x.week, open });
     // My-perspective summary of a matchup (for glances).
     const summary = (x) => {
         const g = x.g, iAmA = g.aId === uid;
@@ -722,7 +743,7 @@ async function hydrateH2H(user, activeYear) {
         else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
         const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
         mg.innerHTML = `<span class="uh-mug">
-                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">You</span><span class="uh-mug-sc num${wc}">${s.meScore}</span></span>
+                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">${escapeHtml(youLabel)}</span><span class="uh-mug-sc num${wc}">${s.meScore}</span></span>
                 <span class="uh-mug-vs">${featured.final ? (s.res === 'T' ? 'T' : 'vs') : 'LIVE'}</span>
                 <span class="uh-mug-side r"><span class="uh-mug-sc num${oc}">${s.opScore}</span><span class="uh-mug-nm">${escapeHtml(s.nm)}</span>${av(oppM)}</span>
             </span>${youPct == null ? '' : uhMiniBar(youPct)}`;
@@ -871,6 +892,9 @@ async function hydrateRecap(user, activeYear) {
     const tile = document.getElementById('uh-tile-recap');
     const hide = () => { if (tile) tile.hidden = true; };
     if (!window.ccRecap || !user || !user.league || !(user.seasons || []).length) return hide();
+    // The weekly recap is a personal, second-person "Your Week" story — it isn't
+    // meaningful (or correctly voiced) for someone else's profile, so hide it.
+    if (!uhOwns(user)) return hide();
 
     try {
         const data = await window.ccRecap.fetchRecap(user.league, activeYear, user._id);
@@ -916,10 +940,12 @@ async function hydrateDraft(user, activeYear) {
 
         uhDrawer.draft = (body) => {
             if (typeof renderDraftGradeCard === 'function') {
-                // No currentUserId → no "you" tag / red highlight (it's always
-                // your own grade on My Team).
+                // No currentUserId passed → no "you" tag / red highlight. This
+                // hydrator also renders other managers' grades (not just your
+                // own), so the note stays league-neutral rather than "your".
+                const leagueRef = uhOwns(user) ? 'your league’s scoring' : 'this league’s scoring';
                 renderDraftGradeCard(body, mine, {
-                    note: season + ' preseason grade — projected fantasy points in your league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
                 });
             }
         };
@@ -978,6 +1004,16 @@ function cloudinaryAvatar(url) {
     return url;
 }
 
+// Larger, UNcropped delivery for the click-to-enlarge overlay: fit the whole
+// photo within 720px (c_limit never upscales past the original) so the manager
+// sees the full picture, not the tight face crop used inline.
+function cloudinaryAvatarLarge(url) {
+    if (typeof url === 'string' && url.indexOf('/upload/') !== -1) {
+        return url.replace('/upload/', '/upload/c_limit,w_720,h_720,q_auto,f_auto/');
+    }
+    return url;
+}
+
 function renderAvatar(el, data) {
     if (!el) return;
     el.innerHTML = '';
@@ -987,10 +1023,81 @@ function renderAvatar(el, data) {
         img.alt = '';
         el.style.background = 'transparent';
         el.appendChild(img);
+        // Only the profile hero photo is click/tap-to-enlarge.
+        if (el.id === 'uh-hero-av') makeAvatarZoomable(el, data);
     } else {
         el.textContent = initials(data) || '?';
         el.style.background = colorFor(data);
+        if (el.id === 'uh-hero-av') clearAvatarZoomable(el);
     }
+}
+
+// ---------- Click/tap-to-enlarge for the profile hero avatar ----------
+
+// A lightweight image lightbox, built once and reused. Mirrors the edit
+// modal's conventions: full-screen blurred backdrop, click-outside + Escape to
+// close. Clicking the photo itself does nothing so it can be inspected.
+let avatarZoomEls = null;
+function ensureAvatarZoom() {
+    if (avatarZoomEls) return avatarZoomEls;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'avatar-zoom-backdrop';
+    backdrop.hidden = true;
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.setAttribute('aria-label', 'Profile photo');
+
+    const img = document.createElement('img');
+    img.className = 'avatar-zoom-img';
+    img.alt = '';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'avatar-zoom-close';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.innerHTML = '&times;';
+
+    backdrop.appendChild(img);
+    backdrop.appendChild(closeBtn);
+    document.body.appendChild(backdrop);
+
+    const close = () => { backdrop.hidden = true; document.body.style.overflow = ''; };
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop || e.target === closeBtn) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !backdrop.hidden) close(); });
+
+    avatarZoomEls = { backdrop, img };
+    return avatarZoomEls;
+}
+function openAvatarZoom(url, alt) {
+    const { backdrop, img } = ensureAvatarZoom();
+    img.src = url;
+    img.alt = alt || '';
+    backdrop.hidden = false;
+    document.body.style.overflow = 'hidden';   // freeze background scroll while open
+}
+
+// Make the hero avatar an accessible, tap-to-enlarge control. Uses onclick/
+// onkeydown (not addEventListener) so re-rendering the hero replaces the
+// handler instead of stacking duplicates.
+function makeAvatarZoomable(el, data) {
+    const alt = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    const url = cloudinaryAvatarLarge(data.avatarUrl);
+    el.classList.add('avatar-zoomable');
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('aria-label', alt ? `View ${alt}'s profile photo larger` : 'View profile photo larger');
+    el.title = 'Tap to enlarge';
+    el.onclick = () => openAvatarZoom(url, alt);
+    el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAvatarZoom(url, alt); } };
+}
+function clearAvatarZoomable(el) {
+    el.classList.remove('avatar-zoomable');
+    el.removeAttribute('role');
+    el.removeAttribute('tabindex');
+    el.removeAttribute('aria-label');
+    el.removeAttribute('title');
+    el.onclick = null;
+    el.onkeydown = null;
 }
 
 // Highest-scoring team on the roster this season (summed from scoreByTeam).
