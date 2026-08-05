@@ -380,6 +380,15 @@
 
 .modal-backdrop { position: fixed; inset: 0; background: rgba(10,12,24,0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1em; }
 .modal-backdrop[hidden] { display: none; }
+
+/* Click/tap-to-enlarge for the profile hero avatar. */
+.avatar-zoomable { cursor: zoom-in; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.avatar-zoomable:hover, .avatar-zoomable:focus-visible { transform: scale(1.06); box-shadow: 0 0 0 3px rgba(142,140,240,0.55); outline: none; }
+.avatar-zoom-backdrop { position: fixed; inset: 0; background: rgba(10,12,24,0.8); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 1100; padding: 1.5em; cursor: zoom-out; }
+.avatar-zoom-backdrop[hidden] { display: none; }
+.avatar-zoom-img { max-width: min(92vw, 720px); max-height: 88vh; width: auto; height: auto; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); cursor: default; }
+.avatar-zoom-close { position: absolute; top: 18px; right: 22px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,0.14); color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.avatar-zoom-close:hover { background: rgba(255,255,255,0.26); }
 .profile-modal-card { background: #1A1F33; border: 1px solid #2A2E42; border-radius: 14px; padding: 1.5em; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
 .profile-modal-card h2 { font-size: 1.3rem; margin: 0 0 1em; color: #F4F6FB; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25em; }

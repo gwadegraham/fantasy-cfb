@@ -10,6 +10,7 @@
 //   { aId, bId, aScore, bScore, aTeams, bTeams, winner, winP, final }
 // `byId` maps userId -> manager ({ franchise, name, avatarUrl, initials, color }).
 // Pass `youId` to orient that manager to the left and label them "You" (My Team);
+// pass `youLabel` to override that label with a name (viewing another's profile);
 // omit it for the neutral two-manager view (Standings). `week` shows a "Wk N"
 // tag; `open` starts the card expanded (used for the featured matchup).
 (function () {
@@ -106,7 +107,9 @@
         var byId = opts.byId || {};
         var A = byId[g.aId], B = byId[g.bId];
         var youLeft = opts.youId && g.aId === opts.youId;
-        var aName = youLeft ? 'You' : nameOf(A);
+        // Callers viewing someone else's profile pass youLabel (that manager's
+        // name); default keeps the first-person "You" for the viewer's own pages.
+        var aName = youLeft ? (opts.youLabel || 'You') : nameOf(A);
         var bName = nameOf(B);
         var live = g.final === false;
         var remaining = (g.aTeams || []).concat(g.bTeams || []).filter(function (t) { return t.status && t.status !== 'final'; }).length;
