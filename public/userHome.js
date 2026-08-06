@@ -461,16 +461,22 @@ function hydrateRoster(user, activeYear) {
     const g = document.getElementById('uh-glance-roster');
     if (g) {
         g.innerHTML = top && top.pts > 0
-            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => {
+                const acc = (c.t.color && window.ccTeamAccent) ? ccTeamAccent(c.t.color) : '';
+                return `<span class="uh-rg-row"${acc ? ` style="box-shadow: inset 3px 0 0 ${acc}; padding-left: 6px"` : ''}><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`;
+              }).join('')}</span>`
             : (uhOwns(user) ? 'Your 10 teams' : 'Their 10 teams');
     }
 
     uhDrawer.roster = (body) => {
         const max = (cards[0] && cards[0].pts) || 1;
-        const list = cards.map(c => `<a class="uh-rc" href="/team?team=${c.t.id}">
+        const list = cards.map(c => {
+            const acc = (c.t.color && window.ccTeamAccent) ? ccTeamAccent(c.t.color) : '';
+            return `<a class="uh-rc"${acc ? ` style="box-shadow: inset 3px 0 0 ${acc}; padding-left: 10px"` : ''} href="/team?team=${c.t.id}">
             <img src="${ccLogo(c.t.logos)}" alt="">
             <span class="uh-rc-meta"><span class="uh-rc-nm">${escapeHtml(c.t.school)}</span><span class="uh-rc-bar"><i style="width:${Math.round((c.pts / max) * 100)}%"></i></span></span>
-            <span class="uh-rc-pts num">${c.pts}</span></a>`).join('');
+            <span class="uh-rc-pts num">${c.pts}</span></a>`;
+        }).join('');
         body.innerHTML = `<div class="uh-seg">
                 <button type="button" class="uh-seg-btn active" data-view="cards">Sorted</button>
                 <button type="button" class="uh-seg-btn" data-view="grid">Week by week</button>
@@ -1604,14 +1610,23 @@ async function batchTeamLogos(games) {
         });
         if (res.status === 200) {
             (await res.json()).forEach(t => {
-                if (t && t.logos && t.logos.length) map[t.id] = '<img src="' + ccLogo(t.logos) + '" style="padding-right: 5px;">';
+                if (!t) return;
+                map[t.id] = {
+                    logo: (t.logos && t.logos.length) ? '<img src="' + ccLogo(t.logos) + '" style="padding-right: 5px;">' : '',
+                    color: (t.color && window.ccTeamAccent) ? ccTeamAccent(t.color) : ''
+                };
             });
         }
     } catch (e) { /* fall back to helmet icons */ }
     return map;
 }
 function logoHtmlFromMap(map, teamId) {
-    return map[teamId] || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+    var e = map[teamId];
+    return (e && e.logo) || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
+}
+function teamAccentFromMap(map, teamId) {
+    var e = map[teamId];
+    return (e && e.color) || '';
 }
 
 // Formats a kickoff time like "7:30PM" from a game's start date.
@@ -1678,9 +1693,13 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</td>';
     }
 
+    const teamTdStyle = (c) => c ? ` style="box-shadow: inset 3px 0 0 ${c}; padding-left: 8px"` : '';
+    const awayAccent = teamAccentFromMap(logoMap, game.awayId);
+    const homeAccent = teamAccentFromMap(logoMap, game.homeId);
+
     return '<div class="game-card"><table class="game-table"><tbody><tr></tr>'
-        + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
-        + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
+        + '<tr><td class="gc-team"' + teamTdStyle(awayAccent) + '>' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
+        + '<tr><td class="gc-team"' + teamTdStyle(homeAccent) + '>' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
         + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
         + '</tbody></table></div>';
