@@ -328,7 +328,7 @@ async function connectSocket() {
         socket.on('pick-made', onPickMade);
         socket.on('draft-complete', onDraftComplete);
         socket.on('draft-error', (e) => {
-            onPickMade._ownChimeAt = 0;   // our optimistic pick was rejected — don't suppress the next chime
+            onPickMade._ownChimeAt = 0; onPickMade._ownPickTeamId = null;   // our optimistic pick was rejected — don't suppress the next chime
             if (e && /no draft/i.test(e.message || '')) {
                 draft = null;
                 renderAll();
@@ -362,7 +362,11 @@ function onPickMade({ pick, state }) {
     // other managers' picks — then hold the reveal for a 2s suspense beat:
     // "the pick is in… [chime + 2s] … TEAM!". The board isn't advanced until
     // then, so the pick isn't shown early.
-    var chimedOnClick = isOwn && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
+    // Suppress the confirm chime only if WE already chimed for THIS exact pick on
+    // the local Draft click — matched by team id, not by whose turn it is, so a
+    // commissioner picking for another manager doesn't double up.
+    var pid = String(pick.team && pick.team.id);
+    var chimedOnClick = onPickMade._ownPickTeamId === pid && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
     var chimeStart;
     if (chimedOnClick) {
         chimeStart = onPickMade._ownChimeAt;
@@ -371,6 +375,7 @@ function onPickMade({ pick, state }) {
         chimeStart = Date.now();
     }
     onPickMade._ownChimeAt = 0;
+    onPickMade._ownPickTeamId = null;
 
     var raw = pick.team && pick.team.color;
     var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
@@ -429,6 +434,7 @@ function makePick(teamId) {
     if (typeof window.ccDraftStinger === 'function') {
         window.ccDraftStinger();
         onPickMade._ownChimeAt = Date.now();
+        onPickMade._ownPickTeamId = String(teamId);   // so onPickMade suppresses THIS pick's confirm chime
     }
     socket.emit('make-pick', { league: leagueCode, season, team });
 }
