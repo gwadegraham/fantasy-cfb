@@ -352,22 +352,43 @@ function onPickMade({ pick, state }) {
     // Mark this pick's board cell so renderBoard animates just it (once).
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
-    // No per-pick toast — the board pick-reveal and the ticker already show it.
-    // Celebrate your own pick with a confetti burst that erupts from the logo
-    // that just landed on the board, in white + the drafted team's colour.
-    if (String(pick.userId) === String(myUserId) && !ccReduced()) {
-        var raw = pick.team && pick.team.color;
-        var tc = (raw && window.ccTeamAccent) ? ccTeamAccent(raw) : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
-        var colors = tc ? ['#ffffff', tc, tc] : undefined;   // weight toward the team color
-        // renderAll() above has already drawn the new pick's cell (.just-picked).
-        var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
-        if (cell && typeof window.ccBurst === 'function') {
+    // No per-pick toast — the reveal + board pick-reveal + ticker already show it.
+    // Every pick gets a "THE PICK IS IN" hero reveal (the drafted logo blows up
+    // center-board, then flies into its cell) and a draft stinger; your OWN pick
+    // additionally gets the confetti burst. renderAll() above already drew the
+    // new pick's cell (.just-picked), which the reveal flies the logo into.
+    var isOwn = String(pick.userId) === String(myUserId);
+    var raw = pick.team && pick.team.color;
+    var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
+           : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
+    var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
+
+    // Fired when the logo lands (or immediately, under reduced motion): the
+    // stinger for everyone, the confetti burst for your own pick.
+    function celebratePick() {
+        if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+        if (isOwn && cell && !ccReduced()) {
             var r = cell.getBoundingClientRect();
-            window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
-        } else if (typeof startConfetti === 'function') {   // fallback: the old rain
-            startConfetti(colors);
-            setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+            var colors = lc ? ['#ffffff', lc, lc] : undefined;
+            if (typeof window.ccBurst === 'function') {
+                window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
+            } else if (typeof startConfetti === 'function') {   // fallback: the old rain
+                startConfetti(colors);
+                setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+            }
         }
+    }
+
+    if (cell && typeof window.ccDraftReveal === 'function' && !ccReduced()) {
+        var logo = (pick.team && pick.team.logos) ? ccLogo(pick.team.logos) : '';
+        window.ccDraftReveal(cell, {
+            logo: logo,
+            color: lc || '#8E8CF0',
+            name: (pick.team && pick.team.school) || '',
+            sub: managerDisplay(pick.userId) + ' · Round ' + pick.round
+        }, { onLand: celebratePick });
+    } else {
+        celebratePick();   // reduced motion / reveal unavailable
     }
 }
 
