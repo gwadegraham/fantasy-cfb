@@ -132,3 +132,72 @@ var removeConfetti; //call to stop the confetti animation and remove all confett
 		}
 	}
 })();
+
+// ---------------------------------------------------------------------------
+// ccBurst(x, y, colors): a radial confetti *pop* that erupts outward from a
+// point (e.g. a freshly drafted logo on the board) and falls under gravity —
+// distinct from the rain above, which seeds across the top and falls straight
+// down. Its own fixed-position canvas, so (x, y) are viewport coordinates
+// (getBoundingClientRect). No-op under prefers-reduced-motion.
+// ---------------------------------------------------------------------------
+(function () {
+	var canvas, ctx, parts = [], raf = null;
+
+	function ensureCanvas() {
+		canvas = document.getElementById('confetti-burst-canvas');
+		if (!canvas) {
+			canvas = document.createElement('canvas');
+			canvas.id = 'confetti-burst-canvas';
+			canvas.setAttribute('style', 'position:fixed;left:0;top:0;display:block;z-index:999999;pointer-events:none;');
+			document.body.appendChild(canvas);
+		}
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+		ctx = canvas.getContext('2d');
+	}
+
+	function loop() {
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		for (var i = parts.length - 1; i >= 0; i--) {
+			var p = parts[i];
+			p.vy += 0.102;               // gravity (lower = slower fall / more float)
+			p.vx *= 0.837; p.vy *= 0.837; // air drag (lower = more float)
+			p.x += p.vx; p.y += p.vy;
+			p.rot += p.rotSpeed;
+			p.life -= 0.005;             // fade slower so they linger while drifting down
+			if (p.life <= 0 || p.y > canvas.height + 40) { parts.splice(i, 1); continue; }
+			ctx.save();
+			ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+			ctx.translate(p.x, p.y);
+			ctx.rotate(p.rot);
+			ctx.fillStyle = p.color;
+			ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+			ctx.restore();
+		}
+		raf = parts.length ? requestAnimationFrame(loop) : null;
+		if (!parts.length) ctx.clearRect(0, 0, canvas.width, canvas.height);
+	}
+
+	window.ccBurst = function (x, y, colors) {
+		if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		var palette = (colors && colors.length) ? colors : ['#ffffff', '#8E8CF0', '#22C37A', '#E0B341'];
+		ensureCanvas();
+		if (parts.length > 400) return; // guard against runaway if spammed
+		for (var i = 0; i < 110; i++) {
+			var angle = Math.random() * Math.PI * 2;   // full circle → radial eruption
+			var speed = 22 + Math.random() * 28;        // high initial pop → wide spread before drag slows it
+			parts.push({
+				x: x, y: y,
+				vx: Math.cos(angle) * speed,
+				vy: Math.sin(angle) * speed - 2,        // slight upward pop before gravity
+				w: 5 + Math.random() * 6,
+				h: 3 + Math.random() * 4,
+				rot: Math.random() * Math.PI,
+				rotSpeed: (Math.random() - 0.5) * 0.4,
+				life: 1 + Math.random() * 0.3,
+				color: palette[(Math.random() * palette.length) | 0]
+			});
+		}
+		if (raf === null) raf = requestAnimationFrame(loop);
+	};
+})();
