@@ -328,6 +328,7 @@ async function connectSocket() {
         socket.on('pick-made', onPickMade);
         socket.on('draft-complete', onDraftComplete);
         socket.on('draft-error', (e) => {
+            onPickMade._ownChimeAt = 0;   // our optimistic pick was rejected — don't suppress the next chime
             if (e && /no draft/i.test(e.message || '')) {
                 draft = null;
                 renderAll();
@@ -355,10 +356,14 @@ function onPickMade({ pick, state }) {
     if (onPickMade._lastFx === fxKey) { renderAll(); return; }
     onPickMade._lastFx = fxKey;
 
+    var isOwn = String(pick.userId) === String(myUserId);
+
     // Chime the instant the pick lands — BEFORE the (heavy) board render + reveal
-    // animation. A setTimeout here gets starved by that work and the sound slips
-    // ~1s late; firing synchronously first makes it hit as the logo appears.
-    if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+    // animation (a setTimeout gets starved by that work). Skip it if it's YOUR
+    // pick and makePick already chimed on your click, so it doesn't double.
+    var chimedOnClick = isOwn && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
+    onPickMade._ownChimeAt = 0;
+    if (!chimedOnClick && typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
 
     // Mark this pick's board cell so renderBoard animates just it (once), then
     // render. Every pick gets a "THE PICK IS IN" hero reveal (the drafted logo
@@ -367,7 +372,6 @@ function onPickMade({ pick, state }) {
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
 
-    var isOwn = String(pick.userId) === String(myUserId);
     var raw = pick.team && pick.team.color;
     var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
            : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
@@ -411,6 +415,13 @@ function makePick(teamId) {
     var team = teamsById[String(teamId)];
     if (!team || !socket) return;
     document.querySelectorAll('.draft-pick-btn').forEach(b => b.disabled = true);
+    // Chime the instant YOU click Draft — before the server round-trip — so your
+    // own pick's sound isn't delayed by network/DB latency. onPickMade suppresses
+    // the confirm chime for this pick so it doesn't double. Cleared on error.
+    if (typeof window.ccDraftStinger === 'function') {
+        window.ccDraftStinger();
+        onPickMade._ownChimeAt = Date.now();
+    }
     socket.emit('make-pick', { league: leagueCode, season, team });
 }
 
