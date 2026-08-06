@@ -349,30 +349,29 @@ function onDraftState(state) {
 
 function onPickMade({ pick, state }) {
     draft = state;
-    // Mark this pick's board cell so renderBoard animates just it (once).
+
+    // De-dupe a duplicate pick-made for the same pick before any FX fire.
+    var fxKey = String(pick.userId) + '-' + pick.round + '-' + (pick.team && pick.team.id);
+    if (onPickMade._lastFx === fxKey) { renderAll(); return; }
+    onPickMade._lastFx = fxKey;
+
+    // Chime the instant the pick lands — BEFORE the (heavy) board render + reveal
+    // animation. A setTimeout here gets starved by that work and the sound slips
+    // ~1s late; firing synchronously first makes it hit as the logo appears.
+    if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+
+    // Mark this pick's board cell so renderBoard animates just it (once), then
+    // render. Every pick gets a "THE PICK IS IN" hero reveal (the drafted logo
+    // blows up center-board, then flies into its cell); your OWN pick also gets
+    // the confetti burst when the logo lands.
     justPickedKey = String(pick.userId) + '-' + pick.round;
     renderAll();
-    // No per-pick toast — the reveal + board pick-reveal + ticker already show it.
-    // Every pick gets a "THE PICK IS IN" hero reveal (the drafted logo blows up
-    // center-board, then flies into its cell) and a draft stinger; your OWN pick
-    // additionally gets the confetti burst. renderAll() above already drew the
-    // new pick's cell (.just-picked), which the reveal flies the logo into.
-    // Guard against a duplicate pick-made for the same pick doubling the FX.
-    var fxKey = String(pick.userId) + '-' + pick.round + '-' + (pick.team && pick.team.id);
-    if (onPickMade._lastFx === fxKey) return;
-    onPickMade._lastFx = fxKey;
 
     var isOwn = String(pick.userId) === String(myUserId);
     var raw = pick.team && pick.team.color;
     var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
            : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
     var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
-
-    // Chime ~0.5s after the logo pops up (during the hero reveal's hold) — one
-    // scheduled play per pick.
-    if (typeof window.ccDraftStinger === 'function') {
-        setTimeout(function () { window.ccDraftStinger(); }, 500);
-    }
 
     // Confetti erupts from the cell when the logo lands — your own pick only.
     function ownConfetti() {
