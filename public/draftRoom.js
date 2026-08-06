@@ -328,6 +328,7 @@ async function connectSocket() {
         socket.on('pick-made', onPickMade);
         socket.on('draft-complete', onDraftComplete);
         socket.on('draft-error', (e) => {
+            onPickMade._ownChimeAt = 0; onPickMade._ownPickTeamId = null;   // our optimistic pick was rejected — don't suppress the next chime
             if (e && /no draft/i.test(e.message || '')) {
                 draft = null;
                 renderAll();
@@ -349,26 +350,70 @@ function onDraftState(state) {
 
 function onPickMade({ pick, state }) {
     draft = state;
-    // Mark this pick's board cell so renderBoard animates just it (once).
-    justPickedKey = String(pick.userId) + '-' + pick.round;
-    renderAll();
-    // No per-pick toast — the board pick-reveal and the ticker already show it.
-    // Celebrate your own pick with a confetti burst that erupts from the logo
-    // that just landed on the board, in white + the drafted team's colour.
-    if (String(pick.userId) === String(myUserId) && !ccReduced()) {
-        var raw = pick.team && pick.team.color;
-        var tc = (raw && window.ccTeamAccent) ? ccTeamAccent(raw) : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
-        var colors = tc ? ['#ffffff', tc, tc] : undefined;   // weight toward the team color
-        // renderAll() above has already drawn the new pick's cell (.just-picked).
-        var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
-        if (cell && typeof window.ccBurst === 'function') {
-            var r = cell.getBoundingClientRect();
-            window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
-        } else if (typeof startConfetti === 'function') {   // fallback: the old rain
-            startConfetti(colors);
-            setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
-        }
+
+    // De-dupe a duplicate pick-made for the same pick before any FX fire.
+    var fxKey = String(pick.userId) + '-' + pick.round + '-' + (pick.team && pick.team.id);
+    if (onPickMade._lastFx === fxKey) { renderAll(); return; }
+    onPickMade._lastFx = fxKey;
+
+    var isOwn = String(pick.userId) === String(myUserId);
+
+    // Chime immediately — on YOUR click (makePick set _ownChimeAt) or here for
+    // other managers' picks — then hold the reveal for a 2s suspense beat:
+    // "the pick is in… [chime + 2s] … TEAM!". The board isn't advanced until
+    // then, so the pick isn't shown early.
+    // Suppress the confirm chime only if WE already chimed for THIS exact pick on
+    // the local Draft click — matched by team id, not by whose turn it is, so a
+    // commissioner picking for another manager doesn't double up.
+    var pid = String(pick.team && pick.team.id);
+    var chimedOnClick = onPickMade._ownPickTeamId === pid && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
+    var chimeStart;
+    if (chimedOnClick) {
+        chimeStart = onPickMade._ownChimeAt;
+    } else {
+        if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+        chimeStart = Date.now();
     }
+    onPickMade._ownChimeAt = 0;
+    onPickMade._ownPickTeamId = null;
+
+    var raw = pick.team && pick.team.color;
+    var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
+           : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
+
+    // Reveal 2s after the chime STARTED (so your own pick — chimed on click —
+    // still lands 2s later, not 2s after the server round-trip).
+    var REVEAL_DELAY = 1200;
+    var wait = Math.max(0, REVEAL_DELAY - (Date.now() - chimeStart));
+    setTimeout(function () {
+        justPickedKey = String(pick.userId) + '-' + pick.round;
+        renderAll();
+        var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
+
+        function ownConfetti() {
+            if (!(isOwn && cell && !ccReduced())) return;
+            var r = cell.getBoundingClientRect();
+            var colors = lc ? ['#ffffff', lc, lc] : undefined;
+            if (typeof window.ccBurst === 'function') {
+                window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
+            } else if (typeof startConfetti === 'function') {   // fallback: the old rain
+                startConfetti(colors);
+                setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+            }
+        }
+
+        if (cell && typeof window.ccDraftReveal === 'function' && !ccReduced()) {
+            var logo = (pick.team && pick.team.logos) ? ccLogo(pick.team.logos) : '';
+            window.ccDraftReveal(cell, {
+                logo: logo,
+                color: lc || '#8E8CF0',
+                name: (pick.team && pick.team.school) || '',
+                sub: managerDisplay(pick.userId) + ' · Round ' + pick.round
+            }, { onLand: ownConfetti });
+        } else {
+            ownConfetti();   // reduced motion / reveal unavailable
+        }
+    }, wait);
 }
 
 function onDraftComplete(state) {
@@ -383,6 +428,14 @@ function makePick(teamId) {
     var team = teamsById[String(teamId)];
     if (!team || !socket) return;
     document.querySelectorAll('.draft-pick-btn').forEach(b => b.disabled = true);
+    // Chime the instant YOU click Draft — before the server round-trip — so your
+    // own pick's sound isn't delayed by network/DB latency. onPickMade suppresses
+    // the confirm chime for this pick so it doesn't double. Cleared on error.
+    if (typeof window.ccDraftStinger === 'function') {
+        window.ccDraftStinger();
+        onPickMade._ownChimeAt = Date.now();
+        onPickMade._ownPickTeamId = String(teamId);   // so onPickMade suppresses THIS pick's confirm chime
+    }
     socket.emit('make-pick', { league: leagueCode, season, team });
 }
 

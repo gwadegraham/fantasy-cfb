@@ -386,6 +386,68 @@
 @keyframes dr-clock-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(113, 210, 141, .4); } 50% { box-shadow: 0 0 0 6px rgba(113, 210, 141, 0); } }
 @keyframes dr-ticker { to { transform: translateX(-50%); } }
 
+/* ==================================================================== */
+/* Draft-night "THE PICK IS IN" hero reveal (see draft-fx.js). The badge */
+/* blows up center-screen with a team-color glow, then flies into its    */
+/* board cell; confetti fires on land. Confetti canvas (z 999999) sits   */
+/* above all of this.                                                    */
+/* ==================================================================== */
+.dr-hero-glow {
+    position: fixed; inset: 0; z-index: 998; pointer-events: none;
+    opacity: 0; transition: opacity .35s ease;
+}
+.dr-hero-glow.show { opacity: 1; }
+.dr-hero-stage {
+    position: fixed; inset: 0; z-index: 999; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+}
+.dr-hero {
+    --tc: var(--cc-interactive);
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    opacity: 0; transform: scale(.55); will-change: transform, opacity;
+}
+.dr-hero.show {
+    opacity: 1; transform: scale(1);
+    transition: transform .575s cubic-bezier(.2, 1.5, .3, 1), opacity .345s ease;
+}
+.dr-hero-kicker {
+    font-size: .78rem; letter-spacing: .24em; text-transform: uppercase;
+    color: var(--cc-muted); font-weight: 700;
+}
+.dr-hero-badge {
+    width: 132px; height: 132px; border-radius: 50%; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+}
+.dr-hero-badge img {
+    width: 104px; height: 104px; object-fit: contain;
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.5));
+}
+.dr-hero-badge::after {
+    content: ""; position: absolute; inset: -12px; border-radius: 50%;
+    border: 3px solid var(--tc); opacity: .65;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .dr-hero-badge::after { animation: dr-hero-ring 1.5s ease-out infinite; }
+}
+@keyframes dr-hero-ring {
+    0% { transform: scale(.9); opacity: .7; }
+    100% { transform: scale(1.4); opacity: 0; }
+}
+.dr-hero-name { font-size: 1.6rem; font-weight: 800; color: var(--cc-text); text-align: center; }
+.dr-hero-sub { font-size: .85rem; color: var(--cc-muted); }
+
+/* Mute toggle for the draft stinger (self-injected by draft-fx.js). */
+.dr-mute {
+    position: fixed; right: 14px; bottom: 14px; z-index: 1000;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--cc-border); background: var(--cc-surface);
+    color: var(--cc-text); font-size: 1.05rem; cursor: pointer; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.dr-mute:hover { background: #343954; }
+
 /* Recent-picks ticker */
 .pick-ticker {
     overflow: hidden;
