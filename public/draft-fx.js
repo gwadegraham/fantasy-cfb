@@ -86,7 +86,23 @@
         }, 560);
     };
 
-    // ---- Synthesized "draft pick" stinger (Web Audio, no asset) --------------
+    // ---- Draft-pick stinger --------------------------------------------------
+    // Plays the league's draft chime (public/sounds/draft-pick.mp3). If the file
+    // can't load/play (network, decode, autoplay-before-gesture), it falls back
+    // to a synthesized brass + stamp hit so a pick is never silent.
+    function muted() { return window.localStorage.getItem('cc_draft_mute') === '1'; }
+
+    var chime = null, chimeBroken = false;
+    function getChime() {
+        if (chime) return chime;
+        chime = new Audio('/sounds/draft-pick.mp3');
+        chime.preload = 'auto';
+        chime.volume = 0.6;
+        chime.addEventListener('error', function () { chimeBroken = true; });
+        return chime;
+    }
+
+    // Synth fallback (Web Audio): a brass-ish major chord blip + a low "stamp".
     var actx = null;
     function ctx() {
         if (actx) return actx;
@@ -94,17 +110,7 @@
         if (AC) actx = new AC();
         return actx;
     }
-    // Browsers block audio until a user gesture; unlock on the first one.
-    ['pointerdown', 'keydown'].forEach(function (ev) {
-        window.addEventListener(ev, function unlock() {
-            var a = ctx(); if (a && a.state === 'suspended') a.resume();
-        }, { once: true, passive: true });
-    });
-    function muted() { return window.localStorage.getItem('cc_draft_mute') === '1'; }
-
-    // A short triumphant hit: a brass-ish major chord blip + a low "stamp" thump.
-    window.ccDraftStinger = function () {
-        if (muted()) return;
+    function synthStinger() {
         var a = ctx(); if (!a) return;
         if (a.state === 'suspended') { try { a.resume(); } catch (e) {} }
         var t = a.currentTime;
@@ -113,23 +119,20 @@
         master.gain.setValueAtTime(0.0001, t);
         master.gain.exponentialRampToValueAtTime(0.26, t + 0.02);
         master.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-
         var lp = a.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.setValueAtTime(1100, t);
         lp.frequency.exponentialRampToValueAtTime(3200, t + 0.12);
         lp.connect(master);
-        [220, 277.18, 329.63].forEach(function (f, i) {   // A3 major triad
+        [220, 277.18, 329.63].forEach(function (f, i) {
             var o = a.createOscillator();
             o.type = 'sawtooth';
             o.frequency.setValueAtTime(f, t);
             o.detune.value = (i - 1) * 6;
-            var g = a.createGain();
-            g.gain.value = 0.5;
+            var g = a.createGain(); g.gain.value = 0.5;
             o.connect(g); g.connect(lp);
             o.start(t); o.stop(t + 0.5);
         });
-
         var thump = a.createOscillator();
         thump.type = 'triangle';
         thump.frequency.setValueAtTime(150, t);
@@ -139,6 +142,26 @@
         tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
         thump.connect(tg); tg.connect(master);
         thump.start(t); thump.stop(t + 0.24);
+    }
+
+    // Browsers block audio until a user gesture; on the first one, prime the
+    // chime (and resume the fallback context) so the first pick isn't silent.
+    ['pointerdown', 'keydown'].forEach(function (ev) {
+        window.addEventListener(ev, function unlock() {
+            try { getChime().load(); } catch (e) {}
+            var a = ctx(); if (a && a.state === 'suspended') a.resume();
+        }, { once: true, passive: true });
+    });
+
+    window.ccDraftStinger = function () {
+        if (muted()) return;
+        if (chimeBroken) { synthStinger(); return; }
+        try {
+            var c = getChime();
+            c.currentTime = 0;
+            var p = c.play();
+            if (p && p.catch) p.catch(function () { synthStinger(); });
+        } catch (e) { synthStinger(); }
     };
 
     // ---- Small mute toggle (self-injected; draft page only) ------------------
