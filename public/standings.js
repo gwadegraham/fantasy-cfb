@@ -681,22 +681,22 @@ async function getRankings (week, seasonType, seasonYear) {
 
 async function parseTeamLogos (game, allTeamLogos) {
 
-        var awayTeamLogo = allTeamLogos.find((element) => element.id == game.awayId);
-        var homeTeamLogo = allTeamLogos.find((element) => element.id == game.homeId);
+        var awayTeamObj = allTeamLogos.find((element) => element.id == game.awayId);
+        var homeTeamObj = allTeamLogos.find((element) => element.id == game.homeId);
 
-        if (awayTeamLogo == null) {
-            awayTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
-        } else {
-            awayTeamLogo = '<img src="' + ccLogo(awayTeamLogo.logos) + '" style="padding-right: 5px;">';
-        }
+        // Per-team color accent (see logo.js); '' when the team/color is missing.
+        var awayColor = (awayTeamObj && awayTeamObj.color && window.ccTeamAccent) ? ccTeamAccent(awayTeamObj.color) : '';
+        var homeColor = (homeTeamObj && homeTeamObj.color && window.ccTeamAccent) ? ccTeamAccent(homeTeamObj.color) : '';
 
-        if (homeTeamLogo == null) {
-            homeTeamLogo = '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
-        } else {
-            homeTeamLogo = '<img src="' + ccLogo(homeTeamLogo.logos) + '" style="padding-right: 5px;">';
-        }
+        var awayTeamLogo = awayTeamObj == null
+            ? '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>'
+            : '<img src="' + ccLogo(awayTeamObj.logos) + '" style="padding-right: 5px;">';
 
-        const logoResponse = {awayTeamLogo, homeTeamLogo};
+        var homeTeamLogo = homeTeamObj == null
+            ? '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>'
+            : '<img src="' + ccLogo(homeTeamObj.logos) + '" style="padding-right: 5px;">';
+
+        const logoResponse = {awayTeamLogo, homeTeamLogo, awayColor, homeColor};
         return logoResponse;
 }
 
@@ -926,6 +926,8 @@ async function displaySchedule(data) {
                     var teamLogos = await parseTeamLogos(game, allTeamLogos);
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
+                    var awayRowAccent = teamLogos.awayColor ? `; box-shadow: inset 3px 0 0 ${teamLogos.awayColor}; padding-left: 8px` : '';
+                    var homeRowAccent = teamLogos.homeColor ? `; box-shadow: inset 3px 0 0 ${teamLogos.homeColor}; padding-left: 8px` : '';
 
                     if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
                         var existObject = exists(otherUsers, game.homeId);
@@ -1028,13 +1030,13 @@ async function displaySchedule(data) {
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr firstRow></tr>';
                     teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
 
-                    teamTable += '<tr><td style="width: 250px;">';
-        
+                    teamTable += '<tr><td style="width: 250px;' + awayRowAccent + '">';
+
                     teamTable += awayImg + awayRank + awayTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr>';
-        
-                    teamTable += '<tr><td style="width: 250px;">';
+
+                    teamTable += '<tr><td style="width: 250px;' + homeRowAccent + '">';
                     teamTable += homeImg + homeRank + homeTeam;
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
@@ -1114,16 +1116,18 @@ async function displaySchedule(data) {
                         var teamLogos = await parseTeamLogos(game, allTeamLogos);
                         var awayImg = teamLogos.awayTeamLogo;
                         var homeImg = teamLogos.homeTeamLogo;
+                        var awayRowAccent = teamLogos.awayColor ? `; box-shadow: inset 3px 0 0 ${teamLogos.awayColor}; padding-left: 8px` : '';
+                        var homeRowAccent = teamLogos.homeColor ? `; box-shadow: inset 3px 0 0 ${teamLogos.homeColor}; padding-left: 8px` : '';
 
                         var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
                         teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
 
-                        teamTable += '<tr><td style="width: 250px;">';
+                        teamTable += '<tr><td style="width: 250px;' + awayRowAccent + '">';
                         teamTable += awayImg + awayRank + awayTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                         teamTable += '</tr>';
-            
-                        teamTable += '<tr><td style="width: 250px;">';
+
+                        teamTable += '<tr><td style="width: 250px;' + homeRowAccent + '">';
                         teamTable += homeImg + homeRank + homeTeam;
                         teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                         teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
