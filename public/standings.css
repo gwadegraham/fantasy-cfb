@@ -897,3 +897,61 @@
         white-space: nowrap;
     }
 }
+
+/* ---- Standings podium (top 3) ---------------------------------------------
+   Animated pedestal above the table, rendered by renderPodium() in
+   standings.js from the same ranked rows the table uses. Hidden in preseason
+   (no real leader). Pedestal heights are fixed by rank (1st tallest). */
+#standings-podium {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 10px;
+    max-width: 440px;
+    margin: 8px auto 24px;
+    padding: 0 10px;
+}
+.pod { display: flex; flex-direction: column; align-items: center; width: 31%; min-width: 0; }
+.pod-av {
+    width: 52px; height: 52px; border-radius: 50%; overflow: hidden; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--cc-border); color: #fff; font-weight: 800; font-size: .9rem;
+    margin-bottom: 6px; opacity: 0; transform: translateY(10px) scale(.85);
+}
+.pod-av img { width: 100%; height: 100%; object-fit: cover; }
+.pod-1 .pod-av { width: 62px; height: 62px; border-color: var(--cc-amber); }
+.pod-bar {
+    width: 100%; height: 0; border-radius: 8px 8px 0 0;
+    background: var(--cc-surface); border: 1px solid var(--cc-border); border-bottom: none;
+    display: flex; align-items: flex-start; justify-content: center; padding-top: 8px;
+    font-weight: 800; color: var(--cc-muted);
+    transition: height .6s cubic-bezier(.3, 1.2, .4, 1);
+}
+.pod-1 .pod-bar { background: linear-gradient(180deg, rgba(224,179,65,.28), rgba(224,179,65,.04)); border-color: var(--cc-amber); color: var(--cc-amber); }
+.pod-2 .pod-bar { color: #cfd3e6; }
+.pod-3 .pod-bar { color: #c58a4e; }
+.pod-rank { font-family: Graduate, serif; font-size: 1rem; }
+.pod-nm {
+    font-size: .74rem; color: var(--cc-text); font-weight: 600; margin-top: 6px;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    opacity: 0; transform: translateY(6px);
+}
+.pod-pts { font-size: .72rem; color: var(--cc-muted); margin-top: 1px; opacity: 0; transform: translateY(6px); }
+
+#standings-podium.play .pod-bar { height: var(--h); }
+@media (prefers-reduced-motion: no-preference) {
+    #standings-podium.play .pod-av,
+    #standings-podium.play .pod-nm,
+    #standings-podium.play .pod-pts { animation: pod-in .45s ease forwards; }
+    #standings-podium.play .pod-1 .pod-av { animation-delay: .5s; }
+    #standings-podium.play .pod-1 .pod-nm, #standings-podium.play .pod-1 .pod-pts { animation-delay: .58s; }
+    #standings-podium.play .pod-2 .pod-av { animation-delay: .25s; }
+    #standings-podium.play .pod-2 .pod-nm, #standings-podium.play .pod-2 .pod-pts { animation-delay: .33s; }
+    #standings-podium.play .pod-3 .pod-av { animation-delay: .35s; }
+    #standings-podium.play .pod-3 .pod-nm, #standings-podium.play .pod-3 .pod-pts { animation-delay: .43s; }
+}
+@keyframes pod-in { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .pod-av, .pod-nm, .pod-pts { opacity: 1; transform: none; }
+    .pod-bar { transition: none; }
+}

@@ -111,6 +111,10 @@ async function getUsers() {
         
         usersData = data;
 
+        // Preview: ?podium=demo seeds sample season points so the podium (and
+        // table) populate in the preseason. No-op without the query param.
+        if (new URLSearchParams(location.search).get('podium') === 'demo') seedDemoScores(data);
+
         if (data.length == 0) {
             document.querySelector('.no-data-message').removeAttribute('style');
             document.querySelector('.get-users-container').setAttribute('style', 'display: none;');
@@ -169,6 +173,11 @@ function displayUsers(data) {
 async function renderStandingsSection(data, league, season) {
     const params = new URLSearchParams(location.search);
     const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
+
+    // Preview: force the classic points render so the seeded demo scores drive
+    // the table + podium (H2H rows come from matchup results, which are empty in
+    // the preseason).
+    if (params.get('podium') === 'demo') { displayUsers(data); return; }
 
     let enabled = false;
     if (league && season != null) {
@@ -231,6 +240,55 @@ function renderStandingsTable(rows, opts) {
         note.textContent = h2h ? 'Ranked by total points + H2H bonuses' : '';
         note.hidden = !h2h;
     }
+    renderPodium(rows);
+}
+
+// Small round avatar for a podium slot: uploaded photo (face-cropped) or a
+// colored initials fallback. Mirrors the ranked-row avatar.
+function podiumAvatar(r) {
+    if (r.avatarUrl) {
+        const src = r.avatarUrl.indexOf('/upload/') !== -1
+            ? r.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_120,h_120,q_auto,f_auto/')
+            : r.avatarUrl;
+        return `<span class="pod-av"><img src="${src}" alt=""></span>`;
+    }
+    return `<span class="pod-av" style="background:${r.color || '#333'}">${escapeHtml(r.initials || '?')}</span>`;
+}
+
+// Top-3 podium above the table. Renders from the same ranked rows the table
+// uses, so it always matches the current mode. Hidden until the season has real
+// scoring (no arbitrary preseason podium). Pedestal heights are fixed by rank.
+function renderPodium(rows) {
+    const el = document.getElementById('standings-podium');
+    if (!el) return;
+    const top = (rows || []).filter(r => r.rank <= 3);
+    if (top.length < 3 || rows[0].preseason || !(rows[0].score > 0)) {
+        el.hidden = true; el.innerHTML = ''; el.classList.remove('play'); return;
+    }
+    const byRank = {};
+    rows.forEach(r => { byRank[r.rank] = r; });
+    const hByRank = { 1: 132, 2: 98, 3: 74 };
+    const order = [byRank[2], byRank[1], byRank[3]];   // visual order: 2nd · 1st · 3rd
+    el.hidden = false;
+    el.innerHTML = order.map(r => `
+        <div class="pod pod-${r.rank}">
+            ${podiumAvatar(r)}
+            <div class="pod-bar" style="--h:${hByRank[r.rank]}px"><span class="pod-rank">${r.rank}</span></div>
+            <div class="pod-nm">${escapeHtml(r.franchise || r.name)}</div>
+            <div class="pod-pts">${r.score} pts</div>
+        </div>`).join('');
+    requestAnimationFrame(() => { el.classList.remove('play'); void el.offsetWidth; el.classList.add('play'); });
+}
+
+// Preview only: ?podium=demo seeds sample season totals so the podium + table
+// populate in the preseason. Gated by the query param — never touches real data
+// otherwise.
+function seedDemoScores(users) {
+    const samples = [647, 612, 588, 551, 523, 498, 470, 452, 431, 410];
+    users.forEach((u, i) => {
+        if (!u.seasons || !u.seasons.length) u.seasons = [{}];
+        u.seasons[0].cumulativeScore = samples[i % samples.length];
+    });
 }
 
 // Each row's caret button toggles the hidden roster row that follows it. The
