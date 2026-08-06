@@ -676,10 +676,19 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 }
             }
 
-            var homeLogo = ccLogo((logos.find((team) => team.id == game.homeId))?.logos);
+            var homeTeamObj = logos.find((team) => team.id == game.homeId);
+            var awayTeamObj = logos.find((team) => team.id == game.awayId);
+
+            // Per-team color accent bar on each schedule row (see logo.js).
+            var homeAccent = (homeTeamObj && homeTeamObj.color && window.ccTeamAccent) ? ccTeamAccent(homeTeamObj.color) : '';
+            var awayAccent = (awayTeamObj && awayTeamObj.color && window.ccTeamAccent) ? ccTeamAccent(awayTeamObj.color) : '';
+            var homeRowStyle = homeAccent ? ` style="box-shadow: inset 3px 0 0 ${homeAccent}"` : '';
+            var awayRowStyle = awayAccent ? ` style="box-shadow: inset 3px 0 0 ${awayAccent}"` : '';
+
+            var homeLogo = ccLogo(homeTeamObj?.logos);
             homeLogo = homeLogo ? `<img src="${homeLogo}" alt="${game.homeTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
-            var awayLogo = ccLogo((logos.find((team) => team.id == game.awayId))?.logos);
+            var awayLogo = ccLogo(awayTeamObj?.logos);
             awayLogo = awayLogo ? `<img src="${awayLogo}" alt="${game.awayTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 
             var pollName = 'Playoff Committee Rankings';
@@ -759,10 +768,10 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             html += `
                 <div class="game-row">
                     <div class="game-info">
-                        <div class="team-row">
+                        <div class="team-row"${awayRowStyle}>
                             <span class="team-vs">${awayTeamHTML}
                         </div>
-                        <div class="team-row">
+                        <div class="team-row"${homeRowStyle}>
                             <span class="team-vs">${homeTeamHTML}
                         </div>
                         <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}</span>

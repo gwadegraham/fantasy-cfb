@@ -26,7 +26,7 @@ router.post('/teamLogos', async (req, res) => {
         if (!Array.isArray(req.body.teams)) {
             return res.status(400).json({message: 'teams must be an array of team ids'});
         }
-        const teamLogos = await Team.find({id: {$in: req.body.teams}}, "id school logos");
+        const teamLogos = await Team.find({id: {$in: req.body.teams}}, "id school logos color alt_color");
 
         if (JSON.stringify(teamLogos) === '[]') {
             res.status(400).json({message: `No teams found with names ${req.body.teams}`});
@@ -42,7 +42,7 @@ router.post('/teamLogos', async (req, res) => {
 //Getting All Logos
 router.get('/teamLogos/all', async (req,res) => {
     try {
-        const teamLogos = await Team.find({}, "id logos");
+        const teamLogos = await Team.find({}, "id logos color alt_color");
 
         if (JSON.stringify(teamLogos) === '[]') {
             res.status(400).json({message: `Couldn't get all logos for all teams`});

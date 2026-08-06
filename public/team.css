@@ -193,6 +193,7 @@
         flex-direction: row;
         align-items: center;
         gap: 0.5em;
+        padding-left: 8px;   /* room for the per-team color accent bar */
     }
 
     .game-info {
