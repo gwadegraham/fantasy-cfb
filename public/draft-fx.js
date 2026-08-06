@@ -153,14 +153,28 @@
         }, { once: true, passive: true });
     });
 
+    // The source clip contains the chime TWICE (~0–1.35s, then again ~1.4–2.8s
+    // + tail). Play only the FIRST: cap playback with a short fade so a pick
+    // gets one chime, not two.
+    var CHIME_FADE = 1.2, CHIME_STOP = 1.42, CHIME_VOL = 0.6;
     window.ccDraftStinger = function () {
         if (muted()) return;
         if (chimeBroken) { synthStinger(); return; }
         try {
             var c = getChime();
+            if (c.__iv) { clearInterval(c.__iv); c.__iv = null; }
+            c.volume = CHIME_VOL;
             c.currentTime = 0;
             var p = c.play();
             if (p && p.catch) p.catch(function () { synthStinger(); });
+            c.__iv = setInterval(function () {
+                var t = c.currentTime;
+                if (t >= CHIME_FADE) c.volume = Math.max(0, c.volume - 0.14);
+                if (t >= CHIME_STOP || c.volume <= 0.02 || c.ended) {
+                    clearInterval(c.__iv); c.__iv = null;
+                    c.pause(); c.currentTime = 0; c.volume = CHIME_VOL;
+                }
+            }, 40);
         } catch (e) { synthStinger(); }
     };
 
