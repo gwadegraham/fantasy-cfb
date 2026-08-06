@@ -206,9 +206,9 @@ function maybePreviewWinReveal() {
     if (!r || typeof window.ccWinReveal !== 'function') return;
     const result = r === 'loss' ? 'loss' : r === 'tie' ? 'tie' : 'win';
     const samples = {
-        win:  { oppLabel: 'Treyce W.', myScore: 142, oppScore: 130 },
+        win:  { oppLabel: 'Treyce W.', myScore: 142, oppScore: 130, bonus: 3 },
         loss: { oppLabel: 'Brock M.',  myScore: 118, oppScore: 141 },
-        tie:  { oppLabel: 'Cole W.',   myScore: 126, oppScore: 126 }
+        tie:  { oppLabel: 'Cole W.',   myScore: 126, oppScore: 126, bonus: 1 }
     };
     setTimeout(() => window.ccWinReveal(Object.assign({ result }, samples[result])), 500);
 }
@@ -450,7 +450,7 @@ async function hydratePreseasonModes(user, activeYear) {
     </div>`);
     if (eng.h2hEnabled) cards.push(`<div class="uh-mode">
         <div class="uh-mode-h"><span class="uh-mode-i h2h">${window.ccIcon ? window.ccIcon('swords', { size: 16 }) : '⚔'}</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
-        <div class="uh-mode-d">${own ? 'You’re' : 'Each manager is'} matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus${own ? ' on top of your points' : ''}.</div>
+        <div class="uh-mode-d">${own ? 'You’re' : 'Each manager is'} matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus${own ? ' on top of your points' : ''}.${eng.h2hTieBonus > 0 ? ` A tie earns <b>+${eng.h2hTieBonus}</b> each.` : ''}</div>
     </div>`);
 
     tile.innerHTML = `<span class="uh-tlabel">New in ${escapeHtml(activeYear)}<span class="uh-mode-only">This league</span></span>
@@ -734,7 +734,8 @@ async function hydrateH2H(user, activeYear) {
                         result: res,
                         oppLabel: (oppM && oppM.name) || 'your opponent',
                         myScore: iAmA ? g.aScore : g.bScore,
-                        oppScore: iAmA ? g.bScore : g.aScore
+                        oppScore: iAmA ? g.bScore : g.aScore,
+                        bonus: res === 'win' ? data.winBonus : res === 'tie' ? data.tieBonus : 0
                     }), 700);
                 }
             }

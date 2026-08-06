@@ -44,14 +44,15 @@ function scheduleForWeeks(ids, weeks) {
 // Resolve one week's matchups. `totals` is { [id]: weeklyTotal } (missing → 0).
 // Returns { [id]: { result: 'W'|'L'|'T', bonus, opponent, for, against } } for
 // every manager who had a matchup that week (managers on a bye are omitted).
-function resolveWeek(pairs, totals, winBonus) {
+function resolveWeek(pairs, totals, winBonus, tieBonus) {
+    tieBonus = tieBonus || 0;   // default 0 keeps the original "ties push" behavior
     const out = {};
     (pairs || []).forEach(([a, b]) => {
         const fa = totals[a] || 0, fb = totals[b] || 0;
         let ra, rb, ba, bb;
         if (fa > fb) { ra = 'W'; rb = 'L'; ba = winBonus; bb = 0; }
         else if (fb > fa) { ra = 'L'; rb = 'W'; ba = 0; bb = winBonus; }
-        else { ra = rb = 'T'; ba = bb = 0; }   // ties push — no bonus
+        else { ra = rb = 'T'; ba = bb = tieBonus; }   // ties: each gets the tie bonus (0 = push)
         out[a] = { result: ra, bonus: ba, opponent: b, for: fa, against: fb };
         out[b] = { result: rb, bonus: bb, opponent: a, for: fb, against: fa };
     });
@@ -60,14 +61,14 @@ function resolveWeek(pairs, totals, winBonus) {
 
 // Full-season head-to-head standings. `totalsByIdWeek` is { [id]: { [week]: total } }.
 // Returns { [id]: { wins, losses, ties, bonus, pointsFor, pointsAgainst, weeks: [ {week, ...resolveWeek entry} ] } }.
-function seasonH2H(ids, weeks, totalsByIdWeek, winBonus) {
+function seasonH2H(ids, weeks, totalsByIdWeek, winBonus, tieBonus) {
     const schedule = scheduleForWeeks(ids, weeks);
     const acc = {};
     ids.forEach(id => { acc[id] = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0, weeks: [] }; });
     weeks.forEach(w => {
         const totals = {};
         ids.forEach(id => { totals[id] = (totalsByIdWeek[id] && totalsByIdWeek[id][w]) || 0; });
-        const res = resolveWeek(schedule[w] || [], totals, winBonus);
+        const res = resolveWeek(schedule[w] || [], totals, winBonus, tieBonus);
         Object.keys(res).forEach(id => {
             const r = res[id], a = acc[id];
             if (r.result === 'W') a.wins++;

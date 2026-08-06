@@ -19,7 +19,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
-const { resolveConfig, fieldsForModel, LEAGUES } = require('./modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -265,14 +265,17 @@ app.get('/rules', async (req, res) => {
         try {
             const doc = await ScoringConfig.findOne({ league: leagueCode });
             cfg = resolveConfig(leagueCode, doc
-                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled }
+                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: doc.engagementBySeason }
                 : null);
         } catch (err) {
             cfg = resolveConfig(leagueCode, null);
         }
         const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
+        // Game-mode (H2H/Captain) settings for the active season, so the rules
+        // page can spell out the win/tie bonuses when the league runs H2H.
+        const engagement = engagementForSeason(cfg.engagementBySeason, Number(process.env.YEAR));
 
-        res.render('scoringRules', { user, userState, cfg, fields, leagueCode });
+        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement });
     } else {
         res.redirect("/login");
     }

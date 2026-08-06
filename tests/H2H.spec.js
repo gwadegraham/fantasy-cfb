@@ -55,10 +55,15 @@ describe('resolveWeek', () => {
         expect(res.b).toMatchObject({ result: 'L', bonus: 0 });
         expect(res.d).toMatchObject({ result: 'W', bonus: 3, opponent: 'c' });
     });
-    test('ties push — no bonus to either side', () => {
+    test('ties push — no bonus to either side by default', () => {
         const res = resolveWeek([['a', 'b']], { a: 14, b: 14 }, 3);
         expect(res.a).toMatchObject({ result: 'T', bonus: 0 });
         expect(res.b).toMatchObject({ result: 'T', bonus: 0 });
+    });
+    test('a configured tie bonus is awarded to both sides on a tie', () => {
+        const res = resolveWeek([['a', 'b']], { a: 14, b: 14 }, 3, 1);
+        expect(res.a).toMatchObject({ result: 'T', bonus: 1 });
+        expect(res.b).toMatchObject({ result: 'T', bonus: 1 });
     });
     test('missing totals count as 0', () => {
         const res = resolveWeek([['a', 'b']], { a: 5 }, 3);

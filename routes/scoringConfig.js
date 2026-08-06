@@ -154,6 +154,7 @@ router.patch('/:league/engagement', async (req, res) => {
         const engagement = {
             h2hEnabled: !!b.h2hEnabled,
             h2hWinBonus: clamp(b.h2hWinBonus, 0, 20, 3),
+            h2hTieBonus: clamp(b.h2hTieBonus, 0, 20, 0),
             captainEnabled: !!b.captainEnabled,
             captainMultiplier: clamp(b.captainMultiplier, 1.5, 5, 2)
         };

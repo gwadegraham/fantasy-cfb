@@ -66,6 +66,27 @@
       </ul>
     </section>
 
+    <% if (engagement && (engagement.h2hEnabled || engagement.captainEnabled)) { %>
+    <section class="rules-section">
+      <h2 class="rule-header"><span data-icon="swords" data-icon-size="20"></span>Game Modes</h2>
+      <ul class="scoring-list">
+        <% if (engagement.h2hEnabled) { %>
+          <li><strong>Head-to-Head</strong> — each week you're matched against one rival. Outscore them for a <strong>+<%= engagement.h2hWinBonus %></strong> win bonus on top of your points.</li>
+          <li>
+            <% if (engagement.h2hTieBonus > 0) { %>
+              On a tie, <strong>both</strong> managers get <strong>+<%= engagement.h2hTieBonus %></strong> <%= engagement.h2hTieBonus === 1 ? 'pt' : 'pts' %>.
+            <% } else { %>
+              A tie is a <strong>push</strong> — no bonus for either manager.
+            <% } %>
+          </li>
+        <% } %>
+        <% if (engagement.captainEnabled) { %>
+          <li><strong>Captain</strong> — name one team each week; its points count <strong><%= engagement.captainMultiplier %>×</strong>.</li>
+        <% } %>
+      </ul>
+    </section>
+    <% } %>
+
     <section class="rules-section">
       <h2 class="rule-header"><span data-icon="chart" data-icon-size="20"></span>Rankings Used</h2>
       <p>Rankings are based on the <strong>AP Poll</strong> until the <strong>CFP Poll</strong> is released.</p>

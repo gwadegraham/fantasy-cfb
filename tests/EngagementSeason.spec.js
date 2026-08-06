@@ -5,12 +5,12 @@ describe('normalizeEngagement', () => {
         expect(normalizeEngagement()).toEqual(ENGAGEMENT_DEFAULTS);
         expect(normalizeEngagement({})).toEqual(ENGAGEMENT_DEFAULTS);
         expect(normalizeEngagement({ h2hEnabled: 1, captainEnabled: 'yes' }))
-            .toEqual({ h2hEnabled: true, h2hWinBonus: 3, captainEnabled: true, captainMultiplier: 2 });
+            .toEqual({ h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: true, captainMultiplier: 2 });
     });
 
-    test('keeps provided numeric bonus / multiplier', () => {
-        expect(normalizeEngagement({ h2hEnabled: true, h2hWinBonus: 5, captainEnabled: true, captainMultiplier: 3 }))
-            .toEqual({ h2hEnabled: true, h2hWinBonus: 5, captainEnabled: true, captainMultiplier: 3 });
+    test('keeps provided numeric bonus / tie bonus / multiplier', () => {
+        expect(normalizeEngagement({ h2hEnabled: true, h2hWinBonus: 5, h2hTieBonus: 2, captainEnabled: true, captainMultiplier: 3 }))
+            .toEqual({ h2hEnabled: true, h2hWinBonus: 5, h2hTieBonus: 2, captainEnabled: true, captainMultiplier: 3 });
     });
 });
 
@@ -22,7 +22,7 @@ describe('engagementForSeason', () => {
 
     test('returns the exact season entry', () => {
         expect(engagementForSeason(bySeason, '2026'))
-            .toEqual({ h2hEnabled: true, h2hWinBonus: 3, captainEnabled: true, captainMultiplier: 2 });
+            .toEqual({ h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: true, captainMultiplier: 2 });
     });
 
     test('seasons are independent — 2027 has Captain off while 2026 has it on', () => {

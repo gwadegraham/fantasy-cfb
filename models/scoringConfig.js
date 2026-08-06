@@ -25,6 +25,7 @@ const scoringConfigSchema = new mongoose.Schema({
     engagement: {
         h2hEnabled: { type: Boolean, default: false },
         h2hWinBonus: { type: Number, default: 3 },
+        h2hTieBonus: { type: Number, default: 0 },
         captainEnabled: { type: Boolean, default: false },
         captainMultiplier: { type: Number, default: 2 }
     },

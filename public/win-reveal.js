@@ -78,6 +78,7 @@
         var head = result === 'win' ? 'You win!' : result === 'loss' ? 'Tough one' : 'All square';
         var opp = opts.oppLabel || 'your opponent';
         var sub = result === 'win' ? ('You beat ' + opp) : result === 'loss' ? (opp + ' got you') : ('Tied with ' + opp);
+        if (opts.bonus > 0 && result !== 'loss') sub += result === 'tie' ? (' · +' + opts.bonus + ' each') : (' · +' + opts.bonus + ' bonus');
         var hasScore = opts.myScore != null && opts.oppScore != null;
 
         var scrim = document.createElement('div');
