@@ -73,17 +73,17 @@
             var dx = (c.left + c.width / 2) - (h.left + h.width / 2);
             var dy = (c.top + c.height / 2) - (h.top + h.height / 2);
             var scale = Math.max(0.12, (c.width * 0.72) / h.width);
-            hero.style.transition = 'transform .62s cubic-bezier(.5,0,.2,1), opacity .3s ease .4s';
+            hero.style.transition = 'transform .713s cubic-bezier(.5,0,.2,1), opacity .345s ease .46s';
             hero.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
             hero.style.opacity = '0';
             glow.classList.remove('show');
             setTimeout(function () {
-                if (img) { img.style.transition = 'transform .4s cubic-bezier(.2,1.4,.3,1), opacity .25s'; img.style.opacity = '1'; }
+                if (img) { img.style.transition = 'transform .46s cubic-bezier(.2,1.4,.3,1), opacity .29s'; img.style.opacity = '1'; }
                 try { stage.remove(); glow.remove(); } catch (e) {}
                 revealing = false;
                 onLand();
-            }, 620);
-        }, 560);
+            }, 713);
+        }, 644);
     };
 
     // ---- Draft-pick stinger --------------------------------------------------

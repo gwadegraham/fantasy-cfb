@@ -408,7 +408,7 @@
 }
 .dr-hero.show {
     opacity: 1; transform: scale(1);
-    transition: transform .5s cubic-bezier(.2, 1.5, .3, 1), opacity .3s ease;
+    transition: transform .575s cubic-bezier(.2, 1.5, .3, 1), opacity .345s ease;
 }
 .dr-hero-kicker {
     font-size: .78rem; letter-spacing: .24em; text-transform: uppercase;
@@ -428,7 +428,7 @@
     border: 3px solid var(--tc); opacity: .65;
 }
 @media (prefers-reduced-motion: no-preference) {
-    .dr-hero-badge::after { animation: dr-hero-ring 1.3s ease-out infinite; }
+    .dr-hero-badge::after { animation: dr-hero-ring 1.5s ease-out infinite; }
 }
 @keyframes dr-hero-ring {
     0% { transform: scale(.9); opacity: .7; }

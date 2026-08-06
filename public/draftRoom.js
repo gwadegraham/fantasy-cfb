@@ -383,7 +383,7 @@ function onPickMade({ pick, state }) {
 
     // Reveal 2s after the chime STARTED (so your own pick — chimed on click —
     // still lands 2s later, not 2s after the server round-trip).
-    var REVEAL_DELAY = 1500;
+    var REVEAL_DELAY = 1200;
     var wait = Math.max(0, REVEAL_DELAY - (Date.now() - chimeStart));
     setTimeout(function () {
         justPickedKey = String(pick.userId) + '-' + pick.round;
