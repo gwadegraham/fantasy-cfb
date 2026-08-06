@@ -358,49 +358,57 @@ function onPickMade({ pick, state }) {
 
     var isOwn = String(pick.userId) === String(myUserId);
 
-    // Chime the instant the pick lands — BEFORE the (heavy) board render + reveal
-    // animation (a setTimeout gets starved by that work). Skip it if it's YOUR
-    // pick and makePick already chimed on your click, so it doesn't double.
+    // Chime immediately — on YOUR click (makePick set _ownChimeAt) or here for
+    // other managers' picks — then hold the reveal for a 2s suspense beat:
+    // "the pick is in… [chime + 2s] … TEAM!". The board isn't advanced until
+    // then, so the pick isn't shown early.
     var chimedOnClick = isOwn && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
+    var chimeStart;
+    if (chimedOnClick) {
+        chimeStart = onPickMade._ownChimeAt;
+    } else {
+        if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+        chimeStart = Date.now();
+    }
     onPickMade._ownChimeAt = 0;
-    if (!chimedOnClick && typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
-
-    // Mark this pick's board cell so renderBoard animates just it (once), then
-    // render. Every pick gets a "THE PICK IS IN" hero reveal (the drafted logo
-    // blows up center-board, then flies into its cell); your OWN pick also gets
-    // the confetti burst when the logo lands.
-    justPickedKey = String(pick.userId) + '-' + pick.round;
-    renderAll();
 
     var raw = pick.team && pick.team.color;
     var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
            : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
-    var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
 
-    // Confetti erupts from the cell when the logo lands — your own pick only.
-    function ownConfetti() {
-        if (!(isOwn && cell && !ccReduced())) return;
-        var r = cell.getBoundingClientRect();
-        var colors = lc ? ['#ffffff', lc, lc] : undefined;
-        if (typeof window.ccBurst === 'function') {
-            window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
-        } else if (typeof startConfetti === 'function') {   // fallback: the old rain
-            startConfetti(colors);
-            setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+    // Reveal 2s after the chime STARTED (so your own pick — chimed on click —
+    // still lands 2s later, not 2s after the server round-trip).
+    var REVEAL_DELAY = 2000;
+    var wait = Math.max(0, REVEAL_DELAY - (Date.now() - chimeStart));
+    setTimeout(function () {
+        justPickedKey = String(pick.userId) + '-' + pick.round;
+        renderAll();
+        var cell = document.querySelector('#draft-board-body .draft-board-cell.just-picked');
+
+        function ownConfetti() {
+            if (!(isOwn && cell && !ccReduced())) return;
+            var r = cell.getBoundingClientRect();
+            var colors = lc ? ['#ffffff', lc, lc] : undefined;
+            if (typeof window.ccBurst === 'function') {
+                window.ccBurst(r.left + r.width / 2, r.top + r.height / 2, colors);
+            } else if (typeof startConfetti === 'function') {   // fallback: the old rain
+                startConfetti(colors);
+                setTimeout(function () { if (typeof stopConfetti === 'function') stopConfetti(); }, 2500);
+            }
         }
-    }
 
-    if (cell && typeof window.ccDraftReveal === 'function' && !ccReduced()) {
-        var logo = (pick.team && pick.team.logos) ? ccLogo(pick.team.logos) : '';
-        window.ccDraftReveal(cell, {
-            logo: logo,
-            color: lc || '#8E8CF0',
-            name: (pick.team && pick.team.school) || '',
-            sub: managerDisplay(pick.userId) + ' · Round ' + pick.round
-        }, { onLand: ownConfetti });
-    } else {
-        ownConfetti();   // reduced motion / reveal unavailable
-    }
+        if (cell && typeof window.ccDraftReveal === 'function' && !ccReduced()) {
+            var logo = (pick.team && pick.team.logos) ? ccLogo(pick.team.logos) : '';
+            window.ccDraftReveal(cell, {
+                logo: logo,
+                color: lc || '#8E8CF0',
+                name: (pick.team && pick.team.school) || '',
+                sub: managerDisplay(pick.userId) + ' · Round ' + pick.round
+            }, { onLand: ownConfetti });
+        } else {
+            ownConfetti();   // reduced motion / reveal unavailable
+        }
+    }, wait);
 }
 
 function onDraftComplete(state) {
