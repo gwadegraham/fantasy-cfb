@@ -185,7 +185,7 @@ var removeConfetti; //call to stop the confetti animation and remove all confett
 		if (parts.length > 400) return; // guard against runaway if spammed
 		for (var i = 0; i < 110; i++) {
 			var angle = Math.random() * Math.PI * 2;   // full circle → radial eruption
-			var speed = 12 + Math.random() * 18;        // high initial pop → wide spread before drag slows it
+			var speed = 22 + Math.random() * 28;        // high initial pop → wide spread before drag slows it
 			parts.push({
 				x: x, y: y,
 				vx: Math.cos(angle) * speed,
