@@ -194,6 +194,23 @@ async function renderBento(data) {
     hydrateRoster(data, activeYear);
     hydrateTrajectory(data, activeYear);
     hydrateGames(data, activeYear);
+
+    // Preview only: ?win=win|loss|tie plays a sample Win reveal so the moment
+    // can be previewed anytime. The real trigger lives in hydrateH2H (fires once
+    // when your weekly matchup goes final).
+    maybePreviewWinReveal();
+}
+
+function maybePreviewWinReveal() {
+    const r = new URLSearchParams(location.search).get('win');
+    if (!r || typeof window.ccWinReveal !== 'function') return;
+    const result = r === 'loss' ? 'loss' : r === 'tie' ? 'tie' : 'win';
+    const samples = {
+        win:  { oppLabel: 'Treyce W.', myScore: 142, oppScore: 130 },
+        loss: { oppLabel: 'Brock M.',  myScore: 118, oppScore: 141 },
+        tie:  { oppLabel: 'Cole W.',   myScore: 126, oppScore: 126 }
+    };
+    setTimeout(() => window.ccWinReveal(Object.assign({ result }, samples[result])), 500);
 }
 
 // ---------- Preseason My Team ----------
@@ -698,6 +715,31 @@ async function hydrateH2H(user, activeYear) {
     const mine = [];
     (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, g }); });
     if (!mine.length) return hide();
+
+    // Win reveal: play the moment once when your latest matchup goes final —
+    // own profile only, skipped when a ?win= preview is already forcing it.
+    try {
+        if (uhOwns(user) && typeof window.ccWinReveal === 'function' && !new URLSearchParams(location.search).get('win')) {
+            const finals = mine.filter(x => x.final);
+            const latest = finals[finals.length - 1];
+            if (latest) {
+                const g = latest.g;
+                const iAmA = String(g.aId) === uid;
+                const res = g.winner === 'tie' ? 'tie' : ((g.winner === 'a') === iAmA ? 'win' : 'loss');
+                const oppM = byId[iAmA ? g.bId : g.aId];
+                const seenKey = 'cc_winreveal_' + season + '_wk' + latest.week;
+                if (window.localStorage.getItem(seenKey) !== '1') {
+                    window.localStorage.setItem(seenKey, '1');
+                    setTimeout(() => window.ccWinReveal({
+                        result: res,
+                        oppLabel: (oppM && oppM.name) || 'your opponent',
+                        myScore: iAmA ? g.aScore : g.bScore,
+                        oppScore: iAmA ? g.bScore : g.aScore
+                    }), 700);
+                }
+            }
+        }
+    } catch (e) { /* non-fatal — the reveal is a bonus */ }
 
     const me = byId[uid];
     // On your own profile your side reads "You"; on another manager's profile a
