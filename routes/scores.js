@@ -4,8 +4,13 @@ const scoringModule = require('../modules/scoring.js');
 const User = require('../models/user');
 const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
+const Team = require('../models/team');
+const Draft = require('../models/draft');
+const League = require('../models/league');
 const { computeAdminStatus } = require('../modules/admin-status');
-const { engagementForSeason } = require('../modules/scoring-defaults');
+const { computeSeasonReadiness } = require('../modules/season-readiness');
+const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
+const { canManageLeague } = require('../modules/league-access');
 const { H2H_LAST_WEEK, seasonEntry, computeH2HAwards, applyAwards } = require('../modules/h2h');
 
 // Read-only status summary for the admin console: how far scoring/games have
@@ -20,6 +25,98 @@ router.get('/status/:season', async (req, res) => {
             { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, homePoints: 1, awayPoints: 1, _id: 0 }
         );
         res.json(computeAdminStatus(users, games, season));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Preseason readiness: is this season actually ready to draft?
+//
+// The season-flip steps that feed draft grades and projections (schedule ingest,
+// preseason enrichment, expected wins, CFP odds) all fail SILENTLY — they produce
+// a plausible payload from stale or partial data rather than an error or an empty
+// state. See docs/season-flip-runbook.md. This endpoint reads what's actually on
+// file and reports it, so a missed step is visible before draft night instead of
+// after the season is underway.
+//
+// Read-only, derived entirely from existing data — no writes, no CFBD calls.
+// League rows are scoped to what the caller may manage (Admins: every league;
+// League Managers: their own), mirroring the /rules league gate.
+router.get('/readiness/:season', async (req, res) => {
+    try {
+        const season = req.params.season;
+        const seasonNum = Number(season);
+
+        // Only the readiness fields off each season subdoc — a bare `seasons: 1`
+        // drags every team's weeklyScore array along for no reason.
+        const teams = await Team.find({}, {
+            id: 1, 'seasons.season': 1, 'seasons.talent': 1, 'seasons.spRating': 1,
+            'seasons.expectedWins': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+        }).lean();
+        const teamTotal = teams.length;
+        const fbsIds = new Set(teams.map(t => t.id));
+        const teamsWith = { talent: 0, spRating: 0, expectedWins: 0, cfpOdds: 0 };
+        teams.forEach(t => {
+            const s = (t.seasons || []).find(x => Number(x.season) === seasonNum);
+            if (!s) return;
+            if (s.talent != null) teamsWith.talent++;
+            if (s.spRating != null) teamsWith.spRating++;
+            if (s.expectedWins != null) teamsWith.expectedWins++;
+            if (s.cfpMakeOdds != null || s.cfpChampOdds != null) teamsWith.cfpOdds++;
+        });
+
+        // Schedule coverage: a full ingest reaches essentially every team, so
+        // distinct teams-with-a-game separates "loaded" from "partially loaded".
+        // Counted against FBS teams ONLY — the schedule is full of FCS and other
+        // non-FBS opponents whose ids never appear in the Team collection, so
+        // counting them raw gives more "scheduled teams" than teams that exist
+        // (350 of 138 on real 2026 data) and makes the ratio meaningless.
+        const games = await Game.find(
+            { season: seasonNum, seasonType: 'regular' },
+            { homeId: 1, awayId: 1, completed: 1, homePoints: 1, awayPoints: 1, _id: 0 }
+        ).lean();
+        const scheduled = new Set();
+        games.forEach(g => {
+            if (fbsIds.has(g.homeId)) scheduled.add(g.homeId);
+            if (fbsIds.has(g.awayId)) scheduled.add(g.awayId);
+        });
+
+        // Has the season actually started? Mirrors computeAdminStatus's
+        // gamesLoadedThroughWeek — a completed game with points on it. The client
+        // retires the panel on this, so it doesn't depend on a second endpoint
+        // (and can't be hidden by a mere weeklyScore row, which the nightly job
+        // creates for everyone the moment a season roster exists).
+        const seasonUnderway = games.some(g =>
+            g.completed && typeof g.homePoints === 'number' && (g.homePoints || g.awayPoints));
+
+        // Per-league setup. Only the fields needed — season rosters carry heavy
+        // weeklyScore arrays we don't read here.
+        const members = await User.find({ 'seasons.season': season }, { league: 1 }).lean();
+        const memberCount = {};
+        members.forEach(m => { memberCount[m.league] = (memberCount[m.league] || 0) + 1; });
+        const drafts = await Draft.find({ season: seasonNum }).lean();
+        const configs = await ScoringConfig.find({}, { league: 1, engagementBySeason: 1 }).lean();
+        const names = await League.find({}, { code: 1, name: 1, _id: 0 }).lean();
+        const nameByCode = {};
+        names.forEach(n => { nameByCode[n.code] = n.name; });
+
+        const visible = LEAGUES.filter(l => canManageLeague(req, l.code));
+        const leagues = visible.map(l => {
+            const cfg = configs.find(c => c.league === l.code);
+            return {
+                code: l.code,
+                name: nameByCode[l.code] || l.name,
+                members: memberCount[l.code] || 0,
+                draft: drafts.find(d => d.league === l.code) || null,
+                engagement: engagementForSeason(cfg && cfg.engagementBySeason, season)
+            };
+        });
+
+        res.json(computeSeasonReadiness({
+            season, teamTotal, teamsWith,
+            scheduledTeams: scheduled.size, gameCount: games.length,
+            leagues, seasonUnderway
+        }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
