@@ -296,3 +296,34 @@ describe('narrate (pure)', () => {
         expect(s).toContain('below the league average');
     });
 });
+
+// The H2H win bonus rides inside weeklyScore[].score so it reaches the season
+// total (modules/h2h.js). A week's PERFORMANCE figures must still be measured on
+// the base — otherwise winning your matchup inflates your "vs league average"
+// and could hand you "top score of the week" on the bonus alone.
+describe('H2H bonus is excluded from weekly performance figures', () => {
+    const user = (id, weeks) => ({
+        _id: id,
+        seasons: [{ season: 2026, teams: [], weeklyScore: weeks }]
+    });
+
+    test('vs-league-average and week-high read the base, not the banked score', () => {
+        // Ann's raw week is 20; she won her matchup so 3 is banked into score.
+        // Bob actually outscored her 22. Bob owns the week high, not Ann.
+        const ann = user('a', [{ week: 1, score: 23, h2hBonus: 3, scoreByTeam: [] }]);
+        const bob = user('b', [{ week: 1, score: 22, scoreByTeam: [] }]);
+        const out = buildWeeklyRecaps({ user: ann, leagueUsers: [ann, bob], season: 2026 });
+        const wk = out.recaps[0];
+        expect(wk.score).toBe(20);              // base, not 23
+        expect(wk.vsLeagueAvg).toBe(-1);        // 20 vs an avg of 21
+        expect(wk.weekHigh).toBe(false);        // Bob's 22 is the real high
+    });
+
+    test('season rank still counts the banked bonus', () => {
+        // Base 20 vs 22 puts Ann second; the +3 she banked puts her first.
+        const ann = user('a', [{ week: 1, score: 23, h2hBonus: 3, scoreByTeam: [] }]);
+        const bob = user('b', [{ week: 1, score: 22, scoreByTeam: [] }]);
+        const out = buildWeeklyRecaps({ user: ann, leagueUsers: [ann, bob], season: 2026 });
+        expect(out.recaps[0].rank).toBe(1);
+    });
+});

@@ -66,6 +66,13 @@ Admin → **Engagement**, pick season **2026** in the dropdown. Set H2H + Captai
 per league. *If skipped:* `engagementForSeason` returns OFF defaults, so both
 silently disable for 2026 until configured.
 
+> The H2H win/tie bonus is **banked into the weekly scores** by
+> `POST /scores/h2h-bonus`, which every scoring run calls between `updateScores`
+> and `updateCumulativeScores` — so it lands in `cumulativeScore` and the Hall of
+> Fame, My Team rank, weekly recap and projections all agree with the standings.
+> Nothing to run by hand: the pass re-derives from scratch each time, so turning
+> the mode on/off or changing the bonus mid-season self-corrects on the next run.
+
 ### 6. Configure the 2026 Draft (per league)
 Admin → **Configure Draft** (defaults to the active season). Sets pick order
 (reverse-2025-standings default, reorderable) and creates the `Draft` doc the

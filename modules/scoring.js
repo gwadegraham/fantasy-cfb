@@ -42,6 +42,31 @@ module.exports= {
         }
     },
 
+    // Folds each league's head-to-head win/tie bonuses into the stored weekly
+    // scores. MUST run after updateScores (a week's result needs every manager's
+    // total) and before updateCumulativeScores (which sums the bonus into
+    // cumulativeScore). Goes through the API like every other scoring step so it
+    // works both in-process and from a standalone job run. See the handler in
+    // routes/scores.js for the idempotency guarantees.
+    applyH2HBonuses: async function() {
+        const response = await internalFetch(`${process.env.URL}/scores/h2h-bonus`, {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ season: process.env.YEAR }),
+        });
+
+        const data = await response.json();
+        if (response.status == 200) {
+            console.log("✅ H2H bonuses applied", JSON.stringify(data.leagues || []));
+        } else {
+            console.log("❌ H2H bonuses could not be applied" + " | " + response.status);
+        }
+        return data;
+    },
+
     updateScores: async function(season, week) {
         // One ranking cache per call: every game in the week shares its poll doc
         // instead of re-reading it from Mongo per game.

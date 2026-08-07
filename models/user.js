@@ -89,7 +89,16 @@ const weeklyScoreSchema = new mongoose.Schema({
     // extra points it contributed (already included in `score`). Absent when
     // the league hasn't opted into Captain.
     captainTeamId: { type: Number },
-    captainBonus: { type: Number }
+    captainBonus: { type: Number },
+    // Head-to-head result for this week, written by the H2H bonus pass once the
+    // week settles. Like captainBonus, `h2hBonus` is ALREADY INCLUDED in `score`
+    // — that is what carries it into cumulativeScore and every surface that
+    // ranks by it. The pre-bonus total is score - h2hBonus (see
+    // modules/h2h.js baseWeekScore), which is what matchups resolve from.
+    // Absent when the league hasn't opted into H2H or the week hasn't settled.
+    h2hBonus: { type: Number },
+    h2hResult: { type: String, enum: ['W', 'L', 'T'] },
+    h2hOpponentId: { type: String }
 });
 
 const teamSchema = new mongoose.Schema({

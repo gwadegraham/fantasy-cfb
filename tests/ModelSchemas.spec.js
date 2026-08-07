@@ -85,6 +85,37 @@ describe('User schema', () => {
         expect(found.seasons[0].weeklyScore[0].score).toBe(20);
         expect(found.seasons[0].weeklyScore[0].scoreByTeam[0].team).toBe('Oregon');
     });
+
+    // The scoring job rewrites the WHOLE weeklyScore array each run (see
+    // modules/scoring.js updateUser -> PATCH /users/:id). Any bonus field the
+    // schema doesn't declare gets silently stripped on that write, so an earlier
+    // week's banked H2H bonus would vanish the next time a later week is scored.
+    test('H2H bonus fields survive a full weeklyScore rewrite', async () => {
+        const u = await User.create({
+            firstName: 'Ann', lastName: 'Adams', league: 'graham-league',
+            seasons: [{ season: 2026, weeklyScore: [{ week: 1, score: 23, h2hBonus: 3, h2hResult: 'W', h2hOpponentId: 'abc123' }] }]
+        });
+        // Rewrite the array the way the job does — week 1 untouched, week 2 added.
+        const doc = await User.findById(u._id);
+        doc.seasons[0].weeklyScore = [
+            doc.seasons[0].weeklyScore[0].toObject(),
+            { week: 2, score: 11 }
+        ];
+        doc.markModified('seasons');
+        await doc.save();
+
+        const found = await User.findById(u._id).lean();
+        expect(found.seasons[0].weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W', h2hOpponentId: 'abc123' });
+        expect(found.seasons[0].weeklyScore[1].h2hBonus).toBeUndefined();
+    });
+
+    test('h2hResult is constrained to the W/L/T enum', () => {
+        const err = new User({
+            firstName: 'Ann', lastName: 'Adams',
+            seasons: [{ season: 2026, weeklyScore: [{ week: 1, score: 5, h2hResult: 'X' }] }]
+        }).validateSync();
+        expect(err.errors['seasons.0.weeklyScore.0.h2hResult']).toBeDefined();
+    });
 });
 
 describe('Game schema', () => {
