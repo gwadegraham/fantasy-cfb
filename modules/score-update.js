@@ -132,6 +132,10 @@ async function runFullUpdate({ withBetting = false } = {}) {
         }
         week = postWeeks[postWeeks.length - 1];   // report the latest for logging
 
+        // H2H bonuses are regular-season only, but the pass still runs here: a
+        // postseason update is often the first job after a late regular week
+        // settles, and the pass is a no-op once everything is already applied.
+        await scoringModule.applyH2HBonuses();
         await scoringModule.updateCumulativeScores();
         await teamScoringModule.updateAllTeamScores();
         await recordsModule.updateAllTeamRecords();
@@ -149,6 +153,9 @@ async function runFullUpdate({ withBetting = false } = {}) {
         console.log("number of returned existing games", gamesUpdated);
 
         await scoringModule.updateScores("regular", weekNumber);
+        // Between weekly scoring and cumulative totals: the bonus is folded into
+        // the weekly scores that updateCumulativeScores then sums.
+        await scoringModule.applyH2HBonuses();
         await scoringModule.updateCumulativeScores();
         await teamScoringModule.updateAllTeamScores();
         await recordsModule.updateAllTeamRecords();

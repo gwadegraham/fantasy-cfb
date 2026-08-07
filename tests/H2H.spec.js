@@ -1,4 +1,5 @@
-const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
+const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal, matchupWinProb,
+        baseWeekScore, persistedBonus, h2hManagerIds, computeH2HAwards, applyAwards } = require('../modules/h2h');
 
 describe('buildRoundRobin', () => {
     test('6 managers → 5 rounds, everyone plays everyone exactly once, 3 pairs/round', () => {
@@ -144,6 +145,161 @@ describe('matchupWinProb', () => {
         const live = matchupWinProb([{ winProb: 1, pointsIfWin: 20 }], [{ winProb: 0.5, pointsIfWin: 20 }]);
         expect(live.a).toBeCloseTo(0.75, 10);
         expect(live.a).toBeGreaterThan(pre.a);
+    });
+});
+
+// --- persisting the win bonus into the weekly scores -------------------------
+// The bonus is folded INTO weeklyScore[].score so updateCumulativeScores sums it
+// into cumulativeScore (the number the Hall of Fame, My Team rank, the recap and
+// the projections all read). These cover the invariants that makes safe.
+
+describe('baseWeekScore / persistedBonus', () => {
+    test('base strips a banked bonus back out; a pre-bonus entry is unchanged', () => {
+        expect(baseWeekScore({ score: 25, h2hBonus: 3 })).toBe(22);
+        expect(baseWeekScore({ score: 25 })).toBe(25);
+        expect(baseWeekScore(null)).toBe(0);
+    });
+    test('persistedBonus sums what is already folded into the season', () => {
+        expect(persistedBonus({ weeklyScore: [{ h2hBonus: 3 }, {}, { h2hBonus: 3 }] })).toBe(6);
+        expect(persistedBonus({ weeklyScore: [] })).toBe(0);
+        expect(persistedBonus(null)).toBe(0);
+    });
+});
+
+describe('h2hManagerIds', () => {
+    const u = (id, season, weeks) => ({ _id: id, seasons: [{ season, weeklyScore: weeks }] });
+    test('is sorted, so pairings do not depend on document order', () => {
+        const forward = [u('c', 2026, [{ week: 1, score: 5 }]), u('a', 2026, [{ week: 1, score: 5 }]), u('b', 2026, [{ week: 1, score: 5 }])];
+        const reversed = forward.slice().reverse();
+        expect(h2hManagerIds(forward, 2026)).toEqual(['a', 'b', 'c']);
+        expect(h2hManagerIds(reversed, 2026)).toEqual(h2hManagerIds(forward, 2026));
+    });
+    test('excludes managers with no scored week, and other seasons', () => {
+        const users = [u('a', 2026, [{ week: 1, score: 5 }]), u('b', 2026, []), u('c', 2025, [{ week: 1, score: 5 }])];
+        expect(h2hManagerIds(users, 2026)).toEqual(['a']);
+    });
+    test('matches a season passed as a string or a number', () => {
+        const users = [u('a', 2026, [{ week: 1, score: 5 }])];
+        expect(h2hManagerIds(users, '2026')).toEqual(['a']);
+    });
+});
+
+describe('computeH2HAwards', () => {
+    // Two managers, one drafted team each, weeks 1-2.
+    const users = [
+        { _id: 'a', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: [{ week: 1, score: 20 }, { week: 2, score: 10 }] }] },
+        { _id: 'b', seasons: [{ season: 2026, teams: [{ id: 2 }], weeklyScore: [{ week: 1, score: 14 }, { week: 2, score: 30 }] }] }
+    ];
+    const game = (week, homeId, completed) => ({ id: week * 10 + homeId, week, homeId, awayId: 99, completed });
+    const opts = { season: 2026, winBonus: 3, tieBonus: 0, lastWeek: 14 };
+
+    test('awards the higher base total once every drafted game is complete', () => {
+        const games = [game(1, 1, true), game(1, 2, true)];
+        const { awards, finalWeeks, currentWeek } = computeH2HAwards({ users, games, ...opts });
+        expect(finalWeeks).toEqual([1]);
+        expect(currentWeek).toBeNull();
+        expect(awards.a[1]).toMatchObject({ result: 'W', bonus: 3, opponent: 'b', for: 20, against: 14 });
+        expect(awards.b[1]).toMatchObject({ result: 'L', bonus: 0 });
+        expect(awards.a[2]).toBeUndefined();      // week 2 has no games loaded
+    });
+
+    test('a week with an unfinished game does not settle — it becomes the current week', () => {
+        const games = [game(1, 1, true), game(1, 2, false)];
+        const { awards, finalWeeks, currentWeek } = computeH2HAwards({ users, games, ...opts });
+        expect(finalWeeks).toEqual([]);
+        expect(currentWeek).toBe(1);
+        expect(awards.a[1]).toBeUndefined();
+    });
+
+    test('resolves from the BASE total, so an already-banked bonus never decides its own week', () => {
+        // a trails b on base (18 vs 20) but leads on the stored score (21 vs 20)
+        // because a's week-1 bonus is already folded in. b must still win.
+        const banked = [
+            { _id: 'a', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: [{ week: 1, score: 21, h2hBonus: 3 }] }] },
+            { _id: 'b', seasons: [{ season: 2026, teams: [{ id: 2 }], weeklyScore: [{ week: 1, score: 20 }] }] }
+        ];
+        const games = [game(1, 1, true), game(1, 2, true)];
+        const { awards } = computeH2HAwards({ users: banked, games, ...opts });
+        expect(awards.b[1]).toMatchObject({ result: 'W', bonus: 3 });
+        expect(awards.a[1]).toMatchObject({ result: 'L', bonus: 0 });
+    });
+
+    test('postseason entries and weeks past the cap never award', () => {
+        const late = [
+            { _id: 'a', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: [{ week: 15, score: 20 }, { week: 1, season: 'postseason', score: 30 }] }] },
+            { _id: 'b', seasons: [{ season: 2026, teams: [{ id: 2 }], weeklyScore: [{ week: 15, score: 10 }] }] }
+        ];
+        const games = [{ id: 1, week: 15, homeId: 1, awayId: 99, completed: true }];
+        const { awards, finalWeeks } = computeH2HAwards({ users: late, games, ...opts });
+        expect(finalWeeks).toEqual([]);
+        expect(awards.a).toEqual({});
+    });
+
+    test('fewer than two scored managers awards nothing', () => {
+        const solo = [users[0]];
+        const { awards } = computeH2HAwards({ users: solo, games: [game(1, 1, true)], ...opts });
+        expect(awards.a).toEqual({});
+    });
+});
+
+describe('applyAwards', () => {
+    const weekly = () => [{ week: 1, score: 20 }, { week: 2, score: 10 }, { week: 1, season: 'postseason', score: 30 }];
+
+    test('folds the bonus into score and records the result', () => {
+        const { weeklyScore, changed } = applyAwards(weekly(), { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        expect(changed).toBe(true);
+        expect(weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W', h2hOpponentId: 'b' });
+        expect(weeklyScore[1]).toMatchObject({ score: 10 });
+        expect(weeklyScore[1].h2hBonus).toBeUndefined();
+        expect(weeklyScore[2].score).toBe(30);                    // postseason untouched
+    });
+
+    test('is idempotent — applying the same awards twice does not compound', () => {
+        const awards = { 1: { result: 'W', bonus: 3, opponent: 'b' } };
+        const once = applyAwards(weekly(), awards);
+        const twice = applyAwards(once.weeklyScore, awards);
+        expect(twice.weeklyScore[0].score).toBe(23);
+        expect(twice.changed).toBe(false);                        // nothing to write
+    });
+
+    test('a changed bonus value re-bases rather than stacking', () => {
+        const once = applyAwards(weekly(), { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        const again = applyAwards(once.weeklyScore, { 1: { result: 'W', bonus: 5, opponent: 'b' } });
+        expect(again.weeklyScore[0]).toMatchObject({ score: 25, h2hBonus: 5 });
+        expect(again.changed).toBe(true);
+    });
+
+    test('a flipped result on a rescore moves the bonus to the other side', () => {
+        const won = applyAwards(weekly(), { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        const lost = applyAwards(won.weeklyScore, { 1: { result: 'L', bonus: 0, opponent: 'b' } });
+        expect(lost.weeklyScore[0]).toMatchObject({ score: 20, h2hResult: 'L' });
+        expect(lost.weeklyScore[0].h2hBonus).toBeUndefined();
+    });
+
+    test('turning H2H off strips the bonus back out entirely', () => {
+        const on = applyAwards(weekly(), { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        const off = applyAwards(on.weeklyScore, {});
+        expect(off.changed).toBe(true);
+        expect(off.weeklyScore[0].score).toBe(20);
+        expect(off.weeklyScore[0].h2hBonus).toBeUndefined();
+        expect(off.weeklyScore[0].h2hResult).toBeUndefined();
+    });
+
+    test('a tie bonus is awarded and folded in like a win', () => {
+        const { weeklyScore } = applyAwards(weekly(), { 1: { result: 'T', bonus: 1, opponent: 'b' } });
+        expect(weeklyScore[0]).toMatchObject({ score: 21, h2hBonus: 1, h2hResult: 'T' });
+    });
+
+    test('does not mutate the entries it was given', () => {
+        const original = weekly();
+        applyAwards(original, { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        expect(original[0]).toEqual({ week: 1, score: 20 });
+    });
+
+    test('a fractional captain bonus stays clean after folding (no float drift)', () => {
+        const withCaptain = [{ week: 1, score: 20.5, captainBonus: 5.5 }];
+        const { weeklyScore } = applyAwards(withCaptain, { 1: { result: 'W', bonus: 3, opponent: 'b' } });
+        expect(weeklyScore[0].score).toBe(23.5);
     });
 });
 

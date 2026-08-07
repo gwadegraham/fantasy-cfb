@@ -14,7 +14,8 @@ const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../m
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
-const { scheduleForWeeks, resolveWeek, gameStatus, isWeekFinal, matchupWinProb } = require('../modules/h2h');
+const { gameStatus, matchupWinProb, H2H_LAST_WEEK, baseWeekScore, persistedBonus,
+        h2hManagerIds, computeH2HAwards } = require('../modules/h2h');
 const { pickLogo } = require('../public/logo.js');
 
 // The scoring jobs that actually refresh standings data (see modules/score-job.js
@@ -299,24 +300,28 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const winBonus = eng.h2hWinBonus;
         const tieBonus = eng.h2hTieBonus;
 
-        // H2H matchups run the fantasy regular season only. Weeks 15+ (conf
-        // championships, Army/Navy) and the postseason still count toward season
-        // totals, but their thin slates make for unfair matchups — so no H2H past
-        // this cap. Named for easy adjustment.
-        const H2H_LAST_WEEK = 14;
-
         // .lean(): the handler only reads plain fields (no doc methods/virtuals),
         // so skip Mongoose hydration of these heavy weeklyScore docs.
         const users = await User.find({ league, 'seasons.season': season }).lean();
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
-        const ids = [], meta = {}, totals = {}, teamDetail = {}, caps = {};
+        // Deterministic manager ordering — the pairing schedule is positional, so
+        // this must match what the scoring-time pass used (modules/h2h.js).
+        const ids = h2hManagerIds(users, season);
+        const idSet = new Set(ids);
+        const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {};
         const draftedSet = new Set();
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
             if (!s || !(s.weeklyScore || []).length) return;
             const id = String(u._id);
-            ids.push(id);
+            if (!idSet.has(id)) return;
+            // How much H2H bonus is ALREADY folded into cumulativeScore. Subtracted
+            // from the bonus computed below so the total reads the same whether or
+            // not the scoring job has persisted the current values yet — which also
+            // keeps this route honest when previewing H2H on a historical season
+            // that was never scored with it.
+            banked[id] = persistedBonus(s);
             const logoBy = {}, abbrBy = {};
             const roster = (s.teams || []).map(t => { const logo = pickLogo(t.logos) || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
             meta[id] = {
@@ -332,7 +337,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
             (s.weeklyScore || []).forEach(e => {
                 if (!isRegular(e) || e.week > H2H_LAST_WEEK) return;
                 const w = e.week;
-                tw[w] = (tw[w] || 0) + (e.score || 0);
+                // BASE total (score minus any bonus already banked into it), so a
+                // week's own bonus never feeds back into deciding that week.
+                tw[w] = (tw[w] || 0) + baseWeekScore(e);
                 const byTeam = twTeams[w] || (twTeams[w] = {});
                 (e.scoreByTeam || []).forEach(st => {
                     const k = st.teamId;
@@ -351,7 +358,6 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // final / live / upcoming, and which weeks are fully complete. Pairings
         // are computed over the FIXED regular-season range so a week's matchup is
         // stable whether or not it's been scored yet.
-        const allWeeks = Array.from({ length: H2H_LAST_WEEK }, (_, i) => i + 1);
         const draftedIds = [...draftedSet];
         const games = draftedIds.length ? await Game.find(
             { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_LAST_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
@@ -407,9 +413,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
             });
         }
 
-        const gamesByWeek = {}, gameTW = {};
+        const gameTW = {};
         games.forEach(g => {
-            (gamesByWeek[g.week] = gamesByWeek[g.week] || []).push(g);
             [g.homeId, g.awayId].forEach(tid => {
                 if (!draftedSet.has(tid)) return;
                 const m = gameTW[tid] || (gameTW[tid] = {});
@@ -417,25 +422,24 @@ router.get('/h2h/:league/:season', async (req, res) => {
             });
         });
         const now = Date.now();
-        const scoredSet = new Set(ids.flatMap(id => Object.keys(totals[id]).map(Number)));
-        const weekFinal = {};
-        allWeeks.forEach(w => { weekFinal[w] = isWeekFinal(gamesByWeek[w]) && scoredSet.has(w); });
-        let currentWeek = null;
-        for (const w of allWeeks) { if ((gamesByWeek[w] || []).length && !weekFinal[w]) { currentWeek = w; break; } }
+
+        // Which weeks have settled, the pairings, and each manager's result —
+        // from the SAME function the scoring job uses to bank the bonus, so the
+        // table and cumulativeScore can never tell different stories.
+        const { awards, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
+            users, games, season, winBonus, tieBonus, lastWeek: H2H_LAST_WEEK
+        });
 
         // Records + win bonus count FINAL weeks only (an in-progress week has no
-        // decided winner yet). Stable pairings over all 14 weeks.
-        const scheduleAll = scheduleForWeeks(ids, allWeeks);
-        const finalWeeks = allWeeks.filter(w => weekFinal[w]);
-        const rec = {}; ids.forEach(id => { rec[id] = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0 }; });
-        finalWeeks.forEach(w => {
-            const wt = {}; ids.forEach(id => { wt[id] = totals[id][w] || 0; });
-            const r = resolveWeek(scheduleAll[w] || [], wt, winBonus, tieBonus);
-            Object.keys(r).forEach(id => {
-                const a = rec[id], x = r[id];
+        // decided winner yet).
+        const rec = {};
+        ids.forEach(id => {
+            const a = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0 };
+            Object.values(awards[id] || {}).forEach(x => {
                 if (x.result === 'W') a.wins++; else if (x.result === 'L') a.losses++; else a.ties++;
                 a.bonus += x.bonus; a.pointsFor += x.for; a.pointsAgainst += x.against;
             });
+            rec[id] = a;
         });
         const managers = ids.map(id => ({
             ...meta[id],
@@ -443,7 +447,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
             record: `${rec[id].wins}-${rec[id].losses}-${rec[id].ties}`,
             h2hBonus: rec[id].bonus,
             pointsFor: round(rec[id].pointsFor), pointsAgainst: round(rec[id].pointsAgainst),
-            adjustedTotal: round(meta[id].cumulative + rec[id].bonus)   // cumulative already includes weeks 15+/postseason
+            // cumulative already includes weeks 15+/postseason AND whatever bonus
+            // the scoring job has banked so far; add only the not-yet-banked part.
+            adjustedTotal: round(meta[id].cumulative + rec[id].bonus - (banked[id] || 0))
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
 
         // Standings-only: the ranked table is ready; return before the matchup

@@ -7,6 +7,13 @@
 // AND so a future weekly-recap EMAIL job can reuse it verbatim — no rework.
 
 const { pickLogo } = require('../public/logo.js');
+// The H2H win bonus is folded into weeklyScore[].score (see modules/h2h.js).
+// That belongs in SEASON totals — cumThrough/rank below use the stored score
+// as-is — but not in a week's PERFORMANCE figures: comparing your week to the
+// league average or crowning the week's top score has to be about points your
+// teams actually scored, not about whether you happened to win your matchup.
+// So the per-week numbers here are measured on the base.
+const { baseWeekScore } = require('./h2h');
 
 function ordinal(n) {
     const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
@@ -152,7 +159,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
             // One sample PER MANAGER (summed across any games/entries that week),
             // so a manager with multiple entries in a week isn't double-counted.
             let sum = 0, played = false;
-            ls.weekly.forEach(e => { if (effWeek(e) === W) { sum += (e.score || 0); played = true; } });
+            ls.weekly.forEach(e => { if (effWeek(e) === W) { sum += baseWeekScore(e); played = true; } });
             if (played) arr.push(sum);
         });
         weekStats[W] = {
@@ -170,7 +177,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
         const W = effWeek(e);
         if (!byEff.has(W)) byEff.set(W, { week: e.week, season: e.season, score: 0, scoreByTeam: [] });
         const agg = byEff.get(W);
-        agg.score += (e.score || 0);
+        agg.score += baseWeekScore(e);
         (e.scoreByTeam || []).forEach(st => agg.scoreByTeam.push(st));
     });
     const myWeekly = [...byEff.values()].sort((a, b) => effWeek(a) - effWeek(b));
