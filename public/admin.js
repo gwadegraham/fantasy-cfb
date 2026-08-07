@@ -1191,10 +1191,12 @@ async function loadEngagement() {
         var e = (cfg && cfg.engagement) || {};
         var h2h = document.querySelector('[eng-h2h-enabled]');
         var bonus = document.querySelector('[eng-h2h-bonus]');
+        var tieBonus = document.querySelector('[eng-h2h-tie-bonus]');
         var cap = document.querySelector('[eng-captain-enabled]');
         var mult = document.querySelector('[eng-captain-mult]');
         if (h2h) h2h.checked = !!e.h2hEnabled;
         if (bonus) bonus.value = (e.h2hWinBonus != null ? e.h2hWinBonus : 3);
+        if (tieBonus) tieBonus.value = (e.h2hTieBonus != null ? e.h2hTieBonus : 0);
         if (cap) cap.checked = !!e.captainEnabled;
         if (mult) mult.value = (e.captainMultiplier != null ? e.captainMultiplier : 2);
     } catch (e) { /* leave defaults */ }
@@ -1210,6 +1212,7 @@ if (engagementForm) {
             season: (seasonSel && seasonSel.value) || String(new Date().getFullYear()),
             h2hEnabled: document.querySelector('[eng-h2h-enabled]').checked,
             h2hWinBonus: Number(document.querySelector('[eng-h2h-bonus]').value),
+            h2hTieBonus: Number(document.querySelector('[eng-h2h-tie-bonus]').value),
             captainEnabled: document.querySelector('[eng-captain-enabled]').checked,
             captainMultiplier: Number(document.querySelector('[eng-captain-mult]').value)
         };
@@ -1222,7 +1225,7 @@ if (engagementForm) {
             const data = await res.json().catch(() => ({}));
             if (res.status === 200) {
                 successToast.options.text = `Game modes saved · ${data.season || body.season}`
-                    + (data.h2hEnabled ? ` · H2H +${data.h2hWinBonus}` : ' · H2H off')
+                    + (data.h2hEnabled ? ` · H2H +${data.h2hWinBonus}${data.h2hTieBonus ? '/+' + data.h2hTieBonus + ' tie' : ''}` : ' · H2H off')
                     + (data.captainEnabled ? ` · Captain ${data.captainMultiplier}×` : ' · Captain off');
                 successToast.showToast();
             } else {

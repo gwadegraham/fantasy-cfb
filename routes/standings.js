@@ -297,6 +297,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // (a season with no entry is off), so one season's setting never leaks.
         const eng = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
         const winBonus = eng.h2hWinBonus;
+        const tieBonus = eng.h2hTieBonus;
 
         // H2H matchups run the fantasy regular season only. Weeks 15+ (conf
         // championships, Army/Navy) and the postseason still count toward season
@@ -344,7 +345,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             caps[id] = {};
             (s.captains || []).forEach(c => { if (c && c.week != null) caps[id][c.week] = c.teamId; });
         });
-        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: [], managers: [], schedule: [] });
+        if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: [], managers: [], schedule: [] });
 
         // Game status for in-progress weeks: whether each rostered team's game is
         // final / live / upcoming, and which weeks are fully complete. Pairings
@@ -429,7 +430,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const rec = {}; ids.forEach(id => { rec[id] = { wins: 0, losses: 0, ties: 0, bonus: 0, pointsFor: 0, pointsAgainst: 0 }; });
         finalWeeks.forEach(w => {
             const wt = {}; ids.forEach(id => { wt[id] = totals[id][w] || 0; });
-            const r = resolveWeek(scheduleAll[w] || [], wt, winBonus);
+            const r = resolveWeek(scheduleAll[w] || [], wt, winBonus, tieBonus);
             Object.keys(r).forEach(id => {
                 const a = rec[id], x = r[id];
                 if (x.result === 'W') a.wins++; else if (x.result === 'L') a.losses++; else a.ties++;
@@ -447,7 +448,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
 
         // Standings-only: the ranked table is ready; return before the matchup
         // win-prob build (which needs the projections skipped above).
-        if (standingsOnly) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, managers });
+        if (standingsOnly) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, managers });
 
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
@@ -567,7 +568,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             featuredWeek = w.week; currentWeekOut = w.week;
         }
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, managers, schedule });
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

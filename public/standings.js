@@ -497,7 +497,7 @@ function renderH2HMatchups(d) {
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}This Week's Matchups${preview}</h2>
-        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.</p>
+        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus${d.tieBonus > 0 ? `, or <b>+${d.tieBonus}</b> each on a tie` : ''} (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.</p>
         <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
         <div class="h2h-matches" h2h-matches></div>`;
     el.hidden = false;

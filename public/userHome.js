@@ -194,6 +194,23 @@ async function renderBento(data) {
     hydrateRoster(data, activeYear);
     hydrateTrajectory(data, activeYear);
     hydrateGames(data, activeYear);
+
+    // Preview only: ?win=win|loss|tie plays a sample Win reveal so the moment
+    // can be previewed anytime. The real trigger lives in hydrateH2H (fires once
+    // when your weekly matchup goes final).
+    maybePreviewWinReveal();
+}
+
+function maybePreviewWinReveal() {
+    const r = new URLSearchParams(location.search).get('win');
+    if (!r || typeof window.ccWinReveal !== 'function') return;
+    const result = r === 'loss' ? 'loss' : r === 'tie' ? 'tie' : 'win';
+    const samples = {
+        win:  { oppLabel: 'Treyce W.', myScore: 142, oppScore: 130, bonus: 3 },
+        loss: { oppLabel: 'Brock M.',  myScore: 118, oppScore: 141 },
+        tie:  { oppLabel: 'Cole W.',   myScore: 126, oppScore: 126, bonus: 1 }
+    };
+    setTimeout(() => window.ccWinReveal(Object.assign({ result }, samples[result])), 500);
 }
 
 // ---------- Preseason My Team ----------
@@ -433,7 +450,7 @@ async function hydratePreseasonModes(user, activeYear) {
     </div>`);
     if (eng.h2hEnabled) cards.push(`<div class="uh-mode">
         <div class="uh-mode-h"><span class="uh-mode-i h2h">${window.ccIcon ? window.ccIcon('swords', { size: 16 }) : '⚔'}</span>Head-to-head<span class="uh-mode-b h2h">+${eng.h2hWinBonus || 3}</span></div>
-        <div class="uh-mode-d">${own ? 'You’re' : 'Each manager is'} matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus${own ? ' on top of your points' : ''}.</div>
+        <div class="uh-mode-d">${own ? 'You’re' : 'Each manager is'} matched against a different manager every week. Outscore them for a <b>+${eng.h2hWinBonus || 3}</b> win bonus${own ? ' on top of your points' : ''}.${eng.h2hTieBonus > 0 ? ` A tie earns <b>+${eng.h2hTieBonus}</b> each.` : ''}</div>
     </div>`);
 
     tile.innerHTML = `<span class="uh-tlabel">New in ${escapeHtml(activeYear)}<span class="uh-mode-only">This league</span></span>
@@ -698,6 +715,32 @@ async function hydrateH2H(user, activeYear) {
     const mine = [];
     (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, g }); });
     if (!mine.length) return hide();
+
+    // Win reveal: play the moment once when your latest matchup goes final —
+    // own profile only, skipped when a ?win= preview is already forcing it.
+    try {
+        if (uhOwns(user) && typeof window.ccWinReveal === 'function' && !new URLSearchParams(location.search).get('win')) {
+            const finals = mine.filter(x => x.final);
+            const latest = finals[finals.length - 1];
+            if (latest) {
+                const g = latest.g;
+                const iAmA = String(g.aId) === uid;
+                const res = g.winner === 'tie' ? 'tie' : ((g.winner === 'a') === iAmA ? 'win' : 'loss');
+                const oppM = byId[iAmA ? g.bId : g.aId];
+                const seenKey = 'cc_winreveal_' + season + '_wk' + latest.week;
+                if (window.localStorage.getItem(seenKey) !== '1') {
+                    window.localStorage.setItem(seenKey, '1');
+                    setTimeout(() => window.ccWinReveal({
+                        result: res,
+                        oppLabel: (oppM && oppM.name) || 'your opponent',
+                        myScore: iAmA ? g.aScore : g.bScore,
+                        oppScore: iAmA ? g.bScore : g.aScore,
+                        bonus: res === 'win' ? data.winBonus : res === 'tie' ? data.tieBonus : 0
+                    }), 700);
+                }
+            }
+        }
+    } catch (e) { /* non-fatal — the reveal is a bonus */ }
 
     const me = byId[uid];
     // On your own profile your side reads "You"; on another manager's profile a

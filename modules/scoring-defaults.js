@@ -194,7 +194,7 @@ function resolveConfig(league, overrides) {
 
 // Engagement (game modes) defaults: everything off, with the standard bonus /
 // multiplier values used when a mode is turned on.
-const ENGAGEMENT_DEFAULTS = { h2hEnabled: false, h2hWinBonus: 3, captainEnabled: false, captainMultiplier: 2 };
+const ENGAGEMENT_DEFAULTS = { h2hEnabled: false, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: false, captainMultiplier: 2 };
 
 // Coerce a stored/partial engagement object into a complete, well-typed one.
 function normalizeEngagement(e) {
@@ -202,6 +202,7 @@ function normalizeEngagement(e) {
     return {
         h2hEnabled: !!e.h2hEnabled,
         h2hWinBonus: typeof e.h2hWinBonus === 'number' ? e.h2hWinBonus : ENGAGEMENT_DEFAULTS.h2hWinBonus,
+        h2hTieBonus: typeof e.h2hTieBonus === 'number' ? e.h2hTieBonus : ENGAGEMENT_DEFAULTS.h2hTieBonus,
         captainEnabled: !!e.captainEnabled,
         captainMultiplier: typeof e.captainMultiplier === 'number' ? e.captainMultiplier : ENGAGEMENT_DEFAULTS.captainMultiplier
     };
