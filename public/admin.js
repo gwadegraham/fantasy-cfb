@@ -328,6 +328,123 @@ function renderAdminStatus(el, s, api, year, jobs) {
     });
 }
 
+// --- Preseason readiness ----------------------------------------------------
+// Each season-flip data load that can fail silently, checked against what's
+// actually on file. See modules/season-readiness.js for why each one matters.
+
+// League display names are commissioner-editable, so they're escaped before
+// they're interpolated into innerHTML below.
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Check key -> [container attribute, opener] for the admin tool that fixes it.
+// The openers are function declarations defined further down this file, so they
+// hoist and are already bound by the time this literal is evaluated.
+// See readinessRow() for when the affordance is actually rendered.
+var READINESS_FIX = {
+    schedule: ['schedule-container', displayScheduleContainer],
+    enrichment: ['enrichment-container', displayEnrichmentContainer],
+    spPlus: ['enrichment-container', displayEnrichmentContainer],
+    expectedWins: ['expected-wins-container', displayExpectedWinsContainer],
+    cfpOdds: ['cfp-odds-container', displayCfpOddsContainer],
+    roster: ['season-roster-container', displaySeasonRosterContainer],
+    draft: ['draft-config-container', displayDraftConfigContainer],
+    gameModes: ['engagement-container', displayEngagementContainer]
+};
+
+// 'off' is a legitimate resting state (a classic league runs no game modes), so
+// it reads as neutral rather than as a problem.
+function readinessDot(c) {
+    if (c.status === 'ready') return 'g';
+    if (c.status === 'off') return 'b';
+    if (c.status === 'partial') return 'a';
+    return c.required ? 'r' : 'a';
+}
+
+function readinessRow(c) {
+    var needsAttention = c.required && c.status !== 'ready';
+    // No action on a settled row: the panel's job is to point at what's
+    // outstanding, and a control on every line flattens that signal. The tools
+    // themselves are listed directly below if someone wants to re-run one.
+    // Also suppressed when the target tool isn't on the page — a League Manager
+    // doesn't get the platform-wide tools, so they see state without a dead button.
+    var target = c.status !== 'ready' && READINESS_FIX[c.key];
+    var canOpen = target && document.querySelector('[' + target[0] + ']');
+    // The button navigates — it opens the tool and scrolls to it, it doesn't run
+    // anything — so a real gap says "Fix" (where you go to fix it) and an
+    // optional row that's merely switched off says "Set up".
+    var action = canOpen
+        ? '<button type="button" class="rd-fix" data-rd-fix="' + escapeHtml(c.key) + '">'
+            + (c.required ? 'Fix' : 'Set up') + ' →</button>'
+        : '<span></span>';
+    return '<div class="rd-row' + (needsAttention ? ' attn' : '') + '">'
+        + '<span class="dot ' + readinessDot(c) + '"></span>'
+        + '<span class="rd-label">' + escapeHtml(c.label) + '</span>'
+        + '<span class="rd-detail">' + escapeHtml(c.detail || '') + '</span>'
+        + action
+        + (needsAttention && c.whyItMatters ? '<p class="rd-why">' + escapeHtml(c.whyItMatters) + '</p>' : '')
+        + (c.note ? '<p class="rd-note">' + escapeHtml(c.note) + '</p>' : '')
+        + '</div>';
+}
+
+function renderReadiness(el, r) {
+    var outstanding = (r.blocking || []).length;
+    var head = r.ready
+        ? '<span class="rd-state ok">Ready to draft</span>'
+        : '<span class="rd-state warn">' + outstanding + ' step' + (outstanding === 1 ? '' : 's') + ' outstanding</span>';
+
+    var leagueBlocks = (r.leagues || []).map(function (l) {
+        return '<div class="rd-group"><small>' + escapeHtml(l.name) + '</small>'
+            + l.checks.map(readinessRow).join('') + '</div>';
+    }).join('');
+
+    el.className = 'readiness ' + (r.ready ? 'ok' : 'warn');
+    el.innerHTML = '<div class="ss-head"><i class="fa-solid fa-clipboard-check"></i> Season readiness · ' + escapeHtml(r.season) + '</div>'
+        + '<div class="rd-summary">' + head
+        + '<span class="rd-sub">These loads fail quietly — stale or partial data instead of an error. Worth confirming before draft night.</span></div>'
+        + '<div class="rd-group"><small>Platform data</small>' + (r.platform || []).map(readinessRow).join('') + '</div>'
+        + leagueBlocks;
+    el.hidden = false;
+
+    el.querySelectorAll('[data-rd-fix]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var target = READINESS_FIX[btn.getAttribute('data-rd-fix')];
+            if (!target) return;
+            var c = document.querySelector('[' + target[0] + ']');
+            if (!c) return;
+            if (!c.classList.contains('open')) target[1]();
+            // Scroll the whole tool card into view, falling back to the container
+            // itself if the markup ever stops nesting one inside the other.
+            (c.closest('.function-container') || c).scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    });
+}
+
+// Preseason only — the panel retires itself once the season is underway rather
+// than becoming permanent furniture, since the roster/draft checks are moot by
+// then and the in-season status strip above covers what matters.
+//
+// The season-underway flag comes from the payload itself (a completed game with
+// points), so this stands alone: it doesn't ride on the status strip's fetch,
+// and it can't be hidden by a bare weeklyScore row — the nightly job writes an
+// empty Week 1 entry for everyone as soon as a season roster exists, which reads
+// as "scored through Week 1" in early August with no football played.
+async function loadReadiness() {
+    var el = document.querySelector('[season-readiness]');
+    if (!el) return;
+    var year = window.APP_YEAR || new Date().getFullYear();
+    try {
+        var res = await fetch('/scores/readiness/' + year, { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) return;
+        var r = await res.json();
+        if (r.seasonUnderway) return;
+        renderReadiness(el, r);
+    } catch (e) { /* leave the panel hidden on error */ }
+}
+
 window.onload = async function() {
     // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     detectMobile();
@@ -337,6 +454,7 @@ window.onload = async function() {
     setSeasonTypeOptions();
     setWeekOptions();
     loadAdminStatus();
+    loadReadiness();
 };
 
 // League name: rename the active league (own-league enforced server-side).

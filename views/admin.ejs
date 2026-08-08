@@ -52,6 +52,12 @@
 
     <div class="admin-status" admin-status hidden></div>
 
+    <!-- Preseason readiness (docs/season-flip-runbook.md). The season-flip data
+         loads fail silently — stale/partial data rather than an error — so this
+         reports what's actually on file before draft night. Rendered by
+         renderReadiness(); hides itself once the season is scoring. -->
+    <div class="readiness" season-readiness hidden></div>
+
     <% /* Platform-wide groups: Admins only. League Managers see just League setup. */ %>
     <% if (isAdmin) { %>
     <section class="admin-group">
