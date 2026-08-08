@@ -9,7 +9,12 @@ const draftPickSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     team: { type: mongoose.Schema.Types.Mixed, required: true },
     pickedAt: { type: Date },
-    pickedByCommissioner: { type: Boolean, default: false }
+    pickedByCommissioner: { type: Boolean, default: false },
+    // Set when a commissioner corrected which team went in this slot after the
+    // fact (see modules/roster-correction.js). The round/overall/pickedAt of the
+    // pick are untouched — only the team was wrong — so this is the one marker
+    // that the board no longer shows what was originally entered.
+    correctedAt: { type: Date }
 }, { _id: false });
 
 const draftSchema = new mongoose.Schema({

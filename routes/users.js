@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/user');
 const Game = require('../models/game');
+const Team = require('../models/team');
+const Draft = require('../models/draft');
 const scoring = require('../modules/scoring');
+const rosterCorrection = require('../modules/roster-correction');
+const { pickLogo } = require('../public/logo.js');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
@@ -399,6 +403,139 @@ router.post('/:id/season-membership', async (req, res) => {
         user.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
         await user.save();
         res.json({ inSeason: (user.seasons || []).some(s => Number(s.season) === year) });
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Everything the Correct a Roster tool needs in one read: each manager's teams
+// for the season, plus the FBS teams nobody in the league has. Also reports
+// whether the season is underway, so the UI can show the lock before a
+// commissioner picks a team and gets refused.
+router.get('/league/:league/roster-teams', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const season = Number(req.query.season || process.env.YEAR);
+
+        const users = await User.find(
+            { league, 'seasons.season': season },
+            { firstName: 1, lastName: 1, color: 1, seasons: { $elemMatch: { season } } }
+        ).lean();
+
+        const taken = new Set();
+        const managers = users.map(u => {
+            const s = (u.seasons && u.seasons[0]) || {};
+            const teams = (s.teams || []).map(t => {
+                taken.add(Number(t.id));
+                return { id: t.id, school: t.school, logo: pickLogo(t.logos) || null };
+            });
+            return {
+                userId: String(u._id),
+                name: `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+                franchise: s.franchiseName || null,
+                teams
+            };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
+        const allTeams = await Team.find({}, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
+        const available = allTeams
+            .filter(t => !taken.has(Number(t.id)))
+            .map(t => ({ id: t.id, school: t.school, conference: t.conference || '', logo: pickLogo(t.logos) || null }))
+            .sort((a, b) => a.school.localeCompare(b.school));
+
+        const isAdmin = effectiveRoles(req).includes('Admin');
+        const seasonUnderway = await hasScoredGames(league, season);
+        res.json({
+            league, season: String(season), managers, available,
+            isAdmin, seasonUnderway,
+            locked: seasonUnderway && !isAdmin
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Correct one team on a manager's season roster.
+//
+// A completed draft used to be final — the only write path bulk-overwrote all
+// ten teams and had no UI — so a draft-night misclick was permanent. This
+// rewrites BOTH the roster and the matching draft pick, because draft grades,
+// the draft board and the Draft Steal highlight all read the pick; correcting
+// one without the other would leave them quietly disagreeing.
+router.patch('/:id/roster-team', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        if (!canManageLeague(req, user.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+
+        const season = Number((req.body && req.body.season) || process.env.YEAR);
+        const fromTeamId = req.body && req.body.fromTeamId;
+        const toTeamId = req.body && req.body.toTeamId;
+
+        const seasonDoc = (user.seasons || []).find(s => Number(s.season) === season);
+        if (!seasonDoc) return res.status(404).json({ message: `No ${season} roster for that manager.` });
+
+        const targetTeam = toTeamId == null ? null : await Team.findOne({ id: Number(toTeamId) }).lean();
+
+        // Is the replacement already spoken for anywhere in this league?
+        let takenBy = null;
+        if (targetTeam) {
+            const holder = await User.findOne(
+                { league: user.league, _id: { $ne: user._id }, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
+                { firstName: 1, lastName: 1 }
+            ).lean();
+            if (holder) takenBy = { name: `${holder.firstName || ''} ${holder.lastName || ''}`.trim() };
+        }
+
+        const isAdmin = effectiveRoles(req).includes('Admin');
+        const seasonUnderway = await hasScoredGames(user.league, season);
+        const check = rosterCorrection.validateCorrection({
+            roster: seasonDoc.teams, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin
+        });
+        if (!check.ok) return res.status(check.status).json({ message: check.message });
+
+        const nextTeam = rosterCorrection.rosterTeamFrom(targetTeam);
+        const applied = rosterCorrection.replaceRosterTeam(seasonDoc.teams, fromTeamId, nextTeam);
+        if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
+        seasonDoc.teams = applied.teams;
+        user.markModified('seasons');
+        user.lastUpdated = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
+        try {
+            await user.save();
+        } catch (err) {
+            // Most likely the roster schema rejecting a thin location record.
+            return res.status(422).json({ message: `Could not roster ${targetTeam.school}: ${err.message}` });
+        }
+
+        // Keep the draft record in step. Absent for a season assembled without a
+        // live draft, which is fine — there's no pick to correct.
+        let draftUpdated = false;
+        const draft = await Draft.findOne({ league: user.league, season });
+        if (draft) {
+            const nextPicks = rosterCorrection.replaceDraftPick(draft.picks, user._id, fromTeamId, nextTeam);
+            if (nextPicks.changed) {
+                draft.picks = nextPicks.picks;
+                draft.markModified('picks');
+                draft.updatedAt = new Date();
+                await draft.save();
+                draftUpdated = true;
+            }
+        }
+
+        console.log(`Roster correction · ${user.league} ${season}: ${user.firstName} ${check.current.school} -> ${targetTeam.school}`
+            + (draftUpdated ? ' (draft pick updated)' : ' (no draft pick found)'));
+
+        res.json({
+            userId: String(user._id), season: String(season),
+            from: { id: check.current.id, school: check.current.school },
+            to: { id: nextTeam.id, school: nextTeam.school, logo: pickLogo(nextTeam.logos) || null },
+            draftUpdated,
+            // Every scored week was computed against the old roster, so the
+            // numbers are stale until a full-season re-score runs.
+            rescoreNeeded: seasonUnderway
+        });
     } catch (err) {
         res.status(400).json({ message: err.message });
     }

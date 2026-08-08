@@ -328,6 +328,161 @@ function renderAdminStatus(el, s, api, year, jobs) {
     });
 }
 
+// --- Correct a Roster --------------------------------------------------------
+// Swap one team on a manager's season roster for an undrafted one. Also rewrites
+// the matching draft pick server-side, so the board and grades stay in step —
+// see modules/roster-correction.js.
+
+var rosterFix = { data: null, managerId: null, editing: null };
+
+async function loadRosterCorrection() {
+    var body = document.querySelector('[roster-correction-body]');
+    if (!body) return;
+    body.textContent = 'Loading…';
+    var league = getDraftLeagueCode();
+    var year = window.APP_YEAR || new Date().getFullYear();
+    try {
+        var res = await fetch('/users/league/' + encodeURIComponent(league) + '/roster-teams?season=' + encodeURIComponent(year),
+            { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        if (!res.ok) { body.textContent = data.message || 'Could not load rosters.'; return; }
+        rosterFix.data = data;
+        // Keep the selected manager across a reload when they're still there.
+        if (!data.managers.some(function (m) { return m.userId === rosterFix.managerId; })) {
+            rosterFix.managerId = data.managers.length ? data.managers[0].userId : null;
+        }
+        rosterFix.editing = null;
+        renderRosterCorrection();
+    } catch (err) {
+        body.textContent = 'Could not load rosters.';
+    }
+}
+
+function renderRosterCorrection() {
+    var body = document.querySelector('[roster-correction-body]');
+    var d = rosterFix.data;
+    if (!body || !d) return;
+    if (!d.managers.length) {
+        body.innerHTML = '<p class="rc-empty">Nobody is in the ' + escapeHtml(d.season) + ' season yet. Add managers under Season Roster first.</p>';
+        return;
+    }
+
+    // Locked for a League Manager once results exist — a swap invalidates every
+    // scored week, so it needs an admin who can run the re-score.
+    var banner = d.locked
+        ? '<div class="scoring-locked"><span data-icon="lock" data-icon-size="16"></span>'
+            + 'Rosters lock once the season is underway. Ask an admin &mdash; the change needs a full re-score.</div>'
+        : (d.seasonUnderway
+            ? '<div class="rc-warn"><span data-icon="lock" data-icon-size="16"></span>'
+                + 'The season is underway. A correction now needs a full-season re-score to take effect.</div>'
+            : '');
+
+    var mgr = d.managers.filter(function (m) { return m.userId === rosterFix.managerId; })[0] || d.managers[0];
+    var options = d.managers.map(function (m) {
+        return '<option value="' + escapeHtml(m.userId) + '"' + (m.userId === mgr.userId ? ' selected' : '') + '>'
+            + escapeHtml(m.name) + (m.franchise ? ' — ' + escapeHtml(m.franchise) : '') + '</option>';
+    }).join('');
+
+    var rows = mgr.teams.length
+        ? mgr.teams.map(function (t) { return rosterFixRow(t, d); }).join('')
+        : '<p class="rc-empty">This manager has no teams for ' + escapeHtml(d.season) + ' yet.</p>';
+
+    body.innerHTML = banner
+        + '<label class="rc-pick"><span>Manager</span><select rc-manager>' + options + '</select></label>'
+        + '<div class="rc-rows">' + rows + '</div>';
+
+    // Icons are injected after load, so the auto-hydrator has already run.
+    if (window.ccHydrateIcons) window.ccHydrateIcons(body);
+
+    body.querySelector('[rc-manager]').addEventListener('change', function (e) {
+        rosterFix.managerId = e.target.value;
+        rosterFix.editing = null;
+        renderRosterCorrection();
+    });
+    wireRosterFixRows(body, mgr, d);
+}
+
+function rosterFixRow(t, d) {
+    var logo = t.logo ? '<img src="' + escapeHtml(t.logo) + '" alt="">' : '<i class="fa-solid fa-helmet-un"></i>';
+    if (rosterFix.editing !== t.id) {
+        return '<div class="rc-row">'
+            + '<span class="rc-team">' + logo + escapeHtml(t.school) + '</span>'
+            + (d.locked ? '<span></span>'
+                : '<button type="button" class="rc-replace" data-rc-edit="' + t.id + '">Replace</button>')
+            + '</div>';
+    }
+    // Editing this row: a picker of every team nobody in the league holds.
+    var opts = '<option value="">Choose a replacement…</option>' + d.available.map(function (a) {
+        return '<option value="' + a.id + '">' + escapeHtml(a.school) + (a.conference ? ' (' + escapeHtml(a.conference) + ')' : '') + '</option>';
+    }).join('');
+    return '<div class="rc-row is-editing">'
+        + '<span class="rc-team">' + logo + escapeHtml(t.school) + '</span>'
+        + '<span class="rc-arrow" data-icon="swords" data-icon-size="14"></span>'
+        + '<select rc-target>' + opts + '</select>'
+        + '<span class="rc-actions">'
+        +   '<button type="button" class="rc-cancel" data-rc-cancel>Cancel</button>'
+        +   '<button type="button" class="rc-save" data-rc-save="' + t.id + '" disabled>Save</button>'
+        + '</span>'
+        + '</div>';
+}
+
+function wireRosterFixRows(body, mgr, d) {
+    body.querySelectorAll('[data-rc-edit]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            rosterFix.editing = Number(btn.getAttribute('data-rc-edit'));
+            renderRosterCorrection();
+        });
+    });
+    var cancel = body.querySelector('[data-rc-cancel]');
+    if (cancel) cancel.addEventListener('click', function () { rosterFix.editing = null; renderRosterCorrection(); });
+
+    var select = body.querySelector('[rc-target]');
+    var save = body.querySelector('[data-rc-save]');
+    if (select && save) {
+        select.addEventListener('change', function () { save.disabled = !select.value; });
+        save.addEventListener('click', function () {
+            var fromId = Number(save.getAttribute('data-rc-save'));
+            var from = mgr.teams.filter(function (t) { return t.id === fromId; })[0];
+            var to = d.available.filter(function (a) { return String(a.id) === select.value; })[0];
+            if (!from || !to) return;
+            if (!window.confirm('Replace ' + from.school + ' with ' + to.school + ' on ' + mgr.name + "'s roster?\n\n"
+                + 'The draft record is corrected too, so the draft board and grades will show ' + to.school + '.')) return;
+            applyRosterCorrection(save, mgr.userId, fromId, to.id);
+        });
+    }
+}
+
+async function applyRosterCorrection(btn, userId, fromTeamId, toTeamId) {
+    btn.disabled = true;
+    try {
+        var res = await fetch('/users/' + encodeURIComponent(userId) + '/roster-team', {
+            method: 'PATCH',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ season: rosterFix.data.season, fromTeamId: fromTeamId, toTeamId: toTeamId })
+        });
+        var data = await res.json();
+        if (!res.ok) {
+            failToast.options.text = data.message || 'Could not correct the roster';
+            failToast.showToast();
+            btn.disabled = false;
+            return;
+        }
+        successToast.options.text = data.from.school + ' → ' + data.to.school
+            + (data.draftUpdated ? ' (draft record updated)' : '');
+        successToast.showToast();
+        if (data.rescoreNeeded) {
+            failToast.options.text = 'Scores are now stale — run Score All Weeks to apply this.';
+            failToast.showToast();
+        }
+        // Re-read: the available pool and the draft record both moved.
+        await loadRosterCorrection();
+    } catch (err) {
+        failToast.options.text = 'Could not correct the roster';
+        failToast.showToast();
+        btn.disabled = false;
+    }
+}
+
 // --- Preseason readiness ----------------------------------------------------
 // Each season-flip data load that can fail silently, checked against what's
 // actually on file. See modules/season-readiness.js for why each one matters.
@@ -1266,6 +1421,8 @@ function toggleSub(attr) {
 function displayCreateUserContainer() { toggleSub('create-user-container'); }
 
 function displaySeasonRosterContainer() { if (toggleSub('season-roster-container')) loadSeasonRoster(); }
+
+function displayRosterCorrectionContainer() { if (toggleSub('roster-correction-container')) loadRosterCorrection(); }
 
 function displayTeamContainer() { toggleSub('calculate-team-score-container'); }
 

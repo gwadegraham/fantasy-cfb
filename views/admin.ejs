@@ -293,7 +293,7 @@
     <% } %>
 
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count">6</span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count">7</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -454,6 +454,18 @@
                 <div class="sub-container" season-roster-container style="display: none">
                     <p class="function-description">Choose which managers are in the <span season-roster-year>current</span> season. Unchecking removes a manager from this season only &mdash; their past seasons, scores, and draft history are kept.</p>
                     <div season-roster-list class="season-roster-list"></div>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayRosterCorrectionContainer()">
+                        <i class="fa-solid fa-right-left" style="padding-right: 5px;"></i>
+                        Correct a Roster
+                    </button>
+                </div>
+                <div class="sub-container" roster-correction-container style="display: none">
+                    <p class="function-description">Fix a team that ended up on the wrong roster &mdash; a misclick on draft night, or a pick made for someone who wasn't there. The replacement must be a team nobody in the league has. This also corrects the <strong>draft record</strong>, so the draft board and draft grades match the roster.</p>
+                    <div roster-correction-body class="roster-correction"></div>
                 </div>
             </div>
         </div>
