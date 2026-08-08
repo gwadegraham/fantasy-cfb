@@ -423,6 +423,60 @@
 .admin-status.warn .ss-note { color: var(--cc-amber); }
 .admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
 
+/* --- Correct a Roster ------------------------------------------------------
+   Manager picker, then one row per rostered team. A row swaps in place into an
+   edit state rather than opening a modal, so the rest of the roster stays
+   visible while you choose — you're usually checking you're fixing the right
+   one. */
+.roster-correction { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.rc-pick { display: flex; align-items: center; gap: 10px; }
+.rc-pick > span { color: var(--cc-muted-2); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.rc-pick select { flex: 1 1 auto; max-width: 380px; }
+
+.rc-rows { display: flex; flex-direction: column; }
+.rc-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 0; border-top: 1px solid var(--cc-border);
+}
+.rc-row:first-child { border-top: 0; }
+.rc-team { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; font-size: 0.9rem; }
+.rc-team img { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.rc-team i { width: 22px; text-align: center; color: var(--cc-muted-2); flex: none; }
+
+.rc-replace {
+    background: none; border: 1px solid var(--cc-border); border-radius: 6px;
+    color: var(--cc-muted-bright); font: inherit; font-size: 0.75rem;
+    padding: 3px 10px; cursor: pointer; flex: none;
+}
+.rc-replace:hover { border-color: var(--cc-info); color: var(--cc-text); }
+
+/* The row being edited gets a subtle wash so it's obvious which one is live. */
+.rc-row.is-editing { background: var(--cc-surface-2); border-radius: 8px; padding: 10px 12px; }
+.rc-arrow { color: var(--cc-muted-2); display: inline-flex; flex: none; }
+.rc-row select { flex: 1 1 200px; min-width: 0; }
+.rc-actions { display: flex; gap: 8px; flex: none; }
+.rc-cancel, .rc-save {
+    border-radius: 6px; font: inherit; font-size: 0.78rem; padding: 4px 12px; cursor: pointer;
+}
+.rc-cancel { background: none; border: 1px solid var(--cc-border); color: var(--cc-muted-bright); }
+.rc-save { background: var(--cc-info); border: 1px solid var(--cc-info); color: #0B0F1F; font-weight: 600; }
+.rc-save:disabled { background: none; border-color: var(--cc-border); color: var(--cc-muted-2); cursor: not-allowed; }
+
+.rc-empty { color: var(--cc-muted-2); font-size: 0.85rem; margin: 0; }
+/* Season underway but the caller is an Admin: allowed, with the re-score caveat. */
+.rc-warn {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(224, 179, 65, 0.1); border: 1px solid rgba(224, 179, 65, 0.35);
+    border-radius: 8px; padding: 9px 12px; color: var(--cc-amber); font-size: 0.82rem;
+}
+
+@media (max-width: 620px) {
+    .rc-pick { flex-direction: column; align-items: flex-start; gap: 5px; }
+    .rc-pick select { max-width: none; width: 100%; }
+    .rc-row select { flex-basis: 100%; }
+    .rc-actions { width: 100%; justify-content: flex-end; }
+}
+
 /* --- Preseason readiness panel -------------------------------------------
    Same card shell as .admin-status (above) so the two read as one family; the
    body is a labelled grid of checks rather than a stat row. */
