@@ -73,6 +73,8 @@
         }).join('');
         return '<section class="hof-section">'
             + '<h2 class="hof-h2">Record book</h2>'
+            + '<p class="hof-note">Week and single-game records cover the regular season. '
+            + 'Postseason games score on a much higher scale and all land in one bucket, so they get their own record.</p>'
             + '<div class="hof-recs">' + cards + '</div>'
             + '</section>';
     }

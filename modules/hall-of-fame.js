@@ -81,8 +81,15 @@ function holder(user, season) {
 //
 // Returns an ordered list of { key, label, value, suffix, holder, detail, season }.
 // Records with no data are omitted rather than rendered empty.
+// A weeklyScore entry that belongs to the postseason bucket rather than a real
+// week. `season` is overloaded as a type tag; some rows only have week > 16.
+function isPostseason(w) {
+    return !!w && (w.season === 'postseason' || w.week > 16);
+}
+
 function buildRecords(users, isFinished) {
-    let bestSeason = null, worstSeason = null, bestWeek = null, bestTeamGame = null, bestTeamSeason = null;
+    let bestSeason = null, worstSeason = null, bestWeek = null, bestTeamGame = null,
+        bestTeamSeason = null, bestPostseason = null;
 
     (users || []).forEach(u => {
         (u.seasons || []).forEach(s => {
@@ -99,20 +106,43 @@ function buildRecords(users, isFinished) {
                 worstSeason = { value: round1(total), season: s.season, holder: holder(u, s) };
             }
 
+            // The week and single-game records are REGULAR SEASON only, on two
+            // counts. Postseason games score on a different scale entirely
+            // (Claunts: 4-10 a game vs a regular max of 4; Graham: 5-12 vs 1-3),
+            // so a regular-season game can never win "best single game" — the
+            // record would be a foregone conclusion. And the postseason isn't a
+            // week at all: every bowl and CFP game collapses into ONE weeklyScore
+            // entry, so it carries more games than a Saturday as well as more
+            // points each. Comparing that to a real week is meaningless — it made
+            // both records read "who had the best postseason", twice.
+            //
+            // The postseason gets its own record below instead, where every
+            // manager is measured against the same thing.
+            let postTotal = 0, postGames = 0;
             (s.weeklyScore || []).forEach(w => {
-                const label = w.season === 'postseason' || w.week > 16 ? 'Postseason' : `Week ${w.week}`;
+                if (isPostseason(w)) {
+                    postTotal += (w.score || 0);
+                    postGames += (w.scoreByTeam || []).length;
+                    return;
+                }
                 if ((w.score || 0) > 0 && (!bestWeek || w.score > bestWeek.value)) {
-                    bestWeek = { value: round1(w.score), season: s.season, detail: label, holder: holder(u, s) };
+                    bestWeek = { value: round1(w.score), season: s.season, detail: `Week ${w.week}`, holder: holder(u, s) };
                 }
                 (w.scoreByTeam || []).forEach(st => {
                     if ((st.score || 0) > 0 && (!bestTeamGame || st.score > bestTeamGame.value)) {
                         bestTeamGame = {
                             value: round1(st.score), season: s.season,
-                            detail: `${st.team || 'A team'} · ${label}`, holder: holder(u, s)
+                            detail: `${st.team || 'A team'} · Week ${w.week}`, holder: holder(u, s)
                         };
                     }
                 });
             });
+            if (postTotal > 0 && (!bestPostseason || postTotal > bestPostseason.value)) {
+                bestPostseason = {
+                    value: round1(postTotal), season: s.season,
+                    detail: `${postGames} game${postGames === 1 ? '' : 's'}`, holder: holder(u, s)
+                };
+            }
 
             // The single team that carried a season hardest.
             teamPointsFor(s).forEach(row => {
@@ -131,6 +161,7 @@ function buildRecords(users, isFinished) {
         bestWeek && { key: 'bestWeek', label: 'Biggest week', ...bestWeek, suffix: 'pts' },
         bestTeamSeason && { key: 'bestTeamSeason', label: 'Best team, full season', ...bestTeamSeason, suffix: 'pts' },
         bestTeamGame && { key: 'bestTeamGame', label: 'Best single game', ...bestTeamGame, suffix: 'pts' },
+        bestPostseason && { key: 'bestPostseason', label: 'Best postseason', ...bestPostseason, suffix: 'pts' },
         worstSeason && { key: 'worstSeason', label: 'Leanest season', ...worstSeason, suffix: 'pts' }
     ].filter(Boolean);
 

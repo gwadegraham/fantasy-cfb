@@ -99,14 +99,62 @@ describe('buildRecords', () => {
         expect(r.bestWeek).toMatchObject({ value: 70, season: 2024, detail: 'Week 1' });
     });
 
-    test('a postseason entry is labelled as such, not as a week number', () => {
-        const only = [user('c', 'Cal', [season(2024, 80, [wk(1, 80, [tg(9, 'Ohio State', 80)], 'postseason')], [{ id: 9, school: 'Ohio State' }])])];
-        expect(byKey(buildRecords(only, isFinished)).bestWeek.detail).toBe('Postseason');
+    // Postseason games score on a different scale (Claunts 4-10 a game vs a
+    // regular max of 4) AND the whole postseason collapses into one weeklyScore
+    // entry, so it out-games a Saturday too. Both records read "best postseason"
+    // before this — twice.
+    describe('postseason is kept out of the week and single-game records', () => {
+        const withHugePost = [user('c', 'Cal', [season(2024, 200, [
+            wk(1, 20, [tg(1, 'Iowa', 12), tg(2, 'Duke', 8)]),
+            wk(1, 180, [tg(1, 'Iowa', 90), tg(2, 'Duke', 90)], 'postseason')
+        ], [{ id: 1, school: 'Iowa' }, { id: 2, school: 'Duke' }])])];
+
+        test('the biggest week is the best REGULAR week', () => {
+            const r = byKey(buildRecords(withHugePost, isFinished));
+            expect(r.bestWeek).toMatchObject({ value: 20, detail: 'Week 1' });
+        });
+
+        test('the best single game is the best REGULAR game', () => {
+            const r = byKey(buildRecords(withHugePost, isFinished));
+            expect(r.bestTeamGame).toMatchObject({ value: 12, detail: 'Iowa · Week 1' });
+        });
+
+        // week > 16 is the other way a postseason row is tagged.
+        test('a row tagged only by week number is also excluded', () => {
+            const byWeekNum = [user('d', 'Dee', [season(2024, 100, [
+                wk(1, 10, [tg(1, 'Iowa', 10)]), wk(17, 90, [tg(1, 'Iowa', 90)])
+            ], [{ id: 1, school: 'Iowa' }])])];
+            const r = byKey(buildRecords(byWeekNum, isFinished));
+            expect(r.bestWeek.value).toBe(10);
+            expect(r.bestTeamGame.value).toBe(10);
+        });
+
+        // The achievement isn't deleted — it gets a record where everyone is
+        // measured against the same thing.
+        test('the postseason gets its own record, with its game count', () => {
+            const r = byKey(buildRecords(withHugePost, isFinished));
+            expect(r.bestPostseason).toMatchObject({ value: 180, season: 2024, detail: '2 games' });
+            expect(r.bestPostseason.holder.name).toBe('Cal Test');
+        });
+
+        test('several postseason rows in a season sum into one record', () => {
+            const split = [user('e', 'Eve', [season(2024, 30, [
+                wk(1, 10, [tg(1, 'Iowa', 10)], 'postseason'),
+                wk(2, 20, [tg(1, 'Iowa', 20)], 'postseason')
+            ], [{ id: 1, school: 'Iowa' }])])];
+            expect(byKey(buildRecords(split, isFinished)).bestPostseason)
+                .toMatchObject({ value: 30, detail: '2 games' });
+        });
+
+        test('a league that never played a postseason has no such record', () => {
+            const regOnly = [user('f', 'Fay', [season(2024, 10, [wk(1, 10, [tg(1, 'Iowa', 10)])], [{ id: 1, school: 'Iowa' }])])];
+            expect(byKey(buildRecords(regOnly, isFinished)).bestPostseason).toBeUndefined();
+        });
     });
 
     test('best single game beats best full season for the same team', () => {
         const r = byKey(buildRecords(users, isFinished));
-        expect(r.bestTeamGame).toMatchObject({ value: 60, detail: 'Iowa · Week 1' });
+        expect(r.bestTeamGame).toMatchObject({ value: 60, detail: 'Iowa · Week 1' });   // regular only
         // Iowa 2024: 40 + 50 = 90 across the season, more than any one game.
         expect(r.bestTeamSeason).toMatchObject({ value: 90, detail: 'Iowa', season: 2024 });
     });
