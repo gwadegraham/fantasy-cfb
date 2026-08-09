@@ -335,8 +335,11 @@ function renderAdminStatus(el, s, api, year, jobs) {
 
 // Short league labels so a row stays on one line; Admins see both leagues, and
 // a League Manager only ever sees their own, so the tag is dropped for them.
+// Always emits a cell, even when there's nothing to show — the row is a grid, so
+// a conditionally-absent child would shift every later cell one column left
+// (which put the league chip on top of the summary).
 function auditLeagueTag(entry, multiLeague) {
-    if (!multiLeague || !entry.league) return '';
+    if (!multiLeague || !entry.league) return '<span></span>';
     var short = entry.league === 'graham-league' ? 'GG' : entry.league === 'claunts-league' ? 'CL' : entry.league;
     return '<span class="al-league">' + escapeHtml(short) + '</span>';
 }
