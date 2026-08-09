@@ -14,7 +14,7 @@ const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../m
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
-const { gameStatus, matchupWinProb, H2H_LAST_WEEK, baseWeekScore, persistedBonus,
+const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
         h2hManagerIds, computeH2HAwards } = require('../modules/h2h');
 const { pickLogo } = require('../public/logo.js');
 
@@ -335,7 +335,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             };
             const tw = {}, twTeams = {};
             (s.weeklyScore || []).forEach(e => {
-                if (!isRegular(e) || e.week > H2H_LAST_WEEK) return;
+                if (!isRegular(e) || e.week > H2H_MAX_WEEK) return;
                 const w = e.week;
                 // BASE total (score minus any bonus already banked into it), so a
                 // week's own bonus never feeds back into deciding that week.
@@ -360,7 +360,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // stable whether or not it's been scored yet.
         const draftedIds = [...draftedSet];
         const games = draftedIds.length ? await Game.find(
-            { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_LAST_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
+            { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
             { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, _id: 0 }
         ).lean() : [];
         // Opponent abbreviations (opponents aren't always rostered, so look them
@@ -427,7 +427,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // from the SAME function the scoring job uses to bank the bonus, so the
         // table and cumulativeScore can never tell different stories.
         const { awards, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
-            users, games, season, winBonus, tieBonus, lastWeek: H2H_LAST_WEEK
+            users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK
         });
 
         // Records + win bonus count FINAL weeks only (an in-progress week has no

@@ -11,7 +11,7 @@ const { computeAdminStatus } = require('../modules/admin-status');
 const { computeSeasonReadiness } = require('../modules/season-readiness');
 const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
-const { H2H_LAST_WEEK, seasonEntry, computeH2HAwards, applyAwards } = require('../modules/h2h');
+const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards } = require('../modules/h2h');
 
 // Read-only status summary for the admin console: how far scoring/games have
 // progressed and whether any completed results are still unscored. Derived from
@@ -161,7 +161,7 @@ async function applyH2HBonuses(season) {
             });
             const idList = [...drafted];
             const games = idList.length ? await Game.find(
-                { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_LAST_WEEK },
+                { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK },
                   $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
                 { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, _id: 0 }
             ).lean() : [];
@@ -176,7 +176,7 @@ async function applyH2HBonuses(season) {
             const s = seasonEntry(user, seasonStr);
             if (!s) continue;
             const plain = (s.weeklyScore || []).map(e => (e.toObject ? e.toObject() : e));
-            const next = applyAwards(plain, awards[String(user._id)], H2H_LAST_WEEK);
+            const next = applyAwards(plain, awards[String(user._id)], H2H_MAX_WEEK);
             if (!next.changed) continue;
             s.weeklyScore = next.weeklyScore;
             user.markModified('seasons');

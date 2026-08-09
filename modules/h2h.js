@@ -83,12 +83,60 @@ function seasonH2H(ids, weeks, totalsByIdWeek, winBonus, tieBonus) {
     return acc;
 }
 
-// H2H matchups run the fantasy regular season only. Weeks 15+ (conference
-// championships, Army/Navy) and the postseason still count toward season totals,
-// but their thin slates make for unfair matchups — so no H2H past this cap.
-// Shared by the standings read model and the scoring-time persistence pass so
-// they can never disagree on the range.
-const H2H_LAST_WEEK = 14;
+// The widest week range H2H could ever cover. A bound for the game queries, not
+// the schedule itself — the actual range is derived per season by h2hWeekRange()
+// below. The postseason is a separate seasonType, so nothing past this is in
+// play here.
+const H2H_MAX_WEEK = 16;
+
+// A week is only an H2H week if it carries a real slate.
+//
+// H2H matchups run the fantasy regular season. Conference championship week and
+// Army/Navy involve a handful of rostered teams, so a matchup decided there
+// comes down to two or three games — which is why this range used to stop at a
+// hardcoded week 14.
+//
+// That hardcode was correct for 2025 (regular season through wk 14, titles wk
+// 15) and silently WRONG for 2026, whose calendar shifted a week: the last full
+// slate is wk 13 (Nov 29), conference championships land in wk 14, and
+// Army/Navy in wk 15. Cap-at-14 would have made championship week a scoring
+// matchup. So the range is derived from the slate instead of assumed, and a
+// future calendar shift can't move it again.
+//
+// `gamesByWeek` is { [week]: Game[] } for THIS league's rostered teams — the
+// same set the caller already has, so this costs no extra query. A week counts
+// when it holds at least `minShare` of the median week's slate: a normal week
+// puts most of the league's teams on the field, championship week a couple.
+// Returns the contiguous run from the first played week, because the thin weeks
+// mark the end of the regular season rather than a gap inside it.
+function h2hWeekRange(gamesByWeek, opts) {
+    const o = opts || {};
+    const maxWeek = o.maxWeek || H2H_MAX_WEEK;
+    const minShare = o.minShare == null ? 0.4 : o.minShare;
+
+    const counts = [];
+    for (let w = 1; w <= maxWeek; w++) counts.push({ week: w, n: ((gamesByWeek || {})[w] || []).length });
+    const played = counts.filter(c => c.n > 0);
+    if (played.length < 2) return played.map(c => c.week);
+
+    const sorted = played.map(c => c.n).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    const threshold = Math.max(1, median * minShare);
+
+    const out = [];
+    for (const c of counts) {
+        if (c.n === 0) {
+            // A gap before any real slate (nothing scheduled yet) isn't the end
+            // of the season; a gap after one is.
+            if (!out.length) continue;
+            break;
+        }
+        if (c.n < threshold) break;
+        out.push(c.week);
+    }
+    return out;
+}
 
 // The season subdocument for a user, tolerating both document shapes in use:
 // a full `seasons` array (routes querying by league) and a single-entry array
@@ -150,12 +198,12 @@ const round1 = (v) => Math.round(v * 10) / 10;
 // `games` are that season's regular-season games involving drafted teams.
 // Returns:
 //   awards      { [userId]: { [week]: { result, bonus, opponent, for, against } } }
+//   weeks       the derived H2H week range for this season
 //   weekFinal   { [week]: bool }
 //   finalWeeks  settled weeks, ascending
 //   currentWeek the first week with games that hasn't settled (or null)
-function computeH2HAwards({ users, games, season, winBonus, tieBonus, lastWeek }) {
-    const last = lastWeek || H2H_LAST_WEEK;
-    const weeks = Array.from({ length: last }, (_, i) => i + 1);
+function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek }) {
+    const bound = maxWeek || H2H_MAX_WEEK;
     const ids = h2hManagerIds(users, season);
 
     const awards = {};
@@ -171,7 +219,7 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, lastWeek }
         if (!awards[id]) return;
         const tw = {};
         (s.weeklyScore || []).forEach(e => {
-            if (e.season === 'postseason' || e.week > last) return;
+            if (e.season === 'postseason' || e.week > bound) return;
             tw[e.week] = (tw[e.week] || 0) + baseWeekScore(e);
             scored.add(e.week);
         });
@@ -183,10 +231,13 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, lastWeek }
     const gamesByWeek = {};
     (games || []).forEach(g => {
         if (g.seasonType && g.seasonType !== 'regular') return;
-        if (g.week == null || g.week > last) return;
+        if (g.week == null || g.week > bound) return;
         if (!drafted.has(Number(g.homeId)) && !drafted.has(Number(g.awayId))) return;
         (gamesByWeek[g.week] = gamesByWeek[g.week] || []).push(g);
     });
+
+    // Derived, not assumed — see h2hWeekRange.
+    const weeks = h2hWeekRange(gamesByWeek, { maxWeek: bound });
 
     const weekFinal = {};
     weeks.forEach(w => { weekFinal[w] = isWeekFinal(gamesByWeek[w]) && scored.has(w); });
@@ -204,7 +255,7 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, lastWeek }
         Object.keys(res).forEach(id => { awards[id][w] = res[id]; });
     });
 
-    return { awards, weekFinal, finalWeeks, currentWeek, ids, schedule };
+    return { awards, weeks, weekFinal, finalWeeks, currentWeek, ids, schedule };
 }
 
 // Rebuild a season's weeklyScore with this manager's H2H awards folded in.
@@ -215,12 +266,16 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, lastWeek }
 // running this twice, re-running after a rescore, changing the configured bonus,
 // or turning H2H off all converge on the right number instead of compounding.
 // Returns { weeklyScore, changed }.
-function applyAwards(weeklyScore, awardsForUser, lastWeek) {
-    const last = lastWeek || H2H_LAST_WEEK;
+function applyAwards(weeklyScore, awardsForUser, maxWeek) {
+    // `awardsForUser` is authoritative about which weeks earned a bonus, so the
+    // bound only has to exclude the postseason — a regular week with no award
+    // (including one outside the derived H2H range) gets any stale bonus
+    // stripped, which is what makes turning the mode off self-correcting.
+    const bound = maxWeek || H2H_MAX_WEEK;
     let changed = false;
     const next = (weeklyScore || []).map(entry => {
         const e = Object.assign({}, entry);
-        const inRange = e.season !== 'postseason' && e.week <= last;
+        const inRange = e.season !== 'postseason' && e.week <= bound;
         const award = inRange ? ((awardsForUser || {})[e.week] || null) : null;
 
         const base = baseWeekScore(e);
@@ -310,6 +365,6 @@ function matchupWinProb(aEntries, bEntries) {
 module.exports = {
     buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H,
     gameStatus, isWeekFinal, matchupWinProb,
-    H2H_LAST_WEEK, seasonEntry, baseWeekScore, persistedBonus,
+    H2H_MAX_WEEK, h2hWeekRange, seasonEntry, baseWeekScore, persistedBonus,
     h2hManagerIds, computeH2HAwards, applyAwards
 };
