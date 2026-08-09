@@ -61,14 +61,30 @@
     function recordsHtml(records) {
         if (!records || !records.length) return '';
         var cards = records.map(function (r) {
-            return '<div class="hof-rec">'
-                + '<div class="hof-rec-label">' + esc(r.label) + '</div>'
+            var face = '<div class="hof-rec-label">' + esc(r.label)
+                +   (r.breakdown ? '<i class="fa-solid fa-chevron-down hof-chev" aria-hidden="true"></i>' : '') + '</div>'
                 + '<div class="hof-rec-value">' + esc(String(r.value)) + '<small>' + esc(r.suffix || '') + '</small></div>'
                 + '<div class="hof-rec-who">' + avatar(r.holder, 40)
                 +   '<span class="hof-rec-names"><b>' + esc(r.holder.franchise || r.holder.name) + '</b>'
                 +   (r.holder.franchise ? '<small>' + esc(r.holder.name) + '</small>' : '') + '</span>'
                 + '</div>'
-                + '<div class="hof-rec-when">' + esc(r.season + (r.detail ? ' · ' + r.detail : '')) + '</div>'
+                + '<div class="hof-rec-when">' + esc(r.season + (r.detail ? ' · ' + r.detail : '')) + '</div>';
+
+            // Only a record with something left to reveal becomes a control —
+            // "best single game" already states its whole fact in one line, so it
+            // stays a plain card rather than an affordance that pays nothing off.
+            if (!r.breakdown) return '<div class="hof-rec">' + face + '</div>';
+
+            var rows = r.breakdown.rows.map(function (row) {
+                return '<div class="hof-recrow">'
+                    + '<span class="hof-recrow-label">' + esc(row.label) + '</span>'
+                    + (row.sub ? '<span class="hof-recrow-sub">' + esc(row.sub) + '</span>' : '<span></span>')
+                    + '<span class="hof-recrow-val">' + esc(String(row.value)) + '</span>'
+                    + '</div>';
+            }).join('');
+            return '<div class="hof-rec hof-rec-x">'
+                + '<button type="button" class="hof-rec-head" aria-expanded="false">' + face + '</button>'
+                + '<div class="hof-rec-body"><div class="hof-recrows">' + rows + '</div></div>'
                 + '</div>';
         }).join('');
         return '<section class="hof-section">'
@@ -175,6 +191,16 @@
             + recordsHtml(data.records)
             + leaderboardHtml(data.managers, meId)
             + draftHistoryHtml(data.draftHistory);
+        // Expand/collapse record cards — same interaction as the manager cards
+        // below, so the page has one expand vocabulary rather than two.
+        el.querySelectorAll('.hof-rec-head').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.hof-rec');
+                var open = card.classList.toggle('is-open');
+                btn.setAttribute('aria-expanded', String(open));
+            });
+        });
+
         // Expand/collapse manager cards.
         el.querySelectorAll('.hof-mgr-head').forEach(function (btn) {
             btn.addEventListener('click', function () {

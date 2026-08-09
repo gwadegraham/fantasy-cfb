@@ -4,7 +4,7 @@
 // weeklyScore[].scoreByTeam, so per-team season points need no Team lookup, and
 // the drafts collection is backfilled to 2023.
 
-const { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam } = require('../modules/hall-of-fame');
+const { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason } = require('../modules/hall-of-fame');
 
 // 2026 is the in-progress season everywhere in these tests.
 const isFinished = (yr) => Number(yr) < 2026;
@@ -300,5 +300,94 @@ describe('edge cases', () => {
         expect(r.bestWeek).toBeUndefined();
         expect(r.bestTeamSeason).toBeUndefined();
         expect(r.bestSeason).toBeDefined();   // the season itself still exists
+    });
+});
+
+// A bare "76 pts · 16 games" says nothing; the teams behind it are the story.
+// Built only for the records that actually won, so a candidate never pays for it.
+describe('record breakdowns', () => {
+    const rec = (users, key) => byKey(buildRecords(users, isFinished))[key];
+
+    test('a season record lists its teams, biggest first', () => {
+        const u = [user('a', 'Ann', [season(2024, 30, [
+            wk(1, 30, [tg(1, 'Iowa', 10), tg(2, 'Duke', 20)])
+        ], [{ id: 1, school: 'Iowa' }, { id: 2, school: 'Duke' }])])];
+        expect(rec(u, 'bestSeason').breakdown).toEqual({
+            kind: 'teams', rows: [{ label: 'Duke', value: 20 }, { label: 'Iowa', value: 10 }]
+        });
+    });
+
+    // "Eight of nine won" is as much the story as the total.
+    test('a week record keeps teams that scored nothing', () => {
+        const u = [user('a', 'Ann', [season(2024, 6, [
+            wk(3, 6, [tg(1, 'Iowa', 4), tg(2, 'Duke', 2), tg(3, 'Utah', 0)])
+        ], [{ id: 1, school: 'Iowa' }, { id: 2, school: 'Duke' }, { id: 3, school: 'Utah' }])])];
+        expect(rec(u, 'bestWeek').breakdown.rows).toEqual([
+            { label: 'Iowa', value: 4 }, { label: 'Duke', value: 2 }, { label: 'Utah', value: 0 }
+        ]);
+    });
+
+    // A deep run reads as a game count — this is the shape of a title run.
+    test('a postseason record groups by team and counts games', () => {
+        const u = [user('a', 'Ann', [season(2024, 28, [
+            wk(1, 28, [tg(1, 'Ohio State', 6), tg(1, 'Ohio State', 6), tg(1, 'Ohio State', 10), tg(2, 'Duke', 6)], 'postseason')
+        ], [{ id: 1, school: 'Ohio State' }, { id: 2, school: 'Duke' }])])];
+        expect(rec(u, 'bestPostseason').breakdown.rows).toEqual([
+            { label: 'Ohio State', value: 22, sub: '3 games' },
+            { label: 'Duke', value: 6, sub: '1 game' }
+        ]);
+    });
+
+    test('a team-season record is that team week by week, postseason included', () => {
+        const u = [user('a', 'Ann', [season(2024, 12, [
+            wk(1, 5, [tg(1, 'Iowa', 3), tg(2, 'Duke', 2)]),
+            wk(2, 0, [tg(2, 'Duke', 0)]),
+            wk(1, 7, [tg(1, 'Iowa', 7)], 'postseason')
+        ], [{ id: 1, school: 'Iowa' }, { id: 2, school: 'Duke' }])])];
+        expect(rec(u, 'bestTeamSeason').breakdown).toEqual({
+            kind: 'weeks', rows: [{ label: 'Week 1', value: 3 }, { label: 'Postseason', value: 7 }]
+        });
+    });
+
+    // Its one line already states the whole fact, and the opponent can't be
+    // recovered — 2023 entries carry no gameId.
+    test('the single-game record gets no breakdown', () => {
+        const u = [user('a', 'Ann', [season(2024, 5, [wk(1, 5, [tg(1, 'Iowa', 5)])], [{ id: 1, school: 'Iowa' }])])];
+        expect(rec(u, 'bestTeamGame').breakdown).toBeUndefined();
+    });
+
+    test('the internal context never reaches the payload', () => {
+        const u = [user('a', 'Ann', [season(2024, 5, [wk(1, 5, [tg(1, 'Iowa', 5)])], [{ id: 1, school: 'Iowa' }])])];
+        buildRecords(u, isFinished).forEach(r => expect(r._ctx).toBeUndefined());
+    });
+
+    test('a name-only legacy season still breaks down', () => {
+        const u = [user('a', 'Ann', [season(2023, 8, [wk(1, 8, [{ team: 'Georgia', score: 8 }])], [{ id: 61, school: 'Georgia' }])])];
+        expect(rec(u, 'bestWeek').breakdown.rows).toEqual([{ label: 'Georgia', value: 8 }]);
+    });
+});
+
+describe('breakdownFor guards', () => {
+    test('no context yields nothing', () => {
+        expect(breakdownFor('bestSeason', null)).toBeNull();
+    });
+    test('a key with no breakdown of its own yields nothing', () => {
+        expect(breakdownFor('bestTeamGame', { season: season(2024, 5, [wk(1, 5, [tg(1, 'Iowa', 5)])], []) })).toBeNull();
+        expect(breakdownFor('somethingNew', { season: season(2024, 5, [], []) })).toBeNull();
+    });
+    test('an empty season yields nothing rather than an empty list', () => {
+        expect(breakdownFor('bestSeason', { season: season(2024, 0, [], []) })).toBeNull();
+        expect(breakdownFor('bestPostseason', { season: season(2024, 0, [], []) })).toBeNull();
+        expect(breakdownFor('bestWeek', { season: null, entry: { scoreByTeam: [] } })).toBeNull();
+        expect(breakdownFor('bestTeamSeason', { season: season(2024, 0, [], []), teamId: 1 })).toBeNull();
+    });
+});
+
+describe('isPostseason', () => {
+    test('recognises both tagging shapes', () => {
+        expect(isPostseason({ season: 'postseason', week: 1 })).toBe(true);
+        expect(isPostseason({ week: 17 })).toBe(true);
+        expect(isPostseason({ week: 5 })).toBe(false);
+        expect(isPostseason(null)).toBe(false);
     });
 });

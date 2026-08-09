@@ -83,6 +83,10 @@
 .hof-recs {
     display: grid; gap: 0.6rem;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    /* Each card sizes to its own content. Without this, grid's default stretch
+       makes expanding one record inflate every other card in its row to match,
+       leaving a row of tall empty boxes. */
+    align-items: start;
 }
 .hof-rec {
     background: var(--cc-surface); border: 1px solid var(--cc-border);
@@ -104,6 +108,33 @@
 .hof-rec-names b { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hof-rec-names small { color: var(--cc-muted); font-size: 0.7rem; }
 .hof-rec-when { color: var(--cc-muted); font-size: 0.74rem; }
+
+/* An expandable record: the face is a button, the breakdown slides under it —
+   the same mechanism as the manager cards below, so the page has one expand
+   vocabulary. Records with nothing to reveal stay plain divs. */
+.hof-rec-x { padding: 0; overflow: hidden; }
+.hof-rec-head {
+    display: flex; flex-direction: column; gap: 0.35rem; width: 100%;
+    background: none; border: 0; cursor: pointer; color: inherit;
+    text-align: left; font: inherit; padding: 0.75rem 0.85rem;
+}
+.hof-rec-label { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.hof-rec-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.hof-rec.is-open .hof-rec-body { max-height: 640px; }
+.hof-rec.is-open .hof-chev { transform: rotate(180deg); }
+.hof-recrows {
+    border-top: 1px solid var(--cc-border);
+    padding: 0.45rem 0.85rem 0.7rem;
+    display: flex; flex-direction: column;
+}
+.hof-recrow {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline; gap: 0.5rem;
+    padding: 3px 0; font-size: 0.8rem;
+}
+.hof-recrow-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hof-recrow-sub { color: var(--cc-muted-2); font-size: 0.68rem; white-space: nowrap; }
+.hof-recrow-val { color: var(--cc-amber); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 1.6rem; text-align: right; }
 
 /* --- draft retrospective ---------------------------------------------------
    One block per season: who went first, the steal, the bust. */
@@ -156,7 +187,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hof-chev, .hof-mgr-body { transition: none; }
+    .hof-chev, .hof-mgr-body, .hof-rec-body { transition: none; }
 }
 
 @media only screen and (max-width: 560px) {

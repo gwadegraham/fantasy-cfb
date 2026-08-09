@@ -87,6 +87,78 @@ function isPostseason(w) {
     return !!w && (w.season === 'postseason' || w.week > 16);
 }
 
+const weekLabel = (w) => (isPostseason(w) ? 'Postseason' : `Week ${w.week}`);
+
+// What a record expands to show. A bare "76 pts · 16 games" says nothing; the
+// teams behind it are the whole story (Brock's 2024 postseason reads as Ohio
+// State's title run — 6, 6, 6, 10 — once you can see it).
+//
+// Built ONLY for the records that actually won, from the season already in hand,
+// so it costs one pass over one manager rather than one per candidate.
+//
+// `rows` are { label, value, sub? }. `bestTeamGame` gets none: its one line
+// already states the whole fact, and the opponent can't be recovered — 2023
+// scoreByTeam entries carry no gameId (the same legacy gap as teamId).
+function breakdownFor(key, ctx) {
+    if (!ctx) return null;
+    const s = ctx.season;
+
+    // Which teams made up a season's points.
+    if (key === 'bestSeason' || key === 'worstSeason') {
+        const rows = teamPointsFor(s)
+            .filter(r => r.school)
+            .sort((a, b) => b.points - a.points)
+            .map(r => ({ label: r.school, value: r.points }));
+        return rows.length ? { kind: 'teams', rows } : null;
+    }
+
+    // Which teams scored in that one week. Zeroes are kept — "eight of nine won"
+    // is as much the story as the total.
+    if (key === 'bestWeek') {
+        const acc = {};
+        (ctx.entry.scoreByTeam || []).forEach(st => {
+            const k = st.team || 'Unknown';
+            acc[k] = round1((acc[k] || 0) + (st.score || 0));
+        });
+        const rows = Object.keys(acc).map(k => ({ label: k, value: acc[k] }))
+            .sort((a, b) => b.value - a.value);
+        return rows.length ? { kind: 'teams', rows } : null;
+    }
+
+    // Every bowl/CFP game, grouped by team — a run shows up as a game count.
+    if (key === 'bestPostseason') {
+        const acc = {};
+        (s.weeklyScore || []).filter(isPostseason).forEach(w => {
+            (w.scoreByTeam || []).forEach(st => {
+                const k = st.team || 'Unknown';
+                const row = acc[k] || (acc[k] = { label: k, value: 0, games: 0 });
+                row.value = round1(row.value + (st.score || 0));
+                row.games++;
+            });
+        });
+        const rows = Object.values(acc)
+            .sort((a, b) => b.value - a.value || b.games - a.games)
+            .map(r => ({ label: r.label, value: r.value, sub: `${r.games} game${r.games === 1 ? '' : 's'}` }));
+        return rows.length ? { kind: 'teams', rows } : null;
+    }
+
+    // One team's season, week by week — only the weeks it actually played.
+    if (key === 'bestTeamSeason') {
+        const rows = [];
+        (s.weeklyScore || []).forEach(w => {
+            const pts = (w.scoreByTeam || [])
+                .filter(st => (ctx.teamId != null && Number(st.teamId) === Number(ctx.teamId)) || st.team === ctx.school)
+                .reduce((sum, st) => sum + (st.score || 0), 0);
+            if ((w.scoreByTeam || []).some(st => (ctx.teamId != null && Number(st.teamId) === Number(ctx.teamId)) || st.team === ctx.school)) {
+                rows.push({ label: weekLabel(w), value: round1(pts) });
+            }
+        });
+        return rows.length ? { kind: 'weeks', rows } : null;
+    }
+
+    return null;
+}
+
 function buildRecords(users, isFinished) {
     let bestSeason = null, worstSeason = null, bestWeek = null, bestTeamGame = null,
         bestTeamSeason = null, bestPostseason = null;
@@ -98,12 +170,12 @@ function buildRecords(users, isFinished) {
 
             const total = s.cumulativeScore;
             if (!bestSeason || total > bestSeason.value) {
-                bestSeason = { value: round1(total), season: s.season, holder: holder(u, s) };
+                bestSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s } };
             }
             // Only counts a season the manager actually played — a 0 from an
             // entry created but never scored isn't a "worst season".
             if ((s.weeklyScore || []).length && (!worstSeason || total < worstSeason.value)) {
-                worstSeason = { value: round1(total), season: s.season, holder: holder(u, s) };
+                worstSeason = { value: round1(total), season: s.season, holder: holder(u, s), _ctx: { season: s } };
             }
 
             // The week and single-game records are REGULAR SEASON only, on two
@@ -126,7 +198,7 @@ function buildRecords(users, isFinished) {
                     return;
                 }
                 if ((w.score || 0) > 0 && (!bestWeek || w.score > bestWeek.value)) {
-                    bestWeek = { value: round1(w.score), season: s.season, detail: `Week ${w.week}`, holder: holder(u, s) };
+                    bestWeek = { value: round1(w.score), season: s.season, detail: `Week ${w.week}`, holder: holder(u, s), _ctx: { season: s, entry: w } };
                 }
                 (w.scoreByTeam || []).forEach(st => {
                     if ((st.score || 0) > 0 && (!bestTeamGame || st.score > bestTeamGame.value)) {
@@ -140,7 +212,8 @@ function buildRecords(users, isFinished) {
             if (postTotal > 0 && (!bestPostseason || postTotal > bestPostseason.value)) {
                 bestPostseason = {
                     value: round1(postTotal), season: s.season,
-                    detail: `${postGames} game${postGames === 1 ? '' : 's'}`, holder: holder(u, s)
+                    detail: `${postGames} game${postGames === 1 ? '' : 's'}`, holder: holder(u, s),
+                    _ctx: { season: s }
                 };
             }
 
@@ -149,7 +222,8 @@ function buildRecords(users, isFinished) {
                 if (row.points > 0 && (!bestTeamSeason || row.points > bestTeamSeason.value)) {
                     bestTeamSeason = {
                         value: row.points, season: s.season,
-                        detail: row.school || `Team ${row.teamId}`, holder: holder(u, s)
+                        detail: row.school || `Team ${row.teamId}`, holder: holder(u, s),
+                        _ctx: { season: s, teamId: row.teamId, school: row.school }
                     };
                 }
             });
@@ -165,7 +239,14 @@ function buildRecords(users, isFinished) {
         worstSeason && { key: 'worstSeason', label: 'Worst season', ...worstSeason, suffix: 'pts' }
     ].filter(Boolean);
 
-    return rows;
+    // Attach the expansion only to the winners, then drop the internal context so
+    // it never reaches the client.
+    return rows.map(r => {
+        const breakdown = breakdownFor(r.key, r._ctx);
+        const out = Object.assign({}, r, breakdown ? { breakdown } : {});
+        delete out._ctx;
+        return out;
+    });
 }
 
 // Per-season draft retrospective.
@@ -249,4 +330,4 @@ function buildDraftHistory(draftsBySeason, usersById, isFinished) {
     });
 }
 
-module.exports = { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam };
+module.exports = { buildRecords, buildDraftHistory, teamPointsFor, pointsForTeam, breakdownFor, isPostseason };
