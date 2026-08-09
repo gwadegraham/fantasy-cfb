@@ -6,6 +6,7 @@ const Team = require('../models/team');
 const Draft = require('../models/draft');
 const scoring = require('../modules/scoring');
 const rosterCorrection = require('../modules/roster-correction');
+const audit = require('../modules/audit-log');
 const { pickLogo } = require('../public/logo.js');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
 const { canManageLeague } = require('../modules/league-access');
@@ -316,6 +317,12 @@ router.post('/', async (req, res) => {
 
     try {
         const newUser = await user.save();
+        await audit.record(req, {
+            action: 'user.create',
+            league: newUser.league, season: String(process.env.YEAR),
+            summary: `Added ${newUser.firstName} ${newUser.lastName}`,
+            meta: { userId: String(newUser._id) }
+        });
         res.status(201).json(newUser);
     } catch (err) {
         res.status(400).json({message: err.message});
@@ -414,7 +421,18 @@ router.post('/:id/season-membership', async (req, res) => {
         }
         user.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
         await user.save();
-        res.json({ inSeason: (user.seasons || []).some(s => Number(s.season) === year) });
+        const inSeason = (user.seasons || []).some(s => Number(s.season) === year);
+        // Removing someone drops that year's scores, so this one is worth a trail
+        // even though it's reversible in principle.
+        if (has !== inSeason) {
+            await audit.record(req, {
+                action: 'season.membership',
+                league: user.league, season: String(year),
+                summary: `${inSeason ? 'Added' : 'Removed'} ${user.firstName} ${user.lastName}`,
+                meta: { userId: String(user._id), included: inSeason }
+            });
+        }
+        res.json({ inSeason });
     } catch (err) {
         res.status(400).json({ message: err.message });
     }
@@ -538,6 +556,14 @@ router.patch('/:id/roster-team', async (req, res) => {
 
         console.log(`Roster correction · ${user.league} ${season}: ${user.firstName} ${check.current.school} -> ${targetTeam.school}`
             + (draftUpdated ? ' (draft pick updated)' : ' (no draft pick found)'));
+
+        await audit.record(req, {
+            action: 'roster.correct',
+            league: user.league, season: String(season),
+            summary: `${user.firstName} ${user.lastName}: ${check.current.school} → ${targetTeam.school}`
+                + (draftUpdated ? ' (draft record too)' : ''),
+            meta: { userId: String(user._id), from: check.current.id, to: nextTeam.id, draftUpdated }
+        });
 
         res.json({
             userId: String(user._id), season: String(season),

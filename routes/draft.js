@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const User = require('../models/user');
 const Team = require('../models/team');
@@ -103,6 +104,14 @@ router.post('/', async (req, res) => {
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
 
+        const when = draft.scheduledAt
+            ? new Date(draft.scheduledAt).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+            : 'no date';
+        await audit.record(req, {
+            action: 'draft.config', league, season: String(season),
+            summary: `Draft settings saved — ${when}, ${draft.snake ? 'snake' : 'linear'}, ${draft.totalRounds} rounds, ${(draft.draftOrder || []).length} managers`,
+            meta: { draftId: String(draft._id), scheduledAt: draft.scheduledAt, snake: draft.snake, totalRounds: draft.totalRounds, orderSize: (draft.draftOrder || []).length }
+        });
         res.status(200).json(draft);
     } catch (err) {
         res.status(400).json({ message: err.message });
@@ -154,6 +163,13 @@ router.post('/:id/reset', async (req, res) => {
             { $set: { status: 'pending', picks: [], currentOverall: 1, updatedAt: new Date() } },
             { new: true }
         );
+        // Wipes every pick. Rosters written by a previous completion are NOT
+        // rolled back (see the runbook), so this one especially wants a trail.
+        await audit.record(req, {
+            action: 'draft.reset', league: existing.league, season: String(existing.season),
+            summary: `Draft reset (${(existing.picks || []).length} picks cleared)`,
+            meta: { draftId: String(existing._id), picksCleared: (existing.picks || []).length }
+        });
         res.json(draft);
     } catch (err) {
         res.status(500).json({ message: err.message });

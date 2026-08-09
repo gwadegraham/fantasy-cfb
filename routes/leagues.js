@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const audit = require('../modules/audit-log');
 const League = require('../models/league');
 const { LEAGUES } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
@@ -38,6 +39,11 @@ router.patch('/:code', async (req, res) => {
             { code, name },
             { new: true, upsert: true }
         );
+        await audit.record(req, {
+            action: 'league.rename', league: code,
+            summary: `League renamed to "${doc.name}"`,
+            meta: { name: doc.name }
+        });
         res.json({ code: doc.code, name: doc.name });
     } catch (err) {
         res.status(500).json({ message: err.message });
