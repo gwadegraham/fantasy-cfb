@@ -76,6 +76,71 @@
 .hof-hist-franchise { color: var(--cc-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hof-hist-score { text-align: right; font-variant-numeric: tabular-nums; }
 
+/* --- record book -----------------------------------------------------------
+   Five league bests, each owned by somebody. A fixed-width card grid so the
+   values line up as a set rather than reading as five unrelated stats. */
+.hof-note { color: var(--cc-muted); font-size: 0.82rem; margin: -0.5rem 0 0.85rem; }
+.hof-recs {
+    display: grid; gap: 0.6rem;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.hof-rec {
+    background: var(--cc-surface); border: 1px solid var(--cc-border);
+    border-radius: 12px; padding: 0.75rem 0.85rem;
+    display: flex; flex-direction: column; gap: 0.35rem;
+}
+.hof-rec-label {
+    color: var(--cc-muted-2); font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.09em;
+}
+.hof-rec-value {
+    color: var(--cc-amber); font-weight: 700; font-size: 1.5rem; line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.hof-rec-value small { font-size: 0.7rem; font-weight: 600; margin-left: 0.25rem; color: var(--cc-muted); }
+.hof-rec-who { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.hof-rec-who .hof-avatar { width: 30px; height: 30px; flex: none; }
+.hof-rec-names { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.hof-rec-names b { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hof-rec-names small { color: var(--cc-muted); font-size: 0.7rem; }
+.hof-rec-when { color: var(--cc-muted); font-size: 0.74rem; }
+
+/* --- draft retrospective ---------------------------------------------------
+   One block per season: who went first, the steal, the bust. */
+.hof-drafts { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.hof-draft {
+    background: var(--cc-surface); border: 1px solid var(--cc-border);
+    border-radius: 12px; padding: 0.7rem 0.85rem;
+    display: flex; flex-direction: column; gap: 0.45rem;
+}
+.hof-draft-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+    border-bottom: 1px solid var(--cc-border); padding-bottom: 0.45rem;
+}
+.hof-draft-head b { font-size: 1rem; }
+.hof-draft-head span { color: var(--cc-muted); font-size: 0.74rem; }
+
+.hof-dr-pick {
+    display: grid; align-items: center; gap: 2px 0.5rem;
+    grid-template-columns: auto auto minmax(0, 1fr);
+}
+.hof-dr-kind {
+    grid-row: span 2; align-self: start;
+    font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--cc-muted-2); border: 1px solid var(--cc-border);
+    border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+}
+.hof-dr-pick.steal .hof-dr-kind { color: var(--cc-amber); border-color: var(--cc-amber); }
+.hof-dr-pick.bust .hof-dr-kind { color: var(--cc-muted); }
+.hof-dr-logo { width: 20px; height: 20px; object-fit: contain; grid-row: span 2; }
+.hof-dr-team { font-weight: 600; font-size: 0.88rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hof-dr-meta { grid-column: 3; color: var(--cc-muted); font-size: 0.72rem; }
+.hof-dr-delta {
+    grid-column: 3; font-size: 0.72rem; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.hof-dr-delta.up { color: var(--cc-amber); }
+.hof-dr-delta.down { color: var(--cc-muted-2); }
+
 @media only screen and (max-width: 560px) {
     /* Drop the secondary stat + franchise column and tighten everything so the
        manager name gets enough room not to truncate mid-word. */
@@ -92,4 +157,8 @@
 
 @media (prefers-reduced-motion: reduce) {
     .hof-chev, .hof-mgr-body { transition: none; }
+}
+
+@media only screen and (max-width: 560px) {
+    .hof-recs, .hof-drafts { grid-template-columns: 1fr; }
 }
