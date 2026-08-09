@@ -97,10 +97,26 @@ function platformChecks({ season, teamTotal, teamsWith, scheduledTeams, gameCoun
 //   engagement resolved game modes for the season (or null)
 function leagueChecks({ members, draft, engagement }) {
     const order = (draft && draft.draftOrder) || [];
-    let draftStatus, draftDetail;
+    const picks = (draft && draft.picks) || [];
+    const rounds = (draft && draft.totalRounds) || 10;
+    let draftStatus, draftDetail, draftNote = null, draftRequired = true, draftAction = null;
     if (!draft) {
         draftStatus = 'missing';
         draftDetail = 'No draft configured';
+    } else if (draft.status === 'active' && picks.length) {
+        // A draft part-way through. Reported, but NOT treated as a gap: this is a
+        // legitimate state — mid-draft, or a room being exercised deliberately —
+        // and the panel can't tell that from an abandoned run. What it can do is
+        // state the consequence, since it isn't obvious: while a draft is active
+        // POST /draft 409s, so Configure Draft won't accept changes until reset.
+        draftStatus = 'partial';
+        draftRequired = false;
+        draftAction = 'Open';   // it's neither broken nor unconfigured
+        draftDetail = `In progress — ${picks.length} of ${order.length * rounds} picks made`;
+        draftNote = 'Settings are locked while a draft is active — reset it to change them.';
+    } else if (draft.status === 'complete') {
+        draftStatus = 'ready';
+        draftDetail = `Drafted — ${picks.length} picks`;
     } else if (order.length < 2) {
         draftStatus = 'partial';
         draftDetail = 'Configured, but no pick order set';
@@ -109,7 +125,7 @@ function leagueChecks({ members, draft, engagement }) {
         draftDetail = `${order.length} managers in order · no date set`;
     } else {
         draftStatus = 'ready';
-        draftDetail = `${order.length} managers · ${draft.snake ? 'snake' : 'linear'} · ${draft.totalRounds || 10} rounds`;
+        draftDetail = `${order.length} managers · ${draft.snake ? 'snake' : 'linear'} · ${rounds} rounds`;
     }
 
     const modes = [];
@@ -123,9 +139,14 @@ function leagueChecks({ members, draft, engagement }) {
                 fix: 'Season Roster',
                 whyItMatters: 'Written against the ACTIVE season, so it only works after YEAR is flipped. Missing, Standings and My Team are empty.'
             }),
+        // whyItMatters and note are rendered as SEPARATE lines, so they must never
+        // carry the same text — setting both to the same string printed it twice.
         check('draft', 'Draft configured', draftStatus, draftDetail, {
+            required: draftRequired,
+            actionLabel: draftAction,
             fix: 'Configure Draft',
-            whyItMatters: 'The draft room reads this doc — without it the room shows "no draft scheduled".'
+            whyItMatters: 'The draft room reads this doc — without it the room shows "no draft scheduled".',
+            note: draftNote
         }),
         // Genuinely optional: a classic league runs neither mode. Never a blocker.
         check('gameModes', 'Game modes', modes.length ? 'ready' : 'off',

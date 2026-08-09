@@ -91,6 +91,55 @@ describe('leagueChecks', () => {
         expect(c.roster.whyItMatters).toMatch(/after YEAR is flipped/);
     });
 
+    // A part-way draft used to read as "ready", which hid that Configure Draft
+    // won't accept changes while one is active. It's reported now — but NOT as a
+    // gap: mid-draft, and a room being exercised on purpose, are both legitimate,
+    // and the panel can't tell those from an abandoned run.
+    const midDraft = () => leagueReady({
+        draft: { draftOrder: ['a','b','c','d','e','f'], scheduledAt: new Date('2026-08-18'),
+                 snake: true, totalRounds: 10, status: 'active',
+                 picks: Array.from({ length: 36 }, (_, i) => ({ overall: i + 1 })) }
+    });
+
+    test('a draft part-way through is reported with its progress', () => {
+        const c = byKey(leagueChecks(midDraft()));
+        expect(c.draft.status).toBe('partial');
+        expect(c.draft.detail).toBe('In progress — 36 of 60 picks made');
+        expect(c.draft.note).toMatch(/Settings are locked while a draft is active/);
+    });
+
+    test('…but it never counts as a step outstanding', () => {
+        expect(byKey(leagueChecks(midDraft())).draft.required).toBe(false);
+        const r = computeSeasonReadiness(Object.assign(loaded(), { leagues: [midDraft()] }));
+        expect(r.blocking).not.toContain('draft');
+        expect(r.ready).toBe(true);
+    });
+
+    // The two lines render separately, so identical text printed it twice.
+    test('the note and the why-line are never the same sentence', () => {
+        [midDraft(), leagueReady(), leagueReady({ draft: null })].forEach(l => {
+            const d = byKey(leagueChecks(l)).draft;
+            if (d.note) expect(d.note).not.toBe(d.whyItMatters);
+        });
+    });
+
+    test('a completed draft is ready and says so', () => {
+        const c = byKey(leagueChecks(leagueReady({
+            draft: { draftOrder: ['a','b'], scheduledAt: new Date('2026-08-18'), status: 'complete',
+                     totalRounds: 10, picks: Array.from({ length: 20 }, () => ({})) }
+        })));
+        expect(c.draft).toMatchObject({ status: 'ready', detail: 'Drafted — 20 picks' });
+    });
+
+    // An active draft with nothing picked yet is just a started room, not a mess.
+    test('an active draft with no picks is not flagged as abandoned', () => {
+        const c = byKey(leagueChecks(leagueReady({
+            draft: { draftOrder: ['a','b'], scheduledAt: new Date('2026-08-18'), status: 'active',
+                     snake: true, totalRounds: 10, picks: [] }
+        })));
+        expect(c.draft.status).toBe('ready');
+    });
+
     test('a draft with no doc, no order, or no date is distinguished', () => {
         expect(byKey(leagueChecks(leagueReady({ draft: null }))).draft)
             .toMatchObject({ status: 'missing', detail: 'No draft configured' });
