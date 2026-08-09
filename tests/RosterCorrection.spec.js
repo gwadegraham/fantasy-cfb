@@ -377,3 +377,62 @@ describe('GET /users/league/:league/roster-teams', () => {
         expect(res.body.available).toHaveLength(1);
     });
 });
+
+// --- PATCH /users/:id score writes -------------------------------------------
+// This handler used to be an if/else with a bare else: ANY body without
+// cumulativeScore assigned weeklyScore, so { isUpdated: true } set weeklyScore to
+// undefined and wiped the season. Both scoring callers happen to always send one,
+// so it never fired — but nothing enforced that.
+describe('PATCH /users/:id (score writes)', () => {
+    // Multiple seasons, so the $elemMatch projection is actually filtering —
+    // which is what makes the Mongoose array guard below reachable.
+    const scored = () => manager('Ann', [fullTeam(1, 'Iowa')], {
+        seasons: [
+            { season: 2025, cumulativeScore: 99, weeklyScore: [{ week: 1, score: 99 }] },
+            { season: SEASON, teams: [fullTeam(1, 'Iowa')], cumulativeScore: 12,
+              weeklyScore: [{ week: 1, score: 12, scoreByTeam: [{ team: 'Iowa', teamId: 1, gameId: 1, score: 12 }] }] }
+        ]
+    });
+    const send = (id, body) => request(app).patch(`/users/${id}`)
+        .set('X-Internal-Token', 'test-internal-token').send(body);
+    const season = async (id, yr) => (await User.findById(id).lean()).seasons.find(s => s.season === yr);
+
+    test('a body with neither score field leaves weeklyScore intact', async () => {
+        const u = await scored();
+        const res = await send(u._id, { isUpdated: true });
+        expect(res.status).toBe(200);
+        const s = await season(u._id, SEASON);
+        expect(s.weeklyScore).toHaveLength(1);
+        expect(s.weeklyScore[0].score).toBe(12);
+        expect((await User.findById(u._id).lean()).isUpdated).toBe(true);
+    });
+
+    test('weeklyScore alone writes, and leaves other seasons alone', async () => {
+        const u = await scored();
+        expect((await send(u._id, { weeklyScore: [{ week: 1, score: 20 }, { week: 2, score: 5 }] })).status).toBe(200);
+        expect((await season(u._id, SEASON)).weeklyScore.map(w => w.score)).toEqual([20, 5]);
+        expect((await season(u._id, 2025)).weeklyScore.map(w => w.score)).toEqual([99]);
+    });
+
+    test('cumulativeScore alone writes, and leaves weeklyScore alone', async () => {
+        const u = await scored();
+        expect((await send(u._id, { cumulativeScore: 40 })).status).toBe(200);
+        const s = await season(u._id, SEASON);
+        expect(s.cumulativeScore).toBe(40);
+        expect(s.weeklyScore).toHaveLength(1);
+    });
+
+    // Pins WHY the two branches are mutually exclusive. getUser projects seasons
+    // with $elemMatch, and Mongoose refuses to save a document that both edits a
+    // scalar and replaces an array wholesale under that projection — a body with
+    // both would throw and write nothing at all. Keeping them exclusive means
+    // cumulativeScore simply wins, which is the long-standing behavior.
+    test('sending both applies only cumulativeScore — never a failed no-op write', async () => {
+        const u = await scored();
+        const res = await send(u._id, { cumulativeScore: 40, weeklyScore: [{ week: 1, score: 77 }] });
+        expect(res.status).toBe(200);
+        const s = await season(u._id, SEASON);
+        expect(s.cumulativeScore).toBe(40);
+        expect(s.weeklyScore[0].score).toBe(12);   // untouched, not 77 and not wiped
+    });
+});

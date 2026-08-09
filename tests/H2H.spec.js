@@ -1,5 +1,89 @@
 const { buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H, gameStatus, isWeekFinal, matchupWinProb,
-        baseWeekScore, persistedBonus, h2hManagerIds, computeH2HAwards, applyAwards } = require('../modules/h2h');
+        baseWeekScore, persistedBonus, h2hManagerIds, computeH2HAwards, applyAwards,
+        h2hWeekRange } = require('../modules/h2h');
+
+// --- which weeks are H2H weeks ----------------------------------------------
+// This range used to be hardcoded to "through week 14". That was right for 2025
+// (regular season through wk 14, conference titles wk 15) and silently WRONG for
+// 2026, whose calendar shifted a week: last full slate wk 13, titles wk 14,
+// Army/Navy wk 15. Cap-at-14 would have made championship week — a couple of
+// rostered teams — decide a win bonus. So it's derived from the slate now.
+describe('h2hWeekRange', () => {
+    // n games in each of the listed weeks.
+    const slate = (spec) => Object.entries(spec).reduce((m, [w, n]) => {
+        m[w] = Array.from({ length: n }, (_, i) => ({ id: i }));
+        return m;
+    }, {});
+
+    test('2026 shape: stops before championship week', () => {
+        // Weeks 1-12 full, wk 13 rivalry (still full), wk 14 titles, wk 15 Army/Navy.
+        const spec = {};
+        for (let w = 1; w <= 13; w++) spec[w] = 45;
+        spec[14] = 4; spec[15] = 1;
+        expect(h2hWeekRange(slate(spec))).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13]);
+    });
+
+    test('2025 shape: the same rule keeps week 14', () => {
+        const spec = {};
+        for (let w = 1; w <= 14; w++) spec[w] = 45;
+        spec[15] = 6; spec[16] = 1;
+        expect(h2hWeekRange(slate(spec))).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14]);
+    });
+
+    // Championship week isn't scheduled until the matchups are known, which is
+    // the live 2026 state — the range must not run past the real slate.
+    test('an empty week after a real slate ends the range', () => {
+        const spec = {};
+        for (let w = 1; w <= 13; w++) spec[w] = 45;
+        expect(h2hWeekRange(slate(spec))).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13]);
+    });
+
+    test('a bye-heavy week is still a real week', () => {
+        const spec = { 1: 50, 2: 50, 3: 30, 4: 50, 5: 50 };   // wk 3 lighter, not thin
+        expect(h2hWeekRange(slate(spec))).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    test('handles a season that has barely started', () => {
+        expect(h2hWeekRange(slate({ 1: 40 }))).toEqual([1]);
+        expect(h2hWeekRange({})).toEqual([]);
+    });
+
+    test('a small league still separates a real week from championship week', () => {
+        // 2 managers, 20 teams: ~10 games a week, 1 in championship week.
+        const spec = { 1: 10, 2: 10, 3: 10, 4: 1 };
+        expect(h2hWeekRange(slate(spec))).toEqual([1, 2, 3]);
+    });
+
+    test('an even number of played weeks averages the middle two', () => {
+        // counts 10,10,40,40 -> median 25, threshold 10 -> all four qualify.
+        expect(h2hWeekRange(slate({ 1: 40, 2: 40, 3: 10, 4: 10 }))).toEqual([1, 2, 3, 4]);
+        // counts 4,40,40,40 -> median 40, threshold 16 -> wk 1 already too thin.
+        expect(h2hWeekRange(slate({ 1: 4, 2: 40, 3: 40, 4: 40 }))).toEqual([]);
+    });
+
+    test('the threshold never drops below one game', () => {
+        // A median of 1 would give a threshold of 0.4; the floor keeps it at 1 so
+        // an empty week can't sneak in as "above threshold".
+        expect(h2hWeekRange(slate({ 1: 1, 2: 1, 3: 1 }))).toEqual([1, 2, 3]);
+    });
+
+    test('minShare is tunable', () => {
+        const spec = { 1: 40, 2: 40, 3: 40, 4: 12 };
+        expect(h2hWeekRange(slate(spec))).toEqual([1, 2, 3]);                       // 0.4 default -> 16
+        expect(h2hWeekRange(slate(spec), { minShare: 0.2 })).toEqual([1, 2, 3, 4]); // -> 8, wk 4 counts
+    });
+
+    test('leading weeks with nothing scheduled are skipped, not treated as the end', () => {
+        expect(h2hWeekRange(slate({ 3: 40, 4: 40, 5: 40 }))).toEqual([3, 4, 5]);
+    });
+
+    test('never runs past the bound', () => {
+        const spec = {};
+        for (let w = 1; w <= 16; w++) spec[w] = 45;
+        expect(h2hWeekRange(slate(spec)).slice(-1)[0]).toBe(16);
+        expect(h2hWeekRange(slate(spec), { maxWeek: 12 }).slice(-1)[0]).toBe(12);
+    });
+});
 
 describe('buildRoundRobin', () => {
     test('6 managers → 5 rounds, everyone plays everyone exactly once, 3 pairs/round', () => {
@@ -224,15 +308,32 @@ describe('computeH2HAwards', () => {
         expect(awards.a[1]).toMatchObject({ result: 'L', bonus: 0 });
     });
 
-    test('postseason entries and weeks past the cap never award', () => {
+    // The end of the season, as 2026 actually lays out: full slates through wk
+    // 13, then a thin championship/Army-Navy week, then the postseason. Neither
+    // of the last two may decide a matchup.
+    test('postseason entries and thin end-of-season weeks never award', () => {
+        const weekly = (n) => {
+            const out = [];
+            for (let w = 1; w <= 13; w++) out.push({ week: w, score: n });
+            out.push({ week: 15, score: n });                          // Army/Navy
+            out.push({ week: 1, season: 'postseason', score: 30 });    // bowls
+            return out;
+        };
         const late = [
-            { _id: 'a', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: [{ week: 15, score: 20 }, { week: 1, season: 'postseason', score: 30 }] }] },
-            { _id: 'b', seasons: [{ season: 2026, teams: [{ id: 2 }], weeklyScore: [{ week: 15, score: 10 }] }] }
+            { _id: 'a', seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: weekly(20) }] },
+            { _id: 'b', seasons: [{ season: 2026, teams: [{ id: 2 }], weeklyScore: weekly(10) }] }
         ];
-        const games = [{ id: 1, week: 15, homeId: 1, awayId: 99, completed: true }];
-        const { awards, finalWeeks } = computeH2HAwards({ users: late, games, ...opts });
-        expect(finalWeeks).toEqual([]);
-        expect(awards.a).toEqual({});
+        const games = [];
+        for (let w = 1; w <= 13; w++) {
+            for (let i = 0; i < 20; i++) games.push({ id: w * 100 + i, week: w, homeId: i % 2 ? 1 : 2, awayId: 99, completed: true });
+        }
+        games.push({ id: 9001, week: 15, homeId: 1, awayId: 2, completed: true });   // thin week
+
+        const { awards, weeks, finalWeeks } = computeH2HAwards({ users: late, games, ...opts });
+        expect(weeks).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13]);
+        expect(finalWeeks).toEqual(weeks);
+        expect(awards.a[15]).toBeUndefined();   // Army/Navy week is not a matchup
+        expect(awards.a[1]).toBeDefined();      // the real weeks still resolve
     });
 
     test('fewer than two scored managers awards nothing', () => {

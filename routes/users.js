@@ -329,11 +329,23 @@ router.patch('/:id', getUser, async (req, res) => {
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
     res.user.lastUpdated = centralTime;
 
+    // Exactly one score field is written per call, and only when present.
+    //
+    // The `!= null` guard on weeklyScore is the fix: this was a bare else, so ANY
+    // body without cumulativeScore assigned weeklyScore — a body of just
+    // { isUpdated: true } set it to undefined and wiped the season's scores. Both
+    // scoring callers happen to always send one, so it never fired, but nothing
+    // enforced that.
+    //
+    // They stay mutually exclusive on purpose. getUser projects `seasons` with
+    // $elemMatch, and Mongoose REFUSES to save a document that both edits a
+    // scalar and replaces an array wholesale under such a projection ("for your
+    // own good…") — so a body carrying both would throw and write NOTHING. Either
+    // one alone saves cleanly. Don't merge these into two independent ifs; the
+    // ScoringWrites spec pins the behavior.
     if (req.body.cumulativeScore != null) {
         res.user.seasons[0].cumulativeScore = req.body.cumulativeScore;
-    } 
-
-    else {
+    } else if (req.body.weeklyScore != null) {
         res.user.seasons[0].weeklyScore = req.body.weeklyScore;
     }
     if (req.body.isUpdated != null) {
