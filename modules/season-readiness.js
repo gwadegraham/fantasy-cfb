@@ -99,19 +99,21 @@ function leagueChecks({ members, draft, engagement }) {
     const order = (draft && draft.draftOrder) || [];
     const picks = (draft && draft.picks) || [];
     const rounds = (draft && draft.totalRounds) || 10;
-    let draftStatus, draftDetail, draftNote = null;
+    let draftStatus, draftDetail, draftNote = null, draftRequired = true, draftAction = null;
     if (!draft) {
         draftStatus = 'missing';
         draftDetail = 'No draft configured';
     } else if (draft.status === 'active' && picks.length) {
-        // A draft left mid-run — a test run that was never reset is the usual
-        // cause. It reads as configured but is anything but: settings are LOCKED
-        // while active (POST /draft 409s), the room resumes at the next pick with
-        // those teams already gone, and rosters stay empty because teams are only
-        // written on completion. This row used to call that "ready".
+        // A draft part-way through. Reported, but NOT treated as a gap: this is a
+        // legitimate state — mid-draft, or a room being exercised deliberately —
+        // and the panel can't tell that from an abandoned run. What it can do is
+        // state the consequence, since it isn't obvious: while a draft is active
+        // POST /draft 409s, so Configure Draft won't accept changes until reset.
         draftStatus = 'partial';
+        draftRequired = false;
+        draftAction = 'Open';   // it's neither broken nor unconfigured
         draftDetail = `In progress — ${picks.length} of ${order.length * rounds} picks made`;
-        draftNote = 'Reset it before draft night if this was a test run.';
+        draftNote = 'Settings are locked while a draft is active — reset it to change them.';
     } else if (draft.status === 'complete') {
         draftStatus = 'ready';
         draftDetail = `Drafted — ${picks.length} picks`;
@@ -137,10 +139,13 @@ function leagueChecks({ members, draft, engagement }) {
                 fix: 'Season Roster',
                 whyItMatters: 'Written against the ACTIVE season, so it only works after YEAR is flipped. Missing, Standings and My Team are empty.'
             }),
+        // whyItMatters and note are rendered as SEPARATE lines, so they must never
+        // carry the same text — setting both to the same string printed it twice.
         check('draft', 'Draft configured', draftStatus, draftDetail, {
+            required: draftRequired,
+            actionLabel: draftAction,
             fix: 'Configure Draft',
-            whyItMatters: draftNote
-                || 'The draft room reads this doc — without it the room shows "no draft scheduled".',
+            whyItMatters: 'The draft room reads this doc — without it the room shows "no draft scheduled".',
             note: draftNote
         }),
         // Genuinely optional: a classic league runs neither mode. Never a blocker.

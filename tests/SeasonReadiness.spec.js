@@ -91,19 +91,36 @@ describe('leagueChecks', () => {
         expect(c.roster.whyItMatters).toMatch(/after YEAR is flipped/);
     });
 
-    // Found on live 2026 data: a draft left ACTIVE mid-run (a test run nobody
-    // reset) read as "ready". It is the opposite — settings are locked while
-    // active, the room resumes at the next pick with those teams gone, and
-    // rosters stay empty because teams only persist on completion.
-    test('a draft abandoned mid-run is flagged, not called ready', () => {
-        const c = byKey(leagueChecks(leagueReady({
-            draft: { draftOrder: ['a','b','c','d','e','f'], scheduledAt: new Date('2026-08-18'),
-                     snake: true, totalRounds: 10, status: 'active',
-                     picks: Array.from({ length: 36 }, (_, i) => ({ overall: i + 1 })) }
-        })));
+    // A part-way draft used to read as "ready", which hid that Configure Draft
+    // won't accept changes while one is active. It's reported now — but NOT as a
+    // gap: mid-draft, and a room being exercised on purpose, are both legitimate,
+    // and the panel can't tell those from an abandoned run.
+    const midDraft = () => leagueReady({
+        draft: { draftOrder: ['a','b','c','d','e','f'], scheduledAt: new Date('2026-08-18'),
+                 snake: true, totalRounds: 10, status: 'active',
+                 picks: Array.from({ length: 36 }, (_, i) => ({ overall: i + 1 })) }
+    });
+
+    test('a draft part-way through is reported with its progress', () => {
+        const c = byKey(leagueChecks(midDraft()));
         expect(c.draft.status).toBe('partial');
         expect(c.draft.detail).toBe('In progress — 36 of 60 picks made');
-        expect(c.draft.note).toMatch(/Reset it before draft night/);
+        expect(c.draft.note).toMatch(/Settings are locked while a draft is active/);
+    });
+
+    test('…but it never counts as a step outstanding', () => {
+        expect(byKey(leagueChecks(midDraft())).draft.required).toBe(false);
+        const r = computeSeasonReadiness(Object.assign(loaded(), { leagues: [midDraft()] }));
+        expect(r.blocking).not.toContain('draft');
+        expect(r.ready).toBe(true);
+    });
+
+    // The two lines render separately, so identical text printed it twice.
+    test('the note and the why-line are never the same sentence', () => {
+        [midDraft(), leagueReady(), leagueReady({ draft: null })].forEach(l => {
+            const d = byKey(leagueChecks(l)).draft;
+            if (d.note) expect(d.note).not.toBe(d.whyItMatters);
+        });
     });
 
     test('a completed draft is ready and says so', () => {

@@ -573,18 +573,22 @@ function readinessRow(c) {
     var canOpen = target && document.querySelector('[' + target[0] + ']');
     // The button navigates — it opens the tool and scrolls to it, it doesn't run
     // anything — so a real gap says "Fix" (where you go to fix it) and an
-    // optional row that's merely switched off says "Set up".
+    // optional row that's merely switched off says "Set up". A check can override
+    // when neither fits: an in-progress draft is neither broken nor unconfigured.
+    var actionLabel = c.actionLabel || (c.required ? 'Fix' : 'Set up');
     var action = canOpen
         ? '<button type="button" class="rd-fix" data-rd-fix="' + escapeHtml(c.key) + '">'
-            + (c.required ? 'Fix' : 'Set up') + ' →</button>'
+            + escapeHtml(actionLabel) + ' →</button>'
         : '<span></span>';
+    var showWhy = needsAttention && c.whyItMatters;
     return '<div class="rd-row' + (needsAttention ? ' attn' : '') + '">'
         + '<span class="dot ' + readinessDot(c) + '"></span>'
         + '<span class="rd-label">' + escapeHtml(c.label) + '</span>'
         + '<span class="rd-detail">' + escapeHtml(c.detail || '') + '</span>'
         + action
-        + (needsAttention && c.whyItMatters ? '<p class="rd-why">' + escapeHtml(c.whyItMatters) + '</p>' : '')
-        + (c.note ? '<p class="rd-note">' + escapeHtml(c.note) + '</p>' : '')
+        + (showWhy ? '<p class="rd-why">' + escapeHtml(c.whyItMatters) + '</p>' : '')
+        // Never print the same sentence twice when a check sets both.
+        + (c.note && c.note !== c.whyItMatters ? '<p class="rd-note">' + escapeHtml(c.note) + '</p>' : '')
         + '</div>';
 }
 
