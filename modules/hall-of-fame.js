@@ -162,7 +162,7 @@ function buildRecords(users, isFinished) {
         bestTeamSeason && { key: 'bestTeamSeason', label: 'Best team, full season', ...bestTeamSeason, suffix: 'pts' },
         bestTeamGame && { key: 'bestTeamGame', label: 'Best single game', ...bestTeamGame, suffix: 'pts' },
         bestPostseason && { key: 'bestPostseason', label: 'Best postseason', ...bestPostseason, suffix: 'pts' },
-        worstSeason && { key: 'worstSeason', label: 'Leanest season', ...worstSeason, suffix: 'pts' }
+        worstSeason && { key: 'worstSeason', label: 'Worst season', ...worstSeason, suffix: 'pts' }
     ].filter(Boolean);
 
     return rows;
