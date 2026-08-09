@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/user');
+const Draft = require('../models/draft');
+const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
 
 // Hall of Fame / league history aggregation. Walks every user's seasons and
 // derives, per league: the champion of each completed season, an all-time
@@ -97,7 +99,20 @@ router.get('/:league', async (req, res) => {
             };
         }).sort((a, b) => b.titles - a.titles || b.totalPoints - a.totalPoints);
 
-        res.json({ league, seasons, managers });
+        // Depth: a records book and a per-season draft retrospective, both
+        // derived from data already on file (see modules/hall-of-fame.js).
+        // Gated by the same seasonFinished rule as the champions above, so the
+        // in-progress season can't set a record or be second-guessed on its draft.
+        const records = buildRecords(users, seasonFinished);
+
+        const drafts = await Draft.find({ league }, { season: 1, picks: 1, _id: 0 }).lean();
+        const draftsBySeason = {};
+        drafts.forEach(d => { draftsBySeason[d.season] = d.picks || []; });
+        const usersById = {};
+        users.forEach(u => { usersById[String(u._id)] = u; });
+        const draftHistory = buildDraftHistory(draftsBySeason, usersById, seasonFinished);
+
+        res.json({ league, seasons, managers, records, draftHistory });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

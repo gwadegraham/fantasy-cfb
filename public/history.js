@@ -55,6 +55,88 @@
             + '</section>';
     }
 
+    // --- Records book --------------------------------------------------------
+    // League bests, each with the manager who owns it. Records set in the
+    // in-progress season are excluded server-side, so nothing here is provisional.
+    function recordsHtml(records) {
+        if (!records || !records.length) return '';
+        var cards = records.map(function (r) {
+            var face = '<div class="hof-rec-label">' + esc(r.label)
+                +   (r.breakdown ? '<i class="fa-solid fa-chevron-down hof-chev" aria-hidden="true"></i>' : '') + '</div>'
+                + '<div class="hof-rec-value">' + esc(String(r.value)) + '<small>' + esc(r.suffix || '') + '</small></div>'
+                + '<div class="hof-rec-who">' + avatar(r.holder, 40)
+                +   '<span class="hof-rec-names"><b>' + esc(r.holder.franchise || r.holder.name) + '</b>'
+                +   (r.holder.franchise ? '<small>' + esc(r.holder.name) + '</small>' : '') + '</span>'
+                + '</div>'
+                + '<div class="hof-rec-when">' + esc(r.season + (r.detail ? ' · ' + r.detail : '')) + '</div>';
+
+            // Only a record with something left to reveal becomes a control —
+            // "best single game" already states its whole fact in one line, so it
+            // stays a plain card rather than an affordance that pays nothing off.
+            if (!r.breakdown) return '<div class="hof-rec">' + face + '</div>';
+
+            var rows = r.breakdown.rows.map(function (row) {
+                return '<div class="hof-recrow">'
+                    + '<span class="hof-recrow-label">' + esc(row.label) + '</span>'
+                    + (row.sub ? '<span class="hof-recrow-sub">' + esc(row.sub) + '</span>' : '<span></span>')
+                    + '<span class="hof-recrow-val">' + esc(String(row.value)) + '</span>'
+                    + '</div>';
+            }).join('');
+            return '<div class="hof-rec hof-rec-x">'
+                + '<button type="button" class="hof-rec-head" aria-expanded="false">' + face + '</button>'
+                + '<div class="hof-rec-body"><div class="hof-recrows">' + rows + '</div></div>'
+                + '</div>';
+        }).join('');
+        return '<section class="hof-section">'
+            + '<h2 class="hof-h2">Record book</h2>'
+            + '<p class="hof-note">Week and single-game records cover the regular season. '
+            + 'Postseason games score on a much higher scale and all land in one bucket, so they get their own record.</p>'
+            + '<div class="hof-recs">' + cards + '</div>'
+            + '</section>';
+    }
+
+    // --- Draft retrospective -------------------------------------------------
+    // Steal and bust are draft slot vs. where the pick actually finished in
+    // points that season — taken 45th, finished 3rd is +42.
+    function draftPick(p, kind) {
+        if (!p) return '';
+        // Always occupies its grid cell — a conditionally-absent child shifts
+        // every later cell a column left (the bug that put the league chip on
+        // top of the summary in the admin Activity log).
+        var logo = (window.ccLogo && p.logos && p.logos.length)
+            ? '<img class="hof-dr-logo" src="' + esc(ccLogo(p.logos)) + '" alt="">'
+            : '<span class="hof-dr-logo"></span>';
+        var move = kind === 'steal'
+            ? '<span class="hof-dr-delta up">+' + p.delta + ' vs slot</span>'
+            : kind === 'bust' ? '<span class="hof-dr-delta down">' + p.delta + ' vs slot</span>' : '';
+        return '<div class="hof-dr-pick ' + esc(kind) + '">'
+            + '<span class="hof-dr-kind">' + (kind === 'steal' ? 'Steal' : kind === 'bust' ? 'Bust' : '1.01') + '</span>'
+            + logo
+            + '<span class="hof-dr-team">' + esc(p.team) + '</span>'
+            + '<span class="hof-dr-meta">' + esc(p.manager) + ' · pick ' + p.overall + ' · ' + p.points + ' pts</span>'
+            + move
+            + '</div>';
+    }
+
+    function draftHistoryHtml(seasons) {
+        var withPicks = (seasons || []).filter(function (s) { return s.picks; });
+        if (!withPicks.length) return '';
+        var blocks = withPicks.map(function (s) {
+            return '<div class="hof-draft">'
+                + '<div class="hof-draft-head"><b>' + s.season + '</b>'
+                +   '<span>' + s.picks + ' picks · ' + s.rounds + ' rounds</span></div>'
+                + draftPick(s.firstOverall, 'first')
+                + draftPick(s.steal, 'steal')
+                + draftPick(s.bust, 'bust')
+                + '</div>';
+        }).join('');
+        return '<section class="hof-section">'
+            + '<h2 class="hof-h2">Draft room</h2>'
+            + '<p class="hof-note">Steal and bust compare where a team was taken with where it finished in points that season.</p>'
+            + '<div class="hof-drafts">' + blocks + '</div>'
+            + '</section>';
+    }
+
     function historyRows(m) {
         return m.history.map(function (h) {
             return '<div class="hof-hist">'
@@ -105,7 +187,20 @@
             el.innerHTML = '<p class="hof-empty">No completed seasons yet — check back once a season wraps.</p>';
             return;
         }
-        el.innerHTML = championsHtml(data.seasons) + leaderboardHtml(data.managers, meId);
+        el.innerHTML = championsHtml(data.seasons)
+            + recordsHtml(data.records)
+            + leaderboardHtml(data.managers, meId)
+            + draftHistoryHtml(data.draftHistory);
+        // Expand/collapse record cards — same interaction as the manager cards
+        // below, so the page has one expand vocabulary rather than two.
+        el.querySelectorAll('.hof-rec-head').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.hof-rec');
+                var open = card.classList.toggle('is-open');
+                btn.setAttribute('aria-expanded', String(open));
+            });
+        });
+
         // Expand/collapse manager cards.
         el.querySelectorAll('.hof-mgr-head').forEach(function (btn) {
             btn.addEventListener('click', function () {
