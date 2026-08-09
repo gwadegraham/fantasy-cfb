@@ -91,6 +91,38 @@ describe('leagueChecks', () => {
         expect(c.roster.whyItMatters).toMatch(/after YEAR is flipped/);
     });
 
+    // Found on live 2026 data: a draft left ACTIVE mid-run (a test run nobody
+    // reset) read as "ready". It is the opposite — settings are locked while
+    // active, the room resumes at the next pick with those teams gone, and
+    // rosters stay empty because teams only persist on completion.
+    test('a draft abandoned mid-run is flagged, not called ready', () => {
+        const c = byKey(leagueChecks(leagueReady({
+            draft: { draftOrder: ['a','b','c','d','e','f'], scheduledAt: new Date('2026-08-18'),
+                     snake: true, totalRounds: 10, status: 'active',
+                     picks: Array.from({ length: 36 }, (_, i) => ({ overall: i + 1 })) }
+        })));
+        expect(c.draft.status).toBe('partial');
+        expect(c.draft.detail).toBe('In progress — 36 of 60 picks made');
+        expect(c.draft.note).toMatch(/Reset it before draft night/);
+    });
+
+    test('a completed draft is ready and says so', () => {
+        const c = byKey(leagueChecks(leagueReady({
+            draft: { draftOrder: ['a','b'], scheduledAt: new Date('2026-08-18'), status: 'complete',
+                     totalRounds: 10, picks: Array.from({ length: 20 }, () => ({})) }
+        })));
+        expect(c.draft).toMatchObject({ status: 'ready', detail: 'Drafted — 20 picks' });
+    });
+
+    // An active draft with nothing picked yet is just a started room, not a mess.
+    test('an active draft with no picks is not flagged as abandoned', () => {
+        const c = byKey(leagueChecks(leagueReady({
+            draft: { draftOrder: ['a','b'], scheduledAt: new Date('2026-08-18'), status: 'active',
+                     snake: true, totalRounds: 10, picks: [] }
+        })));
+        expect(c.draft.status).toBe('ready');
+    });
+
     test('a draft with no doc, no order, or no date is distinguished', () => {
         expect(byKey(leagueChecks(leagueReady({ draft: null }))).draft)
             .toMatchObject({ status: 'missing', detail: 'No draft configured' });

@@ -97,10 +97,24 @@ function platformChecks({ season, teamTotal, teamsWith, scheduledTeams, gameCoun
 //   engagement resolved game modes for the season (or null)
 function leagueChecks({ members, draft, engagement }) {
     const order = (draft && draft.draftOrder) || [];
-    let draftStatus, draftDetail;
+    const picks = (draft && draft.picks) || [];
+    const rounds = (draft && draft.totalRounds) || 10;
+    let draftStatus, draftDetail, draftNote = null;
     if (!draft) {
         draftStatus = 'missing';
         draftDetail = 'No draft configured';
+    } else if (draft.status === 'active' && picks.length) {
+        // A draft left mid-run — a test run that was never reset is the usual
+        // cause. It reads as configured but is anything but: settings are LOCKED
+        // while active (POST /draft 409s), the room resumes at the next pick with
+        // those teams already gone, and rosters stay empty because teams are only
+        // written on completion. This row used to call that "ready".
+        draftStatus = 'partial';
+        draftDetail = `In progress — ${picks.length} of ${order.length * rounds} picks made`;
+        draftNote = 'Reset it before draft night if this was a test run.';
+    } else if (draft.status === 'complete') {
+        draftStatus = 'ready';
+        draftDetail = `Drafted — ${picks.length} picks`;
     } else if (order.length < 2) {
         draftStatus = 'partial';
         draftDetail = 'Configured, but no pick order set';
@@ -109,7 +123,7 @@ function leagueChecks({ members, draft, engagement }) {
         draftDetail = `${order.length} managers in order · no date set`;
     } else {
         draftStatus = 'ready';
-        draftDetail = `${order.length} managers · ${draft.snake ? 'snake' : 'linear'} · ${draft.totalRounds || 10} rounds`;
+        draftDetail = `${order.length} managers · ${draft.snake ? 'snake' : 'linear'} · ${rounds} rounds`;
     }
 
     const modes = [];
@@ -125,7 +139,9 @@ function leagueChecks({ members, draft, engagement }) {
             }),
         check('draft', 'Draft configured', draftStatus, draftDetail, {
             fix: 'Configure Draft',
-            whyItMatters: 'The draft room reads this doc — without it the room shows "no draft scheduled".'
+            whyItMatters: draftNote
+                || 'The draft room reads this doc — without it the room shows "no draft scheduled".',
+            note: draftNote
         }),
         // Genuinely optional: a classic league runs neither mode. Never a blocker.
         check('gameModes', 'Game modes', modes.length ? 'ready' : 'off',
