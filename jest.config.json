@@ -1,5 +1,7 @@
 {
     "testRegex": "((\\.|/*.)(spec))\\.js?$",
+    "//testTimeout": "The in-memory-Mongo suites can exceed Jest's 5s default on a cold run — first connection, index builds and coverage instrumentation all land on the first DB-touching test, and several such suites now compete for workers. 20s absorbs that jitter without masking a genuinely hung test.",
+    "testTimeout": 20000,
     "collectCoverageFrom": [
         "modules/**/*.js",
         "routes/**/*.js",
