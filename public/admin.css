@@ -423,6 +423,48 @@
 .admin-status.warn .ss-note { color: var(--cc-amber); }
 .admin-status .ss-note a { color: inherit; font-weight: 500; text-decoration: underline; cursor: pointer; }
 
+/* --- Activity (commissioner audit trail) ------------------------------------
+   Deliberately dense: one line per change, so 25 entries read as a log rather
+   than a stack of cards. Collapsed by default, so it costs nothing until used. */
+.audit-log { width: 100%; }
+.al-rows { display: flex; flex-direction: column; }
+/* when · kind · league · summary · actor. The league cell is always emitted
+   (empty when there's nothing to show) so the columns stay aligned. */
+.al-row {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+    align-items: baseline; gap: 4px 9px;
+    padding: 5px 0; border-top: 1px solid var(--cc-border);
+    font-size: 0.82rem; line-height: 1.35;
+}
+.al-row:first-child { border-top: 0; }
+.al-when { color: var(--cc-muted-2); font-size: 0.72rem; white-space: nowrap; min-width: 52px; }
+/* The action kind, e.g. Roster / Scoring / Draft. */
+.al-tag {
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--cc-muted-bright); border: 1px solid var(--cc-border);
+    border-radius: 4px; padding: 1px 6px; white-space: nowrap;
+}
+.al-league {
+    font-size: 0.66rem; color: var(--cc-info); border: 1px solid var(--cc-border);
+    border-radius: 4px; padding: 1px 5px; white-space: nowrap;
+}
+.al-summary { min-width: 0; overflow-wrap: anywhere; }
+.al-actor { color: var(--cc-muted-2); font-size: 0.74rem; white-space: nowrap; }
+.al-empty { color: var(--cc-muted-2); font-size: 0.85rem; margin: 0; }
+
+/* Mobile: the actor drops under the summary rather than squeezing it. */
+@media (max-width: 620px) {
+    .al-row { grid-template-columns: auto auto auto minmax(0, 1fr); }
+    .al-actor { grid-column: 3 / -1; }
+}
+
+/* Tools sit two-up at 40% each on desktop (see the 64em block above). A log
+   needs the full row — five columns of it — so this one opts out. */
+@media only screen and (min-width: 64em) {
+    .function-container.is-wide { width: 84%; }
+}
+
 /* --- Correct a Roster ------------------------------------------------------
    Manager picker, then one row per rostered team. A row swaps in place into an
    edit state rather than opening a modal, so the rest of the roster stays

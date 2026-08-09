@@ -7,6 +7,7 @@ const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame } =
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
+const audit = require('../modules/audit-log');
 
 // Attaches the ordered field metadata (for the admin form + rules page) and a
 // plain-language combine-mode `example` to a resolved config. `fields` reflect
@@ -124,6 +125,13 @@ router.post('/', async (req, res) => {
             } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
+        // Scoring changes how every past game counts, so the trail records the
+        // shape that was chosen, not just that something changed.
+        await audit.record(req, {
+            action: 'scoring.config', league, season: String(process.env.YEAR),
+            summary: `Scoring rules updated (${resolved.model === 'graham' ? 'stacking' : 'fixed'} win values)`,
+            meta: { model: resolved.model, combineMode: resolved.combineMode, disabled: resolved.disabled, enabled: resolved.enabled }
+        });
         res.json(withFields(resolveConfig(league, {
             model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled
         })));
@@ -166,6 +174,15 @@ router.patch('/:league/engagement', async (req, res) => {
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         const saved = engagementForSeason(doc.engagementBySeason, season);
+        const modes = [
+            saved.h2hEnabled ? `H2H +${saved.h2hWinBonus}${saved.h2hTieBonus ? '/+' + saved.h2hTieBonus + ' tie' : ''}` : null,
+            saved.captainEnabled ? `Captain ×${saved.captainMultiplier}` : null
+        ].filter(Boolean);
+        await audit.record(req, {
+            action: 'scoring.engagement', league, season: String(season),
+            summary: modes.length ? `Game modes: ${modes.join(' · ')}` : 'Game modes: off (classic)',
+            meta: saved
+        });
         res.json(Object.assign({ season }, saved));
     } catch (err) {
         res.status(400).json({ message: err.message });

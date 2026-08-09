@@ -1,5 +1,7 @@
 {
     "testRegex": "((\\.|/*.)(spec))\\.js?$",
+    "//testTimeout": "The in-memory-Mongo suites can exceed Jest's 5s default on a cold run — first connection, index builds and coverage instrumentation all land on the first DB-touching test, and several such suites now compete for workers. 20s absorbs that jitter without masking a genuinely hung test.",
+    "testTimeout": 20000,
     "collectCoverageFrom": [
         "modules/**/*.js",
         "routes/**/*.js",
@@ -15,6 +17,7 @@
         "./modules/h2h.js": { "statements": 95, "branches": 85, "functions": 100, "lines": 100 },
         "./modules/season-readiness.js": { "statements": 100, "branches": 85, "functions": 100, "lines": 100 },
         "./modules/roster-correction.js": { "statements": 95, "branches": 85, "functions": 100, "lines": 100 },
+        "./modules/audit-log.js": { "statements": 100, "branches": 90, "functions": 100, "lines": 100 },
         "./modules/internal-api.js": { "statements": 100, "branches": 100, "functions": 100, "lines": 100 },
         "./modules/job-runs-util.js": { "statements": 100, "branches": 100, "functions": 100, "lines": 100 },
         "./update-enrichment-job.js": { "statements": 80, "branches": 60, "functions": 60, "lines": 90 }

@@ -328,6 +328,49 @@ function renderAdminStatus(el, s, api, year, jobs) {
     });
 }
 
+// --- Activity (commissioner audit trail) ------------------------------------
+// Collapsed by default, so it costs one button row until someone opens it.
+// Entries are written server-side by the handlers that make the change
+// (modules/audit-log.js); this only reads.
+
+// Short league labels so a row stays on one line; Admins see both leagues, and
+// a League Manager only ever sees their own, so the tag is dropped for them.
+// Always emits a cell, even when there's nothing to show — the row is a grid, so
+// a conditionally-absent child would shift every later cell one column left
+// (which put the league chip on top of the summary).
+function auditLeagueTag(entry, multiLeague) {
+    if (!multiLeague || !entry.league) return '<span></span>';
+    var short = entry.league === 'graham-league' ? 'GG' : entry.league === 'claunts-league' ? 'CL' : entry.league;
+    return '<span class="al-league">' + escapeHtml(short) + '</span>';
+}
+
+async function loadAuditLog() {
+    var body = document.querySelector('[audit-log-body]');
+    if (!body) return;
+    body.textContent = 'Loading…';
+    try {
+        var res = await fetch('/audit-log?limit=25', { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        if (!res.ok) { body.textContent = data.message || 'Could not load activity.'; return; }
+        if (!data.entries.length) {
+            body.innerHTML = '<p class="al-empty">No commissioner changes recorded yet.</p>';
+            return;
+        }
+        var multi = (data.scope || []).length > 1;
+        body.innerHTML = '<div class="al-rows">' + data.entries.map(function (e) {
+            return '<div class="al-row">'
+                + '<span class="al-when" title="' + escapeHtml(new Date(e.at).toLocaleString()) + '">' + escapeHtml(timeAgo(e.at)) + '</span>'
+                + '<span class="al-tag">' + escapeHtml(e.label) + '</span>'
+                + auditLeagueTag(e, multi)
+                + '<span class="al-summary">' + escapeHtml(e.summary) + '</span>'
+                + '<span class="al-actor">' + escapeHtml(e.actor) + '</span>'
+                + '</div>';
+        }).join('') + '</div>';
+    } catch (err) {
+        body.textContent = 'Could not load activity.';
+    }
+}
+
 // --- Correct a Roster --------------------------------------------------------
 // Swap one team on a manager's season roster for an undrafted one. Also rewrites
 // the matching draft pick server-side, so the board and grades stay in step —
@@ -1423,6 +1466,8 @@ function displayCreateUserContainer() { toggleSub('create-user-container'); }
 function displaySeasonRosterContainer() { if (toggleSub('season-roster-container')) loadSeasonRoster(); }
 
 function displayRosterCorrectionContainer() { if (toggleSub('roster-correction-container')) loadRosterCorrection(); }
+
+function displayAuditLogContainer() { if (toggleSub('audit-log-container')) loadAuditLog(); }
 
 function displayTeamContainer() { toggleSub('calculate-team-score-container'); }
 

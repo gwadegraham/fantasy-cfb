@@ -372,7 +372,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireAdmin(req, res, next);
 });
-app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/job-runs'], (req, res, next) => {
+app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/job-runs', '/audit-log'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireAdmin(req, res, next);
 });
@@ -437,6 +437,9 @@ app.post('/dev/spoof/reset', (req, res) => {
 
 const jobRunsRouter = require('./routes/jobRuns');
 app.use('/job-runs', requireAuthOrToken, jobRunsRouter);
+
+const auditLogRouter = require('./routes/auditLog');
+app.use('/audit-log', requireAuthOrToken, auditLogRouter);
 
 const standingsRouter = require('./routes/standings');
 app.use('/standings', requireAuthOrToken, standingsRouter);
