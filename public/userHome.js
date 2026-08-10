@@ -168,10 +168,12 @@ async function renderBento(data) {
     renderAvatar(document.getElementById('uh-hero-av'), data);
     const statsEl = document.getElementById('uh-hero-stats');
     let sh = '';
-    // Rank only once the active season has scores (preseason ties everyone at 0).
-    if ((season.weeklyScore || []).length) {
-        try { const rank = await computeRank(data); if (rank) sh += statTile(escapeHtml(ordinal(rank.rank)), `of ${rank.total} teams`); } catch (e) { /* rank optional */ }
-    }
+    // Rank only once the season has really been played, and share a placement on
+    // a tie ("T-3rd") — computeRank owns both calls, since both need the league.
+    try {
+        const rank = await computeRank(data);
+        if (rank) sh += statTile(escapeHtml((rank.tie ? 'T-' : '') + ordinal(rank.rank)), `of ${rank.total} teams`);
+    } catch (e) { /* rank optional */ }
     sh += statTile(String(season.cumulativeScore || 0), 'Total points');
     const bt = bestTeam(season);
     if (bt && bt.total > 0) sh += statTile(`<img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
@@ -1156,17 +1158,27 @@ function bestTeam(season) {
 }
 
 // League rank for the profile user, by current-season cumulative score.
+// { rank, tie, total } — or null when there's no honest answer.
+//
+// The season-underway gate lives here rather than at the call site because this
+// is where the whole league is in hand, and the question is league-wide: a single
+// manager's season entry can't tell you whether anyone has played. It has to be
+// asked, too — before the season starts every cumulativeScore is 0, and any
+// placement drawn from that is really just each manager's position in the DB
+// result order wearing a rank's clothes.
 async function computeRank(data) {
     try {
         if (!data.league) return null;
         const res = await fetch(`/users/league/${data.league}`, { headers: { 'Accept': 'application/json' } });
         if (!res.ok) return null;
         const users = await res.json();
-        const ranked = users
-            .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
-            .sort((a, b) => b.score - a.score);
-        const idx = ranked.findIndex(r => r.id === data._id);
-        return idx < 0 ? null : { rank: idx + 1, total: ranked.length };
+        // Not "does this manager have a weekly entry" — the nightly scoring job
+        // seeds zero-point weeks as soon as a week's games exist, so that fires
+        // before kickoff. See public/season-scoring.js.
+        if (!ccSeasonScoring.seasonHasScoring(users)) return null;
+        // Competition ranking, so mid-season ties share a placement instead of
+        // being split by document order. See public/league-rank.js.
+        return ccLeagueRank.leagueRank(users, data._id);
     } catch (e) { return null; }
 }
 
