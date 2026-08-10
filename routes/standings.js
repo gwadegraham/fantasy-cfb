@@ -579,7 +579,14 @@ router.get('/h2h/:league/:season', async (req, res) => {
             featuredWeek = w.week; currentWeekOut = w.week;
         }
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, managers, schedule });
+        // No H2H week is left to play. The client uses this to bring the lower
+        // Rivalry Games section back for the postseason — it stays hidden while
+        // matchups are live so the two senses of "head to head" never share the
+        // page. Derived AFTER the sim block, so ?h2hSim (which fakes a live
+        // week) still reads as mid-season.
+        const scheduleComplete = !!(schedWeeks.length && !currentWeekOut);
+
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

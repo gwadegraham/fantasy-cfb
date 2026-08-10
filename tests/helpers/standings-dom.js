@@ -37,7 +37,8 @@ const FIXTURE = `
 <h2 class="highlights-header">League Highlights</h2>
 <div class="highlights-container"></div>
 <hr class="hr-subtle">
-<div class="header"><div class="header-title" poll-name>Head to Head</div></div>
+<div class="header"><div class="header-title" poll-name>Rivalry Games</div></div>
+<p class="section-note" schedule-note hidden></p>
 <div class="dropdown dropdownWeek">
     <button id="dropdownMenuButtonWeek"></button>
     <div class="dropdown-menu dropdown-menu-week"><a class="dropdown-item" value="week-1">Week 1</a></div>
