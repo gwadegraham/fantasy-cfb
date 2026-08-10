@@ -207,21 +207,17 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         const userId = req.params.userId;
 
         // `latest` (used by the weekly popup) resolves to the ACTIVE season only
-        // (process.env.YEAR). Until that season has a scored week there's nothing
-        // to recap, so return empty and the popup stays silent through the
-        // preseason — it fires once the season actually starts. (Previously this
-        // fell back to the most recent scored season, which surfaced last year's
-        // finish during the new preseason.)
+        // (process.env.YEAR) — never a fallback to the most recent scored season,
+        // which used to surface last year's finish during the new preseason.
+        //
+        // Whether that season has anything to recap is buildWeeklyRecaps' call: it
+        // only counts weeks the league has actually played, so the preseason
+        // returns an empty list and the popup stays silent until week one is in the
+        // books. Checking "the active season has a weeklyScore entry" here instead
+        // fired too early — the nightly job seeds a zero-point entry for every
+        // manager as soon as a week's games exist.
         let season = req.params.season;
-        if (season === 'latest') {
-            season = String(process.env.YEAR);
-            const target = await User.findById(userId);
-            const active = ((target && target.seasons) || [])
-                .find(s => String(s.season) === season);
-            if (!active || !((active.weeklyScore || []).length)) {
-                return res.json({ league, season: null, userId, recaps: [] });
-            }
-        }
+        if (season === 'latest') season = String(process.env.YEAR);
         const seasonNum = Number(season);
 
         // Whole league for the target season (need nested teams + weeklyScore

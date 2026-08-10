@@ -193,6 +193,83 @@ describe('buildWeeklyRecaps', () => {
     });
 });
 
+// The nightly scoring job seeds a zero-point weeklyScore entry for every manager
+// as soon as a week's games exist — through the preseason with undrafted, 0-team
+// rosters, and again mid-week before a game goes final. Those weeks haven't been
+// PLAYED, so they get no recap; the empty list is what keeps the popup and the My
+// Team tile hidden (public/weekly-recap.js, public/userHome.js hydrateRecap).
+describe('only weeks the league actually played are recapped', () => {
+    // A manager the way the dev DB looks in the 2026 preseason: a season entry,
+    // an empty roster, and one seeded zero-point week.
+    const preseason = (id) => ({
+        _id: id, firstName: 'Pre', lastName: 'Season', league: 'graham-league',
+        seasons: [{ season: 2026, teams: [], cumulativeScore: 0, weeklyScore: [{ week: 1, score: 0, scoreByTeam: [] }] }]
+    });
+    // weeks: [[week, score], …] with a one-team roster, so scores are easy to read.
+    const played = (id, weeks) => ({
+        _id: id, firstName: 'Pl', lastName: 'Ayed', league: 'graham-league',
+        seasons: [{
+            season: 2026, teams: [{ id: 1, school: 'Oregon', logos: ['o.png'] }],
+            weeklyScore: weeks.map(([week, score]) => ({ week, score, scoreByTeam: [{ team: 'Oregon', teamId: 1, score }] }))
+        }]
+    });
+
+    test('a season whose only week is a seeded zero yields no recaps', () => {
+        const a = preseason('a'), b = preseason('b');
+        expect(buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026 }).recaps).toEqual([]);
+    });
+
+    test('week one appears as soon as one manager banks points', () => {
+        const a = preseason('a'), b = played('b', [[1, 12]]);
+        const { recaps } = buildWeeklyRecaps({ user: b, leagueUsers: [a, b], season: 2026 });
+        expect(recaps.map(r => r.week)).toEqual([1]);
+    });
+
+    test('a manager who banked 0 in a week the league DID play still gets that week', () => {
+        const quiet = preseason('q'), scorer = played('s', [[1, 12]]);
+        const { recaps } = buildWeeklyRecaps({ user: quiet, leagueUsers: [quiet, scorer], season: 2026 });
+        expect(recaps.map(r => r.week)).toEqual([1]);
+        expect(recaps[0].score).toBe(0);
+        expect(recaps[0].narrative).toBe('Quiet week — no points banked.');
+    });
+
+    test('mid-season: the in-progress seeded week is dropped, played weeks stay', () => {
+        // Weeks 1–2 scored; week 3's games exist so the job seeded zeros for all.
+        const a = played('a', [[1, 20], [2, 30], [3, 0]]);
+        const b = played('b', [[1, 10], [2, 15], [3, 0]]);
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026 });
+        expect(recaps.map(r => r.week)).toEqual([1, 2]);
+    });
+
+    test('the latest recap (what the popup shows) is the last PLAYED week', () => {
+        const a = played('a', [[1, 20], [2, 30], [3, 0]]);
+        const b = played('b', [[1, 10], [2, 15], [3, 0]]);
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026 });
+        const latest = recaps[recaps.length - 1];
+        expect(latest.label).toBe('Week 2');
+        expect(latest.score).toBe(30);
+    });
+
+    test('a seeded zero week does not become the previous week for rank movement', () => {
+        // Week 2 seeded to zero league-wide, week 3 real: week 3's movement must
+        // compare against week 1, the last week actually played.
+        const a = played('a', [[1, 10], [2, 0], [3, 40]]);
+        const b = played('b', [[1, 30], [2, 0], [3, 5]]);
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026 });
+        expect(recaps.map(r => r.week)).toEqual([1, 3]);
+        expect(recaps[0].rank).toBe(2);           // 10 vs 30 through week 1
+        expect(recaps[1].rank).toBe(1);           // 50 vs 35 through week 3
+        expect(recaps[1].rankDelta).toBe(1);      // climbed from 2nd, not "held"
+    });
+
+    test('a seeded zero postseason entry is dropped too', () => {
+        const a = played('a', [[1, 20]]);
+        a.seasons[0].weeklyScore.push({ week: 1, season: 'postseason', score: 0, scoreByTeam: [] });
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a], season: 2026 });
+        expect(recaps.map(r => r.label)).toEqual(['Week 1']);
+    });
+});
+
 describe('indexUpsets + layered narrative', () => {
     // Oregon (away) beats favored Georgia; home spread -7 means Georgia was a
     // 7-pt favorite, so Oregon won as a 7-pt underdog.

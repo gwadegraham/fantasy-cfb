@@ -21,6 +21,10 @@
 <!-- Shared team-logo selector (ccLogo): picks the dark, highest-res variant from
      CFBD's many-logo array. Loaded before page scripts that render team logos. -->
 <script src="/logo.js"></script>
+<!-- Shared season-underway test (ccSeasonScoring): "some manager has banked
+     points", not "a weekly entry exists" — the nightly job seeds zero-point weeks
+     early. Gates the Standings highlights + chart and the Weekly Recap alike. -->
+<script src="/season-scoring.js"></script>
 <!-- Weekly Recap: shared card rendering + the once-a-week popup, app-wide so the
      popup can greet the logged-in viewer on whatever page they land on. -->
 <link rel="stylesheet" type="text/css" href="/weekly-recap.css">
