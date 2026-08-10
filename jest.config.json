@@ -1,10 +1,17 @@
 {
     "testRegex": "((\\.|/*.)(spec))\\.js?$",
     "testTimeout": 20000,
+    "transform": {
+        "public[\\\\/].+\\.js$": "<rootDir>/tests/helpers/esm-transform.js",
+        "\\.[jt]sx?$": "babel-jest"
+    },
     "collectCoverageFrom": [
         "modules/**/*.js",
         "routes/**/*.js",
-        "*-job.js"
+        "*-job.js",
+        "public/standings-insights.js",
+        "public/standings.js",
+        "public/weekByWeek.js"
     ],
     "coveragePathIgnorePatterns": [
         "/node_modules/",
@@ -68,6 +75,24 @@
         "./modules/hall-of-fame.js": {
             "statements": 95,
             "branches": 85,
+            "functions": 100,
+            "lines": 100
+        },
+        "./public/standings-insights.js": {
+            "statements": 95,
+            "branches": 95,
+            "functions": 100,
+            "lines": 100
+        },
+        "./public/standings.js": {
+            "statements": 95,
+            "branches": 80,
+            "functions": 95,
+            "lines": 98
+        },
+        "./public/weekByWeek.js": {
+            "statements": 90,
+            "branches": 75,
             "functions": 100,
             "lines": 100
         }
