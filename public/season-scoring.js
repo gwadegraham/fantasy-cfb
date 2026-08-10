@@ -44,5 +44,22 @@
         });
     }
 
-    return { entryHasScoring: entryHasScoring, seasonHasScoring: seasonHasScoring };
+    // True once someone has banked real POSTSEASON points — the bowl/playoff slate
+    // has something on it. Same rule as above, narrowed to the postseason entries,
+    // and narrowed for the same reason: the scoring job writes a postseason entry
+    // whenever it runs for the postseason, so a bare one can sit at 0.
+    // (weeklyScore[].season doubles as a type tag — 'regular' or 'postseason'.)
+    function postseasonHasScoring(users, season) {
+        return (users || []).some(function (u) {
+            return weeklyScoreFor(u, season).some(function (w) {
+                return !!w && w.season === 'postseason' && entryHasScoring(w);
+            });
+        });
+    }
+
+    return {
+        entryHasScoring: entryHasScoring,
+        seasonHasScoring: seasonHasScoring,
+        postseasonHasScoring: postseasonHasScoring
+    };
 }));

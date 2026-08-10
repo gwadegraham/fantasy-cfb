@@ -6,7 +6,7 @@
 // included), so "a weekly entry exists" is not the same question. The Standings
 // highlights + points chart, the Weekly Recap module, and the recap route all
 // gate on this, and they must not drift apart.
-const { entryHasScoring, seasonHasScoring } = require('../public/season-scoring');
+const { entryHasScoring, seasonHasScoring, postseasonHasScoring } = require('../public/season-scoring');
 
 const user = (id, seasons) => ({ _id: id, seasons });
 
@@ -77,5 +77,50 @@ describe('seasonHasScoring', () => {
         expect(seasonHasScoring([{ _id: 'a' }])).toBe(false);
         expect(seasonHasScoring([user('a', [{ season: 2026 }])], 2026)).toBe(false);
         expect(seasonHasScoring([user('a', [{ season: 2025, weeklyScore: [{ score: 5 }] }])], 2026)).toBe(false);
+    });
+});
+
+// Drives the Rivalry Games reveal on the Standings page (revealRivalryGames in
+// public/standings.js): the bowl/playoff slate has points on it. Same rule as
+// seasonHasScoring, narrowed to the entries tagged 'postseason', because the
+// scoring job writes a postseason entry whenever it runs for the postseason —
+// so a bare one can sit at 0 just like a seeded regular week.
+describe('postseasonHasScoring', () => {
+    const wk = (season, week, score) => ({ season, week, score });
+
+    it('is false while only the regular season has scored', () => {
+        const users = [user('a', [{ season: 2025, weeklyScore: [wk('regular', 1, 30), wk('regular', 2, 20)] }])];
+        expect(postseasonHasScoring(users)).toBe(false);
+    });
+
+    it('is false for a postseason entry the job wrote at 0', () => {
+        const users = [user('a', [{ season: 2025, weeklyScore: [wk('regular', 1, 30), wk('postseason', 1, 0)] }])];
+        expect(postseasonHasScoring(users)).toBe(false);
+    });
+
+    it('is true once any manager banks postseason points', () => {
+        const users = [
+            user('a', [{ season: 2025, weeklyScore: [wk('postseason', 1, 0)] }]),
+            user('b', [{ season: 2025, weeklyScore: [wk('postseason', 1, 24)] }])
+        ];
+        expect(postseasonHasScoring(users)).toBe(true);
+    });
+
+    it('ignores a big regular-season week — the tag is what matters', () => {
+        const users = [user('a', [{ season: 2025, weeklyScore: [wk('regular', 16, 99)] }])];
+        expect(postseasonHasScoring(users)).toBe(false);
+    });
+
+    it('honours the season argument, and survives empty input', () => {
+        const users = [user('a', [
+            { season: 2025, weeklyScore: [wk('postseason', 1, 24)] },
+            { season: 2026, weeklyScore: [wk('regular', 1, 0)] }
+        ])];
+        expect(postseasonHasScoring(users, 2025)).toBe(true);
+        expect(postseasonHasScoring(users, 2026)).toBe(false);
+        expect(postseasonHasScoring(users)).toBe(true);           // seasons[0] form
+        expect(postseasonHasScoring([])).toBe(false);
+        expect(postseasonHasScoring(null)).toBe(false);
+        expect(postseasonHasScoring([user('a', [{ season: 2025, weeklyScore: [null] }])])).toBe(false);
     });
 });

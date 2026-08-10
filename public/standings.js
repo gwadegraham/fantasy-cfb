@@ -47,10 +47,10 @@ const seasonHasScoring = (users) => ccSeasonScoring.seasonHasScoring(users);
 // This is deliberately NOT the same moment as "the H2H schedule ran out".
 // Conference championship week and Army/Navy fall between the two, and they
 // carry rivalry games of their own — see revealRivalryGames.
-function postseasonHasScoring(users) {
-    return (users || []).some(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || [])
-        .some(w => w.season === 'postseason' && (w.score || 0) !== 0));
-}
+//
+// Shares its "non-zero banked points" rule with seasonHasScoring above, from the
+// same place (public/season-scoring.js), so the two can't drift apart.
+const postseasonHasScoring = (users) => ccSeasonScoring.postseasonHasScoring(users);
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
