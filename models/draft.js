@@ -32,6 +32,11 @@ const draftSchema = new mongoose.Schema({
     // --- commissioner-configured settings ---
     scheduledAt: { type: Date },
     autoOpen: { type: Boolean, default: false },
+    // Optional video call link for draft night (Zoom/Meet/Discord). Shown on the
+    // My Team draft tile and in the draft room. Validated as http(s) on save —
+    // see modules/draft-call-link.js — because it is rendered as an href for
+    // every manager in the league.
+    callUrl: { type: String, default: null },
     snake: { type: Boolean, default: true },
     totalRounds: { type: Number, default: 10 },
     orderMethod: {

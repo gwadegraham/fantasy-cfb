@@ -250,6 +250,27 @@
 }
 .draft-start-btn:hover { background-color: var(--cc-success); }
 
+/* Commissioner's video call link — a quieter sibling to Start/Undo that stays
+   put from the countdown through the live draft. Given its own centered row so
+   it never has to line up against those buttons, and a tonal blue that matches
+   the countdown above it rather than competing with the green Start button. */
+.draft-call-row { margin: 4px 0 12px; }
+.draft-call-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    border: 1px solid rgba(108, 155, 255, 0.45);
+    border-radius: 8px;
+    background: rgba(108, 155, 255, 0.12);
+    color: var(--cc-info);
+    font-weight: 700;
+    font-size: 0.95em;
+    text-decoration: none;
+    transition: background-color 0.2s;
+}
+.draft-call-btn:hover { background: rgba(108, 155, 255, 0.2); }
+
 /* Board sits in a centered card that uses the width without stretching thin */
 .draft-board-wrap {
     max-width: 1200px;

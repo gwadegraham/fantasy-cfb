@@ -1855,6 +1855,7 @@ function populateDraftFormFields() {
     document.querySelector('[draft-autoopen]').checked = (currentDraft && currentDraft.autoOpen) || false;
     document.querySelector('[draft-datetime]').value =
         (currentDraft && currentDraft.scheduledAt) ? isoToLocalInput(currentDraft.scheduledAt) : '';
+    document.querySelector('[draft-callurl]').value = (currentDraft && currentDraft.callUrl) || '';
 
     var resetBtn = document.querySelector('[draft-reset-btn]');
     resetBtn.style.display = (currentDraft && currentDraft._id) ? 'inline-block' : 'none';
@@ -1905,6 +1906,7 @@ if (draftConfigForm) {
             season: getSelectedDraftSeason(),
             scheduledAt: localInputToIso(document.querySelector('[draft-datetime]').value),
             autoOpen: document.querySelector('[draft-autoopen]').checked,
+            callUrl: document.querySelector('[draft-callurl]').value.trim(),
             snake: document.querySelector('[draft-type]').value === 'snake',
             totalRounds: parseInt(document.querySelector('[draft-rounds]').value, 10) || 10,
             orderMethod: 'manual',
