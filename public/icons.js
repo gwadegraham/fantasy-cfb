@@ -78,6 +78,10 @@
             '<rect x="3" y="5" width="18" height="12" rx="2.5" fill="currentColor" fill-opacity=".14"/>' +
             '<path d="M12 17v2.4M8.5 20.2h7"/>' +
             '<path d="M10.4 8.7 14.8 11 10.4 13.3Z" fill="currentColor" stroke="none"/>' },
+        // Camcorder body + lens wedge — the draft-night video call link.
+        video: { c: '#6C9BFF', sw: 1.6, svg:
+            '<rect x="2.6" y="6" width="12.8" height="12" rx="2.5" fill="currentColor" fill-opacity=".16"/>' +
+            '<path d="M15.4 10.1 20.2 7.5v9l-4.8-2.6Z" fill="currentColor" fill-opacity=".28"/>' },
         pennant: { c: '#E0B341', sw: 1.7, svg:
             '<path d="M6 3.4v17.2"/><path d="M6 5l12.6 3.3L6 11.6Z" fill="currentColor" fill-opacity=".2"/>' },
         stadium: { c: '#6C9BFF', sw: 1.6, svg:

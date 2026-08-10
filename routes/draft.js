@@ -10,6 +10,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig } = require('../modules/scoring-defaults');
 const { computeGrades } = require('../modules/draft-grades');
 const { canManageLeague } = require('../modules/league-access');
+const { sanitizeCallUrl } = require('../modules/draft-call-link');
 
 // Post-draft grades for a league + season — immediate preseason feedback. Each
 // roster is projected to EXPECTED FANTASY POINTS under that league's own scoring
@@ -85,11 +86,16 @@ router.post('/', async (req, res) => {
             return res.status(409).json({ message: `Draft is ${existing.status}; settings are locked` });
         }
 
+        // Throws on a non-http(s) link; the catch below turns that into a 400
+        // with the message the admin form shows.
+        const callUrl = sanitizeCallUrl(req.body.callUrl);
+
         const update = {
             league,
             season,
             scheduledAt: req.body.scheduledAt || null,
             autoOpen: !!req.body.autoOpen,
+            callUrl,
             snake: req.body.snake !== false,
             totalRounds: req.body.totalRounds || 10,
             orderMethod: req.body.orderMethod || 'manual',
@@ -109,8 +115,10 @@ router.post('/', async (req, res) => {
             : 'no date';
         await audit.record(req, {
             action: 'draft.config', league, season: String(season),
-            summary: `Draft settings saved — ${when}, ${draft.snake ? 'snake' : 'linear'}, ${draft.totalRounds} rounds, ${(draft.draftOrder || []).length} managers`,
-            meta: { draftId: String(draft._id), scheduledAt: draft.scheduledAt, snake: draft.snake, totalRounds: draft.totalRounds, orderSize: (draft.draftOrder || []).length }
+            summary: `Draft settings saved — ${when}, ${draft.snake ? 'snake' : 'linear'}, ${draft.totalRounds} rounds, ${(draft.draftOrder || []).length} managers${draft.callUrl ? ', call link set' : ''}`,
+            // The link itself stays out of the trail — a meeting URL can carry an
+            // embedded passcode, and "set or not" is all the log needs to show.
+            meta: { draftId: String(draft._id), scheduledAt: draft.scheduledAt, snake: draft.snake, totalRounds: draft.totalRounds, orderSize: (draft.draftOrder || []).length, callLink: draft.callUrl ? 'set' : 'none' }
         });
         res.status(200).json(draft);
     } catch (err) {

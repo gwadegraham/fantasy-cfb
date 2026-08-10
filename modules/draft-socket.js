@@ -31,6 +31,7 @@ function publicState(draft) {
         snake: d.snake,
         totalRounds: d.totalRounds,
         scheduledAt: d.scheduledAt,
+        callUrl: d.callUrl || null,
         draftOrder: (d.draftOrder || []).map(String),
         picks: d.picks || [],
         currentOverall: d.currentOverall,

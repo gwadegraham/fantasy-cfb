@@ -368,9 +368,21 @@ function preHistoryHtml(data, activeYear, own) {
     </div>`;
 }
 
+// The commissioner's draft-night call link, re-checked before it becomes an
+// href (server-side validation lives in modules/draft-call-link.js — this is the
+// belt-and-braces pass, so a `javascript:` value can never render as a link).
+// Returns a safe URL string, or null when there's no usable link.
+function draftCallLink(raw) {
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    let u;
+    try { u = new URL(raw.trim()); } catch (e) { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.href;
+}
+
 // Draft countdown tile: fetch the league's draft for the active season, then
-// show a live countdown + format/pick meta + a Draft Room CTA (or a graceful
-// "not scheduled yet" state).
+// show a live countdown + format/pick meta + a Draft Room CTA and the
+// commissioner's video call link (or a graceful "not scheduled yet" state).
 async function hydratePreseasonDraft(user, activeYear) {
     const wrap = document.getElementById('uh-pre-draft');
     if (!wrap) return;
@@ -400,7 +412,11 @@ async function hydratePreseasonDraft(user, activeYear) {
         managers ? `<span>👥 <b>${managers}</b> managers</span>` : '',
         myPick >= 0 ? `<span>🎯 ${own ? 'You pick' : escapeHtml(name) + ' picks'} <b>${escapeHtml(ordinal(myPick + 1))}</b></span>` : ''
     ].filter(Boolean).join('');
-    const cta = `<a class="uh-pd-cta" href="/draft-room">Enter the Draft Room →</a>`;
+    const call = draftCallLink(draft.callUrl);
+    const cta = `<div class="uh-pd-ctas">
+            <a class="uh-pd-cta" href="/draft-room">Enter the Draft Room →</a>
+            ${call ? `<a class="uh-pd-cta alt" href="${escapeHtml(call)}" target="_blank" rel="noopener noreferrer">${window.ccIcon ? window.ccIcon('video', { size: 17 }) : ''}Join the call</a>` : ''}
+        </div>`;
 
     if (when && when.getTime() > Date.now()) {
         body.innerHTML = `<h2 class="uh-pd-h">Draft night is almost here</h2>

@@ -511,6 +511,17 @@ function renderTicker() {
     el.innerHTML = `<div class="pick-ticker-track${scroll ? ' scroll' : ''}"${durStyle}>${scroll ? chips + chips : chips}</div>`;
 }
 
+// The commissioner's draft-night call link, re-checked before it becomes an
+// href (server-side validation lives in modules/draft-call-link.js). Returns a
+// safe URL string, or null when there's no usable link.
+function draftCallLink(raw) {
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    var u;
+    try { u = new URL(raw.trim()); } catch (e) { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.href;
+}
+
 function renderStatus() {
     var el = document.getElementById('draft-status');
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
@@ -522,16 +533,23 @@ function renderStatus() {
 
     var startBtn = isCommish ? `<button type="button" class="draft-start-btn" onclick="startDraft()">Start Draft</button>` : '';
 
+    // Kept visible right through the live draft — someone who drops off the call
+    // mid-draft already has this tab open.
+    var call = draftCallLink(draft.callUrl);
+    var callBtn = call
+        ? `<div class="draft-call-row"><a class="draft-call-btn" href="${escapeHtml(call)}" target="_blank" rel="noopener noreferrer">${window.ccIcon ? window.ccIcon('video', { size: 17 }) : ''}Join the call</a></div>`
+        : '';
+
     if (draft.status === 'pending') {
-        el.innerHTML = `<p>Draft is set up but not scheduled.</p>${startBtn}`;
+        el.innerHTML = `<p>Draft is set up but not scheduled.</p>${callBtn}${startBtn}`;
     } else if (draft.status === 'scheduled') {
-        el.innerHTML = `<div class="draft-countdown" id="countdown"></div>${startBtn}`;
+        el.innerHTML = `<div class="draft-countdown" id="countdown"></div>${callBtn}${startBtn}`;
         updateCountdown();
         countdownTimer = setInterval(updateCountdown, 1000);
     } else if (draft.status === 'active') {
         var undoBtn = (isCommish && draft.picks && draft.picks.length)
             ? `<button type="button" class="draft-undo-btn" onclick="undoPick()">&#8617; Undo last pick</button>` : '';
-        el.innerHTML = `<p class="draft-live-label">🟢 Draft in progress</p>${undoBtn}`;
+        el.innerHTML = `<p class="draft-live-label">🟢 Draft in progress</p>${callBtn}${undoBtn}`;
     } else if (draft.status === 'complete') {
         el.innerHTML = `<p class="draft-live-label">${window.ccIcon ? window.ccIcon('confetti', { size: 18 }) : ''} Draft complete!</p>`;
     }

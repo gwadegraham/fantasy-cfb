@@ -783,6 +783,21 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-pd-meta b { color: var(--cc-text); font-weight: 600; }
 .uh-pd-cta { margin-top: 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border-radius: 12px; background: linear-gradient(180deg, var(--cc-info), var(--cc-info)); color: #08122a; font-weight: 700; font-size: 14px; text-decoration: none; }
 .uh-pd-cta:hover { filter: brightness(1.05); }
+/* Draft Room + the commissioner's call link sit side by side; the row owns the
+   top margin so a wrap doesn't double it up. */
+.uh-pd-ctas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.uh-pd-ctas .uh-pd-cta { margin-top: 0; }
+/* Tonal sibling of the primary CTA — same pill, same weight, the tile's own blue
+   at low opacity (matching this tile's rgba(108,155,255,…) border) so it reads as
+   second-rank rather than as a different control. The 1px border is taken out of
+   the padding so both pills are exactly the same height. */
+.uh-pd-cta.alt {
+    background: rgba(108, 155, 255, 0.12);
+    border: 1px solid rgba(108, 155, 255, 0.45);
+    color: var(--cc-info);
+    padding: 11px 17px;
+}
+.uh-pd-cta.alt:hover { background: rgba(108, 155, 255, 0.2); filter: none; }
 
 /* get draft-ready checklist */
 .uh-check-prog { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
