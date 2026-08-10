@@ -820,6 +820,18 @@ async function displaySchedule(data) {
         usersAndTeams.push(userTeamObject);
     }
 
+    // Points a team earned in a game, resolved against that team's ROSTER OWNER.
+    // scoreByTeam entries live only in the owning manager's weeklyScore, so
+    // looking them up in whichever manager is currently being iterated returns 0
+    // for the opponent — which is why a head-to-head card used to carry a badge
+    // for only one of its two teams.
+    const weeklyByTeamId = {};
+    data.forEach(u => {
+        const season = u.seasons.at(-1);
+        (season.teams || []).forEach(t => { weeklyByTeamId[t.id] = season.weeklyScore; });
+    });
+    const pointsFor = (teamId, gameId) => teamGameScoreById(weeklyByTeamId[teamId], teamId, gameId);
+
     const scheduleContainer = document.querySelector('[schedule-body]');
     var str = '<tr>';
     var gameIds = [];
@@ -919,10 +931,9 @@ async function displaySchedule(data) {
 
                     var topData = '';
                     var bottomData = '';
-                    var scoreAdded = ''; // no badge unless this user's own team earned points
+                    var scoreAdded = ''; // no badge unless the winning team earned points
                     var awayTeam = '';
                     var homeTeam = '';
-                    var isAway = false;
                     var teamLogos = await parseTeamLogos(game, allTeamLogos);
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
@@ -937,7 +948,6 @@ async function displaySchedule(data) {
 
                         homeUser = oppName;
                         homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
-                        isAway = true;
 
                         if (doesExist) {
                             isHeadToHead = true;
@@ -962,14 +972,12 @@ async function displaySchedule(data) {
                     if (game.completed) {   
 
                         if (game.seasonType == "postseason" && game.notes && game.notes.toLowerCase().includes("playoff")) {
-                            shouldReplace = true;
-                            // Each team's own points (the old code showed one team's
-                            // score for both), found safely by (teamId, gameId).
-                            // Only the current user's own team earns points on this card; the
-                            // opponent's team lives in another user's data and resolves to 0 here,
-                            // so gate on >0 to avoid a spurious "+0" badge on the opponent's row.
-                            var awayPts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id);
-                            var homePts = teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id);
+                            // Both sides of a playoff game bank points, and each is
+                            // resolved against its own owner. scoreBadge renders
+                            // nothing at 0, so an unrostered or scoreless team still
+                            // gets no badge rather than a spurious "+0".
+                            var awayPts = pointsFor(game.awayId, game.id);
+                            var homePts = pointsFor(game.homeId, game.id);
                             var awayScoreAdded = scoreBadge(game.awayId, game.id, awayPts);
                             var homeScoreAdded = scoreBadge(game.homeId, game.id, homePts);
 
@@ -982,23 +990,16 @@ async function displaySchedule(data) {
                             }
 
                         } else if ( game.awayPoints > game.homePoints ) {
-                            if(game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
-                                scoreAdded = scoreBadge(game.awayId, game.id, teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id));
-                            }
+                            scoreAdded = scoreBadge(game.awayId, game.id, pointsFor(game.awayId, game.id));
                             topData = (game.awayPoints != null ? game.awayPoints : '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                             bottomData = (game.homePoints != null ? game.homePoints : '-');
                         } else if (game.homePoints > game.awayPoints) {
-
-                            if(!isAway) {
-                                scoreAdded = scoreBadge(game.homeId, game.id, teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id));
-                            }
+                            scoreAdded = scoreBadge(game.homeId, game.id, pointsFor(game.homeId, game.id));
 
                             topData = (game.awayPoints != null ? game.awayPoints : '-');
                             bottomData = (game.homePoints != null ? game.homePoints : '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
                         } else {
-                            if(game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
-                                scoreAdded = scoreBadge(game.awayId, game.id, teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id));
-                            }
+                            // Tie: no winner caret and no badge cell on either row.
                             topData = (game.awayPoints != null ? game.awayPoints : '-');
                             bottomData = (game.homePoints != null ? game.homePoints : '-');
                         }
@@ -1054,98 +1055,12 @@ async function displaySchedule(data) {
                     if (isHeadToHead) {
                         gameTables.push(gameInfo);
                     }
-                } else {
-                    var isHeadToHead = false;
-                    if (!game.startTimeTbd) {
-
-                        var shouldReplace = false;
-        
-                        if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
-                            var existObject = exists(otherUsers, game.homeId);
-                            var doesExist = existObject.doesExist;
-                            oppName = existObject.name;
-
-                            awayUser = userData.firstName;
-                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
-
-                            homeUser = oppName;
-                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
-                            isAway = true;
-
-                            if (doesExist) {
-                                isHeadToHead = true;
-                            }
-                        } else {
-                            var existObject = exists(otherUsers, game.awayId);
-                            var doesExist = existObject.doesExist;
-                            oppName = existObject.name;
-
-                            awayUser = oppName;
-                            awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
-
-                            homeUser = userData.firstName;
-                            homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
-
-                            if (doesExist) {
-                                isHeadToHead = true;
-                            }
-                        }
-        
-                        if (game.completed) {
-                            if( game.awayPoints > game.homePoints ) {
-                                if(game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
-                                    shouldReplace = true;
-                                    scoreAdded = scoreBadge(game.awayId, game.id, teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.awayId, game.id));
-                                }
-                                topData = (game.awayPoints != null ? game.awayPoints : '-') + '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                                bottomData = (game.homePoints != null ? game.homePoints : '-');
-                            } else {
-
-                                if(game.homeId == userData.seasons.at(-1).teams[iterNum].id) {
-                                    shouldReplace = true;
-                                    scoreAdded = scoreBadge(game.homeId, game.id, teamGameScoreById(userData.seasons.at(-1).weeklyScore, game.homeId, game.id));
-                                }
-
-                                topData = (game.awayPoints != null ? game.awayPoints : '-');
-                                bottomData = (game.homePoints != null ? game.homePoints : '-')+ '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i></td>' + '<td class="score-added">' + scoreAdded + '</td>';
-                            }
-                        }
-                        
-                        var teamLogos = await parseTeamLogos(game, allTeamLogos);
-                        var awayImg = teamLogos.awayTeamLogo;
-                        var homeImg = teamLogos.homeTeamLogo;
-
-                        var teamTable = '<td><table class="schedule-table game-table"><tbody><tr></tr>';
-                        teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
-
-                        teamTable += '<tr><td style="width: 250px;">';
-                        teamTable += awayImg + awayRank + awayTeam;
-                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
-                        teamTable += '</tr>';
-            
-                        teamTable += '<tr><td style="width: 250px;">';
-                        teamTable += homeImg + homeRank + homeTeam;
-                        teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
-                        teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                        teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">${window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : ''} ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
-                        teamTable += game.notes || '';
-                        teamTable += '</td></tr><tbody></table></td>';
-            
-                        var gameInfo = {
-                            id: game.id,
-                            table: teamTable,
-                            homeTeam: game.homeTeam,
-                            awayTeam: game.awayTeam,
-                            startDate: game.startDate || ''
-                        };
-
-                        if (shouldReplace && isHeadToHead) {
-                            var indexToReplace = gameTables.findIndex(x => x.id == game.id);
-                            gameTables.splice(indexToReplace, 1);
-                            gameTables.push(gameInfo);
-                        }
-                    }
                 }
+                // A game already in gameIds was built on its first sighting, by
+                // whichever manager rosters a team in it. That card resolves both
+                // teams through pointsFor, so a second pass has nothing to correct
+                // — it used to rebuild and swap the whole card just to attach the
+                // other manager's badge.
             } 
         }
     }
