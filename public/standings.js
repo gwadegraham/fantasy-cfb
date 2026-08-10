@@ -36,6 +36,19 @@ function seasonHasScoring(users) {
         .some(w => (w.score || 0) !== 0));
 }
 
+// True once someone has banked real postseason points — i.e. the bowl/playoff
+// slate has something on it. Gated on a non-zero score for the same reason
+// seasonHasScoring is: the scoring job writes the postseason entry whenever it
+// runs for the postseason, so a bare entry can exist at 0.
+//
+// This is deliberately NOT the same moment as "the H2H schedule ran out".
+// Conference championship week and Army/Navy fall between the two, and they
+// carry rivalry games of their own — see revealRivalryGames.
+function postseasonHasScoring(users) {
+    return (users || []).some(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || [])
+        .some(w => w.season === 'postseason' && (w.score || 0) !== 0));
+}
+
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
         // true for mobile device
@@ -132,7 +145,9 @@ async function getUsers() {
                 }
             }
             // Standings table: decide the layout before painting so an H2H
-            // league doesn't flash the classic table then swap (see below).
+            // league doesn't flash the classic table then swap (see below). It
+            // owns the schedule render too — an H2H league hides that section,
+            // and its ~60 game fetches are pure waste until we know the mode.
             renderStandingsSection(data, leagueCode, data[0]?.seasons?.[0]?.season);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
@@ -143,7 +158,6 @@ async function getUsers() {
             // displayHighlights just hid.
             if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
             loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
-            displaySchedule(data);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too — but only once
             // the season has real scoring. A zero-point week the nightly job seeds
@@ -184,9 +198,12 @@ async function renderStandingsSection(data, league, season) {
         } catch (e) { /* timeout or error → treat as classic */ }
     }
 
-    if (!enabled && !preview) { displayUsers(data); return; }
-    hideLegacyH2HSchedule();   // hide the unrelated lower schedule ASAP (before it paints)
+    if (!enabled && !preview) { displayUsers(data); displaySchedule(data); return; }
+    hideLegacyH2HSchedule();   // hide the Rivalry Games section ASAP (before it paints)
     showStandingsLoading();
+    // The schedule render is deferred to revealRivalryGames(): while matchups
+    // are live the section stays hidden, so building it would cost a game fetch
+    // per team per week for markup nobody sees.
     loadH2H(league, season, data);   // renders H2H, or falls back to classic
 }
 
@@ -437,6 +454,7 @@ async function loadH2HMatchups(league, season, sim) {
         const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
         const d = await res.json();
+        if (d && d.scheduleComplete) revealRivalryGames();
         if (d && (d.schedule || []).length) renderH2HMatchups(d);
     } catch (e) { /* matchups are best-effort */ }
 }
@@ -472,20 +490,73 @@ function h2hRows(d) {
     }));
 }
 
-// When the H2H game mode is on, hide the separate lower "Head to Head" schedule
-// section (the CFB games where two managers' drafted teams happen to meet). It's
-// an unrelated, older sense of "head-to-head" and showing both is confusing.
-function hideLegacyH2HSchedule() {
+// The pieces of the lower Rivalry Games section — real CFB games where two
+// managers' drafted teams meet. The divider directly above it is included, so
+// hiding the section doesn't leave a stray rule between the highlights and the
+// chart.
+function rivalryGamesEls() {
     const pollHeader = document.querySelector('[poll-name]');
     const headerWrap = pollHeader && pollHeader.closest('.header');
     const els = [headerWrap, document.querySelector('.dropdownWeek'), document.querySelector('.game-content')];
-    // The divider directly above that section goes too, so we don't leave a
-    // stray rule between the highlights and the chart.
     if (headerWrap) {
         const prev = headerWrap.previousElementSibling;
         if (prev && prev.classList && prev.classList.contains('hr-subtle')) els.push(prev);
     }
-    els.forEach(el => { if (el) el.style.display = 'none'; });
+    return els.filter(Boolean);
+}
+
+// While an H2H league has live matchups, the Rivalry Games section is hidden:
+// both surfaces pair manager against manager, and two of those on one page is
+// confusing. The H2H panel wins the slot because its pairings are the ones that
+// carry a bonus. revealRivalryGames() undoes this once no matchup is left.
+function hideLegacyH2HSchedule() {
+    rivalryGamesEls().forEach(el => { el.style.display = 'none'; });
+}
+
+// Every H2H week is final, so there is no live matchup left to confuse this
+// section with — bring it back to carry the rest of the season. Called from
+// loadH2HMatchups off the payload's scheduleComplete flag; if that fetch fails
+// the section simply stays hidden.
+//
+// The H2H schedule runs out weeks before the bowls start: conference
+// championship week and Army/Navy sit in between, and each carries rivalry
+// games of its own. So the reveal has two stages — the section comes back the
+// moment matchups end, but it only retitles and jumps to the postseason once
+// the postseason has points on it. Jumping straight there would park the league
+// on an empty "no rivalry games" view for a fortnight.
+function revealRivalryGames() {
+    rivalryGamesEls().forEach(el => { el.style.display = ''; });
+
+    const title = document.querySelector('[poll-name]');
+    const note = document.querySelector('[schedule-note]');
+    if (note) {
+        // True in both stages: championship-week points count too, and no week
+        // past the H2H schedule carries a bonus.
+        note.textContent = 'Real games where your teams meet another manager’s. These points count toward your total — matchup bonuses ended with the regular season.';
+        note.hidden = false;
+        // Closes the heading's bottom padding so the note reads as its sub-line
+        // rather than floating above the week picker (see .has-section-note).
+        if (title) title.closest('.header').classList.add('has-section-note');
+    }
+
+    // Stage two. Until it fires, the bootstrap's latest-scored-week default is
+    // the right landing and the season-neutral "Rivalry Games" title still reads
+    // true, so neither is touched.
+    if (postseasonHasScoring(usersData)) {
+        if (title) title.textContent = 'Postseason Rivalries';
+        // latestWeek() deliberately skips the postseason bucket, so the
+        // bootstrap defaulted to a regular week. A week the user picked
+        // themselves is left alone — the same rule the bootstrap uses.
+        if (!window.localStorage.getItem('week')) {
+            window.localStorage.setItem('weekCode', 'week-17');
+            weekCode = 'week-17';
+            $('#dropdownMenuButtonWeek').text('Postseason');
+        }
+    }
+
+    // This is the only schedule render an H2H league does; renderStandingsSection
+    // skipped the bootstrap one while the section was still hidden.
+    displaySchedule(usersData);
 }
 
 function renderH2HMatchups(d) {
@@ -496,9 +567,18 @@ function renderH2HMatchups(d) {
     const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
-    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}This Week's Matchups${preview}</h2>
-        <p class="h2h-panel-note">Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus${d.tieBonus > 0 ? `, or <b>+${d.tieBonus}</b> each on a tie` : ''} (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.</p>
-        <div class="h2h-week-bar"><span class="h2h-week-cap">Matchups</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
+    // Once the schedule is exhausted the panel would otherwise sit on the last
+    // regular week forever under a "This Week's" heading. It becomes a closing
+    // summary instead, and hands the postseason off to the Rivalry Games section
+    // that revealRivalryGames() just brought back below it.
+    const done = !!d.scheduleComplete;
+    const title = done ? 'Final Matchups' : "This Week's Matchups";
+    const note = done
+        ? `Regular season complete — every matchup bonus is locked in and already folded into your <b>Total</b> above. Postseason points still count toward the title; the games are below. Your full matchup log is on My Team.`
+        : `Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus${d.tieBonus > 0 ? `, or <b>+${d.tieBonus}</b> each on a tie` : ''} (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.`;
+    el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}${title}${preview}</h2>
+        <p class="h2h-panel-note">${note}</p>
+        <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
         <div class="h2h-matches" h2h-matches></div>`;
     el.hidden = false;
 
@@ -1128,7 +1208,7 @@ const noGamesMessages = [
     <div class="no-matchups-message trash-talk">
         <div class="emoji wiggle">🧢</div>
         <h3>Trash Talk Saturday Canceled</h3>
-        <p>No head-to-heads this week. The group chat is unusually calm.</p>
+        <p>No rivalry games this week. The group chat is unusually calm.</p>
         <p class="suggestion">Use this time to cook up excuses for next week.</p>
     </div>
   `,
@@ -1136,14 +1216,14 @@ const noGamesMessages = [
     <div class="no-matchups-message no-smoke">
         <div class="emoji fade-pulse">🫥</div>
         <h3>Nobody Wanted the Smoke</h3>
-        <p>No matchups on the board. Everyone’s ducking this week.</p>
+        <p>No rivalry games on the board. Everyone’s ducking this week.</p>
         <p class="suggestion">Feel free to flex your record anyway.</p>
     </div>
   `,
   `
     <div class="no-matchups-message gods-away">
         <div class="emoji blink">👀</div>
-        <h3>The Matchup Gods Looked Away</h3>
+        <h3>The Rivalry Gods Looked Away</h3>
         <p>No battles this week. It’s just punts and vibes.</p>
         <p class="suggestion">Enjoy the peace. Chaos returns soon.</p>
     </div>
