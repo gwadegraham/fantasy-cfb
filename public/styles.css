@@ -152,9 +152,62 @@ body {
     display: inline-block;
 }
 
+/* Brand wordmark. CAMPUS and Clash collide on purpose — that overlap is the
+   whole idea of the mark, so it's set in `em` and lands in the same place at
+   every size. It used to be `margin-top: -18%`, and percentage margins resolve
+   against the containing block's WIDTH, so the depth of the collision drifted
+   as the navbar resized (−16px to −36px at a fixed 32px font).
+
+   The script carries a keyline in the page's own background colour, which cuts
+   a clean channel through the block caps. Without it a deep overlap just reads
+   as two words smudging together; with it, the collision reads as intentional.
+   Every metric below is em-relative, so --brand-size is the only knob. */
 .brand-title {
-    font-size: 1.5rem;
-    margin: .5rem;
+    --brand-size: 2.1rem;
+    --brand-ground: var(--cc-bg);   /* keyline = a hole punched in the ground */
+    font-size: var(--brand-size);
+    line-height: 1;                 /* Pacifico's default line box is ~1.5x and inflates the navbar */
+    display: inline-grid;
+    justify-items: center;
+    margin: .3rem .5rem;
+}
+
+.brand-campus {
+    font-family: Graduate, serif;
+    font-size: .62em;
+    letter-spacing: .10em;
+    text-indent: .10em;    /* cancel the trailing letter-space so it centers true */
+}
+
+.brand-clash {
+    font-family: Pacifico, cursive;
+    font-size: 1.1em;      /* larger script crashing into smaller caps reads as impact */
+    /* THE clash. em, so it cannot drift with width. Note this resolves against
+       .brand-clash's OWN font-size (1.1em), so -.18em here eats about a third
+       of CAMPUS's height — deep enough to read as a deliberate hit, shallow
+       enough that every cap stays legible. Past -.27em CAMPUS starts to erode.
+       Retune this alongside font-size above: the two are coupled, so shrinking
+       the script shrinks the bite unless this rises to compensate. */
+    margin-top: -.18em;
+    margin-left: -.04em;   /* optical centering — Pacifico enters left-heavy */
+    color: var(--cc-accent);
+    position: relative;
+    z-index: 1;            /* script passes in front of the caps */
+    /* Keyline. text-shadow rather than -webkit-text-stroke: the stroke version
+       needs `paint-order: stroke fill`, and where that's ignored the stroke
+       paints over the fill and hollows the letters out. */
+    text-shadow:
+        .052em 0 var(--brand-ground), -.052em 0 var(--brand-ground),
+        0 .052em var(--brand-ground), 0 -.052em var(--brand-ground),
+        .037em .037em var(--brand-ground), -.037em .037em var(--brand-ground),
+        .037em -.037em var(--brand-ground), -.037em -.037em var(--brand-ground);
+}
+
+/* Desktop size lives here, once. Every page's own stylesheet used to carry its
+   own `.brand-title { font-size: 2rem }` at this breakpoint — six copies of the
+   same rule, and each one overrode styles.css because the page CSS loads after. */
+@media only screen and (min-width: 64em) {
+    .brand-title { --brand-size: 2.4rem; }
 }
 
 /* Current page indicator */
@@ -715,8 +768,12 @@ footer {
    on page load. Gated behind prefers-reduced-motion (no-preference only), so
    the logo just appears normally for readers who opt out. */
 @media (prefers-reduced-motion: no-preference) {
+    /* Only the RIGHT inset animates, so the wipe is purely horizontal. The other
+       three sides stay slack: with line-height:1 the script's ascenders and its
+       keyline both sit outside the content box, and an `inset(0 0 0 0)` end state
+       would shave them off for good (animation-fill-mode is `both`). */
     .brand-title > div {
-        clip-path: inset(0 100% 0 0);
+        clip-path: inset(-.4em 100% -.4em -.4em);
         animation: brand-draw .7s cubic-bezier(.4, 0, .2, 1) both;
     }
     .brand-title > div:nth-child(1) { animation-delay: .05s; }
@@ -724,7 +781,7 @@ footer {
 }
 
 @keyframes brand-draw {
-    to { clip-path: inset(0 0 0 0); }
+    to { clip-path: inset(-.4em -.4em -.4em -.4em); }
 }
 /* Dev-only role-spoof switcher in the navbar (rendered only in non-production
    for a real Admin). Amber signals "development tool". */
