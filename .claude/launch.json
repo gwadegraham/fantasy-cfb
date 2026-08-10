@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 3000
+    },
+    {
+      "name": "fantasy-cfb-2025",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "PORT=3001 YEAR=2025 node server.js"],
+      "port": 3001
     }
   ]
 }

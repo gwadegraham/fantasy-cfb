@@ -352,6 +352,156 @@ describe('head-to-head matchups panel', () => {
     });
 });
 
+// --- postseason handoff ------------------------------------------------------
+
+// Once every H2H week is final the page swaps roles: the matchup panel closes
+// out as a summary, and the Rivalry Games section it displaced all season comes
+// back to carry the rest of the schedule.
+describe('postseason handoff', () => {
+    const schedule = [{ week: 1, games: [{ id: 'g1' }] }, { week: 2, games: [{ id: 'g2' }] }];
+    const matchups = (over = {}) => Object.assign({
+        enabled: true, winBonus: 5, tieBonus: 2, featuredWeek: 2,
+        managers: H2H_PAYLOAD.managers, schedule
+    }, over);
+    // Bowls are on the board: someone has banked postseason points.
+    const post = (extra = {}) => [
+        scored('a', 'Alice', 'Adams', [10, 40, { season: 'postseason', week: 1, score: 24 }], extra),
+        scored('b', 'Bob', 'Brown', [40, 5, { season: 'postseason', week: 1, score: 12 }])
+    ];
+    // The gap between the last matchup and the first bowl — championship week
+    // and Army/Navy. Regular weeks scored, nothing postseason yet.
+    const gap = (extra = {}) => [
+        scored('a', 'Alice', 'Adams', [10, 40, 22], extra),
+        scored('b', 'Bob', 'Brown', [40, 5, 18])
+    ];
+    const opts = (over = {}) => Object.assign({
+        users: post(),
+        h2hEnabled: true, h2hStandings: H2H_PAYLOAD, h2hMatchups: matchups({ scheduleComplete: true })
+    }, over);
+
+    const header = (page) => page.q('[poll-name]').closest('.header');
+
+    it('keeps the section hidden while a matchup week is still live', async () => {
+        const page = await loadStandingsPage(opts({ h2hMatchups: matchups() }));
+        expect(header(page).style.display).toBe('none');
+        expect(page.q('.game-content').style.display).toBe('none');
+        expect(page.q('[schedule-note]').hidden).toBe(true);
+    });
+
+    // The section is hidden all season, so building it would spend a game fetch
+    // per rostered team per week on markup nobody can see.
+    it('skips the schedule render entirely while the section is hidden', async () => {
+        const page = await loadStandingsPage(opts({
+            h2hMatchups: matchups(),
+            users: post({ teams: [{ id: 1, school: 'Indiana' }] })
+        }));
+        expect(page.urls().some(u => u.includes('/games/seasonType/'))).toBe(false);
+    });
+
+    it('renders the schedule once when the section comes back', async () => {
+        const page = await loadStandingsPage(opts({
+            users: post({ teams: [{ id: 1, school: 'Indiana' }] })
+        }));
+        const gameCalls = page.urls().filter(u => u.includes('/games/seasonType/'));
+        expect(gameCalls.length).toBeGreaterThan(0);
+        expect(gameCalls.every(u => u.includes('/postseason/'))).toBe(true);
+    });
+
+    it('brings the section back once the schedule is complete', async () => {
+        const page = await loadStandingsPage(opts());
+        expect(header(page).style.display).toBe('');
+        expect(page.q('.dropdownWeek').style.display).toBe('');
+        expect(page.q('.game-content').style.display).toBe('');
+        expect(document.querySelectorAll('.hr-subtle')[1].style.display).toBe('');
+    });
+
+    it('retitles the section for the postseason and explains the scoring', async () => {
+        const page = await loadStandingsPage(opts());
+        expect(page.q('[poll-name]').textContent).toBe('Postseason Rivalries');
+        const note = page.q('[schedule-note]');
+        expect(note.hidden).toBe(false);
+        expect(note.textContent).toContain('matchup bonuses ended with the regular season');
+        // Tightens the heading's bottom padding so the note reads as its
+        // sub-line at every breakpoint.
+        expect(header(page).classList.contains('has-section-note')).toBe(true);
+    });
+
+    it('lands on the postseason instead of the last regular week', async () => {
+        const page = await loadStandingsPage(opts());
+        expect(window.localStorage.getItem('weekCode')).toBe('week-17');
+        expect(page.jquery.store['#dropdownMenuButtonWeek'].text).toBe('Postseason');
+    });
+
+    it('leaves a manually picked week alone', async () => {
+        const page = await loadStandingsPage(opts({
+            localStorage: { week: 'Week 2', weekCode: 'week-2' }
+        }));
+        expect(window.localStorage.getItem('weekCode')).toBe('week-2');
+        expect(header(page).style.display).toBe('');   // still revealed
+    });
+
+    // The H2H schedule runs out weeks before the bowls start. Championship week
+    // and Army/Navy carry rivalry games of their own, so the section is revealed
+    // on the regular slate rather than parked on an empty postseason view.
+    describe('before the first bowl', () => {
+        it('still reveals the section', async () => {
+            const page = await loadStandingsPage(opts({ users: gap() }));
+            expect(header(page).style.display).toBe('');
+            expect(page.q('.game-content').style.display).toBe('');
+            expect(page.q('[schedule-note]').hidden).toBe(false);
+        });
+
+        it('keeps the season-neutral title and the latest scored week', async () => {
+            const page = await loadStandingsPage(opts({ users: gap() }));
+            expect(page.q('[poll-name]').textContent).toBe('Rivalry Games');
+            expect(window.localStorage.getItem('weekCode')).toBe('week-3');
+        });
+
+        it('renders that week rather than an empty postseason', async () => {
+            const page = await loadStandingsPage(opts({
+                users: gap({ teams: [{ id: 1, school: 'Indiana' }] })
+            }));
+            const gameCalls = page.urls().filter(u => u.includes('/games/seasonType/'));
+            expect(gameCalls.length).toBeGreaterThan(0);
+            expect(gameCalls.every(u => u.includes('/regular/week/3/'))).toBe(true);
+        });
+
+        // A postseason entry exists before any bowl is played, seeded at 0 by
+        // the scoring job — that must not count as the postseason starting.
+        it('ignores a postseason bucket with no points in it', async () => {
+            const page = await loadStandingsPage(opts({
+                users: [scored('a', 'Alice', 'Adams', [10, 40, { season: 'postseason', week: 1, score: 0 }])]
+            }));
+            expect(page.q('[poll-name]').textContent).toBe('Rivalry Games');
+            expect(window.localStorage.getItem('weekCode')).toBe('week-2');
+        });
+    });
+
+    it('closes the matchup panel out as a summary', async () => {
+        const page = await loadStandingsPage(opts());
+        const html = page.h2hPanel().innerHTML;
+        expect(html).toContain('Final Matchups');
+        expect(html).not.toContain("This Week's Matchups");
+        expect(html).toContain('Regular season complete');
+        expect(html).not.toContain('win the matchup for a');
+    });
+
+    it('leaves the panel in its live form while matchups remain', async () => {
+        const page = await loadStandingsPage(opts({ h2hMatchups: matchups() }));
+        expect(page.h2hPanel().innerHTML).toContain("This Week's Matchups");
+        expect(page.h2hPanel().innerHTML).not.toContain('Final Matchups');
+    });
+
+    it('never touches the section for a league without H2H', async () => {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10, 40])], h2hEnabled: false
+        });
+        expect(header(page).style.display).toBe('');
+        expect(page.q('[poll-name]').textContent).toBe('Rivalry Games');
+        expect(page.q('[schedule-note]').hidden).toBe(true);
+    });
+});
+
 // --- roster drawer + score animation ----------------------------------------
 
 describe('roster drawer', () => {

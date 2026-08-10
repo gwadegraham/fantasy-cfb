@@ -113,6 +113,31 @@
         align-content: center;
     }
 
+    /* Sub-line under the Rivalry Games header, filled by standings.js when an
+       H2H league reaches the postseason.
+       The gap to whatever follows the heading is .header-title's own bottom
+       padding, and that varies by breakpoint (5px under 768px, 35px above it,
+       20px past 64em). So the pair is tightened from the heading side when the
+       note is showing — pulling the note up by a fixed amount instead overlapped
+       the title at the mobile padding. standings.js adds .has-section-note. */
+    .header.has-section-note .header-title {
+        padding-bottom: 0.4em;   /* em, so the gap tracks the title at each breakpoint */
+    }
+
+    .section-note {
+        max-width: 640px;
+        margin: 0 auto 1.2rem;
+        padding: 0 20px;
+        text-align: center;
+        color: var(--cc-muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+
+    .section-note[hidden] {
+        display: none;
+    }
+
     /* No Games CSS */
     #no-games-container {
         margin: 1em;

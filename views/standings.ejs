@@ -84,11 +84,17 @@
     <!-- Cards are rendered from data by standings.js (buildHighlights). -->
     <div class="highlights-container"></div>
     <hr class="hr-subtle">
+    <!-- Real CFB games where two managers' drafted teams meet. Named for what it
+         holds, so it never collides with the H2H panel's weekly "matchups" (the
+         scheduled fantasy pairing that carries a bonus). standings.js retitles
+         this and fills [schedule-note] when an H2H league reaches the
+         postseason. -->
     <div class="header">
         <div class="header-title" poll-name>
-            Head to Head
+            Rivalry Games
         </div>
     </div>
+    <p class="section-note" schedule-note hidden></p>
     <div class="dropdown dropdownWeek">
         <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButtonWeek" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
             Week 1
