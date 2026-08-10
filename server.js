@@ -499,6 +499,12 @@ app.get('/calculate-team-score/:season/:teamId/:teamName', requireAdmin, async (
     }
 });
 
+// Terminal handlers — must stay last, after every route and router above, since
+// Express matches in registration order and these two claim everything left.
+const { notFound, errorHandler } = require('./modules/http-errors');
+app.use(notFound);
+app.use(errorHandler);
+
 // Wrap Express in an HTTP server so Socket.IO (live draft) can share the port.
 const server = http.createServer(app);
 const io = new Server(server);

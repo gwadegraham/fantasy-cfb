@@ -88,6 +88,12 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        "./modules/http-errors.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         "./modules/job-runs-util.js": {
             statements: 100,
             branches: 100,
