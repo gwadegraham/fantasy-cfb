@@ -1135,6 +1135,15 @@ describe('schedule', () => {
         expect(page.scheduleBody().querySelectorAll('.game-table')).toHaveLength(0);
     });
 
+    // Regression: the games route used to 400 for "this team had no game that
+    // week", so a normal postseason load logged one console error per rostered
+    // team (most drafted teams play no bowl game) and buried real failures. An
+    // empty slate is a 200 + [] now, and the page must stay quiet about it.
+    it('logs nothing when a team simply has no game that week', async () => {
+        await loadStandingsPage({ users: league(), games: [] });
+        expect(console.error).not.toHaveBeenCalled();
+    });
+
     it('hides the loader and reveals the table when done', async () => {
         const page = await loadStandingsPage({ users: league(), games: [] });
         expect(page.q('.football-loader').style.display).toBe('none');
@@ -1343,6 +1352,9 @@ describe('degrading when upstream calls fail', () => {
         });
         expect(page.q('.football-loader').style.display).toBe('none');
         expect(page.q('#no-games-container').innerHTML).toContain('no-matchups-message');
+        // A genuine failure still has to be loud — that's the whole point of not
+        // spending the console on empty weeks.
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Could not load games for Indiana'));
     });
 
     it('survives the team-logo endpoint erroring', async () => {

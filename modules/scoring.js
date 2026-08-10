@@ -127,7 +127,11 @@ module.exports= {
                         teamScores.push(teamScoreObject);
                     }
                 } else {
-                    console.log(response.message);
+                    // The route answers "no game this week" with 200 + [], so a
+                    // non-200 here means the lookup itself failed and this
+                    // team's points are missing from the week — not that it was
+                    // idle. Loud on purpose.
+                    console.error(`Could not load games for ${team.school}: ${response.message}`);
                 }
             }
 

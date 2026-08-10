@@ -1458,18 +1458,14 @@ async function getGame(season, week, team) {
     var game = await gamePromise;
     var response = await game.json();
 
-    var games = new Array();
-
-
+    // The route answers "no game this week" with 200 + [], so a non-200 here is
+    // a real failure (500 / network) rather than an empty slate — log it as one.
     if (game.status == 200) {
-        for (const game of response) {
-            games.push(game);
-        }
-    } else {
-        console.log(response.message);
+        return response;
     }
 
-    return games;
+    console.error(`Could not load games for ${team.school}: ${response.message}`);
+    return [];
 }
 
 async function getRankings (week, seasonType, seasonYear) {
