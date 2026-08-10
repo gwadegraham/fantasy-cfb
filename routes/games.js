@@ -29,11 +29,11 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     try {
         const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":process.env.YEAR}, {seasonType: seasonType}, {week: week}]});
 
-        if (JSON.stringify(game) != '[]') {
-            res.status(200).json(game);
-        } else{
-            return res.status(400).json({message: `${teamId} did not have a game in week ${week}`});
-        }
+        // "This team had no game that week" is an empty result, not a client
+        // error. It used to 400, which put one console error per rostered team
+        // on every Standings load in the postseason (most drafted teams play no
+        // bowl game) and buried real failures in the noise.
+        res.status(200).json(game);
 
     } catch (err) {
         res.status(500).json({message: err.message});

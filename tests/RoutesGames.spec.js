@@ -70,15 +70,18 @@ describe('GET reads', () => {
         expect(res.body[0].id).toBe(402);
     });
 
-    test('week-scoped lookup finds a game, and 400s when there is none', async () => {
+    // A team with no game that week is an empty result, not a client error. It
+    // used to 400, which logged one console error per rostered team on every
+    // postseason Standings load (most drafted teams play no bowl game).
+    test('week-scoped lookup finds a game, and 200s with [] when there is none', async () => {
         await Game.create(gameDoc({ homeId: 7, awayId: 8 }));
         const hit = await request(app).get('/games/seasonType/regular/week/1/team/7');
         expect(hit.status).toBe(200);
         expect(hit.body[0].id).toBe(401);
 
         const miss = await request(app).get('/games/seasonType/regular/week/9/team/7');
-        expect(miss.status).toBe(400);
-        expect(miss.body.message).toMatch(/did not have a game/);
+        expect(miss.status).toBe(200);
+        expect(miss.body).toEqual([]);
     });
 });
 
