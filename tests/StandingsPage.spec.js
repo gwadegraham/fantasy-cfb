@@ -1032,9 +1032,10 @@ describe('rankings selection', () => {
 
 // --- schedule: game-card branch matrix --------------------------------------
 //
-// displaySchedule builds each card twice — once when a game is first seen, and
-// again when the second manager in the matchup reaches it — with separate
-// home/away paths in both passes. These drive the permutations.
+// displaySchedule builds each card once, on first sighting, with separate
+// home/away paths. Points resolve through pointsFor against the roster owner,
+// so the card is complete no matter which manager reaches the game first.
+// These drive the permutations.
 
 describe('schedule game cards', () => {
     const INDIANA = { id: 1, school: 'Indiana', mascot: 'Hoosiers', logos: ['ind.png'] };
@@ -1054,11 +1055,12 @@ describe('schedule game cards', () => {
         startDate: '2025-09-06T16:00:00Z', notes: ''
     }, over);
 
-    it('builds the card from the home side and re-resolves it from the away side', async () => {
+    it('badges the away winner even though the home manager builds the card', async () => {
         const page = await loadStandingsPage({ users: homeFirst(), games: [game()], teamLogos: LOGOS });
         const html = page.scheduleBody().innerHTML;
         expect(html).toContain('Indiana');
         expect(html).toContain('Purdue');
+        expect(html).toContain('+10');   // Alice's Indiana, resolved from her record
         expect(page.scheduleBody().querySelectorAll('.game-table')).toHaveLength(1);
     });
 
@@ -1079,19 +1081,16 @@ describe('schedule game cards', () => {
         expect(page.scheduleBody().innerHTML).not.toContain('fa-caret-left');
     });
 
-    // Characterization test, not an endorsement. Both lookups run against the
-    // manager currently being iterated, but a team's points live only in its
-    // OWNER's weeklyScore — so the opponent always resolves to 0 and the card
-    // carries a badge for one side only.
-    it('scores each side of a playoff game independently', async () => {
+    it('badges both managers on a playoff game', async () => {
         const page = await loadStandingsPage({
             users: homeFirst(), teamLogos: LOGOS,
             games: [game({ seasonType: 'postseason', notes: 'CFP Playoff Semifinal', awayPoints: 17, homePoints: 31 })]
         });
         const html = page.scheduleBody().innerHTML;
         expect(html).toContain('CFP Playoff Semifinal');
-        expect(html).toContain('+7');    // Bob's Purdue — the card is built from his record
-        expect(html).not.toContain('+10');   // Alice's Indiana points are invisible here
+        expect(html).toContain('+10');   // Alice's Indiana
+        expect(html).toContain('+7');    // Bob's Purdue
+        expect(page.scheduleBody().querySelectorAll('td.score-added')).toHaveLength(2);
     });
 
     it('flips the caret to the home row when the home team wins a playoff game', async () => {
@@ -1123,7 +1122,7 @@ describe('schedule game cards', () => {
         expect(page.scheduleBody().innerHTML).toContain(expected);
     });
 
-    it('skips a game whose kickoff time is still TBD on the second pass', async () => {
+    it('renders a game with a TBD kickoff exactly once', async () => {
         const page = await loadStandingsPage({
             users: homeFirst(), teamLogos: LOGOS,
             games: [game({ startTimeTbd: true })]
@@ -1256,8 +1255,7 @@ describe('score breakdown league fallback', () => {
 });
 
 // The mirror of the block above: when the AWAY team's manager is listed first,
-// the first-sighting path takes its away branch and the second pass resolves
-// from the home side.
+// the card is built from its away branch instead.
 describe('schedule game cards (away manager first)', () => {
     const LOGOS = [{ id: 1, logos: ['ind.png'] }, { id: 2, logos: ['pur.png'] }];
     const awayFirst = () => [
@@ -1279,22 +1277,17 @@ describe('schedule game cards (away manager first)', () => {
         expect(page.scheduleBody().innerHTML).toContain('Playoff Quarterfinal');
     });
 
-    // Characterization test, not an endorsement. The first-sighting path has an
-    // explicit tie branch (no winner caret), but the duplicate-game path only
-    // splits on `awayPoints > homePoints`, so a tie falls into the "home won"
-    // else and replaces the correct card with one that carets the home team.
-    // Low stakes in practice — FBS games go to overtime, so a completed regular
-    // game effectively never ties — but the two paths disagree.
-    it('renders a tie as a home win once the home manager re-resolves it', async () => {
+    // Unreachable in practice (FBS games go to overtime), but the branch exists.
+    it('renders a tie with no winner caret and no badge', async () => {
         const page = await loadStandingsPage({
             users: awayFirst(), teamLogos: LOGOS,
             games: [game({ awayPoints: 21, homePoints: 21 })]
         });
-        expect(page.scheduleBody().innerHTML).toContain('fa-caret-left');
-        expect(page.scheduleBody().innerHTML).toContain('+7');
+        expect(page.scheduleBody().innerHTML).not.toContain('fa-caret-left');
+        expect(page.scheduleBody().querySelectorAll('td.score-added')).toHaveLength(0);
     });
 
-    it('rebuilds the card from the home manager when the home team wins', async () => {
+    it('badges the home winner even though the away manager builds the card', async () => {
         const page = await loadStandingsPage({
             users: awayFirst(), teamLogos: LOGOS,
             games: [game({ awayPoints: 14, homePoints: 35 })]
