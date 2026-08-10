@@ -6,8 +6,8 @@
   "scripts": {
     "devStart": "nodemon server.js",
     "build": "npm install",
-    "test": "jest --config ./jest.config.json",
-    "test:coverage": "jest --config ./jest.config.json --coverage"
+    "test": "jest --config ./jest.config.js",
+    "test:coverage": "jest --config ./jest.config.js --coverage"
   },
   "author": "",
   "license": "ISC",
