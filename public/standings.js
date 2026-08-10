@@ -31,10 +31,13 @@ function latestWeek(users) {
 // week's games exist (even with undrafted, 0-team rosters), so "a weekly entry
 // exists" fires too early. The highlights panel and the points chart gate on
 // this instead, so they stay hidden until the season is actually underway.
-function seasonHasScoring(users) {
-    return (users || []).some(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || [])
-        .some(w => (w.score || 0) !== 0));
-}
+//
+// The rule itself lives in public/season-scoring.js (loaded app-wide by the
+// navbar partial) because the Weekly Recap and the server need the same answer —
+// the two had drifted, and the recap was popping a zero-point week-one story
+// through the preseason. The users here carry one season each (routes/users.js
+// $elemMatch's the active one), which is the no-season-argument form.
+const seasonHasScoring = (users) => ccSeasonScoring.seasonHasScoring(users);
 
 // True once someone has banked real postseason points — i.e. the bowl/playoff
 // slate has something on it. Gated on a non-zero score for the same reason
@@ -44,10 +47,10 @@ function seasonHasScoring(users) {
 // This is deliberately NOT the same moment as "the H2H schedule ran out".
 // Conference championship week and Army/Navy fall between the two, and they
 // carry rivalry games of their own — see revealRivalryGames.
-function postseasonHasScoring(users) {
-    return (users || []).some(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || [])
-        .some(w => w.season === 'postseason' && (w.score || 0) !== 0));
-}
+//
+// Shares its "non-zero banked points" rule with seasonHasScoring above, from the
+// same place (public/season-scoring.js), so the two can't drift apart.
+const postseasonHasScoring = (users) => ccSeasonScoring.postseasonHasScoring(users);
 
 function detectMobile() {
     if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/.test(navigator.userAgent)){
@@ -473,6 +476,7 @@ function h2hRows(d) {
     try { rankedRows(usersData || []).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
     return managers.map((m, i) => ({
         rank: m.rank != null ? m.rank : i + 1,
+        tie: !!m.tie,                     // competition-ranked server-side, so ties share a place
         id: m.userId,
         name: m.name,
         franchise: m.franchise,

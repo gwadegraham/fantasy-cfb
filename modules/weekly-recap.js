@@ -14,6 +14,9 @@ const { pickLogo } = require('../public/logo.js');
 // teams actually scored, not about whether you happened to win your matchup.
 // So the per-week numbers here are measured on the base.
 const { baseWeekScore } = require('./h2h');
+// "This week got scored" — shared with the Standings highlights + points chart
+// so the whole app agrees on when a season is genuinely underway.
+const { entryHasScoring } = require('../public/season-scoring.js');
 
 function ordinal(n) {
     const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
@@ -122,7 +125,9 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
     return `${lead}${avg}${place ? ` — holding at ${place}` : ''}.`;
 }
 
-// Build one recap object per week the manager has played, oldest → newest.
+// Build one recap object per week the LEAGUE has played, oldest → newest. A
+// season nobody has played yet yields no recaps at all — that empty list is what
+// keeps the popup and the My Team tile hidden (see playedWeeks below).
 //   user         — the profile user's full doc (all seasons)
 //   leagueUsers  — every user in the league (full docs) for rank + average
 //   season       — the season to recap (number or string)
@@ -130,6 +135,8 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
 function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
     const mySeason = seasonOf(user, season);
     const result = { userId: String(user && user._id), season: Number(season), recaps: [] };
+    // Cheap short-circuit only — a manager with no entries at all has no weeks.
+    // Whether those entries represent PLAYED weeks is settled by playedWeeks below.
     if (!mySeason || !(mySeason.weeklyScore || []).length) return result;
 
     const leagueSeasons = (leagueUsers || [])
@@ -143,12 +150,22 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
     const metaOf = (teamId, school) => (teamId != null && metaById[teamId]) || metaBySchool[school] || null;
     const logoOf = (teamId, school) => { const m = metaOf(teamId, school); return (m && pickLogo(m.logos)) || null; };
 
-    // Distinct effective weeks across the whole league, ascending — so "the
-    // previous week" for rank movement is the real prior week, not W-1 (which
-    // may not exist).
-    const weekSet = new Set();
-    leagueSeasons.forEach(ls => ls.weekly.forEach(e => weekSet.add(effWeek(e))));
-    const weeksAsc = [...weekSet].sort((a, b) => a - b);
+    // Distinct effective weeks the league has actually PLAYED, ascending — so
+    // "the previous week" for rank movement is the real prior week, not W-1
+    // (which may not exist).
+    //
+    // Played means someone banked points, not merely that a weekly entry exists:
+    // the nightly scoring job seeds a zero-point entry for every manager as soon
+    // as a week's games exist — all through the preseason with undrafted, 0-team
+    // rosters, and again mid-week before a game goes final — so gating on
+    // existence recapped a week nobody had played (the popup fired a "Week 1 · 0
+    // points" story before kickoff). Unplayed weeks drop out here, which also
+    // makes an unstarted season return no recaps at all, so every caller — the
+    // popup, the My Team tile, a future recap email — inherits the gate.
+    const playedWeeks = new Set();
+    leagueSeasons.forEach(ls => ls.weekly.forEach(e => { if (entryHasScoring(e)) playedWeeks.add(effWeek(e)); }));
+    const weeksAsc = [...playedWeeks].sort((a, b) => a - b);
+    if (!weeksAsc.length) return result;   // season hasn't kicked off yet
 
     // Per-week league stats (average / high / low) so slides can call out
     // "top score of the week", the margin vs average, streaks, etc.
@@ -180,7 +197,12 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
         agg.score += baseWeekScore(e);
         (e.scoreByTeam || []).forEach(st => agg.scoreByTeam.push(st));
     });
-    const myWeekly = [...byEff.values()].sort((a, b) => effWeek(a) - effWeek(b));
+    // Only weeks the league played (see playedWeeks) — a manager's own seeded
+    // zero for the in-progress week is not a week they've played, but their real
+    // 0-point week inside a week the league DID play still earns a quiet recap.
+    const myWeekly = [...byEff.values()]
+        .filter(e => playedWeeks.has(effWeek(e)))
+        .sort((a, b) => effWeek(a) - effWeek(b));
     // Running state for the "momentum" slide (season high, streaks, milestones).
     let runningMax = -Infinity, runningTotal = 0, aboveStreak = 0, belowStreak = 0, regularWeeksSeen = 0;
 

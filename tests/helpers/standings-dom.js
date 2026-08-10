@@ -254,6 +254,13 @@ async function loadStandingsPage(opts = {}) {
     global.$ = jquery;
     global.userState = userState;
     global.ccLogo = (logos) => (logos && logos[0]) || '';
+    // The REAL shared season-underway helper, not a stub — the page's highlights
+    // and chart gate on it, so the gate itself should be under test here too.
+    // The navbar partial supplies it in the browser (views/partials/navbar.ejs).
+    global.ccSeasonScoring = require('../../public/season-scoring.js');
+    // Likewise the real ranking helper — rankedRows places the standings table
+    // through it, so a stub would hide the tie behavior the rows are asserted on.
+    global.ccLeagueRank = require('../../public/league-rank.js');
     global.Chart = class {
         constructor(canvas, config) { charts.push({ canvas, config }); this.destroyed = false; }
         destroy() { this.destroyed = true; }

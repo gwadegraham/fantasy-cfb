@@ -7,6 +7,11 @@
 // largest-first, so [0] is the pick) — logo selection itself is covered by
 // Logo.spec.js; this suite only cares that the chosen URL lands in the markup.
 global.ccLogo = (logos) => (logos && logos[0]) || '';
+// ccLeagueRank is the other browser global the module reaches for (rankedRows
+// ranks through it). The REAL one, not a stub — placement and tie handling are
+// exactly what the row assertions below are about. LeagueRank.spec.js covers it
+// directly.
+global.ccLeagueRank = require('../public/league-rank.js');
 
 const {
     rankedRows,
@@ -65,6 +70,40 @@ describe('rankedRows', () => {
         expect(rows.every(r => r.preseason === false)).toBe(true);
     });
 
+    it('shares a placement between managers level on points, and skips what the tie consumed', () => {
+        // The old "index in the sorted array" rank gave the tied pair 2 and 3,
+        // decided by nothing but the order they arrived in.
+        const rows = rankedRows([
+            user('a', 'Alice', 'Adams', [50]),
+            user('b', 'Bob', 'Brown', [30]),
+            user('c', 'Cara', 'Cole', [30]),
+            user('d', 'Dan', 'Dole', [10])
+        ]);
+        expect(rows.map(r => r.rank)).toEqual([1, 2, 2, 4]);
+        expect(rows.map(r => r.tie)).toEqual([false, true, true, false]);
+    });
+
+    it('gives the same placements whatever order the league arrives in', () => {
+        const league = [
+            user('a', 'Alice', 'Adams', [30]),
+            user('b', 'Bob', 'Brown', [30]),
+            user('c', 'Cara', 'Cole', [50])
+        ];
+        const byId = (rows) => rows.reduce((acc, r) => Object.assign(acc, { [r.id]: r.rank }), {});
+        expect(byId(rankedRows(league))).toEqual(byId(rankedRows(league.slice().reverse())));
+        expect(byId(rankedRows(league))).toEqual({ a: 2, b: 2, c: 1 });
+    });
+
+    it('ties everyone for 1st before the season starts, instead of numbering by DB order', () => {
+        const rows = rankedRows([
+            user('a', 'Alice', 'Adams', [0]),
+            user('b', 'Bob', 'Brown', [0]),
+            user('c', 'Cara', 'Cole', [0])
+        ]);
+        expect(rows.map(r => r.rank)).toEqual([1, 1, 1]);
+        expect(rows.every(r => r.tie && r.preseason)).toBe(true);
+    });
+
     it('reports movement against last week', () => {
         // Week 1: Bob 50, Alice 10. Week 2 flips it.
         const rows = rankedRows([
@@ -82,6 +121,19 @@ describe('rankedRows', () => {
             user('b', 'Bob', 'Brown', [20, 20])
         ]);
         expect(rows.map(r => r.delta)).toEqual([0, 0]);
+    });
+
+    it('counts losing a share of the lead as a slip', () => {
+        // Week 1 both on 50 (co-leaders). Week 2 Alice pulls ahead, so Bob really
+        // does drop from 1st to 2nd — the old index-based delta called it "no
+        // change", because neither moved position in the sorted array.
+        const rows = rankedRows([
+            user('a', 'Alice', 'Adams', [50, 10]),
+            user('b', 'Bob', 'Brown', [50, 0])
+        ]);
+        expect(rows.map(r => r.id)).toEqual(['a', 'b']);
+        expect(rows[0].delta).toBe(0);    // held 1st
+        expect(rows[1].delta).toBe(-1);   // 1st -> 2nd
     });
 
     it('has no movement to report after a single week', () => {
@@ -214,17 +266,34 @@ describe('buildStandingsRowsHtml (classic)', () => {
         expect(html).toContain('&lt;script&gt;x&lt;/script&gt;');
     });
 
-    it('labels the leader, the gap, and a tie', () => {
-        // Gaps are measured to the leader, so "Tied" only shows for a manager
-        // level with first place.
-        const html = buildStandingsRowsHtml(rankedRows([
+    it('labels a lone leader, a shared lead, and the gap behind', () => {
+        const alone = buildStandingsRowsHtml(rankedRows([
+            user('a', 'Alice', 'Adams', [50]),
+            user('b', 'Bob', 'Brown', [30])
+        ]), {});
+        expect(alone).toContain('<span class="gap leader">Leader</span>');
+        expect(alone).toContain('<span class="gap">-20 back</span>');
+
+        // Level on points: both are leading, and both say so.
+        const shared = buildStandingsRowsHtml(rankedRows([
             user('a', 'Alice', 'Adams', [50]),
             user('b', 'Bob', 'Brown', [50]),
             user('c', 'Cara', 'Cole', [30])
         ]), {});
-        expect(html).toContain('<span class="gap leader">Leader</span>');
-        expect(html).toContain('<span class="gap">-20 back</span>');
-        expect(html).toContain('<span class="gap">Tied</span>');
+        expect(shared.match(/<span class="gap leader">Co-leader<\/span>/g)).toHaveLength(2);
+        expect(shared).not.toContain('>Leader<');
+        expect(shared).toContain('<span class="gap">-20 back</span>');
+    });
+
+    it('prefixes a shared placement with T- in the rank cell', () => {
+        const html = buildStandingsRowsHtml(rankedRows([
+            user('a', 'Alice', 'Adams', [50]),
+            user('b', 'Bob', 'Brown', [30]),
+            user('c', 'Cara', 'Cole', [30])
+        ]), {});
+        expect(html).toContain('<span class="rank-num">1</span>');
+        expect(html.match(/<span class="rank-num">T-2<\/span>/g)).toHaveLength(2);
+        expect(html).not.toContain('>3<');   // the tie consumed 3rd
     });
 
     it('renders every preseason row as tied with no medals', () => {
