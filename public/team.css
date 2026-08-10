@@ -256,10 +256,6 @@
 }
 
 @media only screen and (min-width: 64em) {
-    .brand-title {
-        font-size: 2rem;
-    }
-
     .games-container {
         display: flex;
         flex-direction: column;
