@@ -26,24 +26,35 @@
         return (seasons[0] && seasons[0].cumulativeScore) || 0;
     }
 
+    // Competition ranks for `items`, highest scoreOf(item) first. Returns a
+    // parallel array of { rank, tie }, index-aligned with `items` — so the caller
+    // keeps whatever display order it already has (usually sorted by score) and
+    // just reads the placement off. Ties share a rank and consume the ones behind
+    // them: 1, 2, 2, 4.
+    function competitionRanks(items, scoreOf) {
+        var scores = (items || []).map(function (item, i) { return scoreOf(item, i); });
+        return scores.map(function (mine, i) {
+            var ahead = 0, shared = 0;
+            scores.forEach(function (s, j) {
+                if (s > mine) ahead += 1;
+                else if (s === mine && j !== i) shared += 1;
+            });
+            return { rank: ahead + 1, tie: shared > 0 };
+        });
+    }
+
     // { rank, tie, total } for userId among `users`, or null if they aren't in the
     // league. `tie` means another manager holds the exact same total, so the
     // caller can prefix "T-". `total` is the league size, for "3rd of 6".
     function leagueRank(users, userId) {
-        var rows = (users || []).map(function (u) {
-            return { id: String(u && u._id), score: seasonTotal(u) };
-        });
+        var rows = users || [];
         var id = String(userId);
-        var mine = rows.filter(function (r) { return r.id === id; })[0];
-        if (!mine) return null;
-
-        var ahead = 0, shared = 0;
-        rows.forEach(function (r) {
-            if (r.score > mine.score) ahead += 1;
-            else if (r.score === mine.score && r.id !== id) shared += 1;
-        });
-        return { rank: ahead + 1, tie: shared > 0, total: rows.length };
+        var idx = -1;
+        rows.forEach(function (u, i) { if (idx < 0 && String(u && u._id) === id) idx = i; });
+        if (idx < 0) return null;
+        var mine = competitionRanks(rows, seasonTotal)[idx];
+        return { rank: mine.rank, tie: mine.tie, total: rows.length };
     }
 
-    return { leagueRank: leagueRank };
+    return { competitionRanks: competitionRanks, leagueRank: leagueRank };
 }));

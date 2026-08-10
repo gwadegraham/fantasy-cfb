@@ -34,19 +34,24 @@ export function rankedRows(users) {
     const sorted = users.slice().sort((a, b) => cum(b) - cum(a));
     const weeks = sorted.length ? weekly(sorted[0]).length : 0;
 
-    let prevRankById = null;
-    if (weeks > 1) {
-        prevRankById = {};
-        users.slice().sort((a, b) => cumThrough(b, weeks - 1) - cumThrough(a, weeks - 1))
-            .forEach((u, i) => { prevRankById[u._id] = i; });
-    }
+    // Placements are competition-ranked, NOT each row's index in `sorted`: an
+    // index splits tied managers by whatever order the DB happened to return,
+    // which before kickoff is EVERY manager (all on 0). `sorted` still sets the
+    // display order, so the table reads top-to-bottom by points. Same rule My
+    // Team's hero rank uses — public/league-rank.js, a browser global here.
+    const now = ccLeagueRank.competitionRanks(sorted, cum);
+    // Movement compares like with like, competition rank then vs now, so losing a
+    // share of the lead reads as a slip instead of "no change".
+    const prev = weeks > 1 ? ccLeagueRank.competitionRanks(sorted, (u) => cumThrough(u, weeks - 1)) : null;
 
     const leader = sorted.length ? cum(sorted[0]) : 0;
-    // Preseason: nobody has scored yet, so there's no real leader or ranking —
-    // rows render as a flat tie (no crown, no medals) instead of an arbitrary #1.
+    // Preseason: nobody has scored yet, so there's no real leader — no crown, no
+    // medals. The ranking itself needs no special case, since everyone sitting on
+    // 0 simply ties for 1st.
     const preseason = leader <= 0;
     return sorted.map((u, i) => ({
-        rank: i + 1,
+        rank: now[i].rank,
+        tie: now[i].tie,
         id: u._id,
         name: initialName(u),
         franchise: franchiseName(u),
@@ -57,7 +62,7 @@ export function rankedRows(users) {
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
         preseason: preseason,
-        delta: (prevRankById && prevRankById[u._id] != null) ? (prevRankById[u._id] - i) : null
+        delta: prev ? (prev[i].rank - now[i].rank) : null
     }));
 }
 
@@ -122,12 +127,22 @@ export function standingsHeadHtml(h2h) {
     </tr>`;
 }
 
+// The rank cell's number. "T-2" when the placement is shared, matching how the
+// Weekly Recap labels a tied week.
+function rankNumHtml(r) {
+    return `<span class="rank-num">${r.tie ? 'T-' : ''}${r.rank}</span>`;
+}
+
 // The leader/movement/gap treatment is shared; only the middle differs.
 function gapHtml(r) {
     if (r.preseason) return '<span class="gap">Tied</span>';
-    return r.rank === 1
-        ? '<span class="gap leader">Leader</span>'
-        : (r.gap === 0 ? '<span class="gap">Tied</span>' : `<span class="gap">-${r.gap} back</span>`);
+    // The gap is measured to the leader, so gap === 0 means you ARE leading —
+    // shared with anyone who matched you, which competition ranking reports as a
+    // tie at rank 1. (There's no "tied but not leading" case for this cell; two
+    // managers level on 80 behind an 90-pt leader are both "-10 back", and their
+    // shared placement shows in the rank cell.)
+    if (r.rank === 1) return `<span class="gap leader">${r.tie ? 'Co-leader' : 'Leader'}</span>`;
+    return `<span class="gap">-${r.gap} back</span>`;
 }
 
 // The inline team-logo strip (the classic middle column). Handles both team
@@ -146,7 +161,7 @@ function inlineTeamLogos(teams) {
 function classicRowHtml(r) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     return `<tr class="standings-row${medal}">
-        <th class="sticky-header rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</th>
+        <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</th>
         <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
         <td class="team-item"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gapHtml(r)}</th>
@@ -162,7 +177,7 @@ function h2hRowHtml(r) {
     const logos = (r.teams || []).map(teamLogoLink).join('');
     const who = escapeHtml(r.franchise || r.name);
     return `<tr class="standings-row${medal}">
-        <td class="rank-cell"><span class="rank-num">${r.rank}</span>${movementHtml(r.delta)}</td>
+        <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</td>
         <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span></a></td>
         <td class="team-item h2h-teams-cell"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <td class="rec-cell">${escapeHtml(r.record || '—')}</td>

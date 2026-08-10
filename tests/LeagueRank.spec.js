@@ -5,11 +5,44 @@
 // stable, so tied managers kept whatever order the DB returned, and every manager
 // sits at 0 before the season starts. So the cases that matter here are ties and
 // order-independence.
-const { leagueRank } = require('../public/league-rank');
+const { competitionRanks, leagueRank } = require('../public/league-rank');
 
 // One manager with a season total, in the /users/league/:league payload shape
 // (routes/users.js $elemMatch's the active season, so seasons[0] is the only one).
 const mgr = (id, cumulativeScore) => ({ _id: id, seasons: [{ season: 2026, cumulativeScore }] });
+
+// The primitive the standings table and the H2H route rank through: an array of
+// { rank, tie } aligned with the input, so callers keep their own display order.
+describe('competitionRanks', () => {
+    const ranks = (scores) => competitionRanks(scores.map(s => ({ s })), (x) => x.s);
+
+    it('ranks highest-first and skips the placements a tie consumed', () => {
+        expect(ranks([50, 30, 30, 10]).map(r => r.rank)).toEqual([1, 2, 2, 4]);
+        expect(ranks([50, 30, 30, 10]).map(r => r.tie)).toEqual([false, true, true, false]);
+    });
+
+    it('does not care what order the items arrive in', () => {
+        // The property the old sort-index approach lacked.
+        expect(ranks([30, 50, 30]).map(r => r.rank)).toEqual([2, 1, 2]);
+    });
+
+    it('ties an all-equal field for 1st (the preseason shape)', () => {
+        expect(ranks([0, 0, 0])).toEqual([
+            { rank: 1, tie: true }, { rank: 1, tie: true }, { rank: 1, tie: true }
+        ]);
+    });
+
+    it('handles three-way ties and a single item', () => {
+        expect(ranks([20, 20, 20, 5]).map(r => r.rank)).toEqual([1, 1, 1, 4]);
+        expect(ranks([7])).toEqual([{ rank: 1, tie: false }]);
+    });
+
+    it('passes the index to the accessor and tolerates an empty list', () => {
+        expect(competitionRanks(['x', 'y'], (item, i) => i).map(r => r.rank)).toEqual([2, 1]);
+        expect(competitionRanks([], () => 0)).toEqual([]);
+        expect(competitionRanks(null, () => 0)).toEqual([]);
+    });
+});
 
 describe('leagueRank', () => {
     const league = [mgr('a', 120), mgr('b', 90), mgr('c', 90), mgr('d', 40)];

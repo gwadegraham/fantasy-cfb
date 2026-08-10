@@ -14,6 +14,9 @@ const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../m
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
+// Shared with the classic standings table and My Team, so a tied placement reads
+// the same everywhere.
+const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
         h2hManagerIds, computeH2HAwards } = require('../modules/h2h');
 const { pickLogo } = require('../public/logo.js');
@@ -446,7 +449,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
             // cumulative already includes weeks 15+/postseason AND whatever bonus
             // the scoring job has banked so far; add only the not-yet-banked part.
             adjustedTotal: round(meta[id].cumulative + rec[id].bonus - (banked[id] || 0))
-        })).sort((a, b) => b.adjustedTotal - a.adjustedTotal).map((m, i) => ({ rank: i + 1, ...m }));
+        })).sort((a, b) => b.adjustedTotal - a.adjustedTotal);
+        // Competition ranking, so managers level on points share a placement (and
+        // the client can render "T-2") instead of being split by array position —
+        // which before kickoff, with everyone on 0, is just the DB's document
+        // order. The sort above still sets display order.
+        competitionRanks(managers, m => m.adjustedTotal)
+            .forEach((r, i) => Object.assign(managers[i], { rank: r.rank, tie: r.tie }));
 
         // Standings-only: the ranked table is ready; return before the matchup
         // win-prob build (which needs the projections skipped above).

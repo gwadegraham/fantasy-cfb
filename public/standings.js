@@ -458,6 +458,7 @@ function h2hRows(d) {
     try { rankedRows(usersData || []).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
     return managers.map((m, i) => ({
         rank: m.rank != null ? m.rank : i + 1,
+        tie: !!m.tie,                     // competition-ranked server-side, so ties share a place
         id: m.userId,
         name: m.name,
         franchise: m.franchise,
