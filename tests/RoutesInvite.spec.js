@@ -151,6 +151,21 @@ describe('POST /users', () => {
         expect(await User.countDocuments({ firstName: 'Bo' })).toBe(0);
     });
 
+    // canManageLeague() waves an Admin through whatever it's handed, undefined
+    // included, so without this a client that forgot the league created a member
+    // belonging to neither one — present in the database, absent from every list.
+    test.each([
+        ['missing', undefined],
+        ['unknown', 'not-a-league'],
+        ['empty', '']
+    ])('refuses a %s league even for an Admin', async (_label, league) => {
+        const res = await request(adminApp).post('/users')
+            .send({ firstName: 'Rae', lastName: 'Tester', email: 'rae@example.com', league });
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/valid league/i);
+        expect(await User.countDocuments({ firstName: 'Rae' })).toBe(0);
+    });
+
     test('refuses a blank or whitespace-only email', async () => {
         const res = await request(managerApp).post('/users')
             .send({ firstName: 'Bo', lastName: 'Fox', league: LEAGUE, email: '   ' });

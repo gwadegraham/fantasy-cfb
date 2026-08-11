@@ -13,6 +13,7 @@ const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
+const { LEAGUES } = require('../modules/scoring-defaults');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
@@ -303,6 +304,15 @@ router.get('/:id/season', async (req, res) => {
 
 //Creating One
 router.post('/', async (req, res) => {
+
+    // A real league, checked before the permission gate — canManageLeague()
+    // answers `true` for an Admin no matter what it's handed, including
+    // undefined, so a client that forgot to send one produced a member belonging
+    // to neither league. They then vanish from every league-scoped list while
+    // still existing, which is a confusing way to find out.
+    if (!LEAGUES.some(l => l.code === req.body.league)) {
+        return res.status(400).json({ message: 'A valid league is required.' });
+    }
 
     // A League Manager may only add players to their own league (Admins: any).
     if (!canManageLeague(req, req.body.league)) {

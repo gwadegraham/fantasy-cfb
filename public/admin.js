@@ -6,7 +6,12 @@ const seasonOptionList = document.querySelectorAll('[season-options]');
 const seasonTypeOptionList = document.querySelectorAll('[season-type-options]');
 const weekOptionList = document.querySelectorAll('[week-options]');
 
-var leagueCode;
+// No module-level `leagueCode` on purpose. It existed, nothing ever assigned it
+// (getUsers() and friends each declare their own with `var`), and the one place
+// that read it silently created players with league: undefined. Every
+// league-scoped action calls getDraftLeagueCode() instead; without this
+// declaration, reaching for the old global is a ReferenceError rather than
+// another silent undefined.
 var isMobile;
 var userMetadata;
 var teamList = [];
@@ -711,11 +716,16 @@ if (createForm) {
 
         // Color and the active-season roster entry are assigned server-side —
         // the manager just provides a name; the draft fills the roster.
+        // getDraftLeagueCode(), like every other league-scoped action on this
+        // page. This used to read a module-level `leagueCode` that nothing ever
+        // assigned — getUsers() shadows it with its own `var` — so every player
+        // added here was created with league: undefined and then belonged to
+        // neither league. Silent until a panel tried to list them.
         var userBody = {
             firstName: firstName,
             lastName: lastName,
             email: email,
-            league: leagueCode
+            league: getDraftLeagueCode()
         };
 
         const response = await fetch("/users", {
