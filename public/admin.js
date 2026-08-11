@@ -859,21 +859,24 @@ async function loadManagerLogins() {
             var color = /^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#5B6690';
             var name = escHtml(p.firstName + ' ' + p.lastName);
             var id = escHtml(p._id);
-            // Careful what this claims. All we know is whether an invite was
-            // claimed through this flow (User.authSub). Members linked by hand
-            // before it existed sign in perfectly well and still show as
-            // unclaimed — the app can't see their Auth0 metadata. "No login"
-            // read as "this account is broken", which was six false alarms.
-            var status = p.linked
-                ? '<span class="login-badge is-linked">Claimed</span>'
-                : '<span class="login-badge">Not claimed</span>';
+            // Show the EMAIL, not a "not claimed" badge. All authSub tells us is
+            // whether an invite was claimed through this flow — members linked by
+            // hand before it existed sign in fine and would wear that badge
+            // forever, so it was grey noise on every row. The address is the fact
+            // that actually matters: it's what an invite gets locked to, it's
+            // where a typo hides, and its absence means any link for this team is
+            // claimable by whoever opens it first.
+            var email = p.email
+                ? '<span class="login-email">' + escHtml(p.email) + '</span>'
+                : '<span class="login-email is-missing">No email on file</span>';
+            var badge = p.linked ? '<span class="login-badge is-linked">Claimed</span>' : '';
             var action = p.linked
                 ? '<button type="button" class="login-btn-ghost" onclick="resetInviteLink(\'' + id + '\', \'' + name + '\')">Reset</button>'
                 : '<button type="button" class="login-btn" onclick="copyInviteLink(\'' + id + '\', \'' + name + '\')">Copy invite</button>';
             return '<div class="roster-row login-row">' +
                 '<span class="roster-dot" style="background:' + color + '"></span>' +
-                '<span class="roster-name">' + name + '</span>' +
-                status + action +
+                '<span class="login-who"><span class="roster-name">' + name + '</span>' + email + '</span>' +
+                '<span class="login-actions">' + badge + action + '</span>' +
             '</div>';
         }).join('');
     } catch (err) {
