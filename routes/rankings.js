@@ -83,14 +83,26 @@ router.post('/retrieveRankings', async (req, res) => {
         const data = await rankingsApi.getRankings(req.body.season, opts);
         console.log('Rankings API called successfully.');
 
-        const ranking = new Ranking({
-            season: req.body.season,
-            seasonType: req.body.seasonType,
-            week: req.body.week,
-            polls: data[0].polls
-        });
+        // CFBD answers [] for a poll it hasn't published yet (e.g. any postseason
+        // week before the title game). Reading data[0].polls off that threw a
+        // TypeError that surfaced as an opaque 400, so callers retried it — and
+        // each retry spends a CFBD call. Say what actually happened instead.
+        if (!Array.isArray(data) || !data.length || !data[0].polls) {
+            return res.status(404).json({
+                message: `CFBD has no rankings for season ${req.body.season} ${req.body.seasonType} week ${req.body.week}`
+            });
+        }
 
-        const newRanking = await ranking.save();
+        // Upsert on (season, seasonType, week). A plain insert meant two runs
+        // racing on the same missing week — the Saturday job and the live poller
+        // collide on the :00 mark — could each create a doc for it, and
+        // getRankingsForGame's findOne would then pick whichever came back first.
+        const filter = { season: req.body.season, seasonType: req.body.seasonType, week: req.body.week };
+        const newRanking = await Ranking.findOneAndUpdate(
+            filter,
+            { $set: Object.assign({}, filter, { polls: data[0].polls }) },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
         console.log("New Ranking Record", newRanking);
 
         res.status(201).json(newRanking);
