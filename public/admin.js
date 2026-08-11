@@ -735,6 +735,12 @@ if (createForm) {
                 getUsers();
                 displayCreateUserContainer();
 
+                // Manager Logins only loads when its panel is opened, so a player
+                // added while it was already open never showed up and looked like
+                // the create had failed. Refresh it if it's on screen.
+                var loginsPanel = document.querySelector('[manager-logins-container]');
+                if (loginsPanel && loginsPanel.style.display !== 'none') loadManagerLogins();
+
                 successToast.options.text = "User created successfully";
                 successToast.showToast();
             } else {
@@ -797,6 +803,9 @@ async function resetInviteLink(userId, name) {
         successToast.options.text = 'Login link reset — send ' + name + ' a new invite';
         successToast.showToast();
         getUsers();
+        // The row still reads "Claimed" until this repaints, which makes a
+        // successful reset look like it did nothing.
+        loadManagerLogins();
     } catch (e) {
         failToast.options.text = 'Could not reset the login link';
         failToast.showToast();
