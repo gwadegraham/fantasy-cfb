@@ -18,7 +18,7 @@ const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
-        h2hManagerIds, computeH2HAwards } = require('../modules/h2h');
+        h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
 const { pickLogo } = require('../public/logo.js');
 
 // The scoring jobs that actually refresh standings data (see modules/score-job.js
@@ -305,8 +305,12 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         // Deterministic manager ordering — the pairing schedule is positional, so
-        // this must match what the scoring-time pass used (modules/h2h.js).
-        const ids = h2hManagerIds(users, season);
+        // this must match what the scoring-time pass used (modules/h2h.js). Once
+        // a week has settled that pass PINS the list, and reading the same pin
+        // here is what keeps the rendered matchups identical to the banked ones
+        // after any membership change.
+        const pinnedIds = pinnedH2HIds(cfgDoc, season);
+        const ids = h2hRoster(users, season, pinnedIds);
         const idSet = new Set(ids);
         const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {};
         const draftedSet = new Set();
@@ -426,7 +430,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // from the SAME function the scoring job uses to bank the bonus, so the
         // table and cumulativeScore can never tell different stories.
         const { awards, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
-            users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK
+            users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK, pinnedIds
         });
 
         // Records + win bonus count FINAL weeks only (an in-progress week has no
@@ -440,7 +444,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             });
             rec[id] = a;
         });
-        const managers = ids.map(id => ({
+        const managers = ids.filter(id => meta[id]).map(id => ({
             ...meta[id],
             wins: rec[id].wins, losses: rec[id].losses, ties: rec[id].ties,
             record: `${rec[id].wins}-${rec[id].losses}-${rec[id].ties}`,

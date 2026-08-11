@@ -11,7 +11,7 @@ const { computeAdminStatus, pendingRegularWeek } = require('../modules/admin-sta
 const { computeSeasonReadiness } = require('../modules/season-readiness');
 const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
-const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards } = require('../modules/h2h');
+const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards, pinnedH2HIds } = require('../modules/h2h');
 
 // Read-only status summary for the admin console: how far scoring/games have
 // progressed and whether any completed results are still unscored. Derived from
@@ -183,10 +183,14 @@ async function applyH2HBonuses(season) {
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const eng = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, seasonStr);
+        // The frozen manager list for this season, if one has been stored. Passed
+        // through so a membership change can never re-pair an already-settled
+        // week (see modules/h2h.js h2hRoster).
+        const pinnedIds = pinnedH2HIds(cfgDoc, seasonStr);
 
         // Only load games when there's a chance of awarding. With H2H off the
         // award map stays empty, which still strips any previously-stored bonus.
-        let awards = {};
+        let awards = {}, computed = null;
         if (eng.h2hEnabled) {
             const drafted = new Set();
             users.forEach(u => {
@@ -199,10 +203,11 @@ async function applyH2HBonuses(season) {
                   $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
                 { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, _id: 0 }
             ).lean() : [];
-            awards = computeH2HAwards({
-                users, games, season: seasonStr,
+            computed = computeH2HAwards({
+                users, games, season: seasonStr, pinnedIds,
                 winBonus: eng.h2hWinBonus, tieBonus: eng.h2hTieBonus
-            }).awards;
+            });
+            awards = computed.awards;
         }
 
         let updated = 0, awarded = 0;
@@ -218,7 +223,22 @@ async function applyH2HBonuses(season) {
             updated++;
             awarded += next.weeklyScore.reduce((sum, e) => sum + (e.h2hBonus || 0), 0);
         }
-        summary.push({ league, enabled: !!eng.h2hEnabled, managersUpdated: updated, bonusAwarded: awarded });
+        // Freeze the manager list the moment the first week settles. Everything
+        // before that is unbanked, so the list stays live and preseason roster
+        // churn costs nothing; from here on, no membership change can re-decide a
+        // week that has already paid out.
+        let pinned = false;
+        if (eng.h2hEnabled && !pinnedIds && computed && computed.finalWeeks.length && computed.ids.length) {
+            await ScoringConfig.updateOne(
+                { league },
+                { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } } },
+                { upsert: true }
+            );
+            pinned = true;
+            console.log(`H2H roster pinned · ${league} ${seasonStr}: ${computed.ids.length} manager(s)`);
+        }
+
+        summary.push({ league, enabled: !!eng.h2hEnabled, managersUpdated: updated, bonusAwarded: awarded, rosterPinned: pinned });
         console.log(`H2H bonus · ${league}: ${eng.h2hEnabled ? 'on' : 'off'}, ${updated} manager(s) updated`);
     }
 
