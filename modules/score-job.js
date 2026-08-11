@@ -22,6 +22,15 @@ function makeJob({ jobName, label, withBetting }) {
         try {
             const r = await runFullUpdate({ withBetting: !!withBetting });
             const secs = Math.round((Date.now() - startMs) / 1000);
+
+            // Out of season the pipeline scores nothing and says why. That is a
+            // healthy outcome, not a failure — record it and skip the email, so
+            // the offseason is quiet instead of reporting a week it didn't score.
+            if (r.skipped) {
+                await finishRun(id, 'success', `Nothing to score — ${r.skipped} (${secs}s)`);
+                return r;
+            }
+
             const summary = `Updated ${r.seasonType} week ${r.week} · ${r.gamesNew} new / ${r.gamesUpdated} updated games · ${r.teams} teams (${secs}s)`;
             await finishRun(id, 'success', summary, { week: r.week, seasonType: r.seasonType });
             if (emailOnSuccess()) {
