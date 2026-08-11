@@ -60,10 +60,26 @@ password may fail there — the real page is served from the Auth0 origin, where
 `webAuth.login()` is same-origin; from localhost it is not. The social buttons
 are plain redirects and behave normally.
 
-Sign-up is deliberately absent: accounts are provisioned by the commissioner,
-and *Disable Sign Ups* is on for the database connection. Don't re-add a league
+Sign-up is deliberately absent: members join through an invite (below), and
+*Disable Sign Ups* is on for the database connection. Don't re-add a league
 selector — Auth0 Lock wrote it to `user_metadata.league`, while the whole app
 reads `user_metadata.metadata.league`, so the value never reached anything.
+
+## Inviting a manager
+
+**Admin → Manager Logins → Copy invite** puts a link on your clipboard; send it
+however you normally talk to the league. The invitee opens it, signs in with
+Google, Apple, or an email and password, and the app binds whichever identity
+they chose to their franchise — no dashboard visit, no metadata editing.
+
+The link is a bearer credential, so it's signed with `AUTH_SECRET`, expires
+after 14 days, works once, and (when the record has an email) only for the
+address it was sent to. **Reset** clears the binding when someone needs to
+re-claim from a different account.
+
+Requires `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET` (see `.env.example`).
+Inviting works mid-season; *creating* a new player is locked once games have
+been scored, since they'd start with an empty roster — admins can override.
 
 ## Authorization
 

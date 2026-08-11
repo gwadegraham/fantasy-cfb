@@ -442,10 +442,14 @@
                     </button>
                 </div>
                 <div class="sub-container" create-user-container style="display: none">
-                    <p class="function-description">Add a manager to this league. They're added to the current season with an auto-assigned color; the draft fills their roster.</p>
+                    <p class="function-description">Add a manager to this league. They're added to the current season with an auto-assigned color; the draft fills their roster. Their email is what lets an invite link verify it's really them — worth filling in.</p>
+                    <p class="function-description" id="create-season-warning" style="display: none; color: var(--cc-amber);">
+                        The season is underway, so a new manager starts with an empty roster and sits on zero points until you correct it.
+                    </p>
                     <form id="create-form">
                         <input type="text" class="first-name" first-name placeholder="First Name">
                         <input type="text" class="last-name" last-name placeholder="Last Name">
+                        <input type="email" class="email" email placeholder="Email (optional)">
                         <button type="submit">Create Player</button>
                     </form>
                     <hr>
@@ -461,6 +465,18 @@
                 <div class="sub-container" season-roster-container style="display: none">
                     <p class="function-description">Choose which managers are in the <span season-roster-year>current</span> season. Unchecking removes a manager from this season only &mdash; their past seasons, scores, and draft history are kept.</p>
                     <div season-roster-list class="season-roster-list"></div>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayManagerLoginsContainer()">
+                        <i class="fa-solid fa-link" style="padding-right: 5px;"></i>
+                        Manager Logins
+                    </button>
+                </div>
+                <div class="sub-container" manager-logins-container style="display: none">
+                    <p class="function-description">Who can sign in as which team. Copy an invite link and send it however you normally talk to the league &mdash; they can claim it with Google, Apple, or an email and password, and it connects whichever they choose to their team.</p>
+                    <div manager-logins-list class="season-roster-list"></div>
                 </div>
             </div>
             <div class="function-container">

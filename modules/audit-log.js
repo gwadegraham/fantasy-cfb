@@ -25,7 +25,8 @@ const ACTIONS = {
     'draft.config': 'Draft',
     'draft.reset': 'Draft',
     'league.rename': 'League',
-    'user.create': 'Manager'
+    'user.create': 'Manager',
+    'user.invite': 'Invite'
 };
 
 function labelFor(action) {

@@ -225,6 +225,15 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // The Auth0 `sub` this franchise was bound to when its invite was claimed
+    // (modules/invite-bind.js). Nothing resolves login -> franchise through this
+    // — that is still user_metadata.metadata.userId — so it is deliberately
+    // additive. It exists so a claimed invite can't be spent twice, and so the
+    // binding is auditable after the fact. Empty for every member provisioned by
+    // hand before the invite flow existed.
+    authSub: {
+        type: String
+    },
 });
 
 module.exports = mongoose.model('User', userSchema);

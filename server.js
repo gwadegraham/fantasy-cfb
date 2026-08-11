@@ -15,6 +15,9 @@ const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
 const identityGuard = require('./modules/identity-guard');
+const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = require('./modules/invite-bind');
+const inviteToken = require('./modules/invite-token');
+const auth0Management = require('./modules/auth0-management');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
@@ -82,6 +85,17 @@ app.use((req, res, next) => {
     res.locals.spoof = devRole.readSpoof(req); // {roles, league} | null, for the dev widget
     next();
 });
+
+// Claim a commissioner invite. Must sit BETWEEN the auth router (so there is a
+// session to read) and the identity guard below — an invitee has no franchise
+// pointer yet, which is precisely what the guard 403s on, so binding has to
+// happen first. See modules/invite-bind.js.
+app.use(inviteBind({
+    User,
+    management: auth0Management,
+    inviteToken,
+    secret: () => process.env.AUTH_SECRET
+}));
 
 // Identity-match guard. Refuses to serve a session whose login email doesn't
 // match the franchise its Auth0 pointer resolves to (see modules/identity-guard).
@@ -260,6 +274,55 @@ if (devRole.DEV) {
         }
     });
 }
+
+// Invite landing page. Public by design — the whole point is that the visitor
+// has no account yet. This only stashes the (signed, expiring) token in a cookie
+// and explains what happens next; the actual binding runs on the way back from
+// Auth0, in the inviteBind middleware above.
+app.get('/invite/:token', async (req, res, next) => {
+    try {
+        const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
+        if (!claim) {
+            return res.status(400).render('invite', {
+                ok: false,
+                heading: 'This invite link isn’t valid',
+                message: 'It may have expired, or been copied incompletely. Ask your commissioner for a fresh link.',
+                firstName: null, leagueName: null
+            });
+        }
+
+        const user = await User.findById(claim.userId, { firstName: 1, league: 1 }).lean();
+        if (!user) {
+            return res.status(404).render('invite', {
+                ok: false,
+                heading: 'This invite link isn’t valid',
+                message: 'It points at a team that no longer exists. Ask your commissioner for a fresh link.',
+                firstName: null, leagueName: null
+            });
+        }
+
+        const league = (res.locals.leagues || LEAGUES).find(l => l.code === user.league);
+
+        // Lax so it survives the redirect back from Auth0; httpOnly because
+        // nothing in the browser needs to read it. The token inside is already
+        // HMAC-signed, so the cookie itself needs no separate signature.
+        res.cookie(INVITE_COOKIE, req.params.token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: String(process.env.URL || '').startsWith('https'),
+            maxAge: INVITE_COOKIE_MAX_AGE
+        });
+
+        res.render('invite', {
+            ok: true,
+            heading: null, message: null,
+            firstName: user.firstName || null,
+            leagueName: (league && league.name) || null
+        });
+    } catch (err) {
+        next(err);
+    }
+});
 
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
