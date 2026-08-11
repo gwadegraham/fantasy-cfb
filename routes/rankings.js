@@ -38,9 +38,21 @@ router.get('/:week/:seasonType', async (req, res) => {
 });
 
 // Getting One By Year & Week & Season Type
+// `week` accepts the literal "latest", meaning the highest week on file for that
+// season + seasonType. Postseason scoring needs the poll as it stood going INTO
+// the bowls, which is the final regular-season doc — that is where CFBD publishes
+// the selection-day Playoff Committee Rankings (findPoll already prefers those
+// over AP). Handled here rather than as its own route so it can't be shadowed by
+// this one's `:week` param.
 router.get('/:season/:week/:seasonType', async (req, res) => {
     try {
-        const ranking = await Ranking.findOne({season: req.params.season, week: req.params.week, seasonType: req.params.seasonType});
+        const query = { season: req.params.season, seasonType: req.params.seasonType };
+        const latest = req.params.week === 'latest';
+        if (!latest) query.week = req.params.week;
+
+        const ranking = latest
+            ? await Ranking.findOne(query).sort({ week: -1 })
+            : await Ranking.findOne(query);
 
         if (JSON.stringify(ranking) == "null") {
             res.status(400).json({message: `No rankings found for season ${req.params.season} & week ${req.params.week} & seasonType ${req.params.seasonType}`});

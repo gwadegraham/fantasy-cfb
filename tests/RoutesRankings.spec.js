@@ -94,3 +94,45 @@ describe('POST /rankings/retrieveRankings', () => {
         expect(res.body.message).toMatch(/rate limited/);
     });
 });
+
+// Postseason scoring needs the poll as it stood going INTO the bowls — the final
+// regular-season doc, which is where CFBD publishes the selection-day Playoff
+// Committee Rankings. Before this the engine asked for week 1 of the regular
+// season: the AUGUST PRESEASON poll, published before a game had been played.
+describe('GET /rankings/:season/latest/:seasonType', () => {
+    const poll = (school) => [{ poll: 'Playoff Committee Rankings', ranks: [{ school, rank: 1 }] }];
+
+    beforeEach(async () => {
+        await Ranking.create([
+            { season: 2025, seasonType: 'regular', week: 1, polls: [{ poll: 'AP Top 25', ranks: [{ school: 'Preseason No1', rank: 1 }] }] },
+            { season: 2025, seasonType: 'regular', week: 15, polls: poll('Ohio State') },
+            { season: 2025, seasonType: 'regular', week: 16, polls: poll('Indiana') },
+            { season: 2025, seasonType: 'postseason', week: 1, polls: [{ poll: 'AP Top 25', ranks: [{ school: 'Final AP No1', rank: 1 }] }] },
+            { season: 2024, seasonType: 'regular', week: 16, polls: poll('Oregon') }
+        ]);
+    });
+
+    test('returns the highest week on file, not the first', async () => {
+        const res = await request(app).get('/rankings/2025/latest/regular');
+        expect(res.status).toBe(200);
+        expect(res.body.week).toBe(16);
+        expect(res.body.polls[0].ranks[0].school).toBe('Indiana');   // selection-day CFP, not the August AP
+    });
+
+    test('is scoped to the season and seasonType asked for', async () => {
+        expect((await request(app).get('/rankings/2024/latest/regular')).body.week).toBe(16);
+        expect((await request(app).get('/rankings/2024/latest/regular')).body.polls[0].ranks[0].school).toBe('Oregon');
+        expect((await request(app).get('/rankings/2025/latest/postseason')).body.week).toBe(1);
+    });
+
+    test('an explicit week still wins over the latest', async () => {
+        const res = await request(app).get('/rankings/2025/1/regular');
+        expect(res.body.week).toBe(1);
+        expect(res.body.polls[0].ranks[0].school).toBe('Preseason No1');
+    });
+
+    test('400s when the season has nothing on file', async () => {
+        const res = await request(app).get('/rankings/2099/latest/regular');
+        expect(res.status).toBe(400);
+    });
+});

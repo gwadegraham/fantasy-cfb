@@ -79,21 +79,20 @@ describe('runFullUpdate scoring order', () => {
         expect(calls.indexOf('applyH2HBonuses')).toBeLessThan(calls.indexOf('updateCumulativeScores'));
     });
 
-    // Postseason games resolve rankings from the week-1 REGULAR poll, and no
-    // postseason rule reads a rank at all — so asking for a `postseason` rankings
-    // doc was asking for something nothing reads. CFBD publishes no postseason
-    // poll until after the title game, so retrieveRankings 400'd on every run for
-    // the whole bowl season, spending a CFBD call each time.
-    it('ensures the week-1 regular poll on a postseason run, never a postseason one', async () => {
+    // Postseason games are scored against the LATEST regular-season poll — a doc
+    // written months earlier — and no postseason rule reads a rank anyway. So a
+    // postseason run has no poll to ensure. It used to ask CFBD for a
+    // `postseason` poll, which CFBD does not publish until after the title game,
+    // burning a call on a 400 every run for the whole bowl season.
+    it('creates no poll at all on a postseason run', async () => {
         require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
             { week: 1, seasonType: 'postseason', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }
         ]);
         await runFullUpdate({ withBetting: false });
 
         const rankingUrls = internalFetch.mock.calls
-            .map(c => c[0]).filter(u => /\/rankings\//.test(u));
-        expect(rankingUrls).toEqual([`${process.env.URL}/rankings/${process.env.YEAR}/1/regular`]);
-        expect(rankingUrls.join(' ')).not.toMatch(/postseason/);
+            .map(c => c[0]).filter(u => /\/rankings/.test(u));
+        expect(rankingUrls).toEqual([]);
     });
 
     it('ensures the current week\'s regular poll during the regular season', async () => {

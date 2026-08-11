@@ -159,48 +159,48 @@ async function doFullUpdate({ withBetting = false } = {}) {
 
     // Make sure the rankings doc the ENGINE will actually read exists.
     //
-    // Postseason games resolve their rankings from the week-1 REGULAR poll
-    // (modules/scoring.js getRankingsForGame), and no postseason rule reads a
-    // rank anyway — every one of them keys off notes / home-away. So checking
-    // for a `postseason` rankings doc was checking for something nothing reads.
+    // Regular season only. Postseason games are scored against the LATEST
+    // regular-season poll (modules/scoring.js getRankingsForGame) — a doc written
+    // months earlier, during the season — so a postseason run has nothing to
+    // create. And no postseason rule reads a rank anyway; they all key off notes
+    // or home/away.
     //
-    // Worse, CFBD publishes no postseason poll until after the title game
-    // (`/rankings?year=2026&week=1&seasonType=postseason` returns []), so
-    // retrieveRankings threw on data[0].polls and 400'd — burning a CFBD call
-    // EVERY run for the whole bowl season. With live polling at postseason
-    // cadence that is a call every 10 minutes against a 1,000/month budget, for
-    // a document that would never be read.
-    const rankingsWeek = isPostseason ? 1 : weekNumber;
-    const rankingsSeasonType = 'regular';
-
-    var rankingsRes = await internalFetch(`${process.env.URL}/rankings/${season}/${rankingsWeek}/${rankingsSeasonType}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-        }
-    });
-    // Drain the body — an unread response body holds its socket open, and this
-    // runs on every poll.
-    await rankingsRes.json().catch(() => null);
-
-    if (rankingsRes.status == 200) {
-        console.log(`Rankings already in system for Season: ${season}, Season Type: ${rankingsSeasonType}, Week: ${rankingsWeek}`);
-    } else {
-        const created = await internalFetch(`${process.env.URL}/rankings/retrieveRankings`, {
-            method: 'POST',
+    // This used to ask for a `postseason` rankings doc. CFBD publishes none until
+    // after the title game (`/rankings?year=2026&week=1&seasonType=postseason`
+    // returns []), so retrieveRankings threw on data[0].polls and 400'd — every
+    // run, all bowl season. With live polling at postseason cadence that is a CFBD
+    // call every 10 minutes against a 1,000/month budget, for a document nothing
+    // would ever read.
+    if (!isPostseason) {
+        var rankingsRes = await internalFetch(`${process.env.URL}/rankings/${season}/${weekNumber}/regular`, {
+            method: 'GET',
             headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ season: String(season), seasonType: rankingsSeasonType, week: String(rankingsWeek) }),
+            }
         });
+        // Drain the body — an unread response body holds its socket open, and
+        // this runs on every poll.
+        await rankingsRes.json().catch(() => null);
 
-        const data = await created.json().catch(() => null);
-        if (created.status == 201) {
-            console.log("New Rankings", data);
+        if (rankingsRes.status == 200) {
+            console.log(`Rankings already in system for Season: ${season}, Season Type: regular, Week: ${weekNumber}`);
         } else {
-            console.log(created.status + " Rankings could not be retrieved");
+            const created = await internalFetch(`${process.env.URL}/rankings/retrieveRankings`, {
+                method: 'POST',
+                headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ season: String(season), seasonType: 'regular', week: String(weekNumber) }),
+            });
+
+            const data = await created.json().catch(() => null);
+            if (created.status == 201) {
+                console.log("New Rankings", data);
+            } else {
+                console.log(created.status + " Rankings could not be retrieved");
+            }
         }
     }
 
