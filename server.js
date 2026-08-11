@@ -219,6 +219,48 @@ app.get('/season-preview', (req, res) => {
     }
 });
 
+// Dev-only preview of the custom Auth0 login page (auth/login.html). That file
+// is the source of truth for the tenant's Custom Login Page, which normally can
+// only be seen by pasting it into the Auth0 dashboard and saving — a miserable
+// loop to iterate a stylesheet in. This serves it locally with the @@config@@
+// placeholder filled in the same shape Auth0 injects, so the layout, fonts,
+// motion and error states can be worked on at localhost.
+//
+// Caveat: the real page is served FROM the Auth0 origin, so webAuth.login()
+// reaches /co/authenticate same-origin. Here it is cross-origin, so
+// email+password may fail on third-party-cookie grounds even when the markup is
+// correct — that failure is an artifact of the preview, not of the page. The
+// social buttons are full redirects and behave normally.
+if (devRole.DEV) {
+    app.get('/dev/login-preview', (req, res) => {
+        try {
+            const html = fs.readFileSync(path.join(__dirname, 'auth/login.html'), 'utf8');
+            const issuer = (process.env.ISSUER_BASE_URL || 'https://example.us.auth0.com')
+                .replace(/\/$/, '');
+            const stub = {
+                auth0Domain: issuer.replace(/^https?:\/\//, ''),
+                auth0Tenant: issuer.replace(/^https?:\/\//, '').split('.')[0],
+                clientID: process.env.CLIENT_ID || 'preview-client-id',
+                callbackURL: (process.env.URL || 'http://localhost:3000') + '/callback',
+                callbackOnLocationHash: false,
+                authorizationServer: { issuer: issuer + '/' },
+                internalOptions: {},
+                extraParams: {}
+            };
+            // Point the absolute production asset URLs at this server, so the
+            // preview renders images that only exist locally (a newly exported
+            // crest, say) instead of whatever prod last deployed.
+            const local = (process.env.URL || 'http://localhost:3000').replace(/\/$/, '');
+            res.type('html').send(html
+                .split('https://campusclash.io').join(local)
+                .replace('@@config@@',
+                    Buffer.from(JSON.stringify(stub), 'utf8').toString('base64')));
+        } catch (err) {
+            res.status(404).send('auth/login.html not found.');
+        }
+    });
+}
+
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {
     if (req.oidc.isAuthenticated()) {
