@@ -152,6 +152,18 @@ router.post('/week/mass-create', async (req, res) => {
     const remHeader = response.headers.get('x-calllimit-remaining');
     const remainingCalls = remHeader != null ? Number(remHeader) : undefined;
 
+    // UPSERT, one game at a time, rather than find-then-insertMany.
+    //
+    // Two runs of this route can overlap by construction: the Saturday job fires
+    // at 15:00/18:00/22:00 on the minute and the live poller fires on every :00
+    // mark, so they collide three times a Saturday. Under find-then-insert both
+    // runs could decide the same game was new and insert it twice — and a second
+    // doc with the same CFBD id makes the per-team week lookup return the game
+    // twice, which modules/scoring.js scores twice, DOUBLING that team's points
+    // for the week. The unique index on Game.id backs this up.
+    //
+    // Per-game try/catch also means one unsaveable game no longer takes the whole
+    // slate down with it, which the batch insertMany did.
     for (const game of gameData) {
         var alreadyExists = await Game.find({ id: game.id });
 
@@ -185,43 +197,46 @@ router.post('/week/mass-create', async (req, res) => {
         var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
         game.lastUpdated = centralTime;
 
-        if (alreadyExists.length == 0) {
-            const newGame = new Game(game);
-            allNewGames.push(newGame);
-        } else {
-            var filter = {id: game.id};
-            delete game.id;
-            try {
-                var updatedGame = await Game.findOneAndUpdate(filter, game, {new: true});
-                allExistingGames.push(updatedGame);
-            } catch (err) {
-                console.log("Error updating game with id:", game.id);
-                console.log("Update error:", err.message);
-            } 
+        // findOneAndUpdate does not run validators, and the `required` validator
+        // doesn't fire for a merely-absent path on upsert — so validate the
+        // candidate up front. insertMany used to do this for new games; doing it
+        // for updates too means a malformed CFBD row is skipped rather than
+        // written over a good doc.
+        var invalid = new Game(game).validateSync();
+        if (invalid) {
+            console.log("Skipping invalid game with id:", game.id, "|", invalid.message);
+            continue;
+        }
+
+        // `id` stays in the $set (same value the filter matches on), so an insert
+        // seeds it and the error log below can still name the game.
+        try {
+            var savedGame = await Game.findOneAndUpdate(
+                { id: game.id },
+                { $set: game },
+                { new: true, upsert: true, setDefaultsOnInsert: true }
+            );
+            if (alreadyExists.length == 0) {
+                allNewGames.push(savedGame);
+            } else {
+                allExistingGames.push(savedGame);
+            }
+        } catch (err) {
+            console.log("Error saving game with id:", game.id);
+            console.log("Save error:", err.message);
         }
     }
 
+    console.log("all new games length", allNewGames.length);
     console.log("Total number of existing games: ", allExistingGames.length);
 
-    try {
-        try {
-            console.log("all new games length", allNewGames.length);
-            const newGames = await Game.insertMany(allNewGames);
+    var returnedGames = {
+        newGames: allNewGames,
+        existingGames: allExistingGames,
+        remainingCalls: remainingCalls
+    };
 
-            var returnedGames = {
-                newGames: newGames,
-                existingGames: allExistingGames,
-                remainingCalls: remainingCalls
-            };
-
-            return res.status(201).json(returnedGames);
-        } catch (err) {
-            console.log("Error saving games: ", err.message)
-            res.status(400).json({message: err.message});
-        }
-    } catch (err) {
-        res.status(400).json({message: err.message});
-    }
+    return res.status(201).json(returnedGames);
 });
 
 // Bulk-ingest a full FBS schedule in one CFBD call. Preseason prerequisite for

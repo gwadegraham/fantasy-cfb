@@ -144,6 +144,51 @@ describe('runFullUpdate scoring order', () => {
     });
 });
 
+// saturday-scores fires at 15:00/18:00/22:00 on the minute and the live poller
+// fires on every :00 mark, so two full updates overlapped three times every
+// Saturday — two CFBD pulls of the same slate, and two passes mutating the same
+// weeklyScore arrays.
+describe('runFullUpdate overlap guard', () => {
+    const scoreUpdate = require('../modules/score-update');
+    const scoringModule = require('../modules/scoring.js');
+    const retrieveGames = require('../modules/retrieve-games.js');
+
+    beforeEach(() => {
+        scoringModule._calls.length = 0;
+        scoringModule.updateScores.mockClear();
+        retrieveGames.massRetrieveGames.mockClear();
+        scoreUpdate._clearInFlight();
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => { jest.restoreAllMocks(); });
+
+    it('runs the first update and skips the one that lands on top of it', async () => {
+        const [first, second] = await Promise.all([
+            scoreUpdate.runFullUpdate({ withBetting: false }),
+            scoreUpdate.runFullUpdate({ withBetting: false })
+        ]);
+        expect(first.skipped).toBeUndefined();
+        expect(second.skipped).toMatch(/already running/);
+        // One pull, one scoring pass — not two of each.
+        expect(retrieveGames.massRetrieveGames).toHaveBeenCalledTimes(1);
+        expect(scoringModule.updateScores).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the guard so the next scheduled run proceeds', async () => {
+        await scoreUpdate.runFullUpdate({ withBetting: false });
+        const next = await scoreUpdate.runFullUpdate({ withBetting: false });
+        expect(next.skipped).toBeUndefined();
+        expect(scoringModule.updateScores).toHaveBeenCalledTimes(2);
+    });
+
+    it('releases the guard even when the run throws', async () => {
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([]);
+        await expect(scoreUpdate.runFullUpdate({ withBetting: false })).rejects.toThrow(/calendar/i);
+        const next = await scoreUpdate.runFullUpdate({ withBetting: false });
+        expect(next.skipped).toBeUndefined();
+    });
+});
+
 describe('resolveCurrentWeek', () => {
     const { resolveCurrentWeek } = require('../modules/score-update');
     const at = (iso) => new Date(iso);
