@@ -333,15 +333,44 @@
     }
 
     /* ---- Mobile wordmark (crest is desktop-only; see below) ----------------
-       The navbar tucks "Clash" under "CAMPUS" with margin-top: -18%, but a
-       percentage margin resolves against the CONTAINER width. The navbar's
-       container is an inline-block that shrinks to the text, so -18% is a few
-       px; here the container is the full column and the same value would drag
-       the script clean over the block letters. Use an em instead, so the tuck
-       tracks the font size no matter how wide the column gets. */
-    .m-brand { display: none; text-align: center; margin: 0 0 26px; font-size: 1.9rem; line-height: 1.05; }
-    .m-brand .l1 { font-family: Graduate, serif; }
-    .m-brand .l2 { font-family: Pacifico, cursive; margin-top: -0.25em; }
+       Ported verbatim from the navbar mark in public/styles.css, which this
+       page can't link (see the head comment). KEEP THE TWO IN SYNC -- if the
+       mark is retuned there, retune it here. Every metric is em-relative off
+       --brand-size, so that is the only knob. --brand-ground is the colour the
+       keyline punches through CAMPUS, so it has to match what the mark actually
+       sits on: here that is the form panel's --cc-bg. */
+    .m-brand { display: none; text-align: center; margin: 0 0 26px; }
+
+    .brand-title {
+      --brand-size: 2.4rem;
+      --brand-ground: var(--cc-bg);
+      font-size: var(--brand-size);
+      line-height: 1;              /* Pacifico's default line box is ~1.5x */
+      display: inline-grid;
+      justify-items: center;
+    }
+
+    .brand-campus {
+      font-family: Graduate, serif;
+      font-size: .62em;
+      letter-spacing: .10em;
+      text-indent: .10em;          /* cancel the trailing letter-space to centre true */
+    }
+
+    .brand-clash {
+      font-family: Pacifico, cursive;
+      font-size: 1.1em;            /* larger script into smaller caps reads as impact */
+      margin-top: -.18em;          /* THE clash; resolves against this element's 1.1em */
+      margin-left: -.04em;         /* Pacifico enters left-heavy */
+      color: var(--cc-accent);
+      position: relative;
+      z-index: 1;                  /* script passes in front of the caps */
+      text-shadow:
+        .052em 0 var(--brand-ground), -.052em 0 var(--brand-ground),
+        0 .052em var(--brand-ground), 0 -.052em var(--brand-ground),
+        .037em .037em var(--brand-ground), -.037em .037em var(--brand-ground),
+        .037em -.037em var(--brand-ground), -.037em -.037em var(--brand-ground);
+    }
 
     /* ---- Layout: split at the app's 64em breakpoint ------------------------ */
     @media (min-width: 64em) {
@@ -395,10 +424,10 @@
       .d3 { animation-delay: 0.28s; }
       .d4 { animation-delay: 0.40s; }
 
-      /* Same staggered wipe as the app navbar wordmark. */
-      .m-brand > div { clip-path: inset(0 100% 0 0); animation: brand-draw 0.7s cubic-bezier(0.4, 0, 0.2, 1) both; }
-      .m-brand > div:nth-child(1) { animation-delay: 0.05s; }
-      .m-brand > div:nth-child(2) { animation-delay: 0.32s; }
+      /* Same staggered wipe as the app navbar wordmark (styles.css). */
+      .brand-title > div { clip-path: inset(0 100% 0 0); animation: brand-draw 0.7s cubic-bezier(0.4, 0, 0.2, 1) both; }
+      .brand-title > div:nth-child(1) { animation-delay: 0.05s; }
+      .brand-title > div:nth-child(2) { animation-delay: 0.32s; }
     }
   </style>
 </head>
@@ -415,9 +444,11 @@
 
     <section class="form-panel">
       <div class="form-inner">
-        <div class="m-brand" aria-hidden="true">
-          <div class="l1">CAMPUS</div>
-          <div class="l2">Clash</div>
+        <div class="m-brand">
+          <div class="brand-title">
+            <div class="brand-campus">CAMPUS</div>
+            <div class="brand-clash">Clash</div>
+          </div>
         </div>
 
         <p class="eyebrow anim d1">Est. 2023 &middot; Members only</p>
