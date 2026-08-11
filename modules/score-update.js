@@ -102,13 +102,39 @@ function resolveCurrentWeek(calendar, now) {
     return { week: current.week, seasonType: current.seasonType };
 }
 
+// Only one full update at a time in this process.
+//
+// The scheduler and the live poller share the one web dyno, and their rules
+// collide by construction: saturday-scores fires at 15:00/18:00/22:00 on the
+// minute, and the live poller fires on every :00 mark. So three times every
+// Saturday two full updates ran concurrently — two CFBD pulls of the same slate
+// (double spend against the monthly budget) and two passes reading, mutating and
+// writing back the same weeklyScore arrays.
+//
+// In-process only. A standalone `node update-daily-scores-job.js` on another host
+// isn't covered; the unique index on Game.id is what makes the ingest itself safe
+// regardless of who is running it.
+let inFlight = null;
+
+function runFullUpdate(opts) {
+    if (inFlight) {
+        console.log('A full update is already running — skipping this one');
+        return Promise.resolve({
+            skipped: 'a full update was already running', week: null, seasonType: null,
+            teams: 0, gamesNew: 0, gamesUpdated: 0
+        });
+    }
+    inFlight = doFullUpdate(opts || {}).finally(() => { inFlight = null; });
+    return inFlight;
+}
+
 // The shared "update everything for the current week" pipeline that the daily /
 // Saturday / Sunday jobs all run. Determines the current week from the CFBD
 // calendar, ensures rankings exist, pulls games, then updates scores, cumulative
 // scores, team scores and records. `withBetting` also refreshes betting lines —
 // only the daily job did that historically, so it stays opt-in.
 // Returns { week, seasonType } for logging, or { skipped } out of season.
-async function runFullUpdate({ withBetting = false } = {}) {
+async function doFullUpdate({ withBetting = false } = {}) {
 
     // Cached per-season (modules/cfbd-calendar.js): the week windows are static
     // intra-day, so frequent polls reuse one fetch instead of spending a CFBD
@@ -243,4 +269,9 @@ async function runFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-module.exports = { runFullUpdate, postseasonWeeksToScore, resolveCurrentWeek };
+module.exports = {
+    runFullUpdate, postseasonWeeksToScore, resolveCurrentWeek,
+    // Exported so a test can prove the overlap guard releases; nothing in the app
+    // should need to clear it.
+    _clearInFlight: () => { inFlight = null; }
+};
