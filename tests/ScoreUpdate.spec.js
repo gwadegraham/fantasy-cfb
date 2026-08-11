@@ -64,10 +64,16 @@ describe('runFullUpdate scoring order', () => {
 // never abort a scoring run, because "no bracket yet" is the normal state for
 // most of the window (the bracket doesn't exist until selection day).
 describe('CFP bracket refresh', () => {
-    const { runFullUpdate, refreshCfpBracket, BRACKET_MAX_AGE_HOURS } = require('../modules/score-update');
+    const {
+        runFullUpdate, refreshCfpBracket, bracketWindowOpen, resetBracketThrottle,
+        BRACKET_MAX_AGE_HOURS, BRACKET_LOOKAHEAD_DAYS
+    } = require('../modules/score-update');
     const scoringModule = require('../modules/scoring.js');
     const retrieveGames = require('../modules/retrieve-games.js');
     const { internalFetch } = require('../modules/internal-api');
+
+    const daysFromNow = (d) => new Date(Date.now() + d * 86400000).toISOString();
+    const week = (o) => Object.assign({ week: 1, seasonType: 'regular' }, o);
 
     const isRefresh = (url) => String(url).includes('/playoffs/cfp/');
     // Records the refresh alongside the scoring steps so ordering is assertable.
@@ -92,6 +98,7 @@ describe('CFP bracket refresh', () => {
     beforeEach(() => {
         scoringModule._calls.length = 0;
         internalFetch.mockReset();
+        resetBracketThrottle();          // the once-a-day guard is process-wide
         jest.spyOn(console, 'log').mockImplementation(() => {});
     });
     afterEach(() => {
@@ -109,11 +116,30 @@ describe('CFP bracket refresh', () => {
         expect(calls.indexOf('refreshCfpBracket')).toBeLessThan(calls.indexOf('updateScores'));
     });
 
-    it('spends no CFBD call on a regular-season run', async () => {
+    it('spends no CFBD call outside the bracket window', async () => {
         trackRefresh();
+        // Mid-season: the postseason is months away.
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
+            week({ week: 8, firstGameStart: daysFromNow(-2), lastGameStart: daysFromNow(3) }),
+            week({ seasonType: 'postseason', firstGameStart: daysFromNow(90), lastGameStart: daysFromNow(140) })
+        ]);
         await runFullUpdate({ withBetting: false });
         expect(scoringModule._calls).not.toContain('refreshCfpBracket');
         expect(internalFetch.mock.calls.filter(c => isRefresh(c[0]))).toHaveLength(0);
+    });
+
+    // Selection Sunday lands while the calendar still says regular season, so the
+    // pull cannot be gated on isPostseason — this is the "get it the day it drops"
+    // case.
+    it('pulls on selection weekend, before the postseason window opens', async () => {
+        trackRefresh();
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
+            week({ week: 15, firstGameStart: daysFromNow(-2), lastGameStart: daysFromNow(3) }),
+            week({ seasonType: 'postseason', firstGameStart: daysFromNow(6), lastGameStart: daysFromNow(50) })
+        ]);
+        const r = await runFullUpdate({ withBetting: false });
+        expect(r.seasonType).toBe('regular');                       // still regular season
+        expect(scoringModule._calls).toContain('refreshCfpBracket');  // pulled anyway
     });
 
     it('carries on scoring when the bracket is not published yet', async () => {
@@ -159,8 +185,86 @@ describe('CFP bracket refresh', () => {
         internalFetch.mockImplementation(async () => ({ status: 201, json: async () => ({ games: 11, status: 'completed' }) }));
         await expect(refreshCfpBracket(2025)).resolves.toMatchObject({ games: 11 });
 
+        resetBracketThrottle();
         internalFetch.mockImplementation(async () => { throw new Error('nope'); });
         await expect(refreshCfpBracket(2025)).resolves.toBeNull();
+    });
+
+    // The route's maxAgeHours check compares against a STORED bracket, so it can't
+    // throttle the pre-release stretch — which includes a championship Saturday
+    // with the live poller running every 10 minutes.
+    it('will not ask twice in a day even when nothing is stored to compare against', async () => {
+        internalFetch.mockImplementation(async () => ({
+            status: 400, json: async () => ({ message: 'Bracket has no scheduled games yet', rejected: true })
+        }));
+
+        await refreshCfpBracket(2026);
+        const second = await refreshCfpBracket(2026);
+        const third = await refreshCfpBracket(2026);
+
+        expect(second).toEqual({ skipped: true, reason: 'asked recently' });
+        expect(third).toEqual({ skipped: true, reason: 'asked recently' });
+        expect(internalFetch.mock.calls.filter(c => isRefresh(c[0]))).toHaveLength(1);
+    });
+});
+
+describe('bracketWindowOpen', () => {
+    const { bracketWindowOpen, BRACKET_LOOKAHEAD_DAYS } = require('../modules/score-update');
+    const at = (iso) => new Date(iso);
+    // The real 2026 calendar tail, as CFBD returns it.
+    const calendar2026 = [
+        { week: 14, seasonType: 'regular', firstGameStart: '2026-11-30T08:00:00.000Z', lastGameStart: '2026-12-07T07:59:00.000Z' },
+        { week: 15, seasonType: 'regular', firstGameStart: '2026-12-07T08:00:00.000Z', lastGameStart: '2026-12-12T07:59:00.000Z' },
+        { week: 1, seasonType: 'postseason', firstGameStart: '2026-12-12T08:00:00.000Z', lastGameStart: '2027-01-28T07:59:00.000Z' }
+    ];
+
+    it('opens two weeks before the first postseason game', () => {
+        expect(BRACKET_LOOKAHEAD_DAYS).toBe(14);
+        expect(bracketWindowOpen(calendar2026, at('2026-11-27T12:00:00Z'))).toBe(false); // 15 days out
+        expect(bracketWindowOpen(calendar2026, at('2026-11-29T12:00:00Z'))).toBe(true);  // 13 days out
+    });
+
+    it('covers Selection Sunday, which the postseason window does not', () => {
+        // 2026 selection show ~Dec 6; the postseason window opens Dec 12.
+        expect(bracketWindowOpen(calendar2026, at('2026-12-06T23:00:00Z'))).toBe(true);
+    });
+
+    it('stays open through the championship and closes after', () => {
+        expect(bracketWindowOpen(calendar2026, at('2026-12-20T00:00:00Z'))).toBe(true);
+        expect(bracketWindowOpen(calendar2026, at('2027-01-12T00:00:00Z'))).toBe(true);
+        expect(bracketWindowOpen(calendar2026, at('2027-02-01T00:00:00Z'))).toBe(false);
+    });
+
+    it('is shut for the rest of the year', () => {
+        expect(bracketWindowOpen(calendar2026, at('2026-08-11T00:00:00Z'))).toBe(false);
+        expect(bracketWindowOpen(calendar2026, at('2026-10-01T00:00:00Z'))).toBe(false);
+    });
+
+    it('does not inherit the current-week loop\'s sensitivity to a bad earlier week', () => {
+        // CFBD's real 2025 calendar: regular week 16 ends "2026-12-13" — a year
+        // typo that makes that week swallow the whole postseason, so isPostseason
+        // never goes true. Reading the postseason entry directly is immune.
+        const typo2025 = [
+            { week: 16, seasonType: 'regular', firstGameStart: '2025-12-08T08:00:00.000Z', lastGameStart: '2026-12-13T07:59:00.000Z' },
+            { week: 1, seasonType: 'postseason', firstGameStart: '2025-12-13T08:00:00.000Z', lastGameStart: '2026-01-21T07:59:00.000Z' }
+        ];
+        expect(bracketWindowOpen(typo2025, at('2025-12-20T00:00:00Z'))).toBe(true);
+    });
+
+    it('degrades to closed on a missing or malformed calendar', () => {
+        const now = at('2026-12-20T00:00:00Z');
+        expect(bracketWindowOpen(null, now)).toBe(false);
+        expect(bracketWindowOpen([], now)).toBe(false);
+        expect(bracketWindowOpen([null], now)).toBe(false);
+        expect(bracketWindowOpen([{ seasonType: 'regular', firstGameStart: '2026-09-01' }], now)).toBe(false);
+        expect(bracketWindowOpen([{ seasonType: 'postseason' }], now)).toBe(false);           // no start
+        expect(bracketWindowOpen([{ seasonType: 'postseason', firstGameStart: 'soon' }], now)).toBe(false);
+    });
+
+    it('leaves the window open when the end date is unusable', () => {
+        // Better to spend the daily call than to stop pulling mid-tournament.
+        const noEnd = [{ week: 1, seasonType: 'postseason', firstGameStart: '2026-12-12T08:00:00.000Z' }];
+        expect(bracketWindowOpen(noEnd, at('2027-01-05T00:00:00Z'))).toBe(true);
     });
 });
 
