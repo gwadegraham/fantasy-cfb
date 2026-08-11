@@ -1,159 +1,628 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-  <title>Sign into Campus Clash</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+  <title>Sign in — Campus Clash</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex">
+
+  <!-- ==========================================================================
+       Campus Clash custom login page (Auth0 Classic Universal Login).
+
+       This file is the SOURCE OF TRUTH. The live copy lives in the Auth0
+       dashboard under Branding > Universal Login > Login ("Customize Login
+       Page"); paste this whole file there after editing. See README.
+
+       It is served from the Auth0 tenant origin, NOT campusclash.io, so:
+         - every asset URL must be absolute against https://campusclash.io
+         - the design tokens are inlined rather than pulled from /styles.css.
+           A render-blocking cross-origin request to the app dyno would stall
+           first paint, and styles.css's global `* { color }` would fight this
+           page. modules/identity-guard.js takes the same self-contained
+           approach for the same reason.
+         - webAuth.login() reaches /co/authenticate same-origin, so there is no
+           third-party-cookie problem to design around.
+
+       Sign-up is deliberately absent. Accounts are provisioned by the
+       commissioner; see the plan/README. Do not re-add a league selector --
+       nothing reads the value Lock used to write (user_metadata.league), while
+       the whole app reads user_metadata.metadata.league.
+       ========================================================================== -->
+
+  <link rel="icon" type="image/svg+xml" href="https://campusclash.io/images/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="https://campusclash.io/images/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="https://campusclash.io/images/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="https://campusclash.io/images/apple-touch-icon.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
   <style>
-    body {
-      font-family: "Inter", sans-serif;
+    /* ---- Design tokens (mirrored from public/styles.css :root) ------------ */
+    :root {
+      --cc-bg:          #101322;
+      --cc-surface:     #1A1F33;
+      --cc-border:      #2A2E42;
+      --cc-border-2:    #3A3F58;
+      --cc-text:        #F4F6FB;
+      --cc-muted:       #A4A9C2;
+      --cc-muted-2:     #8A90A8;
+      --cc-accent:      #ed5858;
+      --cc-accent-deep: #d94a4a;   /* hover; from the offseason announcement */
+      --cc-info:        #6C9BFF;   /* documented focus-ring colour */
+      --cc-r-sm:   6px;
+      --cc-r-md:  10px;
+      --cc-r-lg:  14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--cc-bg);
+      color: var(--cc-text);
+      font-family: "Poppins", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    /* ---- Brand panel ------------------------------------------------------ */
+    .brand-panel {
+      position: relative;
+      overflow: hidden;
+      background: var(--cc-surface);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      padding: 40px 32px 32px;
+    }
+
+    /* Primetime wash + yard lines. Lifted from the season-preview hero so the
+       two standalone pages share a visual language. */
+    .brand-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(105% 62% at 50% -12%, rgba(237, 88, 88, 0.26), transparent 62%),
+        repeating-linear-gradient(90deg,
+          transparent 0, transparent 78px,
+          rgba(244, 246, 251, 0.07) 78px, rgba(244, 246, 251, 0.07) 80px);
+      pointer-events: none;
+    }
+
+    .crest-wrap { position: relative; display: block; line-height: 0; }
+
+    .crest {
+      position: relative;
+      display: block;
+      width: min(46vh, 340px);
+      max-width: 100%;
+      height: auto;
+      z-index: 1;
+    }
+
+    /* One-shot ring pulse behind the crest (the draft-room hero idiom). */
+    .crest-wrap::after {
+      content: "";
+      position: absolute;
+      left: 50%; top: 52%;
+      width: 78%; aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      border: 2px solid rgba(237, 88, 88, 0.5);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .brand-tagline {
+      position: relative;
+      z-index: 1;
+      max-width: 26ch;
+      margin: 0;
+      text-align: center;
+      text-wrap: balance;
+      font-size: 1.05rem;
+      line-height: 1.5;
+      color: var(--cc-muted);
+    }
+    .brand-tagline b { color: var(--cc-text); font-weight: 600; }
+
+    /* ---- Form panel ------------------------------------------------------- */
+    .form-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 44px 24px 56px;
+      background: var(--cc-bg);
+    }
+
+    .form-inner { width: 100%; max-width: 380px; }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 14px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--cc-accent);
+    }
+    .eyebrow::before {
+      content: "";
+      width: 34px; height: 2px;
+      background: var(--cc-accent);
+      flex: none;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-family: Graduate, serif;
+      font-weight: 400;
+      font-size: clamp(2.1rem, 4.4vw, 2.8rem);
+      line-height: 0.95;
+      text-transform: uppercase;
+    }
+
+    .subhead {
+      margin: 0 0 24px;
+      font-size: 0.95rem;
+      color: var(--cc-muted);
+    }
+
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+
+    .field label {
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--cc-muted);
+    }
+
+    .field input {
+      background: var(--cc-surface);
+      border: 1px solid var(--cc-border-2);
+      border-radius: var(--cc-r-md);
+      padding: 12px 14px;
+      color: var(--cc-text);
+      font: inherit;
+      font-size: 0.95rem;
+      width: 100%;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .field input::placeholder { color: var(--cc-muted-2); }
+    .field input:focus {
+      outline: none;
+      border-color: var(--cc-info);
+      box-shadow: 0 0 0 3px rgba(108, 155, 255, 0.22);
+    }
+
+    /* Error region. Always in the DOM so aria-live announces changes; it just
+       has nothing to say until something goes wrong. */
+    .form-error {
+      min-height: 0;
+      margin: 0 0 14px;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--cc-accent);
+    }
+    .form-error:empty { margin: 0; }
+
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 48px;
+      padding: 13px 20px;
+      border: 0;
+      border-radius: var(--cc-r-md);
+      background: var(--cc-accent);
+      color: #fff;
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(237, 88, 88, 0.4), 0 12px 34px -10px rgba(237, 88, 88, 0.45);
+      transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--cc-accent-deep);
+      transform: translateY(-2px);
+      box-shadow: 0 0 0 1px rgba(237, 88, 88, 0.5), 0 18px 42px -10px rgba(237, 88, 88, 0.5);
+    }
+    .btn-primary:disabled { opacity: 0.65; cursor: default; transform: none; }
+
+    :focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+
+    /* Spinner shown while a sign-in is in flight. */
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .link-row { margin: 14px 0 0; text-align: center; }
+
+    .link {
+      background: none;
+      border: 0;
+      padding: 4px 6px;
+      font: inherit;
+      font-size: 0.85rem;
+      color: var(--cc-muted);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      border-radius: var(--cc-r-sm);
+    }
+    .link:hover { color: var(--cc-text); }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 22px 0 16px;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cc-muted-2);
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--cc-border);
+    }
+
+    /* ---- Social ----------------------------------------------------------- */
+    .btn-social {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 46px;
+      margin-bottom: 10px;
+      padding: 12px 18px;
+      border-radius: var(--cc-r-md);
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #fff;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn-social svg { flex: none; }
+    .btn-social:disabled { opacity: 0.65; cursor: default; }
+
+    /* Apple's outlined dark variant -- a bare black fill has no edge on navy. */
+    .btn-apple { background: #000; border: 1px solid rgba(244, 246, 251, 0.28); }
+    .btn-apple:hover:not(:disabled) { border-color: rgba(244, 246, 251, 0.5); }
+
+    /* Google's sanctioned dark button. */
+    .btn-google { background: #131314; border: 1px solid #8E918F; }
+    .btn-google:hover:not(:disabled) { background: #1c1c1d; }
+
+    .footnote {
+      margin: 22px 0 0;
+      text-align: center;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: var(--cc-muted-2);
+    }
+
+    /* ---- Mobile wordmark (crest is desktop-only; see below) ----------------
+       The navbar tucks "Clash" under "CAMPUS" with margin-top: -18%, but a
+       percentage margin resolves against the CONTAINER width. The navbar's
+       container is an inline-block that shrinks to the text, so -18% is a few
+       px; here the container is the full column and the same value would drag
+       the script clean over the block letters. Use an em instead, so the tuck
+       tracks the font size no matter how wide the column gets. */
+    .m-brand { display: none; text-align: center; margin: 0 0 26px; font-size: 1.9rem; line-height: 1.05; }
+    .m-brand .l1 { font-family: Graduate, serif; }
+    .m-brand .l2 { font-family: Pacifico, cursive; margin-top: -0.25em; }
+
+    /* ---- Layout: split at the app's 64em breakpoint ------------------------ */
+    @media (min-width: 64em) {
+      .shell { grid-template-columns: 55fr 45fr; }
+      .form-panel { padding: 40px 48px; justify-content: flex-start; }
+      .form-inner { max-width: 400px; }
+    }
+
+    /* Below the split, the crest would push the form under the fold, so the
+       panel collapses to the CSS wordmark the rest of the app uses. */
+    @media (max-width: 63.99em) {
+      .brand-panel { display: none; }
+      .m-brand { display: block; }
+      .form-panel {
+        position: relative;
+        overflow: hidden;
+        min-height: 100vh;
+        padding-top: 56px;
+      }
+      .form-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 340px;
+        background:
+          radial-gradient(120% 100% at 50% -30%, rgba(237, 88, 88, 0.15), transparent 62%),
+          repeating-linear-gradient(90deg,
+            transparent 0, transparent 78px,
+            rgba(244, 246, 251, 0.05) 78px, rgba(244, 246, 251, 0.05) 80px);
+        pointer-events: none;
+      }
+      .form-inner { position: relative; z-index: 1; }
+    }
+
+    /* ---- Motion ----------------------------------------------------------- */
+    @media (prefers-reduced-motion: no-preference) {
+      @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+      @keyframes crest-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+      @keyframes ring-pulse {
+        0%   { transform: translate(-50%, -50%) scale(0.9); opacity: 0.65; }
+        100% { transform: translate(-50%, -50%) scale(1.35); opacity: 0; }
+      }
+      @keyframes brand-draw { to { clip-path: inset(0 0 0 0); } }
+
+      .crest { animation: crest-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+      .crest-wrap::after { animation: ring-pulse 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s 1 both; }
+
+      .anim { opacity: 0; animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+      .d1 { animation-delay: 0.05s; }
+      .d2 { animation-delay: 0.16s; }
+      .d3 { animation-delay: 0.28s; }
+      .d4 { animation-delay: 0.40s; }
+
+      /* Same staggered wipe as the app navbar wordmark. */
+      .m-brand > div { clip-path: inset(0 100% 0 0); animation: brand-draw 0.7s cubic-bezier(0.4, 0, 0.2, 1) both; }
+      .m-brand > div:nth-child(1) { animation-delay: 0.05s; }
+      .m-brand > div:nth-child(2) { animation-delay: 0.32s; }
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.x.x/dist/alpine.js" defer></script>
-  <link rel="shortcut icon" type="image/png" href="https://campusclash.io/images/favicon.png"/>
 </head>
 
-<body style="background-color: #101322;" class="min-h-screen bg-gray-100 text-gray-900 flex justify-center">
-  <div class="box">
-    <div id="login-container2" class="auth"></div>
-    <div class="image">
-      <div style="display: flex;">
-        <img class="image-one" src="https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash-v4.png" />
-      </div>
-    </div>
-  </div>
+<body>
+  <main class="shell">
+    <section class="brand-panel">
+      <span class="crest-wrap">
+        <img class="crest" src="https://campusclash.io/images/campus-clash-badge-720.webp"
+             alt="Campus Clash" width="720" height="994" />
+      </span>
+      <p class="brand-tagline">Draft <b>programs</b>, not players. Every Saturday counts.</p>
+    </section>
 
-  <script src="https://cdn.auth0.com/js/lock/12.4/lock.min.js"></script>
+    <section class="form-panel">
+      <div class="form-inner">
+        <div class="m-brand" aria-hidden="true">
+          <div class="l1">CAMPUS</div>
+          <div class="l2">Clash</div>
+        </div>
+
+        <p class="eyebrow anim d1">Est. 2023 &middot; Members only</p>
+        <h1 class="anim d1">Take the field</h1>
+        <p class="subhead anim d2">Sign in to your franchise.</p>
+
+        <form id="login-form" class="anim d3" novalidate>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email"
+                   autocapitalize="off" autocorrect="off" spellcheck="false"
+                   placeholder="yours@example.com" required />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password"
+                   autocomplete="current-password" placeholder="Your password" required />
+          </div>
+
+          <p class="form-error" id="error" role="alert" aria-live="polite"></p>
+
+          <button class="btn-primary" id="submit" type="submit">
+            <span id="submit-label">Sign in</span>
+            <span id="submit-chevron" aria-hidden="true">&rsaquo;</span>
+          </button>
+        </form>
+
+        <p class="link-row anim d3">
+          <button class="link" id="reset" type="button">Forgot your password?</button>
+        </p>
+
+        <div class="divider anim d4">or</div>
+
+        <div class="anim d4">
+          <button class="btn-social btn-apple" type="button" data-connection="apple">
+            <svg width="17" height="17" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+              <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+            </svg>
+            Continue with Apple
+          </button>
+
+          <button class="btn-social btn-google" type="button" data-connection="google-oauth2">
+            <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </button>
+        </div>
+
+        <p class="footnote anim d4">New here? Ask your commissioner for an invite link.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.auth0.com/js/auth0/9.23.3/auth0.min.js"></script>
   <script>
     // Decode utf8 characters properly
     var config = JSON.parse(decodeURIComponent(escape(window.atob('@@config@@'))));
     config.extraParams = config.extraParams || {};
-    var connection = config.connection;
-    var prompt = config.prompt;
-    var languageDictionary;
-    var language;
+    config.internalOptions = config.internalOptions || {};
 
-    if (config.dict && config.dict.signin && config.dict.signin.title) {
-      languageDictionary = { title: config.dict.signin.title };
-    } else if (typeof config.dict === 'string') {
-      language = config.dict;
-    }
-    var loginHint = config.extraParams.login_hint;
-    var colors = config.colors || {};
+    // The database connection to authenticate against. config.connection is set
+    // when the authorize request pinned one; otherwise fall back to the tenant
+    // default. Must match the connection name in Auth0 exactly.
+    var DB_CONNECTION = config.connection || 'Username-Password-Authentication';
 
-    // Available Lock configuration options: https://auth0.com/docs/libraries/lock/lock-configuration
-    var lock = new Auth0Lock(config.clientID, config.auth0Domain, {
-      auth: {
-        redirectUrl: config.callbackURL,
-        responseType: (config.internalOptions || {}).response_type ||
-          (config.callbackOnLocationHash ? 'token' : 'code'),
-        params: config.internalOptions
-      },
-      additionalSignUpFields: [{
-        type: "select",
-        name: "league",
-        placeholder: "choose your league",
-        options: [
-          { value: "gg", label: "Graham" },
-          { value: "cl", label: "Claunts" }
-        ],
-      }],
-      configurationBaseUrl: config.clientConfigurationBaseUrl,
+    // config.internalOptions carries the per-request values Auth0 minted for
+    // THIS authorize call -- state, nonce, scope, audience, response_type. They
+    // have to be spread onto the constructor options: drop them and the code
+    // that comes back fails state/nonce validation at /callback, so every login
+    // dead-ends even though the form itself looks fine. Lock passed the same
+    // object through as auth.params. Assigned last so it wins.
+    var webAuth = new auth0.WebAuth(Object.assign({
+      domain: config.auth0Domain,
+      clientID: config.clientID,
+      redirectUri: config.callbackURL,
+      responseType: config.callbackOnLocationHash ? 'token' : 'code',
       overrides: {
         __tenant: config.auth0Tenant,
         __token_issuer: config.authorizationServer.issuer
-      },
-      assetsUrl: config.assetsUrl,
-      allowedConnections: connection ? [connection] : null,
-      rememberLastLogin: !prompt,
-      language: language,
-      languageBaseUrl: config.languageBaseUrl,
-      languageDictionary: languageDictionary,
-      theme: {
-        logo: 'https://fantasy-cfb-89650786e6d7.herokuapp.com/images/campus-clash-v4.png',
-        primaryColor: colors.primary ? colors.primary : 'green'
-      },
-      prefill: loginHint ? { email: loginHint, username: loginHint } : null,
-      closable: false,
-      defaultADUsernameFromEmailPrefix: false,
-      container: 'login-container2'
+      }
+    }, config.internalOptions));
+
+    var form = document.getElementById('login-form');
+    var emailEl = document.getElementById('email');
+    var passwordEl = document.getElementById('password');
+    var errorEl = document.getElementById('error');
+    var submitEl = document.getElementById('submit');
+    var labelEl = document.getElementById('submit-label');
+    var chevronEl = document.getElementById('submit-chevron');
+    var socialEls = [].slice.call(document.querySelectorAll('.btn-social'));
+
+    // Prefill from ?login_hint=, the way Lock did.
+    if (config.extraParams.login_hint) {
+      emailEl.value = config.extraParams.login_hint;
+    }
+
+    // Auth0 error code -> what a league member should actually read. Never say
+    // which of the two fields was wrong.
+    function messageFor(err) {
+      var code = (err && (err.code || err.error)) || '';
+      var description = (err && (err.description || err.error_description)) || '';
+      switch (code) {
+        case 'invalid_user_password':
+        case 'access_denied':
+          return 'That email and password don’t match.';
+        case 'too_many_attempts':
+        case 'too_many_logins':
+          return 'Too many attempts. Take a knee and try again in a few minutes.';
+        case 'unauthorized':
+        case 'blocked_user':
+          return 'This account is blocked. Reach out to your commissioner.';
+        case 'password_leaked':
+          return 'This password showed up in a breach. Check your email for a reset link.';
+        case 'invalid_captcha':
+          return 'Couldn’t verify that you’re human. Reload the page and try again.';
+        case 'requires_verification':
+          return 'Check your email to verify this address, then sign in again.';
+        default:
+          // Surface Auth0's own wording when it gave us something readable,
+          // rather than swallowing a real explanation behind a generic string.
+          return description || 'Something went wrong on our end. Try again.';
+      }
+    }
+
+    function setError(msg) {
+      errorEl.style.color = '';           // undo any setNotice() recolour
+      errorEl.textContent = msg || '';
+    }
+
+    // Same region, neutral colour -- for outcomes that aren't failures.
+    function setNotice(msg) {
+      errorEl.style.color = 'var(--cc-muted)';
+      errorEl.textContent = msg;
+    }
+
+    function setBusy(busy, label) {
+      submitEl.disabled = busy;
+      socialEls.forEach(function (b) { b.disabled = busy; });
+      labelEl.textContent = busy ? (label || 'Checking the roster…') : 'Sign in';
+      chevronEl.innerHTML = busy ? '' : '&rsaquo;';
+      chevronEl.className = busy ? 'spinner' : '';
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      setError('');
+
+      var email = emailEl.value.trim();
+      var password = passwordEl.value;
+
+      if (!email || !password) {
+        setError('Enter your email and password.');
+        (email ? passwordEl : emailEl).focus();
+        return;
+      }
+
+      setBusy(true);
+      webAuth.login({
+        realm: DB_CONNECTION,
+        username: email,
+        password: password
+      }, function (err) {
+        // Success redirects, so reaching this callback at all means failure.
+        setBusy(false);
+        setError(messageFor(err));
+        passwordEl.focus();
+        passwordEl.select();
+      });
     });
 
-    if (colors.page_background) {
-      var css = '.auth0-lock-header-logo { display: none !important; } .auth0-lock.auth0-lock .auth0-lock-overlay { background: ' +
-        colors.page_background +
-        ' } .auth0-lock-header-bg-solid {background-color: #101322 !important; opacity: 1 !important;} .auth0-lock-name {color: #F4F6FB;}' + 
-        ' .auth0-lock-content-wrapper, .auth0-lock-tabs {background-color: #101322 !important;} .auth0-lock-content-wrapper a, .auth0-lock-content-wrapper p {color: #F4F6FB !important;}'+ 
-        '.auth0-lock-tabs li.auth0-lock-tabs-current span {color: #ed5858 !important;} .auth0-lock-tabs li.auth0-lock-tabs-current {box-shadow: 0 1px 0 0 #ed5858 !important;}' + 
-        '.auth0-lock-header-bg-blur {background-color: #101322 !important; background-position: unset !important;}' + 
-        '.auth0-lock-header-bg {background-color: #101322 !important;}';
-      var style = document.createElement('style');
+    socialEls.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setError('');
+        setBusy(true, 'Redirecting…');
+        webAuth.authorize({ connection: btn.getAttribute('data-connection') });
+      });
+    });
 
-      style.appendChild(document.createTextNode(css));
-
-      document.body.appendChild(style);
-    }
-
-    lock.show();
+    document.getElementById('reset').addEventListener('click', function () {
+      var email = emailEl.value.trim();
+      if (!email) {
+        setError('Enter your email above first, then tap reset.');
+        emailEl.focus();
+        return;
+      }
+      setError('');
+      setBusy(true, 'Sending…');
+      webAuth.changePassword({
+        connection: DB_CONNECTION,
+        email: email
+      }, function (err) {
+        setBusy(false);
+        if (err) {
+          setError(messageFor(err));
+          return;
+        }
+        // Deliberately does not confirm whether the address exists.
+        setNotice('If that email has an account, a reset link is on its way.');
+      });
+    });
   </script>
-
-  <style>
-    .box {
-      height: 800px;
-      margin: 50px;
-      display: flex;
-      background-color: #1A1F33 !important;
-      border-radius: 30px;
-    }
-
-    .auth {
-      flex: 1 1 auto;
-    }
-
-    .image {
-      flex: 1 1 auto;
-      display: flex;
-      margin: auto;
-      max-height: 100%;
-    }
-
-    .image-one {
-      flex: 1 1 auto;
-      height: 700px;
-      width: auto;
-    }
-
-    .pacifico-regular {
-      font-family: "Pacifico", cursive;
-      font-weight: 400;
-      font-style: normal;
-    }
-
-    .auth0-lock-header-bg {
-      background-color: #101322 !important;
-    }
-
-    /* mobile css */
-    @media (max-width: 600px) {
-        .auth0-lock-header-logo { 
-            display: inline-block !important; 
-        }
-
-        .image {
-            display: none;
-        }
-
-        .box {
-            margin: 25px;
-            padding: 15px;
-            height: calc(var(--vh, 1vh) * 90);
-        }
-
-        .auth0-lock.auth0-lock .auth0-lock-cred-pane-internal-wrapper {
-            height: calc(var(--vh, 1vh) * 90);
-        }
-    }
-  </style>
 </body>
+
 </html>

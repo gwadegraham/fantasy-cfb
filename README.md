@@ -39,6 +39,32 @@ npm run devStart       # nodemon server.js  (http://localhost:3000)
 > Auth0: add `http://localhost:3000/callback` to Allowed Callback URLs and
 > `http://localhost:3000` to Allowed Logout URLs for local login.
 
+## Login screen
+
+`auth/login.html` is the **source of truth** for the sign-in page, but it is not
+served by this app — Auth0 hosts it. After editing, paste the whole file into
+**Auth0 Dashboard → Branding → Universal Login → Login**, with *Customize Login
+Page* toggled on, and save. Nothing deploys it for you, so the repo copy and the
+live page drift apart silently if you skip that step.
+
+Preview it locally without the paste-and-save loop:
+
+```bash
+npm run devStart   # then open http://localhost:3000/dev/login-preview
+```
+
+That route only exists when `NODE_ENV !== 'production'`. It fills in the
+`@@config@@` placeholder the same way Auth0 does and rewrites the absolute
+`campusclash.io` asset URLs to localhost, so you see local images. Email +
+password may fail there — the real page is served from the Auth0 origin, where
+`webAuth.login()` is same-origin; from localhost it is not. The social buttons
+are plain redirects and behave normally.
+
+Sign-up is deliberately absent: accounts are provisioned by the commissioner,
+and *Disable Sign Ups* is on for the database connection. Don't re-add a league
+selector — Auth0 Lock wrote it to `user_metadata.league`, while the whole app
+reads `user_metadata.metadata.league`, so the value never reached anything.
+
 ## Authorization
 
 - All API routes require a logged-in session (or the internal token).
