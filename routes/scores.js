@@ -7,7 +7,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const Team = require('../models/team');
 const Draft = require('../models/draft');
 const League = require('../models/league');
-const { computeAdminStatus } = require('../modules/admin-status');
+const { computeAdminStatus, pendingRegularWeek } = require('../modules/admin-status');
 const { computeSeasonReadiness } = require('../modules/season-readiness');
 const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
@@ -25,6 +25,40 @@ router.get('/status/:season', async (req, res) => {
             { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, homePoints: 1, awayPoints: 1, _id: 0 }
         );
         res.json(computeAdminStatus(users, games, season));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Does a regular-season week still need finalizing? Returns { season, week }
+// with week = null when nothing is outstanding.
+//
+// The postseason branch of the scoring pipeline calls this because CFBD's
+// postseason calendar window opens before the last regular-season game kicks off
+// (see pendingRegularWeek for the 2026 Army–Navy case). Read-only, derived from
+// data already on file, no CFBD calls — and it answers null the moment the
+// trailing week's games are final, so the pipeline stops paying for the extra
+// pull on its own.
+//
+// How long a game counts as outstanding is env-tunable for ops; the default
+// covers the nightly + Sunday sweeps after a Saturday kickoff.
+const PENDING_REGULAR_MAX_HOURS = Number(process.env.PENDING_REGULAR_MAX_HOURS) || 48;
+
+router.get('/pending-regular/:season', async (req, res) => {
+    try {
+        const season = req.params.season;
+        const users = await User.find(
+            { 'seasons.season': season },
+            { 'seasons.season': 1, 'seasons.teams.id': 1 }
+        ).lean();
+        const games = await Game.find(
+            { season: Number(season), seasonType: 'regular', completed: { $ne: true } },
+            { week: 1, seasonType: 1, completed: 1, startDate: 1, homeId: 1, awayId: 1, _id: 0 }
+        ).lean();
+        res.json({
+            season: String(season),
+            week: pendingRegularWeek(users, games, season, Date.now(), PENDING_REGULAR_MAX_HOURS)
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

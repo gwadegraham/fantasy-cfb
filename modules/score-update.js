@@ -24,6 +24,25 @@ function postseasonWeeksToScore(massResult) {
     return weeks.length ? weeks : [1];
 }
 
+// Asks the app whether a regular-season week still has drafted-team games that
+// kicked off and aren't final (see modules/admin-status.js pendingRegularWeek).
+// Goes through the API like every other step so it works in-process and from a
+// standalone job run alike. A failed check degrades to the old behaviour —
+// postseason only — and the next run tries again, so it never blocks scoring.
+async function fetchPendingRegularWeek(season) {
+    try {
+        const res = await internalFetch(`${process.env.URL}/scores/pending-regular/${season}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (res.status == 200 && data && data.week != null) return Number(data.week);
+    } catch (err) {
+        console.log('Could not check for a trailing regular week:', err.message);
+    }
+    return null;
+}
+
 // Which week + phase the pipeline should score right now, from a CFBD calendar.
 //
 // CFBD's calendar is a list of CONTIGUOUS windows: each entry's lastGameStart is
@@ -153,10 +172,32 @@ async function runFullUpdate({ withBetting = false } = {}) {
     var remainingCalls;
 
     if (isPostseason) {
+        // CFBD's postseason window OPENS BEFORE the regular season's last game
+        // kicks off: in 2026 the week-15 window closes 2026-12-12T07:59Z while
+        // Army–Navy (a week-15 regular-season game) kicks off at 20:00Z that same
+        // day. The postseason pull below is `seasonType=postseason`, which never
+        // contains that game — so without this the trailing week keeps the 0 it
+        // was seeded with and the result is silently lost.
+        //
+        // Runs FIRST so the shared applyH2HBonuses / updateCumulativeScores /
+        // team-score passes below fold in both phases. Costs nothing once the
+        // trailing week's games are final: the endpoint answers null and this
+        // whole block is skipped.
+        var trailingWeek = await fetchPendingRegularWeek(season);
+        if (trailingWeek != null) {
+            console.log(`Regular week ${trailingWeek} still has games to finalize — pulling it alongside the postseason`);
+            var trailing = await retrieveGamesModule.massRetrieveGames(trailingWeek, "regular");
+            if (trailing) {
+                gamesNew += (trailing.newGames || []).length;
+                gamesUpdated += (trailing.existingGames || []).length;
+            }
+            await scoringModule.updateScores("regular", trailingWeek);
+        }
+
         // One CFBD call pulls the whole postseason slate (all CFP rounds).
         var games = await retrieveGamesModule.massRetrieveGames(null, "postseason");
-        gamesNew = games.newGames.length;
-        gamesUpdated = games.existingGames.length;
+        gamesNew += games.newGames.length;
+        gamesUpdated += games.existingGames.length;
         remainingCalls = games.remainingCalls;
         console.log("number of returned new games", gamesNew);
         console.log("number of returned existing games", gamesUpdated);

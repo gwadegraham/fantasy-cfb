@@ -53,4 +53,44 @@ function computeAdminStatus(users, games, season) {
     };
 }
 
-module.exports = { computeAdminStatus };
+// The highest regular-season week that still has unfinished business: a game
+// involving a drafted team that has kicked off but isn't marked complete. null
+// when every kicked-off regular-season game is final.
+//
+// This exists because CFBD's postseason calendar window OPENS BEFORE the last
+// regular-season game kicks off. In 2026 the week-15 window closes
+// 2026-12-12T07:59Z while Army–Navy — a week-15 regular-season game — kicks off
+// at 20:00Z the same day. From 2am CT that morning the pipeline resolves to the
+// postseason and pulls `seasonType=postseason`, which never contains that game,
+// so week 15 would keep the 0 it was seeded with. The postseason pipeline
+// consults this to catch the trailing week without a calendar heuristic.
+//
+// Two bounds keep it from costing a CFBD call forever:
+//   - drafted teams only. The Game collection also holds non-FBS rows from older
+//     ingests; one of those left un-completed would pin a week open for good.
+//   - `maxHours` since kickoff. A game still not final days later is stuck data,
+//     not live business.
+function pendingRegularWeek(users, games, season, nowMs, maxHours) {
+    const windowMs = (maxHours || 48) * 3600 * 1000;
+
+    const draftedIds = new Set();
+    (users || []).forEach(u => {
+        const seasons = (u && u.seasons) || [];
+        const s = seasons.find(x => String(x.season) === String(season));
+        ((s && s.teams) || []).forEach(t => { if (t && t.id != null) draftedIds.add(Number(t.id)); });
+    });
+    if (!draftedIds.size) return null;
+
+    let pending = null;
+    (games || []).forEach(g => {
+        if (!g || g.seasonType !== 'regular' || typeof g.week !== 'number') return;
+        if (g.completed === true) return;
+        const start = Date.parse(g.startDate);
+        if (Number.isNaN(start) || start > nowMs || (nowMs - start) > windowMs) return;
+        if (!draftedIds.has(Number(g.homeId)) && !draftedIds.has(Number(g.awayId))) return;
+        if (pending == null || g.week > pending) pending = g.week;
+    });
+    return pending;
+}
+
+module.exports = { computeAdminStatus, pendingRegularWeek };
