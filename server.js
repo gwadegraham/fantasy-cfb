@@ -269,7 +269,12 @@ if (devRole.DEV) {
                 callbackOnLocationHash: false,
                 authorizationServer: { issuer: issuer + '/' },
                 internalOptions: {},
-                extraParams: {}
+                // ?invite=1 renders the invite variant (what someone arriving
+                // from an invite link sees), ?email= exercises the login_hint
+                // prefill — both without a round trip through Auth0.
+                extraParams: Object.assign({},
+                    req.query.invite ? { 'ext-invite': '1' } : null,
+                    req.query.email ? { login_hint: String(req.query.email) } : null)
             };
             // Point the absolute production asset URLs at this server, so the
             // preview renders images that only exist locally (a newly exported
@@ -297,7 +302,7 @@ app.get('/invite/:token', async (req, res, next) => {
                 ok: false,
                 heading: 'This invite link isn’t valid',
                 message: 'It may have expired, or been copied incompletely. Ask your commissioner for a fresh link.',
-                firstName: null, leagueName: null
+                firstName: null, leagueName: null, token: null
             });
         }
 
@@ -307,7 +312,7 @@ app.get('/invite/:token', async (req, res, next) => {
                 ok: false,
                 heading: 'This invite link isn’t valid',
                 message: 'It points at a team that no longer exists. Ask your commissioner for a fresh link.',
-                firstName: null, leagueName: null
+                firstName: null, leagueName: null, token: null
             });
         }
 
@@ -327,8 +332,33 @@ app.get('/invite/:token', async (req, res, next) => {
             ok: true,
             heading: null, message: null,
             firstName: user.firstName || null,
-            leagueName: (league && league.name) || null
+            leagueName: (league && league.name) || null,
+            token: req.params.token
         });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Starts the login for someone arriving from an invite, rather than sending
+// them to a bare /login.
+//
+// Two things ride along on the authorize request. `login_hint` prefills the
+// email field. `ext-invite` tells the Auth0-hosted page this visitor was
+// invited, so it leads with Apple/Google and stops presenting a password form
+// that cannot work for them — sign-ups are disabled, so a brand-new member
+// typing an invented password just gets told it doesn't match. Auth0 forwards
+// `ext-`-prefixed parameters through to the custom login page; if it ever stops,
+// the page renders normally and this is merely a plain login.
+app.get('/invite/:token/start', async (req, res, next) => {
+    try {
+        const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
+        const authorizationParams = { 'ext-invite': '1' };
+        if (claim) {
+            const user = await User.findById(claim.userId, { email: 1 }).lean();
+            if (user && user.email) authorizationParams.login_hint = user.email;
+        }
+        return res.oidc.login({ returnTo: '/standings', authorizationParams });
     } catch (err) {
         next(err);
     }

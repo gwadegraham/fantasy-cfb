@@ -114,12 +114,15 @@
                 <% } else { %>
                     Your franchise<% if (leagueName) { %> in <b><%= leagueName %></b><% } %> is waiting.
                 <% } %>
-                Sign in to finish setting up — however you like.
+                Choose how you want to sign in, and we’ll connect it to your team.
             </p>
-            <a class="invite-btn" href="/login">Sign in &rsaquo;</a>
+            <%# Not /login. The start route attaches the invite hint so the Auth0
+                page greets them as an invitee rather than asking them to sign in
+                to an account they don't have yet. %>
+            <a class="invite-btn" href="/invite/<%= token %>/start">Continue &rsaquo;</a>
             <p class="invite-note">
-                Use whichever sign-in you prefer — Google, Apple, or an email and password.
-                We’ll connect it to your team automatically.
+                Continue with Google or Apple — that’s all it takes.
+                Already have a Campus Clash password? You can use that instead.
             </p>
         <% } else { %>
             <h1 class="invite-heading"><%= heading %></h1>
