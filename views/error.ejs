@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title><%= status %> — Campus Clash</title>
+    <!-- Every asset path here is absolute. This page can be served at any depth
+         (/foo/bar/baz), where the relative paths the other views use would
+         resolve against the wrong directory and 404 in their own right. -->
+    <link href="/styles.css" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Standalone page — no navbar partial, since that reads user.role /
+           user.userId / userState and this page also renders for logged-out
+           visitors. body is already a centered flex column (styles.css). */
+        .error-card {
+            max-width: 32rem;
+            margin: 2rem 1.25rem;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-border);
+            border-radius: var(--cc-r-lg);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        .error-brand { display: inline-block; text-decoration: none; color: inherit; }
+        /* --brand-size is the wordmark's only size knob (styles.css); every
+           metric of the mark is em-relative off it. --brand-ground is the colour
+           the keyline punches through CAMPUS, so it has to match what the mark
+           actually sits on — this card is --cc-surface, not the page's --cc-bg. */
+        .error-brand .brand-title {
+            --brand-size: 2.2rem;
+            --brand-ground: var(--cc-surface);
+            margin: 0 0 1.75rem;
+        }
+        .error-status {
+            font-family: Graduate, serif;
+            font-size: 3.5rem;
+            line-height: 1;
+            color: var(--cc-accent);
+            margin: 0;
+        }
+        .error-heading {
+            font-size: 1.35rem;
+            font-weight: 600;
+            margin: 0.75rem 0 0.5rem;
+        }
+        .error-message {
+            color: var(--cc-muted);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin: 0 0 1.75rem;
+        }
+        .error-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            justify-content: center;
+        }
+        .error-btn {
+            display: inline-block;
+            padding: 0.6rem 1.35rem;
+            border-radius: var(--cc-r-pill);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid var(--cc-accent);
+            background: var(--cc-accent);
+            color: var(--cc-text);
+        }
+        .error-btn:hover { filter: brightness(1.1); }
+        .error-btn:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+    </style>
+</head>
+
+<body>
+    <main class="error-card">
+        <a href="/" class="error-brand" aria-label="Campus Clash — home">
+            <div class="brand-title">
+                <div class="brand-campus">CAMPUS</div>
+                <div class="brand-clash">Clash</div>
+            </div>
+        </a>
+        <p class="error-status"><%= status %></p>
+        <h1 class="error-heading"><%= heading %></h1>
+        <p class="error-message"><%= message %></p>
+        <div class="error-actions">
+            <% if (isAuthenticated) { %>
+                <%# Standings only. /userHome needs a ?user= param — bare, its
+                    client fetches /users/null and renders an empty page. %>
+                <a class="error-btn" href="/standings">Back to standings</a>
+            <% } else { %>
+                <a class="error-btn" href="/login">Sign in</a>
+            <% } %>
+        </div>
+    </main>
+</body>
+
+</html>
