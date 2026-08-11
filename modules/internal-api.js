@@ -12,4 +12,23 @@ function internalFetch(url, options = {}) {
     });
 }
 
-module.exports = { internalFetch };
+// A failed internal call's message, read WITHOUT ever rejecting.
+//
+// The app's own API answers JSON, but what sits in front of it may not: Heroku
+// serves an HTML error page for H12 (30s request timeout) and 503, which is
+// exactly what a long Saturday scoring run provokes. response.json() rejects on
+// that, and the scoring write helpers used to leave the rejection unhandled — no
+// await, no catch. With no process-level unhandledRejection handler anywhere,
+// Node exits: mid-pass, some managers written and others not, and the web dyno
+// goes down with it because that is where the scheduler runs.
+async function failureMessage(response) {
+    try {
+        const data = await response.json();
+        if (data && data.message) return `${data.message} (HTTP ${response.status})`;
+    } catch (err) {
+        return `HTTP ${response.status} — non-JSON response body`;
+    }
+    return `HTTP ${response.status}`;
+}
+
+module.exports = { internalFetch, failureMessage };

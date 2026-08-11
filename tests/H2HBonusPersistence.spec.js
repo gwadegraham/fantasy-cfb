@@ -19,6 +19,7 @@ const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
 const scoresRouter = require('../routes/scores');
 const standingsRouter = require('../routes/standings');
+const { pinnedH2HIds } = require('../modules/h2h');
 
 const app = express();
 app.use(express.json());
@@ -233,5 +234,93 @@ describe('GET /standings/h2h agrees with what was persisted', () => {
         const after = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}?standingsOnly=1`);
         expect(totalsOf(after.body)).toEqual({ Ann: 23, Bob: 14 });
         expect(after.body.managers.find(m => m.name.startsWith('Ann'))).toMatchObject({ record: '1-0-0', h2hBonus: 3 });
+    });
+});
+
+// The pairing schedule is positional, so the manager list decides who plays whom
+// in every week. Deriving it fresh on each pass meant a mid-season membership
+// change restructured the round robin and re-decided already-settled weeks —
+// applyAwards, which rebuilds each week's bonus from base, then moved the banked
+// points to whoever now "won". Pinning the list on the first settled week is what
+// makes a decided week stay decided.
+describe('the H2H roster is pinned once a week settles', () => {
+    async function settledWeekOne() {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+        return { a, b };
+    }
+
+    test('pins the manager list and reports it', async () => {
+        const { a, b } = await settledWeekOne();
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        expect(res.body.leagues[0].rosterPinned).toBe(true);
+        const cfg = await ScoringConfig.findOne({ league: LEAGUE }).lean();
+        const pin = cfg.h2hScheduleBySeason[String(SEASON)];
+        expect(pin.ids.map(String).sort()).toEqual([String(a._id), String(b._id)].sort());
+        expect(pin.pinnedAt).toBeInstanceOf(Date);
+    });
+
+    test('does not pin before any week has settled', async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, false)]);   // still in progress
+
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+        expect(res.body.leagues[0].rosterPinned).toBe(false);
+        // Mongoose `minimize` strips an empty object on save, so the field is
+        // absent rather than {} — pinnedH2HIds tolerates both.
+        const cfg = await ScoringConfig.findOne({ league: LEAGUE }).lean();
+        expect(pinnedH2HIds(cfg, SEASON)).toBeNull();
+    });
+
+    test('pins once — a second pass does not re-pin', async () => {
+        await settledWeekOne();
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+        const first = (await ScoringConfig.findOne({ league: LEAGUE }).lean())
+            .h2hScheduleBySeason[String(SEASON)].pinnedAt;
+
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+        expect(res.body.leagues[0].rosterPinned).toBe(false);
+        const after = (await ScoringConfig.findOne({ league: LEAGUE }).lean())
+            .h2hScheduleBySeason[String(SEASON)].pinnedAt;
+        expect(after).toEqual(first);
+    });
+
+    // The regression. A third manager joins after week 1 has paid out; week 1's
+    // result and banked bonus must not move.
+    test('a manager joining mid-season cannot re-decide a settled week', async () => {
+        const { a, b } = await settledWeekOne();
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+        expect(await sumCumulative(a._id)).toBe(23);
+        expect(await sumCumulative(b._id)).toBe(14);
+
+        // Cal joins and gets scored for week 1 too.
+        await manager('Cal', [team(4, 'Iowa')], [[1, 30]]);
+        await Game.create(game(104, 1, 4, 97, true));
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const wk = (u) => u.seasons[0].weeklyScore[0];
+        expect(wk(await User.findById(a._id).lean())).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
+        expect(wk(await User.findById(b._id).lean()).h2hBonus).toBeUndefined();
+        expect(await sumCumulative(a._id)).toBe(23);
+        expect(await sumCumulative(b._id)).toBe(14);
+    });
+
+    test('the late joiner gets no H2H for the pinned season', async () => {
+        await settledWeekOne();
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const c = await manager('Cal', [team(4, 'Iowa')], [[1, 30]]);
+        await Game.create(game(104, 1, 4, 97, true));
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const cal = await User.findById(c._id).lean();
+        expect(cal.seasons[0].weeklyScore[0].h2hBonus).toBeUndefined();
+        expect(cal.seasons[0].weeklyScore[0].h2hResult).toBeUndefined();
     });
 });

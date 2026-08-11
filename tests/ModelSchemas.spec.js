@@ -135,6 +135,21 @@ describe('Game schema', () => {
         expect(typeof g.season).toBe('number');
         expect(g.season).toBe(2025);
     });
+
+    // A duplicate id is not cosmetic: the per-team week lookup returns every
+    // match and modules/scoring.js adds a team's points once per returned game,
+    // so a second doc with the same id doubles that team's score for the week.
+    test('CFBD game id is unique — a duplicate cannot be written', async () => {
+        const doc = () => ({
+            id: 401, season: 2025, week: 1, seasonType: 'regular',
+            startDate: '2025-08-30', startTimeTbd: false, neutralSite: false, conferenceGame: false,
+            homeId: 1, homeTeam: 'Oregon', awayId: 2, awayTeam: 'Duke'
+        });
+        await Game.init();          // ensure the index is built before asserting on it
+        await Game.create(doc());
+        await expect(Game.create(doc())).rejects.toThrow(/duplicate key/i);
+        expect(await Game.countDocuments({ id: 401 })).toBe(1);
+    });
 });
 
 describe('CfpBracket schema', () => {

@@ -66,3 +66,71 @@ describe('computeAdminStatus', () => {
         });
     });
 });
+
+// --- pendingRegularWeek ------------------------------------------------------
+//
+// The postseason pipeline uses this to catch the trailing regular week, because
+// CFBD's postseason calendar window opens BEFORE the regular season's last game
+// kicks off (2026: week-15 window closes 2026-12-12T07:59Z, Army–Navy kicks off
+// 20:00Z the same day). It has to answer null as soon as that week is final, or
+// the extra CFBD pull it triggers never stops.
+describe('pendingRegularWeek', () => {
+    const { pendingRegularWeek } = require('../modules/admin-status');
+    const NOW = Date.parse('2026-12-13T05:00:00.000Z');   // the nightly job after Army–Navy
+    const hoursAgo = (h) => new Date(NOW - h * 3600 * 1000).toISOString();
+
+    // Team 1 and 2 are drafted; 99 is not.
+    const managers = [{ seasons: [{ season: 2026, teams: [{ id: 1 }, { id: 2 }] }] }];
+    const g = (week, opts = {}) => Object.assign({
+        week, seasonType: 'regular', completed: false,
+        startDate: hoursAgo(9), homeId: 1, awayId: 50
+    }, opts);
+
+    it('reports the trailing week when its game kicked off and is not final', () => {
+        expect(pendingRegularWeek(managers, [g(15)], 2026, NOW, 48)).toBe(15);
+    });
+
+    it('answers null once that game is complete', () => {
+        expect(pendingRegularWeek(managers, [g(15, { completed: true })], 2026, NOW, 48)).toBeNull();
+    });
+
+    it('takes the highest outstanding week', () => {
+        expect(pendingRegularWeek(managers, [g(13), g(15), g(14)], 2026, NOW, 48)).toBe(15);
+    });
+
+    it('ignores games that have not kicked off yet', () => {
+        expect(pendingRegularWeek(managers, [g(15, { startDate: hoursAgo(-3) })], 2026, NOW, 48)).toBeNull();
+    });
+
+    // Both bounds on the extra CFBD pull this triggers.
+    it('ignores a game stuck un-complete past the window', () => {
+        expect(pendingRegularWeek(managers, [g(15, { startDate: hoursAgo(72) })], 2026, NOW, 48)).toBeNull();
+    });
+
+    it('ignores games involving no drafted team', () => {
+        // The Game collection still holds non-FBS rows from older ingests; one of
+        // those left un-completed would otherwise pin a week open for good.
+        expect(pendingRegularWeek(managers, [g(15, { homeId: 98, awayId: 99 })], 2026, NOW, 48)).toBeNull();
+    });
+
+    it('ignores postseason games and rows with no usable week or kickoff', () => {
+        expect(pendingRegularWeek(managers, [g(15, { seasonType: 'postseason' })], 2026, NOW, 48)).toBeNull();
+        expect(pendingRegularWeek(managers, [g(null)], 2026, NOW, 48)).toBeNull();
+        expect(pendingRegularWeek(managers, [g(15, { startDate: 'nope' })], 2026, NOW, 48)).toBeNull();
+    });
+
+    it('matches the drafted team on either side of the game', () => {
+        expect(pendingRegularWeek(managers, [g(15, { homeId: 60, awayId: 2 })], 2026, NOW, 48)).toBe(15);
+    });
+
+    it('handles empty inputs and an undrafted season without throwing', () => {
+        expect(pendingRegularWeek([], [g(15)], 2026, NOW, 48)).toBeNull();
+        expect(pendingRegularWeek(managers, [], 2026, NOW, 48)).toBeNull();
+        expect(pendingRegularWeek(null, null, 2026, NOW, 48)).toBeNull();
+        expect(pendingRegularWeek([{ seasons: [{ season: 2025, teams: [{ id: 1 }] }] }], [g(15)], 2026, NOW, 48)).toBeNull();
+    });
+
+    it('defaults the window when none is given', () => {
+        expect(pendingRegularWeek(managers, [g(15)], 2026, NOW)).toBe(15);
+    });
+});

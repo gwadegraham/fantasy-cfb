@@ -1,4 +1,4 @@
-const { internalFetch } = require('./internal-api');
+const { internalFetch, failureMessage } = require('./internal-api');
 const { resolveConfig, MODELS, engagementForSeason, ruleEnabled } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { factsForGame } = require('./cfp-bracket');
@@ -39,7 +39,11 @@ module.exports= {
             // array with no initial value" and aborting the whole loop.
             var weeklyScore = user.seasons[0].weeklyScore || [];
             var totalScore = weeklyScore.map(score).reduce(sum, 0);
-            updateUserCumulativeScore(user._id, totalScore);
+            // Awaited: un-awaited, this whole step resolved before a single
+            // cumulativeScore had actually been written, so the job moved on to
+            // team scores (and reported success) with the writes still in flight —
+            // and a rejected one had nowhere to go but the process.
+            await updateUserCumulativeScore(user._id, totalScore);
         }
     },
 
@@ -257,9 +261,15 @@ module.exports= {
 
         var response = await module.exports.updateTeamScoresWithYear(season, teamId, scoreUpdateObject);
 
-        if (response.status == 200) {
+        // Guarded: updateTeamScoresWithYear used to resolve to `undefined` on a
+        // failed PATCH, so this line threw a TypeError, which rejected up through
+        // the /calculate-team-score handler — an async Express 4 handler, which
+        // does not catch that. Unhandled rejection, process gone, in the middle of
+        // a 138-team loop.
+        if (response && response.status == 200) {
             return response;
         }
+        return { status: (response && response.status) || 500, updatedTeam: null };
     },
 
     // Scoring for the Claunts league (claunts model). `cfg` may be a flat point-
@@ -294,15 +304,8 @@ module.exports= {
             },
             body: JSON.stringify(requestBody),
         });
-    
-        return response.json().then(data => {
-            if (response.status == 200) {
-                var updatedTeam = {status: response.status, updatedTeam: data};
-                return updatedTeam;
-            } else {
-                console.log(data.message);
-            }
-        });
+
+        return readTeamWrite(response, teamId);
     },
     
     updateTeamScoresWithYear: async function (season, teamId, scoreUpdate) {
@@ -321,20 +324,36 @@ module.exports= {
             },
             body: JSON.stringify(requestBody),
         });
-    
-        return response.json().then(data => {
-            if (response.status == 200) {
-                var updatedTeam = {status: response.status, updatedTeam: data};
-                return updatedTeam;
-            } else {
-                console.log(data.message);
-            }
-        });
+
+        return readTeamWrite(response, teamId);
     }
 };
 
+// Shared tail of both team-score writes. ALWAYS resolves to a { status } object —
+// it used to resolve to `undefined` on a failed PATCH, which is what turned a
+// failed write into a TypeError and then an unhandled rejection. A junk body
+// can't reject here either.
+async function readTeamWrite(response, teamId) {
+    if (response.status == 200) {
+        let data = null;
+        try { data = await response.json(); } catch (err) { /* body isn't the point on success */ }
+        return { status: response.status, updatedTeam: data };
+    }
+    console.error(`❌ Failed to write scores for team ${teamId}: ${await failureMessage(response)}`);
+    return { status: response.status, updatedTeam: null };
+}
+
+// Both user write helpers below used to end in an un-awaited
+// `response.json().then(...)` with no .catch. A non-JSON body — Heroku's H12 /
+// 503 page during a long run — made that an unhandled rejection, which with no
+// process-level handler exits Node mid-pass. See failureMessage().
+//
+// They now await the read, can't reject on a junk body, and log a FAILED write at
+// error level instead of quietly at log level. Returning a boolean so a caller
+// can tell a landed write from a lost one.
+
 async function updateUser(userId, scoreUpdate) {
-    
+
     var requestBody = `{
         "weeklyScore": ${JSON.stringify(scoreUpdate)},
         "isUpdated": true
@@ -348,14 +367,13 @@ async function updateUser(userId, scoreUpdate) {
             },
             body: requestBody,
         });
-    
-        response.json().then(data => {
-            if (response.status == 200) {
-                console.log(`✅ Successfully updated User ${userId} with new weeklyScore`);
-            } else {
-                console.log(data.message);
-            }
-        });
+
+    if (response.status == 200) {
+        console.log(`✅ Successfully updated User ${userId} with new weeklyScore`);
+        return true;
+    }
+    console.error(`❌ Failed to write weeklyScore for user ${userId}: ${await failureMessage(response)}`);
+    return false;
 }
 
 async function updateUserCumulativeScore(userId, cumulativeScore) {
@@ -370,14 +388,13 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
             "isUpdated": true
             }`,
         });
-    
-        response.json().then(data => {
-            if (response.status == 200) {
-                console.log(`Update User ${userId} with new cumulativeScore:`, cumulativeScore);
-            } else {
-                console.log(data.message);
-            }
-        });
+
+    if (response.status == 200) {
+        console.log(`Update User ${userId} with new cumulativeScore:`, cumulativeScore);
+        return true;
+    }
+    console.error(`❌ Failed to write cumulativeScore for user ${userId}: ${await failureMessage(response)}`);
+    return false;
 }
 
 
@@ -386,47 +403,81 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
 // API, so it works in the web process and in job processes alike. Falls back
 // to that league's defaults on any error.
 async function getScoringConfig(league) {
+    var res, data;
     try {
-        var res = await internalFetch(`${process.env.URL}/scoring-config/${league}`, {
+        res = await internalFetch(`${process.env.URL}/scoring-config/${league}`, {
             method: 'GET', headers: { 'Accept': 'application/json' }
         });
-        var data = await res.json();
-        // Forward the FULL config — model, values, combineMode, disabled AND
-        // enabled — so the scoring jobs honor every structural change a
-        // commissioner makes (combine mode, disabled postseason events, opted-in
-        // finer win categories), not just point values. Dropping any of these
-        // here would make computed scores silently ignore structural config while
-        // the rules page still showed it.
-        if (data && data.values) return resolveConfig(league, {
-            model: data.model,
-            values: data.values,
-            combineMode: data.combineMode,
-            disabled: data.disabled,
-            enabled: data.enabled,
-            engagement: data.engagement,
-            engagementBySeason: data.engagementBySeason
-        });
-    } catch (e) { /* fall through to defaults */ }
-    return resolveConfig(league, null);
+        data = await res.json();
+    } catch (err) {
+        throw new Error(`Could not load scoring config for ${league}: ${err.message}`);
+    }
+
+    // A config that didn't load is NOT a config of defaults.
+    //
+    // This used to swallow every failure and return resolveConfig(league, null).
+    // That looks harmless — the route already resolves defaults for a league with
+    // no saved doc — but the fallback carries an EMPTY engagementBySeason, so the
+    // captain bonus silently became 0 for the whole run, and any commissioner
+    // point values, combine mode or rule toggles were ignored while the rules page
+    // kept showing them. Silently, at log level nothing. And updateScores caches
+    // per league per run, so one bad fetch poisoned every manager in it.
+    //
+    // Scoring on a guess is worse than not scoring: the pass is idempotent and
+    // retried within the hour, whereas a wrong week is banked until someone
+    // notices. So this throws, the job records a JobRun error, and the failure
+    // email fires.
+    if (res.status != 200 || !data || !data.values) {
+        throw new Error(`Could not load scoring config for ${league}: HTTP ${res.status}`
+            + ((data && data.message) ? ` — ${data.message}` : ''));
+    }
+
+    // Forward the FULL config — model, values, combineMode, disabled AND
+    // enabled — so the scoring jobs honor every structural change a
+    // commissioner makes (combine mode, disabled postseason events, opted-in
+    // finer win categories), not just point values. Dropping any of these
+    // here would make computed scores silently ignore structural config while
+    // the rules page still showed it.
+    return resolveConfig(league, {
+        model: data.model,
+        values: data.values,
+        combineMode: data.combineMode,
+        disabled: data.disabled,
+        enabled: data.enabled,
+        engagement: data.engagement,
+        engagementBySeason: data.engagementBySeason
+    });
 }
 
-// Builds the rankings-fetch URL for a game and returns the parsed rankings.
-// Fetches the ranking doc for a game's week from the internal /rankings
-// endpoint (a Mongo read). The same (season, week, seasonType) doc is needed by
-// every game in a week and by both league models, so callers that score many
-// games in one run (updateScores / calculateTeamScores) pass a `cache` Map to
-// reuse it instead of re-reading it per game. Without a cache it always fetches
-// — so direct callers stay stateless and correct even if rankings change.
+// The rankings a game should be scored against, from the internal /rankings
+// endpoint (a Mongo read).
+//
+// Regular season: that week's poll — the ranking a team held at kickoff.
+//
+// Postseason: the LATEST regular-season poll, i.e. the last one published before
+// the bowls. That is where CFBD puts the selection-day Playoff Committee
+// Rankings, and findPoll already prefers those over AP, so a bowl game is scored
+// against the actual bracket seeding. This used to read `{season}/1/regular` —
+// week 1 of the regular season, which is the AUGUST PRESEASON POLL, published
+// before a game had been played. Inert so far, because no postseason rule reads a
+// rank and every rank-reading rule is gated to isRegular; but it is the wrong
+// poll, and the first rank-sensitive postseason rule anyone adds would have
+// silently scored off it.
+//
+// The same (season, week, seasonType) doc is needed by every game in a week and
+// by both league models, so callers that score many games in one run
+// (updateScores / calculateTeamScores) pass a `cache` Map to reuse it instead of
+// re-reading it per game. Without a cache it always fetches — so direct callers
+// stay stateless and correct even if rankings change.
 async function getRankingsForGame(game, week, season, cache) {
-    var key = (game.seasonType == "postseason")
-        ? `${season}|1|regular`
-        : `${season}|${week}|${game.seasonType}`;
+    var isPost = game.seasonType == "postseason";
+    var lookupWeek = isPost ? 'latest' : week;
+    var lookupType = isPost ? 'regular' : game.seasonType;
+
+    var key = `${season}|${lookupWeek}|${lookupType}`;
     if (cache && cache.has(key)) return cache.get(key);
 
-    var url = (game.seasonType == "postseason")
-        ? `${process.env.URL}/rankings/${season}/1/regular`
-        : `${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`;
-    var response = await internalFetch(url, {
+    var response = await internalFetch(`${process.env.URL}/rankings/${season}/${lookupWeek}/${lookupType}`, {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     });

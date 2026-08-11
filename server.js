@@ -534,13 +534,22 @@ app.use('/standings', requireAuthOrToken, standingsRouter);
 const historyRouter = require('./routes/history');
 app.use('/history', requireAuthOrToken, historyRouter);
 
+// try/catch because Express 4 does NOT catch a rejection from an async handler:
+// anything thrown in here becomes an unhandled rejection, and with no
+// process-level handler that exits the dyno. The team-score loop calls this ~138
+// times per scoring run, so one bad team used to be able to take the app down.
 app.get('/calculate-team-score/:season/:teamId/:teamName', requireAdmin, async (req, res) => {
-    var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
+    try {
+        var response = await scoringModule.calculateTeamScores(req.params.season, req.params.teamId, req.params.teamName);
 
-    if (response.status == 200) {
-        res.status(200).json(response.updatedTeam);
-    } else {
-        res.status(400).json("Bad Request");
+        if (response && response.status == 200) {
+            res.status(200).json(response.updatedTeam);
+        } else {
+            res.status(400).json("Bad Request");
+        }
+    } catch (err) {
+        console.error(`❌ calculate-team-score failed for team ${req.params.teamId}:`, err);
+        res.status(500).json({ message: err.message });
     }
 });
 

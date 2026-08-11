@@ -145,6 +145,49 @@ describe('POST /games/week/mass-create', () => {
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/rate limited/);
     });
+
+    test('updates an existing game in place and reports it as existing', async () => {
+        await Game.create(gameDoc({ id: 501, homePoints: 0, awayPoints: 0, completed: false }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({ homePoints: 30, awayPoints: 10, completed: true })]));
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+        expect(res.status).toBe(201);
+        expect(res.body.existingGames).toHaveLength(1);
+        expect(res.body.newGames).toHaveLength(0);
+        expect(await Game.countDocuments()).toBe(1);
+        const saved = await Game.findOne({ id: 501 }).lean();
+        expect(saved).toMatchObject({ homePoints: 30, completed: true });
+    });
+
+    // The race this route has to survive. The Saturday job fires at 15:00/18:00/
+    // 22:00 on the minute and the live poller fires on every :00 mark, so two runs
+    // land together three times a Saturday. Under the old find-then-insertMany
+    // both could decide the same game was new and insert it twice — and a second
+    // doc with the same CFBD id makes the per-team week lookup return the game
+    // twice, which scoring adds twice, doubling that team's points for the week.
+    test('two concurrent ingests of the same slate leave exactly one doc per game', async () => {
+        global.fetch = jest.fn(() => fetchOk([cfbdGame(), cfbdGame({ id: 502, homeTeam: 'Iowa' })]));
+        const send = () => request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+
+        const [a, b] = await Promise.all([send(), send()]);
+
+        expect(a.status).toBe(201);
+        expect(b.status).toBe(201);
+        expect(await Game.countDocuments()).toBe(2);
+        expect(await Game.countDocuments({ id: 501 })).toBe(1);
+        expect(await Game.countDocuments({ id: 502 })).toBe(1);
+    });
+
+    test('one unsaveable game does not take the rest of the slate down', async () => {
+        // homeTeam is required, so this row can't save — the other one still must.
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 503, homeTeam: undefined }),
+            cfbdGame({ id: 504, homeTeam: 'Iowa' })
+        ]));
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+        expect(res.status).toBe(201);
+        expect(await Game.countDocuments({ id: 504 })).toBe(1);
+        expect(await Game.countDocuments({ id: 503 })).toBe(0);
+    });
 });
 
 describe('POST /games/:season/schedule', () => {

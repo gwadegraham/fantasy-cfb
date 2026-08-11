@@ -158,6 +158,13 @@ async function run() {
         const r = await runFullUpdate({ withBetting: false });
         // Keep the ceiling fresh for free from this poll's own CFBD response.
         if (typeof r.remainingCalls === 'number') lastKnownRemaining = r.remainingCalls;
+        // A live game whose calendar window has closed (or hasn't opened) —
+        // shouldn't happen, since the games-live gate ran first, but the pipeline
+        // has nothing to score and says so rather than guessing a week.
+        if (r.skipped) {
+            await finishRun(id, 'success', `Nothing to score — ${r.skipped}`);
+            return { skipped: r.skipped };
+        }
         await finishRun(id, 'success',
             `Live update ${r.seasonType} wk ${r.week} · ${r.gamesNew} new / ${r.gamesUpdated} updated`,
             { week: r.week, seasonType: r.seasonType });

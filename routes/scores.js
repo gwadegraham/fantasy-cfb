@@ -7,11 +7,11 @@ const ScoringConfig = require('../models/scoringConfig');
 const Team = require('../models/team');
 const Draft = require('../models/draft');
 const League = require('../models/league');
-const { computeAdminStatus } = require('../modules/admin-status');
+const { computeAdminStatus, pendingRegularWeek } = require('../modules/admin-status');
 const { computeSeasonReadiness } = require('../modules/season-readiness');
 const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
 const { canManageLeague } = require('../modules/league-access');
-const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards } = require('../modules/h2h');
+const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards, pinnedH2HIds } = require('../modules/h2h');
 
 // Read-only status summary for the admin console: how far scoring/games have
 // progressed and whether any completed results are still unscored. Derived from
@@ -25,6 +25,40 @@ router.get('/status/:season', async (req, res) => {
             { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, homePoints: 1, awayPoints: 1, _id: 0 }
         );
         res.json(computeAdminStatus(users, games, season));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Does a regular-season week still need finalizing? Returns { season, week }
+// with week = null when nothing is outstanding.
+//
+// The postseason branch of the scoring pipeline calls this because CFBD's
+// postseason calendar window opens before the last regular-season game kicks off
+// (see pendingRegularWeek for the 2026 Army–Navy case). Read-only, derived from
+// data already on file, no CFBD calls — and it answers null the moment the
+// trailing week's games are final, so the pipeline stops paying for the extra
+// pull on its own.
+//
+// How long a game counts as outstanding is env-tunable for ops; the default
+// covers the nightly + Sunday sweeps after a Saturday kickoff.
+const PENDING_REGULAR_MAX_HOURS = Number(process.env.PENDING_REGULAR_MAX_HOURS) || 48;
+
+router.get('/pending-regular/:season', async (req, res) => {
+    try {
+        const season = req.params.season;
+        const users = await User.find(
+            { 'seasons.season': season },
+            { 'seasons.season': 1, 'seasons.teams.id': 1 }
+        ).lean();
+        const games = await Game.find(
+            { season: Number(season), seasonType: 'regular', completed: { $ne: true } },
+            { week: 1, seasonType: 1, completed: 1, startDate: 1, homeId: 1, awayId: 1, _id: 0 }
+        ).lean();
+        res.json({
+            season: String(season),
+            week: pendingRegularWeek(users, games, season, Date.now(), PENDING_REGULAR_MAX_HOURS)
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -149,10 +183,14 @@ async function applyH2HBonuses(season) {
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const eng = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, seasonStr);
+        // The frozen manager list for this season, if one has been stored. Passed
+        // through so a membership change can never re-pair an already-settled
+        // week (see modules/h2h.js h2hRoster).
+        const pinnedIds = pinnedH2HIds(cfgDoc, seasonStr);
 
         // Only load games when there's a chance of awarding. With H2H off the
         // award map stays empty, which still strips any previously-stored bonus.
-        let awards = {};
+        let awards = {}, computed = null;
         if (eng.h2hEnabled) {
             const drafted = new Set();
             users.forEach(u => {
@@ -165,10 +203,11 @@ async function applyH2HBonuses(season) {
                   $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
                 { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, _id: 0 }
             ).lean() : [];
-            awards = computeH2HAwards({
-                users, games, season: seasonStr,
+            computed = computeH2HAwards({
+                users, games, season: seasonStr, pinnedIds,
                 winBonus: eng.h2hWinBonus, tieBonus: eng.h2hTieBonus
-            }).awards;
+            });
+            awards = computed.awards;
         }
 
         let updated = 0, awarded = 0;
@@ -184,7 +223,22 @@ async function applyH2HBonuses(season) {
             updated++;
             awarded += next.weeklyScore.reduce((sum, e) => sum + (e.h2hBonus || 0), 0);
         }
-        summary.push({ league, enabled: !!eng.h2hEnabled, managersUpdated: updated, bonusAwarded: awarded });
+        // Freeze the manager list the moment the first week settles. Everything
+        // before that is unbanked, so the list stays live and preseason roster
+        // churn costs nothing; from here on, no membership change can re-decide a
+        // week that has already paid out.
+        let pinned = false;
+        if (eng.h2hEnabled && !pinnedIds && computed && computed.finalWeeks.length && computed.ids.length) {
+            await ScoringConfig.updateOne(
+                { league },
+                { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } } },
+                { upsert: true }
+            );
+            pinned = true;
+            console.log(`H2H roster pinned · ${league} ${seasonStr}: ${computed.ids.length} manager(s)`);
+        }
+
+        summary.push({ league, enabled: !!eng.h2hEnabled, managersUpdated: updated, bonusAwarded: awarded, rosterPinned: pinned });
         console.log(`H2H bonus · ${league}: ${eng.h2hEnabled ? 'on' : 'off'}, ${updated} manager(s) updated`);
     }
 

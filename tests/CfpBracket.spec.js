@@ -300,9 +300,12 @@ describe('getBracketForGame', () => {
 
     test('the cache key does not collide with the rankings sharing that Map', async () => {
         internalFetch.mockImplementation(async () => found());
-        const cache = new Map([['2025|1|regular', { polls: [] }]]);
+        // The key a postseason rankings lookup puts in this same Map (see
+        // getRankingsForGame — postseason reads the LATEST regular poll).
+        const cache = new Map([['2025|latest|regular', { polls: [] }]]);
         expect((await scoring.getBracketForGame(postGame(QF1), 2025, cache)).round).toBe(ROUNDS.QUARTERFINAL);
-        expect(cache.get('2025|1|regular')).toEqual({ polls: [] });
+        expect(cache.get('2025|latest|regular')).toEqual({ polls: [] });
+        expect(cache.get('bracket|2025')).toBeDefined();
     });
 
     test('a season with no bracket on file degrades to null, and caches that', async () => {
