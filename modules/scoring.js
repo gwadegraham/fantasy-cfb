@@ -1,4 +1,4 @@
-const { internalFetch } = require('./internal-api');
+const { internalFetch, failureMessage } = require('./internal-api');
 const { resolveConfig, MODELS, engagementForSeason, ruleEnabled } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
@@ -38,7 +38,11 @@ module.exports= {
             // array with no initial value" and aborting the whole loop.
             var weeklyScore = user.seasons[0].weeklyScore || [];
             var totalScore = weeklyScore.map(score).reduce(sum, 0);
-            updateUserCumulativeScore(user._id, totalScore);
+            // Awaited: un-awaited, this whole step resolved before a single
+            // cumulativeScore had actually been written, so the job moved on to
+            // team scores (and reported success) with the writes still in flight —
+            // and a rejected one had nowhere to go but the process.
+            await updateUserCumulativeScore(user._id, totalScore);
         }
     },
 
@@ -256,9 +260,15 @@ module.exports= {
 
         var response = await module.exports.updateTeamScoresWithYear(season, teamId, scoreUpdateObject);
 
-        if (response.status == 200) {
+        // Guarded: updateTeamScoresWithYear used to resolve to `undefined` on a
+        // failed PATCH, so this line threw a TypeError, which rejected up through
+        // the /calculate-team-score handler — an async Express 4 handler, which
+        // does not catch that. Unhandled rejection, process gone, in the middle of
+        // a 138-team loop.
+        if (response && response.status == 200) {
             return response;
         }
+        return { status: (response && response.status) || 500, updatedTeam: null };
     },
 
     // Scoring for the Claunts league (claunts model). `cfg` may be a flat point-
@@ -291,15 +301,8 @@ module.exports= {
             },
             body: JSON.stringify(requestBody),
         });
-    
-        return response.json().then(data => {
-            if (response.status == 200) {
-                var updatedTeam = {status: response.status, updatedTeam: data};
-                return updatedTeam;
-            } else {
-                console.log(data.message);
-            }
-        });
+
+        return readTeamWrite(response, teamId);
     },
     
     updateTeamScoresWithYear: async function (season, teamId, scoreUpdate) {
@@ -318,20 +321,36 @@ module.exports= {
             },
             body: JSON.stringify(requestBody),
         });
-    
-        return response.json().then(data => {
-            if (response.status == 200) {
-                var updatedTeam = {status: response.status, updatedTeam: data};
-                return updatedTeam;
-            } else {
-                console.log(data.message);
-            }
-        });
+
+        return readTeamWrite(response, teamId);
     }
 };
 
+// Shared tail of both team-score writes. ALWAYS resolves to a { status } object —
+// it used to resolve to `undefined` on a failed PATCH, which is what turned a
+// failed write into a TypeError and then an unhandled rejection. A junk body
+// can't reject here either.
+async function readTeamWrite(response, teamId) {
+    if (response.status == 200) {
+        let data = null;
+        try { data = await response.json(); } catch (err) { /* body isn't the point on success */ }
+        return { status: response.status, updatedTeam: data };
+    }
+    console.error(`❌ Failed to write scores for team ${teamId}: ${await failureMessage(response)}`);
+    return { status: response.status, updatedTeam: null };
+}
+
+// Both user write helpers below used to end in an un-awaited
+// `response.json().then(...)` with no .catch. A non-JSON body — Heroku's H12 /
+// 503 page during a long run — made that an unhandled rejection, which with no
+// process-level handler exits Node mid-pass. See failureMessage().
+//
+// They now await the read, can't reject on a junk body, and log a FAILED write at
+// error level instead of quietly at log level. Returning a boolean so a caller
+// can tell a landed write from a lost one.
+
 async function updateUser(userId, scoreUpdate) {
-    
+
     var requestBody = `{
         "weeklyScore": ${JSON.stringify(scoreUpdate)},
         "isUpdated": true
@@ -345,14 +364,13 @@ async function updateUser(userId, scoreUpdate) {
             },
             body: requestBody,
         });
-    
-        response.json().then(data => {
-            if (response.status == 200) {
-                console.log(`✅ Successfully updated User ${userId} with new weeklyScore`);
-            } else {
-                console.log(data.message);
-            }
-        });
+
+    if (response.status == 200) {
+        console.log(`✅ Successfully updated User ${userId} with new weeklyScore`);
+        return true;
+    }
+    console.error(`❌ Failed to write weeklyScore for user ${userId}: ${await failureMessage(response)}`);
+    return false;
 }
 
 async function updateUserCumulativeScore(userId, cumulativeScore) {
@@ -367,14 +385,13 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
             "isUpdated": true
             }`,
         });
-    
-        response.json().then(data => {
-            if (response.status == 200) {
-                console.log(`Update User ${userId} with new cumulativeScore:`, cumulativeScore);
-            } else {
-                console.log(data.message);
-            }
-        });
+
+    if (response.status == 200) {
+        console.log(`Update User ${userId} with new cumulativeScore:`, cumulativeScore);
+        return true;
+    }
+    console.error(`❌ Failed to write cumulativeScore for user ${userId}: ${await failureMessage(response)}`);
+    return false;
 }
 
 
