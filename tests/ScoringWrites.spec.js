@@ -135,7 +135,8 @@ describe('scoring write failures never become unhandled rejections', () => {
     it('calculateTeamScores reports a failed write rather than throwing', async () => {
         global.fetch = jest.fn((url) => {
             if (url.includes('/games/season/')) return Promise.resolve(jsonResponse(200, []));
-            return Promise.resolve(htmlErrorPage(503));
+            if (url.includes('/scoring-config/')) return Promise.resolve(jsonResponse(200, { model: 'claunts', values: {} }));
+            return Promise.resolve(htmlErrorPage(503));   // the team PATCH
         });
 
         const result = await scoringModule.calculateTeamScores(2025, 333, 'Oregon');
