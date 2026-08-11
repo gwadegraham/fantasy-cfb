@@ -142,7 +142,7 @@ describe('entries are written by the actions themselves', () => {
 
     test('creating a manager records', async () => {
         await request(adminApp).post('/users').set(TOKEN)
-            .send({ firstName: 'Bo', lastName: 'Nix', league: LEAGUE });
+            .send({ firstName: 'Bo', lastName: 'Nix', league: LEAGUE, email: 'bo@example.com' });
         const rows = await AuditLog.find({ action: 'user.create' }).lean();
         expect(rows[0].summary).toBe('Added Bo Nix');
     });

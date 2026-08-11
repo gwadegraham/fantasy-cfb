@@ -321,6 +321,21 @@ router.post('/', async (req, res) => {
         });
     }
 
+    // Required, not optional. The email is the only thing that makes an invite
+    // link safe to send: without it invite-bind has nothing to check a claimer
+    // against, so the first person to open the link takes the franchise. (That
+    // trust-on-first-use path still exists, but only for records created before
+    // this feature — no NEW franchise should be born weaker than it has to be.)
+    // The admin form is the sole caller, so nothing else breaks.
+    //
+    // Checked after the two gates above deliberately: "you can't do this at all"
+    // and "you can't do this right now" are more useful answers than a field
+    // complaint the caller can't act on anyway.
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ message: 'An email is required so the invite link can be tied to them.' });
+    }
+
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
 
@@ -336,10 +351,7 @@ router.post('/', async (req, res) => {
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
-        // Optional, but it's what lets the invite verify that the person claiming
-        // the link is the person it was sent to (modules/invite-bind.js). Without
-        // it the first claimer wins and the address is recorded from their login.
-        email: req.body.email ? String(req.body.email).trim().toLowerCase() : undefined,
+        email: email,
         seasons: seasons,
         color: color,
         league: req.body.league,

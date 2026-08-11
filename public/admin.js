@@ -703,16 +703,20 @@ if (createForm) {
         const emailEl = document.querySelector('[email]');
         const email = emailEl ? emailEl.value.trim() : '';
 
+        if (!email) {
+            failToast.options.text = "An email is required — it's what ties the invite link to them";
+            failToast.showToast();
+            return;
+        }
+
         // Color and the active-season roster entry are assigned server-side —
-        // the manager just provides a name; the draft fills the roster. Email is
-        // optional but is what lets an invite link prove the claimer is the
-        // person it was sent to (modules/invite-bind.js).
+        // the manager just provides a name; the draft fills the roster.
         var userBody = {
             firstName: firstName,
             lastName: lastName,
+            email: email,
             league: leagueCode
         };
-        if (email) userBody.email = email;
 
         const response = await fetch("/users", {
             method: 'POST',

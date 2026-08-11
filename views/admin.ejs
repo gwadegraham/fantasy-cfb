@@ -442,14 +442,14 @@
                     </button>
                 </div>
                 <div class="sub-container" create-user-container style="display: none">
-                    <p class="function-description">Add a manager to this league. They're added to the current season with an auto-assigned color; the draft fills their roster. Their email is what lets an invite link verify it's really them — worth filling in.</p>
+                    <p class="function-description">Add a manager to this league. They're added to the current season with an auto-assigned color; the draft fills their roster. The email is required: it's what stops a forwarded invite link from letting someone else claim their team.</p>
                     <p class="function-description" id="create-season-warning" style="display: none; color: var(--cc-amber);">
                         The season is underway, so a new manager starts with an empty roster and sits on zero points until you correct it.
                     </p>
                     <form id="create-form">
                         <input type="text" class="first-name" first-name placeholder="First Name">
                         <input type="text" class="last-name" last-name placeholder="Last Name">
-                        <input type="email" class="email" email placeholder="Email (optional)">
+                        <input type="email" class="email" email placeholder="Email" required>
                         <button type="submit">Create Player</button>
                     </form>
                     <hr>

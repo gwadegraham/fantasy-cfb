@@ -140,11 +140,21 @@ describe('POST /users', () => {
         expect((await User.findById(res.body._id).lean()).email).toBe('ann@example.com');
     });
 
-    test('email stays optional', async () => {
+    // Without an email, invite-bind has nothing to check a claimer against and
+    // the first person to open the link takes the franchise. New records don't
+    // get to be born that way.
+    test('refuses to create a franchise with no email', async () => {
         const res = await request(managerApp).post('/users')
             .send({ firstName: 'Bo', lastName: 'Fox', league: LEAGUE });
-        expect(res.status).toBe(201);
-        expect((await User.findById(res.body._id).lean()).email).toBeUndefined();
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/email is required/i);
+        expect(await User.countDocuments({ firstName: 'Bo' })).toBe(0);
+    });
+
+    test('refuses a blank or whitespace-only email', async () => {
+        const res = await request(managerApp).post('/users')
+            .send({ firstName: 'Bo', lastName: 'Fox', league: LEAGUE, email: '   ' });
+        expect(res.status).toBe(400);
     });
 
     describe('once the season is underway', () => {
@@ -163,7 +173,7 @@ describe('POST /users', () => {
         test('an Admin may still add (they can rescore afterwards)', async () => {
             await User.create(player({ seasons: scoredSeason() }));
             const res = await request(adminApp).post('/users')
-                .send({ firstName: 'Late', lastName: 'Joiner', league: LEAGUE });
+                .send({ firstName: 'Late', lastName: 'Joiner', league: LEAGUE, email: 'late@example.com' });
             expect(res.status).toBe(201);
         });
 
@@ -171,7 +181,7 @@ describe('POST /users', () => {
         test('a manager can still add to a league that has not started', async () => {
             await User.create(player({ league: OTHER, seasons: scoredSeason() }));
             const res = await request(managerApp).post('/users')
-                .send({ firstName: 'Early', lastName: 'Bird', league: LEAGUE });
+                .send({ firstName: 'Early', lastName: 'Bird', league: LEAGUE, email: 'early@example.com' });
             expect(res.status).toBe(201);
         });
     });
