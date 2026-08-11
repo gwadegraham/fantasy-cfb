@@ -24,56 +24,93 @@ function postseasonWeeksToScore(massResult) {
     return weeks.length ? weeks : [1];
 }
 
+// Which week + phase the pipeline should score right now, from a CFBD calendar.
+//
+// CFBD's calendar is a list of CONTIGUOUS windows: each entry's lastGameStart is
+// the next entry's firstGameStart, and the final entry closes weeks after the
+// national championship. So "the current week" is simply the last window that
+// has opened. Returns:
+//
+//   { week, seasonType }  a window covers `now`
+//   { skip: reason }      before the first window, or after the last one closed
+//
+// and THROWS when the calendar is unusable. That last part is the point of this
+// function. It replaced a loop that initialized `weekNumber = 1` and could not
+// tell "it is week 1" apart from "no window matched" — so an empty calendar (a
+// CFBD hiccup, or an empty response served from cache) silently rescored week 1
+// mid-season while reporting success, and every offseason run did the same for
+// months. Guessing a week is worse than failing: a failed run records a JobRun
+// error and emails, a wrong week quietly leaves the real week unscored.
+//
+// `seasonType` comes from the matched entry rather than being inferred, so the
+// postseason is recognized however CFBD numbers its weeks.
+function resolveCurrentWeek(calendar, now) {
+    if (!Array.isArray(calendar) || !calendar.length) {
+        throw new Error('CFBD calendar unavailable or empty — refusing to guess the current week');
+    }
+
+    // Sorted by start rather than trusting array order, and entries without a
+    // parseable kickoff boundary are dropped — a single garbled row must not be
+    // able to shift which week gets scored.
+    const windows = calendar
+        .map(c => ({
+            week: c && c.week,
+            seasonType: (c && c.seasonType) === 'postseason' ? 'postseason' : 'regular',
+            start: Date.parse((c && c.firstGameStart) || ''),
+            end: Date.parse((c && c.lastGameStart) || '')
+        }))
+        .filter(w => w.week != null && !Number.isNaN(w.start))
+        .sort((a, b) => a.start - b.start);
+
+    if (!windows.length) {
+        throw new Error('CFBD calendar has no usable week windows — refusing to guess the current week');
+    }
+
+    const t = now.getTime();
+    const opened = windows.filter(w => w.start <= t);
+    if (!opened.length) {
+        return { skip: 'preseason — the first week has not started' };
+    }
+
+    // In a gap between windows this lands on the week that just ended, which is
+    // the one that still needs finalizing.
+    const current = opened[opened.length - 1];
+    const isFinalWindow = current === windows[windows.length - 1];
+    if (isFinalWindow && !Number.isNaN(current.end) && t > current.end) {
+        return { skip: 'season over — the last calendar week has closed' };
+    }
+
+    return { week: current.week, seasonType: current.seasonType };
+}
+
 // The shared "update everything for the current week" pipeline that the daily /
 // Saturday / Sunday jobs all run. Determines the current week from the CFBD
 // calendar, ensures rankings exist, pulls games, then updates scores, cumulative
 // scores, team scores and records. `withBetting` also refreshes betting lines —
 // only the daily job did that historically, so it stays opt-in.
-// Returns { week, seasonType } for logging.
+// Returns { week, seasonType } for logging, or { skipped } out of season.
 async function runFullUpdate({ withBetting = false } = {}) {
 
     // Cached per-season (modules/cfbd-calendar.js): the week windows are static
     // intra-day, so frequent polls reuse one fetch instead of spending a CFBD
     // call each time just to compute the current week.
     var calendar = await getCalendar(process.env.YEAR);
-    var weekNumber = 1;
-    var isPostseason = false;
+    var resolved = resolveCurrentWeek(calendar, new Date());
 
-    if (calendar) {
-        for (const calendarWeek of calendar) {
-            var startDate = new Date(calendarWeek.firstGameStart);
-            var endDate = new Date(calendarWeek.lastGameStart);
-            var currentDate = new Date();
-
-            if ((currentDate > startDate) && (currentDate < endDate)) {
-                weekNumber = calendarWeek.week;
-                if (calendarWeek.seasonType == "postseason") {
-                    isPostseason = true;
-                }
-                break;
-            } else if ((currentDate < startDate) && (calendarWeek.week == 1)) {
-                weekNumber = 1;
-                break;
-            } else if ((currentDate < startDate) && (calendarWeek.week > 1)) {
-                weekNumber = (calendarWeek.week - 1);
-                break;
-            }
-        }
+    if (resolved.skip) {
+        console.log(`Nothing to score — ${resolved.skip}`);
+        return { skipped: resolved.skip, week: null, seasonType: null, teams: 0, gamesNew: 0, gamesUpdated: 0 };
     }
+
+    var weekNumber = resolved.week;
+    var isPostseason = resolved.seasonType === 'postseason';
 
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
     const season = process.env.YEAR;
-    var seasonType = '';
-    var week = weekNumber;
-
-    if (!isPostseason) {
-        seasonType = "regular";
-    } else {
-        seasonType = "postseason";
-        week = 1;
-    }
+    var seasonType = resolved.seasonType;
+    var week = isPostseason ? 1 : weekNumber;
 
     var response = await internalFetch(`${process.env.URL}/rankings/${season}/${week}/${seasonType}`, {
         method: 'GET',
@@ -165,4 +202,4 @@ async function runFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-module.exports = { runFullUpdate, postseasonWeeksToScore };
+module.exports = { runFullUpdate, postseasonWeeksToScore, resolveCurrentWeek };
