@@ -400,28 +400,50 @@ async function updateUserCumulativeScore(userId, cumulativeScore) {
 // API, so it works in the web process and in job processes alike. Falls back
 // to that league's defaults on any error.
 async function getScoringConfig(league) {
+    var res, data;
     try {
-        var res = await internalFetch(`${process.env.URL}/scoring-config/${league}`, {
+        res = await internalFetch(`${process.env.URL}/scoring-config/${league}`, {
             method: 'GET', headers: { 'Accept': 'application/json' }
         });
-        var data = await res.json();
-        // Forward the FULL config — model, values, combineMode, disabled AND
-        // enabled — so the scoring jobs honor every structural change a
-        // commissioner makes (combine mode, disabled postseason events, opted-in
-        // finer win categories), not just point values. Dropping any of these
-        // here would make computed scores silently ignore structural config while
-        // the rules page still showed it.
-        if (data && data.values) return resolveConfig(league, {
-            model: data.model,
-            values: data.values,
-            combineMode: data.combineMode,
-            disabled: data.disabled,
-            enabled: data.enabled,
-            engagement: data.engagement,
-            engagementBySeason: data.engagementBySeason
-        });
-    } catch (e) { /* fall through to defaults */ }
-    return resolveConfig(league, null);
+        data = await res.json();
+    } catch (err) {
+        throw new Error(`Could not load scoring config for ${league}: ${err.message}`);
+    }
+
+    // A config that didn't load is NOT a config of defaults.
+    //
+    // This used to swallow every failure and return resolveConfig(league, null).
+    // That looks harmless — the route already resolves defaults for a league with
+    // no saved doc — but the fallback carries an EMPTY engagementBySeason, so the
+    // captain bonus silently became 0 for the whole run, and any commissioner
+    // point values, combine mode or rule toggles were ignored while the rules page
+    // kept showing them. Silently, at log level nothing. And updateScores caches
+    // per league per run, so one bad fetch poisoned every manager in it.
+    //
+    // Scoring on a guess is worse than not scoring: the pass is idempotent and
+    // retried within the hour, whereas a wrong week is banked until someone
+    // notices. So this throws, the job records a JobRun error, and the failure
+    // email fires.
+    if (res.status != 200 || !data || !data.values) {
+        throw new Error(`Could not load scoring config for ${league}: HTTP ${res.status}`
+            + ((data && data.message) ? ` — ${data.message}` : ''));
+    }
+
+    // Forward the FULL config — model, values, combineMode, disabled AND
+    // enabled — so the scoring jobs honor every structural change a
+    // commissioner makes (combine mode, disabled postseason events, opted-in
+    // finer win categories), not just point values. Dropping any of these
+    // here would make computed scores silently ignore structural config while
+    // the rules page still showed it.
+    return resolveConfig(league, {
+        model: data.model,
+        values: data.values,
+        combineMode: data.combineMode,
+        disabled: data.disabled,
+        enabled: data.enabled,
+        engagement: data.engagement,
+        engagementBySeason: data.engagementBySeason
+    });
 }
 
 // Builds the rankings-fetch URL for a game and returns the parsed rankings.

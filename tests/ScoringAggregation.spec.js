@@ -85,6 +85,13 @@ describe('scoring aggregation', () => {
                 if (url.includes('/users/season/')) {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
                 }
+                if (url.includes('/scoring-config/')) {
+                    // getScoringConfig now THROWS on a config it can't load, so
+                    // every updateScores test has to answer this. It used to fall
+                    // back to defaults silently, which is precisely the bug —
+                    // these mocks were relying on it without saying so.
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve({ model: 'graham', values: {} }) });
+                }
                 if (url.includes('/games/seasonType/')) {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([game]) });
                 }
@@ -175,7 +182,10 @@ describe('scoring aggregation', () => {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
                 }
                 if (url.includes('/scoring-config/')) {
-                    return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+                    // A resolved config, which is what the real route always
+                    // returns. A bare {} used to be silently swallowed into
+                    // defaults; it now throws, so the stub has to be honest.
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve({ model: 'graham', values: {} }) });
                 }
                 if (url.includes('/games/seasonType/postseason/week/1/')) {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([g1]) });
@@ -213,7 +223,10 @@ describe('scoring aggregation', () => {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
                 }
                 if (url.includes('/scoring-config/')) {
-                    return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+                    // A resolved config, which is what the real route always
+                    // returns. A bare {} used to be silently swallowed into
+                    // defaults; it now throws, so the stub has to be honest.
+                    return Promise.resolve({ status: 200, json: () => Promise.resolve({ model: 'graham', values: {} }) });
                 }
                 if (url.includes('/games/seasonType/regular/week/1/')) {
                     return Promise.resolve({ status: 200, json: () => Promise.resolve([regGame]) });
@@ -233,5 +246,76 @@ describe('scoring aggregation', () => {
             expect(reg.score).toBe(3);           // regular week added alongside it
             expect(ws).toHaveLength(2);
         });
+    });
+});
+
+// A config that didn't load is NOT a config of defaults.
+//
+// getScoringConfig used to swallow every failure and return the model defaults.
+// That reads as harmless — the route resolves defaults for a league with no saved
+// doc — but the fallback carries an EMPTY engagementBySeason, so the Captain
+// bonus silently became 0 for the whole run, and any commissioner point values,
+// combine mode or rule toggles were ignored while the rules page kept showing
+// them. At log level: nothing. And updateScores caches the config per league per
+// run, so one bad fetch poisoned every manager in that league.
+describe('a scoring config that will not load fails the run', () => {
+    const OLD_ENV = process.env;
+
+    beforeEach(() => {
+        process.env = { ...OLD_ENV, URL: 'http://test.local', YEAR: '2026' };
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => { process.env = OLD_ENV; jest.restoreAllMocks(); });
+
+    const user = {
+        _id: 'u1', league: 'graham-league',
+        seasons: [{ season: '2026', teams: [{ id: 333, school: 'Alabama' }], weeklyScore: [] }]
+    };
+    const mockConfigResponse = (response) => {
+        global.fetch = jest.fn((url) => {
+            if (url.includes('/users/season/')) return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
+            if (url.includes('/scoring-config/')) return response();
+            return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+        });
+    };
+
+    it('throws when the config endpoint errors', async () => {
+        mockConfigResponse(() => Promise.resolve({ status: 500, json: () => Promise.resolve({ message: 'boom' }) }));
+        await expect(scoringModule.updateScores('regular', 1))
+            .rejects.toThrow(/Could not load scoring config for graham-league.*500.*boom/);
+    });
+
+    it('throws when the body is not a resolved config', async () => {
+        // A 200 with no `values` — the shape the real route never returns. This
+        // path did not even reach the old catch; it just fell out into defaults.
+        mockConfigResponse(() => Promise.resolve({ status: 200, json: () => Promise.resolve({}) }));
+        await expect(scoringModule.updateScores('regular', 1))
+            .rejects.toThrow(/Could not load scoring config for graham-league/);
+    });
+
+    it('throws when the body is not JSON at all', async () => {
+        mockConfigResponse(() => Promise.resolve({ status: 200, json: () => Promise.reject(new SyntaxError('Unexpected token <')) }));
+        await expect(scoringModule.updateScores('regular', 1))
+            .rejects.toThrow(/Could not load scoring config for graham-league.*Unexpected token/);
+    });
+
+    it('throws when the request itself fails', async () => {
+        mockConfigResponse(() => Promise.reject(new Error('ECONNRESET')));
+        await expect(scoringModule.updateScores('regular', 1))
+            .rejects.toThrow(/Could not load scoring config for graham-league.*ECONNRESET/);
+    });
+
+    // The consequence that made this worth failing over: a silent default config
+    // has no engagement, so Captain scores nothing.
+    it('a real config keeps the per-season engagement the fallback would have dropped', async () => {
+        mockConfigResponse(() => Promise.resolve({
+            status: 200,
+            json: () => Promise.resolve({
+                model: 'graham', values: {},
+                engagementBySeason: { '2026': { captainEnabled: true, captainMultiplier: 2 } }
+            })
+        }));
+        const cfg = await scoringModule.getScoringConfig('graham-league');
+        expect(cfg.engagementBySeason['2026'].captainEnabled).toBe(true);
     });
 });
