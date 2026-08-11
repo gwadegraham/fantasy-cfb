@@ -370,6 +370,46 @@ describe('inviteBind middleware', () => {
     });
 });
 
+// How the panel learns who a long-standing member is without a Management API
+// read scope or a migration: record the sub that already arrives in the session.
+describe('auth-sub backfill', () => {
+    const { shouldRecord, recordAuthSub } = require('../modules/auth-sub-backfill');
+
+    test('records only when a sub is present and the record has none', () => {
+        expect(shouldRecord({ authSub: null }, 'auth0|1')).toBe(true);
+        expect(shouldRecord({}, 'auth0|1')).toBe(true);
+        expect(shouldRecord({ authSub: 'auth0|old' }, 'auth0|1')).toBe(false);  // never overwrite
+        expect(shouldRecord({ authSub: null }, undefined)).toBe(false);
+        expect(shouldRecord(null, 'auth0|1')).toBe(false);
+    });
+
+    test('fills a blank binding', async () => {
+        const u = await User.create(player());
+        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(true);
+        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|seen');
+    });
+
+    // The guard lives in the update filter, not just the predicate, so a second
+    // login can't quietly take over a franchise someone already claimed.
+    test('refuses to overwrite a binding that already exists', async () => {
+        const u = await User.create(player({ authSub: 'auth0|first' }));
+        expect(await recordAuthSub(User, u._id, 'auth0|second')).toBe(false);
+        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');
+    });
+
+    test('is idempotent — the second sighting writes nothing', async () => {
+        const u = await User.create(player());
+        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(true);
+        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(false);
+    });
+
+    test('never throws on bad input or a broken model', async () => {
+        expect(await recordAuthSub(User, null, 'auth0|1')).toBe(false);
+        expect(await recordAuthSub(User, 'not-an-objectid', 'auth0|1')).toBe(false);
+        expect(await recordAuthSub(null, 'x', 'auth0|1')).toBe(false);
+    });
+});
+
 describe('GET /users/league/:league/roster', () => {
     test('reports who has a login bound, without leaking the sub', async () => {
         await User.create(player({ firstName: 'Linked', authSub: 'auth0|1', email: 'a@b.com' }));

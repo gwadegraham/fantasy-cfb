@@ -708,6 +708,7 @@
     color: var(--cc-muted);
 }
 .login-badge.is-linked { background: rgba(34, 195, 122, 0.16); color: var(--cc-success); }
+.login-badge.is-pending { background: rgba(224, 179, 65, 0.16); color: var(--cc-amber); }
 
 /* Scoped to .sub-container ON PURPOSE. `.sub-container button` is declared twice
    above (~line 95 and ~1029) and paints every button in this panel as a

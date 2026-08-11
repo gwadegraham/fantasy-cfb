@@ -888,7 +888,13 @@ async function loadManagerLogins() {
             var email = p.email
                 ? '<span class="login-email">' + escHtml(p.email) + '</span>'
                 : '<span class="login-email is-missing">No email on file</span>';
-            var badge = p.linked ? '<span class="login-badge is-linked">Claimed</span>' : '';
+            // Meaningful now that modules/auth-sub-backfill.js records a sub the
+            // first time an existing member loads a page: "Needs invite" means we
+            // have genuinely never seen a login for this team, rather than just
+            // "no invite was used", which was true of everybody.
+            var badge = p.linked
+                ? '<span class="login-badge is-linked">Claimed</span>'
+                : '<span class="login-badge is-pending">Needs invite</span>';
             var action = p.linked
                 ? '<button type="button" class="login-btn-ghost" onclick="resetInviteLink(\'' + id + '\', \'' + name + '\')">Reset</button>'
                 : '<button type="button" class="login-btn" onclick="copyInviteLink(\'' + id + '\', \'' + name + '\')">Copy invite</button>';

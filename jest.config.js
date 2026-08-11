@@ -109,6 +109,12 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        "./modules/auth-sub-backfill.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         "./modules/auth0-management.js": {
             statements: 90,
             branches: 80,

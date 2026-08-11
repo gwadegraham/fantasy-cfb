@@ -18,6 +18,7 @@ const identityGuard = require('./modules/identity-guard');
 const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = require('./modules/invite-bind');
 const inviteToken = require('./modules/invite-token');
 const auth0Management = require('./modules/auth0-management');
+const authSubBackfill = require('./modules/auth-sub-backfill');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
@@ -131,7 +132,7 @@ app.use(async (req, res, next) => {
             const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
             if (innerMeta.userId) {
                 const u = await User.findById(innerMeta.userId,
-                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1 }).lean();
+                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1, authSub: 1 }).lean();
                 if (u) {
                     const initials = (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
                     res.locals.navUser = {
@@ -139,6 +140,15 @@ app.use(async (req, res, next) => {
                         color: u.color || null,
                         initials: initials || null
                     };
+                    // Piggybacks on the lookup above rather than costing a query
+                    // of its own: record which Auth0 login owns this franchise
+                    // the first time we see it, so Manager Logins can tell a
+                    // long-standing member from one who was never set up. Runs
+                    // after identity-guard, so this session is already vouched
+                    // for, and only ever fills a blank. See auth-sub-backfill.
+                    if (authSubBackfill.shouldRecord(u, req.oidc.user.sub)) {
+                        await authSubBackfill.recordAuthSub(User, innerMeta.userId, req.oidc.user.sub);
+                    }
                 }
             }
         }
