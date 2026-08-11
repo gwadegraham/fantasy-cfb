@@ -425,3 +425,87 @@ describe('seasonH2H', () => {
         ids.forEach(id => expect(h[id].bonus).toBe(h[id].wins * 3));
     });
 });
+
+// --- pinned roster -----------------------------------------------------------
+//
+// The pairing schedule is positional, so the manager list's contents and order
+// decide who plays whom in EVERY week. Derived fresh each pass, a membership
+// change mid-season restructured the round robin and re-decided already-settled
+// weeks — and applyAwards, rebuilding each week's bonus from base, duly moved the
+// banked points to whoever now "won".
+describe('h2hRoster / pinnedH2HIds', () => {
+    const { h2hRoster, pinnedH2HIds, buildRoundRobin, scheduleForWeeks } = require('../modules/h2h');
+
+    const user = (id) => ({ _id: id, seasons: [{ season: 2026, weeklyScore: [{ week: 1, score: 5 }] }] });
+    const SIX = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const users = SIX.map(user);
+
+    it('derives from scored managers when nothing is pinned', () => {
+        expect(h2hRoster(users, 2026, null)).toEqual(SIX);
+        expect(h2hRoster(users, 2026, undefined)).toEqual(SIX);
+        expect(h2hRoster(users, 2026, [])).toEqual(SIX);
+    });
+
+    it('uses the pinned list verbatim, ignoring who is currently scored', () => {
+        const pinned = ['f', 'e', 'd', 'c', 'b', 'a'];
+        expect(h2hRoster(users, 2026, pinned)).toEqual(pinned);
+        // A seventh manager who joined after the pin gets no schedule.
+        expect(h2hRoster(users.concat([user('g')]), 2026, pinned)).toEqual(pinned);
+    });
+
+    it('coerces pinned ids to strings (they round-trip through Mongo)', () => {
+        expect(h2hRoster(users, 2026, [1, 2])).toEqual(['1', '2']);
+    });
+
+    // The damage the pin prevents, demonstrated directly: one extra manager and
+    // week 1's pairings are completely different.
+    it('a seventh manager reshuffles every prior week without a pin', () => {
+        const before = scheduleForWeeks(SIX, [1, 2, 3]);
+        const after = scheduleForWeeks(SIX.concat(['g']), [1, 2, 3]);
+        expect(buildRoundRobin(SIX)).toHaveLength(5);
+        expect(buildRoundRobin(SIX.concat(['g']))).toHaveLength(7);
+        expect(after[1]).not.toEqual(before[1]);
+    });
+
+    it('reads the pin off a config doc, tolerating a missing or empty one', () => {
+        const doc = { h2hScheduleBySeason: { '2026': { ids: ['a', 'b'] } } };
+        expect(pinnedH2HIds(doc, 2026)).toEqual(['a', 'b']);
+        expect(pinnedH2HIds(doc, '2026')).toEqual(['a', 'b']);
+        expect(pinnedH2HIds(doc, 2025)).toBeNull();
+        expect(pinnedH2HIds({ h2hScheduleBySeason: { '2026': { ids: [] } } }, 2026)).toBeNull();
+        expect(pinnedH2HIds({}, 2026)).toBeNull();
+        expect(pinnedH2HIds(null, 2026)).toBeNull();
+    });
+});
+
+describe('computeH2HAwards honors a pinned roster', () => {
+    const { computeH2HAwards } = require('../modules/h2h');
+
+    const mgr = (id, totals) => ({
+        _id: id,
+        seasons: [{ season: 2026, teams: [{ id: 1 }], weeklyScore: Object.keys(totals).map(w => ({ week: Number(w), score: totals[w] })) }]
+    });
+    const game = (week) => ({ week, seasonType: 'regular', completed: true, homeId: 1, awayId: 2 });
+    const games = [game(1), game(2)];
+
+    it('pairs by the pinned list, not by who is scored now', () => {
+        const users = [mgr('a', { 1: 10, 2: 10 }), mgr('b', { 1: 5, 2: 5 })];
+        const derived = computeH2HAwards({ users, games, season: 2026, winBonus: 3 });
+        // Adding 'c' to the pin makes it a 3-manager round robin (one bye a week),
+        // so the pairings differ from the 2-manager derived one.
+        const pinnedRun = computeH2HAwards({ users, games, season: 2026, winBonus: 3, pinnedIds: ['a', 'b', 'c'] });
+        expect(derived.ids).toEqual(['a', 'b']);
+        expect(pinnedRun.ids).toEqual(['a', 'b', 'c']);
+    });
+
+    it('a manager who left the season keeps their slot rather than reshuffling', () => {
+        const both = [mgr('a', { 1: 10 }), mgr('b', { 1: 5 })];
+        const pinnedIds = ['a', 'b'];
+        const withBoth = computeH2HAwards({ users: both, games: [game(1)], season: 2026, winBonus: 3, pinnedIds });
+        const withoutB = computeH2HAwards({ users: [mgr('a', { 1: 10 })], games: [game(1)], season: 2026, winBonus: 3, pinnedIds });
+        // a still beats b in week 1 either way — the result does not flip.
+        expect(withBoth.awards.a[1].result).toBe('W');
+        expect(withoutB.awards.a[1].result).toBe('W');
+        expect(withoutB.ids).toEqual(['a', 'b']);
+    });
+});
