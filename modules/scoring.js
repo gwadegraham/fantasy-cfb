@@ -446,23 +446,35 @@ async function getScoringConfig(league) {
     });
 }
 
-// Builds the rankings-fetch URL for a game and returns the parsed rankings.
-// Fetches the ranking doc for a game's week from the internal /rankings
-// endpoint (a Mongo read). The same (season, week, seasonType) doc is needed by
-// every game in a week and by both league models, so callers that score many
-// games in one run (updateScores / calculateTeamScores) pass a `cache` Map to
-// reuse it instead of re-reading it per game. Without a cache it always fetches
-// — so direct callers stay stateless and correct even if rankings change.
+// The rankings a game should be scored against, from the internal /rankings
+// endpoint (a Mongo read).
+//
+// Regular season: that week's poll — the ranking a team held at kickoff.
+//
+// Postseason: the LATEST regular-season poll, i.e. the last one published before
+// the bowls. That is where CFBD puts the selection-day Playoff Committee
+// Rankings, and findPoll already prefers those over AP, so a bowl game is scored
+// against the actual bracket seeding. This used to read `{season}/1/regular` —
+// week 1 of the regular season, which is the AUGUST PRESEASON POLL, published
+// before a game had been played. Inert so far, because no postseason rule reads a
+// rank and every rank-reading rule is gated to isRegular; but it is the wrong
+// poll, and the first rank-sensitive postseason rule anyone adds would have
+// silently scored off it.
+//
+// The same (season, week, seasonType) doc is needed by every game in a week and
+// by both league models, so callers that score many games in one run
+// (updateScores / calculateTeamScores) pass a `cache` Map to reuse it instead of
+// re-reading it per game. Without a cache it always fetches — so direct callers
+// stay stateless and correct even if rankings change.
 async function getRankingsForGame(game, week, season, cache) {
-    var key = (game.seasonType == "postseason")
-        ? `${season}|1|regular`
-        : `${season}|${week}|${game.seasonType}`;
+    var isPost = game.seasonType == "postseason";
+    var lookupWeek = isPost ? 'latest' : week;
+    var lookupType = isPost ? 'regular' : game.seasonType;
+
+    var key = `${season}|${lookupWeek}|${lookupType}`;
     if (cache && cache.has(key)) return cache.get(key);
 
-    var url = (game.seasonType == "postseason")
-        ? `${process.env.URL}/rankings/${season}/1/regular`
-        : `${process.env.URL}/rankings/${season}/${week}/${game.seasonType}`;
-    var response = await internalFetch(url, {
+    var response = await internalFetch(`${process.env.URL}/rankings/${season}/${lookupWeek}/${lookupType}`, {
         method: 'GET',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
     });
