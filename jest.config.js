@@ -52,6 +52,15 @@ module.exports = {
             functions: 95,
             lines: 95
         },
+        // Pure normalizer for the CFP bracket. It decides which postseason round
+        // a game is — and refuses brackets whose two bye signals disagree — so
+        // every branch, including the refusals, is held to the pure-module bar.
+        "./modules/cfp-bracket.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
         "./modules/h2h.js": {
             statements: 95,
             branches: 85,

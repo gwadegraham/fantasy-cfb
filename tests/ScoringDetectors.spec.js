@@ -8,7 +8,8 @@ const {
     CONDITIONS, buildContext,
     isConference, findPoll, rankValue, isPowerFiveUpset,
     isConferenceChampion, isBowlGame, isFirstRound,
-    isQuarterFinalist, isSemiFinalist, isFinalist, isTop4Seed
+    isQuarterFinalist, isSemiFinalist, isFinalist, isTop4Seed,
+    bracketRound
 } = require('../modules/scoring-detectors');
 
 // Home team (id 1) beats the away team (id 2) in a regular-season game.
@@ -222,5 +223,82 @@ describe('CONDITIONS vocabulary', () => {
         expect(CONDITIONS.nationalChampionship(ctxFor(2, final))).toBe(true);      // appearance
         expect(CONDITIONS.nationalChampionshipWin(ctxFor(2, final))).toBe(false);  // lost
         expect(CONDITIONS.nationalChampionshipWin(ctxFor(1, final))).toBe(true);   // won
+    });
+});
+
+// When a CFP bracket is on file for a game, its stated round replaces the notes
+// substring guess. Fixture-backed end-to-end coverage (real CFBD payload ->
+// points) lives in tests/CfpBracket.spec.js; this pins the predicate contract.
+describe('bracket-aware bracket-round predicates', () => {
+    const facts = (round, teams) => ({ gameId: 1, round: round, teams: teams || [] });
+    // A postseason game whose notes say nothing useful about the round.
+    const mute = game({ notes: 'Rose Bowl', seasonType: 'postseason' });
+
+    test('bracketRound reads a round only from a well-formed bracket', () => {
+        expect(bracketRound(facts('quarterfinal'))).toBe('quarterfinal');
+        expect(bracketRound(null)).toBeNull();
+        expect(bracketRound(undefined)).toBeNull();
+        expect(bracketRound({})).toBeNull();
+        expect(bracketRound({ round: 42 })).toBeNull();
+    });
+
+    test('the bracket names the round the notes failed to', () => {
+        expect(isFirstRound(mute, facts('first_round'))).toBe(true);
+        expect(isQuarterFinalist(mute, facts('quarterfinal'))).toBe(true);
+        expect(isSemiFinalist(mute, facts('semifinal'))).toBe(true);
+        expect(isFinalist(mute, facts('championship'))).toBe(true);
+    });
+
+    test('each predicate answers only for its own round', () => {
+        const qf = facts('quarterfinal');
+        expect(isFirstRound(mute, qf)).toBe(false);
+        expect(isSemiFinalist(mute, qf)).toBe(false);
+        expect(isFinalist(mute, qf)).toBe(false);
+    });
+
+    test('the bracket overrides notes that claim a DIFFERENT round', () => {
+        // Notes and bracket disagreeing is the drift case: the bracket wins.
+        const mislabeled = game({ notes: 'CFP Semifinal', seasonType: 'postseason' });
+        expect(isSemiFinalist(mislabeled, facts('quarterfinal'))).toBe(false);
+        expect(isQuarterFinalist(mislabeled, facts('quarterfinal'))).toBe(true);
+    });
+
+    test('a bracket game is never a bowl, whatever the venue is called', () => {
+        expect(isBowlGame(mute, null)).toBe(true);                  // notes path: reads as a bowl
+        expect(isBowlGame(mute, facts('quarterfinal'))).toBe(false);
+        expect(isBowlGame(mute, facts('championship'))).toBe(false);
+        // A genuine non-playoff bowl isn't in the bracket, so it keeps scoring.
+        expect(isBowlGame(game({ notes: 'Las Vegas Bowl', seasonType: 'postseason' }), null)).toBe(true);
+    });
+
+    test('the bye bonus follows firstRoundBye, not who is listed at home', () => {
+        // Away team (id 2) holds the bye; the home team (id 1) played its way in.
+        const qf = facts('quarterfinal', [
+            { teamId: 1, seed: 9, firstRoundBye: false },
+            { teamId: 2, seed: 1, firstRoundBye: true }
+        ]);
+        expect(isTop4Seed(mute, 2, qf)).toBe(true);
+        expect(isTop4Seed(mute, 1, qf)).toBe(false);
+        // The notes heuristic would have paid the home team instead.
+        expect(isTop4Seed(game({ notes: 'CFP Quarterfinal', seasonType: 'postseason' }), 1)).toBe(true);
+    });
+
+    test('no bye bonus outside the quarterfinal, or for a team not in the game', () => {
+        const byeTeams = [{ teamId: 2, seed: 1, firstRoundBye: true }];
+        expect(isTop4Seed(mute, 2, facts('first_round', byeTeams))).toBe(false);
+        expect(isTop4Seed(mute, 2, facts('semifinal', byeTeams))).toBe(false);
+        expect(isTop4Seed(mute, 999, facts('quarterfinal', byeTeams))).toBe(false);
+        expect(isTop4Seed(mute, 2, facts('quarterfinal', []))).toBe(false);
+    });
+
+    test('buildContext carries the game\'s bracket facts, defaulting to null', () => {
+        const qf = facts('quarterfinal', [{ teamId: 1, seed: 1, firstRoundBye: true }]);
+        expect(buildContext(1, mute, null, qf).bracket).toBe(qf);
+        expect(buildContext(1, mute, null).bracket).toBeNull();
+        // ...and the conditions read it off the context.
+        expect(CONDITIONS.cfpQuarterfinal(buildContext(1, mute, null, qf))).toBe(true);
+        expect(CONDITIONS.cfpQuarterfinalTop4Bonus(buildContext(1, mute, null, qf))).toBe(true);
+        expect(CONDITIONS.bowlAppearance(buildContext(1, mute, null, qf))).toBe(false);
+        expect(CONDITIONS.bowlAppearance(buildContext(1, mute, null))).toBe(true);
     });
 });

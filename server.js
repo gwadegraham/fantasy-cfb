@@ -456,7 +456,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireAdmin(req, res, next);
 });
-app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/recruiting', '/job-runs', '/audit-log'], (req, res, next) => {
+app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireAdmin(req, res, next);
 });
@@ -479,6 +479,9 @@ app.use('/games', requireAuthOrToken, gamesRouter);
 
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', requireAuthOrToken, rankingsRouter);
+
+const playoffsRouter = require('./routes/playoffs');
+app.use('/playoffs', requireAuthOrToken, playoffsRouter);
 
 const scoresRouter = require('./routes/scores');
 app.use('/scores', requireAuthOrToken, scoresRouter);

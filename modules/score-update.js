@@ -24,6 +24,32 @@ function postseasonWeeksToScore(massResult) {
     return weeks.length ? weeks : [1];
 }
 
+// Refreshes the season's CFP bracket — one CFBD call, postseason runs only, so
+// it costs nothing against the monthly call budget outside December/January.
+//
+// Never throws. Before selection day there's no bracket to store and the refresh
+// answers 400; that's the normal state for most of the postseason window, not a
+// failure worth aborting a scoring run over. Postseason scoring reads the
+// bracket when it's there and falls back to CFBD's game notes when it isn't.
+async function refreshCfpBracket(season) {
+    try {
+        const response = await internalFetch(`${process.env.URL}/playoffs/cfp/${season}/refresh`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        if (response.status == 201) {
+            console.log(`✅ CFP bracket refreshed: ${data.games} games (${data.status})`);
+        } else {
+            console.log(`ℹ️ CFP bracket not stored (${response.status}): ${data && data.message}`);
+        }
+        return data;
+    } catch (err) {
+        console.log('ℹ️ CFP bracket refresh failed, scoring from game notes:', err.message);
+        return null;
+    }
+}
+
 // The shared "update everything for the current week" pipeline that the daily /
 // Saturday / Sunday jobs all run. Determines the current week from the CFBD
 // calendar, ensures rankings exist, pulls games, then updates scores, cumulative
@@ -124,6 +150,10 @@ async function runFullUpdate({ withBetting = false } = {}) {
         console.log("number of returned new games", gamesNew);
         console.log("number of returned existing games", gamesUpdated);
 
+        // Before scoring, not after: the bracket is what tells scoring which
+        // round each game is.
+        await refreshCfpBracket(season);
+
         // The 12-team CFP spans several postseason weeks, and scoring keys each
         // entry by (season, week) — so score every week present, not just week 1.
         var postWeeks = postseasonWeeksToScore(games);
@@ -165,4 +195,4 @@ async function runFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-module.exports = { runFullUpdate, postseasonWeeksToScore };
+module.exports = { runFullUpdate, postseasonWeeksToScore, refreshCfpBracket };

@@ -58,6 +58,90 @@ describe('runFullUpdate scoring order', () => {
     });
 });
 
+// The bracket is what tells scoring which round a postseason game is, so the
+// refresh has to land before updateScores. It's also one CFBD call against a
+// 1,000/month budget, so it must not fire outside the postseason — and it must
+// never abort a scoring run, because "no bracket yet" is the normal state for
+// most of the window (the bracket doesn't exist until selection day).
+describe('CFP bracket refresh', () => {
+    const { runFullUpdate, refreshCfpBracket } = require('../modules/score-update');
+    const scoringModule = require('../modules/scoring.js');
+    const retrieveGames = require('../modules/retrieve-games.js');
+    const { internalFetch } = require('../modules/internal-api');
+
+    const isRefresh = (url) => String(url).includes('/playoffs/cfp/');
+    // Records the refresh alongside the scoring steps so ordering is assertable.
+    function trackRefresh({ status = 201, body = { games: 11, status: 'completed' } } = {}) {
+        internalFetch.mockImplementation(async (url) => {
+            if (isRefresh(url)) {
+                scoringModule._calls.push('refreshCfpBracket');
+                return { status: status, json: async () => body };
+            }
+            return { status: 200, json: async () => ({}) };
+        });
+    }
+    function postseasonCalendar() {
+        retrieveGames.massRetrieveGames.mockResolvedValueOnce({
+            newGames: [{ week: 1 }], existingGames: [], remainingCalls: 900
+        });
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
+            { week: 1, seasonType: 'postseason', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }
+        ]);
+    }
+
+    beforeEach(() => {
+        scoringModule._calls.length = 0;
+        internalFetch.mockReset();
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        internalFetch.mockReset();
+        internalFetch.mockImplementation(async () => ({ status: 200, json: async () => ({}) }));
+        jest.restoreAllMocks();
+    });
+
+    it('refreshes the bracket before scoring on a postseason run', async () => {
+        trackRefresh();
+        postseasonCalendar();
+        await runFullUpdate({ withBetting: false });
+        const calls = scoringModule._calls;
+        expect(calls).toContain('refreshCfpBracket');
+        expect(calls.indexOf('refreshCfpBracket')).toBeLessThan(calls.indexOf('updateScores'));
+    });
+
+    it('spends no CFBD call on a regular-season run', async () => {
+        trackRefresh();
+        await runFullUpdate({ withBetting: false });
+        expect(scoringModule._calls).not.toContain('refreshCfpBracket');
+        expect(internalFetch.mock.calls.filter(c => isRefresh(c[0]))).toHaveLength(0);
+    });
+
+    it('carries on scoring when the bracket is not published yet', async () => {
+        trackRefresh({ status: 400, body: { message: 'Bracket has no scheduled games yet' } });
+        postseasonCalendar();
+        await expect(runFullUpdate({ withBetting: false })).resolves.toMatchObject({ seasonType: 'postseason' });
+        expect(scoringModule._calls).toContain('updateScores');
+    });
+
+    it('carries on scoring when the refresh throws outright', async () => {
+        internalFetch.mockImplementation(async (url) => {
+            if (isRefresh(url)) throw new Error('socket hang up');
+            return { status: 200, json: async () => ({}) };
+        });
+        postseasonCalendar();
+        await expect(runFullUpdate({ withBetting: false })).resolves.toMatchObject({ seasonType: 'postseason' });
+        expect(scoringModule._calls).toContain('updateScores');
+    });
+
+    it('refreshCfpBracket reports the outcome without throwing', async () => {
+        internalFetch.mockImplementation(async () => ({ status: 201, json: async () => ({ games: 11, status: 'completed' }) }));
+        await expect(refreshCfpBracket(2025)).resolves.toMatchObject({ games: 11 });
+
+        internalFetch.mockImplementation(async () => { throw new Error('nope'); });
+        await expect(refreshCfpBracket(2025)).resolves.toBeNull();
+    });
+});
+
 describe('postseasonWeeksToScore', () => {
     const g = (week) => ({ week });
 

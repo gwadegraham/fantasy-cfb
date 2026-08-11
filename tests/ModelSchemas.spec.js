@@ -7,6 +7,7 @@ const { useMongo } = require('./helpers/mongo');
 const JobRun = require('../models/jobRun');
 const User = require('../models/user');
 const Game = require('../models/game');
+const CfpBracket = require('../models/cfpBracket');
 
 useMongo();
 
@@ -133,6 +134,21 @@ describe('Game schema', () => {
         });
         expect(typeof g.season).toBe('number');
         expect(g.season).toBe(2025);
+    });
+});
+
+describe('CfpBracket schema', () => {
+    test('season is required, and each bracket game needs its join key + round', () => {
+        expect(new CfpBracket({}).validateSync().errors.season).toBeDefined();
+        const err = new CfpBracket({ season: 2025, games: [{}] }).validateSync();
+        expect(err.errors['games.0.gameId']).toBeDefined();
+        expect(err.errors['games.0.round']).toBeDefined();
+    });
+
+    test('one bracket per season', async () => {
+        await CfpBracket.create({ season: 2025 });
+        await CfpBracket.init();          // ensure the unique index is built
+        await expect(CfpBracket.create({ season: 2025 })).rejects.toThrow(/duplicate key/);
     });
 });
 
