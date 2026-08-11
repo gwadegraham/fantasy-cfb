@@ -61,6 +61,21 @@ with no error and no empty state. Load it and spot-check before draft day.
 > it lets the **live poller** detect day-1 postseason kickoffs the first
 > afternoon rather than waiting for that night's job.
 
+> **CFP bracket** — nothing to do. Scoring runs pull it via
+> `POST /playoffs/cfp/2026/refresh` (one CFBD call, at most once a day) from **two
+> weeks before the first postseason game through the last one** — so it lands on
+> Selection Sunday, which is a week before the postseason calendar window opens.
+> Until the bracket publishes the refresh answers 400 and scoring falls back to
+> reading CFBD's game notes.
+>
+> Three things worth knowing when reading a job log: `not re-pulling` / `asked
+> recently` is the once-a-day throttle, not a problem; a **rejected** bracket
+> (`"rejected": true`) means CFBD's own bye signals contradicted each other and we
+> refused to score off it; and only the **active** season auto-refreshes — hit the
+> route by hand (no body, which bypasses the throttle) to put a past season's
+> bracket on file. 2023–2025 all ingest; that only affects the per-game "why did
+> this score?" breakdown, since those seasons' points are already banked.
+
 ### 5. Configure Engagement (per league) — `POST /scoring-config/:league/engagement`
 Admin → **Engagement**, pick season **2026** in the dropdown. Set H2H + Captain
 per league. *If skipped:* `engagementForSeason` returns OFF defaults, so both

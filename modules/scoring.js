@@ -1,6 +1,7 @@
 const { internalFetch, failureMessage } = require('./internal-api');
 const { resolveConfig, MODELS, engagementForSeason, ruleEnabled } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
+const { factsForGame } = require('./cfp-bracket');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -276,13 +277,15 @@ module.exports= {
     // fully-resolved config { model, combineMode, values, disabled }.
     calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.claunts.defaults, cache) {
         var rankings = await getRankingsForGame(data, week, season, cache);
-        return evaluate('claunts', team, data, rankings, normalizeCfg('claunts', cfg));
+        var bracket = await getBracketForGame(data, season, cache);
+        return evaluate('claunts', team, data, rankings, normalizeCfg('claunts', cfg), bracket);
     },
 
     // Scoring for the Graham league (graham model). See calculateScoreV1 re: cfg.
     calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.graham.defaults, cache) {
         var rankings = await getRankingsForGame(data, week, season, cache);
-        return evaluate('graham', team, data, rankings, normalizeCfg('graham', cfg));
+        var bracket = await getBracketForGame(data, season, cache);
+        return evaluate('graham', team, data, rankings, normalizeCfg('graham', cfg), bracket);
     },
 
     updateTeamScores: async function (teamId, scoreUpdate) {
@@ -483,6 +486,39 @@ async function getRankingsForGame(game, week, season, cache) {
     return data;
 }
 
+// The CFP bracket facts for ONE game, or null when there's no bracket evidence
+// for it — which the detectors read as "fall back to the notes strings".
+//
+// Shares the `cache` Map with the rankings above (distinct key prefix): the
+// season's whole bracket is one document, so a run that scores many games reads
+// it once. Regular-season games skip the read entirely — the bracket is
+// postseason by definition.
+//
+// Degrades to null on ANY failure, including a 404 for a season with no bracket
+// on file. A missing bracket must never break scoring: the notes path still
+// produces the same score it always did.
+async function getBracketForGame(game, season, cache) {
+    if (!game || game.seasonType != "postseason") return null;
+
+    var key = `bracket|${season}`;
+    var bracket = null;
+    if (cache && cache.has(key)) {
+        bracket = cache.get(key);
+    } else {
+        try {
+            var response = await internalFetch(`${process.env.URL}/playoffs/cfp/${season}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+            });
+            if (response.status == 200) bracket = await response.json();
+        } catch (e) {
+            console.log(`CFP bracket unavailable for ${season}, scoring from game notes:`, e.message);
+        }
+        if (cache) cache.set(key, bracket);
+    }
+    return factsForGame(bracket, game.id);
+}
+
 // --- unified scoring engine ---------------------------------------------
 
 // Coerces the `cfg` arg accepted by calculateScoreV1/V2 into the shape the
@@ -507,14 +543,18 @@ function pointsOf(values, key) {
 // commissioner's point values, combine-mode override, and disabled postseason
 // events. See modules/scoring-defaults.js for the structure and the exact
 // precedence rationale.
-function evaluate(model, team, game, rankings, cfg) {
+//
+// `bracket` is optional: the game's CFP bracket facts when a bracket is on file.
+// Callers that score synthesized or historical games omit it and the postseason
+// detectors read the game's notes exactly as before.
+function evaluate(model, team, game, rankings, cfg, bracket) {
     var structure = (MODELS[model] || MODELS.claunts).structure;
     var values = cfg.values || {};
     var disabled = cfg.disabled || [];
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings);
+    var ctx = buildContext(team, game, rankings, bracket);
 
     // 1. Postseason events, in order. Each ON matching rule adds its points; a
     //    non-additive match stops evaluation. This first-match-stop reproduces
@@ -604,14 +644,14 @@ module.exports.explainRegularWin = explainRegularWin;
 // and skip logic exactly, so `total` equals evaluate()'s score for the same
 // inputs (locked by a parity test). Powers the member-facing "why did this game
 // score this?" breakdown.
-function explainGame(model, team, game, rankings, cfg) {
+function explainGame(model, team, game, rankings, cfg, bracket) {
     var structure = (MODELS[model] || MODELS.claunts).structure;
     var values = cfg.values || {};
     var disabled = cfg.disabled || [];
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings);
+    var ctx = buildContext(team, game, rankings, bracket);
     var matched = [];
     var add = function (r, group) {
         matched.push({ key: r.pointsKey, label: r.label, points: pointsOf(values, r.pointsKey), group: group });
@@ -639,3 +679,4 @@ module.exports.explainGame = explainGame;
 // (resolved config + the game's week rankings) the scoring jobs use.
 module.exports.getScoringConfig = getScoringConfig;
 module.exports.getRankingsForGame = getRankingsForGame;
+module.exports.getBracketForGame = getBracketForGame;

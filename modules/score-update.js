@@ -24,6 +24,91 @@ function postseasonWeeksToScore(massResult) {
     return weeks.length ? weeks : [1];
 }
 
+// At most one bracket pull per day. The facts scoring reads — which game is which
+// round, the seeds, the first-round byes — are fixed when the bracket publishes on
+// selection day; only `outcome` / `champion` move as games finish, and nothing
+// reads those yet. So a daily pull is plenty, and the alternative is expensive:
+// EVERY caller of runFullUpdate hits this, including the game-day live poller
+// (modules/live-poll.js), which fires every 10 minutes while a postseason game is
+// live and budgets itself at ~1 CFBD call per poll.
+const BRACKET_MAX_AGE_HOURS = 24;
+
+// How early to start looking, relative to the first postseason game. The bracket
+// publishes on Selection Sunday, which lands BEFORE the postseason calendar
+// window opens — in 2026, ~Dec 6 against a window that opens Dec 12. Waiting for
+// the window would leave it unfetched for its first six days, so we start
+// checking two weeks out and let the pull itself discover when it's live.
+const BRACKET_LOOKAHEAD_DAYS = 14;
+
+// Is it worth asking CFBD for the bracket yet? True from BRACKET_LOOKAHEAD_DAYS
+// before the first postseason game through the last one — so it covers selection
+// day, the whole bowl/CFP run, and nothing else in the year.
+//
+// Deliberately NOT derived from resolveCurrentWeek. That answers "which week is it
+// now", and on selection weekend the correct answer is still the regular season —
+// this needs the different question "how close is the postseason", which is a
+// lookahead the current-week resolver can't express. So it reads the postseason
+// entry's own window instead.
+function bracketWindowOpen(calendar, now, lookaheadDays = BRACKET_LOOKAHEAD_DAYS) {
+    if (!Array.isArray(calendar)) return false;
+    const post = calendar.find(w => w && w.seasonType === 'postseason' && w.firstGameStart);
+    if (!post) return false;
+
+    const start = new Date(post.firstGameStart).getTime();
+    if (!Number.isFinite(start)) return false;
+    const t = now.getTime();
+    if (t < (start - lookaheadDays * 86400000)) return false;
+
+    // An unusable end date leaves the window open rather than closed — better to
+    // spend the daily call than to silently stop pulling mid-tournament.
+    const end = new Date(post.lastGameStart).getTime();
+    return !Number.isFinite(end) || t <= end;
+}
+
+// Last time we ASKED, whatever the answer. The route's maxAgeHours check compares
+// against a stored bracket, so it can't throttle the pre-release period when
+// there's nothing stored yet — and that period includes conference championship
+// Saturday, when the live poller is firing every 10 minutes. In-process is enough:
+// the jobs run inside the one long-lived web dyno (see modules/cfbd-calendar.js),
+// and if it restarts, the route's stored-age check covers the post-release case.
+let lastBracketAttemptMs = 0;
+function resetBracketThrottle() { lastBracketAttemptMs = 0; }
+
+// Refreshes the season's CFP bracket — one CFBD call, at most once a day, and only
+// inside the bracket window, so it costs nothing outside December/January.
+//
+// Never throws. Before selection day there's no bracket to store and the refresh
+// answers 400; that's the normal state for the first stretch of the window, not a
+// failure worth aborting a scoring run over. Postseason scoring reads the
+// bracket when it's there and falls back to CFBD's game notes when it isn't.
+async function refreshCfpBracket(season) {
+    const gapMs = BRACKET_MAX_AGE_HOURS * 3600000;
+    if (lastBracketAttemptMs && (Date.now() - lastBracketAttemptMs) < gapMs) {
+        return { skipped: true, reason: 'asked recently' };
+    }
+    lastBracketAttemptMs = Date.now();
+
+    try {
+        const response = await internalFetch(`${process.env.URL}/playoffs/cfp/${season}/refresh`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ maxAgeHours: BRACKET_MAX_AGE_HOURS })
+        });
+        const data = await response.json();
+        if (response.status == 201) {
+            console.log(`✅ CFP bracket refreshed: ${data.games} games (${data.status})`);
+        } else if (data && data.skipped) {
+            console.log(`CFP bracket already ${data.ageHours}h old, not re-pulling`);
+        } else {
+            console.log(`ℹ️ CFP bracket not stored (${response.status}): ${data && data.message}`);
+        }
+        return data;
+    } catch (err) {
+        console.log('ℹ️ CFP bracket refresh failed, scoring from game notes:', err.message);
+        return null;
+    }
+}
+
 // Asks the app whether a regular-season week still has drafted-team games that
 // kicked off and aren't final (see modules/admin-status.js pendingRegularWeek).
 // Goes through the API like every other step so it works in-process and from a
@@ -209,6 +294,13 @@ async function doFullUpdate({ withBetting = false } = {}) {
     var gamesUpdated = 0;
     var remainingCalls;
 
+    // Before any scoring, and NOT gated on isPostseason: the bracket publishes
+    // while the calendar still says regular season, and it's worth having from
+    // the day it drops rather than from the first bowl game.
+    if (bracketWindowOpen(calendar, new Date())) {
+        await refreshCfpBracket(season);
+    }
+
     if (isPostseason) {
         // CFBD's postseason window OPENS BEFORE the regular season's last game
         // kicks off: in 2026 the week-15 window closes 2026-12-12T07:59Z while
@@ -283,6 +375,8 @@ async function doFullUpdate({ withBetting = false } = {}) {
 
 module.exports = {
     runFullUpdate, postseasonWeeksToScore, resolveCurrentWeek,
+    refreshCfpBracket, bracketWindowOpen, resetBracketThrottle,
+    BRACKET_MAX_AGE_HOURS, BRACKET_LOOKAHEAD_DAYS,
     // Exported so a test can prove the overlap guard releases; nothing in the app
     // should need to clear it.
     _clearInFlight: () => { inFlight = null; }

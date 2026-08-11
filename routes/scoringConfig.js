@@ -3,7 +3,7 @@ const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const Game = require('../models/game');
 const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
-const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame } = require('../modules/scoring');
+const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
@@ -84,7 +84,8 @@ router.get('/:league/explain', async (req, res) => {
         if (!game) return res.status(404).json({ message: 'Game not found' });
         const cfg = await getScoringConfig(req.params.league);
         const rankings = await getRankingsForGame(game, game.week, game.season);
-        res.json(explainGame(cfg.model, teamId, game, rankings, cfg));
+        const bracket = await getBracketForGame(game, game.season);
+        res.json(explainGame(cfg.model, teamId, game, rankings, cfg, bracket));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
