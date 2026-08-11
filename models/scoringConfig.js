@@ -35,6 +35,16 @@ const scoringConfigSchema = new mongoose.Schema({
     // affects another, and a rescore of a season without an entry adds no
     // captain/H2H bonus. Stored as Mixed so seasons can be added freely.
     engagementBySeason: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // The FROZEN H2H manager list per season, e.g.
+    // { "2026": { ids: ["65a…", "65b…"], pinnedAt: Date } }.
+    //
+    // H2H pairings come from a positional round robin, so this list's contents
+    // and order decide who plays whom in every week. Derived fresh each pass, a
+    // membership change mid-season restructured the round robin and re-decided
+    // every already-settled week — moving banked bonuses between managers. The
+    // list is pinned the first time a week settles and read verbatim after that.
+    // See modules/h2h.js h2hRoster.
+    h2hScheduleBySeason: { type: mongoose.Schema.Types.Mixed, default: {} },
     updatedAt: { type: Date, default: Date.now }
 });
 

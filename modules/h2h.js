@@ -184,6 +184,36 @@ function h2hManagerIds(users, season) {
         .sort();
 }
 
+// The FROZEN manager list stored for a league+season, or null if none yet.
+// Reads a ScoringConfig doc (or lean object); kept here so the scoring-time pass
+// and the standings read model can't disagree about where the pin lives.
+function pinnedH2HIds(cfgDoc, season) {
+    const bySeason = cfgDoc && cfgDoc.h2hScheduleBySeason;
+    const entry = bySeason && (bySeason[String(season)] || bySeason[Number(season)]);
+    const ids = entry && entry.ids;
+    return (Array.isArray(ids) && ids.length) ? ids.map(String) : null;
+}
+
+// The EFFECTIVE manager list for a season's H2H — pinned if one has been stored,
+// otherwise derived from who currently has a scored week.
+//
+// The pairing schedule is POSITIONAL (circle-method round robin), so this list's
+// contents and order decide who plays whom in every week. Deriving it fresh on
+// every pass was a latent history-rewriter: add or remove a manager mid-season
+// and the round robin restructures (6 managers = 5 rounds, 7 = 7 rounds with a
+// bye, and round 0's pairings differ entirely), so every already-settled week is
+// re-decided under new pairings — and applyAwards, which rebuilds each week's
+// bonus from base, duly moves the banked points to whoever now "won".
+//
+// So the caller pins the list the first time a week settles. Before that nothing
+// is banked to protect, so the derived list is used and preseason roster churn
+// costs nothing. After it, membership changes cannot touch decided weeks — a
+// manager who joins later simply has no H2H schedule for that season.
+function h2hRoster(users, season, pinned) {
+    if (Array.isArray(pinned) && pinned.length) return pinned.map(String);
+    return h2hManagerIds(users, season);
+}
+
 const round1 = (v) => Math.round(v * 10) / 10;
 
 // The single source of truth for "who won which H2H week, and what is it worth".
@@ -202,9 +232,9 @@ const round1 = (v) => Math.round(v * 10) / 10;
 //   weekFinal   { [week]: bool }
 //   finalWeeks  settled weeks, ascending
 //   currentWeek the first week with games that hasn't settled (or null)
-function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek }) {
+function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek, pinnedIds }) {
     const bound = maxWeek || H2H_MAX_WEEK;
-    const ids = h2hManagerIds(users, season);
+    const ids = h2hRoster(users, season, pinnedIds);
 
     const awards = {};
     ids.forEach(id => { awards[id] = {}; });
@@ -366,5 +396,5 @@ module.exports = {
     buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H,
     gameStatus, isWeekFinal, matchupWinProb,
     H2H_MAX_WEEK, h2hWeekRange, seasonEntry, baseWeekScore, persistedBonus,
-    h2hManagerIds, computeH2HAwards, applyAwards
+    h2hManagerIds, h2hRoster, pinnedH2HIds, computeH2HAwards, applyAwards
 };
