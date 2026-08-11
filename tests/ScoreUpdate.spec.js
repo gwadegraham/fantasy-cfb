@@ -42,9 +42,15 @@ describe('runFullUpdate scoring order', () => {
     const scoringModule = require('../modules/scoring.js');
     const retrieveGames = require('../modules/retrieve-games.js');
 
+    const { internalFetch } = require('../modules/internal-api');
+
     beforeEach(() => {
         scoringModule._calls.length = 0;
+        scoringModule.updateScores.mockClear();
         retrieveGames.massRetrieveGames.mockClear();
+        // Default: no trailing regular week outstanding (the endpoint answers
+        // { week: null }, which this bare body stands in for).
+        internalFetch.mockImplementation(async () => ({ status: 200, json: async () => ({}) }));
         jest.spyOn(console, 'log').mockImplementation(() => {});
     });
     afterEach(() => { jest.restoreAllMocks(); });
@@ -65,6 +71,56 @@ describe('runFullUpdate scoring order', () => {
         const calls = scoringModule._calls;
         expect(calls.indexOf('applyH2HBonuses')).toBeGreaterThan(calls.indexOf('updateScores'));
         expect(calls.indexOf('applyH2HBonuses')).toBeLessThan(calls.indexOf('updateCumulativeScores'));
+    });
+
+    // CFBD's postseason window opens BEFORE the regular season's last game kicks
+    // off (2026: week-15 window closes 2026-12-12T07:59Z, Army–Navy kicks off
+    // 20:00Z that day), and the postseason pull is `seasonType=postseason` — which
+    // never contains that game. Without the trailing pass, week 15 keeps its 0.
+    const POSTSEASON_CALENDAR = [
+        { week: 1, seasonType: 'postseason', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }
+    ];
+
+    it('finalizes a trailing regular week alongside the postseason', async () => {
+        internalFetch.mockImplementation(async (url) => /pending-regular/.test(url)
+            ? { status: 200, json: async () => ({ season: '2026', week: 15 }) }
+            : { status: 200, json: async () => ({}) });
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce(POSTSEASON_CALENDAR);
+
+        await runFullUpdate({ withBetting: false });
+
+        // Regular week 15 pulled and scored FIRST, so the shared H2H / cumulative
+        // / team-score passes below fold in both phases.
+        expect(retrieveGames.massRetrieveGames.mock.calls).toEqual([[15, 'regular'], [null, 'postseason']]);
+        expect(scoringModule.updateScores.mock.calls).toEqual([['regular', 15], ['postseason', 1]]);
+        const calls = scoringModule._calls;
+        expect(calls.lastIndexOf('updateScores')).toBeLessThan(calls.indexOf('applyH2HBonuses'));
+    });
+
+    it('leaves the postseason run alone when no regular week is outstanding', async () => {
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce(POSTSEASON_CALENDAR);
+        await runFullUpdate({ withBetting: false });
+        expect(retrieveGames.massRetrieveGames.mock.calls).toEqual([[null, 'postseason']]);
+        expect(scoringModule.updateScores.mock.calls).toEqual([['postseason', 1]]);
+    });
+
+    it('falls back to postseason-only when the trailing-week check fails', async () => {
+        internalFetch.mockImplementation(async (url) => {
+            if (/pending-regular/.test(url)) throw new Error('boom');
+            return { status: 200, json: async () => ({}) };
+        });
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce(POSTSEASON_CALENDAR);
+        await runFullUpdate({ withBetting: false });
+        expect(scoringModule.updateScores.mock.calls).toEqual([['postseason', 1]]);
+    });
+
+    it('never runs the trailing pass during the regular season', async () => {
+        internalFetch.mockImplementation(async (url) => /pending-regular/.test(url)
+            ? { status: 200, json: async () => ({ season: '2026', week: 15 }) }
+            : { status: 200, json: async () => ({}) });
+        await runFullUpdate({ withBetting: false });
+        expect(retrieveGames.massRetrieveGames.mock.calls).toEqual([[7, 'regular']]);
+        expect(scoringModule.updateScores.mock.calls).toEqual([['regular', 7]]);
     });
 
     // The whole point of resolveCurrentWeek throwing/skipping instead of
