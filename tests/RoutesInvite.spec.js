@@ -18,6 +18,7 @@ const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
 const usersRouter = require('../routes/users');
 const inviteToken = require('../modules/invite-token');
+const { leagueCodeFor } = require('../modules/league-access');
 
 // A League Manager for graham-league: can manage their own league, not the other.
 function appAs(roles, leagueFlag) {
@@ -220,11 +221,45 @@ describe('inviteBind middleware', () => {
         expect(res.status).toBe(302);
         expect(res.headers.location).toBe('/login?returnTo=%2Fstandings');
 
+        // Shape matters twice over, and both are invisible at runtime:
+        //   - TOP-LEVEL, not nested under `metadata`. The post-login Action wraps
+        //     the whole user_metadata as the token's `metadata`, so nesting here
+        //     would surface as metadata.metadata.userId and bind nothing.
+        //   - the league FLAG ('gg'), not the Mongo code ('graham-league').
+        //     leagueCodeFor reads anything that isn't 'gg' as claunts, so the
+        //     wrong vocabulary files the member into the other league silently.
         expect(management.patchUserMetadata).toHaveBeenCalledWith('auth0|new', {
-            metadata: { userId: String(u._id), league: LEAGUE }
+            userId: String(u._id),
+            league: 'gg'
         });
         const saved = await User.findById(u._id).lean();
         expect(saved.authSub).toBe('auth0|new');
+    });
+
+    // The write and the read are separated by an Auth0 Action that lives in the
+    // dashboard, not this repo, so nothing else in the suite connects them. This
+    // replays what the Action does — claim = { roles, metadata: user_metadata } —
+    // and asserts the app resolves the member back to the league we started from.
+    // Both shipped bugs (nesting one level too deep, and writing the Mongo league
+    // code instead of the Auth0 flag) fail here and nowhere else.
+    test.each([
+        ['graham-league', 'gg'],
+        ['claunts-league', 'cl']
+    ])('what it writes for %s round-trips back through the app read path', async (league, flag) => {
+        const u = await User.create(player({ league, email: 'ann@example.com' }));
+        const management = okManagement();
+
+        await request(bindApp(session(), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        const written = management.patchUserMetadata.mock.calls[0][1];
+        expect(written.league).toBe(flag);
+
+        // Exactly what "Post Login Add Metadata" builds.
+        const oidcUser = { user_metadata: { roles: [], metadata: written } };
+
+        expect(leagueCodeFor(oidcUser)).toBe(league);
+        expect(oidcUser.user_metadata.metadata.userId).toBe(String(u._id));
     });
 
     test('records the email on first use when the franchise had none', async () => {

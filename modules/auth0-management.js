@@ -51,10 +51,13 @@ async function getToken(now = Date.now()) {
 // Shallow-merges `patch` into the user's user_metadata.
 //
 // Auth0 merges at the TOP level of user_metadata only — nested objects are
-// replaced wholesale, not deep-merged. So writing { metadata: {...} } leaves the
-// sibling `roles` key alone (modules/dev-role.js reads it) but overwrites the
-// whole `metadata` object. That is what we want for a fresh invitee and exactly
-// what you must not assume when adding a second writer later.
+// replaced wholesale, not deep-merged. So a patch of { userId, league } leaves
+// any other top-level key intact, and that is exactly the granularity the invite
+// bind wants. Don't assume a deep merge when adding a second writer.
+//
+// Note `roles` does NOT live in user_metadata: the tenant's post-login Action
+// sources it from event.authorization.roles and only re-nests user_metadata
+// underneath. Nothing here needs to preserve it.
 async function patchUserMetadata(sub, patch) {
     if (!isConfigured()) throw new Error('Auth0 Management API is not configured');
     if (!sub) throw new Error('patchUserMetadata needs a sub');

@@ -16,6 +16,8 @@
 // never wedge an ordinary login, so anything unexpected calls next() and leaves
 // the session exactly as it found it.
 
+const { leagueFlagFor } = require('./league-access');
+
 const norm = (e) => String(e == null ? '' : e).trim().toLowerCase();
 
 const COOKIE = 'cc_invite';
@@ -169,9 +171,22 @@ function inviteBind(deps) {
             }
 
             // bind
+            //
+            // MIND THE TWO RESHAPES between what we write and what the app reads.
+            //
+            // 1. Nesting. The tenant's "Post Login Add Metadata" Action sets the
+            //    ID-token claim to { roles, metadata: <the whole user_metadata> }.
+            //    So the app's user_metadata.metadata.userId is Auth0's TOP-LEVEL
+            //    user_metadata.userId. Writing { metadata: { userId } } here would
+            //    surface as metadata.metadata.userId and bind nothing.
+            // 2. Vocabulary. Auth0 stores the league as the flag 'gg'/'cl'; Mongo
+            //    stores 'graham-league'/'claunts-league'. leagueCodeFor treats
+            //    anything that isn't 'gg' as claunts, so writing the Mongo value
+            //    doesn't error — it quietly files the member in the wrong league.
             try {
                 await management.patchUserMetadata(sub, {
-                    metadata: { userId: String(invite.userId), league: record.league || invite.league || '' }
+                    userId: String(invite.userId),
+                    league: leagueFlagFor(record.league || invite.league || '')
                 });
                 await User.updateOne(
                     { _id: invite.userId },

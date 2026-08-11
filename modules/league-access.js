@@ -8,6 +8,16 @@ function leagueCodeFor(oidcUser) {
     return inner.league === 'gg' ? 'graham-league' : 'claunts-league';
 }
 
+// Inverse of leagueCodeFor: the Auth0 metadata flag for a league code. Anything
+// that WRITES the flag (modules/invite-bind.js) has to go through this — the two
+// vocabularies are easy to confuse, since Mongo stores 'graham-league' while
+// Auth0 stores 'gg', and writing the Mongo value silently resolves the member
+// into the other league rather than failing. Kept next to its inverse so the
+// pair can't drift.
+function leagueFlagFor(league) {
+    return league === 'graham-league' ? 'gg' : 'cl';
+}
+
 function tokenOk(req) {
     const configured = process.env.INTERNAL_API_TOKEN;
     const provided = req && req.get && req.get('X-Internal-Token');
@@ -28,4 +38,4 @@ function canManageLeague(req, league) {
     return false;
 }
 
-module.exports = { leagueCodeFor, canManageLeague };
+module.exports = { leagueCodeFor, leagueFlagFor, canManageLeague };
