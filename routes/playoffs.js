@@ -37,12 +37,32 @@ router.get('/cfp/:season', async (req, res) => {
 // parent states `firstRoundBye` outright — the flattened form forces deriving
 // the bye from `source: null`, which is a trap worth avoiding (see
 // crossCheckByes in modules/cfp-bracket.js).
+// `maxAgeHours` in the body makes the call conditional: if the stored bracket is
+// younger than that, answer 200 and spend NO CFBD call. Scheduled callers pass
+// it; a hand-run refresh omits it and always re-pulls, so a manual backfill or a
+// "something looks wrong, re-pull it" is never silently skipped.
 router.post('/cfp/:season/refresh', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({ message: 'Invalid season' });
     }
     const season = Number(req.params.season);
     try {
+        const existing = await CfpBracket.findOne({ season: season });
+
+        const maxAgeHours = Number(req.body && req.body.maxAgeHours);
+        if (Number.isFinite(maxAgeHours) && maxAgeHours > 0 && existing && existing.retrievedAt) {
+            const ageHours = (Date.now() - existing.retrievedAt.getTime()) / 3600000;
+            if (ageHours < maxAgeHours) {
+                return res.status(200).json({
+                    season: season,
+                    skipped: true,
+                    reason: 'fresh',
+                    ageHours: Math.round(ageHours * 10) / 10,
+                    retrievedAt: existing.retrievedAt
+                });
+            }
+        }
+
         const response = await fetch(`https://api.collegefootballdata.com/playoffs/cfp?year=${season}`, {
             method: 'GET',
             headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
@@ -75,7 +95,6 @@ router.post('/cfp/:season/refresh', async (req, res) => {
         // merge would leave stale fields behind when the new payload doesn't have
         // them — re-ingesting a completed 2025 bracket over a hypothetical
         // re-opened one would keep the old `champion` forever.
-        const existing = await CfpBracket.findOne({ season: season });
         const bracket = await CfpBracket.findOneAndReplace(
             { season: season }, derived, { upsert: true, new: true });
 

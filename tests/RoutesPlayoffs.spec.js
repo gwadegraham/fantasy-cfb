@@ -104,6 +104,63 @@ describe('POST /playoffs/cfp/:season/refresh', () => {
         expect(stored.champion).toBeUndefined();
     });
 
+    // `maxAgeHours` throttles the scheduled callers. Without it every caller of
+    // runFullUpdate re-pulls — including the live poller, every 10 minutes.
+    describe('maxAgeHours throttle', () => {
+        test('skips the CFBD call when the stored bracket is fresh', async () => {
+            global.fetch = fetchWith(raw2025);
+            await request(app).post('/playoffs/cfp/2025/refresh');
+            global.fetch = fetchWith(raw2025);   // fresh spy
+
+            const res = await request(app).post('/playoffs/cfp/2025/refresh').send({ maxAgeHours: 24 });
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({ season: 2025, skipped: true, reason: 'fresh' });
+            expect(res.body.ageHours).toBeLessThan(1);
+            expect(global.fetch).not.toHaveBeenCalled();
+        });
+
+        test('re-pulls once the stored bracket is older than the window', async () => {
+            global.fetch = fetchWith(raw2025);
+            await request(app).post('/playoffs/cfp/2025/refresh');
+            await CfpBracket.updateOne({ season: 2025 },
+                { retrievedAt: new Date(Date.now() - 25 * 3600000) });
+            global.fetch = fetchWith(raw2025);
+
+            const res = await request(app).post('/playoffs/cfp/2025/refresh').send({ maxAgeHours: 24 });
+            expect(res.status).toBe(201);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        test('a hand-run refresh (no maxAgeHours) is never skipped', async () => {
+            global.fetch = fetchWith(raw2025);
+            await request(app).post('/playoffs/cfp/2025/refresh');
+            global.fetch = fetchWith(raw2025);
+
+            const res = await request(app).post('/playoffs/cfp/2025/refresh');
+            expect(res.status).toBe(201);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        test('a nonsense maxAgeHours does not throttle', async () => {
+            global.fetch = fetchWith(raw2025);
+            await request(app).post('/playoffs/cfp/2025/refresh');
+
+            for (const bad of [{ maxAgeHours: 'soon' }, { maxAgeHours: 0 }, { maxAgeHours: -5 }]) {
+                global.fetch = fetchWith(raw2025);
+                const res = await request(app).post('/playoffs/cfp/2025/refresh').send(bad);
+                expect(res.status).toBe(201);
+                expect(global.fetch).toHaveBeenCalledTimes(1);
+            }
+        });
+
+        test('nothing stored yet means nothing to skip', async () => {
+            global.fetch = fetchWith(raw2025);
+            const res = await request(app).post('/playoffs/cfp/2025/refresh').send({ maxAgeHours: 24 });
+            expect(res.status).toBe(201);
+            expect(res.body.created).toBe(true);
+        });
+    });
+
     test('a rejected bracket is a 400 and leaves the stored one alone', async () => {
         global.fetch = fetchWith(raw2025);
         await request(app).post('/playoffs/cfp/2025/refresh');

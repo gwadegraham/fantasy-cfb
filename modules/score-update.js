@@ -24,8 +24,17 @@ function postseasonWeeksToScore(massResult) {
     return weeks.length ? weeks : [1];
 }
 
-// Refreshes the season's CFP bracket — one CFBD call, postseason runs only, so
-// it costs nothing against the monthly call budget outside December/January.
+// At most one bracket pull per day. The facts scoring reads — which game is which
+// round, the seeds, the first-round byes — are fixed when the bracket publishes on
+// selection day; only `outcome` / `champion` move as games finish, and nothing
+// reads those yet. So a daily pull is plenty, and the alternative is expensive:
+// EVERY caller of runFullUpdate hits this, including the game-day live poller
+// (modules/live-poll.js), which fires every 10 minutes while a postseason game is
+// live and budgets itself at ~1 CFBD call per poll.
+const BRACKET_MAX_AGE_HOURS = 24;
+
+// Refreshes the season's CFP bracket — one CFBD call at most once a day, and only
+// on postseason runs, so it costs nothing outside December/January.
 //
 // Never throws. Before selection day there's no bracket to store and the refresh
 // answers 400; that's the normal state for most of the postseason window, not a
@@ -35,11 +44,14 @@ async function refreshCfpBracket(season) {
     try {
         const response = await internalFetch(`${process.env.URL}/playoffs/cfp/${season}/refresh`, {
             method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ maxAgeHours: BRACKET_MAX_AGE_HOURS })
         });
         const data = await response.json();
         if (response.status == 201) {
             console.log(`✅ CFP bracket refreshed: ${data.games} games (${data.status})`);
+        } else if (data && data.skipped) {
+            console.log(`CFP bracket already ${data.ageHours}h old, not re-pulling`);
         } else {
             console.log(`ℹ️ CFP bracket not stored (${response.status}): ${data && data.message}`);
         }
@@ -195,4 +207,4 @@ async function runFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-module.exports = { runFullUpdate, postseasonWeeksToScore, refreshCfpBracket };
+module.exports = { runFullUpdate, postseasonWeeksToScore, refreshCfpBracket, BRACKET_MAX_AGE_HOURS };

@@ -64,7 +64,7 @@ describe('runFullUpdate scoring order', () => {
 // never abort a scoring run, because "no bracket yet" is the normal state for
 // most of the window (the bracket doesn't exist until selection day).
 describe('CFP bracket refresh', () => {
-    const { runFullUpdate, refreshCfpBracket } = require('../modules/score-update');
+    const { runFullUpdate, refreshCfpBracket, BRACKET_MAX_AGE_HOURS } = require('../modules/score-update');
     const scoringModule = require('../modules/scoring.js');
     const retrieveGames = require('../modules/retrieve-games.js');
     const { internalFetch } = require('../modules/internal-api');
@@ -131,6 +131,28 @@ describe('CFP bracket refresh', () => {
         postseasonCalendar();
         await expect(runFullUpdate({ withBetting: false })).resolves.toMatchObject({ seasonType: 'postseason' });
         expect(scoringModule._calls).toContain('updateScores');
+    });
+
+    it('asks for at most one pull a day, so the live poller cannot re-pull per poll', async () => {
+        trackRefresh();
+        postseasonCalendar();
+        await runFullUpdate({ withBetting: false });
+
+        const call = internalFetch.mock.calls.find(c => isRefresh(c[0]));
+        expect(JSON.parse(call[1].body)).toEqual({ maxAgeHours: BRACKET_MAX_AGE_HOURS });
+        expect(BRACKET_MAX_AGE_HOURS).toBe(24);
+    });
+
+    it('reports a throttled refresh as a skip, not as a failure', async () => {
+        internalFetch.mockImplementation(async () => ({
+            status: 200, json: async () => ({ skipped: true, reason: 'fresh', ageHours: 3.2 })
+        }));
+        const logs = [];
+        console.log.mockImplementation((...a) => logs.push(a.join(' ')));
+
+        await refreshCfpBracket(2026);
+        expect(logs.join('\n')).toMatch(/already 3\.2h old, not re-pulling/);
+        expect(logs.join('\n')).not.toMatch(/not stored/);
     });
 
     it('refreshCfpBracket reports the outcome without throwing', async () => {
