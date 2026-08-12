@@ -121,6 +121,30 @@ describe('POST /scoring-config — saving the power list', () => {
         expect((await ScoringConfig.findOne({ league: LEAGUE })).powerConferences).toBeUndefined();
     });
 
+    // The save response is what admin.js caches into scoringConfigData, so it
+    // reporting something the database doesn't say is a live trap for whatever
+    // reads that object next. It used to omit engagement entirely: saving point
+    // values came back claiming H2H and captain were off while the doc had them
+    // on. Both responses are built by one function now; these lock that together.
+    it('echoes the stored engagement instead of defaults', async () => {
+        const bySeason = { 2026: { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1, captainEnabled: true, captainMultiplier: 2 } };
+        await ScoringConfig.findOneAndUpdate({ league: LEAGUE }, { $set: { engagementBySeason: bySeason } }, { upsert: true });
+        const res = await save({});
+        expect(res.body.engagement).toMatchObject({ h2hEnabled: true, captainEnabled: true, h2hTieBonus: 1 });
+        expect(res.body.engagementBySeason).toEqual(bySeason);
+        // ...and the stored map is untouched by a scoring-values save.
+        expect((await ScoringConfig.findOne({ league: LEAGUE })).engagementBySeason).toEqual(bySeason);
+    });
+
+    it('returns the same config a reload would', async () => {
+        await ScoringConfig.findOneAndUpdate({ league: LEAGUE },
+            { $set: { engagementBySeason: { 2026: { h2hEnabled: true, captainEnabled: true } } } }, { upsert: true });
+        const saved = await save({ powerConferences: POWER_PLUS });
+        const reloaded = await request(app).get(`/scoring-config/${LEAGUE}?season=2026`);
+        ['values', 'engagement', 'engagementBySeason', 'powerConferences', 'combineMode', 'disabled', 'enabled', 'season']
+            .forEach(k => expect(saved.body[k]).toEqual(reloaded.body[k]));
+    });
+
     it('records the list in the audit trail alongside the other scoring changes', async () => {
         await save({ powerConferences: POWER_PLUS });
         const AuditLog = require('../models/auditLog');
