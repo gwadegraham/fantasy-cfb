@@ -45,8 +45,18 @@ function rankValue(team, rankings) {
     return entry.rank <= 10 ? 2 : 1;
 }
 
-function isPowerFiveUpset(teamConf, oppConf) {
-    var powerFive = ["ACC", "Big 12", "Big Ten", "SEC"];
+// The conferences the upset bonus treats as "power" — a win over one of these
+// by a team outside them is the upset. Kept as a DEFAULT rather than a constant
+// because which programs count as power is a league judgment, not a fact of the
+// engine: Notre Dame sits in `FBS Independents`, so under the bare four it
+// collected the underdog bonus on every P4 win despite being a top-5 program.
+// A league overrides the list via its scoring config (`powerConferences`); the
+// default below must stay exactly these four so the frozen-oracle parity test
+// (tests/ScoringParity.spec.js) keeps proving the unchanged engine.
+var POWER_CONFERENCES = ["ACC", "Big 12", "Big Ten", "SEC"];
+
+function isPowerFiveUpset(teamConf, oppConf, powerConferences) {
+    var powerFive = powerConferences || POWER_CONFERENCES;
     return (!powerFive.includes(teamConf)) && (powerFive.includes(oppConf));
 }
 
@@ -131,7 +141,10 @@ function isTop4Seed(game, teamId, bracket) {
 // whole season's bracket — the round lookup happens before the context is built.
 // Omitted or null everywhere a caller has no bracket, and the detectors fall
 // back to notes.
-function buildContext(team, game, rankings, bracket) {
+//
+// `powerConferences` is the league's power list for the upset bonus; omitted
+// everywhere a caller has no config and the default four apply.
+function buildContext(team, game, rankings, bracket, powerConferences) {
     var isHome = game.homeId == team;
     var isAway = game.awayId == team;
     var won = isHome ? (game.homePoints > game.awayPoints)
@@ -148,7 +161,7 @@ function buildContext(team, game, rankings, bracket) {
         opponent: opponent,
         rankVal: rankValue(opponent, rankings),
         isConference: isConference(game),
-        isPowerFiveUpset: isPowerFiveUpset(teamConf, oppConf)
+        isPowerFiveUpset: isPowerFiveUpset(teamConf, oppConf, powerConferences)
     };
 }
 
@@ -195,7 +208,7 @@ module.exports = {
     CONDITIONS,
     buildContext,
     // exported for reuse/tests:
-    isConference, findPoll, rankValue, isPowerFiveUpset,
+    isConference, findPoll, rankValue, isPowerFiveUpset, POWER_CONFERENCES,
     isConferenceChampion, isBowlGame, isFirstRound,
     isQuarterFinalist, isSemiFinalist, isFinalist, isTop4Seed,
     bracketRound

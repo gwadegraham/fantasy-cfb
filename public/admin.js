@@ -2238,7 +2238,24 @@ function renderScoringFields() {
                 <input type="number" step="1" min="0" data-key="${f.key}" value="${vals[f.key]}">
                 <button type="button" class="step-up" tabindex="-1" aria-label="Increase points">+</button>
             </div>
-        </div>${note}`;
+        </div>${note}${f.condition === 'nonP5UpsetBonus' ? independentsRow() : ''}`;
+    }
+
+    // Who counts as "power" for the upset bonus above. Independents are the only
+    // real question — Notre Dame sits there, so with the bare four it drew the
+    // underdog bonus on every power-conference win it had. Exposed as a single
+    // checkbox rather than an editable conference list: the list is stored in
+    // full, but a free-text field here would let a typo silently change scoring.
+    function independentsRow() {
+        var on = (scoringConfigData.powerConferences || []).indexOf('FBS Independents') !== -1;
+        // NB: deliberately NOT class="scoring-toggle" — that class is harvested
+        // into the disabled/enabled RULE lists by data-condition, and this is a
+        // rule parameter, not a rule.
+        return `<div class="draft-field scoring-field scoring-subfield">
+            <label><input type="checkbox" class="scoring-param" id="power-independents" ${on ? 'checked' : ''}>
+                Count independents as a power conference</label>
+        </div>
+        <div class="scoring-note">Stops Notre Dame and UConn earning the upset bonus, and makes beating them count as one.</div>`;
     }
 
     var regular = fields.filter(function (f) { return f.group === 'regular'; });
@@ -2311,12 +2328,21 @@ async function saveScoringConfig() {
         }
     });
 
+    // Power list for the upset bonus: the base four always, plus independents
+    // when the box is ticked. Sent as null when off so the server clears the
+    // stored list back to the engine default. The base comes from the server so
+    // conference names are never spelled here.
+    var indep = document.getElementById('power-independents');
+    var base = scoringConfigData.powerConferencesBase || [];
+    var powerConferences = (indep && indep.checked) ? base.concat('FBS Independents') : null;
+
     var res = await fetch('/scoring-config', {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
             league: leagueCode, model: getShape(),
-            values: values, disabled: disabled, enabled: enabled
+            values: values, disabled: disabled, enabled: enabled,
+            powerConferences: powerConferences
         })
     });
     var data = await res.json();

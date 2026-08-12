@@ -110,6 +110,54 @@ describe('disabled postseason events', () => {
     });
 });
 
+// A league can widen which conferences count as "power" for the non-P5 upset
+// bonus. Motivating case: Notre Dame sits in FBS Independents, so under the bare
+// four it drew the +2 underdog bonus on every power-conference win — ~19 points a
+// season for a top-5 program the rule was never meant to reward.
+describe('powerConferences override (non-P5 upset bonus)', () => {
+    const POWER_PLUS = ['ACC', 'Big 12', 'Big Ten', 'SEC', 'FBS Independents'];
+    const ndOverAcc = () => homeWin({ homeConf: 'FBS Independents', awayConf: 'ACC' });
+    const macOverBigTen = () => homeWin({ homeConf: 'Mid-American', awayConf: 'Big Ten' });
+
+    it('defaults to the bare four, so an unconfigured league scores as before', async () => {
+        mockRankings([]);
+        const cfg = resolveConfig('graham-league', null);
+        expect(cfg.powerConferences).toBeUndefined();
+        // base 1 + nonP5 upset 2
+        expect(await scoring.calculateScoreV2(1, ndOverAcc(), 5, 2025, cfg)).toBe(3);
+    });
+
+    it('drops the bonus for an independent once the league counts them as power', async () => {
+        mockRankings([]);
+        const cfg = resolveConfig('graham-league', { powerConferences: POWER_PLUS });
+        expect(await scoring.calculateScoreV2(1, ndOverAcc(), 5, 2025, cfg)).toBe(1);   // base only
+    });
+
+    it('leaves a genuine Group-of-5 upset paying, and starts paying wins over independents', async () => {
+        mockRankings([]);
+        const cfg = resolveConfig('graham-league', { powerConferences: POWER_PLUS });
+        expect(await scoring.calculateScoreV2(1, macOverBigTen(), 5, 2025, cfg)).toBe(3);
+        const macOverNd = homeWin({ homeConf: 'Mid-American', awayConf: 'FBS Independents' });
+        expect(await scoring.calculateScoreV2(1, macOverNd, 5, 2025, cfg)).toBe(3);
+    });
+
+    it('is inert for Claunts, whose model has no upset rule at all', async () => {
+        mockRankings([]);
+        const plain = resolveConfig('claunts-league', null);
+        const widened = resolveConfig('claunts-league', { powerConferences: POWER_PLUS });
+        // Non-conference win vs an unranked opponent = 1 either way.
+        expect(await scoring.calculateScoreV1(1, ndOverAcc(), 5, 2025, plain)).toBe(1);
+        expect(await scoring.calculateScoreV1(1, ndOverAcc(), 5, 2025, widened)).toBe(1);
+    });
+
+    it('falls back to the default when the stored value is malformed', () => {
+        [null, 'SEC', [], [''], [42], undefined].forEach(bad => {
+            expect(resolveConfig('graham-league', { powerConferences: bad }).powerConferences).toBeUndefined();
+        });
+        expect(resolveConfig('graham-league', { powerConferences: [' SEC '] }).powerConferences).toEqual(['SEC']);
+    });
+});
+
 describe('fieldsForModel', () => {
     it('marks postseason fields toggleable and reflects disabled state', () => {
         const fields = fieldsForModel('claunts', ['bowlWin']);

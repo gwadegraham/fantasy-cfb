@@ -17,6 +17,14 @@ const scoringConfigSchema = new mongoose.Schema({
     // A condition here is ON; absence keeps a default-off rule OFF — so adding a
     // new default-off rule never changes an existing league's scoring.
     enabled: { type: [String], default: [] },
+    // Which conferences the non-P5 upset bonus treats as "power". Absent = the
+    // engine default (ACC / Big 12 / Big Ten / SEC), so a league that never sets
+    // it scores exactly as before. Graham's league adds 'FBS Independents':
+    // Notre Dame sits there, so under the bare four it drew the +2 underdog
+    // bonus on all ~10 of its power-conference wins a year — a top-5 program
+    // collecting a rule written for Group-of-5 upsets. Only the Graham model has
+    // an upset rule at all, so this is inert for Claunts.
+    powerConferences: { type: [String], default: undefined },
     // Optional weekly-engagement layer (GitHub #230), per-league opt-in.
     // DEPRECATED / legacy: a single league-wide engagement blob. Superseded by
     // engagementBySeason (below) so a league can run the game modes in one

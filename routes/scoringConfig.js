@@ -4,6 +4,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const Game = require('../models/game');
 const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
+const { POWER_CONFERENCES } = require('../modules/scoring-detectors');
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
@@ -14,10 +15,48 @@ const audit = require('../modules/audit-log');
 // the resolved `disabled` set via each field's `enabled` flag; `example` is
 // computed from the live point values so it tracks edits.
 function withFields(cfg) {
+    const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
     return Object.assign({}, cfg, {
-        fields: fieldsForModel(cfg.model, cfg.disabled, cfg.enabled),
-        example: explainRegularWin(cfg.model, cfg.values, cfg.disabled, cfg.enabled)
+        fields,
+        example: explainRegularWin(cfg.model, cfg.values, cfg.disabled, cfg.enabled),
+        // The upset bonus's power list is a PARAMETER of one rule, not a rule, so
+        // it isn't in `fields`. The admin renders it beside that rule when the
+        // model has one — the base list ships with the response so the client
+        // never has to spell conference names itself (a typo there would silently
+        // change scoring).
+        powerConferencesBase: POWER_CONFERENCES,
+        hasUpsetRule: fields.some(f => f.condition === 'nonP5UpsetBonus')
     });
+}
+
+// The stored fields that make up a config, as resolveConfig() overrides.
+//
+// ONE list, shared by the read and the write response. It used to be written out
+// twice, and the copies drifted: the save response omitted engagement, so saving
+// point values came back claiming H2H and captain were off while the database
+// still had them on — and the admin caches that response. Every field the engine
+// reads must be here: modules/scoring.js getScoringConfig loads the live config
+// through this route, so a field left out is a field the scorer never sees,
+// however faithfully it is stored.
+function overridesFrom(doc) {
+    if (!doc) return null;
+    return {
+        model: doc.model, values: doc.values, combineMode: doc.combineMode,
+        disabled: doc.disabled, enabled: doc.enabled,
+        engagement: doc.engagement, engagementBySeason: doc.engagementBySeason || {},
+        powerConferences: doc.powerConferences
+    };
+}
+
+// The full response body for a league's config: resolved values + field metadata,
+// with `engagement` narrowed to one season and the raw per-season map alongside.
+function configResponse(league, doc, season, overrides) {
+    const bySeason = (doc && doc.engagementBySeason) || {};
+    const cfg = withFields(resolveConfig(league, overrides === undefined ? overridesFrom(doc) : overrides));
+    cfg.engagement = engagementForSeason(bySeason, season);
+    cfg.engagementBySeason = bySeason;
+    cfg.season = String(season);
+    return cfg;
 }
 
 // Resolved config (defaults-merged) for a league — always returns usable
@@ -26,10 +65,7 @@ function withFields(cfg) {
 router.get('/:league', async (req, res) => {
     try {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
-        const bySeason = (doc && doc.engagementBySeason) || {};
-        let overrides = doc
-            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: bySeason }
-            : null;
+        let overrides = overridesFrom(doc);
         // `?model=` lets the admin preview a different rule shape (Fixed =
         // claunts, Stacking = graham): force that model and drop the saved
         // combineMode so the shape's own default combine behavior applies,
@@ -42,10 +78,7 @@ router.get('/:league', async (req, res) => {
         // YEAR) so callers get the right game-mode state without knowing the
         // per-season storage. `engagementBySeason` is the full map for the admin.
         const season = req.query.season || process.env.YEAR;
-        const cfg = withFields(resolveConfig(req.params.league, overrides));
-        cfg.engagement = engagementForSeason(bySeason, season);
-        cfg.engagementBySeason = bySeason;
-        cfg.season = String(season);
+        const cfg = configResponse(req.params.league, doc, season, overrides);
         // Whether this caller may still edit scoring. Admins always can (they can
         // trigger a rescore). League Managers are locked out once the season has a
         // scored game — they must ask an admin. Only computed for a signed-in
@@ -99,7 +132,7 @@ router.get('/:league/explain', async (req, res) => {
 // nonsensical shape/mode combo can't be saved.
 router.post('/', async (req, res) => {
     try {
-        const { league, model, values, disabled, enabled } = req.body;
+        const { league, model, values, disabled, enabled, powerConferences } = req.body;
         if (!league) {
             return res.status(400).json({ message: 'league is required' });
         }
@@ -112,18 +145,24 @@ router.post('/', async (req, res) => {
         if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(league, process.env.YEAR)) {
             return res.status(423).json({ message: 'Scoring is locked once the season is underway. Ask an admin to change it — the change needs a re-score.' });
         }
-        const resolved = resolveConfig(league, { model, values, disabled, enabled });
+        const resolved = resolveConfig(league, { model, values, disabled, enabled, powerConferences });
+        // An absent/malformed power list normalizes to undefined, which means
+        // "use the engine default". Mongoose strips an undefined from a $set, so
+        // clearing it back to the default needs an explicit $unset — otherwise
+        // turning the setting OFF would silently leave the old list in place.
+        const update = { $set: {
+            league,
+            model: resolved.model,
+            values: resolved.values,
+            combineMode: resolved.combineMode,
+            disabled: resolved.disabled,
+            enabled: resolved.enabled,
+            updatedAt: new Date()
+        } };
+        if (resolved.powerConferences) update.$set.powerConferences = resolved.powerConferences;
+        else update.$unset = { powerConferences: 1 };
         const doc = await ScoringConfig.findOneAndUpdate(
-            { league },
-            { $set: {
-                league,
-                model: resolved.model,
-                values: resolved.values,
-                combineMode: resolved.combineMode,
-                disabled: resolved.disabled,
-                enabled: resolved.enabled,
-                updatedAt: new Date()
-            } },
+            { league }, update,
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         // Scoring changes how every past game counts, so the trail records the
@@ -131,11 +170,15 @@ router.post('/', async (req, res) => {
         await audit.record(req, {
             action: 'scoring.config', league, season: String(process.env.YEAR),
             summary: `Scoring rules updated (${resolved.model === 'graham' ? 'stacking' : 'fixed'} win values)`,
-            meta: { model: resolved.model, combineMode: resolved.combineMode, disabled: resolved.disabled, enabled: resolved.enabled }
+            meta: { model: resolved.model, combineMode: resolved.combineMode, disabled: resolved.disabled, enabled: resolved.enabled, powerConferences: resolved.powerConferences || null }
         });
-        res.json(withFields(resolveConfig(league, {
-            model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled
-        })));
+        // Same builder the GET uses, so a save can never report a different
+        // config than a reload would. `isAdmin` decides which "Saved" message the
+        // admin shows (only an admin can run the rescore it tells them to run),
+        // and was absent here — so every save read as a non-admin save.
+        const saved = configResponse(league, doc, process.env.YEAR);
+        saved.isAdmin = effectiveRoles(req).includes('Admin');
+        res.json(saved);
     } catch (err) {
         res.status(400).json({ message: err.message });
     }

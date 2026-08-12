@@ -528,7 +528,13 @@ async function getBracketForGame(game, season, cache) {
 // all postseason events enabled.
 function normalizeCfg(model, cfg) {
     if (cfg && typeof cfg === 'object' && cfg.values && typeof cfg.values === 'object') {
-        return { combineMode: cfg.combineMode, values: cfg.values, disabled: cfg.disabled || [], enabled: cfg.enabled || [] };
+        // Whitelist: every field the engine reads must be listed here or it is
+        // silently dropped between a resolved config and evaluate().
+        return {
+            combineMode: cfg.combineMode, values: cfg.values,
+            disabled: cfg.disabled || [], enabled: cfg.enabled || [],
+            powerConferences: cfg.powerConferences
+        };
     }
     return { combineMode: undefined, values: cfg || {}, disabled: [], enabled: [] };
 }
@@ -554,7 +560,7 @@ function evaluate(model, team, game, rankings, cfg, bracket) {
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings, bracket);
+    var ctx = buildContext(team, game, rankings, bracket, cfg.powerConferences);
 
     // 1. Postseason events, in order. Each ON matching rule adds its points; a
     //    non-additive match stops evaluation. This first-match-stop reproduces
@@ -651,7 +657,7 @@ function explainGame(model, team, game, rankings, cfg, bracket) {
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings, bracket);
+    var ctx = buildContext(team, game, rankings, bracket, cfg.powerConferences);
     var matched = [];
     var add = function (r, group) {
         matched.push({ key: r.pointsKey, label: r.label, points: pointsOf(values, r.pointsKey), group: group });
