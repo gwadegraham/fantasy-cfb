@@ -275,6 +275,7 @@ if (devRole.DEV) {
                 // prefill — both without a round trip through Auth0.
                 extraParams: Object.assign({},
                     req.query.invite ? { 'ext-invite': '1' } : null,
+                    req.query.returning ? { 'ext-returning': '1' } : null,
                     req.query.email ? { login_hint: String(req.query.email) } : null)
             };
             // Point the absolute production asset URLs at this server, so the
@@ -302,7 +303,7 @@ if (devRole.DEV) {
 app.get('/invite/verified', (req, res) => {
     const raw = inviteBindMod.getCookie(req, INVITE_COOKIE);
     if (raw && inviteToken.verify(raw, process.env.AUTH_SECRET)) {
-        return res.redirect('/invite/' + encodeURIComponent(raw) + '/start');
+        return res.redirect('/invite/' + encodeURIComponent(raw) + '/start?returning=1');
     }
     // Cookie expired, or they confirmed on a different device. Nothing is
     // broken; they just need the original link again.
@@ -373,6 +374,11 @@ app.get('/invite/:token/start', async (req, res, next) => {
     try {
         const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
         const authorizationParams = { 'ext-invite': '1' };
+        // Set when we already know an account exists — coming back from
+        // confirming an address, say. Without it the page offers to create one
+        // and Auth0 answers user_exists, which is a needless extra hop through
+        // an error for someone doing exactly what they were told to do.
+        if (req.query.returning) authorizationParams['ext-returning'] = '1';
         if (claim) {
             const user = await User.findById(claim.userId, { email: 1 }).lean();
             if (user && user.email) authorizationParams.login_hint = user.email;

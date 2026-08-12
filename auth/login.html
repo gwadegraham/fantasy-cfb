@@ -597,18 +597,29 @@
       document.getElementById('headline').textContent = 'Almost there';
       document.getElementById('subhead').textContent =
         'Pick how you want to sign in from now on. We’ll connect it to your team.';
-      document.getElementById('divider').textContent = 'or set a password';
-      // Not "Forgot your password?" — they don't have one yet, and offering a
-      // reset for an account that doesn't exist is its own dead end.
-      document.getElementById('reset-row').style.display = 'none';
-      document.querySelector('label[for="password"]').textContent = 'Choose a password';
-      passwordEl.setAttribute('autocomplete', 'new-password');
-      passwordEl.setAttribute('placeholder', 'At least 8 characters');
-      labelEl.textContent = 'Create account';
       // The address is fixed by the invite — a different one just fails the
       // email gate after the round trip, so don't invite them to change it.
       if (emailEl.value) emailEl.readOnly = true;
       document.title = 'Finish setting up — Campus Clash';
+
+      // ext-returning means the app already knows an account exists (they're
+      // back from confirming its address). Offering to create one would just
+      // earn them a user_exists error on the way to the same place.
+      if (String(config.extraParams['ext-returning'] || '') === '1') {
+        isSignup = false;
+        document.getElementById('subhead').textContent =
+          'Sign in and we’ll connect your account to your team.';
+        document.getElementById('divider').textContent = 'or use your password';
+      } else {
+        document.getElementById('divider').textContent = 'or set a password';
+        // Not "Forgot your password?" — they don't have one yet, and offering a
+        // reset for an account that doesn't exist is its own dead end.
+        document.getElementById('reset-row').style.display = 'none';
+        document.querySelector('label[for="password"]').textContent = 'Choose a password';
+        passwordEl.setAttribute('autocomplete', 'new-password');
+        passwordEl.setAttribute('placeholder', 'At least 8 characters');
+        labelEl.textContent = 'Create account';
+      }
     }
 
     // Drops out of sign-up into ordinary sign-in, for an invitee who turns out
