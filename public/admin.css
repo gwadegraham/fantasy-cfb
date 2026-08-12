@@ -811,6 +811,15 @@
 }
 .scoring-note::before { content: "\21B3"; position: absolute; left: 0; color: var(--cc-muted-2); }
 
+/* A rule PARAMETER rather than a rule: indented under the rule it modifies, and
+   with no points stepper of its own. Uses the same left-hook as .scoring-note so
+   the two read as one attached block. */
+.draft-config-form .scoring-subfield {
+    margin-left: 14px;
+    margin-bottom: 4px;
+}
+.scoring-subfield .scoring-param { flex: 0 0 auto; }
+
 .scoring-field .num-stepper { flex: none; }
 
 /* Custom number stepper: native spinners hidden, themed -/+ buttons flanking a
