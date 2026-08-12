@@ -6,7 +6,7 @@
 // not work are the rest.
 
 const inviteToken = require('../modules/invite-token');
-const { decideInvite, refusalMessage } = require('../modules/invite-claim');
+const { decideInvite, getCookie, renderRefusalPage, COOKIE } = require('../modules/invite-bind');
 
 const SECRET = 'test-secret-value';
 
@@ -77,27 +77,27 @@ describe('decideInvite', () => {
     const decide = (o) => decideInvite(Object.assign({}, base, o));
 
     test('binds when the login email matches the franchise', () => {
-        expect(decide()).toEqual({ action: 'claim', reason: 'verified' });
+        expect(decide()).toEqual({ action: 'bind', reason: 'verified' });
     });
 
     test('is case- and whitespace-insensitive about the email', () => {
-        expect(decide({ tokenEmail: '  ANN@Example.com ' }).action).toBe('claim');
+        expect(decide({ tokenEmail: '  ANN@Example.com ' }).action).toBe('bind');
     });
 
     test('does nothing without an invite', () => {
-        expect(decide({ invite: null })).toEqual({ action: 'ignore', reason: 'no-invite' });
+        expect(decide({ invite: null })).toEqual({ action: 'skip', reason: 'no-invite' });
     });
 
     test('waits for the login rather than acting on an anonymous request', () => {
-        expect(decide({ sub: null })).toEqual({ action: 'ignore', reason: 'no-identity' });
+        expect(decide({ sub: null })).toEqual({ action: 'skip', reason: 'not-authenticated' });
     });
 
     test('never repoints a session that already has a franchise', () => {
-        expect(decide({ sessionUserId: 'someone-else' })).toEqual({ action: 'ignore', reason: 'already-linked' });
+        expect(decide({ sessionUserId: 'someone-else' })).toEqual({ action: 'clear', reason: 'already-linked' });
     });
 
     test('keeps the invite alive through a DB hiccup instead of spending it', () => {
-        expect(decide({ lookupError: true })).toEqual({ action: 'ignore', reason: 'lookup-error' });
+        expect(decide({ lookupError: true })).toEqual({ action: 'skip', reason: 'lookup-error' });
     });
 
     test('refuses when the franchise is gone', () => {
@@ -118,14 +118,14 @@ describe('decideInvite', () => {
 
     test('is idempotent for the identity that already owns the franchise', () => {
         expect(decide({ record: Object.assign({}, record, { authSub: 'google-oauth2|1' }) }))
-            .toEqual({ action: 'ignore', reason: 'already-bound' });
+            .toEqual({ action: 'clear', reason: 'already-bound' });
     });
 
     // The mailbox-confirmation step was removed: it cost every password invitee
     // a trip to their inbox mid-flow while social users sailed past, and the
     // signed single-use link already gates who can claim at all.
     test('binds a password identity without demanding a confirmed address', () => {
-        expect(decide({ sub: 'auth0|1' }).action).toBe('claim');
+        expect(decide({ sub: 'auth0|1' }).action).toBe('bind');
     });
 
     // The forwarded-link property.
@@ -142,37 +142,191 @@ describe('decideInvite', () => {
     // wrote User.email. Those still have to be invitable.
     test('trusts the first claimer when the franchise has no email on file', () => {
         const legacy = Object.assign({}, record, { email: null });
-        expect(decide({ record: legacy })).toEqual({ action: 'claim', reason: 'first-use' });
-        expect(decide({ record: legacy, tokenEmail: null })).toEqual({ action: 'claim', reason: 'first-use' });
+        expect(decide({ record: legacy })).toEqual({ action: 'bind', reason: 'first-use' });
+        expect(decide({ record: legacy, tokenEmail: null })).toEqual({ action: 'bind', reason: 'first-use' });
     });
 
     test('a league-less invite is not treated as a mismatch', () => {
-        expect(decide({ invite: { userId: 'u1', league: '' } }).action).toBe('claim');
+        expect(decide({ invite: { userId: 'u1', league: '' } }).action).toBe('bind');
     });
 });
 
+describe('getCookie', () => {
+    const req = (cookie) => ({ headers: cookie ? { cookie } : {} });
 
+    test('reads the named cookie', () => {
+        expect(getCookie(req('a=1; cc_invite=tok; b=2'), COOKIE)).toBe('tok');
+    });
+    test('url-decodes the value', () => {
+        expect(getCookie(req('cc_invite=a%2Bb'), COOKIE)).toBe('a+b');
+    });
+    test('returns null when absent, and when there are no headers at all', () => {
+        expect(getCookie(req('a=1'), COOKIE)).toBeNull();
+        expect(getCookie({}, COOKIE)).toBeNull();
+    });
+    // 'xcc_invite=' must not satisfy a lookup for 'cc_invite'.
+    test('does not match a cookie whose name merely ends with the target', () => {
+        expect(getCookie(req('xcc_invite=nope'), COOKIE)).toBeNull();
+    });
+});
 
+describe('renderRefusalPage', () => {
+    test('explains the specific reason and always offers a way out', () => {
+        const html = renderRefusalPage('email-mismatch');
+        expect(html).toContain('Wrong email address');
+        expect(html).toContain('different address');
+        expect(html).toContain('href="/logout"');
+    });
+
+    // An unconfirmed address is a step still to take, not a dead end: the
+    // heading shouldn't say the invite failed, and the way forward is to retry
+    // rather than to log out.
+    // Each refusal says its own thing rather than sharing one alarming headline.
+    test('gives a spent link its own heading', () => {
+        const html = renderRefusalPage('already-claimed');
+        expect(html).toContain('already been used');
+        expect(html).not.toContain('didn’t work');
+    });
+
+    test('falls back to a generic message for an unknown reason', () => {
+        expect(renderRefusalPage('who-knows')).toContain('couldn’t finish setting up');
+    });
+});
+
+describe('auth0-management', () => {
+    const ISSUER = 'https://tenant.us.auth0.com';
+    let management;
+    let realFetch;
+
+    beforeEach(() => {
+        jest.resetModules();
+        realFetch = global.fetch;
+        process.env.ISSUER_BASE_URL = ISSUER;
+        process.env.AUTH0_M2M_CLIENT_ID = 'cid';
+        process.env.AUTH0_M2M_CLIENT_SECRET = 'secret';
+        management = require('../modules/auth0-management');
+        management._reset();
+    });
+    afterEach(() => {
+        global.fetch = realFetch;
+        management._reset();
+    });
+
+    function stubFetch(handlers) {
+        const calls = [];
+        global.fetch = jest.fn(async (url, opts) => {
+            calls.push({ url, opts });
+            return handlers(url, opts);
+        });
+        return calls;
+    }
+
+    const tokenOk = () => ({ ok: true, status: 200, json: async () => ({ access_token: 'T1', expires_in: 86400 }) });
+
+    test('is not configured without credentials', () => {
+        delete process.env.AUTH0_M2M_CLIENT_SECRET;
+        expect(management.isConfigured()).toBe(false);
+        process.env.AUTH0_M2M_CLIENT_SECRET = 'secret';
+        expect(management.isConfigured()).toBe(true);
+    });
+
+    test('requests a token against the Management API audience', async () => {
+        const calls = stubFetch(() => tokenOk());
+        await management.getToken();
+        const body = JSON.parse(calls[0].opts.body);
+        expect(calls[0].url).toBe(ISSUER + '/oauth/token');
+        expect(body.grant_type).toBe('client_credentials');
+        expect(body.audience).toBe(ISSUER + '/api/v2/');
+    });
+
+    test('caches the token instead of buying one per call', async () => {
+        const calls = stubFetch(() => tokenOk());
+        await management.getToken();
+        await management.getToken();
+        expect(calls).toHaveLength(1);
+    });
+
+    test('renews once the cached token is close to expiring', async () => {
+        const calls = stubFetch(() => ({ ok: true, status: 200, json: async () => ({ access_token: 'T', expires_in: 30 }) }));
+        await management.getToken();
+        await management.getToken();   // 30s life is inside the skew window
+        expect(calls).toHaveLength(2);
+    });
+
+    test('throws when the token request fails', async () => {
+        stubFetch(() => ({ ok: false, status: 401 }));
+        await expect(management.getToken()).rejects.toThrow(/token request failed: 401/);
+    });
+
+    test('PATCHes user_metadata with a bearer token and an encoded sub', async () => {
+        const calls = stubFetch((url) => url.endsWith('/oauth/token')
+            ? tokenOk()
+            : { ok: true, status: 200, json: async () => ({ user_id: 'auth0|1' }) });
+
+        await management.patchUserMetadata('auth0|1', { metadata: { userId: 'u1', league: 'gg' } });
+
+        const patch = calls[1];
+        expect(patch.url).toBe(ISSUER + '/api/v2/users/auth0%7C1');   // the pipe must be escaped
+        expect(patch.opts.method).toBe('PATCH');
+        expect(patch.opts.headers.authorization).toBe('Bearer T1');
+        expect(JSON.parse(patch.opts.body)).toEqual({ user_metadata: { metadata: { userId: 'u1', league: 'gg' } } });
+    });
+
+    // A revoked token would otherwise be replayed until the cache aged out.
+    test('drops the cached token on a 401 so the next attempt re-authenticates', async () => {
+        let patches = 0;
+        const calls = stubFetch((url) => {
+            if (url.endsWith('/oauth/token')) return tokenOk();
+            patches += 1;
+            return patches === 1 ? { ok: false, status: 401 } : { ok: true, status: 200, json: async () => ({}) };
+        });
+
+        await expect(management.patchUserMetadata('auth0|1', {})).rejects.toThrow(/PATCH failed: 401/);
+        await management.patchUserMetadata('auth0|1', {});
+
+        expect(calls.filter(c => c.url.endsWith('/oauth/token'))).toHaveLength(2);
+    });
+
+    test('refuses to call out when it has no credentials', async () => {
+        delete process.env.AUTH0_M2M_CLIENT_ID;
+        global.fetch = jest.fn();
+        await expect(management.patchUserMetadata('auth0|1', {})).rejects.toThrow(/not configured/);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+});
 
 
 // Regression: an invitee between "account created" and "team claimed" has a
 // session with no franchise pointer — exactly what identity-guard blocks. It was
 // blocking /invite/* too, so the link they were told to reopen was unreachable
 // and the flow dead-ended on the block page.
+describe('identity-guard leaves the invite path open', () => {
+    const identityGuard = require('../modules/identity-guard');
+    const express = require('express');
+    const request = require('supertest');
 
+    function guardedApp(oidcUser) {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => !!oidcUser, user: oidcUser };
+            next();
+        });
+        // No pointer resolves, so the guard would normally refuse every request.
+        app.use(identityGuard({ User: { findById: () => ({ lean: async () => null }) } }));
+        app.use((req, res) => res.status(200).send('reached'));   // version-agnostic catch-all
+        return app;
+    }
 
-// The post-bind token refresh asks Auth0 for a new token with prompt=none. When
-// there's no session to reuse Auth0 refuses, and that has to read as "just sign
-// in" rather than as a server error — otherwise the invitee gets a 500 at the
-// last step of a claim that actually succeeded.
+    const unlinked = { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} };
 
-describe('refusalMessage', () => {
-    test('explains each refusal in words an invitee can act on', () => {
-        expect(refusalMessage('already-claimed')).toMatch(/already been used/i);
-        expect(refusalMessage('email-mismatch')).toMatch(/different address/i);
-        expect(refusalMessage('league-mismatch')).toMatch(/league/i);
+    test('lets an unlinked session reach its invite link and start', async () => {
+        const app = guardedApp(unlinked);
+        expect((await request(app).get('/invite/TOKEN')).status).toBe(200);
+        expect((await request(app).get('/invite/TOKEN/start')).status).toBe(200);
+        expect((await request(app).get('/invite/verified')).status).toBe(200);
     });
-    test('falls back to something sayable for an unknown reason', () => {
-        expect(refusalMessage('who-knows')).toMatch(/couldn’t be used/i);
+
+    test('still blocks everything else for that session', async () => {
+        expect((await request(guardedApp(unlinked)).get('/standings')).status).toBe(403);
     });
 });

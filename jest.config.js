@@ -94,12 +94,6 @@ module.exports = {
             functions: 100,
             lines: 100
         },
-        "./modules/invite-claim.js": {
-            statements: 100,
-            branches: 95,
-            functions: 100,
-            lines: 100
-        },
         "./modules/invite-token.js": {
             statements: 100,
             branches: 85,
@@ -109,9 +103,21 @@ module.exports = {
         // The bind middleware writes to Auth0 and to Mongo, and its refusal
         // branches are the security properties (single-use, email-gated), so it
         // is held to the same bar as the pure modules despite doing I/O.
+        "./modules/invite-bind.js": {
+            statements: 95,
+            branches: 90,
+            functions: 100,
+            lines: 95
+        },
         "./modules/auth-sub-backfill.js": {
             statements: 100,
             branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/auth0-management.js": {
+            statements: 90,
+            branches: 80,
             functions: 100,
             lines: 100
         },

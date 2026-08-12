@@ -30,16 +30,3 @@ module.exports = function requireAuthOrToken(req, res, next) {
 
     return res.status(401).json({ message: 'Unauthorized' });
 };
-
-// Token ONLY — no session fallback. For endpoints whose caller is never a
-// browser: /invite/resolve is called by the Auth0 post-login Action, mid-login,
-// when there is no session to speak of. Accepting a session there would let any
-// signed-in member try invite tokens against the claim rules.
-module.exports.internalOnly = function requireInternalToken(req, res, next) {
-    const configured = process.env.INTERNAL_API_TOKEN;
-    const provided = req.get('X-Internal-Token');
-    if (configured && provided && safeEqual(provided, configured)) {
-        return next();
-    }
-    return res.status(401).json({ message: 'Unauthorized' });
-};

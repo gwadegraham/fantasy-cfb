@@ -19,7 +19,6 @@ const User = require('../models/user');
 const usersRouter = require('../routes/users');
 const inviteToken = require('../modules/invite-token');
 const { leagueCodeFor } = require('../modules/league-access');
-const inviteClaim = require('../modules/invite-claim');
 
 // A League Manager for graham-league: can manage their own league, not the other.
 function appAs(roles, leagueFlag) {
@@ -203,6 +202,225 @@ describe('POST /users', () => {
     });
 });
 
+// The middleware that actually claims the invite. This is the part that writes
+// to Auth0 and to Mongo, so it gets exercised against a real DB with the
+// Management API stubbed — a bug here strands a real person mid-signup.
+describe('inviteBind middleware', () => {
+    const { inviteBind, COOKIE } = require('../modules/invite-bind');
+
+    // Builds an app whose session is `oidcUser` (null = logged out), with the
+    // middleware mounted ahead of a sentinel route.
+    function bindApp(oidcUser, management) {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => !!oidcUser, user: oidcUser };
+            next();
+        });
+        app.use(inviteBind({
+            User, management, inviteToken,
+            secret: () => process.env.AUTH_SECRET
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
+        return app;
+    }
+
+    const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
+    const session = (over) => Object.assign(
+        { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} }, over);
+    const tokenFor = (u) => inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET);
+
+    test('passes straight through when there is no invite cookie', async () => {
+        const res = await request(bindApp(session(), okManagement())).get('/anything');
+        expect(res.status).toBe(200);
+        expect(res.text).toBe('passed-through');
+    });
+
+    test('binds the signed-in identity to the franchise and re-logins for a fresh token', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+
+        const res = await request(bindApp(session(), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        // A re-login is required: the current ID token predates the PATCH, so it
+        // still carries no franchise pointer.
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/login?returnTo=%2Fstandings');
+
+        // Shape matters twice over, and both are invisible at runtime:
+        //   - TOP-LEVEL, not nested under `metadata`. The post-login Action wraps
+        //     the whole user_metadata as the token's `metadata`, so nesting here
+        //     would surface as metadata.metadata.userId and bind nothing.
+        //   - the league FLAG ('gg'), not the Mongo code ('graham-league').
+        //     leagueCodeFor reads anything that isn't 'gg' as claunts, so the
+        //     wrong vocabulary files the member into the other league silently.
+        expect(management.patchUserMetadata).toHaveBeenCalledWith('auth0|new', {
+            userId: String(u._id),
+            league: 'gg'
+        });
+        const saved = await User.findById(u._id).lean();
+        expect(saved.authSub).toBe('auth0|new');
+    });
+
+    // The write and the read are separated by an Auth0 Action that lives in the
+    // dashboard, not this repo, so nothing else in the suite connects them. This
+    // replays what the Action does — claim = { roles, metadata: user_metadata } —
+    // and asserts the app resolves the member back to the league we started from.
+    // Both shipped bugs (nesting one level too deep, and writing the Mongo league
+    // code instead of the Auth0 flag) fail here and nowhere else.
+    test.each([
+        ['graham-league', 'gg'],
+        ['claunts-league', 'cl']
+    ])('what it writes for %s round-trips back through the app read path', async (league, flag) => {
+        const u = await User.create(player({ league, email: 'ann@example.com' }));
+        const management = okManagement();
+
+        await request(bindApp(session(), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        const written = management.patchUserMetadata.mock.calls[0][1];
+        expect(written.league).toBe(flag);
+
+        // Exactly what "Post Login Add Metadata" builds.
+        const oidcUser = { user_metadata: { roles: [], metadata: written } };
+
+        expect(leagueCodeFor(oidcUser)).toBe(league);
+        expect(oidcUser.user_metadata.metadata.userId).toBe(String(u._id));
+    });
+
+    test('records the email on first use when the franchise had none', async () => {
+        const u = await User.create(player());   // no email
+        await request(bindApp(session({ email: 'new@example.com' }), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect((await User.findById(u._id).lean()).email).toBe('new@example.com');
+    });
+
+    // A password invitee binds on the spot now — no inbox round trip.
+    // Both of these exist so an invite problem can never break the request it
+    // rode in on — the middleware runs on every page for everyone.
+    test('leaves the invite alone when the lookup fails, rather than spending it', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: session() };
+            next();
+        });
+        app.use(inviteBind({
+            // Only the lookup fails; everything else is intact.
+            User: { findById: () => ({ lean: () => Promise.reject(new Error('db down')) }) },
+            management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
+
+        const res = await request(app).get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect(res.status).toBe(200);
+        // Cookie survives, so the claim can still be finished once the DB is back.
+        expect((res.headers['set-cookie'] || []).join()).not.toMatch(new RegExp(COOKIE + '=;'));
+    });
+
+    test('passes the request through if the middleware itself throws', async () => {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: session() };
+            next();
+        });
+        app.use(inviteBind({
+            User, management: okManagement(), inviteToken,
+            secret: () => { throw new Error('boom'); }   // fails before any decision
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
+
+        const res = await request(app).get('/anything').set('Cookie', `${COOKIE}=whatever`);
+        expect(res.status).toBe(200);
+        expect(res.text).toBe('passed-through');
+    });
+
+    test('binds a password identity straight away', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const res = await request(bindApp(session(), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect(res.status).toBe(302);
+        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|new');
+    });
+
+    test('refuses a forwarded link claimed from a different address', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+
+        const res = await request(bindApp(session({ email: 'mallory@example.com' }), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(403);
+        expect(res.text).toContain('Wrong email address');
+        expect(management.patchUserMetadata).not.toHaveBeenCalled();
+        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+    });
+
+    test('refuses a link that has already been spent', async () => {
+        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|first' }));
+        const res = await request(bindApp(session({ sub: 'auth0|second' }), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(403);
+        expect(res.text).toContain('already been used');
+        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');   // unchanged
+    });
+
+    // Auth0 rejecting the write must not look like success, and must not leave a
+    // half-bound record behind.
+    test('surfaces a Management API failure without binding', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = { patchUserMetadata: jest.fn(async () => { throw new Error('boom'); }) };
+
+        const res = await request(bindApp(session(), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(500);
+        expect(res.text).toContain('couldn’t finish setting up');
+        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+    });
+
+    test('waits for the login instead of acting on a logged-out request', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+        const res = await request(bindApp(null, management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(200);
+        expect(management.patchUserMetadata).not.toHaveBeenCalled();
+    });
+
+    test('drops a garbage cookie and carries on rather than erroring', async () => {
+        const res = await request(bindApp(session(), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=not-a-real-token`);
+        expect(res.status).toBe(200);
+        expect(res.headers['set-cookie'].join()).toMatch(new RegExp(COOKIE + '=;'));
+    });
+
+    test('never repoints a session that already resolves to a franchise', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+        const linked = session({ user_metadata: { metadata: { userId: 'someone-else' } } });
+
+        const res = await request(bindApp(linked, management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(200);
+        expect(management.patchUserMetadata).not.toHaveBeenCalled();
+    });
+
+    // A stale cookie after the round-trip must not 403 the person who just
+    // successfully claimed the franchise.
+    test('is a no-op for the identity that already owns the franchise', async () => {
+        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|new' }));
+        const res = await request(bindApp(session(), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect(res.status).toBe(200);
+    });
+});
+
+// How the panel learns who a long-standing member is without a Management API
+// read scope or a migration: record the sub that already arrives in the session.
 describe('auth-sub backfill', () => {
     const { shouldRecord, recordAuthSub } = require('../modules/auth-sub-backfill');
 
@@ -268,116 +486,5 @@ describe('GET /users/league/:league/roster', () => {
         const asAdmin = await request(adminApp).get(`/users/league/${LEAGUE}/roster`);
         expect(asAdmin.body.seasonUnderway).toBe(true);
         expect(asAdmin.body.locked).toBe(false);
-    });
-});
-
-// POST /invite/resolve — the endpoint the Auth0 post-login Action calls while
-// the ID token is still being assembled. Mounted here the same way server.js
-// mounts it, since what it answers ends up in the first token an invitee holds.
-describe('POST /invite/resolve', () => {
-    const requireAuthOrToken = require('../modules/require-auth');
-    const { leagueFlagFor } = require('../modules/league-access');
-
-    process.env.INTERNAL_API_TOKEN = 'test-internal-token';
-
-    const resolveApp = express();
-    resolveApp.use(express.json());
-    resolveApp.post('/invite/resolve', requireAuthOrToken.internalOnly, async (req, res) => {
-        const invite = inviteToken.verify(req.body.token, process.env.AUTH_SECRET);
-        let record = null;
-        if (invite) record = await User.findById(invite.userId).lean();
-        const decision = inviteClaim.decideInvite({
-            invite, sub: req.body.sub, tokenEmail: req.body.email,
-            sessionUserId: req.body.currentUserId || null, record, lookupError: false
-        });
-        if (decision.action !== 'claim') {
-            return res.json({ claimed: false, reason: decision.reason,
-                message: decision.action === 'refuse' ? inviteClaim.refusalMessage(decision.reason) : null });
-        }
-        const w = await User.updateOne(
-            { _id: invite.userId, $or: [{ authSub: { $exists: false } }, { authSub: null }, { authSub: '' }] },
-            { $set: { authSub: req.body.sub, email: record.email || req.body.email } });
-        if ((w.modifiedCount || 0) !== 1) {
-            return res.json({ claimed: false, reason: 'already-claimed' });
-        }
-        res.json({ claimed: true, userId: String(invite.userId),
-            league: leagueFlagFor(record.league || invite.league || '') });
-    });
-
-    const post = (body, token = 'test-internal-token') =>
-        request(resolveApp).post('/invite/resolve').set('X-Internal-Token', token).send(body);
-
-    const claim = (u, over) => Object.assign(
-        { token: inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET),
-          sub: 'auth0|new', email: u.email }, over);
-
-    // Mid-login there is no session, so a session must never be accepted here —
-    // it would let any signed-in member run tokens against the claim rules.
-    test('401s without the internal token', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        expect((await post(claim(u), 'wrong')).status).toBe(401);
-        expect((await request(resolveApp).post('/invite/resolve').send(claim(u))).status).toBe(401);
-    });
-
-    test('claims the franchise and answers with what belongs in the token', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const res = await post(claim(u));
-
-        expect(res.status).toBe(200);
-        expect(res.body).toMatchObject({ claimed: true, userId: String(u._id), league: 'gg' });
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|new');
-
-        // The shape has to survive the Action re-nesting it — this is what the
-        // app actually reads back, and where a wrong league would hide.
-        const oidcUser = { user_metadata: { roles: [], metadata: { userId: res.body.userId, league: res.body.league } } };
-        expect(leagueCodeFor(oidcUser)).toBe(LEAGUE);
-    });
-
-    test.each([
-        ['claunts-league', 'cl'],
-        ['graham-league', 'gg']
-    ])('answers the Auth0 league flag for %s, not the Mongo code', async (league, flag) => {
-        const u = await User.create(player({ league, email: 'ann@example.com' }));
-        expect((await post(claim(u))).body.league).toBe(flag);
-    });
-
-    test('refuses a spent link without touching the existing binding', async () => {
-        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|first' }));
-        const res = await post(claim(u, { sub: 'auth0|second' }));
-        expect(res.body).toMatchObject({ claimed: false, reason: 'already-claimed' });
-        expect(res.body.message).toMatch(/already been used/i);
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');
-    });
-
-    test('refuses a forwarded link claimed from another address', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const res = await post(claim(u, { email: 'mallory@example.com' }));
-        expect(res.body).toMatchObject({ claimed: false, reason: 'email-mismatch' });
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
-    });
-
-    test.each([
-        ['expired', (u) => inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET, -1000)],
-        ['tampered', (u) => inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET) + 'XX'],
-        ['garbage', () => 'not-a-token']
-    ])('refuses an %s token', async (_label, mint) => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const res = await post({ token: mint(u), sub: 'auth0|new', email: u.email });
-        expect(res.body.claimed).toBe(false);
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
-    });
-
-    test('never repoints a login that already has a franchise', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const res = await post(claim(u, { currentUserId: 'someone-else' }));
-        expect(res.body).toMatchObject({ claimed: false, reason: 'already-linked' });
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
-    });
-
-    test('records the address on first use when the franchise had none', async () => {
-        const u = await User.create(player());   // no email
-        const res = await post(claim(u, { email: 'new@example.com' }));
-        expect(res.body.claimed).toBe(true);
-        expect((await User.findById(u._id).lean()).email).toBe('new@example.com');
     });
 });
