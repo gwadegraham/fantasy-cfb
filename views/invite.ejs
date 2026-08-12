@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title><%= ok ? 'You’re invited' : 'Invite' %> — Campus Clash</title>
+    <%# Standalone page, same shape as error.ejs: it renders for LOGGED-OUT
+        visitors (that is the entire point of an invite), so it can't use the
+        navbar partial, which reads user.role / userState. Absolute asset paths
+        for the same reason error.ejs uses them. %>
+    <link href="/styles.css" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .invite-card {
+            max-width: 34rem;
+            margin: 2rem 1.25rem;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-border);
+            border-radius: var(--cc-r-lg);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        <%# --brand-ground is the colour the keyline punches through CAMPUS, so it
+            has to match what the mark sits on — this card, not the page. %>
+        .invite-card .brand-title {
+            --brand-size: 2.2rem;
+            --brand-ground: var(--cc-surface);
+            margin: 0 0 1.75rem;
+        }
+        <%# flex, not inline-flex: .brand-title above is an inline-grid, so an
+            inline eyebrow flows alongside the wordmark instead of under it. %>
+        .invite-eyebrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 0 0 14px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--cc-accent);
+        }
+        .invite-eyebrow::before {
+            content: "";
+            width: 34px; height: 2px;
+            background: var(--cc-accent);
+        }
+        .invite-heading {
+            font-family: Graduate, serif;
+            font-weight: 400;
+            font-size: clamp(1.6rem, 5vw, 2.1rem);
+            line-height: 1;
+            text-transform: uppercase;
+            margin: 0 0 0.85rem;
+        }
+        .invite-message {
+            color: var(--cc-muted);
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin: 0 0 1.75rem;
+        }
+        .invite-message b { color: var(--cc-text); font-weight: 600; }
+        .invite-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.85rem 1.9rem;
+            border-radius: var(--cc-r-md);
+            font-size: 0.9rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            text-decoration: none;
+            background: var(--cc-accent);
+            color: #fff;
+            box-shadow: 0 0 0 1px rgba(237, 88, 88, 0.4), 0 12px 34px -10px rgba(237, 88, 88, 0.45);
+            transition: transform 0.18s ease, background 0.18s ease;
+        }
+        .invite-btn:hover { background: #d94a4a; transform: translateY(-2px); }
+        .invite-btn:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+        .invite-note {
+            margin: 1.5rem 0 0;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            color: var(--cc-muted-2);
+        }
+        @media (prefers-reduced-motion: reduce) { .invite-btn { transition: none; } }
+    </style>
+</head>
+
+<body>
+    <main class="invite-card">
+        <div class="brand-title">
+            <div class="brand-campus">CAMPUS</div>
+            <div class="brand-clash">Clash</div>
+        </div>
+
+        <% if (ok) { %>
+            <p class="invite-eyebrow">You’re invited</p>
+            <h1 class="invite-heading">Claim your team</h1>
+            <p class="invite-message">
+                <% if (firstName) { %>
+                    <b><%= firstName %></b>, your franchise<% if (leagueName) { %> in <b><%= leagueName %></b><% } %> is waiting.
+                <% } else { %>
+                    Your franchise<% if (leagueName) { %> in <b><%= leagueName %></b><% } %> is waiting.
+                <% } %>
+                Choose how you want to sign in, and we’ll connect it to your team.
+            </p>
+            <%# Not /login. The start route attaches the invite hint so the Auth0
+                page greets them as an invitee rather than asking them to sign in
+                to an account they don't have yet. %>
+            <a class="invite-btn" href="/invite/<%= token %>/start">Continue &rsaquo;</a>
+            <p class="invite-note">
+                Continue with Google or Apple — that’s all it takes.
+                Already have a Campus Clash password? You can use that instead.
+            </p>
+        <% } else { %>
+            <h1 class="invite-heading"><%= heading %></h1>
+            <p class="invite-message"><%= message %></p>
+            <a class="invite-btn" href="/login">Sign in &rsaquo;</a>
+        <% } %>
+    </main>
+</body>
+
+</html>

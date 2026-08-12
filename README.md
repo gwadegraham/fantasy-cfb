@@ -60,10 +60,44 @@ password may fail there — the real page is served from the Auth0 origin, where
 `webAuth.login()` is same-origin; from localhost it is not. The social buttons
 are plain redirects and behave normally.
 
-Sign-up is deliberately absent: accounts are provisioned by the commissioner,
-and *Disable Sign Ups* is on for the database connection. Don't re-add a league
+Sign-up is deliberately absent: members join through an invite (below), and
+*Disable Sign Ups* is on for the database connection. Don't re-add a league
 selector — Auth0 Lock wrote it to `user_metadata.league`, while the whole app
 reads `user_metadata.metadata.league`, so the value never reached anything.
+
+## Inviting a manager
+
+**Admin → Manager Logins → Copy invite** puts a link on your clipboard; send it
+however you normally talk to the league. The invitee opens it, signs in with
+Google, Apple, or an email and password, and the app binds whichever identity
+they chose to their franchise — no dashboard visit, no metadata editing.
+
+The link is a bearer credential, so it's signed with `AUTH_SECRET`, expires
+after 14 days, works once, and (when the record has an email) only for the
+address it was sent to. **Reset** clears the binding when someone needs to
+re-claim from a different account.
+
+An invitee picks whichever sign-in they like — Google, Apple, or a password they
+set on the spot — and the claim completes immediately either way. The invite
+page leads with Google and Apple, but the password path is a first-class option,
+not a fallback.
+
+One Auth0 setting is required: **Authentication → Database →
+Username-Password-Authentication → Disable Sign Ups** must be **off**, or an
+invitee can't create the password at all. Sign-ups being open costs little on
+its own — an account with no invite behind it resolves to no franchise and gets
+stopped by `modules/identity-guard.js`.
+
+There is deliberately **no confirm-your-email step**. It was tried and removed:
+it cost every password invitee a trip to their inbox mid-flow while Google and
+Apple sailed past. The residual risk is someone holding a leaked link signing up
+as the invited address without owning that mailbox — recoverable with **Reset**,
+and narrower than the friction it bought. See the note in
+`modules/invite-bind.js` before adding it back.
+
+Requires `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET` (see `.env.example`).
+Inviting works mid-season; *creating* a new player is locked once games have
+been scored, since they'd start with an empty roster — admins can override.
 
 ## Authorization
 

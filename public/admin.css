@@ -656,6 +656,88 @@
 .roster-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
 .roster-name { font-size: 0.95em; }
 
+/* Manager Logins reuses .roster-row, but its rows aren't clickable as a whole —
+   the buttons are the only targets, so drop the row-level cursor. */
+/* Grid, not the inherited flex. As a flex row the blockified <button> claimed
+   the whole line and squeezed the name to zero width; four explicit columns
+   (dot / name / badge / action) size to content with only the name flexible, so
+   the action button is always exactly as wide as its label. */
+/* Three columns: dot / who / actions. The badge is conditional, so it shares the
+   trailing cell with the button rather than owning a column of its own — a
+   missing element would otherwise slide the button left and leave a gap. */
+.sub-container .login-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    cursor: default;
+}
+.login-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: end;
+}
+/* Name over email in the single flexible track. min-width:0 lives on the track
+   above; these make the overflow read as an ellipsis rather than a hard clip. */
+.login-who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+}
+.login-who > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.login-email { font-size: 0.76rem; color: var(--cc-muted-2); }
+/* Not an error — plenty of records predate the email field — but it does mean
+   any invite for this team binds to whoever opens the link first. */
+.login-email.is-missing { color: var(--cc-amber); }
+.login-badge {
+    justify-self: end;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-border);
+    color: var(--cc-muted);
+}
+.login-badge.is-linked { background: rgba(34, 195, 122, 0.16); color: var(--cc-success); }
+.login-badge.is-pending { background: rgba(224, 179, 65, 0.16); color: var(--cc-amber); }
+
+/* Scoped to .sub-container ON PURPOSE. `.sub-container button` is declared twice
+   above (~line 95 and ~1029) and paints every button in this panel as a
+   full-width red CTA; a bare `.login-btn` loses that specificity fight and the
+   row blows out. Also not borrowed from userHome.css — admin.ejs doesn't load
+   that stylesheet, so .btn-secondary/.btn-ghost would render unstyled here. */
+.sub-container .login-btn,
+.sub-container .login-btn-ghost {
+    justify-self: end;
+    white-space: nowrap;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 5px 11px;
+    border-radius: var(--cc-r-sm);
+    border: 1px solid var(--cc-border-2);
+    box-shadow: none;
+    cursor: pointer;
+}
+.sub-container .login-btn { background-color: var(--cc-border); color: var(--cc-muted-bright); }
+.sub-container .login-btn:hover { background-color: var(--cc-surface-3); }
+.sub-container .login-btn-ghost { background-color: transparent; color: var(--cc-muted); border-color: transparent; }
+.sub-container .login-btn-ghost:hover { background-color: transparent; color: var(--cc-text); border-color: var(--cc-border-2); }
+.sub-container .login-btn:focus-visible,
+.sub-container .login-btn-ghost:focus-visible {
+    outline: 2px solid var(--cc-info);
+    outline-offset: 2px;
+}
+
 /* Shown to a League Manager when scoring is locked (season underway). */
 .scoring-locked {
     display: flex;

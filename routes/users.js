@@ -12,6 +12,8 @@ const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-
 const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
+const inviteToken = require('../modules/invite-token');
+const { LEAGUES } = require('../modules/scoring-defaults');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
@@ -218,17 +220,31 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
     try {
         const year = Number(process.env.YEAR);
         const users = await User.find({ league: leagueCode },
-            { firstName: 1, lastName: 1, color: 1, 'seasons.season': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
+            { firstName: 1, lastName: 1, color: 1, email: 1, authSub: 1,
+              'seasons.season': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
         const players = users.map(u => {
             const s = (u.seasons || []).find(x => Number(x.season) === year);
             const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
-            return { _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color, inSeason: !!s, scored };
+            // `linked` drives the Manager Logins panel: who has claimed an invite
+            // and who still needs one. The sub itself never leaves the server.
+            return {
+                _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color,
+                inSeason: !!s, scored, linked: !!u.authSub, email: u.email || null
+            };
         }).sort((a, b) => (a.firstName + ' ' + a.lastName).localeCompare(b.firstName + ' ' + b.lastName));
         // Once the season is underway, only an admin can change the roster —
         // removing a scored player would drop that year's data (needs a rescore).
         const isAdmin = effectiveRoles(req).includes('Admin');
         const seasonUnderway = await hasScoredGames(leagueCode, year);
-        res.json({ season: String(year), isAdmin, editable: isAdmin || !seasonUnderway, locked: !isAdmin && seasonUnderway, players });
+        // `seasonUnderway` is reported separately from `locked` because an Admin
+        // is never locked but still needs to know: adding a player now means a
+        // franchise on an empty roster.
+        res.json({
+            season: String(year), isAdmin, seasonUnderway,
+            editable: isAdmin || !seasonUnderway,
+            locked: !isAdmin && seasonUnderway,
+            players
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -289,9 +305,45 @@ router.get('/:id/season', async (req, res) => {
 //Creating One
 router.post('/', async (req, res) => {
 
+    // A real league, checked before the permission gate — canManageLeague()
+    // answers `true` for an Admin no matter what it's handed, including
+    // undefined, so a client that forgot to send one produced a member belonging
+    // to neither league. They then vanish from every league-scoped list while
+    // still existing, which is a confusing way to find out.
+    if (!LEAGUES.some(l => l.code === req.body.league)) {
+        return res.status(400).json({ message: 'A valid league is required.' });
+    }
+
     // A League Manager may only add players to their own league (Admins: any).
     if (!canManageLeague(req, req.body.league)) {
         return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+
+    // Creating a franchise once the season is underway is a destructive act, not
+    // an additive one: the new manager joins with an empty roster and sits in the
+    // standings on zero, quietly distorting every ranking. Same lock as the
+    // season roster and scoring config — League Managers can't, Admins can, since
+    // they're the ones who can rescore afterwards.
+    if (!effectiveRoles(req).includes('Admin')
+        && await hasScoredGames(req.body.league, Number(process.env.YEAR))) {
+        return res.status(423).json({
+            message: 'Adding a player is locked once the season is underway (they would start with an empty roster). Ask an admin.'
+        });
+    }
+
+    // Required, not optional. The email is the only thing that makes an invite
+    // link safe to send: without it invite-bind has nothing to check a claimer
+    // against, so the first person to open the link takes the franchise. (That
+    // trust-on-first-use path still exists, but only for records created before
+    // this feature — no NEW franchise should be born weaker than it has to be.)
+    // The admin form is the sole caller, so nothing else breaks.
+    //
+    // Checked after the two gates above deliberately: "you can't do this at all"
+    // and "you can't do this right now" are more useful answers than a field
+    // complaint the caller can't act on anyway.
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ message: 'An email is required so the invite link can be tied to them.' });
     }
 
     var date = new Date();
@@ -309,6 +361,7 @@ router.post('/', async (req, res) => {
     const user = new User({
         firstName: req.body.firstName,
         lastName: req.body.lastName,
+        email: email,
         seasons: seasons,
         color: color,
         league: req.body.league,
@@ -326,6 +379,78 @@ router.post('/', async (req, res) => {
         res.status(201).json(newUser);
     } catch (err) {
         res.status(400).json({message: err.message});
+    }
+});
+
+// Mint an invite link for a player (modules/invite-token.js). The commissioner
+// copies it and sends it however they normally talk to the league.
+//
+// POST, not GET, for two reasons: the response is a bearer credential and has no
+// business in browser history or a referrer header, and server.js leaves GET
+// reads open to every authenticated member — as a GET this would let anyone mint
+// a link for anyone else's franchise. As a POST it lands in the commissioner
+// tier automatically.
+//
+// Deliberately NOT season-gated. Creating a franchise mid-season is destructive;
+// handing an existing manager a way back into their own account is not, and
+// mid-season is exactly when someone loses access to their login.
+router.post('/:id/invite-link', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id, { league: 1, firstName: 1, lastName: 1, authSub: 1 }).lean();
+        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        if (!canManageLeague(req, user.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        if (!process.env.AUTH_SECRET) {
+            return res.status(500).json({ message: 'AUTH_SECRET is not configured' });
+        }
+
+        const token = inviteToken.sign(
+            { userId: user._id, league: user.league },
+            process.env.AUTH_SECRET
+        );
+        const link = inviteToken.linkFor(process.env.URL, token);
+
+        await audit.record(req, {
+            action: 'user.invite',
+            league: user.league, season: String(process.env.YEAR),
+            summary: `Created an invite link for ${user.firstName} ${user.lastName}`,
+            meta: { userId: String(user._id), reissued: !!user.authSub }
+        });
+
+        res.json({
+            link,
+            expiresInDays: Math.round(inviteToken.TTL_MS / 86400000),
+            // Already-claimed franchises can still be re-invited, but the old
+            // binding has to be cleared first or invite-bind refuses the link.
+            alreadyClaimed: !!user.authSub
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Unbind a franchise from the Auth0 identity that claimed it, so a fresh invite
+// can be issued — the manager changed email, or claimed it from the wrong
+// account. Only clears our side; the Auth0 account keeps its stale pointer until
+// it claims a new invite, and identity-guard blocks it in the meantime.
+router.delete('/:id/invite-link', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id, { league: 1, firstName: 1, lastName: 1 }).lean();
+        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        if (!canManageLeague(req, user.league)) {
+            return res.status(403).json({ message: 'Forbidden: not your league' });
+        }
+        await User.updateOne({ _id: user._id }, { $unset: { authSub: '' } });
+        await audit.record(req, {
+            action: 'user.invite',
+            league: user.league, season: String(process.env.YEAR),
+            summary: `Reset the login link for ${user.firstName} ${user.lastName}`,
+            meta: { userId: String(user._id), reset: true }
+        });
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 

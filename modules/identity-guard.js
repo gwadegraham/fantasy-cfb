@@ -90,7 +90,13 @@ function identityGuard(deps) {
             if (!req.oidc || !req.oidc.isAuthenticated()) return next();
 
             const p = req.path || '';
-            if (ALLOW_PATH.has(p) || ALLOW_EXT.test(p) || p.indexOf('/images') === 0) return next();
+            // /invite/* is deliberately open to an authenticated-but-unlinked
+            // session. That state is exactly what an invitee is in between
+            // creating their login and claiming their team, and blocking it made
+            // the invite link unreachable for the one person who needed it — they
+            // were told to reopen it and got the block page instead.
+            if (ALLOW_PATH.has(p) || ALLOW_EXT.test(p)
+                || p.indexOf('/images') === 0 || p.indexOf('/invite/') === 0) return next();
 
             const user = req.oidc.user || {};
             const innerMeta = (user.user_metadata && user.user_metadata.metadata) || {};

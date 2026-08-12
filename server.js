@@ -15,6 +15,11 @@ const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
 const identityGuard = require('./modules/identity-guard');
+const inviteBindMod = require('./modules/invite-bind');
+const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = inviteBindMod;
+const inviteToken = require('./modules/invite-token');
+const auth0Management = require('./modules/auth0-management');
+const authSubBackfill = require('./modules/auth-sub-backfill');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
@@ -83,6 +88,17 @@ app.use((req, res, next) => {
     next();
 });
 
+// Claim a commissioner invite. Must sit BETWEEN the auth router (so there is a
+// session to read) and the identity guard below — an invitee has no franchise
+// pointer yet, which is precisely what the guard 403s on, so binding has to
+// happen first. See modules/invite-bind.js.
+app.use(inviteBind({
+    User,
+    management: auth0Management,
+    inviteToken,
+    secret: () => process.env.AUTH_SECRET
+}));
+
 // Identity-match guard. Refuses to serve a session whose login email doesn't
 // match the franchise its Auth0 pointer resolves to (see modules/identity-guard).
 // Runs on the REAL identity so dev role-spoofing can't trigger a false block.
@@ -117,7 +133,7 @@ app.use(async (req, res, next) => {
             const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
             if (innerMeta.userId) {
                 const u = await User.findById(innerMeta.userId,
-                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1 }).lean();
+                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1, authSub: 1 }).lean();
                 if (u) {
                     const initials = (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
                     res.locals.navUser = {
@@ -125,6 +141,15 @@ app.use(async (req, res, next) => {
                         color: u.color || null,
                         initials: initials || null
                     };
+                    // Piggybacks on the lookup above rather than costing a query
+                    // of its own: record which Auth0 login owns this franchise
+                    // the first time we see it, so Manager Logins can tell a
+                    // long-standing member from one who was never set up. Runs
+                    // after identity-guard, so this session is already vouched
+                    // for, and only ever fills a blank. See auth-sub-backfill.
+                    if (authSubBackfill.shouldRecord(u, req.oidc.user.sub)) {
+                        await authSubBackfill.recordAuthSub(User, innerMeta.userId, req.oidc.user.sub);
+                    }
                 }
             }
         }
@@ -245,7 +270,13 @@ if (devRole.DEV) {
                 callbackOnLocationHash: false,
                 authorizationServer: { issuer: issuer + '/' },
                 internalOptions: {},
-                extraParams: {}
+                // ?invite=1 renders the invite variant (what someone arriving
+                // from an invite link sees), ?email= exercises the login_hint
+                // prefill — both without a round trip through Auth0.
+                extraParams: Object.assign({},
+                    req.query.invite ? { 'ext-invite': '1' } : null,
+                    req.query.returning ? { 'ext-returning': '1' } : null,
+                    req.query.email ? { login_hint: String(req.query.email) } : null)
             };
             // Point the absolute production asset URLs at this server, so the
             // preview renders images that only exist locally (a newly exported
@@ -260,6 +291,103 @@ if (devRole.DEV) {
         }
     });
 }
+
+// Where Auth0 sends someone after they confirm their address, so that click
+// lands back in the flow instead of on Auth0's "your email is verified" page,
+// which is a dead end with no way onward.
+//
+// Set this as the Redirect To on Branding > Email Templates > Verification
+// Email (see README). The invite cookie is still in play — a retryable refusal
+// keeps it — so this resumes the claim by starting a fresh login, which is what
+// finally carries the confirmed-address flag back to us.
+app.get('/invite/verified', (req, res) => {
+    const raw = inviteBindMod.getCookie(req, INVITE_COOKIE);
+    if (raw && inviteToken.verify(raw, process.env.AUTH_SECRET)) {
+        return res.redirect('/invite/' + encodeURIComponent(raw) + '/start?returning=1');
+    }
+    // Cookie expired, or they confirmed on a different device. Nothing is
+    // broken; they just need the original link again.
+    res.status(200).type('html').send(inviteBindMod.renderRefusalPage('verified-no-cookie'));
+});
+
+// Invite landing page. Public by design — the whole point is that the visitor
+// has no account yet. This only stashes the (signed, expiring) token in a cookie
+// and explains what happens next; the actual binding runs on the way back from
+// Auth0, in the inviteBind middleware above.
+app.get('/invite/:token', async (req, res, next) => {
+    try {
+        const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
+        if (!claim) {
+            return res.status(400).render('invite', {
+                ok: false,
+                heading: 'This invite link isn’t valid',
+                message: 'It may have expired, or been copied incompletely. Ask your commissioner for a fresh link.',
+                firstName: null, leagueName: null, token: null
+            });
+        }
+
+        const user = await User.findById(claim.userId, { firstName: 1, league: 1 }).lean();
+        if (!user) {
+            return res.status(404).render('invite', {
+                ok: false,
+                heading: 'This invite link isn’t valid',
+                message: 'It points at a team that no longer exists. Ask your commissioner for a fresh link.',
+                firstName: null, leagueName: null, token: null
+            });
+        }
+
+        const league = (res.locals.leagues || LEAGUES).find(l => l.code === user.league);
+
+        // Lax so it survives the redirect back from Auth0; httpOnly because
+        // nothing in the browser needs to read it. The token inside is already
+        // HMAC-signed, so the cookie itself needs no separate signature.
+        res.cookie(INVITE_COOKIE, req.params.token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            secure: String(process.env.URL || '').startsWith('https'),
+            maxAge: INVITE_COOKIE_MAX_AGE
+        });
+
+        res.render('invite', {
+            ok: true,
+            heading: null, message: null,
+            firstName: user.firstName || null,
+            leagueName: (league && league.name) || null,
+            token: req.params.token
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
+// Starts the login for someone arriving from an invite, rather than sending
+// them to a bare /login.
+//
+// Two things ride along on the authorize request. `login_hint` prefills the
+// email field. `ext-invite` tells the Auth0-hosted page this visitor was
+// invited, so it leads with Apple/Google and stops presenting a password form
+// that cannot work for them — sign-ups are disabled, so a brand-new member
+// typing an invented password just gets told it doesn't match. Auth0 forwards
+// `ext-`-prefixed parameters through to the custom login page; if it ever stops,
+// the page renders normally and this is merely a plain login.
+app.get('/invite/:token/start', async (req, res, next) => {
+    try {
+        const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
+        const authorizationParams = { 'ext-invite': '1' };
+        // Set when we already know an account exists — coming back from
+        // confirming an address, say. Without it the page offers to create one
+        // and Auth0 answers user_exists, which is a needless extra hop through
+        // an error for someone doing exactly what they were told to do.
+        if (req.query.returning) authorizationParams['ext-returning'] = '1';
+        if (claim) {
+            const user = await User.findById(claim.userId, { email: 1 }).lean();
+            if (user && user.email) authorizationParams.login_hint = user.email;
+        }
+        return res.oidc.login({ returnTo: '/standings', authorizationParams });
+    } catch (err) {
+        next(err);
+    }
+});
 
 // req.isAuthenticated is provided from the auth router
 app.get('/', (req, res) => {

@@ -148,7 +148,36 @@
       background: var(--cc-bg);
     }
 
-    .form-inner { width: 100%; max-width: 380px; }
+    /* Flex column so invite mode can reorder the blocks with `order` instead of
+       moving DOM nodes. Same markup either way — a returning member sees exactly
+       what they saw before. */
+    .form-inner { width: 100%; max-width: 380px; display: flex; flex-direction: column; }
+    .m-brand   { order: 0; }
+    #eyebrow   { order: 1; }
+    #headline  { order: 2; }
+    #subhead   { order: 3; }
+    #login-form{ order: 4; }
+    #reset-row { order: 5; }
+    #divider   { order: 6; }
+    #social    { order: 7; }
+    #footnote  { order: 8; }
+
+    /* ---- Invite mode ------------------------------------------------------
+       Set when the authorize request carried ext-invite=1 (see the script). The
+       visitor was sent a link and has no account yet, so email+password cannot
+       work for them: sign-ups are disabled on the database connection and this
+       page has no sign-up form. Leading with it would hand them a dead end —
+       type an address, invent a password, get "that email and password don't
+       match". Apple and Google are the only paths that can succeed, so they go
+       first and the password block is demoted to what it actually is here: the
+       door for someone who already has one. */
+    body.is-invite #social    { order: 4; }
+    body.is-invite #divider   { order: 5; }
+    body.is-invite #login-form{ order: 6; }
+    body.is-invite #reset-row { order: 7; }
+    body.is-invite #footnote  { display: none; }
+    body.is-invite #social    { margin-bottom: 4px; }
+    body.is-invite #divider   { margin: 24px 0 18px; }
 
     .eyebrow {
       display: flex;
@@ -451,9 +480,9 @@
           </div>
         </div>
 
-        <p class="eyebrow anim d1">Est. 2023 &middot; Members only</p>
-        <h1 class="anim d1">Take the field</h1>
-        <p class="subhead anim d2">Sign in to your franchise.</p>
+        <p class="eyebrow anim d1" id="eyebrow">Est. 2023 &middot; Members only</p>
+        <h1 class="anim d1" id="headline">Take the field</h1>
+        <p class="subhead anim d2" id="subhead">Sign in to your franchise.</p>
 
         <form id="login-form" class="anim d3" novalidate>
           <div class="field">
@@ -476,13 +505,13 @@
           </button>
         </form>
 
-        <p class="link-row anim d3">
+        <p class="link-row anim d3" id="reset-row">
           <button class="link" id="reset" type="button">Forgot your password?</button>
         </p>
 
-        <div class="divider anim d4">or</div>
+        <div class="divider anim d4" id="divider">or</div>
 
-        <div class="anim d4">
+        <div class="anim d4" id="social">
           <button class="btn-social btn-apple" type="button" data-connection="apple">
             <svg width="17" height="17" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
               <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
@@ -501,7 +530,7 @@
           </button>
         </div>
 
-        <p class="footnote anim d4">New here? Ask your commissioner for an invite link.</p>
+        <p class="footnote anim d4" id="footnote">New here? Ask your commissioner for an invite link.</p>
       </div>
     </section>
   </main>
@@ -549,6 +578,65 @@
       emailEl.value = config.extraParams.login_hint;
     }
 
+    // Invite mode. Auth0 passes `ext-`-prefixed authorize parameters through to
+    // this page in extraParams, which is how a page hosted on the tenant learns
+    // anything about where the visitor came from. server.js sets it when someone
+    // starts from an invite link. If Auth0 ever stops forwarding it the page
+    // simply renders as normal — the flag is an enhancement, never a gate.
+    // In invite mode the password block CREATES an account rather than signing
+    // in to one. That's the whole point: the invitee has no Campus Clash
+    // password yet, so a sign-in form would be a dead end for them.
+    var isSignup = false;
+
+    if (String(config.extraParams['ext-invite'] || '') === '1') {
+      document.body.classList.add('is-invite');
+      isSignup = true;
+      document.getElementById('eyebrow').textContent = 'Invited · One more step';
+      // Short enough to hold one line at the same size as "Take the field";
+      // the subhead does the instructing.
+      document.getElementById('headline').textContent = 'Almost there';
+      document.getElementById('subhead').textContent =
+        'Pick how you want to sign in from now on. We’ll connect it to your team.';
+      // The address is fixed by the invite — a different one just fails the
+      // email gate after the round trip, so don't invite them to change it.
+      if (emailEl.value) emailEl.readOnly = true;
+      document.title = 'Finish setting up — Campus Clash';
+
+      // ext-returning means the app already knows an account exists (they're
+      // back from confirming its address). Offering to create one would just
+      // earn them a user_exists error on the way to the same place.
+      if (String(config.extraParams['ext-returning'] || '') === '1') {
+        isSignup = false;
+        document.getElementById('subhead').textContent =
+          'Sign in and we’ll connect your account to your team.';
+        document.getElementById('divider').textContent = 'or use your password';
+      } else {
+        document.getElementById('divider').textContent = 'or set a password';
+        // Not "Forgot your password?" — they don't have one yet, and offering a
+        // reset for an account that doesn't exist is its own dead end.
+        document.getElementById('reset-row').style.display = 'none';
+        document.querySelector('label[for="password"]').textContent = 'Choose a password';
+        passwordEl.setAttribute('autocomplete', 'new-password');
+        passwordEl.setAttribute('placeholder', 'At least 8 characters');
+        labelEl.textContent = 'Create account';
+      }
+    }
+
+    // Drops out of sign-up into ordinary sign-in, for an invitee who turns out
+    // to already have a password (Auth0 answers user_exists).
+    function fallBackToSignIn(message) {
+      isSignup = false;
+      document.getElementById('divider').textContent = 'or use a password';
+      document.querySelector('label[for="password"]').textContent = 'Password';
+      passwordEl.setAttribute('autocomplete', 'current-password');
+      passwordEl.setAttribute('placeholder', 'Your password');
+      passwordEl.value = '';
+      labelEl.textContent = 'Sign in';
+      document.getElementById('reset-row').style.display = '';
+      setError(message);
+      passwordEl.focus();
+    }
+
     // Auth0 error code -> what a league member should actually read. Never say
     // which of the two fields was wrong.
     function messageFor(err) {
@@ -570,6 +658,16 @@
           return 'Couldn’t verify that you’re human. Reload the page and try again.';
         case 'requires_verification':
           return 'Check your email to verify this address, then sign in again.';
+        // Sign-up (invite) paths.
+        case 'invalid_password':
+        case 'password_strength_error':
+          return description || 'That password is too weak. Try a longer one.';
+        case 'password_dictionary_error':
+          return 'That password is too common. Try something less guessable.';
+        case 'password_no_user_info_error':
+          return 'That password contains part of your email. Try another.';
+        case 'signup_disabled':
+          return 'New accounts are turned off right now. Tell your commissioner.';
         default:
           // Surface Auth0's own wording when it gave us something readable,
           // rather than swallowing a real explanation behind a generic string.
@@ -591,7 +689,9 @@
     function setBusy(busy, label) {
       submitEl.disabled = busy;
       socialEls.forEach(function (b) { b.disabled = busy; });
-      labelEl.textContent = busy ? (label || 'Checking the roster…') : 'Sign in';
+      labelEl.textContent = busy
+        ? (label || 'Checking the roster…')
+        : (isSignup ? 'Create account' : 'Sign in');
       chevronEl.innerHTML = busy ? '' : '&rsaquo;';
       chevronEl.className = busy ? 'spinner' : '';
     }
@@ -604,8 +704,32 @@
       var password = passwordEl.value;
 
       if (!email || !password) {
-        setError('Enter your email and password.');
+        setError(isSignup ? 'Choose a password to finish setting up.' : 'Enter your email and password.');
         (email ? passwordEl : emailEl).focus();
+        return;
+      }
+
+      if (isSignup) {
+        setBusy(true, 'Setting you up…');
+        // signupAndLogin, not signup: it creates the account and starts the
+        // session in one hop, so the invite cookie is still live when the app
+        // sees them come back and can bind the franchise straight away.
+        webAuth.redirect.signupAndLogin({
+          connection: DB_CONNECTION,
+          email: email,
+          password: password
+        }, function (err) {
+          setBusy(false);
+          var code = (err && (err.code || err.error)) || '';
+          // An invitee who already has a password — long-standing member
+          // re-claiming, say. Don't dead-end them; switch the form over.
+          if (code === 'user_exists' || code === 'invalid_signup') {
+            fallBackToSignIn('You already have a password for this address — enter it to continue.');
+            return;
+          }
+          setError(messageFor(err));
+          passwordEl.focus();
+        });
         return;
       }
 

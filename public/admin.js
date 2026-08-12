@@ -6,7 +6,12 @@ const seasonOptionList = document.querySelectorAll('[season-options]');
 const seasonTypeOptionList = document.querySelectorAll('[season-type-options]');
 const weekOptionList = document.querySelectorAll('[week-options]');
 
-var leagueCode;
+// No module-level `leagueCode` on purpose. It existed, nothing ever assigned it
+// (getUsers() and friends each declare their own with `var`), and the one place
+// that read it silently created players with league: undefined. Every
+// league-scoped action calls getDraftLeagueCode() instead; without this
+// declaration, reaching for the old global is a ReferenceError rather than
+// another silent undefined.
 var isMobile;
 var userMetadata;
 var teamList = [];
@@ -700,13 +705,27 @@ if (createForm) {
     
         const firstName = document.querySelector('[first-name]').value;
         const lastName = document.querySelector('[last-name]').value;
+        const emailEl = document.querySelector('[email]');
+        const email = emailEl ? emailEl.value.trim() : '';
+
+        if (!email) {
+            failToast.options.text = "An email is required — it's what ties the invite link to them";
+            failToast.showToast();
+            return;
+        }
 
         // Color and the active-season roster entry are assigned server-side —
         // the manager just provides a name; the draft fills the roster.
+        // getDraftLeagueCode(), like every other league-scoped action on this
+        // page. This used to read a module-level `leagueCode` that nothing ever
+        // assigned — getUsers() shadows it with its own `var` — so every player
+        // added here was created with league: undefined and then belonged to
+        // neither league. Silent until a panel tried to list them.
         var userBody = {
             firstName: firstName,
             lastName: lastName,
-            league: leagueCode
+            email: email,
+            league: getDraftLeagueCode()
         };
 
         const response = await fetch("/users", {
@@ -726,14 +745,81 @@ if (createForm) {
                 getUsers();
                 displayCreateUserContainer();
 
+                // Manager Logins only loads when its panel is opened, so a player
+                // added while it was already open never showed up and looked like
+                // the create had failed. Refresh it if it's on screen.
+                var loginsPanel = document.querySelector('[manager-logins-container]');
+                if (loginsPanel && loginsPanel.style.display !== 'none') loadManagerLogins();
+
                 successToast.options.text = "User created successfully";
                 successToast.showToast();
             } else {
-                failToast.options.text = response.status + " User could not be created";
+                // 423 is the season-underway lock — it carries a real
+                // explanation, so show that instead of a bare status code.
+                failToast.options.text = response.status === 423
+                    ? (data && data.message) || "Adding a player is locked once the season is underway"
+                    : response.status + " User could not be created";
                 failToast.showToast();
             }
         });
     });
+}
+
+// Copies an invite link for a player to the clipboard. The commissioner sends it
+// however they normally talk to the league; claiming it binds whatever login the
+// invitee signs in with to this franchise.
+async function copyInviteLink(userId, name) {
+    try {
+        const res = await fetch('/users/' + encodeURIComponent(userId) + '/invite-link', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            failToast.options.text = (data && data.message) || 'Could not create an invite link';
+            failToast.showToast();
+            return;
+        }
+
+        // A franchise that already has a login bound will refuse this link until
+        // it's reset, so say so rather than handing over one that can't work.
+        if (data.alreadyClaimed) {
+            failToast.options.text = name + ' already has a login. Reset it first, then send a new link.';
+            failToast.showToast();
+            return;
+        }
+
+        await navigator.clipboard.writeText(data.link);
+        successToast.options.text = 'Invite link copied — expires in ' + data.expiresInDays + ' days';
+        successToast.showToast();
+    } catch (e) {
+        failToast.options.text = 'Could not copy the invite link';
+        failToast.showToast();
+    }
+}
+
+// Clears the Auth0 identity bound to a franchise so a fresh invite can be sent —
+// the manager changed email, or claimed it from the wrong account.
+async function resetInviteLink(userId, name) {
+    if (!confirm('Reset the login link for ' + name + "?\n\nTheir current login will stop resolving to this team until they claim a new invite.")) return;
+    try {
+        const res = await fetch('/users/' + encodeURIComponent(userId) + '/invite-link', { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+            failToast.options.text = (data && data.message) || 'Could not reset the login link';
+            failToast.showToast();
+            return;
+        }
+        successToast.options.text = 'Login link reset — send ' + name + ' a new invite';
+        successToast.showToast();
+        getUsers();
+        // The row still reads "Claimed" until this repaints, which makes a
+        // successful reset look like it did nothing.
+        loadManagerLogins();
+    } catch (e) {
+        failToast.options.text = 'Could not reset the login link';
+        failToast.showToast();
+    }
 }
 
 // Season roster: an include/exclude checklist for the active season. Replaces
@@ -773,6 +859,53 @@ async function loadSeasonRoster() {
         list.classList.toggle('is-locked', !!data.locked);
     } catch (err) {
         if (list) list.textContent = 'Could not load the roster.';
+    }
+}
+
+// Manager Logins: who has claimed an invite and who still needs one. Reuses the
+// roster endpoint, which already returns `linked` per player, rather than adding
+// a second listing route that could drift from it.
+async function loadManagerLogins() {
+    var leagueCode = getDraftLeagueCode();
+    var list = document.querySelector('[manager-logins-list]');
+    if (list) list.textContent = 'Loading…';
+    try {
+        var res = await fetch('/users/league/' + encodeURIComponent(leagueCode) + '/roster', { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        if (!res.ok || !Array.isArray(data.players)) { if (list) list.textContent = 'Could not load managers.'; return; }
+
+        list.innerHTML = data.players.map(function (p) {
+            var color = /^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#5B6690';
+            var name = escHtml(p.firstName + ' ' + p.lastName);
+            var id = escHtml(p._id);
+            // Show the EMAIL, not a "not claimed" badge. All authSub tells us is
+            // whether an invite was claimed through this flow — members linked by
+            // hand before it existed sign in fine and would wear that badge
+            // forever, so it was grey noise on every row. The address is the fact
+            // that actually matters: it's what an invite gets locked to, it's
+            // where a typo hides, and its absence means any link for this team is
+            // claimable by whoever opens it first.
+            var email = p.email
+                ? '<span class="login-email">' + escHtml(p.email) + '</span>'
+                : '<span class="login-email is-missing">No email on file</span>';
+            // Meaningful now that modules/auth-sub-backfill.js records a sub the
+            // first time an existing member loads a page: "Needs invite" means we
+            // have genuinely never seen a login for this team, rather than just
+            // "no invite was used", which was true of everybody.
+            var badge = p.linked
+                ? '<span class="login-badge is-linked">Claimed</span>'
+                : '<span class="login-badge is-pending">Needs invite</span>';
+            var action = p.linked
+                ? '<button type="button" class="login-btn-ghost" onclick="resetInviteLink(\'' + id + '\', \'' + name + '\')">Reset</button>'
+                : '<button type="button" class="login-btn" onclick="copyInviteLink(\'' + id + '\', \'' + name + '\')">Copy invite</button>';
+            return '<div class="roster-row login-row">' +
+                '<span class="roster-dot" style="background:' + color + '"></span>' +
+                '<span class="login-who"><span class="roster-name">' + name + '</span>' + email + '</span>' +
+                '<span class="login-actions">' + badge + action + '</span>' +
+            '</div>';
+        }).join('');
+    } catch (err) {
+        if (list) list.textContent = 'Could not load managers.';
     }
 }
 
@@ -1465,9 +1598,29 @@ function toggleSub(attr) {
     return open;
 }
 
-function displayCreateUserContainer() { toggleSub('create-user-container'); }
+function displayCreateUserContainer() {
+    if (!toggleSub('create-user-container')) return;
+    // Warn BEFORE they type rather than after they submit: a mid-season add
+    // starts on an empty roster, and for a League Manager the server refuses it
+    // outright (423). Reuses the roster endpoint, which already reports both.
+    var warn = document.getElementById('create-season-warning');
+    if (!warn) return;
+    warn.style.display = 'none';
+    fetch('/users/league/' + encodeURIComponent(getDraftLeagueCode()) + '/roster',
+          { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+            if (!d || !d.seasonUnderway) return;
+            warn.textContent = d.locked
+                ? 'The season is underway, so adding a player is locked. Ask an admin.'
+                : 'The season is underway. A new manager starts with an empty roster and sits on zero points until you correct it.';
+            warn.style.display = '';
+        })
+        .catch(function () { /* non-fatal: the server still enforces the lock */ });
+}
 
 function displaySeasonRosterContainer() { if (toggleSub('season-roster-container')) loadSeasonRoster(); }
+function displayManagerLoginsContainer() { if (toggleSub('manager-logins-container')) loadManagerLogins(); }
 
 function displayRosterCorrectionContainer() { if (toggleSub('roster-correction-container')) loadRosterCorrection(); }
 
