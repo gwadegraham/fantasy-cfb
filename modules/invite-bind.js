@@ -31,6 +31,10 @@ function getCookie(req, name) {
     return hit ? decodeURIComponent(hit.slice(name.length + 1)) : null;
 }
 
+// An Auth0 database identity — someone who typed an address into the sign-up
+// form. Social subs look like `google-oauth2|…` or `apple|…`.
+const isDatabaseIdentity = (sub) => /^auth0\|/.test(String(sub || ''));
+
 // Pure decision, exported for testing.
 //
 // `action` is one of:
@@ -38,7 +42,7 @@ function getCookie(req, name) {
 //   clear  — drop the cookie, carry on; nothing to do and nothing wrong
 //   refuse — drop the cookie, show the invitee why it didn't work
 //   bind   — write the pointer
-function decideInvite({ invite, sub, tokenEmail, sessionUserId, record, lookupError }) {
+function decideInvite({ invite, sub, tokenEmail, emailVerified, sessionUserId, record, lookupError }) {
     if (!invite) return { action: 'skip', reason: 'no-invite' };
     if (!sub)    return { action: 'skip', reason: 'not-authenticated' };  // still pre-login
 
@@ -63,6 +67,15 @@ function decideInvite({ invite, sub, tokenEmail, sessionUserId, record, lookupEr
     // Single-use. A spent link must not hand the franchise to a second person.
     if (record.authSub) return { action: 'refuse', reason: 'already-claimed' };
 
+    // Mailbox control. Anyone can type any address into the sign-up form, so a
+    // password identity has to prove it owns the address before that address is
+    // allowed to claim a franchise — otherwise a leaked link plus a self-signup
+    // walks straight past the email gate below. Google and Apple already vouch
+    // for the address they hand us, so they're exempt.
+    if (isDatabaseIdentity(sub) && !emailVerified) {
+        return { action: 'refuse', reason: 'unverified-email' };
+    }
+
     // Email gate. When the franchise already knows its manager's address, the
     // person claiming it has to be that person — this is what stops a forwarded
     // link from working. When it doesn't (every record predating this feature,
@@ -84,6 +97,7 @@ const REFUSAL_COPY = {
     'already-claimed': 'This invite has already been used. If that wasn’t you, ask your commissioner for a new link.',
     'no-token-email':  'We couldn’t read an email address from that login, so we can’t confirm it’s yours.',
     'email-mismatch':  'This invite was sent to a different email address. Sign in with the address your commissioner invited.',
+    'unverified-email':'Check your email and click the link we sent to confirm your address, then open your invite link again.',
     'bind-failed':     'We couldn’t finish setting up your account. Tell your commissioner — nothing is broken on your end.'
 };
 
@@ -155,6 +169,7 @@ function inviteBind(deps) {
                 invite,
                 sub,
                 tokenEmail: oidcUser && oidcUser.email,
+                emailVerified: !!(oidcUser && oidcUser.email_verified),
                 sessionUserId: innerMeta.userId,
                 record,
                 lookupError

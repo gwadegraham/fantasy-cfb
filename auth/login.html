@@ -583,19 +583,47 @@
     // anything about where the visitor came from. server.js sets it when someone
     // starts from an invite link. If Auth0 ever stops forwarding it the page
     // simply renders as normal — the flag is an enhancement, never a gate.
+    // In invite mode the password block CREATES an account rather than signing
+    // in to one. That's the whole point: the invitee has no Campus Clash
+    // password yet, so a sign-in form would be a dead end for them.
+    var isSignup = false;
+
     if (String(config.extraParams['ext-invite'] || '') === '1') {
       document.body.classList.add('is-invite');
+      isSignup = true;
       document.getElementById('eyebrow').textContent = 'Invited · One more step';
       // Short enough to hold one line at the same size as "Take the field";
       // the subhead does the instructing.
       document.getElementById('headline').textContent = 'Almost there';
       document.getElementById('subhead').textContent =
         'Pick how you want to sign in from now on. We’ll connect it to your team.';
-      document.getElementById('divider').textContent = 'or use a password';
+      document.getElementById('divider').textContent = 'or set a password';
       // Not "Forgot your password?" — they don't have one yet, and offering a
       // reset for an account that doesn't exist is its own dead end.
       document.getElementById('reset-row').style.display = 'none';
+      document.querySelector('label[for="password"]').textContent = 'Choose a password';
+      passwordEl.setAttribute('autocomplete', 'new-password');
+      passwordEl.setAttribute('placeholder', 'At least 8 characters');
+      labelEl.textContent = 'Create account';
+      // The address is fixed by the invite — a different one just fails the
+      // email gate after the round trip, so don't invite them to change it.
+      if (emailEl.value) emailEl.readOnly = true;
       document.title = 'Finish setting up — Campus Clash';
+    }
+
+    // Drops out of sign-up into ordinary sign-in, for an invitee who turns out
+    // to already have a password (Auth0 answers user_exists).
+    function fallBackToSignIn(message) {
+      isSignup = false;
+      document.getElementById('divider').textContent = 'or use a password';
+      document.querySelector('label[for="password"]').textContent = 'Password';
+      passwordEl.setAttribute('autocomplete', 'current-password');
+      passwordEl.setAttribute('placeholder', 'Your password');
+      passwordEl.value = '';
+      labelEl.textContent = 'Sign in';
+      document.getElementById('reset-row').style.display = '';
+      setError(message);
+      passwordEl.focus();
     }
 
     // Auth0 error code -> what a league member should actually read. Never say
@@ -619,6 +647,16 @@
           return 'Couldn’t verify that you’re human. Reload the page and try again.';
         case 'requires_verification':
           return 'Check your email to verify this address, then sign in again.';
+        // Sign-up (invite) paths.
+        case 'invalid_password':
+        case 'password_strength_error':
+          return description || 'That password is too weak. Try a longer one.';
+        case 'password_dictionary_error':
+          return 'That password is too common. Try something less guessable.';
+        case 'password_no_user_info_error':
+          return 'That password contains part of your email. Try another.';
+        case 'signup_disabled':
+          return 'New accounts are turned off right now. Tell your commissioner.';
         default:
           // Surface Auth0's own wording when it gave us something readable,
           // rather than swallowing a real explanation behind a generic string.
@@ -640,7 +678,9 @@
     function setBusy(busy, label) {
       submitEl.disabled = busy;
       socialEls.forEach(function (b) { b.disabled = busy; });
-      labelEl.textContent = busy ? (label || 'Checking the roster…') : 'Sign in';
+      labelEl.textContent = busy
+        ? (label || 'Checking the roster…')
+        : (isSignup ? 'Create account' : 'Sign in');
       chevronEl.innerHTML = busy ? '' : '&rsaquo;';
       chevronEl.className = busy ? 'spinner' : '';
     }
@@ -653,8 +693,32 @@
       var password = passwordEl.value;
 
       if (!email || !password) {
-        setError('Enter your email and password.');
+        setError(isSignup ? 'Choose a password to finish setting up.' : 'Enter your email and password.');
         (email ? passwordEl : emailEl).focus();
+        return;
+      }
+
+      if (isSignup) {
+        setBusy(true, 'Setting you up…');
+        // signupAndLogin, not signup: it creates the account and starts the
+        // session in one hop, so the invite cookie is still live when the app
+        // sees them come back and can bind the franchise straight away.
+        webAuth.redirect.signupAndLogin({
+          connection: DB_CONNECTION,
+          email: email,
+          password: password
+        }, function (err) {
+          setBusy(false);
+          var code = (err && (err.code || err.error)) || '';
+          // An invitee who already has a password — long-standing member
+          // re-claiming, say. Don't dead-end them; switch the form over.
+          if (code === 'user_exists' || code === 'invalid_signup') {
+            fallBackToSignIn('You already have a password for this address — enter it to continue.');
+            return;
+          }
+          setError(messageFor(err));
+          passwordEl.focus();
+        });
         return;
       }
 

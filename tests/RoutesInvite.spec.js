@@ -225,7 +225,10 @@ describe('inviteBind middleware', () => {
     }
 
     const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
-    const session = (over) => Object.assign({ sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} }, over);
+    // A realistic password identity: Auth0 only reports email_verified true once
+    // the address is confirmed, and the bind now insists on it for auth0| subs.
+    const session = (over) => Object.assign(
+        { sub: 'auth0|new', email: 'ann@example.com', email_verified: true, user_metadata: {} }, over);
     const tokenFor = (u) => inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET);
 
     test('passes straight through when there is no invite cookie', async () => {
@@ -292,6 +295,32 @@ describe('inviteBind middleware', () => {
         await request(bindApp(session({ email: 'new@example.com' }), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
         expect((await User.findById(u._id).lean()).email).toBe('new@example.com');
+    });
+
+    // Sign-ups are open again so invitees can set a password, which means the
+    // form accepts any address typed into it. Confirming the mailbox is what
+    // keeps that from walking around the email gate.
+    test('refuses a password identity that has not confirmed its address', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+
+        const res = await request(bindApp(session({ email_verified: false }), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(403);
+        expect(res.text).toContain('confirm your address');
+        expect(management.patchUserMetadata).not.toHaveBeenCalled();
+        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+    });
+
+    test('a Google identity binds without a verified flag — the provider vouches', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const management = okManagement();
+        const res = await request(bindApp(session({ sub: 'google-oauth2|9', email_verified: false }), management))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        expect(res.status).toBe(302);
+        expect((await User.findById(u._id).lean()).authSub).toBe('google-oauth2|9');
     });
 
     test('refuses a forwarded link claimed from a different address', async () => {
