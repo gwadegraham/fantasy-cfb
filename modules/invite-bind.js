@@ -162,6 +162,16 @@ function inviteBind(deps) {
 
     return async function inviteBindMw(req, res, next) {
         try {
+            // /invite/* is where a claim is STARTED or restarted, never where it
+            // completes — the bind lands on whatever page they hit after the
+            // login round trip. Judging them here judges the token they arrived
+            // with, which is precisely the stale one they came back to replace:
+            // someone who has just confirmed their address still carries an ID
+            // token minted before the click, so this would refuse them on the
+            // very route whose job is to go and get them a fresh one, and the
+            // retry link would loop forever.
+            if (String(req.path || '').indexOf('/invite/') === 0) return next();
+
             // Cheap short-circuit: the cookie only exists inside a claim window,
             // so ordinary traffic pays one header read.
             const raw = getCookie(req, COOKIE);

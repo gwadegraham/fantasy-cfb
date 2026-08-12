@@ -334,6 +334,30 @@ describe('inviteBind middleware', () => {
         expect((res.headers['set-cookie'] || []).join()).toMatch(new RegExp(COOKIE + '=;'));
     });
 
+    // The loop this caused: /invite/verified exists to send someone back through
+    // a fresh login, but the middleware judged the stale token they arrived with
+    // and refused on the very route meant to replace it.
+    test.each([
+        ['/invite/TOKEN'],
+        ['/invite/TOKEN/start'],
+        ['/invite/verified']
+    ])('never judges a stale token on %s', async (path) => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const app = bindApp(session({ email_verified: false }), okManagement());
+        app.get(path, (req, res) => res.status(200).send('route reached'));
+
+        const res = await request(app).get(path).set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect(res.status).toBe(200);
+        expect(res.text).toBe('route reached');
+    });
+
+    test('still binds on an ordinary page after the round trip', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const res = await request(bindApp(session(), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect(res.status).toBe(302);
+    });
+
     test('a Google identity binds without a verified flag — the provider vouches', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
         const management = okManagement();
