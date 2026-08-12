@@ -1,5 +1,5 @@
 const { internalFetch, failureMessage } = require('./internal-api');
-const { resolveConfig, MODELS, engagementForSeason, ruleEnabled } = require('./scoring-defaults');
+const { resolveConfig, MODELS, engagementForSeason, ruleEnabled, overridesFromDoc } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { factsForGame } = require('./cfp-bracket');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
@@ -438,15 +438,7 @@ async function getScoringConfig(league) {
     // finer win categories), not just point values. Dropping any of these
     // here would make computed scores silently ignore structural config while
     // the rules page still showed it.
-    return resolveConfig(league, {
-        model: data.model,
-        values: data.values,
-        combineMode: data.combineMode,
-        disabled: data.disabled,
-        enabled: data.enabled,
-        engagement: data.engagement,
-        engagementBySeason: data.engagementBySeason
-    });
+    return resolveConfig(league, overridesFromDoc(data));
 }
 
 // The rankings a game should be scored against, from the internal /rankings

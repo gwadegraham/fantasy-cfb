@@ -211,6 +211,30 @@ function normalizePowerConferences(list) {
 // multiplier values used when a mode is turned on.
 const ENGAGEMENT_DEFAULTS = { h2hEnabled: false, h2hWinBonus: 3, h2hTieBonus: 0, captainEnabled: false, captainMultiplier: 2 };
 
+// THE canonical list of stored config fields, as resolveConfig() overrides.
+//
+// Every consumer that turns a saved ScoringConfig (a Mongo doc, or the JSON the
+// /scoring-config route returns) into a resolved config MUST go through here.
+// This list was previously spelled out at six call sites — the scoring job, the
+// config route's read and write, draft grades, and two standings projections —
+// and they drifted: adding `powerConferences` to the schema and the route left
+// five of them silently dropping it, so the league's own scoring never saw the
+// setting the admin page had happily saved. A field added here reaches every
+// consumer at once; a field added anywhere else reaches one.
+function overridesFromDoc(doc) {
+    if (!doc) return null;
+    return {
+        model: doc.model,
+        values: doc.values,
+        combineMode: doc.combineMode,
+        disabled: doc.disabled,
+        enabled: doc.enabled,
+        engagement: doc.engagement,
+        engagementBySeason: doc.engagementBySeason || {},
+        powerConferences: doc.powerConferences
+    };
+}
+
 // Coerce a stored/partial engagement object into a complete, well-typed one.
 function normalizeEngagement(e) {
     e = e || {};
@@ -234,6 +258,6 @@ function engagementForSeason(bySeason, season) {
 
 module.exports = {
     CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS, LEAGUES,
-    modelForLeague, fieldsForModel, resolveConfig, ruleEnabled, normalizePowerConferences,
+    modelForLeague, fieldsForModel, resolveConfig, ruleEnabled, normalizePowerConferences, overridesFromDoc,
     ENGAGEMENT_DEFAULTS, normalizeEngagement, engagementForSeason
 };

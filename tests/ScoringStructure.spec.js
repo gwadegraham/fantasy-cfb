@@ -158,6 +158,49 @@ describe('powerConferences override (non-P5 upset bonus)', () => {
     });
 });
 
+// The gap that let a merged, tested, admin-editable setting do nothing: every
+// earlier test either handed evaluate() a config directly or checked what the
+// route returned. Nothing covered the path the scoring JOB takes — load the
+// config over HTTP, re-resolve it, then score — and that re-resolve was
+// dropping the field. These walk the real path.
+describe('config survives the load-then-score path', () => {
+    const POWER_PLUS = ['ACC', 'Big 12', 'Big Ten', 'SEC', 'FBS Independents'];
+
+    function mockConfigRoute(body) {
+        global.fetch = jest.fn((url) => {
+            if (String(url).includes('/scoring-config/')) {
+                return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(body) });
+            }
+            return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ polls: [{ poll: 'AP Top 25', ranks: [] }] }) });
+        });
+    }
+
+    it('carries every stored field through getScoringConfig', async () => {
+        mockConfigRoute({
+            model: 'graham', values: { baseWin: 1 }, combineMode: 'sum',
+            disabled: ['bowlWin'], enabled: [], powerConferences: POWER_PLUS,
+            engagementBySeason: { 2026: { captainEnabled: true, captainMultiplier: 2 } }
+        });
+        const cfg = await scoring.getScoringConfig('graham-league');
+        expect(cfg.powerConferences).toEqual(POWER_PLUS);
+        expect(cfg.disabled).toEqual(['bowlWin']);
+        expect(cfg.engagementBySeason).toEqual({ 2026: { captainEnabled: true, captainMultiplier: 2 } });
+    });
+
+    it('scores Notre Dame with the loaded list, not the engine default', async () => {
+        const ndOverAcc = homeWin({ homeConf: 'FBS Independents', awayConf: 'ACC' });
+        const base = { model: 'graham', values: {}, combineMode: 'sum', disabled: [], enabled: [] };
+
+        mockConfigRoute(Object.assign({}, base, { powerConferences: POWER_PLUS }));
+        const closed = await scoring.getScoringConfig('graham-league');
+        expect(await scoring.calculateScoreV2(1, ndOverAcc, 5, 2025, closed)).toBe(1);
+
+        mockConfigRoute(base);                                   // league never set one
+        const open = await scoring.getScoringConfig('graham-league');
+        expect(await scoring.calculateScoreV2(1, ndOverAcc, 5, 2025, open)).toBe(3);
+    });
+});
+
 describe('fieldsForModel', () => {
     it('marks postseason fields toggleable and reflects disabled state', () => {
         const fields = fieldsForModel('claunts', ['bowlWin']);

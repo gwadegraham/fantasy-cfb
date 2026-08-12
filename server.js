@@ -24,7 +24,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
-const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason } = require('./modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -476,9 +476,7 @@ app.get('/rules', async (req, res) => {
         let cfg;
         try {
             const doc = await ScoringConfig.findOne({ league: leagueCode });
-            cfg = resolveConfig(leagueCode, doc
-                ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: doc.engagementBySeason }
-                : null);
+            cfg = resolveConfig(leagueCode, overridesFromDoc(doc));
         } catch (err) {
             cfg = resolveConfig(leagueCode, null);
         }
