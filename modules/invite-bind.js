@@ -29,6 +29,26 @@ const COOKIE = 'cc_invite';
 // inside it carries its own exp, and a spent invite is refused on `authSub`.
 const COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
+// Did a prompt=none authorize fail because there was nobody to reuse?
+//
+// Binding writes the franchise pointer AFTER the login that created the
+// session, so the ID token in hand is already stale and has to be replaced. We
+// ask for the replacement silently; when Auth0 has a live session that is
+// invisible, and when it doesn't it answers with one of these instead. That's
+// an expected outcome — the invitee just signs in once more — not a 500.
+//
+// The shape varies with where the failure surfaces (the OP's error code, an
+// error wrapped by express-openid-connect, a bare message), so this looks at
+// all of them rather than betting on one.
+const SILENT_AUTH_FAILURES = /login_required|interaction_required|consent_required|account_selection_required/;
+
+function isSilentAuthFailure(err) {
+    if (!err) return false;
+    const haystack = [err.error, err.error_description, err.code, err.message]
+        .filter(Boolean).join(' ');
+    return SILENT_AUTH_FAILURES.test(haystack);
+}
+
 // Same raw-header read as modules/dev-role.js — the app doesn't run
 // cookie-parser, and one cookie doesn't justify adding it.
 function getCookie(req, name) {
@@ -248,11 +268,12 @@ function inviteBind(deps) {
             }
 
             res.clearCookie(COOKIE);
-            // The session's ID token was minted BEFORE the PATCH, so it still
-            // carries no pointer — serving any page now would hit identity-guard's
-            // block. Round-trip through /login for a fresh token; Auth0's own
-            // session is still valid, so this is a redirect, not a second sign-in.
-            return res.redirect('/login?returnTo=%2Fstandings');
+            // The ID token was minted BEFORE the PATCH, so it still carries no
+            // pointer — serving any page now would hit identity-guard's block.
+            // /invite/complete asks Auth0 for a replacement without prompting,
+            // which is invisible when a session exists and falls back to an
+            // ordinary login when it doesn't.
+            return res.redirect('/invite/complete');
         } catch (e) {
             // Never let an invite problem break an ordinary request.
             console.error('invite-bind middleware error:', e && e.message);
@@ -262,6 +283,6 @@ function inviteBind(deps) {
 }
 
 module.exports = {
-    inviteBind, decideInvite, renderRefusalPage, getCookie,
+    inviteBind, decideInvite, renderRefusalPage, getCookie, isSilentAuthFailure,
     COOKIE, COOKIE_MAX_AGE_MS
 };

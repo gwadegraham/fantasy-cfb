@@ -242,10 +242,12 @@ describe('inviteBind middleware', () => {
         const res = await request(bindApp(session(), management))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
 
-        // A re-login is required: the current ID token predates the PATCH, so it
-        // still carries no franchise pointer.
+        // A token refresh is required: the current ID token predates the PATCH,
+        // so it still carries no franchise pointer.
         expect(res.status).toBe(302);
-        expect(res.headers.location).toBe('/login?returnTo=%2Fstandings');
+        // Not straight to /login: /invite/complete tries for a silent token
+        // refresh first, so a live Auth0 session means no second sign-in.
+        expect(res.headers.location).toBe('/invite/complete');
 
         // Shape matters twice over, and both are invisible at runtime:
         //   - TOP-LEVEL, not nested under `metadata`. The post-login Action wraps

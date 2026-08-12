@@ -6,7 +6,7 @@
 // not work are the rest.
 
 const inviteToken = require('../modules/invite-token');
-const { decideInvite, getCookie, renderRefusalPage, COOKIE } = require('../modules/invite-bind');
+const { decideInvite, getCookie, renderRefusalPage, isSilentAuthFailure, COOKIE } = require('../modules/invite-bind');
 
 const SECRET = 'test-secret-value';
 
@@ -328,5 +328,37 @@ describe('identity-guard leaves the invite path open', () => {
 
     test('still blocks everything else for that session', async () => {
         expect((await request(guardedApp(unlinked)).get('/standings')).status).toBe(403);
+    });
+});
+
+
+// The post-bind token refresh asks Auth0 for a new token with prompt=none. When
+// there's no session to reuse Auth0 refuses, and that has to read as "just sign
+// in" rather than as a server error — otherwise the invitee gets a 500 at the
+// last step of a claim that actually succeeded.
+describe('isSilentAuthFailure', () => {
+    test.each([
+        ['login_required'],
+        ['interaction_required'],
+        ['consent_required'],
+        ['account_selection_required']
+    ])('recognises %s however it is reported', (code) => {
+        expect(isSilentAuthFailure({ error: code })).toBe(true);
+        expect(isSilentAuthFailure({ message: 'Callback failed: ' + code })).toBe(true);
+        expect(isSilentAuthFailure({ error_description: code })).toBe(true);
+        expect(isSilentAuthFailure({ code })).toBe(true);
+    });
+
+    // Anything else must keep travelling to the real error handler; swallowing a
+    // genuine failure into a login redirect would hide it completely.
+    test.each([
+        [null],
+        [undefined],
+        [{}],
+        [new Error('ECONNREFUSED')],
+        [{ error: 'access_denied' }],
+        [{ error: 'invalid_grant', error_description: 'code expired' }]
+    ])('leaves %p alone', (err) => {
+        expect(isSilentAuthFailure(err)).toBe(false);
     });
 });

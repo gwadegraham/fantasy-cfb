@@ -76,6 +76,21 @@ app.locals.leagues = LEAGUES;
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));
 
+// A silent re-auth that finds no session to reuse is an expected outcome, not a
+// server error. /invite/complete asks for a fresh token with prompt=none after
+// an invite binds; when Auth0 has nobody to reuse it fails the callback with
+// login_required, which would otherwise surface as a 500. Send them through an
+// ordinary login instead — the same single sign-in they'd have had anyway.
+//
+// Mounted immediately after the auth router because that is where the failing
+// callback lives; error handlers only see what is thrown upstream of them.
+app.use((err, req, res, next) => {
+    if (inviteBindMod.isSilentAuthFailure(err)) {
+        return res.oidc.login({ returnTo: '/standings' });
+    }
+    next(err);
+});
+
 // Dev role-spoof + view context. Resolves the effective user (honors an Admin's
 // active role spoof in non-production; a no-op in prod / for non-Admins) and
 // exposes dev flags to every view. The render routes and the role gates all
@@ -291,6 +306,21 @@ if (devRole.DEV) {
         }
     });
 }
+
+// Replaces the ID token an invitee is holding, without making them sign in
+// again. The pointer is written after the login that created their session, so
+// the token in hand is stale the moment we bind; prompt=none asks Auth0 to
+// reissue it against the session they already have. Invisible when that session
+// is alive. When it isn't, Auth0 answers login_required and the error handler
+// mounted next to auth() turns that into an ordinary login — the behaviour this
+// replaced, so this is never worse than not trying.
+app.get('/invite/complete', (req, res, next) => {
+    try {
+        return res.oidc.login({ returnTo: '/standings', authorizationParams: { prompt: 'none' } });
+    } catch (err) {
+        next(err);
+    }
+});
 
 // Where Auth0 sends someone after they confirm their address, so that click
 // lands back in the flow instead of on Auth0's "your email is verified" page,
