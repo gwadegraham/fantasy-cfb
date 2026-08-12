@@ -15,7 +15,8 @@ const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
 const identityGuard = require('./modules/identity-guard');
-const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = require('./modules/invite-bind');
+const inviteBindMod = require('./modules/invite-bind');
+const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = inviteBindMod;
 const inviteToken = require('./modules/invite-token');
 const auth0Management = require('./modules/auth0-management');
 const authSubBackfill = require('./modules/auth-sub-backfill');
@@ -289,6 +290,24 @@ if (devRole.DEV) {
         }
     });
 }
+
+// Where Auth0 sends someone after they confirm their address, so that click
+// lands back in the flow instead of on Auth0's "your email is verified" page,
+// which is a dead end with no way onward.
+//
+// Set this as the Redirect To on Branding > Email Templates > Verification
+// Email (see README). The invite cookie is still in play — a retryable refusal
+// keeps it — so this resumes the claim by starting a fresh login, which is what
+// finally carries the confirmed-address flag back to us.
+app.get('/invite/verified', (req, res) => {
+    const raw = inviteBindMod.getCookie(req, INVITE_COOKIE);
+    if (raw && inviteToken.verify(raw, process.env.AUTH_SECRET)) {
+        return res.redirect('/invite/' + encodeURIComponent(raw) + '/start');
+    }
+    // Cookie expired, or they confirmed on a different device. Nothing is
+    // broken; they just need the original link again.
+    res.status(200).type('html').send(inviteBindMod.renderRefusalPage('verified-no-cookie'));
+});
 
 // Invite landing page. Public by design — the whole point is that the visitor
 // has no account yet. This only stashes the (signed, expiring) token in a cookie

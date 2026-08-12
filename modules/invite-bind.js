@@ -109,6 +109,8 @@ const REFUSAL_COPY = {
     'unverified-email':{ heading: 'One more step',
                          body: 'Your account is set up. Click the link in the email we just sent to confirm your address, then come back here.',
                          retry: true },
+    'verified-no-cookie': { heading: 'Address confirmed',
+                         body: 'Open the invite link your commissioner sent you and you’ll be straight in.' },
     'bind-failed':     { heading: 'We couldn’t finish setting up',
                          body: 'Tell your commissioner — nothing is broken on your end.' }
 };
@@ -203,12 +205,17 @@ function inviteBind(deps) {
                 return next();
             }
             if (decision.action === 'refuse') {
-                res.clearCookie(COOKIE);
-                // `raw` is the still-valid signed token, so the retry link can
-                // send them back through the invite rather than making them dig
-                // the original message out again.
-                return res.status(403).type('html')
-                    .send(renderRefusalPage(decision.reason, '/invite/' + encodeURIComponent(raw)));
+                const copy = REFUSAL_COPY[decision.reason];
+                // A retryable refusal (an unconfirmed address) KEEPS the cookie:
+                // the situation resolves on its own once they click the email,
+                // and clearing it would force the whole claim to start over.
+                // Everything else is final, so the invite is spent.
+                if (!(copy && copy.retry)) res.clearCookie(COOKIE);
+                // Straight to /start, not the invite page — that mints a fresh
+                // login, which is the only way the confirmed-address flag reaches
+                // us. The ID token they're holding was issued before they clicked.
+                return res.status(403).type('html').send(renderRefusalPage(
+                    decision.reason, '/invite/' + encodeURIComponent(raw) + '/start'));
             }
 
             // bind

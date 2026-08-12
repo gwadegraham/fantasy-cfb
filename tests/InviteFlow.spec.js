@@ -328,3 +328,39 @@ describe('auth0-management', () => {
         expect(global.fetch).not.toHaveBeenCalled();
     });
 });
+
+
+// Regression: an invitee between "account created" and "team claimed" has a
+// session with no franchise pointer — exactly what identity-guard blocks. It was
+// blocking /invite/* too, so the link they were told to reopen was unreachable
+// and the flow dead-ended on the block page.
+describe('identity-guard leaves the invite path open', () => {
+    const identityGuard = require('../modules/identity-guard');
+    const express = require('express');
+    const request = require('supertest');
+
+    function guardedApp(oidcUser) {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => !!oidcUser, user: oidcUser };
+            next();
+        });
+        // No pointer resolves, so the guard would normally refuse every request.
+        app.use(identityGuard({ User: { findById: () => ({ lean: async () => null }) } }));
+        app.use((req, res) => res.status(200).send('reached'));   // version-agnostic catch-all
+        return app;
+    }
+
+    const unlinked = { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} };
+
+    test('lets an unlinked session reach its invite link and start', async () => {
+        const app = guardedApp(unlinked);
+        expect((await request(app).get('/invite/TOKEN')).status).toBe(200);
+        expect((await request(app).get('/invite/TOKEN/start')).status).toBe(200);
+        expect((await request(app).get('/invite/verified')).status).toBe(200);
+    });
+
+    test('still blocks everything else for that session', async () => {
+        expect((await request(guardedApp(unlinked)).get('/standings')).status).toBe(403);
+    });
+});

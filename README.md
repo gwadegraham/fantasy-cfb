@@ -77,6 +77,20 @@ after 14 days, works once, and (when the record has an email) only for the
 address it was sent to. **Reset** clears the binding when someone needs to
 re-claim from a different account.
 
+An invitee who sets a password has to confirm their address before the claim
+completes (anyone can type any address into a sign-up form, so without it a
+leaked link would walk past the email check). Two Auth0 settings make that
+bearable rather than a maze:
+
+- **Authentication → Database → Username-Password-Authentication**: *Disable
+  Sign Ups* must be **off**, or they can't create the password at all.
+- **Branding → Email Templates → Verification Email**: set **Redirect To** to
+  `https://campusclash.io/invite/verified`. Without it, confirming the address
+  dumps them on Auth0's "your email is verified" page with no way onward; with
+  it, that click lands back in the app and finishes the claim.
+
+Google and Apple skip all of this — they vouch for the address themselves.
+
 Requires `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET` (see `.env.example`).
 Inviting works mid-season; *creating* a new player is locked once games have
 been scored, since they'd start with an empty roster — admins can override.

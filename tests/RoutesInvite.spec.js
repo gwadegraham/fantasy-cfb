@@ -313,6 +313,27 @@ describe('inviteBind middleware', () => {
         expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
     });
 
+    // The refusal that sent a real invitee round in circles: the cookie was
+    // cleared, so the retry link they were told to use started from nothing.
+    test('keeps the invite alive so an unconfirmed address can be retried', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        const res = await request(bindApp(session({ email_verified: false }), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+
+        const setCookie = (res.headers['set-cookie'] || []).join();
+        expect(setCookie).not.toMatch(new RegExp(COOKIE + '=;'));   // not cleared
+        // Retry goes via /start, which mints the fresh login that finally
+        // carries the confirmed-address flag.
+        expect(res.text).toContain('/start');
+    });
+
+    test('spends the invite on a refusal that retrying cannot fix', async () => {
+        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|first' }));
+        const res = await request(bindApp(session({ sub: 'auth0|second' }), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        expect((res.headers['set-cookie'] || []).join()).toMatch(new RegExp(COOKIE + '=;'));
+    });
+
     test('a Google identity binds without a verified flag — the provider vouches', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
         const management = okManagement();
