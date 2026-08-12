@@ -91,20 +91,40 @@ function decideInvite({ invite, sub, tokenEmail, emailVerified, sessionUserId, r
     return { action: 'bind', reason: 'first-use' };
 }
 
+// Heading as well as body, because these are not all the same kind of event.
+// An unconfirmed address is a step still to take, not a failure — telling
+// someone "this invite didn't work" when their invite worked fine and their
+// account was created sends them back to the commissioner for nothing.
 const REFUSAL_COPY = {
-    'no-record':       'This invite points at a team that no longer exists.',
-    'league-mismatch': 'This invite doesn’t match the league it was created for.',
-    'already-claimed': 'This invite has already been used. If that wasn’t you, ask your commissioner for a new link.',
-    'no-token-email':  'We couldn’t read an email address from that login, so we can’t confirm it’s yours.',
-    'email-mismatch':  'This invite was sent to a different email address. Sign in with the address your commissioner invited.',
-    'unverified-email':'Check your email and click the link we sent to confirm your address, then open your invite link again.',
-    'bind-failed':     'We couldn’t finish setting up your account. Tell your commissioner — nothing is broken on your end.'
+    'no-record':       { heading: 'This invite didn’t work',
+                         body: 'This invite points at a team that no longer exists.' },
+    'league-mismatch': { heading: 'This invite didn’t work',
+                         body: 'This invite doesn’t match the league it was created for.' },
+    'already-claimed': { heading: 'This invite has already been used',
+                         body: 'If that wasn’t you, ask your commissioner for a new link.' },
+    'no-token-email':  { heading: 'We couldn’t confirm it’s you',
+                         body: 'That login didn’t give us an email address, so we can’t match it to your team.' },
+    'email-mismatch':  { heading: 'Wrong email address',
+                         body: 'This invite was sent to a different address. Sign in with the one your commissioner invited.' },
+    'unverified-email':{ heading: 'One more step',
+                         body: 'Your account is set up. Click the link in the email we just sent to confirm your address, then come back here.',
+                         retry: true },
+    'bind-failed':     { heading: 'We couldn’t finish setting up',
+                         body: 'Tell your commissioner — nothing is broken on your end.' }
 };
 
 // Self-contained page, inline styles only: like identity-guard's block page this
 // can render before the static middleware, so styles.css may not be available.
-function renderRefusalPage(reason) {
-    const message = REFUSAL_COPY[reason] || REFUSAL_COPY['bind-failed'];
+// `retryHref` re-opens the invite (the cookie is cleared on refusal, and that
+// route sets it again). Only offered where retrying can actually succeed —
+// after confirming an address, say. Everywhere else the way out is Log out.
+function renderRefusalPage(reason, retryHref) {
+    const copy = REFUSAL_COPY[reason] || REFUSAL_COPY['bind-failed'];
+    const canRetry = !!(copy.retry && retryHref);
+    const action = canRetry
+        ? '<a class="btn" href="' + retryHref + '">I’ve confirmed it — continue</a>'
+          + '<div class="alt"><a href="/logout">Log out instead</a></div>'
+        : '<a class="btn" href="/logout">Log out</a>';
     return '<!DOCTYPE html><html lang="en"><head>'
         + '<meta charset="utf-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -122,11 +142,13 @@ function renderRefusalPage(reason) {
         + 'p{color:#a4a9c2;line-height:1.55;margin:0 0 14px;font-size:.98rem;}'
         + '.btn{display:inline-block;margin-top:10px;background:#ed5858;color:#fff;text-decoration:none;'
         + 'font-weight:600;padding:12px 22px;border-radius:10px;}'
+        + '.alt{margin-top:16px;font-size:.85rem;}'
+        + '.alt a{color:#8a90a8;}'
         + '</style></head><body><div class="wrap"><div class="card">'
         + '<span class="dot"></span>'
-        + '<h1>This invite didn’t work</h1>'
-        + '<p>' + message + '</p>'
-        + '<a class="btn" href="/logout">Log out</a>'
+        + '<h1>' + copy.heading + '</h1>'
+        + '<p>' + copy.body + '</p>'
+        + action
         + '</div></div></body></html>';
 }
 
@@ -182,7 +204,11 @@ function inviteBind(deps) {
             }
             if (decision.action === 'refuse') {
                 res.clearCookie(COOKIE);
-                return res.status(403).type('html').send(renderRefusalPage(decision.reason));
+                // `raw` is the still-valid signed token, so the retry link can
+                // send them back through the invite rather than making them dig
+                // the original message out again.
+                return res.status(403).type('html')
+                    .send(renderRefusalPage(decision.reason, '/invite/' + encodeURIComponent(raw)));
             }
 
             // bind

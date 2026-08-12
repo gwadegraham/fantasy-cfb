@@ -197,9 +197,31 @@ describe('getCookie', () => {
 describe('renderRefusalPage', () => {
     test('explains the specific reason and always offers a way out', () => {
         const html = renderRefusalPage('email-mismatch');
-        expect(html).toContain('different email address');
+        expect(html).toContain('Wrong email address');
+        expect(html).toContain('different address');
         expect(html).toContain('href="/logout"');
     });
+
+    // An unconfirmed address is a step still to take, not a dead end: the
+    // heading shouldn't say the invite failed, and the way forward is to retry
+    // rather than to log out.
+    test('treats an unconfirmed address as a step, not a failure', () => {
+        const html = renderRefusalPage('unverified-email', '/invite/TOK');
+        expect(html).toContain('One more step');
+        expect(html).not.toContain('didn’t work');
+        expect(html).toContain('href="/invite/TOK"');
+    });
+
+    test('falls back to Log out when there is no retry link to offer', () => {
+        const html = renderRefusalPage('unverified-email');
+        expect(html).toContain('href="/logout"');
+        expect(html).not.toContain('/invite/');
+    });
+
+    test('does not offer a retry for reasons retrying cannot fix', () => {
+        expect(renderRefusalPage('already-claimed', '/invite/TOK')).not.toContain('href="/invite/TOK"');
+    });
+
     test('falls back to a generic message for an unknown reason', () => {
         expect(renderRefusalPage('who-knows')).toContain('couldn’t finish setting up');
     });

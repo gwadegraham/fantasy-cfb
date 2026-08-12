@@ -331,7 +331,7 @@ describe('inviteBind middleware', () => {
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
 
         expect(res.status).toBe(403);
-        expect(res.text).toContain('different email address');
+        expect(res.text).toContain('Wrong email address');
         expect(management.patchUserMetadata).not.toHaveBeenCalled();
         expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
     });
