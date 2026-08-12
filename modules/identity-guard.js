@@ -49,7 +49,11 @@ const ALLOW_PATH = new Set(['/season-preview', '/favicon.ico', '/profile']);
 
 // Self-contained block page — inline styles only, since this runs before the
 // static middleware and we can't rely on styles.css loading.
-function renderBlockPage() {
+// `inviteError` is the cc_invite_error claim the post-login Action sets when a
+// claim was refused — a spent link, the wrong address. Without it this page says
+// only "not linked", which is true but useless: the reason is knowable and the
+// person can usually act on it.
+function renderBlockPage(inviteError) {
     return '<!DOCTYPE html><html lang="en"><head>'
         + '<meta charset="utf-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -70,11 +74,13 @@ function renderBlockPage() {
         + '.hint{font-size:.82rem;color:#767d9c;margin-top:18px;}'
         + '</style></head><body><div class="wrap"><div class="card">'
         + '<span class="dot"></span>'
-        + '<h1>This login isn’t linked to your team</h1>'
-        + '<p>To keep accounts safe, we’ve paused this session because the login you used '
-        + 'doesn’t match a team we can verify as yours.</p>'
-        + '<p>Log out and sign back in with your original login — or reach out to your commissioner '
-        + 'to get this login linked.</p>'
+        + '<h1>' + (inviteError ? 'That invite didn’t work' : 'This login isn’t linked to your team') + '</h1>'
+        + (inviteError
+            ? '<p>' + inviteError + '</p>'
+            : '<p>To keep accounts safe, we’ve paused this session because the login you used '
+              + 'doesn’t match a team we can verify as yours.</p>'
+              + '<p>Log out and sign back in with your original login — or reach out to your commissioner '
+              + 'to get this login linked.</p>')
         + '<a class="btn" href="/logout">Log out</a>'
         + '<div class="hint">If this keeps happening, tell your commissioner which email you’re using.</div>'
         + '</div></div></body></html>';
@@ -90,11 +96,12 @@ function identityGuard(deps) {
             if (!req.oidc || !req.oidc.isAuthenticated()) return next();
 
             const p = req.path || '';
-            // /invite/* is deliberately open to an authenticated-but-unlinked
-            // session. That state is exactly what an invitee is in between
-            // creating their login and claiming their team, and blocking it made
-            // the invite link unreachable for the one person who needed it — they
-            // were told to reopen it and got the block page instead.
+            // /invite/* stays open to an authenticated-but-unlinked session.
+            // Claims are resolved during login now, so this is no longer the
+            // normal state for an invitee — but it is exactly where they land if
+            // the Action couldn't reach the app, and retrying the link is how
+            // they recover. Blocking it would make the one page they need
+            // unreachable.
             if (ALLOW_PATH.has(p) || ALLOW_EXT.test(p)
                 || p.indexOf('/images') === 0 || p.indexOf('/invite/') === 0) return next();
 
@@ -133,7 +140,7 @@ function identityGuard(deps) {
 
             const wantsHtml = (req.headers.accept || '').indexOf('text/html') !== -1;
             if (wantsHtml) {
-                return res.status(403).type('html').send(renderBlockPage());
+                return res.status(403).type('html').send(renderBlockPage(user.cc_invite_error));
             }
             return res.status(403).json({
                 error: 'account_not_linked',

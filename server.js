@@ -15,12 +15,11 @@ const requireCommissioner = require('./modules/require-commissioner');
 const requireAdmin = require('./modules/require-admin');
 const devRole = require('./modules/dev-role');
 const identityGuard = require('./modules/identity-guard');
-const inviteBindMod = require('./modules/invite-bind');
-const { inviteBind, COOKIE: INVITE_COOKIE, COOKIE_MAX_AGE_MS: INVITE_COOKIE_MAX_AGE } = inviteBindMod;
 const inviteToken = require('./modules/invite-token');
-const auth0Management = require('./modules/auth0-management');
+const inviteClaim = require('./modules/invite-claim');
 const authSubBackfill = require('./modules/auth-sub-backfill');
-const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
+const { leagueCodeFor, leagueFlagFor, canManageLeague } = require('./modules/league-access');
+const audit = require('./modules/audit-log');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
@@ -76,21 +75,6 @@ app.locals.leagues = LEAGUES;
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));
 
-// A silent re-auth that finds no session to reuse is an expected outcome, not a
-// server error. /invite/complete asks for a fresh token with prompt=none after
-// an invite binds; when Auth0 has nobody to reuse it fails the callback with
-// login_required, which would otherwise surface as a 500. Send them through an
-// ordinary login instead — the same single sign-in they'd have had anyway.
-//
-// Mounted immediately after the auth router because that is where the failing
-// callback lives; error handlers only see what is thrown upstream of them.
-app.use((err, req, res, next) => {
-    if (inviteBindMod.isSilentAuthFailure(err)) {
-        return res.oidc.login({ returnTo: '/standings' });
-    }
-    next(err);
-});
-
 // Dev role-spoof + view context. Resolves the effective user (honors an Admin's
 // active role spoof in non-production; a no-op in prod / for non-Admins) and
 // exposes dev flags to every view. The render routes and the role gates all
@@ -102,17 +86,6 @@ app.use((req, res, next) => {
     res.locals.spoof = devRole.readSpoof(req); // {roles, league} | null, for the dev widget
     next();
 });
-
-// Claim a commissioner invite. Must sit BETWEEN the auth router (so there is a
-// session to read) and the identity guard below — an invitee has no franchise
-// pointer yet, which is precisely what the guard 403s on, so binding has to
-// happen first. See modules/invite-bind.js.
-app.use(inviteBind({
-    User,
-    management: auth0Management,
-    inviteToken,
-    secret: () => process.env.AUTH_SECRET
-}));
 
 // Identity-match guard. Refuses to serve a session whose login email doesn't
 // match the franchise its Auth0 pointer resolves to (see modules/identity-guard).
@@ -287,10 +260,10 @@ if (devRole.DEV) {
                 internalOptions: {},
                 // ?invite=1 renders the invite variant (what someone arriving
                 // from an invite link sees), ?email= exercises the login_hint
-                // prefill — both without a round trip through Auth0.
+                // prefill — both without a round trip through Auth0. The real
+                // page receives the invite TOKEN here; any truthy value does.
                 extraParams: Object.assign({},
-                    req.query.invite ? { 'ext-invite': '1' } : null,
-                    req.query.returning ? { 'ext-returning': '1' } : null,
+                    req.query.invite ? { 'ext-invite': 'preview-token' } : null,
                     req.query.email ? { login_hint: String(req.query.email) } : null)
             };
             // Point the absolute production asset URLs at this server, so the
@@ -307,43 +280,82 @@ if (devRole.DEV) {
     });
 }
 
-// Replaces the ID token an invitee is holding, without making them sign in
-// again. The pointer is written after the login that created their session, so
-// the token in hand is stale the moment we bind; prompt=none asks Auth0 to
-// reissue it against the session they already have. Invisible when that session
-// is alive. When it isn't, Auth0 answers login_required and the error handler
-// mounted next to auth() turns that into an ordinary login — the behaviour this
-// replaced, so this is never worse than not trying.
-app.get('/invite/complete', (req, res, next) => {
-    try {
-        return res.oidc.login({ returnTo: '/standings', authorizationParams: { prompt: 'none' } });
-    } catch (err) {
-        next(err);
-    }
-});
-
-// Where Auth0 sends someone after they confirm their address, so that click
-// lands back in the flow instead of on Auth0's "your email is verified" page,
-// which is a dead end with no way onward.
+// Resolves an invite mid-login, for the Auth0 post-login Action.
 //
-// Set this as the Redirect To on Branding > Email Templates > Verification
-// Email (see README). The invite cookie is still in play — a retryable refusal
-// keeps it — so this resumes the claim by starting a fresh login, which is what
-// finally carries the confirmed-address flag back to us.
-app.get('/invite/verified', (req, res) => {
-    const raw = inviteBindMod.getCookie(req, INVITE_COOKIE);
-    if (raw && inviteToken.verify(raw, process.env.AUTH_SECRET)) {
-        return res.redirect('/invite/' + encodeURIComponent(raw) + '/start?returning=1');
+// The Action calls this while the ID token is still being assembled, so what we
+// answer here lands in the FIRST token the invitee ever holds. That is the whole
+// reason this endpoint exists rather than a middleware that runs afterwards: a
+// token minted before the pointer existed can only be replaced by a second
+// login, and Auth0 won't do that quietly.
+//
+// Internal token only — mid-login there is no session, and accepting one would
+// let any signed-in member try tokens against the claim rules.
+app.post('/invite/resolve', express.json(), requireAuthOrToken.internalOnly, async (req, res) => {
+    try {
+        const invite = inviteToken.verify(req.body.token, process.env.AUTH_SECRET);
+        const sub = req.body.sub;
+
+        let record = null;
+        let lookupError = false;
+        if (invite) {
+            try {
+                record = await User.findById(invite.userId,
+                    { email: 1, league: 1, authSub: 1, firstName: 1, lastName: 1 }).lean();
+            } catch (e) {
+                lookupError = true;
+            }
+        }
+
+        const decision = inviteClaim.decideInvite({
+            invite, sub,
+            tokenEmail: req.body.email,
+            sessionUserId: req.body.currentUserId || null,
+            record, lookupError
+        });
+
+        if (decision.action !== 'claim') {
+            // Not an HTTP error: "this invite is spent" is a normal answer, and
+            // the Action has to be able to tell it apart from us being down.
+            return res.json({
+                claimed: false,
+                reason: decision.reason,
+                message: decision.action === 'refuse' ? inviteClaim.refusalMessage(decision.reason) : null
+            });
+        }
+
+        // Single-use is enforced HERE, in the same conditional write the old
+        // middleware used: the filter, not a prior read, is what stops two
+        // simultaneous claims from both winning.
+        const claimed = await User.updateOne(
+            { _id: invite.userId, $or: [{ authSub: { $exists: false } }, { authSub: null }, { authSub: '' }] },
+            { $set: { authSub: sub, email: record.email || req.body.email } }
+        );
+        if ((claimed.modifiedCount || claimed.nModified || 0) !== 1) {
+            return res.json({ claimed: false, reason: 'already-claimed',
+                message: inviteClaim.refusalMessage('already-claimed') });
+        }
+
+        await audit.record(req, {
+            action: 'user.invite',
+            league: record.league, season: String(process.env.YEAR),
+            summary: `${record.firstName} ${record.lastName} claimed their invite`,
+            meta: { userId: String(invite.userId) }
+        });
+
+        res.json({
+            claimed: true,
+            userId: String(invite.userId),
+            league: leagueFlagFor(record.league || invite.league || '')
+        });
+    } catch (err) {
+        res.status(500).json({ claimed: false, reason: 'error', message: err.message });
     }
-    // Cookie expired, or they confirmed on a different device. Nothing is
-    // broken; they just need the original link again.
-    res.status(200).type('html').send(inviteBindMod.renderRefusalPage('verified-no-cookie'));
 });
 
 // Invite landing page. Public by design — the whole point is that the visitor
-// has no account yet. This only stashes the (signed, expiring) token in a cookie
-// and explains what happens next; the actual binding runs on the way back from
-// Auth0, in the inviteBind middleware above.
+// has no account yet. It only explains what happens next; the claim itself is
+// resolved by the Auth0 post-login Action while the ID token is being minted
+// (see auth/post-login-action.js and POST /invite/resolve below).
 app.get('/invite/:token', async (req, res, next) => {
     try {
         const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
@@ -403,12 +415,10 @@ app.get('/invite/:token', async (req, res, next) => {
 app.get('/invite/:token/start', async (req, res, next) => {
     try {
         const claim = inviteToken.verify(req.params.token, process.env.AUTH_SECRET);
-        const authorizationParams = { 'ext-invite': '1' };
-        // Set when we already know an account exists — coming back from
-        // confirming an address, say. Without it the page offers to create one
-        // and Auth0 answers user_exists, which is a needless extra hop through
-        // an error for someone doing exactly what they were told to do.
-        if (req.query.returning) authorizationParams['ext-returning'] = '1';
+        // The TOKEN rides along, not a flag. Auth0 hands `ext-` parameters to
+        // the post-login Action as well as to the login page, and the Action is
+        // what resolves the invite while the ID token is still being built.
+        const authorizationParams = { 'ext-invite': req.params.token };
         if (claim) {
             const user = await User.findById(claim.userId, { email: 1 }).lean();
             if (user && user.email) authorizationParams.login_hint = user.email;

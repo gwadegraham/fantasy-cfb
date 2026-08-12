@@ -60,42 +60,49 @@ password may fail there — the real page is served from the Auth0 origin, where
 `webAuth.login()` is same-origin; from localhost it is not. The social buttons
 are plain redirects and behave normally.
 
-Sign-up is deliberately absent: members join through an invite (below), and
-*Disable Sign Ups* is on for the database connection. Don't re-add a league
-selector — Auth0 Lock wrote it to `user_metadata.league`, while the whole app
-reads `user_metadata.metadata.league`, so the value never reached anything.
+There is no sign-up form on the ordinary page: members join through an invite
+(below), which turns the same page into a sign-up when it carries a token. Don't
+re-add a league selector — Auth0 Lock wrote it to `user_metadata.league`, while
+the whole app reads `user_metadata.metadata.league`, so the value never reached
+anything.
 
 ## Inviting a manager
 
 **Admin → Manager Logins → Copy invite** puts a link on your clipboard; send it
-however you normally talk to the league. The invitee opens it, signs in with
-Google, Apple, or an email and password, and the app binds whichever identity
-they chose to their franchise — no dashboard visit, no metadata editing.
+however you normally talk to the league. The invitee opens it, picks whichever
+sign-in they like — Google, Apple, or a password they set on the spot — and
+signs in exactly **once**.
 
-The link is a bearer credential, so it's signed with `AUTH_SECRET`, expires
-after 14 days, works once, and (when the record has an email) only for the
-address it was sent to. **Reset** clears the binding when someone needs to
-re-claim from a different account.
+That single sign-in is the whole design. The claim is resolved by the Auth0
+post-login Action while the ID token is still being assembled, so the first
+token they ever hold already names their franchise. The app used to write that
+pointer *after* login, which left the token stale and forced a second sign-in to
+replace it — Auth0 won't reissue quietly (`prompt=none` answers
+`login_required`), so the only fix was to stop needing to.
 
-An invitee picks whichever sign-in they like — Google, Apple, or a password they
-set on the spot — and the claim completes immediately either way. The invite
-page leads with Google and Apple, but the password path is a first-class option,
-not a fallback.
+`auth/post-login-action.js` is the **source of truth** for that Action, but
+Auth0 runs it: paste it into **Actions → Library → Post Login Add Metadata** on
+both tenants after editing, same discipline as `auth/login.html`. It needs two
+Action secrets, `APP_URL` and `INTERNAL_API_TOKEN` (matching the app's), and it
+calls `POST /invite/resolve` — which is internal-token only, since mid-login
+there is no session.
+
+The link is a bearer credential: signed with `AUTH_SECRET`, expires after 14
+days, works once, and (when the record has an email) only for the address it was
+sent to. **Reset** clears the binding when someone needs to re-claim from a
+different account. There is deliberately **no confirm-your-email step**; see the
+note in `modules/invite-claim.js` before adding one back.
 
 One Auth0 setting is required: **Authentication → Database →
 Username-Password-Authentication → Disable Sign Ups** must be **off**, or an
-invitee can't create the password at all. Sign-ups being open costs little on
-its own — an account with no invite behind it resolves to no franchise and gets
-stopped by `modules/identity-guard.js`.
+invitee can't create a password. Sign-ups being open costs little on its own —
+an account with no invite behind it resolves to no franchise and is stopped by
+`modules/identity-guard.js`.
 
-There is deliberately **no confirm-your-email step**. It was tried and removed:
-it cost every password invitee a trip to their inbox mid-flow while Google and
-Apple sailed past. The residual risk is someone holding a leaked link signing up
-as the invited address without owning that mailbox — recoverable with **Reset**,
-and narrower than the friction it bought. See the note in
-`modules/invite-bind.js` before adding it back.
+If the app is unreachable when someone claims, the Action gives up quietly and
+they land on the "not linked" page. Ordinary logins are never affected, and
+reopening the invite link retries.
 
-Requires `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET` (see `.env.example`).
 Inviting works mid-season; *creating* a new player is locked once games have
 been scored, since they'd start with an empty roster — admins can override.
 

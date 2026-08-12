@@ -163,14 +163,12 @@
     #footnote  { order: 8; }
 
     /* ---- Invite mode ------------------------------------------------------
-       Set when the authorize request carried ext-invite=1 (see the script). The
-       visitor was sent a link and has no account yet, so email+password cannot
-       work for them: sign-ups are disabled on the database connection and this
-       page has no sign-up form. Leading with it would hand them a dead end —
-       type an address, invent a password, get "that email and password don't
-       match". Apple and Google are the only paths that can succeed, so they go
-       first and the password block is demoted to what it actually is here: the
-       door for someone who already has one. */
+       Set when the authorize request carried an invite token (see the script).
+       The visitor has no account yet, so the password block CREATES one rather
+       than signing in to one, and Apple and Google lead because they are one tap
+       with nothing to choose. Whichever they pick, the Auth0 post-login Action
+       claims their invite while the token is being minted, so they arrive on
+       their team having signed in exactly once. */
     body.is-invite #social    { order: 4; }
     body.is-invite #divider   { order: 5; }
     body.is-invite #login-form{ order: 6; }
@@ -588,7 +586,9 @@
     // password yet, so a sign-in form would be a dead end for them.
     var isSignup = false;
 
-    if (String(config.extraParams['ext-invite'] || '') === '1') {
+    // Any truthy value: the app sends the signed invite token itself, since the
+    // Auth0 Action needs it too. The page only cares that there IS one.
+    if (config.extraParams['ext-invite']) {
       document.body.classList.add('is-invite');
       isSignup = true;
       document.getElementById('eyebrow').textContent = 'Invited · One more step';
@@ -602,24 +602,14 @@
       if (emailEl.value) emailEl.readOnly = true;
       document.title = 'Finish setting up — Campus Clash';
 
-      // ext-returning means the app already knows an account exists (they're
-      // back from confirming its address). Offering to create one would just
-      // earn them a user_exists error on the way to the same place.
-      if (String(config.extraParams['ext-returning'] || '') === '1') {
-        isSignup = false;
-        document.getElementById('subhead').textContent =
-          'Sign in and we’ll connect your account to your team.';
-        document.getElementById('divider').textContent = 'or use your password';
-      } else {
-        document.getElementById('divider').textContent = 'or set a password';
-        // Not "Forgot your password?" — they don't have one yet, and offering a
-        // reset for an account that doesn't exist is its own dead end.
-        document.getElementById('reset-row').style.display = 'none';
-        document.querySelector('label[for="password"]').textContent = 'Choose a password';
-        passwordEl.setAttribute('autocomplete', 'new-password');
-        passwordEl.setAttribute('placeholder', 'At least 8 characters');
-        labelEl.textContent = 'Create account';
-      }
+      document.getElementById('divider').textContent = 'or set a password';
+      // Not "Forgot your password?" — they don't have one yet, and offering a
+      // reset for an account that doesn't exist is its own dead end.
+      document.getElementById('reset-row').style.display = 'none';
+      document.querySelector('label[for="password"]').textContent = 'Choose a password';
+      passwordEl.setAttribute('autocomplete', 'new-password');
+      passwordEl.setAttribute('placeholder', 'At least 8 characters');
+      labelEl.textContent = 'Create account';
     }
 
     // Drops out of sign-up into ordinary sign-in, for an invitee who turns out
