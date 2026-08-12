@@ -225,10 +225,8 @@ describe('inviteBind middleware', () => {
     }
 
     const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
-    // A realistic password identity: Auth0 only reports email_verified true once
-    // the address is confirmed, and the bind now insists on it for auth0| subs.
     const session = (over) => Object.assign(
-        { sub: 'auth0|new', email: 'ann@example.com', email_verified: true, user_metadata: {} }, over);
+        { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} }, over);
     const tokenFor = (u) => inviteToken.sign({ userId: u._id, league: u.league }, process.env.AUTH_SECRET);
 
     test('passes straight through when there is no invite cookie', async () => {
@@ -297,75 +295,52 @@ describe('inviteBind middleware', () => {
         expect((await User.findById(u._id).lean()).email).toBe('new@example.com');
     });
 
-    // Sign-ups are open again so invitees can set a password, which means the
-    // form accepts any address typed into it. Confirming the mailbox is what
-    // keeps that from walking around the email gate.
-    test('refuses a password identity that has not confirmed its address', async () => {
+    // A password invitee binds on the spot now — no inbox round trip.
+    // Both of these exist so an invite problem can never break the request it
+    // rode in on — the middleware runs on every page for everyone.
+    test('leaves the invite alone when the lookup fails, rather than spending it', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
-        const management = okManagement();
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: session() };
+            next();
+        });
+        app.use(inviteBind({
+            // Only the lookup fails; everything else is intact.
+            User: { findById: () => ({ lean: () => Promise.reject(new Error('db down')) }) },
+            management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
 
-        const res = await request(bindApp(session({ email_verified: false }), management))
-            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
-
-        expect(res.status).toBe(403);
-        expect(res.text).toContain('confirm your address');
-        expect(management.patchUserMetadata).not.toHaveBeenCalled();
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
-    });
-
-    // The refusal that sent a real invitee round in circles: the cookie was
-    // cleared, so the retry link they were told to use started from nothing.
-    test('keeps the invite alive so an unconfirmed address can be retried', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const res = await request(bindApp(session({ email_verified: false }), okManagement()))
-            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
-
-        const setCookie = (res.headers['set-cookie'] || []).join();
-        expect(setCookie).not.toMatch(new RegExp(COOKIE + '=;'));   // not cleared
-        // Retry goes via /start, which mints the fresh login that finally
-        // carries the confirmed-address flag.
-        expect(res.text).toContain('/start');
-    });
-
-    test('spends the invite on a refusal that retrying cannot fix', async () => {
-        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|first' }));
-        const res = await request(bindApp(session({ sub: 'auth0|second' }), okManagement()))
-            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
-        expect((res.headers['set-cookie'] || []).join()).toMatch(new RegExp(COOKIE + '=;'));
-    });
-
-    // The loop this caused: /invite/verified exists to send someone back through
-    // a fresh login, but the middleware judged the stale token they arrived with
-    // and refused on the very route meant to replace it.
-    test.each([
-        ['/invite/TOKEN'],
-        ['/invite/TOKEN/start'],
-        ['/invite/verified']
-    ])('never judges a stale token on %s', async (path) => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const app = bindApp(session({ email_verified: false }), okManagement());
-        app.get(path, (req, res) => res.status(200).send('route reached'));
-
-        const res = await request(app).get(path).set('Cookie', `${COOKIE}=${tokenFor(u)}`);
+        const res = await request(app).get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
         expect(res.status).toBe(200);
-        expect(res.text).toBe('route reached');
+        // Cookie survives, so the claim can still be finished once the DB is back.
+        expect((res.headers['set-cookie'] || []).join()).not.toMatch(new RegExp(COOKIE + '=;'));
     });
 
-    test('still binds on an ordinary page after the round trip', async () => {
+    test('passes the request through if the middleware itself throws', async () => {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: session() };
+            next();
+        });
+        app.use(inviteBind({
+            User, management: okManagement(), inviteToken,
+            secret: () => { throw new Error('boom'); }   // fails before any decision
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
+
+        const res = await request(app).get('/anything').set('Cookie', `${COOKIE}=whatever`);
+        expect(res.status).toBe(200);
+        expect(res.text).toBe('passed-through');
+    });
+
+    test('binds a password identity straight away', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
         const res = await request(bindApp(session(), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
         expect(res.status).toBe(302);
-    });
-
-    test('a Google identity binds without a verified flag — the provider vouches', async () => {
-        const u = await User.create(player({ email: 'ann@example.com' }));
-        const management = okManagement();
-        const res = await request(bindApp(session({ sub: 'google-oauth2|9', email_verified: false }), management))
-            .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
-
-        expect(res.status).toBe(302);
-        expect((await User.findById(u._id).lean()).authSub).toBe('google-oauth2|9');
+        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|new');
     });
 
     test('refuses a forwarded link claimed from a different address', async () => {

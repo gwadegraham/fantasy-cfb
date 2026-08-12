@@ -37,10 +37,6 @@ function getCookie(req, name) {
     return hit ? decodeURIComponent(hit.slice(name.length + 1)) : null;
 }
 
-// An Auth0 database identity — someone who typed an address into the sign-up
-// form. Social subs look like `google-oauth2|…` or `apple|…`.
-const isDatabaseIdentity = (sub) => /^auth0\|/.test(String(sub || ''));
-
 // Pure decision, exported for testing.
 //
 // `action` is one of:
@@ -48,7 +44,7 @@ const isDatabaseIdentity = (sub) => /^auth0\|/.test(String(sub || ''));
 //   clear  — drop the cookie, carry on; nothing to do and nothing wrong
 //   refuse — drop the cookie, show the invitee why it didn't work
 //   bind   — write the pointer
-function decideInvite({ invite, sub, tokenEmail, emailVerified, sessionUserId, record, lookupError }) {
+function decideInvite({ invite, sub, tokenEmail, sessionUserId, record, lookupError }) {
     if (!invite) return { action: 'skip', reason: 'no-invite' };
     if (!sub)    return { action: 'skip', reason: 'not-authenticated' };  // still pre-login
 
@@ -73,14 +69,20 @@ function decideInvite({ invite, sub, tokenEmail, emailVerified, sessionUserId, r
     // Single-use. A spent link must not hand the franchise to a second person.
     if (record.authSub) return { action: 'refuse', reason: 'already-claimed' };
 
-    // Mailbox control. Anyone can type any address into the sign-up form, so a
-    // password identity has to prove it owns the address before that address is
-    // allowed to claim a franchise — otherwise a leaked link plus a self-signup
-    // walks straight past the email gate below. Google and Apple already vouch
-    // for the address they hand us, so they're exempt.
-    if (isDatabaseIdentity(sub) && !emailVerified) {
-        return { action: 'refuse', reason: 'unverified-email' };
-    }
+    // No mailbox-confirmation step, deliberately. It used to require an
+    // `auth0|` identity to have a verified address before it could claim, on the
+    // grounds that a sign-up form accepts any address you type into it. That's
+    // true, but the cost landed on the wrong people: every password invitee had
+    // to leave for an inbox and come back mid-flow, while Google and Apple sailed
+    // through — and most of this league signs in with a password.
+    //
+    // What still stands between a stranger and a franchise: the link is
+    // HMAC-signed, expires in 14 days, works exactly once, and has to be handed
+    // over by the commissioner in the first place. The residual risk is someone
+    // holding a leaked link who signs up as the invited address without owning
+    // that mailbox — recoverable with Reset, and narrower than the friction it
+    // was buying. Revisit if invites ever start travelling further than a group
+    // chat.
 
     // Email gate. When the franchise already knows its manager's address, the
     // person claiming it has to be that person — this is what stops a forwarded
@@ -97,10 +99,10 @@ function decideInvite({ invite, sub, tokenEmail, emailVerified, sessionUserId, r
     return { action: 'bind', reason: 'first-use' };
 }
 
-// Heading as well as body, because these are not all the same kind of event.
-// An unconfirmed address is a step still to take, not a failure — telling
-// someone "this invite didn't work" when their invite worked fine and their
-// account was created sends them back to the commissioner for nothing.
+// Heading as well as body, because these are not all the same kind of event —
+// a spent link, a wrong address and a lost thread each need saying differently,
+// and "this invite didn't work" sends someone back to the commissioner over
+// something they could have fixed themselves.
 const REFUSAL_COPY = {
     'no-record':       { heading: 'This invite didn’t work',
                          body: 'This invite points at a team that no longer exists.' },
@@ -112,9 +114,6 @@ const REFUSAL_COPY = {
                          body: 'That login didn’t give us an email address, so we can’t match it to your team.' },
     'email-mismatch':  { heading: 'Wrong email address',
                          body: 'This invite was sent to a different address. Sign in with the one your commissioner invited.' },
-    'unverified-email':{ heading: 'One more step',
-                         body: 'Your account is set up. Click the link in the email we just sent to confirm your address, then come back here.',
-                         retry: true },
     'verified-no-cookie': { heading: 'Address confirmed',
                          body: 'Open the invite link your commissioner sent you and you’ll be straight in.' },
     'bind-failed':     { heading: 'We couldn’t finish setting up',
@@ -123,16 +122,9 @@ const REFUSAL_COPY = {
 
 // Self-contained page, inline styles only: like identity-guard's block page this
 // can render before the static middleware, so styles.css may not be available.
-// `retryHref` re-opens the invite (the cookie is cleared on refusal, and that
-// route sets it again). Only offered where retrying can actually succeed —
-// after confirming an address, say. Everywhere else the way out is Log out.
-function renderRefusalPage(reason, retryHref) {
+function renderRefusalPage(reason) {
     const copy = REFUSAL_COPY[reason] || REFUSAL_COPY['bind-failed'];
-    const canRetry = !!(copy.retry && retryHref);
-    const action = canRetry
-        ? '<a class="btn" href="' + retryHref + '">I’ve confirmed it — continue</a>'
-          + '<div class="alt"><a href="/logout">Log out instead</a></div>'
-        : '<a class="btn" href="/logout">Log out</a>';
+    const action = '<a class="btn" href="/logout">Log out</a>';
     return '<!DOCTYPE html><html lang="en"><head>'
         + '<meta charset="utf-8">'
         + '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -209,7 +201,6 @@ function inviteBind(deps) {
                 invite,
                 sub,
                 tokenEmail: oidcUser && oidcUser.email,
-                emailVerified: !!(oidcUser && oidcUser.email_verified),
                 sessionUserId: innerMeta.userId,
                 record,
                 lookupError
@@ -221,17 +212,11 @@ function inviteBind(deps) {
                 return next();
             }
             if (decision.action === 'refuse') {
-                const copy = REFUSAL_COPY[decision.reason];
-                // A retryable refusal (an unconfirmed address) KEEPS the cookie:
-                // the situation resolves on its own once they click the email,
-                // and clearing it would force the whole claim to start over.
-                // Everything else is final, so the invite is spent.
-                if (!(copy && copy.retry)) res.clearCookie(COOKIE);
-                // Straight to /start, not the invite page — that mints a fresh
-                // login, which is the only way the confirmed-address flag reaches
-                // us. The ID token they're holding was issued before they clicked.
-                return res.status(403).type('html').send(renderRefusalPage(
-                    decision.reason, '/invite/' + encodeURIComponent(raw) + '/start'));
+                // Every remaining refusal is final — a spent link, the wrong
+                // address, a deleted team. None of them resolve by trying again,
+                // so the invite is spent.
+                res.clearCookie(COOKIE);
+                return res.status(403).type('html').send(renderRefusalPage(decision.reason));
             }
 
             // bind

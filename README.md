@@ -77,19 +77,23 @@ after 14 days, works once, and (when the record has an email) only for the
 address it was sent to. **Reset** clears the binding when someone needs to
 re-claim from a different account.
 
-An invitee who sets a password has to confirm their address before the claim
-completes (anyone can type any address into a sign-up form, so without it a
-leaked link would walk past the email check). Two Auth0 settings make that
-bearable rather than a maze:
+An invitee picks whichever sign-in they like — Google, Apple, or a password they
+set on the spot — and the claim completes immediately either way. The invite
+page leads with Google and Apple, but the password path is a first-class option,
+not a fallback.
 
-- **Authentication → Database → Username-Password-Authentication**: *Disable
-  Sign Ups* must be **off**, or they can't create the password at all.
-- **Branding → Email Templates → Verification Email**: set **Redirect To** to
-  `https://campusclash.io/invite/verified`. Without it, confirming the address
-  dumps them on Auth0's "your email is verified" page with no way onward; with
-  it, that click lands back in the app and finishes the claim.
+One Auth0 setting is required: **Authentication → Database →
+Username-Password-Authentication → Disable Sign Ups** must be **off**, or an
+invitee can't create the password at all. Sign-ups being open costs little on
+its own — an account with no invite behind it resolves to no franchise and gets
+stopped by `modules/identity-guard.js`.
 
-Google and Apple skip all of this — they vouch for the address themselves.
+There is deliberately **no confirm-your-email step**. It was tried and removed:
+it cost every password invitee a trip to their inbox mid-flow while Google and
+Apple sailed past. The residual risk is someone holding a leaked link signing up
+as the invited address without owning that mailbox — recoverable with **Reset**,
+and narrower than the friction it bought. See the note in
+`modules/invite-bind.js` before adding it back.
 
 Requires `AUTH0_M2M_CLIENT_ID` / `AUTH0_M2M_CLIENT_SECRET` (see `.env.example`).
 Inviting works mid-season; *creating* a new player is locked once games have

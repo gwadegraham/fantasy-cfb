@@ -73,7 +73,7 @@ describe('invite-token', () => {
 describe('decideInvite', () => {
     const invite = { userId: 'u1', league: 'graham-league' };
     const record = { _id: 'u1', league: 'graham-league', email: 'ann@example.com', authSub: null };
-    const base = { invite, sub: 'google-oauth2|1', tokenEmail: 'ann@example.com', emailVerified: true, sessionUserId: null, record, lookupError: false };
+    const base = { invite, sub: 'google-oauth2|1', tokenEmail: 'ann@example.com', sessionUserId: null, record, lookupError: false };
     const decide = (o) => decideInvite(Object.assign({}, base, o));
 
     test('binds when the login email matches the franchise', () => {
@@ -121,35 +121,11 @@ describe('decideInvite', () => {
             .toEqual({ action: 'clear', reason: 'already-bound' });
     });
 
-    // Re-enabling sign-ups means anyone can type any address into the form, so a
-    // password identity has to prove the mailbox before that address can take a
-    // franchise — otherwise a leaked link plus a self-signup walks past the email
-    // gate entirely. Google and Apple vouch for the address themselves.
-    test('refuses an unverified password identity', () => {
-        expect(decide({ sub: 'auth0|1', emailVerified: false }))
-            .toEqual({ action: 'refuse', reason: 'unverified-email' });
-    });
-
-    test('accepts a verified password identity', () => {
-        expect(decide({ sub: 'auth0|1', emailVerified: true }).action).toBe('bind');
-    });
-
-    test.each([['google-oauth2|1'], ['apple|1']])(
-        'does not demand verification of %s — the provider vouches', (sub) => {
-        expect(decide({ sub, emailVerified: false }).action).toBe('bind');
-    });
-
-    // The mailbox check must not become a way around single-use or the email gate.
-    test('the spent-link and wrong-address refusals still win over verification', () => {
-        expect(decide({ sub: 'auth0|1', emailVerified: false, record: Object.assign({}, record, { authSub: 'auth0|other' }) }).reason)
-            .toBe('already-claimed');
-        expect(decide({ sub: 'auth0|1', emailVerified: true, tokenEmail: 'mallory@example.com' }).reason)
-            .toBe('email-mismatch');
-    });
-
-    test('an unverified password identity cannot use the no-email fallback either', () => {
-        expect(decide({ sub: 'auth0|1', emailVerified: false, record: Object.assign({}, record, { email: null }) }))
-            .toEqual({ action: 'refuse', reason: 'unverified-email' });
+    // The mailbox-confirmation step was removed: it cost every password invitee
+    // a trip to their inbox mid-flow while social users sailed past, and the
+    // signed single-use link already gates who can claim at all.
+    test('binds a password identity without demanding a confirmed address', () => {
+        expect(decide({ sub: 'auth0|1' }).action).toBe('bind');
     });
 
     // The forwarded-link property.
@@ -205,21 +181,11 @@ describe('renderRefusalPage', () => {
     // An unconfirmed address is a step still to take, not a dead end: the
     // heading shouldn't say the invite failed, and the way forward is to retry
     // rather than to log out.
-    test('treats an unconfirmed address as a step, not a failure', () => {
-        const html = renderRefusalPage('unverified-email', '/invite/TOK');
-        expect(html).toContain('One more step');
+    // Each refusal says its own thing rather than sharing one alarming headline.
+    test('gives a spent link its own heading', () => {
+        const html = renderRefusalPage('already-claimed');
+        expect(html).toContain('already been used');
         expect(html).not.toContain('didn’t work');
-        expect(html).toContain('href="/invite/TOK"');
-    });
-
-    test('falls back to Log out when there is no retry link to offer', () => {
-        const html = renderRefusalPage('unverified-email');
-        expect(html).toContain('href="/logout"');
-        expect(html).not.toContain('/invite/');
-    });
-
-    test('does not offer a retry for reasons retrying cannot fix', () => {
-        expect(renderRefusalPage('already-claimed', '/invite/TOK')).not.toContain('href="/invite/TOK"');
     });
 
     test('falls back to a generic message for an unknown reason', () => {
