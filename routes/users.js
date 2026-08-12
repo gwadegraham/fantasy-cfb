@@ -221,15 +221,21 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
         const year = Number(process.env.YEAR);
         const users = await User.find({ league: leagueCode },
             { firstName: 1, lastName: 1, color: 1, email: 1, authSub: 1,
-              'seasons.season': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
+              'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
         const players = users.map(u => {
             const s = (u.seasons || []).find(x => Number(x.season) === year);
             const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
-            // `linked` drives the Manager Logins panel: who has claimed an invite
-            // and who still needs one. The sub itself never leaves the server.
+            // Has this person ever actually played? Manager Logins needs to tell a
+            // long-standing member from one who was never set up, and `authSub`
+            // alone can't: it's only learned when someone loads a page, so every
+            // member who hasn't signed in since the feature shipped looks brand
+            // new. Anyone who has ever been drafted a team plainly has a working
+            // login — you can't draft without one — so that's the honest signal
+            // while `authSub` catches up.
+            const hasPlayed = (u.seasons || []).some(x => (x.teams || []).length > 0);
             return {
                 _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color,
-                inSeason: !!s, scored, linked: !!u.authSub, email: u.email || null
+                inSeason: !!s, scored, linked: !!u.authSub, hasPlayed, email: u.email || null
             };
         }).sort((a, b) => (a.firstName + ' ' + a.lastName).localeCompare(b.firstName + ' ' + b.lastName));
         // Once the season is underway, only an admin can change the roster —

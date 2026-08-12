@@ -474,6 +474,34 @@ describe('GET /users/league/:league/roster', () => {
         expect(JSON.stringify(res.body)).not.toContain('auth0|1');
     });
 
+    // The panel needs three states, not two: `authSub` is only learned when
+    // someone loads a page, so a member who hasn't signed in since the feature
+    // shipped looks identical to one who was never set up. Having been drafted a
+    // team is proof of a working login and is what keeps the amber "Needs
+    // invite" flag off six people who don't need it.
+    test('separates a long-standing member from one who has never played', async () => {
+        // The roster subdocument demands a full team; same shape as
+        // RosterCorrection.spec.js builds.
+        const TEAM = {
+            id: 1, school: 'Iowa', mascot: 'Hawkeyes', abbreviation: 'IOW',
+            conference: 'Big Ten', color: '#000', logos: ['iowa.png'],
+            location: { venue_id: 1, name: 'V', city: 'C', state: 'ST', zip: '1',
+                latitude: 1, longitude: 1, capacity: 100, grass: true, dome: false }
+        };
+        await User.create(player({ firstName: 'Longstanding',
+            seasons: [{ season: SEASON - 1, teams: [TEAM] }, { season: SEASON }] }));
+        await User.create(player({ firstName: 'Brandnew' }));
+        await User.create(player({ firstName: 'Claimed', authSub: 'auth0|1',
+            seasons: [{ season: SEASON, teams: [TEAM] }] }));
+
+        const res = await request(managerApp).get(`/users/league/${LEAGUE}/roster`);
+        const by = (n) => res.body.players.find(p => p.firstName === n);
+
+        expect(by('Longstanding')).toMatchObject({ linked: false, hasPlayed: true });
+        expect(by('Brandnew')).toMatchObject({ linked: false, hasPlayed: false });
+        expect(by('Claimed')).toMatchObject({ linked: true, hasPlayed: true });
+    });
+
     // An Admin is never `locked`, but still needs to know the season has started
     // before adding someone onto an empty roster — so the two are separate flags.
     test('reports seasonUnderway separately from locked', async () => {
