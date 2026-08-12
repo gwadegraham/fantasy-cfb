@@ -28,7 +28,11 @@ router.get('/:league', async (req, res) => {
         const doc = await ScoringConfig.findOne({ league: req.params.league });
         const bySeason = (doc && doc.engagementBySeason) || {};
         let overrides = doc
-            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: bySeason }
+            // Every field the engine reads has to be listed here: modules/scoring.js
+            // getScoringConfig loads the live scoring config through THIS route, so
+            // a field left out is a field the scorer never sees, however faithfully
+            // it is stored.
+            ? { model: doc.model, values: doc.values, combineMode: doc.combineMode, disabled: doc.disabled, enabled: doc.enabled, engagement: doc.engagement, engagementBySeason: bySeason, powerConferences: doc.powerConferences }
             : null;
         // `?model=` lets the admin preview a different rule shape (Fixed =
         // claunts, Stacking = graham): force that model and drop the saved

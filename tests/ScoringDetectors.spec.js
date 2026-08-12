@@ -6,7 +6,7 @@
 
 const {
     CONDITIONS, buildContext,
-    isConference, findPoll, rankValue, isPowerFiveUpset,
+    isConference, findPoll, rankValue, isPowerFiveUpset, POWER_CONFERENCES,
     isConferenceChampion, isBowlGame, isFirstRound,
     isQuarterFinalist, isSemiFinalist, isFinalist, isTop4Seed,
     bracketRound
@@ -81,6 +81,26 @@ describe('low-level game predicates', () => {
             ['ACC', 'Big 12', 'Big Ten', 'SEC'].forEach(conf => {
                 expect(isPowerFiveUpset('Conference USA', conf)).toBe(true);
             });
+        });
+
+        // The default list is load-bearing: tests/ScoringParity.spec.js proves the
+        // engine matches the frozen pre-Phase-2 oracle, and that oracle hardcodes
+        // these four. Widening the DEFAULT (rather than a league's config) would
+        // silently void the parity guarantee.
+        test('the default power list is exactly the four P4 conferences', () => {
+            expect(POWER_CONFERENCES).toEqual(['ACC', 'Big 12', 'Big Ten', 'SEC']);
+        });
+
+        test('a caller-supplied power list overrides the default', () => {
+            const withIndependents = ['ACC', 'Big 12', 'Big Ten', 'SEC', 'FBS Independents'];
+            // Notre Dame's case: an independent beating a P4 team stops being an upset...
+            expect(isPowerFiveUpset('FBS Independents', 'ACC', withIndependents)).toBe(false);
+            expect(isPowerFiveUpset('FBS Independents', 'ACC')).toBe(true);   // ...but only for that league
+            // ...while a genuine Group-of-5 upset is untouched...
+            expect(isPowerFiveUpset('Mid-American', 'Big Ten', withIndependents)).toBe(true);
+            // ...and beating an independent now counts, which it didn't before.
+            expect(isPowerFiveUpset('Mid-American', 'FBS Independents', withIndependents)).toBe(true);
+            expect(isPowerFiveUpset('Mid-American', 'FBS Independents')).toBe(false);
         });
     });
 
@@ -190,6 +210,20 @@ describe('CONDITIONS vocabulary', () => {
         const upset = ctxFor(1, game({ homeConference: 'Sun Belt', awayConference: 'SEC' }));
         expect(CONDITIONS.nonP5UpsetBonus(upset)).toBe(true);
         expect(CONDITIONS.nonP5UpsetBonus(ctxFor(1, game()))).toBe(false); // Big Ten host, no upset
+    });
+
+    // Graham's league counts independents as power, so Notre Dame stops drawing
+    // the underdog bonus on its ~10 power-conference games a year. The list
+    // reaches the detector through buildContext's last argument.
+    test('nonP5UpsetBonus honours a league power list that includes independents', () => {
+        const POWER_PLUS = ['ACC', 'Big 12', 'Big Ten', 'SEC', 'FBS Independents'];
+        const ndBeatsAcc = game({ homeConference: 'FBS Independents', awayConference: 'ACC' });
+        expect(CONDITIONS.nonP5UpsetBonus(buildContext(1, ndBeatsAcc, null, null))).toBe(true);
+        expect(CONDITIONS.nonP5UpsetBonus(buildContext(1, ndBeatsAcc, null, null, POWER_PLUS))).toBe(false);
+
+        // A real Group-of-5 upset still pays under the widened list.
+        const macBeatsBigTen = game({ homeConference: 'Mid-American', awayConference: 'Big Ten' });
+        expect(CONDITIONS.nonP5UpsetBonus(buildContext(1, macBeatsBigTen, null, null, POWER_PLUS))).toBe(true);
     });
 
     test('confChampionship fires only on a won conference-title game', () => {

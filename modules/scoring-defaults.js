@@ -188,8 +188,23 @@ function resolveConfig(league, overrides) {
         // the resolved shape for back-compat with any old reader.
         engagement: normalizeEngagement((overrides && overrides.engagement) || {}),
         // Raw per-season map, passed through untouched for engagementForSeason().
-        engagementBySeason: (overrides && overrides.engagementBySeason) || {}
+        engagementBySeason: (overrides && overrides.engagementBySeason) || {},
+        // Which conferences the non-P5 upset bonus treats as "power". undefined
+        // = use the engine default (the bare four), so a league that never sets
+        // it scores exactly as before. See normalizePowerConferences.
+        powerConferences: normalizePowerConferences(overrides && overrides.powerConferences)
     };
+}
+
+// A league's power-conference override, or undefined when it hasn't set a usable
+// one. Deliberately strict: a malformed value falls back to the engine default
+// rather than silently scoring against a half-built list. Kept here (rather than
+// importing the default from scoring-detectors) so this module stays dependency-
+// free — the detector applies the fallback.
+function normalizePowerConferences(list) {
+    if (!Array.isArray(list)) return undefined;
+    const clean = list.filter(c => typeof c === 'string' && c.trim()).map(c => c.trim());
+    return clean.length ? clean : undefined;
 }
 
 // Engagement (game modes) defaults: everything off, with the standard bonus /
@@ -219,6 +234,6 @@ function engagementForSeason(bySeason, season) {
 
 module.exports = {
     CLAUNTS_DEFAULTS, GRAHAM_DEFAULTS, STRUCTURES, MODELS, LEAGUES,
-    modelForLeague, fieldsForModel, resolveConfig, ruleEnabled,
+    modelForLeague, fieldsForModel, resolveConfig, ruleEnabled, normalizePowerConferences,
     ENGAGEMENT_DEFAULTS, normalizeEngagement, engagementForSeason
 };
