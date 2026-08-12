@@ -888,13 +888,15 @@ async function loadManagerLogins() {
             var email = p.email
                 ? '<span class="login-email">' + escHtml(p.email) + '</span>'
                 : '<span class="login-email is-missing">No email on file</span>';
-            // Meaningful now that modules/auth-sub-backfill.js records a sub the
-            // first time an existing member loads a page: "Needs invite" means we
-            // have genuinely never seen a login for this team, rather than just
-            // "no invite was used", which was true of everybody.
+            // Three states, and the middle one is the reason this isn't a
+            // boolean. `linked` means we've seen their login. Someone who has
+            // been drafted a team obviously has one too — we just haven't
+            // watched them sign in yet — and calling that "Needs invite" told
+            // the commissioner six working accounts were broken. Only a
+            // franchise that has never played gets the amber flag.
             var badge = p.linked
                 ? '<span class="login-badge is-linked">Claimed</span>'
-                : '<span class="login-badge is-pending">Needs invite</span>';
+                : (p.hasPlayed ? '' : '<span class="login-badge is-pending">Needs invite</span>');
             var action = p.linked
                 ? '<button type="button" class="login-btn-ghost" onclick="resetInviteLink(\'' + id + '\', \'' + name + '\')">Reset</button>'
                 : '<button type="button" class="login-btn" onclick="copyInviteLink(\'' + id + '\', \'' + name + '\')">Copy invite</button>';
