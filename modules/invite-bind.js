@@ -21,7 +21,13 @@ const { leagueFlagFor } = require('./league-access');
 const norm = (e) => String(e == null ? '' : e).trim().toLowerCase();
 
 const COOKIE = 'cc_invite';
-const COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
+// Matches the token's own lifetime rather than the length of one sitting. It
+// was 15 minutes, which is shorter than the flow itself: confirming an address
+// means leaving for an inbox, and coming back to an expired cookie loses the
+// thread entirely — you're told to reopen the invite link, which by then you may
+// not still have. Nothing rests on the cookie expiring anyway; the signed token
+// inside it carries its own exp, and a spent invite is refused on `authSub`.
+const COOKIE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 // Same raw-header read as modules/dev-role.js — the app doesn't run
 // cookie-parser, and one cookie doesn't justify adding it.
