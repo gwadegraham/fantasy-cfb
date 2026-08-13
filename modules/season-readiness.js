@@ -28,9 +28,20 @@ function pct(n, total) {
 }
 
 // One check row. `required` marks a check the draft actually depends on;
-// informational rows report state but never hold the season back.
+// informational rows report state but never hold the season back. `noAction`
+// suppresses the Fix button for a row whose gap the commissioner cannot close.
 function check(key, label, status, detail, opts) {
     return Object.assign({ key, label, status, detail, required: true }, opts || {});
+}
+
+// Did the preseason enrichment run, even though talent came back empty?
+// Coaches and returning production are written by the same run and by the same
+// CFBD call batch, so either one present means the run reached CFBD and
+// succeeded — leaving an absent talent composite as an upstream fact rather
+// than a missed step. Requires BOTH that talent is absent and that the run
+// left its other fingerprints; a season nobody has enriched has neither.
+function awaitingTalent(w) {
+    return (w.talent || 0) === 0 && ((w.coach || 0) > 0 || (w.returning || 0) > 0);
 }
 
 // Coverage-style check: ready at >=90% of teams, partial if any, missing at 0.
@@ -60,10 +71,28 @@ function platformChecks({ season, teamTotal, teamsWith, scheduledTeams, gameCoun
             }),
             { detail: gameCount ? `${gameCount} games · ${scheduledTeams} of ${teamTotal} teams` : 'No games loaded' }
         ),
-        coverageCheck('enrichment', 'Preseason enrichment', w.talent || 0, teamTotal, {
-            fix: 'Refresh Ratings & Broadcasts',
-            whyItMatters: 'Talent, returning production and coaches are pulled once preseason. Missing, the pool and grades silently reuse last season.'
-        }),
+        // Talent is this row's coverage signal, but unlike every other check it
+        // is not always OBTAINABLE. CFBD publishes the 247 composite on its own
+        // schedule and answers 200 + [] until it lands, so a completely
+        // successful preseason run can still write zero talent — and the row
+        // then reads as a red, actionable gap that re-running cannot close.
+        //
+        // Coaches and returning production come from the SAME run, so their
+        // presence separates "never ran" (real, actionable) from "ran, upstream
+        // hasn't published" (nothing to do but wait). Same shape as the SP+ row
+        // below, which already handles CFBD lag this way.
+        Object.assign(
+            coverageCheck('enrichment', 'Preseason enrichment', w.talent || 0, teamTotal, {
+                fix: 'Refresh Ratings & Broadcasts',
+                whyItMatters: 'Talent, returning production and coaches are pulled once preseason. Missing, the pool and grades silently reuse last season.'
+            }),
+            awaitingTalent(w) ? {
+                required: false,
+                noAction: true,
+                detail: 'Coaches and returning production loaded · talent not published',
+                note: 'CFBD has not published the talent composite for this season yet. Re-running will not help; draft grades fall back to last season\'s talent until it lands.'
+            } : {}
+        ),
         coverageCheck('expectedWins', 'Expected wins', w.expectedWins || 0, teamTotal, {
             fix: 'Refresh Expected Wins',
             whyItMatters: 'Feeds the projection engine behind draft grades.'

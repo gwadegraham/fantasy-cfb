@@ -69,6 +69,42 @@ describe('platformChecks', () => {
         expect(byKey(platformChecks(loaded())).spPlus.label).toBe('SP+ ratings (2026)');
     });
 
+    // CFBD answers /talent with 200 + [] until it publishes the composite, so a
+    // fully successful preseason run can still write zero talent. Observed live
+    // on 2026: sp 139, fpi 138, returning 136, coaches 138, talent 0.
+    describe('enrichment that ran while CFBD had no talent to give', () => {
+        const ran = { talent: 0, coach: TEAMS, returning: TEAMS - 2, spRating: TEAMS, expectedWins: TEAMS, cfpOdds: 30 };
+
+        test('is not a required miss and offers no button to press', () => {
+            const c = byKey(platformChecks(loaded({ teamsWith: ran })));
+            expect(c.enrichment).toMatchObject({ required: false, noAction: true });
+            expect(c.enrichment.note).toMatch(/has not published the talent composite/);
+            expect(c.enrichment.detail).toMatch(/talent not published/);
+        });
+
+        test('does not count toward the outstanding-steps total', () => {
+            const r = computeSeasonReadiness(loaded({ teamsWith: ran, leagues: [leagueReady()] }));
+            expect(r.blocking).not.toContain('enrichment');
+        });
+
+        // The distinction has to survive in the other direction, or a season
+        // nobody enriched would quietly stop asking to be enriched.
+        test('a season that was never enriched is still a real, actionable gap', () => {
+            const c = byKey(platformChecks(loaded({ teamsWith: { talent: 0, coach: 0, returning: 0 } })));
+            expect(c.enrichment).toMatchObject({ status: 'missing', required: true });
+            expect(c.enrichment.noAction).toBeUndefined();
+            expect(c.enrichment.detail).toBe(`0 of ${TEAMS} teams`);
+        });
+
+        // Partial talent means the run is landing data; it should read as a
+        // normal partial load, not as waiting on CFBD.
+        test('partial talent is a normal partial, not the waiting state', () => {
+            const c = byKey(platformChecks(loaded({ teamsWith: { talent: 60, coach: TEAMS } })));
+            expect(c.enrichment).toMatchObject({ status: 'partial', required: true });
+            expect(c.enrichment.noAction).toBeUndefined();
+        });
+    });
+
     test('no teams on file at all degrades to missing rather than dividing by zero', () => {
         const c = byKey(platformChecks(loaded({ teamTotal: 0, teamsWith: {}, scheduledTeams: 0, gameCount: 0 })));
         expect(c.enrichment.status).toBe('missing');
