@@ -9,7 +9,7 @@ const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
 const JobRun = require('../models/jobRun');
-const { resolveConfig, engagementForSeason } = require('../modules/scoring-defaults');
+const { resolveConfig, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
@@ -166,9 +166,7 @@ router.get('/projections/:league/:season', async (req, res) => {
         });
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
-        const cfg = resolveConfig(league, cfgDoc ? {
-            model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled, enabled: cfgDoc.enabled
-        } : null);
+        const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
         const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
         const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
 
@@ -398,9 +396,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                     if (draftedSet.has(tid)) (gamesByTeam[tid] = gamesByTeam[tid] || []).push(g);
                 });
             });
-            const cfg = resolveConfig(league, cfgDoc ? {
-                model: cfgDoc.model, values: cfgDoc.values, combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled
-            } : null);
+            const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
             const apDoc = await Ranking.findOne({ season: seasonNum, seasonType: 'regular' }).sort({ week: 1 }).lean();
             const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
             const rankings = buildRankingProxy(seasonNum, teamsById, apPoll);

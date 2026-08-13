@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const Game = require('../models/game');
-const { resolveConfig, fieldsForModel, engagementForSeason } = require('../modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
 const { POWER_CONFERENCES } = require('../modules/scoring-detectors');
 const { canManageLeague } = require('../modules/league-access');
@@ -38,15 +38,7 @@ function withFields(cfg) {
 // reads must be here: modules/scoring.js getScoringConfig loads the live config
 // through this route, so a field left out is a field the scorer never sees,
 // however faithfully it is stored.
-function overridesFrom(doc) {
-    if (!doc) return null;
-    return {
-        model: doc.model, values: doc.values, combineMode: doc.combineMode,
-        disabled: doc.disabled, enabled: doc.enabled,
-        engagement: doc.engagement, engagementBySeason: doc.engagementBySeason || {},
-        powerConferences: doc.powerConferences
-    };
-}
+const overridesFrom = overridesFromDoc;
 
 // The full response body for a league's config: resolved values + field metadata,
 // with `engagement` narrowed to one season and the raw per-season map alongside.

@@ -7,7 +7,7 @@ const Team = require('../models/team');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig } = require('../modules/scoring-defaults');
+const { resolveConfig, overridesFromDoc } = require('../modules/scoring-defaults');
 const { computeGrades } = require('../modules/draft-grades');
 const { canManageLeague } = require('../modules/league-access');
 const { sanitizeCallUrl } = require('../modules/draft-call-link');
@@ -43,10 +43,7 @@ router.get('/grades/:league/:season', async (req, res) => {
               awayId: 1, awayTeam: 1, awayConference: 1 }).lean();
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
-        const config = resolveConfig(league, cfgDoc ? {
-            model: cfgDoc.model, values: cfgDoc.values,
-            combineMode: cfgDoc.combineMode, disabled: cfgDoc.disabled, enabled: cfgDoc.enabled
-        } : null);
+        const config = resolveConfig(league, overridesFromDoc(cfgDoc));
 
         const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
         const apPoll = apDoc && Array.isArray(apDoc.polls)
