@@ -85,11 +85,15 @@ router.get('/readiness/:season', async (req, res) => {
         // drags every team's weeklyScore array along for no reason.
         const teams = await Team.find({}, {
             id: 1, 'seasons.season': 1, 'seasons.talent': 1, 'seasons.spRating': 1,
-            'seasons.expectedWins': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+            'seasons.expectedWins': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1,
+            // coach + returningProduction aren't shown anywhere; they're carried
+            // so readiness can tell an enrichment run that never happened from
+            // one that ran while CFBD had no talent composite to give.
+            'seasons.coach': 1, 'seasons.returningProduction': 1
         }).lean();
         const teamTotal = teams.length;
         const fbsIds = new Set(teams.map(t => t.id));
-        const teamsWith = { talent: 0, spRating: 0, expectedWins: 0, cfpOdds: 0 };
+        const teamsWith = { talent: 0, spRating: 0, expectedWins: 0, cfpOdds: 0, coach: 0, returning: 0 };
         teams.forEach(t => {
             const s = (t.seasons || []).find(x => Number(x.season) === seasonNum);
             if (!s) return;
@@ -97,6 +101,8 @@ router.get('/readiness/:season', async (req, res) => {
             if (s.spRating != null) teamsWith.spRating++;
             if (s.expectedWins != null) teamsWith.expectedWins++;
             if (s.cfpMakeOdds != null || s.cfpChampOdds != null) teamsWith.cfpOdds++;
+            if (s.coach != null) teamsWith.coach++;
+            if (s.returningProduction != null) teamsWith.returning++;
         });
 
         // Schedule coverage: a full ingest reaches essentially every team, so

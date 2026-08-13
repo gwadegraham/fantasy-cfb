@@ -574,7 +574,10 @@ function readinessRow(c) {
     // themselves are listed directly below if someone wants to re-run one.
     // Also suppressed when the target tool isn't on the page — a League Manager
     // doesn't get the platform-wide tools, so they see state without a dead button.
-    var target = c.status !== 'ready' && READINESS_FIX[c.key];
+    // `noAction` is for a row whose gap the commissioner genuinely cannot close
+    // — enrichment waiting on a CFBD dataset that isn't published yet. A button
+    // there reads as "re-run this" and re-running changes nothing.
+    var target = !c.noAction && c.status !== 'ready' && READINESS_FIX[c.key];
     var canOpen = target && document.querySelector('[' + target[0] + ']');
     // The button navigates — it opens the tool and scrolls to it, it doesn't run
     // anything — so a real gap says "Fix" (where you go to fix it) and an
