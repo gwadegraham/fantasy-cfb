@@ -468,6 +468,25 @@ body {
     justify-content: center;
     padding: 35px;
     font-size: 3rem;
+    text-align: center;
+    /* Inert for the block instances; Standings and My Team make this a flex row,
+       where it's what lets the league eyebrow below claim a line of its own. */
+    flex-wrap: wrap;
+}
+
+/* League eyebrow: names the league whose data the page is showing, above the
+   page title. Lives INSIDE .header-title so it inherits the title's centring
+   and can't disturb .header's flex row (which also holds "last updated").
+   Filled by ccLeague (public/league.js) and hidden until a name resolves. */
+.header-league {
+    display: block;
+    flex: 0 0 100%;   /* own line, whether the title is a block or a flex row */
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+    margin-bottom: 8px;
 }
 
 .team-item {
@@ -757,6 +776,11 @@ footer {
     .header-title {
         padding: 5px;
         font-size: 1.7rem;
+    }
+
+    .header-league {
+        font-size: 0.68rem;
+        margin-bottom: 4px;
     }
 
     .game-table {

@@ -612,6 +612,7 @@ button.uh-tile:focus-visible { outline: 2px solid var(--cc-info); outline-offset
 .uh-hero { display: flex; align-items: center; gap: 16px; }
 .uh-hero-av { width: 56px; height: 56px; flex: none; }
 .uh-hero-meta { min-width: 0; flex: 1; }
+.uh-hero-league { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--cc-muted-2); font-weight: 700; margin-bottom: 5px; }
 .uh-hero-name { font-size: 20px; font-weight: 800; color: var(--cc-text); line-height: 1.1; }
 .uh-hero-sub { font-size: 13px; color: var(--cc-muted-2); margin-top: 2px; }
 .uh-hero-stats { display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap; }

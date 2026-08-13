@@ -12,13 +12,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="scoringRules.js"></script>
-    <title>Campus Clash</title>
+    <title data-league-title="Scoring Rules">Scoring Rules · Campus Clash</title>
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
 </head>
-<body>
+<!-- The rules shown are one league's, resolved server-side (an Admin's ?league=
+     included), so pin that league for ccLeague rather than letting it fall back
+     to the sticky selection — the two can disagree for a moment on arrival. -->
+<body data-league-code="<%= leagueCode %>">
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>
@@ -28,7 +31,7 @@
     <span id="scoring-league" data-code="<%= leagueCode %>" hidden></span>
 
   <div class="rules-container">
-    <h1 class="header-title"><span data-icon="book" data-icon-size="26"></span>Scoring Rules</h1>
+    <h1 class="header-title"><span class="header-league" league-label hidden></span><span data-icon="book" data-icon-size="26"></span>Scoring Rules</h1>
 
     <section class="rules-section draft-section">
       <h2 class="rule-header"><span data-icon="clipboard" data-icon-size="20"></span>Draft Rules</h2>

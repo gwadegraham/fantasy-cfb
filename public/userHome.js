@@ -127,7 +127,7 @@ async function renderBento(data) {
     const season = uhSeasonFor(data, activeYear);
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
-    document.title = `${franchise || manager} · Campus Clash`;
+    document.title = ccLeague.title(franchise || manager);
     const own = currentUserId() && String(currentUserId()) === String(data._id);
     const pencil = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
@@ -150,6 +150,7 @@ async function renderBento(data) {
         `<div class="uh-tile span2 uh-hero">
             <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
             <div class="uh-hero-meta">
+                ${heroLeagueHtml()}
                 <div class="uh-hero-name">${escapeHtml(franchise)}</div>
                 <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
                 <div class="uh-hero-stats" id="uh-hero-stats"></div>
@@ -239,6 +240,7 @@ function renderPreseason(bento, data, activeYear, ctx) {
         `<div class="uh-tile span2 uh-hero">
             <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
             <div class="uh-hero-meta">
+                ${heroLeagueHtml()}
                 <div class="uh-hero-name">${escapeHtml(franchise)}</div>
                 <div class="uh-hero-sub">Managed by ${escapeHtml(manager)}</div>
                 <div class="uh-hero-stats"><span class="uh-preseason-pill">${escapeHtml(activeYear)} preseason</span></div>
@@ -1198,6 +1200,15 @@ async function computeRank(data) {
     } catch (e) { return null; }
 }
 
+// League eyebrow over the franchise name. The league a manager plays in is
+// otherwise invisible to them after their invite, and this is the one tile every
+// manager looks at. Its own line rather than appended to the "Managed by" line,
+// which wraps mid-name on a phone.
+function heroLeagueHtml() {
+    const league = ccLeague.name();
+    return league ? `<div class="uh-hero-league">${escapeHtml(league)}</div>` : '';
+}
+
 function statTile(valueHtml, label) {
     return `<div class="stat"><span class="stat-value">${valueHtml}</span><span class="stat-label">${escapeHtml(label)}</span></div>`;
 }
@@ -1220,7 +1231,7 @@ function refreshHeroIdentity(data, season) {
     if (nameEl) nameEl.textContent = franchise;
     const subEl = document.querySelector('.uh-hero-sub');
     if (subEl) subEl.textContent = franchise && season.franchiseName ? `Managed by ${manager}` : manager;
-    document.title = `${franchise || manager} · Campus Clash`;
+    document.title = ccLeague.title(franchise || manager);
 }
 
 // ---------- Edit modal (franchise name + avatar upload) ----------

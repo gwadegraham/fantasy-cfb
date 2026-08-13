@@ -546,7 +546,7 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
     var outlookHtml = outlookChips.length ? `<div><h4>${window.ccIcon ? window.ccIcon('chart', { size: 21 }) : ''} Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div>${outlookNote}</div>` : '';
 
     // Set the tab title to the team being viewed.
-    document.title = `${team.school} ${team.mascot} · Campus Clash`;
+    document.title = ccLeague.title(`${team.school} ${team.mascot}`);
 
     const html = `
 
