@@ -110,7 +110,10 @@ router.get('/board/:league/:season', async (req, res) => {
         }
         const projections = cached.projections;
 
-        const userId = String(req.query.userId || (req.effUser && req.effUser._id) || '');
+        // req.effUser is the OIDC profile, so the app user id is in its nested
+        // metadata (see buildUserContext in server.js) — never a top-level _id.
+        const meta = (req.effUser && req.effUser.user_metadata) || {};
+        const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
         const schedule = draftBoard.pickSchedule(draft, userId);
         const avail = draftBoard.available(projections, draft);
         res.json({

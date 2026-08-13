@@ -122,6 +122,32 @@ describe('GET /draft/board/:league/:season', () => {
         expect(res.body.advice.take.id).toBe(BC);
     });
 
+    // The route's own fallback for when the client sends no userId. req.effUser is
+    // the OIDC profile, so the id lives in nested metadata — reading a top-level
+    // _id yielded '' and silently reported "your draft is complete".
+    it('falls back to the signed-in user id from nested Auth0 metadata', async () => {
+        await seed();
+        const asUser = express();
+        asUser.use(express.json());
+        asUser.use((req, _res, next) => {
+            req.effUser = { sub: 'auth0|abc', user_metadata: { roles: ['Admin'], metadata: { league: 'gg', userId: ME } } };
+            next();
+        });
+        asUser.use('/draft', draftRouter);
+        const res = await request(asUser).get(`/draft/board/${LEAGUE}/${SEASON}`).set('X-Internal-Token', TOKEN);
+        expect(res.status).toBe(200);
+        expect(res.body.schedule.next.overall).toBe(2);      // the 2nd seat, resolved
+        expect(res.body.schedule.gap).toBe(8);
+    });
+
+    it('degrades to no schedule rather than erroring for an unknown user', async () => {
+        await seed();
+        const res = await get('?userId=not-in-this-draft');
+        expect(res.status).toBe(200);
+        expect(res.body.schedule.next).toBeNull();
+        expect(res.body.projections.length).toBeGreaterThan(0);
+    });
+
     it('caches projections but still reflects new picks', async () => {
         await seed();
         const first = await get(`?userId=${ME}`);

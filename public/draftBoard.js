@@ -10,7 +10,11 @@
 (function () {
     var LEAGUE = window.LEAGUE_CODE;
     var SEASON = window.APP_YEAR;
-    var ME = (window.userState && (window.userState._id || window.userState.id)) || '';
+    // The app's user id lives in the Auth0 profile's nested metadata, NOT as an
+    // `_id` on userState — userState is the OIDC user, whose only identity keys
+    // are sub/email. Same accessor draftRoom.js uses (setUserContext).
+    var META = (window.userState && window.userState.user_metadata) || {};
+    var ME = (META.metadata && META.metadata.userId) || '';
 
     var data = null;          // last board payload
     var filter = '';

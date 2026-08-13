@@ -26,7 +26,15 @@ const FIXTURE = `
 <ol db-roster></ol>
 <ol db-log></ol>`;
 
-const ME = 'me-id';
+// The real shape of window.userState: the OIDC profile. The app's user id is in
+// nested metadata — there is no _id here, which is exactly what the page got
+// wrong first time (it read userState._id, got undefined, and told the
+// commissioner their draft was complete before it had started).
+const ME = '64f539d45cf0433f3b6a6a1e';
+const USER_STATE = {
+    sub: 'auth0|65c83b61e1ecca451f9f657b', email: 'g@example.com', name: 'Garrett',
+    user_metadata: { roles: ['Admin'], metadata: { league: 'gg', userId: ME } }
+};
 function payload(over) {
     return Object.assign({
         league: 'graham-league', season: 2026,
@@ -53,7 +61,7 @@ function loadPage(body) {
     document.body.innerHTML = FIXTURE;
     window.LEAGUE_CODE = 'graham-league';
     window.APP_YEAR = '2026';
-    window.userState = { _id: ME };
+    window.userState = USER_STATE;
     global.io = () => ({ on: () => {}, emit: () => {}, io: { on: () => {} } });
     global.fetch = jest.fn((url) => {
         if (String(url).indexOf('/draft-token') !== -1) {
@@ -104,6 +112,31 @@ describe('the recommendation', () => {
     it('reports a finished draft rather than rendering an empty pick', async () => {
         await loadPage(payload({ schedule: { next: null, after: null, onTheClock: false, gap: null } }));
         expect(txt('[db-advice]')).toContain('draft is complete');
+    });
+});
+
+describe('identity', () => {
+    it('sends the app user id from nested metadata, not a top-level _id', async () => {
+        await loadPage(payload());
+        const urls = global.fetch.mock.calls.map(c => String(c[0]));
+        const boardCall = urls.find(u => u.indexOf('/draft/board/') !== -1);
+        expect(boardCall).toContain('userId=' + ME);
+    });
+
+    it('sends an empty id rather than "undefined" when metadata is missing', async () => {
+        document.body.innerHTML = FIXTURE;
+        window.LEAGUE_CODE = 'graham-league'; window.APP_YEAR = '2026';
+        window.userState = { sub: 'auth0|x', email: 'g@example.com' };   // no metadata at all
+        global.io = () => ({ on: () => {}, emit: () => {}, io: { on: () => {} } });
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload()) }));
+        jest.isolateModules(() => {
+            (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'public', 'draftBoard.js'), 'utf8'));
+        });
+        document.dispatchEvent(new Event('DOMContentLoaded'));
+        await new Promise(r => setTimeout(r, 0));
+        const boardCall = global.fetch.mock.calls.map(c => String(c[0])).find(u => u.indexOf('/draft/board/') !== -1);
+        expect(boardCall).toContain('userId=');
+        expect(boardCall).not.toContain('undefined');
     });
 });
 
@@ -174,7 +207,7 @@ describe('roster, log and provenance', () => {
 
     it('surfaces a failed load instead of rendering a blank page', async () => {
         document.body.innerHTML = FIXTURE;
-        window.LEAGUE_CODE = 'graham-league'; window.APP_YEAR = '2026'; window.userState = { _id: ME };
+        window.LEAGUE_CODE = 'graham-league'; window.APP_YEAR = '2026'; window.userState = USER_STATE;
         global.io = () => ({ on: () => {}, emit: () => {}, io: { on: () => {} } });
         global.fetch = jest.fn(() => Promise.resolve({
             ok: false, status: 403, json: () => Promise.resolve({ message: 'Forbidden: not your league' })
