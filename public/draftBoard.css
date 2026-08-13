@@ -129,6 +129,13 @@
 .db-why p { margin: 0 0 6px; }
 .db-why strong { color: var(--cc-text); }
 .db-caveat { font-size: 0.8rem; color: var(--cc-muted-2); }
+.db-captain {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--cc-border-2);
+    color: var(--cc-muted-bright);
+}
+.db-captain strong { color: var(--cc-amber); }
 
 .db-listrow { margin-top: 14px; }
 .db-listrow-label {

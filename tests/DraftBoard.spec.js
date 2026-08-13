@@ -110,13 +110,18 @@ describe('advice', () => {
         expect(a.atRisk).toEqual([]);
     });
 
-    it('does not run off the end of a board shorter than the wait', () => {
+    // An 8-pick wait against a 3-team board means nothing survives. Clamping the
+    // survivor to the last team (as this used to) priced the wait at 2 points
+    // while simultaneously listing nothing as safe — two answers to one question.
+    it('reports an exhausted board instead of pricing a survivor that will not exist', () => {
         const thin = POOL.slice(0, 3);
         const d = draft({ currentOverall: 2, picks: [] });
         const a = board.advise(board.available(thin, d), board.pickSchedule(d, ME));
-        expect(a.survivorRank).toBe(2);              // clamped to the last team
+        expect(a.exhausted).toBe(true);
+        expect(a.survivorRank).toBeNull();
         expect(a.safeToWait).toEqual([]);
-        expect(a.cost).toBe(2);
+        expect(a.cost).toBeNull();                   // waiting costs the pick, not 2 points
+        expect(a.take.school).toBe('T1');            // still says what to take
     });
 
     it('handles an empty board', () => {
@@ -136,6 +141,83 @@ describe('roster', () => {
 
     it('survives a team that is not in the projection pool', () => {
         const d = draft({ picks: [{ overall: 2, round: 1, userId: ME, team: { id: 999, school: 'Ghost' } }] });
-        expect(board.rosterFor(d, ME, POOL)).toEqual([{ overall: 2, round: 1, id: 999, school: 'Ghost', total: null }]);
+        expect(board.rosterFor(d, ME, POOL))
+            .toEqual([{ overall: 2, round: 1, id: 999, school: 'Ghost', total: null, regular: null }]);
+    });
+});
+
+// The weekly Captain doubles ONE rostered team's score, regular season only. So
+// a roster's captain value is its best REGULAR projection, and a candidate is
+// worth extra only if it raises that. The consequence worth testing: the
+// multiplier never touches postseason points, so two teams level on total value
+// are not level once the captain is priced in.
+describe('captain-aware advice', () => {
+    // Same total, very different split. OSU earns in the playoff, TEX in the
+    // regular season — only TEX's half gets doubled.
+    const OSU = { id: 90, school: 'Buckeyes', total: 34.4, regular: 21.9 };
+    const TEX = { id: 91, school: 'Horns',    total: 34.3, regular: 24.0 };
+    const MID = { id: 92, school: 'Middling', total: 25.0, regular: 18.0 };
+    const POOL2 = [OSU, TEX, MID];
+    const on = (anchorRegular, anchorSchool) =>
+        ({ enabled: true, multiplier: 2, anchorRegular, anchorSchool });
+
+    it('prices a first pick as also choosing the season captain', () => {
+        const d = draft({ currentOverall: 2 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: on(0, null) });
+        // Board order puts OSU first; effective value flips it to TEX.
+        expect(POOL2[0].school).toBe('Buckeyes');
+        expect(a.take.school).toBe('Horns');
+        expect(a.captain.gain).toBe(24);
+        expect(a.effective).toBe(58.3);
+    });
+
+    it('leaves the ranking alone when the captain is off', () => {
+        const d = draft({ currentOverall: 2 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: { enabled: false } });
+        expect(a.take.school).toBe('Buckeyes');       // straight board value
+        expect(a.captain.enabled).toBe(false);
+    });
+
+    it('adds nothing once a better anchor is already rostered', () => {
+        const d = draft({ currentOverall: 11 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: on(24.0, 'Horns') });
+        expect(a.captain.gain).toBe(0);
+        expect(a.take.school).toBe('Buckeyes');       // back to pure board value
+        expect(a.effective).toBe(34.4);
+    });
+
+    it('reports the captain slot settled when nothing left can beat the anchor', () => {
+        const d = draft({ currentOverall: 11 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: on(24.0, 'Horns') });
+        expect(a.captain.settled).toBe(true);
+        expect(a.captain.anchorSchool).toBe('Horns');
+    });
+
+    it('is not settled while an upgrade is still on the board', () => {
+        const d = draft({ currentOverall: 11 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: on(20.0, 'Middling') });
+        expect(a.captain.settled).toBe(false);
+        expect(a.captain.gain).toBe(4);               // 24.0 - 20.0, at 2x
+    });
+
+    it('honours a multiplier other than 2', () => {
+        expect(board.captainGain({ regular: 24 }, 20, 3)).toBe(8);   // (24-20) x 2
+        expect(board.captainGain({ regular: 24 }, 20, 2)).toBe(4);
+        expect(board.captainGain({ regular: 18 }, 20, 2)).toBe(0);   // never negative
+    });
+
+    it('reads the anchor off the roster, ignoring teams with no projection', () => {
+        expect(board.captainAnchor([{ regular: 18 }, { regular: 24 }, { regular: null }])).toBe(24);
+        expect(board.captainAnchor([])).toBe(0);
+    });
+
+    it('prices the cost of waiting on effective value, not board value', () => {
+        // Gap of 8 with a 3-team board clamps the survivor to the last team.
+        const d = draft({ currentOverall: 2 });
+        const a = board.advise(POOL2, board.pickSchedule(d, ME), { captain: on(0, null) });
+        // 8-pick wait, 3-team board: nothing survives, so there is no cost to
+        // quote — the point is that waiting forfeits the pick entirely.
+        expect(a.exhausted).toBe(true);
+        expect(a.cost).toBeNull();
     });
 });

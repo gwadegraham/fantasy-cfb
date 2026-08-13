@@ -7,7 +7,7 @@ const Team = require('../models/team');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
-const { resolveConfig, overridesFromDoc } = require('../modules/scoring-defaults');
+const { resolveConfig, overridesFromDoc, engagementForSeason } = require('../modules/scoring-defaults');
 const draftBoard = require('../modules/draft-board');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { computeGrades } = require('../modules/draft-grades');
@@ -117,15 +117,32 @@ router.get('/board/:league/:season', async (req, res) => {
         const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
         const schedule = draftBoard.pickSchedule(draft, userId);
         const avail = draftBoard.available(projections, draft);
+        const roster = draftBoard.rosterFor(draft, userId, projections);
+
+        // Captain settings are PER SEASON, so a league running the mode in 2026
+        // and not in 2027 prices picks differently in each. Off => the advice is
+        // pure board value, which is what Claunts gets.
+        const cfgDocForSeason = await ScoringConfig.findOne({ league }).lean();
+        const eng = engagementForSeason(cfgDocForSeason && cfgDocForSeason.engagementBySeason, season);
+        const anchorRegular = draftBoard.captainAnchor(roster);
+        const anchor = roster.reduce((b, r) =>
+            (r.regular != null && (!b || r.regular > b.regular)) ? r : b, null);
+        const captain = {
+            enabled: !!eng.captainEnabled,
+            multiplier: eng.captainMultiplier,
+            anchorRegular,
+            anchorSchool: anchor ? anchor.school : null
+        };
+
         res.json({
             league, season,
             // Whether the ranked-win bonuses in these projections came from a real
             // poll or an SP+ stand-in — the numbers move if a preseason AP poll
             // lands mid-draft-prep, and the page says so rather than pretending.
             rankedSource: cached.rankedSource,
-            projections, draft: publicDraft(draft), schedule,
-            advice: draftBoard.advise(avail, schedule),
-            roster: draftBoard.rosterFor(draft, userId, projections)
+            projections, draft: publicDraft(draft), schedule, captain,
+            advice: draftBoard.advise(avail, schedule, { captain }),
+            roster
         });
     } catch (err) {
         res.status(500).json({ message: err.message });

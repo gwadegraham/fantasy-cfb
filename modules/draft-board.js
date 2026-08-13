@@ -48,6 +48,49 @@ function available(projections, draft) {
         .sort((a, b) => b.total - a.total);
 }
 
+// --- captain -----------------------------------------------------------------
+//
+// The weekly Captain multiplies ONE rostered team's score, regular season only.
+// Captain the same team every week and you bank its entire REGULAR projection
+// again — so a roster's captain value is just its best regular projection, and a
+// new team is worth extra only if it RAISES that.
+//
+// The consequence that matters at the table: the multiplier never touches
+// postseason points. Two teams level on total value are not level if one earns
+// its points in the playoff — Ohio State (34.4 total, 21.9 regular) and Texas
+// (34.3 total, 24.0 regular) are a tenth apart on the board and two points apart
+// once the captain is priced in.
+//
+// Simplification, stated on the page: optimal play captains the best EXPECTED
+// team each week, which occasionally isn't the anchor (a bye, a soft matchup for
+// a lesser team). True captain value is therefore a little higher than this, so
+// the figure is a floor, like the scarcity estimate.
+
+// Best regular projection already on the roster. 0 for an empty roster, which is
+// what makes a first-round pick's whole regular projection count.
+function captainAnchor(roster) {
+    return (roster || []).reduce(function (best, r) {
+        return (r && typeof r.regular === 'number' && r.regular > best) ? r.regular : best;
+    }, 0);
+}
+
+// What a candidate adds in captain points: the amount it lifts the anchor,
+// scaled by the multiplier (a 2x captain banks the difference once).
+function captainGain(team, anchorRegular, multiplier) {
+    if (!team || typeof team.regular !== 'number') return 0;
+    var lift = team.regular - (anchorRegular || 0);
+    if (lift <= 0) return 0;
+    return Math.round(lift * ((multiplier || 2) - 1) * 10) / 10;
+}
+
+// Value of a team TO THIS ROSTER: board value plus whatever captain upgrade it
+// brings. With the captain off, or once the anchor can't be beaten, this is just
+// the board value.
+function effectiveValue(team, captain) {
+    if (!captain || !captain.enabled) return team.total;
+    return Math.round((team.total + captainGain(team, captain.anchorRegular, captain.multiplier)) * 10) / 10;
+}
+
 // The advice itself.
 //
 // `gap` other managers pick before this manager's turn comes round again, so as
@@ -65,23 +108,59 @@ function available(projections, draft) {
 //   atRisk      — teams likely gone before the manager picks again
 //   safeToWait  — teams likely still there, so no need to spend this pick on one
 function advise(availableTeams, schedule, opts = {}) {
-    const list = availableTeams || [];
-    const take = list[0] || null;
+    const list = availableTeams || [];          // market order: by board value
+    const captain = opts.captain || null;
+    // Two orders, deliberately. The MARKET prices on board value — that's what
+    // decides who is gone when the turn comes round. What I should BUY is priced
+    // on value to my roster, which includes a captain upgrade the market has no
+    // reason to care about. Ranking both the same way would quietly assume the
+    // other five managers are drafting for my roster.
+    const best = (pool) => pool.reduce((b, t) =>
+        (b == null || effectiveValue(t, captain) > effectiveValue(b, captain)) ? t : b, null);
+
+    const take = best(list);
+    const captainInfo = captain && captain.enabled ? {
+        enabled: true,
+        anchorRegular: captain.anchorRegular || 0,
+        anchorSchool: captain.anchorSchool || null,
+        // The upgrade this specific pick buys.
+        gain: take ? captainGain(take, captain.anchorRegular, captain.multiplier) : 0,
+        // True when nothing left on the board could beat the anchor — the captain
+        // slot is decided and per-week value can be ignored for the rest of the
+        // draft, which is worth saying rather than leaving to be worked out.
+        settled: !list.some(t => captainGain(t, captain.anchorRegular, captain.multiplier) > 0)
+    } : { enabled: false, gain: 0, settled: false };
+
     if (!take || schedule.gap == null) {
-        return { take, cost: null, atRisk: [], safeToWait: [], survivorRank: null };
+        return { take, cost: null, atRisk: [], safeToWait: [], survivorRank: null, captain: captainInfo,
+                 effective: take ? effectiveValue(take, captain) : null };
     }
     const limit = opts.listSize || 6;
-    // With `gap` picks in between, list[gap] is the best team expected to still
-    // be here. If the board is shorter than the gap, nothing is guaranteed.
-    const survivorRank = Math.min(schedule.gap, list.length - 1);
-    const survivor = list[survivorRank] || null;
-    const cost = survivor ? Math.round((take.total - survivor.total) * 10) / 10 : null;
+    // With `gap` picks in between, the market takes the top `gap` teams, so what
+    // survives is everything from there down — and what I'd actually take then is
+    // the best of THOSE by my own valuation.
+    //
+    // When the wait is longer than the board, NOTHING survives. This used to be
+    // clamped to the last team, which quietly contradicted itself: it priced the
+    // cost of waiting against a team it simultaneously listed as unavailable. An
+    // exhausted board is its own answer — waiting costs you the pick, not a
+    // couple of points — so it is reported rather than approximated.
+    const exhausted = schedule.gap >= list.length;
+    const survivors = exhausted ? [] : list.slice(schedule.gap);
+    const survivor = best(survivors);
+    const cost = survivor
+        ? Math.round((effectiveValue(take, captain) - effectiveValue(survivor, captain)) * 10) / 10
+        : null;
     return {
         take,
         cost,
-        survivorRank,
+        exhausted,
+        survivorRank: exhausted ? null : schedule.gap,
+        survivor,
+        effective: effectiveValue(take, captain),
+        captain: captainInfo,
         atRisk: list.slice(0, schedule.gap).slice(0, limit),
-        safeToWait: list.slice(schedule.gap, schedule.gap + limit)
+        safeToWait: survivors.slice(0, limit)
     };
 }
 
@@ -97,10 +176,12 @@ function rosterFor(draft, userId, projections) {
             return {
                 overall: p.overall, round: p.round,
                 id: p.team && p.team.id, school: (p.team && p.team.school) || '?',
-                total: proj ? proj.total : null
+                total: proj ? proj.total : null,
+                // Needed to work out the captain anchor — see captainAnchor().
+                regular: proj ? proj.regular : null
             };
         })
         .sort((a, b) => a.overall - b.overall);
 }
 
-module.exports = { picksFor, pickSchedule, available, advise, rosterFor };
+module.exports = { picksFor, pickSchedule, available, advise, rosterFor, captainAnchor, captainGain, effectiveValue };

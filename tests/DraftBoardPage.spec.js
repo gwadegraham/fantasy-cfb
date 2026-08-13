@@ -50,6 +50,7 @@ function payload(over) {
         schedule: { next: { overall: 2, round: 1 }, after: { overall: 11, round: 2 }, onTheClock: false, gap: 8 },
         advice: {
             take: { id: 1, school: 'Ohio State', total: 34.4 }, cost: 8.8, survivorRank: 3,
+            effective: 34.4, captain: { enabled: false, gain: 0, settled: false },
             atRisk: [{ id: 1, school: 'Ohio State', total: 34.4 }, { id: 2, school: 'Texas', total: 34.3 }],
             safeToWait: [{ id: 4, school: 'LSU', total: 25.6 }, { id: 5, school: 'Notre Dame', total: 24.8 }]
         },
@@ -210,6 +211,61 @@ describe('logos', () => {
         }));
         expect(document.querySelector('.db-chip-logo')).not.toBeNull();
         expect(document.querySelector('[db-log] .db-l-team img').src).toBe('https://x/tex-dark.png');
+    });
+});
+
+// The captain doubles ONE team's weekly score, regular season only, so it prices
+// regular-season points and ignores postseason entirely. Which of the three
+// states shows is the useful part — especially "settled", which tells you to
+// stop reading the Cap/wk column for the rest of the draft.
+describe('the captain line', () => {
+    const withCaptain = (cap, extra) => payload(Object.assign({
+        advice: Object.assign({
+            take: { id: 2, school: 'Texas', total: 34.3 }, cost: 13.9, survivorRank: 8,
+            effective: 58.3, captain: cap,
+            atRisk: [{ id: 1, school: 'Ohio State', total: 34.4 }],
+            safeToWait: [{ id: 4, school: 'LSU', total: 25.6 }]
+        }, extra || {})
+    }));
+
+    it('says a first pick is also choosing the season captain, and prices it', async () => {
+        await loadPage(withCaptain({ enabled: true, gain: 24.0, settled: false, anchorSchool: null, anchorRegular: 0 }));
+        const t = txt('[db-advice]');
+        expect(t).toContain('34.3 projected  +  24.0 captain  =  58.3');
+        expect(t).toContain('This also picks your season captain');
+        expect(t).toContain('+24.0 points');
+    });
+
+    it('prices an upgrade over the anchor you already hold', async () => {
+        await loadPage(withCaptain({ enabled: true, gain: 4.0, settled: false, anchorSchool: 'Middling', anchorRegular: 20 }));
+        const t = txt('[db-advice]');
+        expect(t).toContain('Captain upgrade');
+        expect(t).toContain('+4.0 points');
+        expect(t).toContain('over Middling');
+    });
+
+    it('tells you to stop reading Cap/wk once the anchor cannot be beaten', async () => {
+        await loadPage(withCaptain({ enabled: true, gain: 0, settled: true, anchorSchool: 'Texas', anchorRegular: 24 }));
+        const t = txt('[db-advice]');
+        expect(t).toContain('Captain settled');
+        expect(t).toContain('Texas');
+        expect(t).toContain('ignore Cap/wk for the rest of the draft');
+        expect(t).not.toContain('captain  =');            // no effective-value maths to show
+    });
+
+    it('says nothing about the captain when the league has the mode off', async () => {
+        await loadPage(payload());                         // fixture default: captain disabled
+        expect(document.querySelector('.db-captain')).toBeNull();
+        expect(txt('[db-advice]')).toContain('34.4 projected');
+        expect(txt('[db-advice]')).not.toContain('captain');
+    });
+
+    it('highlights the recommended team even when it is not the top row', async () => {
+        await loadPage(withCaptain({ enabled: true, gain: 24.0, settled: false, anchorSchool: null, anchorRegular: 0 }));
+        const best = document.querySelector('[db-board] tr.db-best');
+        expect(best.querySelector('.db-team').textContent).toBe('Texas');
+        // Board stays in market order, so Texas is the SECOND row.
+        expect(document.querySelectorAll('[db-board] tr')[0].querySelector('.db-team').textContent).toBe('Ohio State');
     });
 });
 

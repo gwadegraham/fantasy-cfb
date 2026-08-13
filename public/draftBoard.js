@@ -103,7 +103,11 @@
         var pickText = el('div', 'db-pick-text');
         pickText.appendChild(el('div', 'db-pick-label', 'Take'));
         pickText.appendChild(el('div', 'db-pick-team', a.take.school));
-        pickText.appendChild(el('div', 'db-pick-proj', fmt(a.take.total) + ' projected'));
+        var cap = a.captain || {};
+        pickText.appendChild(el('div', 'db-pick-proj',
+            cap.gain > 0
+                ? fmt(a.take.total) + ' projected  +  ' + fmt(cap.gain) + ' captain  =  ' + fmt(a.effective)
+                : fmt(a.take.total) + ' projected'));
         pick.appendChild(pickText);
         main.appendChild(pick);
 
@@ -125,6 +129,7 @@
             why.appendChild(el('p', 'db-caveat',
                 'Assumes every other manager takes the best team left, which this league does not — treat it as a floor, not a forecast.'));
         }
+        if (cap.enabled) why.appendChild(captainLine(cap, a));
         main.appendChild(why);
         wrap.appendChild(main);
 
@@ -134,6 +139,31 @@
         if (a.safeToWait.length) {
             wrap.appendChild(listRow('Should still be there — no need to reach', a.safeToWait, 'db-safe'));
         }
+    }
+
+    // What the captain is worth for THIS pick. Which of the three states shows is
+    // the useful part: an empty roster means this pick also picks your season
+    // captain; a settled anchor means per-week value can be ignored for the rest
+    // of the draft; in between, the upgrade gets priced.
+    function captainLine(cap) {
+        var p = el('p', 'db-captain');
+        if (cap.gain > 0) {
+            p.appendChild(document.createTextNode(
+                cap.anchorSchool ? 'Captain upgrade: ' : 'This also picks your season captain: '));
+            p.appendChild(el('strong', null, '+' + fmt(cap.gain) + ' points'));
+            p.appendChild(document.createTextNode(cap.anchorSchool
+                ? ' over ' + cap.anchorSchool + ', which you would captain otherwise.'
+                : ' on top of its board value \u2014 the captain doubles regular-season points every week.'));
+        } else if (cap.settled) {
+            p.appendChild(document.createTextNode('Captain settled \u2014 '));
+            p.appendChild(el('strong', null, cap.anchorSchool || 'your anchor'));
+            p.appendChild(document.createTextNode(' beats everything left on the board, so ignore Cap/wk for the rest of the draft.'));
+        } else {
+            p.appendChild(document.createTextNode('No captain upgrade here \u2014 '));
+            p.appendChild(el('strong', null, cap.anchorSchool || 'your anchor'));
+            p.appendChild(document.createTextNode(' still scores more per week.'));
+        }
+        return p;
     }
 
     function listRow(label, teams, cls) {
@@ -164,6 +194,8 @@
             return t.school.toLowerCase().indexOf(q) !== -1
                 || (t.conference || '').toLowerCase().indexOf(q) !== -1;
         });
+        // With the captain priced in the recommended team is not necessarily the
+        // top row — the board stays in market order and the highlight moves.
         var best = data.advice.take;
         // Bars are scaled to the best team STILL on the board, so the tier cliffs
         // stay legible as the top gets picked away.
