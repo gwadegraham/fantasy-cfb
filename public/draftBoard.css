@@ -3,15 +3,34 @@
    this is read at speed with a pick clock running, so the advice is large and
    everything else is a reference table. */
 
+/* Page containers.
+   body is `display:flex; flex-direction:column; align-items:center` (styles.css),
+   so every top-level section here is a FLEX ITEM. Flex items shrink to fit, so a
+   plain `max-width + margin:auto + padding` never produced a gutter — sections
+   narrower than the viewport were centred by the flex `align-items`, and any
+   section whose content filled the viewport ran flush to both edges with no
+   padding at all. `width:100%` makes them fill the cross axis first, and then the
+   max-width and padding behave as intended. */
+.db-shell,
+.db-strip,
+.db-cols {
+    width: 100%;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
 .db-strip {
     display: flex;
     align-items: center;
     gap: 14px;
-    max-width: 1280px;
-    margin: 0 auto 18px;
-    padding: 0 20px;
+    margin-bottom: 18px;
     flex-wrap: wrap;
 }
+
+.db-shell { margin-bottom: 22px; }
 
 .db-live {
     display: inline-flex;
@@ -54,8 +73,6 @@
 /* ---- the advice block: the one thing worth reading at a glance ---- */
 
 .db-advice {
-    max-width: 1280px;
-    margin: 0 auto 22px;
     padding: 20px 22px;
     background: var(--cc-surface);
     border: 1px solid var(--cc-border);
@@ -149,9 +166,7 @@
 /* ---- columns ---- */
 
 .db-cols {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 0 20px 60px;
+    padding-bottom: 60px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
     gap: 18px;
