@@ -503,6 +503,19 @@ app.get('/draft-room', (req, res) => {
     }
 });
 
+// Live draft board — commissioner-only draft-night assistant. Deliberately not
+// linked from the navbar: it is a private tool, not a member feature.
+app.get('/draft-board', (req, res) => {
+    if (!req.oidc.isAuthenticated()) return res.redirect('/login');
+    const roles = devRole.effectiveRoles(req);
+    if (!roles.includes('Admin') && !roles.includes('League Manager')) return res.redirect('/');
+    const user = buildUserContext(req.effUser);
+    res.render('draftBoard', {
+        user, userState: safeJson(req.effUser),
+        year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser)
+    });
+});
+
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
