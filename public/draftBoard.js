@@ -29,6 +29,32 @@
     }
     function fmt(n) { return n == null ? '—' : Number(n).toFixed(1); }
 
+    // Logos ride along on the projections; every other surface (chips, roster,
+    // pick log) looks them up by team id rather than carrying its own copy.
+    var logoById = {};
+    function indexLogos() {
+        logoById = {};
+        (data.projections || []).forEach(function (t) { if (t.logo) logoById[String(t.id)] = t.logo; });
+    }
+    // An <img> for a team, or nothing at all — a missing or broken logo must
+    // never leave a ghost box in a table row.
+    function logo(id, cls) {
+        var src = logoById[String(id)];
+        if (!src) return null;
+        var img = el('img', cls || 'db-logo');
+        img.src = src;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.addEventListener('error', function () { img.remove(); });
+        return img;
+    }
+    function withLogo(cell, id, text) {
+        var img = logo(id);
+        if (img) cell.appendChild(img);
+        cell.appendChild(el('span', null, text));
+        return cell;
+    }
+
     // ---- data ---------------------------------------------------------------
 
     async function load(refresh) {
@@ -72,9 +98,13 @@
 
         var main = el('div', 'db-advice-main');
         var pick = el('div', 'db-pick');
-        pick.appendChild(el('div', 'db-pick-label', 'Take'));
-        pick.appendChild(el('div', 'db-pick-team', a.take.school));
-        pick.appendChild(el('div', 'db-pick-proj', fmt(a.take.total) + ' projected'));
+        var hero = logo(a.take.id, 'db-pick-logo');
+        if (hero) pick.appendChild(hero);
+        var pickText = el('div', 'db-pick-text');
+        pickText.appendChild(el('div', 'db-pick-label', 'Take'));
+        pickText.appendChild(el('div', 'db-pick-team', a.take.school));
+        pickText.appendChild(el('div', 'db-pick-proj', fmt(a.take.total) + ' projected'));
+        pick.appendChild(pickText);
         main.appendChild(pick);
 
         // The scarcity read: what waiting actually costs.
@@ -112,6 +142,8 @@
         var ul = el('div', 'db-chips');
         teams.forEach(function (t) {
             var c = el('span', 'db-chip');
+            var ci = logo(t.id, 'db-chip-logo');
+            if (ci) c.appendChild(ci);
             c.appendChild(el('span', 'db-chip-name', t.school));
             c.appendChild(el('span', 'db-chip-val', fmt(t.total)));
             ul.appendChild(c);
@@ -133,13 +165,21 @@
                 || (t.conference || '').toLowerCase().indexOf(q) !== -1;
         });
         var best = data.advice.take;
+        // Bars are scaled to the best team STILL on the board, so the tier cliffs
+        // stay legible as the top gets picked away.
+        var top = rows.length ? rows[0].total : 1;
         rows.slice(0, 120).forEach(function (t, i) {
             var tr = el('tr');
             if (best && t.id === best.id) tr.className = 'db-best';
             tr.appendChild(el('td', 'db-num db-rank', String(i + 1)));
-            tr.appendChild(el('td', 'db-team', t.school));
+            tr.appendChild(withLogo(el('td', 'db-team'), t.id, t.school));
             tr.appendChild(el('td', 'db-conf', t.conference || '—'));
-            tr.appendChild(el('td', 'db-num db-proj', fmt(t.total)));
+            var projCell = el('td', 'db-num db-proj');
+            var bar = el('span', 'db-bar');
+            bar.style.width = Math.max(2, Math.round((t.total / (top || 1)) * 100)) + '%';
+            projCell.appendChild(bar);
+            projCell.appendChild(el('span', 'db-proj-val', fmt(t.total)));
+            tr.appendChild(projCell);
             tr.appendChild(el('td', 'db-num', fmt(t.regular)));
             tr.appendChild(el('td', 'db-num', fmt(t.post)));
             tr.appendChild(el('td', 'db-num', t.perWeek == null ? '—' : t.perWeek.toFixed(2)));
@@ -160,7 +200,7 @@
             total += r.total || 0;
             var li = el('li');
             li.appendChild(el('span', 'db-r-round', 'R' + r.round));
-            li.appendChild(el('span', 'db-r-team', r.school));
+            li.appendChild(withLogo(el('span', 'db-r-team'), r.id, r.school));
             li.appendChild(el('span', 'db-r-val', fmt(r.total)));
             ol.appendChild(li);
         });
@@ -183,13 +223,14 @@
             var li = el('li');
             if (String(p.userId) === String(ME)) li.className = 'db-mine';
             li.appendChild(el('span', 'db-l-num', '#' + p.overall));
-            li.appendChild(el('span', 'db-l-team', p.school));
+            li.appendChild(withLogo(el('span', 'db-l-team'), p.teamId, p.school));
             ol.appendChild(li);
         });
     }
 
     function render() {
         if (!data) return;
+        indexLogos();
         $('[db-source]').textContent = 'Ranked bonuses: ' + data.rankedSource;
         renderAdvice();
         renderBoard();

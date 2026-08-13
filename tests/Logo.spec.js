@@ -39,9 +39,13 @@ describe('pickLogo', () => {
     test('regression: does NOT return the tiny dark-16 that .at(-1) would', () => {
         expect(pickLogo(CFBD)).not.toContain('/16/');
     });
+    // The ESPN fixtures are stored as http://; the SELECTION here is unchanged
+    // (still dark-500 / light-500, matching the old .at(-1)) — only the scheme is
+    // upgraded on the way out, so the image isn't blocked as mixed content.
     test('ESPN back-compat: still the dark-500 (matches the old .at(-1))', () => {
-        expect(pickLogo(ESPN)).toBe('http://a.espncdn.com/i/teamlogos/ncaa/500-dark/333.png');
-        expect(pickLogo(ESPN, { dark: false })).toBe('http://a.espncdn.com/i/teamlogos/ncaa/500/333.png');
+        expect(pickLogo(ESPN)).toBe('https://a.espncdn.com/i/teamlogos/ncaa/500-dark/333.png');
+        expect(pickLogo(ESPN, { dark: false })).toBe('https://a.espncdn.com/i/teamlogos/ncaa/500/333.png');
+        expect(pickLogo(ESPN)).toContain('/500-dark/');
     });
     test('single-logo team: returns the only logo regardless of variant', () => {
         expect(pickLogo(['https://cdn.collegefootballdata.com/logos/500/1.png']))
@@ -55,5 +59,46 @@ describe('pickLogo', () => {
     test('drops falsy entries', () => {
         expect(pickLogo([null, '', 'https://cdn.collegefootballdata.com/logos-dark/500/1.png']))
             .toBe('https://cdn.collegefootballdata.com/logos-dark/500/1.png');
+    });
+});
+
+// Mixed content: the app is served over https in production, but every logo URL
+// CFBD/ESPN store is http://. A browser blocks those, so the logos silently
+// vanish everywhere at once — the failure looks like "the images are broken",
+// not like a protocol problem. pickLogo is the one selector every surface goes
+// through, so the upgrade belongs here.
+describe('https upgrade', () => {
+    const ESPN = 'a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png';
+
+    it('upgrades an http logo so it is not blocked as mixed content', () => {
+        expect(pickLogo(['http://' + ESPN])).toBe('https://' + ESPN);
+    });
+
+    it('leaves an https logo alone', () => {
+        expect(pickLogo(['https://' + ESPN])).toBe('https://' + ESPN);
+    });
+
+    it('is case-insensitive about the scheme', () => {
+        expect(pickLogo(['HTTP://' + ESPN])).toBe('https://' + ESPN);
+    });
+
+    it('does not touch a protocol-relative URL', () => {
+        expect(pickLogo(['//' + ESPN])).toBe('//' + ESPN);
+    });
+
+    it('only rewrites the scheme, never an http substring elsewhere in the path', () => {
+        const tricky = 'https://cdn.example.com/logos/http://not-a-scheme/1.png';
+        expect(pickLogo([tricky])).toBe(tricky);
+    });
+
+    it('still returns empty for a team with no logos', () => {
+        expect(pickLogo([])).toBe('');
+        expect(pickLogo(null)).toBe('');
+    });
+
+    it('upgrades the winner, not merely the first entry', () => {
+        // dark-500 should win on variant+size, and come back upgraded.
+        const logos = ['http://x/logos/16/1.png', 'http://x/logos-dark/500/1.png', 'http://x/logos/500/1.png'];
+        expect(pickLogo(logos)).toBe('https://x/logos-dark/500/1.png');
     });
 });

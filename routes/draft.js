@@ -13,6 +13,7 @@ const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../m
 const { computeGrades } = require('../modules/draft-grades');
 const { canManageLeague } = require('../modules/league-access');
 const { sanitizeCallUrl } = require('../modules/draft-call-link');
+const { pickLogo } = require('../public/logo.js');
 
 // Post-draft grades for a league + season — immediate preseason feedback. Each
 // roster is projected to EXPECTED FANTASY POINTS under that league's own scoring
@@ -149,6 +150,8 @@ function projectPool(teamsById, games, config, apPoll, season) {
         const s = (t.seasons || []).find(x => Number(x.season) === season) || {};
         return {
             id: t.id, school: t.school, conference: s.conference || null,
+            // Dark-variant logo at the best resolution — the page is dark-themed.
+            logo: pickLogo(t.logos) || null,
             total: Math.round(p.total * 10) / 10,
             regular: Math.round(p.regular * 10) / 10,
             post: Math.round((p.cfp + p.confChamp + p.bowl) * 10) / 10,

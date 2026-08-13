@@ -79,7 +79,12 @@
     margin-top: 10px;
 }
 
-.db-pick { flex: 0 0 auto; }
+.db-pick { flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }
+.db-pick-logo {
+    width: 68px; height: 68px; object-fit: contain;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,.5));
+}
+.db-pick-text { min-width: 0; }
 .db-pick-label {
     font-size: 0.74rem;
     letter-spacing: 0.12em;
@@ -119,7 +124,7 @@
 .db-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .db-chip {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
     gap: 7px;
     padding: 4px 10px;
     border-radius: var(--cc-r-pill);
@@ -259,3 +264,50 @@
 .db-r-total .db-r-team, .db-r-total .db-r-val { color: var(--cc-text); }
 .db-log .db-mine .db-l-team { color: var(--cc-accent); font-weight: 600; }
 .db-empty { color: var(--cc-muted-2); font-style: italic; }
+
+
+/* ---- logos ---- */
+
+.db-logo {
+    width: 20px; height: 20px; object-fit: contain;
+    flex: 0 0 auto; vertical-align: middle;
+}
+.db-team, .db-r-team, .db-l-team {
+    display: flex; align-items: center; gap: 8px;
+}
+.db-chip-logo { width: 16px; height: 16px; object-fit: contain; flex: 0 0 auto; }
+
+/* Board rows sit tighter than a logo's natural line box; pin the height so a
+   team with no logo doesn't render a shorter row than its neighbours. */
+.db-table td { height: 34px; }
+
+/* ---- value bar ----
+   A proportional bar behind the projection, scaled to the best team STILL on the
+   board. It exists so the tier cliffs are visible at a glance: the gap between
+   round-1 teams and the flat 16-19 block is the whole strategic point of this
+   league, and a column of numbers hides it. */
+
+.db-proj { position: relative; }
+.db-bar {
+    position: absolute;
+    right: 12px;
+    bottom: 4px;
+    height: 3px;
+    border-radius: var(--cc-r-pill);
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--cc-interactive) 25%, transparent),
+        var(--cc-interactive));
+    opacity: 0.55;
+    pointer-events: none;
+}
+.db-best .db-bar {
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--cc-accent) 30%, transparent),
+        var(--cc-accent));
+    opacity: 0.9;
+}
+.db-proj-val { position: relative; }
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}

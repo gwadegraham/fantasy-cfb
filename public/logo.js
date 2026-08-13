@@ -22,6 +22,16 @@
         return isFinite(n) ? n : 0;
     }
 
+    // CFBD/ESPN hand these back as http:// URLs, with no https anywhere in the
+    // stored data. The app is served over https in production, where a browser
+    // blocks an http image as mixed content — so every logo silently vanishes.
+    // ESPN serves the identical path over https, so upgrade it here, in the one
+    // selector every surface already goes through. Protocol-relative and https
+    // URLs pass through untouched.
+    function secure(url) {
+        return String(url == null ? '' : url).replace(/^http:\/\//i, 'https://');
+    }
+
     // Best logo for a surface: the wanted variant (dark by default, for the dark
     // UI; opts.dark === false picks light, e.g. for emails / light pages) at the
     // highest resolution. Falls back to the full list when a team has only one
@@ -38,8 +48,8 @@
         // identify a genuinely better (dark, higher-res) logo.
         var best = pool.map(function (u, i) { return { u: u, i: i, s: logoSize(u) }; })
             .sort(function (a, b) { return (b.s - a.s) || (b.i - a.i); })[0];
-        return best.u;
+        return secure(best.u);
     }
 
-    return { pickLogo: pickLogo, logoSize: logoSize };
+    return { pickLogo: pickLogo, logoSize: logoSize, secure: secure };
 }));

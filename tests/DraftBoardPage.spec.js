@@ -40,11 +40,11 @@ function payload(over) {
         league: 'graham-league', season: 2026,
         rankedSource: 'SP+ stand-in (stored poll is "Coaches Poll")',
         projections: [
-            { id: 1, school: 'Ohio State', conference: 'Big Ten', total: 34.4, regular: 21.9, post: 12.5, perWeek: 1.83 },
-            { id: 2, school: 'Texas', conference: 'SEC', total: 34.3, regular: 24.0, post: 10.3, perWeek: 2.0 },
+            { id: 1, school: 'Ohio State', conference: 'Big Ten', total: 34.4, regular: 21.9, post: 12.5, perWeek: 1.83, logo: 'https://x/osu-dark.png' },
+            { id: 2, school: 'Texas', conference: 'SEC', total: 34.3, regular: 24.0, post: 10.3, perWeek: 2.0, logo: 'https://x/tex-dark.png' },
             { id: 3, school: 'Oregon', conference: 'Big Ten', total: 32.8, regular: 21.5, post: 11.3, perWeek: 1.79 },
-            { id: 4, school: 'LSU', conference: 'SEC', total: 25.6, regular: 18.8, post: 6.8, perWeek: 1.57 },
-            { id: 5, school: 'Notre Dame', conference: 'FBS Independents', total: 24.8, regular: 14.0, post: 10.7, perWeek: 1.17 }
+            { id: 4, school: 'LSU', conference: 'SEC', total: 25.6, regular: 18.8, post: 6.8, perWeek: 1.57, logo: 'https://x/lsu-dark.png' },
+            { id: 5, school: 'Notre Dame', conference: 'FBS Independents', total: 24.8, regular: 14.0, post: 10.7, perWeek: 1.17, logo: null }
         ],
         draft: { status: 'active', currentOverall: 2, snake: true, totalRounds: 10, draftOrder: [], picks: [] },
         schedule: { next: { overall: 2, round: 1 }, after: { overall: 11, round: 2 }, onTheClock: false, gap: 8 },
@@ -168,6 +168,68 @@ describe('the board', () => {
         search.dispatchEvent(new Event('input'));
         expect([...document.querySelectorAll('[db-board] .db-team')].map(e => e.textContent))
             .toEqual(['Texas', 'LSU']);
+    });
+});
+
+describe('logos', () => {
+    it('shows the recommended team\'s logo big, and its name still reads plainly', async () => {
+        await loadPage(payload());
+        const hero = document.querySelector('.db-pick-logo');
+        expect(hero.src).toBe('https://x/osu-dark.png');
+        expect(hero.alt).toBe('');                                   // decorative; the name is right there
+        expect(document.querySelector('.db-pick-team').textContent).toBe('Ohio State');
+    });
+
+    it('puts a logo in every board row that has one', async () => {
+        await loadPage(payload());
+        const first = document.querySelector('[db-board] .db-team');
+        expect(first.querySelector('img').src).toBe('https://x/osu-dark.png');
+        expect(first.textContent).toBe('Ohio State');                // text unaffected by the img
+    });
+
+    it('renders no img at all for a team without a logo', async () => {
+        await loadPage(payload());
+        const nd = [...document.querySelectorAll('[db-board] .db-team')].find(e => e.textContent === 'Notre Dame');
+        expect(nd).toBeTruthy();
+        expect(nd.querySelector('img')).toBeNull();                  // no ghost box
+    });
+
+    it('drops a logo that fails to load rather than leaving a broken image', async () => {
+        await loadPage(payload());
+        const img = document.querySelector('[db-board] .db-team img');
+        const row = img.parentElement;
+        img.dispatchEvent(new Event('error'));
+        expect(row.querySelector('img')).toBeNull();
+        expect(row.textContent).toBe('Ohio State');
+    });
+
+    it('carries logos into the chips and the pick log', async () => {
+        await loadPage(payload({
+            draft: { status: 'active', currentOverall: 3, snake: true, totalRounds: 10, draftOrder: [],
+                picks: [{ overall: 1, round: 1, userId: 'other', teamId: 2, school: 'Texas' }] }
+        }));
+        expect(document.querySelector('.db-chip-logo')).not.toBeNull();
+        expect(document.querySelector('[db-log] .db-l-team img').src).toBe('https://x/tex-dark.png');
+    });
+});
+
+describe('the value bar', () => {
+    it('scales every bar against the best team still on the board', async () => {
+        await loadPage(payload());
+        const bars = [...document.querySelectorAll('[db-board] .db-bar')];
+        expect(bars).toHaveLength(5);
+        expect(bars[0].style.width).toBe('100%');                    // Ohio State, the top
+        expect(parseInt(bars[4].style.width, 10)).toBe(Math.round(24.8 / 34.4 * 100));
+    });
+
+    it('rescales once the top team is drafted', async () => {
+        await loadPage(payload({
+            draft: { status: 'active', currentOverall: 3, snake: true, totalRounds: 10, draftOrder: [],
+                picks: [{ overall: 1, round: 1, userId: 'other', teamId: 1, school: 'Ohio State' }] }
+        }));
+        const bars = [...document.querySelectorAll('[db-board] .db-bar')];
+        expect(bars[0].style.width).toBe('100%');                    // now Texas
+        expect(parseInt(bars[3].style.width, 10)).toBe(Math.round(24.8 / 34.3 * 100));
     });
 });
 
