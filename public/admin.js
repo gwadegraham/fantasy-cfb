@@ -667,6 +667,25 @@ window.onload = async function() {
     loadReadiness();
 };
 
+// A rename only reaches the rest of the page on the next render, since the
+// names are seeded server-side (views/partials/navbar.ejs). Patch the seed in
+// place and repaint, so the commissioner sees the new name take effect on the
+// switcher, the page title and the scoring header instead of doubting the save.
+function applyLeagueRename(code, name) {
+    ((window.CC_LEAGUE && window.CC_LEAGUE.all) || []).forEach(function (l) {
+        if (l.code === code) l.name = name;
+    });
+    var item = document.querySelector('[league-selector] a[value="' + code + '"]');
+    if (item) item.textContent = name;
+    if (typeof getDraftLeagueCode === 'function' && getDraftLeagueCode() === code) {
+        window.sessionStorage.setItem('league', name);
+        if ($('#dropdownMenuButton').length) $('#dropdownMenuButton').text(name);
+        var hdr = document.querySelector('[scoring-config-model]');
+        if (hdr && scoringConfigData) hdr.textContent = scoringHeaderLabel();
+    }
+    ccLeague.paint();
+}
+
 // League name: rename the active league (own-league enforced server-side).
 const leagueNameForm = document.getElementById('league-name-form');
 if (leagueNameForm) {
@@ -687,6 +706,7 @@ if (leagueNameForm) {
             });
             const data = await res.json().catch(() => ({}));
             if (res.status === 200) {
+                applyLeagueRename(data.code, data.name);
                 successToast.options.text = `League renamed to "${data.name}"`;
                 successToast.showToast();
             } else {
@@ -2120,13 +2140,19 @@ async function loadScoringConfig(model) {
 // Plain-language name for each rule shape (the league's `model`).
 var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values' };
 
+// "<League> — <rule shape>". The name comes from ccLeague rather than a
+// hardcoded map: League setup, a few sections up this same page, can rename a
+// league — and this header used to go on showing the old name forever.
+function scoringHeaderLabel() {
+    var leagueName = ccLeague.name(getDraftLeagueCode());
+    var shape = SHAPE_LABEL[scoringConfigData.model] || scoringConfigData.model;
+    return (leagueName ? leagueName + ' — ' : '') + shape;
+}
+
 // Reflects the loaded config into the UI: header, selected shape, rule rows,
 // and the worked example. Shared by load and save.
 function applyScoringConfig() {
-    var leagueCode = getDraftLeagueCode();
-    var leagueName = (leagueCode === 'graham-league' ? 'Graham' : 'Claunts') + ' League';
-    document.querySelector('[scoring-config-model]').textContent =
-        leagueName + ' — ' + (SHAPE_LABEL[scoringConfigData.model] || scoringConfigData.model);
+    document.querySelector('[scoring-config-model]').textContent = scoringHeaderLabel();
     setShape(scoringConfigData.model);
     renderScoringFields();
     renderShapeExample();

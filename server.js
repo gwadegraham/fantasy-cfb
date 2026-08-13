@@ -118,6 +118,15 @@ app.use(async (req, res, next) => {
             }
         }
     } catch (e) { /* fall back to defaults */ }
+    // Seed the client helper (public/league.js) off the same names, plus the
+    // viewer's own league and whether they may switch. Every page that shows a
+    // league name reads it from there, so a rename lands everywhere at once and
+    // no page has to re-derive the league from Auth0 metadata.
+    res.locals.leagueSeed = safeJson({
+        code: (req.oidc && req.oidc.isAuthenticated()) ? leagueCodeFor(req.effUser) : '',
+        canSwitch: devRole.effectiveRoles(req).includes('Admin'),
+        all: res.locals.leagues
+    });
     next();
 });
 

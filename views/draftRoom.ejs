@@ -15,7 +15,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="draftGrades.js"></script>
     <script defer src="draftRoom.js"></script>
-    <title>Campus Clash</title>
+    <title data-league-title="Draft Room">Draft Room · Campus Clash</title>
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
@@ -34,6 +34,7 @@
 
     <div class="header">
         <div class="header-title" poll-name>
+            <span class="header-league" league-label hidden></span>
             Draft Room
         </div>
     </div>

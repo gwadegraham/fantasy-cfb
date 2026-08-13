@@ -28,6 +28,13 @@
 <!-- Shared league placement (ccLeagueRank): competition ranking off the season
      total, so tied managers share a rank instead of being ordered by the DB. -->
 <script src="/league-rank.js"></script>
+<!-- Shared league identity (ccLeague): the display name of whichever league a
+     page is showing. Names are commissioner-editable, so they're seeded from the
+     server on every render instead of being hardcoded anywhere client-side. -->
+<script>
+    window.CC_LEAGUE = <%- (typeof leagueSeed !== 'undefined' && leagueSeed) || '{}' %>;
+</script>
+<script src="/league.js"></script>
 <!-- Weekly Recap: shared card rendering + the once-a-week popup, app-wide so the
      popup can greet the logged-in viewer on whatever page they land on. -->
 <link rel="stylesheet" type="text/css" href="/weekly-recap.css">
