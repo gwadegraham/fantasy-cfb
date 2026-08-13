@@ -1,0 +1,335 @@
+/* Live draft board — commissioner-only draft-night assistant.
+   Built entirely on the --cc-* design tokens in styles.css. Dense on purpose:
+   this is read at speed with a pick clock running, so the advice is large and
+   everything else is a reference table. */
+
+/* Page containers.
+   body is `display:flex; flex-direction:column; align-items:center` (styles.css),
+   so every top-level section here is a FLEX ITEM. Flex items shrink to fit, so a
+   plain `max-width + margin:auto + padding` never produced a gutter — sections
+   narrower than the viewport were centred by the flex `align-items`, and any
+   section whose content filled the viewport ran flush to both edges with no
+   padding at all. `width:100%` makes them fill the cross axis first, and then the
+   max-width and padding behave as intended. */
+.db-shell,
+.db-strip,
+.db-cols {
+    width: 100%;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+.db-strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.db-shell { margin-bottom: 22px; }
+
+.db-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cc-muted);
+}
+.db-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-muted-2);
+}
+.db-live-on .db-dot { background: var(--cc-success); }
+.db-live-off .db-dot { background: var(--cc-danger-text); }
+
+.db-meta {
+    font-size: 0.78rem;
+    color: var(--cc-muted-2);
+}
+
+.db-refresh {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    border-radius: var(--cc-r-sm);
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border-2);
+    color: var(--cc-muted-bright);
+    cursor: pointer;
+}
+.db-refresh:hover { background: var(--cc-surface-3); color: var(--cc-text); }
+.db-refresh:focus-visible,
+.db-search:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+
+/* ---- the advice block: the one thing worth reading at a glance ---- */
+
+.db-advice {
+    padding: 20px 22px;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-left: 4px solid var(--cc-accent);
+    border-radius: var(--cc-r-lg);
+}
+
+.db-eyebrow {
+    font-size: 0.74rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cc-accent);
+    font-weight: 700;
+}
+
+.db-advice-main {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.db-pick { flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }
+.db-pick-logo {
+    width: 68px; height: 68px; object-fit: contain;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,.5));
+}
+.db-pick-text { min-width: 0; }
+.db-pick-label {
+    font-size: 0.74rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+}
+.db-pick-team {
+    font-family: 'Graduate', serif;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    line-height: 1.1;
+    color: var(--cc-text);
+}
+.db-pick-proj {
+    font-size: 0.85rem;
+    color: var(--cc-muted-bright);
+    font-variant-numeric: tabular-nums;
+}
+
+.db-why {
+    flex: 1 1 320px;
+    min-width: 0;
+    font-size: 0.92rem;
+    color: var(--cc-muted-bright);
+}
+.db-why p { margin: 0 0 6px; }
+.db-why strong { color: var(--cc-text); }
+.db-caveat { font-size: 0.8rem; color: var(--cc-muted-2); }
+.db-captain {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--cc-border-2);
+    color: var(--cc-muted-bright);
+}
+.db-captain strong { color: var(--cc-amber); }
+
+.db-listrow { margin-top: 14px; }
+.db-listrow-label {
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+    margin-bottom: 6px;
+}
+.db-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.db-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-surface-2);
+    border: 1px solid var(--cc-border);
+    font-size: 0.85rem;
+}
+.db-chip-val {
+    font-size: 0.76rem;
+    color: var(--cc-muted-2);
+    font-variant-numeric: tabular-nums;
+}
+.db-risk .db-chip { border-color: var(--cc-danger); }
+.db-safe .db-chip { border-color: var(--cc-border-2); }
+
+.db-done, .db-error {
+    font-size: 1rem;
+    color: var(--cc-muted-bright);
+}
+.db-error { color: var(--cc-danger-text); }
+
+/* ---- columns ---- */
+
+.db-cols {
+    padding-bottom: 60px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 18px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .db-cols { grid-template-columns: 1fr; }
+}
+
+.db-panel {
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-lg);
+    overflow: hidden;
+}
+.db-side { display: grid; gap: 18px; }
+
+.db-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--cc-border);
+}
+.db-panel-head h2 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--cc-text);
+}
+.db-search {
+    margin-left: auto;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 5px 10px;
+    border-radius: var(--cc-r-sm);
+    background: var(--cc-surface-2);
+    border: 1px solid var(--cc-border-2);
+    color: var(--cc-text);
+    min-width: 150px;
+}
+.db-count {
+    font-size: 0.76rem;
+    color: var(--cc-muted-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* ---- board table ---- */
+
+.db-tablewrap { overflow-x: auto; max-height: 70vh; overflow-y: auto; }
+.db-table { border-collapse: collapse; width: 100%; min-width: 520px; }
+.db-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--cc-surface-2);
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+    border-bottom: 1px solid var(--cc-border);
+    white-space: nowrap;
+}
+.db-table td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--cc-border);
+    font-size: 0.88rem;
+    color: var(--cc-muted-bright);
+}
+.db-table tbody tr:hover td { background: var(--cc-surface-2); }
+.db-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.db-rank { color: var(--cc-muted-2); font-size: 0.78rem; width: 42px; }
+.db-team { color: var(--cc-text); font-weight: 600; }
+.db-conf { font-size: 0.8rem; color: var(--cc-muted); white-space: nowrap; }
+.db-proj { color: var(--cc-text); font-weight: 600; }
+
+.db-table tbody tr.db-best td {
+    background: color-mix(in srgb, var(--cc-accent) 12%, transparent);
+}
+.db-table tbody tr.db-best .db-team { color: var(--cc-text); }
+
+/* ---- roster + log ---- */
+
+.db-roster, .db-log { list-style: none; margin: 0; padding: 6px 0; }
+.db-roster li, .db-log li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 16px;
+    font-size: 0.86rem;
+    color: var(--cc-muted-bright);
+}
+.db-r-round, .db-l-num {
+    flex: 0 0 34px;
+    font-size: 0.74rem;
+    color: var(--cc-muted-2);
+    font-variant-numeric: tabular-nums;
+}
+.db-r-team, .db-l-team { flex: 1; min-width: 0; color: var(--cc-text); }
+.db-r-val { font-variant-numeric: tabular-nums; color: var(--cc-muted-bright); }
+.db-r-total {
+    border-top: 1px solid var(--cc-border);
+    margin-top: 4px;
+    padding-top: 10px;
+    font-weight: 600;
+}
+.db-r-total .db-r-team, .db-r-total .db-r-val { color: var(--cc-text); }
+.db-log .db-mine .db-l-team { color: var(--cc-accent); font-weight: 600; }
+.db-empty { color: var(--cc-muted-2); font-style: italic; }
+
+
+/* ---- logos ---- */
+
+.db-logo {
+    width: 20px; height: 20px; object-fit: contain;
+    flex: 0 0 auto; vertical-align: middle;
+}
+.db-team, .db-r-team, .db-l-team {
+    display: flex; align-items: center; gap: 8px;
+}
+.db-chip-logo { width: 16px; height: 16px; object-fit: contain; flex: 0 0 auto; }
+
+/* Board rows sit tighter than a logo's natural line box; pin the height so a
+   team with no logo doesn't render a shorter row than its neighbours. */
+.db-table td { height: 34px; }
+
+/* ---- value bar ----
+   A proportional bar behind the projection, scaled to the best team STILL on the
+   board. It exists so the tier cliffs are visible at a glance: the gap between
+   round-1 teams and the flat 16-19 block is the whole strategic point of this
+   league, and a column of numbers hides it. */
+
+.db-proj { position: relative; }
+.db-bar {
+    position: absolute;
+    right: 12px;
+    bottom: 4px;
+    height: 3px;
+    border-radius: var(--cc-r-pill);
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--cc-interactive) 25%, transparent),
+        var(--cc-interactive));
+    opacity: 0.55;
+    pointer-events: none;
+}
+.db-best .db-bar {
+    background: linear-gradient(90deg,
+        color-mix(in srgb, var(--cc-accent) 30%, transparent),
+        var(--cc-accent));
+    opacity: 0.9;
+}
+.db-proj-val { position: relative; }
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}
