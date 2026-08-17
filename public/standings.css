@@ -1,17 +1,39 @@
 @media only screen and (min-width: 0em) {
 
+    /* Width and side margins come from the shared content-box rule at the foot
+       of this file; stretch lets the box fill between those margins (body is a
+       centring column flex container, which would otherwise shrink-wrap it). */
     .header {
         display: flex;
-        width: 95%;
         flex-direction: row;
-        align-self: flex-start;
+        align-self: stretch;
         align-items: center;
-        margin-left: 1em;
         justify-content: space-between;
     }
 
     .header-title, .last-updated-container {
         display: flex;
+    }
+
+    /* Align the title stack to its own left edge, overriding the centring
+       styles.css gives .header-title.
+       Here .header is a space-between row, so the title block is left-anchored
+       and shrink-wrapped. A flex container's max-content width SUMS its items
+       even when flex-wrap will put them on separate lines, so once the league
+       eyebrow moved inside .header-title the block became eyebrow-width +
+       title-width — far wider than either line. Centring each line in that
+       over-wide box floated "Standings" ~40px (mobile) to ~90px (desktop) right
+       of the content gutter, which read as the heading being pushed right.
+       Left-aligning puts the eyebrow and the title on one shared left edge,
+       exactly where the title sat before the eyebrow existed. Inert for the
+       section headings ("Rivalry Games"), whose only child is the title. */
+    .header-title {
+        justify-content: flex-start;
+        text-align: left;   /* inherited by .header-league */
+        /* The title's own left padding would inset the text from the content box
+           it now shares with the table (5px below 64em; the 64em rule already
+           zeroes it). Vertical padding is untouched. */
+        padding-left: 0;
     }
 
     .last-updated {
@@ -347,14 +369,9 @@
         line-height: 2.6em;
     }
 
-    /* Cap + center the main content so it doesn't sprawl edge-to-edge on wide
-       screens (the table container is width:100%); gives comfortable margins
-       on laptops/large monitors. */
-    .table-wrapper {
-        max-width: 1200px;
-        margin-left: auto;
-        margin-right: auto;
-    }
+    /* The 1200px cap + centring that used to live here is now part of the shared
+       content-box rule at the foot of this file, so the table can't end up on a
+       different edge than the header above it. */
 
     .team-item {
         justify-content: space-between;
@@ -572,7 +589,14 @@
    its content (~580px) and the chart never gets to use its max-width. Stretch it
    (capped + centered, matching the other sections) so "Path to the Championship"
    can grow on wider screens. */
-.chart-container { width: 100%; max-width: 1200px; box-sizing: border-box; }
+/* Gutter as padding, not margin: width:100% is what stops the shrink-to-content
+   above, and side margins on top of that would overflow the viewport. So the cap
+   is 1200 of content inside 20px of padding, and the section lands on the same
+   edges as the header and table (see the shared content box at the foot). */
+.chart-container { width: 100%; max-width: 1240px; box-sizing: border-box; padding-left: 20px; padding-right: 20px; }
+/* This .header is inside the box rather than being one, so it must not add a
+   second gutter on top of the padding above. */
+.chart-container .header { margin-left: 0; margin-right: 0; }
 .chart-canvas-wrap { position: relative; height: 340px; width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 10px; box-sizing: border-box; }
 .chart-mode-toggle { display: flex; justify-content: center; margin: 10px 0 4px; }
 .chart-mode-toggle button { background: var(--cc-surface); color: var(--cc-muted-bright); border: 1px solid var(--cc-border); padding: 6px 16px; cursor: pointer; font-family: inherit; font-size: 0.85rem; }
@@ -917,4 +941,27 @@
         width: auto;
         white-space: nowrap;
     }
+}
+
+/* ================================================================= */
+/* Shared content box                                                */
+/* ================================================================= */
+
+/* One left and right edge for the whole page. These three used to compute their
+   own, and disagreed: the header ran width:95% off a 1em left margin, the chip
+   sat at a flat 20px, and the table capped at 1200px with auto margins that
+   collapsed to ZERO between 1024px and 1240px — so in that range the table went
+   edge-to-edge while the header and chip did not.
+   One expression instead: a 20px gutter until the 1200px cap starts centring the
+   content, after which the gutter is whatever the cap leaves over. Both terms are
+   the same at the two ends as the old rules (20px on mobile, 40px at 1280px), so
+   only the in-between range changes — it gains the gutter it should have had.
+   The percentage resolves against each element's containing block, which is the
+   viewport-width body or .get-users-container in all three cases. Placed last so
+   it beats the margin shorthands above without needing !important. */
+.header,
+.standings-rank-note,
+.table-wrapper {
+    margin-left: max(20px, (100% - 1200px) / 2);
+    margin-right: max(20px, (100% - 1200px) / 2);
 }
