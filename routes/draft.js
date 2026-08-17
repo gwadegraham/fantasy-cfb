@@ -48,6 +48,12 @@ router.get('/grades/:league/:season', async (req, res) => {
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const config = resolveConfig(league, overridesFromDoc(cfgDoc));
 
+        // week 1 = the PRESEASON AP poll, and deliberately frozen there. A grade
+        // is a judgment about a roster as drafted; if it read the current poll it
+        // would drift all season and a manager's "A-" could quietly become a "B"
+        // for reasons that have nothing to do with their draft. The standings
+        // projections do the opposite on purpose — see projectionPoll in
+        // routes/standings.js.
         const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
         const apPoll = apDoc && Array.isArray(apDoc.polls)
             ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
@@ -99,6 +105,8 @@ router.get('/board/:league/:season', async (req, res) => {
             const cfgDoc = await ScoringConfig.findOne({ league }).lean();
             const config = resolveConfig(league, overridesFromDoc(cfgDoc));
 
+            // Preseason poll, like the grades above — the board only runs during
+            // the draft, when week 1 IS the latest poll anyway.
             const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
             const apPoll = apDoc && Array.isArray(apDoc.polls)
                 ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
