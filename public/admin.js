@@ -269,7 +269,7 @@ function timeAgo(iso) {
 
 var JOB_LABELS = {
     'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
-    'live-scores': 'Live'
+    'live-scores': 'Live', 'enrichment': 'SP+ / media'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -294,7 +294,10 @@ function renderAdminStatus(el, s, api, year, jobs) {
     // Automated-job last-run summary (green success, red error, amber running).
     var jobsBlock = '';
     if (jobs && jobs.length) {
-        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores'];
+        // Any job missing from this list sorts to indexOf -1, i.e. AHEAD of the
+        // scoring jobs — so a new job name has to be added here, not just to
+        // JOB_LABELS, or it silently jumps the queue.
+        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores', 'enrichment'];
         // Collapse to the latest run per job — the live poller writes a run every
         // few minutes on game days, so showing raw history would bury the others.
         var latest = {};

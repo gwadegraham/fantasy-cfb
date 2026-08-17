@@ -1,13 +1,8 @@
 const { runFullUpdate } = require('./score-update');
 const { startRun, finishRun } = require('./job-logger');
-const { sendJobEmail } = require('./job-mailer');
-
-// Emails on a successful run only when explicitly opted in. Default is
-// failure-only: a healthy run is the norm (~50/month in season) and just adds
-// inbox noise — the admin status strip and standings "last updated" badge cover
-// the healthy state. Failures always email. Set JOB_EMAIL_ON_SUCCESS=true to
-// restore a report on every run.
-function emailOnSuccess() { return process.env.JOB_EMAIL_ON_SUCCESS === 'true'; }
+// emailOnSuccess (the failure-only default) lives in job-mailer so jobs that
+// don't need the scoring pipeline can share it; re-exported here unchanged.
+const { sendJobEmail, emailOnSuccess } = require('./job-mailer');
 
 // Builds a job's run(): logs the run (start -> success/error), executes the
 // shared pipeline, and emails a run report on failure (and on success only when

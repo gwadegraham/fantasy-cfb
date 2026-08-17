@@ -19,7 +19,29 @@ const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
         h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
+const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
+
+// The poll the PROJECTIONS should value a hypothetical ranked win against: the
+// most recent regular-season poll on file.
+//
+// Draft grades and the draft board (routes/draft.js) deliberately do the
+// opposite — they read week 1 and stay there — because a grade is a preseason
+// judgment about a preseason roster and must not drift as the top 25 reshuffles.
+// A projection is the opposite kind of claim: it forecasts what the REMAINING
+// schedule is worth, so a team that climbed into the top 10 in October should
+// have its wins valued at October's rank, not August's.
+//
+// Uses the engine's own findPoll rather than plucking 'AP Top 25' directly, so
+// the projection prefers the Playoff Committee Rankings exactly when scoring
+// does. Picking AP by hand meant that from the committee's first release onward,
+// a projected "beat a ranked team" bonus could be worth something different than
+// the same win actually banked. Returns null when no poll is stored, which
+// buildRankingProxy answers with its SP+-derived stand-in.
+async function projectionPoll(season) {
+    const doc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: -1 }).lean();
+    return findPoll(doc);
+}
 
 // The scoring jobs that actually refresh standings data (see modules/score-job.js
 // and modules/live-poll.js). 'live-scores' is the game-day live poller, so the
@@ -167,10 +189,7 @@ router.get('/projections/:league/:season', async (req, res) => {
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
-        const apDoc = await Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: 1 }).lean();
-        const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
-
-        const rankings = buildRankingProxy(season, teamsById, apPoll);
+        const rankings = buildRankingProxy(season, teamsById, await projectionPoll(season));
         const poolCtx = buildPoolContext(teamsById, season);
         const managers = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
         // Forward-looking only: if the regular season has no games left (season
@@ -397,9 +416,12 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 });
             });
             const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
-            const apDoc = await Ranking.findOne({ season: seasonNum, seasonType: 'regular' }).sort({ week: 1 }).lean();
-            const apPoll = apDoc && Array.isArray(apDoc.polls) ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
-            const rankings = buildRankingProxy(seasonNum, teamsById, apPoll);
+            // Latest poll, same as the standings projection. The H2H win probs
+            // for ALREADY-PLAYED weeks are retrospective, so strictly they'd want
+            // that week's own poll — but they're a "what were the odds" garnish,
+            // and the live bar on the in-progress week is what this actually
+            // drives. One poll read beats one per week.
+            const rankings = buildRankingProxy(seasonNum, teamsById, await projectionPoll(seasonNum));
             const poolCtx = buildPoolContext(teamsById, seasonNum);
             draftedIds.forEach(tid => {
                 const team = teamsById[String(tid)];
