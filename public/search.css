@@ -1,0 +1,179 @@
+/* App-wide search palette (public/search.js).
+   Everything is prefixed cc-search-* because Bootstrap 4 is loaded app-wide from
+   the navbar partial and owns generic names like .modal, .dropdown and .close. */
+
+.cc-search-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1200;              /* over the sticky navbar */
+    background: rgba(6, 8, 16, 0.66);
+    padding: 10vh 1rem 1rem;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.cc-search-overlay.open {
+    display: flex;
+}
+
+/* The palette scrolls internally; locking the body keeps the page behind it
+   still while the list moves. */
+body.cc-search-lock {
+    overflow: hidden;
+}
+
+.cc-search-panel {
+    width: 100%;
+    max-width: 34rem;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border-2);
+    border-radius: var(--cc-r-lg);
+    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+}
+
+.cc-search-field {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--cc-border);
+}
+
+.cc-search-field .fa-magnifying-glass {
+    color: var(--cc-muted-2);
+    padding-left: 0;            /* neutralize the global .fa left padding */
+}
+
+.cc-search-input {
+    flex: 1 1 auto;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--cc-text);
+    font-size: 1.05rem;
+    min-width: 0;
+}
+
+.cc-search-input::placeholder {
+    color: var(--cc-muted-2);
+}
+
+.cc-search-esc {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    color: var(--cc-muted-2);
+    border: 1px solid var(--cc-border-2);
+    border-radius: var(--cc-r-sm);
+    padding: 0.1rem 0.35rem;
+}
+
+.cc-search-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    /* Sized so a FULL result set fits without scrolling on a normal desktop:
+       6 teams + 3 managers + 2 group headers measures 538px. Capping at 24rem
+       hid the Managers group below the fold, which defeated the point of
+       slicing per type to keep it visible. The vh term still takes over on short
+       viewports, where scrolling is the honest answer. */
+    max-height: min(34rem, 68vh);
+    overflow-y: auto;
+}
+
+.cc-search-group {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cc-muted-2);
+    padding: 0.6rem 0.65rem 0.3rem;
+}
+
+.cc-search-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--cc-r-md);
+    cursor: pointer;
+}
+
+.cc-search-row.active {
+    background: var(--cc-surface-3);
+}
+
+.cc-search-media {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cc-search-media img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+/* Managers' photos are face-cropped squares; round them the way the navbar and
+   the H2H card already do. Team logos stay square. */
+.cc-search-row .cc-search-media img[src*="/upload/"] {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.cc-search-initials {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--cc-text);
+    border: 1px solid var(--cc-border);
+}
+
+.cc-search-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cc-search-name {
+    color: var(--cc-text);
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Conference for a team, franchise name for a manager — this is what tells
+   Miami (ACC) from Miami (OH), and there are 23 such collisions. */
+.cc-search-sub {
+    color: var(--cc-muted-2);
+    font-size: 0.78rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cc-search-empty {
+    color: var(--cc-muted-2);
+    padding: 1rem 0.65rem;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 40em) {
+    .cc-search-overlay {
+        padding-top: 6vh;
+    }
+}

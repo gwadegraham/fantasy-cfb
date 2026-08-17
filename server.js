@@ -682,6 +682,14 @@ app.use('/standings', requireAuthOrToken, standingsRouter);
 const historyRouter = require('./routes/history');
 app.use('/history', requireAuthOrToken, historyRouter);
 
+// Index for the app-wide search palette. requiresAuth (session-only), NOT
+// requireAuthOrToken: the manager list is scoped by reading the caller's league
+// off req.effUser, and a token-authenticated caller has no session to read it
+// from — leagueCodeFor would fall through to its default and hand that league's
+// members to any token holder. Requiring a session removes the case.
+const searchRouter = require('./routes/search');
+app.use('/search', requiresAuth(), searchRouter);
+
 // try/catch because Express 4 does NOT catch a rejection from an async handler:
 // anything thrown in here becomes an unhandled rejection, and with no
 // process-level handler that exits the dyno. The team-score loop calls this ~138

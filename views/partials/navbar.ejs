@@ -43,6 +43,13 @@
      side-by-side detail) used by Standings and the My Team matchup view. -->
 <link rel="stylesheet" type="text/css" href="/h2h-card.css">
 <script src="/h2h-card.js"></script>
+<!-- Search palette: jump to any FBS team or league manager from any page. The
+     ranking half is a separate pure file so it can be unit-tested; search.js is
+     the DOM and must load after it. The index itself is fetched lazily on first
+     open, so being on every page costs nothing until someone searches. -->
+<link rel="stylesheet" type="text/css" href="/search.css">
+<script src="/search-match.js"></script>
+<script src="/search.js"></script>
 <!-- Surface otherwise-silent failures (e.g. a failed fetch) instead of leaving the UI quietly broken -->
 <script>
     (function () {
@@ -92,6 +99,14 @@
             <li><a href="./hall-of-fame">Hall of Fame</a></li>
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
+            <!-- A <button>, not a link: it opens a dialog rather than navigating.
+                 Icon-only on desktop with the label revealed in the stacked mobile
+                 menu — the same .nav-label treatment "My Team" uses, which is what
+                 keeps this off the ~716px the desktop row already needs. -->
+            <li><button type="button" id="nav-search" class="nav-search" aria-label="Search teams and managers" title="Search (⌘K)">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span class="nav-label">Search</span>
+            </button></li>
             <% if (user && user.userId) { %>
             <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team">
                 <% var nu = (typeof navUser !== 'undefined' && navUser) || null; %>
@@ -111,11 +126,22 @@
                  var _cur = !_sp ? 'Admin'
                      : ((_sp.roles || []).indexOf('League Manager') >= 0 ? 'League Manager'
                      : ((_sp.roles || []).indexOf('Admin') >= 0 ? 'Admin' : 'member')); %>
+            <%  var _curShort = _cur === 'League Manager' ? 'Lg Mgr' : (_cur === 'member' ? 'Member' : 'Admin'); %>
+            <!-- Collapsed to a chip showing the role currently in effect; the three
+                 choices live in a popover. Expanded inline, this control ran 298px
+                 and was enough on its own to wrap the admin navbar onto two lines.
+                 The popover is absolutely positioned so opening it never widens the
+                 row either. -->
             <li class="dev-spoof" aria-label="Dev role spoof">
-                <span class="dev-spoof-label">Dev · view as</span>
-                <button type="button" data-spoof="Admin" class="<%= _cur === 'Admin' ? 'active' : '' %>">Admin</button>
-                <button type="button" data-spoof="League Manager" class="<%= _cur === 'League Manager' ? 'active' : '' %>">League&nbsp;Mgr</button>
-                <button type="button" data-spoof="member" class="<%= _cur === 'member' ? 'active' : '' %>">Member</button>
+                <button type="button" class="dev-spoof-toggle" aria-expanded="false" aria-controls="dev-spoof-menu" title="Dev · view as (<%= _curShort %>)">
+                    <span class="dev-spoof-tag">Dev</span><span class="dev-spoof-cur"><%= _curShort %></span><span class="dev-spoof-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="dev-spoof-menu" id="dev-spoof-menu" hidden>
+                    <span class="dev-spoof-label">View as</span>
+                    <button type="button" data-spoof="Admin" class="<%= _cur === 'Admin' ? 'active' : '' %>">Admin</button>
+                    <button type="button" data-spoof="League Manager" class="<%= _cur === 'League Manager' ? 'active' : '' %>">League&nbsp;Mgr</button>
+                    <button type="button" data-spoof="member" class="<%= _cur === 'member' ? 'active' : '' %>">Member</button>
+                </div>
             </li>
             <% } %>
             <li><a href="./logout">Logout</a></li>
@@ -144,9 +170,11 @@
                 setOpen(!links.classList.contains('active'));
             });
             // Tapping a destination link closes the menu (dropdown toggles are
-            // <button>s, so opening "Leagues" leaves the menu open).
+            // <button>s, so opening "Leagues" leaves the menu open). Search is
+            // named explicitly: it's a <button> by the same rule, but it opens a
+            // full-screen overlay, so leaving the menu stacked behind it is wrong.
             links.addEventListener('click', function (e) {
-                if (e.target.closest('a')) setOpen(false);
+                if (e.target.closest('a, #nav-search')) setOpen(false);
             });
             document.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape' && links.classList.contains('active')) {
@@ -186,7 +214,31 @@
             }
         });
 
-        // --- Dev-only role spoof buttons (rendered only when canSpoof). ---
+        // --- Dev-only role spoof (rendered only when canSpoof). ---
+        // The chip expands into a popover with the three choices. No need to
+        // restore the open state after picking one: choosing a role reloads.
+        var spoofToggle = nav.querySelector('.dev-spoof-toggle');
+        var spoofMenu = document.getElementById('dev-spoof-menu');
+        if (spoofToggle && spoofMenu) {
+            var setSpoofOpen = function (open) {
+                spoofMenu.hidden = !open;
+                spoofToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            };
+            spoofToggle.addEventListener('click', function (e) {
+                e.stopPropagation();   // else the outside-click handler below closes it immediately
+                setSpoofOpen(spoofMenu.hidden);
+            });
+            document.addEventListener('click', function (e) {
+                if (!spoofMenu.hidden && !e.target.closest('.dev-spoof')) setSpoofOpen(false);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !spoofMenu.hidden) {
+                    setSpoofOpen(false);
+                    spoofToggle.focus();
+                }
+            });
+        }
+
         nav.querySelectorAll('.dev-spoof [data-spoof]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var role = btn.getAttribute('data-spoof');

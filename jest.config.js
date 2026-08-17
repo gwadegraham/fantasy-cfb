@@ -33,7 +33,8 @@ module.exports = {
         "*-job.js",
         "public/standings-insights.js",
         "public/standings.js",
-        "public/weekByWeek.js"
+        "public/weekByWeek.js",
+        "public/search-match.js"
     ],
     coveragePathIgnorePatterns: [
         "/node_modules/",
@@ -165,6 +166,16 @@ module.exports = {
             branches: 75,
             functions: 100,
             lines: 100
+        },
+        // Pure ranking for the search palette. It decides which of two schools
+        // sharing a prefix is the one you meant — Arkansas vs Arkansas State —
+        // so it's held to the pure-module bar. Not 100: the UMD browser-global
+        // line can't run under Node's require.
+        "./public/search-match.js": {
+            statements: 95,
+            branches: 85,
+            functions: 100,
+            lines: 95
         }
     }
 };
