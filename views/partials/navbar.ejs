@@ -126,11 +126,22 @@
                  var _cur = !_sp ? 'Admin'
                      : ((_sp.roles || []).indexOf('League Manager') >= 0 ? 'League Manager'
                      : ((_sp.roles || []).indexOf('Admin') >= 0 ? 'Admin' : 'member')); %>
+            <%  var _curShort = _cur === 'League Manager' ? 'Lg Mgr' : (_cur === 'member' ? 'Member' : 'Admin'); %>
+            <!-- Collapsed to a chip showing the role currently in effect; the three
+                 choices live in a popover. Expanded inline, this control ran 298px
+                 and was enough on its own to wrap the admin navbar onto two lines.
+                 The popover is absolutely positioned so opening it never widens the
+                 row either. -->
             <li class="dev-spoof" aria-label="Dev role spoof">
-                <span class="dev-spoof-label">Dev · view as</span>
-                <button type="button" data-spoof="Admin" class="<%= _cur === 'Admin' ? 'active' : '' %>">Admin</button>
-                <button type="button" data-spoof="League Manager" class="<%= _cur === 'League Manager' ? 'active' : '' %>">League&nbsp;Mgr</button>
-                <button type="button" data-spoof="member" class="<%= _cur === 'member' ? 'active' : '' %>">Member</button>
+                <button type="button" class="dev-spoof-toggle" aria-expanded="false" aria-controls="dev-spoof-menu" title="Dev · view as (<%= _curShort %>)">
+                    <span class="dev-spoof-tag">Dev</span><span class="dev-spoof-cur"><%= _curShort %></span><span class="dev-spoof-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="dev-spoof-menu" id="dev-spoof-menu" hidden>
+                    <span class="dev-spoof-label">View as</span>
+                    <button type="button" data-spoof="Admin" class="<%= _cur === 'Admin' ? 'active' : '' %>">Admin</button>
+                    <button type="button" data-spoof="League Manager" class="<%= _cur === 'League Manager' ? 'active' : '' %>">League&nbsp;Mgr</button>
+                    <button type="button" data-spoof="member" class="<%= _cur === 'member' ? 'active' : '' %>">Member</button>
+                </div>
             </li>
             <% } %>
             <li><a href="./logout">Logout</a></li>
@@ -203,7 +214,31 @@
             }
         });
 
-        // --- Dev-only role spoof buttons (rendered only when canSpoof). ---
+        // --- Dev-only role spoof (rendered only when canSpoof). ---
+        // The chip expands into a popover with the three choices. No need to
+        // restore the open state after picking one: choosing a role reloads.
+        var spoofToggle = nav.querySelector('.dev-spoof-toggle');
+        var spoofMenu = document.getElementById('dev-spoof-menu');
+        if (spoofToggle && spoofMenu) {
+            var setSpoofOpen = function (open) {
+                spoofMenu.hidden = !open;
+                spoofToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            };
+            spoofToggle.addEventListener('click', function (e) {
+                e.stopPropagation();   // else the outside-click handler below closes it immediately
+                setSpoofOpen(spoofMenu.hidden);
+            });
+            document.addEventListener('click', function (e) {
+                if (!spoofMenu.hidden && !e.target.closest('.dev-spoof')) setSpoofOpen(false);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !spoofMenu.hidden) {
+                    setSpoofOpen(false);
+                    spoofToggle.focus();
+                }
+            });
+        }
+
         nav.querySelectorAll('.dev-spoof [data-spoof]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var role = btn.getAttribute('data-spoof');
