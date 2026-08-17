@@ -358,21 +358,26 @@ function onPickMade({ pick, state }) {
 
     var isOwn = String(pick.userId) === String(myUserId);
 
-    // Chime immediately — on YOUR click (makePick set _ownChimeAt) or here for
-    // other managers' picks — then hold the reveal for a 2s suspense beat:
-    // "the pick is in… [chime + 2s] … TEAM!". The board isn't advanced until
-    // then, so the pick isn't shown early.
+    // Chime only for a pick that's YOURS — either you clicked Draft (makePick
+    // already chimed, set _ownChimeAt) or someone picked on your behalf. Other
+    // managers' picks are silent here: leagues draft together on a call, and six
+    // open draft rooms all sounding at once is a wash, not a moment. Matches how
+    // the confetti below is already gated.
     // Suppress the confirm chime only if WE already chimed for THIS exact pick on
     // the local Draft click — matched by team id, not by whose turn it is, so a
     // commissioner picking for another manager doesn't double up.
+    // Either way we mark the start of a 1.2s suspense beat — "the pick is in…
+    // [beat] … TEAM!" — which runs for everyone, chime or not, so the reveal
+    // stays in step around the room. The board isn't advanced until then, so the
+    // pick isn't shown early.
     var pid = String(pick.team && pick.team.id);
     var chimedOnClick = onPickMade._ownPickTeamId === pid && onPickMade._ownChimeAt && (Date.now() - onPickMade._ownChimeAt < 6000);
-    var chimeStart;
+    var beatStart;
     if (chimedOnClick) {
-        chimeStart = onPickMade._ownChimeAt;
+        beatStart = onPickMade._ownChimeAt;
     } else {
-        if (typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
-        chimeStart = Date.now();
+        if (isOwn && typeof window.ccDraftStinger === 'function') window.ccDraftStinger();
+        beatStart = Date.now();
     }
     onPickMade._ownChimeAt = 0;
     onPickMade._ownPickTeamId = null;
@@ -381,10 +386,10 @@ function onPickMade({ pick, state }) {
     var lc = (raw && window.ccLiftColor) ? window.ccLiftColor(raw)
            : (raw ? (raw.charAt(0) === '#' ? raw : '#' + raw) : null);
 
-    // Reveal 2s after the chime STARTED (so your own pick — chimed on click —
-    // still lands 2s later, not 2s after the server round-trip).
+    // Reveal after the beat STARTED (so your own pick — chimed on click — still
+    // lands 1.2s later, not 1.2s after the server round-trip).
     var REVEAL_DELAY = 1200;
-    var wait = Math.max(0, REVEAL_DELAY - (Date.now() - chimeStart));
+    var wait = Math.max(0, REVEAL_DELAY - (Date.now() - beatStart));
     setTimeout(function () {
         justPickedKey = String(pick.userId) + '-' + pick.round;
         renderAll();
