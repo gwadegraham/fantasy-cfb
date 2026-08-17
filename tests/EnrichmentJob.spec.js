@@ -3,7 +3,15 @@
 // dependency is the global fetch, which we stub and route by URL — the same
 // pattern the scoring-module tests use — so no server or CFBD call is needed.
 
+// The run report is the mailer's job (tests/JobEmail.spec.js); stub it so this
+// suite never builds a real SMTP transport.
+jest.mock('../modules/job-mailer', () => ({
+    sendJobEmail: jest.fn(() => Promise.resolve()),
+    emailOnSuccess: () => false
+}));
+
 const { internalFetch } = require('../modules/internal-api');
+const { sendJobEmail } = require('../modules/job-mailer');
 const enrichmentJob = require('../update-enrichment-job');
 
 const OLD_ENV = process.env;
@@ -38,29 +46,42 @@ describe('internalFetch', () => {
 });
 
 describe('update-enrichment-job run()', () => {
-    // Route the two internal POSTs the job makes to their fake responses.
-    function stubFetch() {
+    // Route the job's internal calls to fake responses: the two data POSTs plus
+    // the job-run start/finish the logger writes around them.
+    function stubFetch(over = {}) {
         global.fetch = jest.fn((url, opts) => {
-            const body = { status: 200 };
-            if (url.includes('/enrich')) body.json = () => Promise.resolve({ updated: 130 });
-            else if (url.includes('/media')) body.json = () => Promise.resolve({ updated: 55 });
-            else body.json = () => Promise.resolve({});
-            body.__opts = opts;
-            return Promise.resolve(body);
+            const res = { status: 200, __opts: opts };
+            if (url.includes('/job-runs')) {
+                res.status = opts && opts.method === 'POST' ? 201 : 200;
+                res.json = () => Promise.resolve({ _id: 'run-1' });
+            } else if (url.includes('/enrich')) {
+                res.status = over.enrichStatus || 200;
+                res.json = () => Promise.resolve(over.enrichBody || { updated: 130 });
+            } else if (url.includes('/media')) {
+                res.status = over.mediaStatus || 200;
+                res.json = () => Promise.resolve({ updated: 55 });
+            } else {
+                res.json = () => Promise.resolve({});
+            }
+            return Promise.resolve(res);
         });
     }
+
+    // The data calls only — job-run bookkeeping is asserted separately.
+    const dataCalls = () => global.fetch.mock.calls.filter(c => !c[0].includes('/job-runs'));
 
     test('posts enrich + media to the season endpoints with the internal token', async () => {
         stubFetch();
         const results = await enrichmentJob.run();
 
-        expect(global.fetch).toHaveBeenCalledTimes(2);
-        const urls = global.fetch.mock.calls.map(c => c[0]);
+        const calls = dataCalls();
+        expect(calls).toHaveLength(2);
+        const urls = calls.map(c => c[0]);
         expect(urls).toContain('http://test.local/teams/2025/enrich');
         expect(urls).toContain('http://test.local/games/2025/media');
 
         // Every internal call carries the token and is a POST.
-        global.fetch.mock.calls.forEach(([, opts]) => {
+        calls.forEach(([, opts]) => {
             expect(opts.method).toBe('POST');
             expect(opts.headers['X-Internal-Token']).toBe('secret-token');
         });
@@ -85,10 +106,41 @@ describe('update-enrichment-job run()', () => {
         process.argv = ['node', 'update-enrichment-job.js', '2026'];
         stubFetch();
         await enrichmentJob.run();
-        expect(global.fetch.mock.calls[0][0]).toContain('/teams/2026/enrich');
+        expect(dataCalls()[0][0]).toContain('/teams/2026/enrich');
     });
 
     test('exposes a stable JOB_NAME for the scheduler/logger', () => {
         expect(enrichmentJob.JOB_NAME).toBe('enrichment');
+    });
+
+    test('records a job run: start under the job name, then success with a summary', async () => {
+        stubFetch();
+        await enrichmentJob.run();
+
+        const start = global.fetch.mock.calls.find(c => c[0].endsWith('/job-runs'));
+        expect(JSON.parse(start[1].body)).toMatchObject({ jobName: 'enrichment', season: '2025' });
+
+        const finish = global.fetch.mock.calls.find(c => c[0].includes('/job-runs/run-1'));
+        expect(finish[1].method).toBe('PATCH');
+        const done = JSON.parse(finish[1].body);
+        expect(done.status).toBe('success');
+        expect(done.message).toContain('130 teams enriched');
+    });
+
+    // The whole point of the logging: a leg that didn't land must not be filed
+    // as a healthy run, or stale SP+ stays as invisible as it was before.
+    test('a non-200 from either leg is recorded as an error, not a success', async () => {
+        stubFetch({ enrichStatus: 500, enrichBody: { message: 'CFBD timeout' } });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(enrichmentJob.run()).rejects.toThrow(/enrich -> 500/);
+
+        const finish = global.fetch.mock.calls.find(c => c[0].includes('/job-runs/run-1'));
+        const done = JSON.parse(finish[1].body);
+        expect(done.status).toBe('error');
+        expect(done.message).toContain('CFBD timeout');
+
+        // Failures always email, regardless of JOB_EMAIL_ON_SUCCESS.
+        expect(sendJobEmail).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
     });
 });

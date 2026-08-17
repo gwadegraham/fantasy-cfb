@@ -64,4 +64,15 @@ async function sendJobEmail(opts) {
     }
 }
 
-module.exports = { sendJobEmail, buildJobEmailHtml };
+// Emails on a SUCCESSFUL run only when explicitly opted in. Default is
+// failure-only: a healthy run is the norm (~50/month in season) and just adds
+// inbox noise — the admin status strip and standings "last updated" badge cover
+// the healthy state. Failures always email. Set JOB_EMAIL_ON_SUCCESS=true to
+// restore a report on every run.
+//
+// Lives here, not in score-job, so a job can share the policy without importing
+// the whole scoring pipeline (score-update pulls in the CFBD client at require
+// time). score-job re-exports it for its existing callers.
+function emailOnSuccess() { return process.env.JOB_EMAIL_ON_SUCCESS === 'true'; }
+
+module.exports = { sendJobEmail, buildJobEmailHtml, emailOnSuccess };
