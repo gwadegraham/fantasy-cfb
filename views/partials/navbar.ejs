@@ -43,6 +43,13 @@
      side-by-side detail) used by Standings and the My Team matchup view. -->
 <link rel="stylesheet" type="text/css" href="/h2h-card.css">
 <script src="/h2h-card.js"></script>
+<!-- Search palette: jump to any FBS team or league manager from any page. The
+     ranking half is a separate pure file so it can be unit-tested; search.js is
+     the DOM and must load after it. The index itself is fetched lazily on first
+     open, so being on every page costs nothing until someone searches. -->
+<link rel="stylesheet" type="text/css" href="/search.css">
+<script src="/search-match.js"></script>
+<script src="/search.js"></script>
 <!-- Surface otherwise-silent failures (e.g. a failed fetch) instead of leaving the UI quietly broken -->
 <script>
     (function () {
@@ -92,6 +99,14 @@
             <li><a href="./hall-of-fame">Hall of Fame</a></li>
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
+            <!-- A <button>, not a link: it opens a dialog rather than navigating.
+                 Icon-only on desktop with the label revealed in the stacked mobile
+                 menu — the same .nav-label treatment "My Team" uses, which is what
+                 keeps this off the ~716px the desktop row already needs. -->
+            <li><button type="button" id="nav-search" class="nav-search" aria-label="Search teams and managers" title="Search (⌘K)">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <span class="nav-label">Search</span>
+            </button></li>
             <% if (user && user.userId) { %>
             <li><a user-home href="/userHome?user=<%= user.userId %>" aria-label="My team">
                 <% var nu = (typeof navUser !== 'undefined' && navUser) || null; %>
@@ -144,9 +159,11 @@
                 setOpen(!links.classList.contains('active'));
             });
             // Tapping a destination link closes the menu (dropdown toggles are
-            // <button>s, so opening "Leagues" leaves the menu open).
+            // <button>s, so opening "Leagues" leaves the menu open). Search is
+            // named explicitly: it's a <button> by the same rule, but it opens a
+            // full-screen overlay, so leaving the menu stacked behind it is wrong.
             links.addEventListener('click', function (e) {
-                if (e.target.closest('a')) setOpen(false);
+                if (e.target.closest('a, #nav-search')) setOpen(false);
             });
             document.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape' && links.classList.contains('active')) {

@@ -274,9 +274,35 @@ body {
 }
 
 /* "My Team" label: hidden on desktop (avatar speaks for itself), revealed in
-   the stacked mobile menu where an unlabeled icon is ambiguous. */
+   the stacked mobile menu where an unlabeled icon is ambiguous. Search reuses
+   this — icon on desktop, "Search" in the stacked menu. */
 .nav-label {
     display: none;
+}
+
+/* Search opener. A <button> (it opens a dialog), styled to sit in the link row:
+   the nav is already at its width budget, so this is icon-only on desktop. */
+.navbar-links li .nav-search {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 1rem;
+    background: none;
+    border: 0;
+    color: var(--cc-text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.navbar-links li .nav-search i {
+    font-size: 1.15rem;
+    padding-left: 0;   /* neutralize the global .fa left padding so it centers */
+}
+
+.navbar-links li .nav-search:hover {
+    color: var(--cc-accent);
 }
 
 /* Hover: a red underline sweeps in from the center of the label — the same
