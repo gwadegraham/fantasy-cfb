@@ -83,4 +83,15 @@ describe('H2H card kickoffs', () => {
     test('an unparseable kickoff degrades to TBD rather than Invalid Date', () => {
         expect(kicks(card([team('USC', 'not-a-date')], [team('Duke', USC_SJSU)]))[0]).toBe('TBD');
     });
+
+    // The league spans time zones (one manager is Eastern) and the app renders
+    // every date in Central. A card can carry 20+ kickoff rows, so the zone is
+    // named once in the footer rather than repeated on each line.
+    test('names the zone once, in the footer', () => {
+        document.body.innerHTML = card([team('USC', USC_SJSU)], [team('Duke', USC_SJSU)]);
+        const foot = document.querySelector('.h2h-mfoot').textContent;
+        expect(foot).toContain('kickoffs Central');
+        // Not repeated on every row — that is what the footer is for.
+        expect(kicks(card([team('USC', USC_SJSU)], [team('Duke', USC_SJSU)]))[0]).toBe('Sat 2:00 PM');
+    });
 });

@@ -161,8 +161,8 @@
             + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, dated) + '</div>'
             + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, dated) + '</div>'
             + pregameLine(g, aName, bName)
-            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · scores update as they finish</div>' : '')
-            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · odds are projected</div>' : '')
+            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update as they finish</div>' : '')
+            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · kickoffs Central · odds are projected</div>' : '')
             + '</div></div>';
     }
 

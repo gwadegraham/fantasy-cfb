@@ -262,7 +262,7 @@ router.post('/', async (req, res) => {
         );
 
         const when = draft.scheduledAt
-            ? new Date(draft.scheduledAt).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+            ? new Date(draft.scheduledAt).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT'
             : 'no date';
         await audit.record(req, {
             action: 'draft.config', league, season: String(season),
