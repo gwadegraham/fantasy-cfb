@@ -64,6 +64,14 @@
             : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, dated)) + '</span>'
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
+    // A ranked opponent, tiered the way the scoring tiers it: rankValue pays
+    // double for a top-10 win and single for 11–25, so the two look different
+    // at a glance. Unranked opponents get no marker.
+    function rankTag(rank) {
+        var n = Number(rank);
+        if (!n || n < 1) return '';
+        return '<span class="h2h-trk' + (n <= 10 ? ' top10' : '') + '">#' + n + '</span> ';
+    }
     // One team row; the right column mirrors (value → name → logo) so both teams'
     // scores hug the center divider, like a Sleeper matchup.
     function teamRow(t, right, dated) {
@@ -73,7 +81,7 @@
         var tnm = teamLink(t.teamId, '<span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>');
         var nm = '<span class="h2h-tnmline">' + tnm + cap + '</span>';
         var sub = t.opp
-            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
+            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';
         var idcol = '<span class="h2h-tid">' + nm + sub + '</span>';
         return right ? '<div class="h2h-trow">' + teamVal(t, dated) + idcol + img + '</div>'

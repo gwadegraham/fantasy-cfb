@@ -87,6 +87,26 @@ describe('H2H card kickoffs', () => {
     // The league spans time zones (one manager is Eastern) and the app renders
     // every date in Central. A card can carry 20+ kickoff rows, so the zone is
     // named once in the footer rather than repeated on each line.
+    // The rank marker is tiered the way rankValue tiers the bonus: top-10 wins
+    // pay double, 11-25 single, unranked nothing.
+    test('marks a ranked opponent, and tiers the top ten differently', () => {
+        const ranked = (rank) => Object.assign(team('USC', USC_SJSU), { opp: 'CLEM', oppRank: rank });
+        document.body.innerHTML = card([ranked(23)], [ranked(3)]);
+        const tags = [...document.querySelectorAll('.h2h-trk')];
+        expect(tags.map(t => t.textContent)).toEqual(['#23', '#3']);
+        expect(tags[0].classList.contains('top10')).toBe(false);
+        expect(tags[1].classList.contains('top10')).toBe(true);
+        // It sits with the opponent, not adrift.
+        expect(document.querySelector('.h2h-tsub').textContent).toContain('vs #23 CLEM');
+    });
+
+    test('leaves an unranked opponent unmarked', () => {
+        const plain = Object.assign(team('USC', USC_SJSU), { opp: 'SJSU', oppRank: null });
+        document.body.innerHTML = card([plain], [plain]);
+        expect(document.querySelectorAll('.h2h-trk')).toHaveLength(0);
+        expect(document.querySelector('.h2h-tsub').textContent).toContain('vs SJSU');
+    });
+
     test('names the zone once, in the footer', () => {
         document.body.innerHTML = card([team('USC', USC_SJSU)], [team('Duke', USC_SJSU)]);
         const foot = document.querySelector('.h2h-mfoot').textContent;

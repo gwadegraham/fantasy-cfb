@@ -566,7 +566,7 @@
 .uh-captain { width: 92%; max-width: 720px; margin: 0 auto; overflow: hidden; max-height: 0; transition: max-height 0.32s ease; }
 .uh-captain.is-open { max-height: 1600px; margin-top: 1.1rem; }
 .captain-note { margin: 0 0 0.9em; color: var(--cc-muted); font-size: 0.9rem; }
-.captain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.6rem; }
+.captain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.6rem; }
 .captain-team { display: flex; align-items: flex-start; gap: 0.5rem; background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 10px; padding: 0.5rem 0.7rem; color: var(--cc-text); font: inherit; font-size: 0.85rem; cursor: pointer; text-align: left; transition: border-color 0.15s ease, background 0.15s ease; }
 .captain-team img { height: 24px; width: 24px; object-fit: contain; flex-shrink: 0; }
 .captain-team span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -578,6 +578,9 @@
 .cap-nm { min-width: 0; }
 .cap-2g { flex-shrink: 0; font-size: 0.55rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-accent); border: 1px solid var(--cc-accent); border-radius: 4px; padding: 0 0.22rem; line-height: 1.5; }
 .cap-tg { font-size: 0.68rem; color: var(--cc-muted-2); font-weight: 400; }
+/* Opponent's poll rank, tiered like the scoring: top-10 wins pay double. */
+.cap-rk { font-weight: 800; color: var(--cc-info); }
+.cap-rk.top10 { color: var(--cc-amber); }
 .captain-team.is-captain { border-color: var(--cc-interactive); background: rgba(142, 140, 240, 0.14); font-weight: 700; }
 /* Locked week: cells are read-only (no pointer, no hover lift). */
 .captain-team.is-locked { cursor: default; opacity: 0.6; }

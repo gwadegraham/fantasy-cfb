@@ -395,6 +395,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
             { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
             { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, _id: 0 }
         ).lean() : [];
+        // Opponent rankings, read from the SAME poll the scorer reads (the
+        // Playoff Committee's, else AP — see scoring-detectors findPoll). So a
+        // rank on a card means that win pays the ranked bonus, and a week with
+        // only a Coaches Poll stored shows no ranks at all rather than numbers
+        // that won't match what the week actually scores. Keyed by team NAME,
+        // the same join rankValue makes.
+        const pollDoc = standingsOnly ? null : await projectionPoll(seasonNum);
+        const rankByName = {};
+        ((pollDoc && pollDoc.ranks) || []).forEach(r => { if (r && r.school) rankByName[r.school] = r.rank; });
         // Opponent abbreviations (opponents aren't always rostered, so look them
         // up from the Team collection).
         const oppAbbrById = {};
@@ -433,7 +442,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             // that week's own poll — but they're a "what were the odds" garnish,
             // and the live bar on the in-progress week is what this actually
             // drives. One poll read beats one per week.
-            const rankings = buildRankingProxy(seasonNum, teamsById, await projectionPoll(seasonNum));
+            const rankings = buildRankingProxy(seasonNum, teamsById, pollDoc);
             const poolCtx = buildPoolContext(teamsById, seasonNum);
             draftedIds.forEach(tid => {
                 const team = teamsById[String(tid)];
@@ -557,16 +566,18 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // The row knows its own game; only legacy rows (no gameId) fall
                 // back to the team's single game that week.
                 const g = t.gameId != null ? gameById[t.gameId] : gamesOf(t.teamId, w)[0];
-                let opp = '', ha = 'vs', gameScore = null;
+                let opp = '', ha = 'vs', gameScore = null, oppRank = null;
                 if (g) {
                     const isHome = g.homeId === t.teamId;
-                    opp = oppAbbrById[isHome ? g.awayId : g.homeId] || (isHome ? g.awayTeam : g.homeTeam) || '';
+                    const oppName = isHome ? g.awayTeam : g.homeTeam;
+                    opp = oppAbbrById[isHome ? g.awayId : g.homeId] || oppName || '';
+                    oppRank = rankByName[oppName] || null;
                     ha = isHome ? 'vs' : '@';
                     if (g.completed && g.homePoints != null && g.awayPoints != null) {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, gameScore };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore };
             })
             .sort((a, b) => b.score - a.score);
         // The kickoff INSTANT, not a rendered string. This used to format here
@@ -584,12 +595,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const scored = scoredFor(id, w, t.id, g.id);
             const isHome = g.homeId === t.id;
             const oppId = isHome ? g.awayId : g.homeId;
-            const opp = oppAbbrById[oppId] || (isHome ? g.awayTeam : g.homeTeam) || '';
+            const oppName = isHome ? g.awayTeam : g.homeTeam;
+            const opp = oppAbbrById[oppId] || oppName || '';
             let gameScore = null;
             if (g.completed && g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: isCaptain(id, w, t.id) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, captain: isCaptain(id, w, t.id) };
         })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
