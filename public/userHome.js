@@ -407,7 +407,9 @@ async function hydratePreseasonDraft(user, activeYear) {
     const myPick = order.indexOf(String(user._id));
     const managers = order.length;
     const when = draft.scheduledAt ? new Date(draft.scheduledAt) : null;
-    const fmtDate = when ? when.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) : null;
+    // Central, and said so — the league spans time zones and every other date
+    // in the app is Central too.
+    const fmtDate = when ? when.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) + ' CT' : null;
     const meta = [
         fmtDate ? `<span>📅 <b>${escapeHtml(fmtDate)}</b></span>` : '',
         `<span>${draft.snake ? '🐍 <b>Snake</b>' : '<b>Linear</b>'} · ${draft.totalRounds || 10} rounds</span>`,
@@ -855,12 +857,12 @@ async function hydrateH2H(user, activeYear) {
 // Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
 // picker (set/clear a 2× team for the current open week).
 // Kickoff-lock display helpers (Central time, matching the app's schedule).
-function uhFmtLock(iso) {
+function uhFmtLock(iso, withTz) {
     if (!iso) return '';
     const d = new Date(iso);
     const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' });
     const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
-    return `${day} ${time}`;
+    return `${day} ${time}${withTz ? ' CT' : ''}`;
 }
 function uhTimeLeft(iso) {
     if (!iso) return '';
@@ -910,7 +912,7 @@ async function hydrateCaptain(user, activeYear) {
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
-        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt)}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
+        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, true)}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
         else sub = 'Doubles this week’s points';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
@@ -933,7 +935,8 @@ async function hydrateCaptain(user, activeYear) {
         if (state.locked) {
             const t = state.teamId != null ? teamById[state.teamId] : null;
             container.innerHTML = `<p class="captain-note">Locked — your first team of Week ${state.week} has kicked off. `
-                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`) + `</p>`
+                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`)
+                + ` All times Central.</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
                     <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">${tileBody(tm)}</div>`).join('')}</div>`;
             return;
@@ -945,7 +948,7 @@ async function hydrateCaptain(user, activeYear) {
         const twoLine = twoGamers.length
             ? ` <b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice this week — captaining one doubles both games.`
             : '';
-        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine}</p>
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine} All times Central.</p>
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {

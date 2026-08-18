@@ -35,15 +35,38 @@
     function manLink(id, inner) { return id != null ? '<a class="h2h-mlink" href="/userHome?user=' + esc(id) + '">' + inner + '</a>' : inner; }
     function teamLink(id, inner) { return id != null ? '<a class="h2h-tlink" href="/team?team=' + esc(id) + '">' + inner + '</a>' : inner; }
 
+    // Kickoffs render in Central, the way every other date in the app does —
+    // the payload carries the instant (ISO), not a rendered string. `dated`
+    // adds the calendar date, for a week whose games don't all sit on one
+    // weekend (see spansWeekends): "Sat 2:00 PM" can't tell Aug 29 from Sep 5.
+    var CT = 'America/Chicago';
+    function fmtKick(iso, dated) {
+        if (!iso) return 'TBD';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return 'TBD';
+        var day = d.toLocaleDateString('en-US', dated
+            ? { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT }
+            : { weekday: 'short', timeZone: CT });
+        return day + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
+    }
+    // Does this matchup's slate straddle more than one weekend? Only then is the
+    // date worth the width. A team playing twice in an API week is exactly the
+    // case that needs it.
+    function spansWeekends(teams) {
+        var ts = (teams || []).map(function (t) { return t.kickoff ? Date.parse(t.kickoff) : NaN; })
+            .filter(function (n) { return !isNaN(n); });
+        if (ts.length < 2) return false;
+        return (Math.max.apply(null, ts) - Math.min.apply(null, ts)) > 3 * 864e5;
+    }
     // A team's value: final points, LIVE, or kickoff time.
-    function teamVal(t) {
+    function teamVal(t, dated) {
         return t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
-            : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(t.kickoff || 'TBD') + '</span>'
+            : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, dated)) + '</span>'
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
     // One team row; the right column mirrors (value → name → logo) so both teams'
     // scores hug the center divider, like a Sleeper matchup.
-    function teamRow(t, right) {
+    function teamRow(t, right, dated) {
         var img = teamLink(t.teamId, '<img class="h2h-tlogo" src="' + esc(t.logo) + '" alt="">');
         // Captain doubles this team's points — mark it so the inflated score reads.
         var cap = t.captain ? '<span class="h2h-capx" title="Captain — points doubled">★2×</span>' : '';
@@ -53,15 +76,15 @@
             ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';
         var idcol = '<span class="h2h-tid">' + nm + sub + '</span>';
-        return right ? '<div class="h2h-trow">' + teamVal(t) + idcol + img + '</div>'
-            : '<div class="h2h-trow">' + img + idcol + teamVal(t) + '</div>';
+        return right ? '<div class="h2h-trow">' + teamVal(t, dated) + idcol + img + '</div>'
+            : '<div class="h2h-trow">' + img + idcol + teamVal(t, dated) + '</div>';
     }
     // Final weeks show only teams that scored; an unplayed week (live or still
     // to come) shows every team with a game, so in-progress and upcoming ones
     // are visible with their kickoff times instead of being mistaken for 0.
-    function teamList(teams, unplayed, right) {
+    function teamList(teams, unplayed, right, dated) {
         var list = unplayed ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
-        return list.length ? list.map(function (t) { return teamRow(t, right); }).join('')
+        return list.length ? list.map(function (t) { return teamRow(t, right, dated); }).join('')
             : '<div class="h2h-trow empty">no points</div>';
     }
     // Bar values: a finished matchup is settled (100/0 to the winner, tie 50/50);
@@ -120,7 +143,9 @@
         var live = g.final === false && !upcoming;
         var unplayed = live || upcoming;
         var score = function (v) { return upcoming ? '&ndash;' : v; };
-        var remaining = (g.aTeams || []).concat(g.bTeams || []).filter(function (t) { return t.status && t.status !== 'final'; }).length;
+        var both = (g.aTeams || []).concat(g.bTeams || []);
+        var dated = spansWeekends(both);
+        var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
         var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
         return '<div class="h2h-mcard' + (live ? ' live' : '') + (upcoming ? ' upcoming' : '') + (opts.open ? ' open' : '') + '">'
@@ -133,11 +158,11 @@
             + '</div>'
             + winBar(g)
             + '<div class="h2h-mdetail">'
-            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false) + '</div>'
-            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true) + '</div>'
+            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, dated) + '</div>'
+            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, dated) + '</div>'
             + pregameLine(g, aName, bName)
-            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · scores update as they finish</div>' : '')
-            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · odds are projected</div>' : '')
+            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update as they finish</div>' : '')
+            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · kickoffs Central · odds are projected</div>' : '')
             + '</div></div>';
     }
 
