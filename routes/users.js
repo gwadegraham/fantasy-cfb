@@ -4,6 +4,7 @@ const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
 const Draft = require('../models/draft');
+const Ranking = require('../models/ranking');
 const scoring = require('../modules/scoring');
 const rosterCorrection = require('../modules/roster-correction');
 const audit = require('../modules/audit-log');
@@ -15,6 +16,7 @@ const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
 const { LEAGUES } = require('../modules/scoring-defaults');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
+const { findPoll } = require('../modules/scoring-detectors');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
 // tile keeps that week in focus for this long after its last kickoff before
@@ -132,6 +134,15 @@ router.get('/me/captain', async (req, res) => {
             (await Team.find({ id: { $in: oppIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean())
                 .forEach(t => { abbrById[t.id] = t.abbreviation || null; });
         }
+        // Opponent rankings from the poll the SCORER reads (Playoff Committee,
+        // else AP), so a rank here means that win pays the ranked bonus — much
+        // of the model's value sits in beating ranked teams, and the pick is
+        // made blind without it. A season with only a Coaches Poll stored shows
+        // no ranks rather than ones that won't match the scoring.
+        const rankDoc = await Ranking.findOne({ season: seasonYear, seasonType: 'regular' }).sort({ week: -1 }).lean();
+        const poll = findPoll(rankDoc);
+        const rankByName = {};
+        ((poll && poll.ranks) || []).forEach(r => { if (r && r.school) rankByName[r.school] = r.rank; });
         const slate = teamIds.map(tid => ({
             teamId: tid,
             games: weekGames
@@ -139,9 +150,11 @@ router.get('/me/captain', async (req, res) => {
                 .map(g => {
                     const isHome = Number(g.homeId) === tid;
                     const oppId = isHome ? g.awayId : g.homeId;
+                    const oppName = isHome ? g.awayTeam : g.homeTeam;
                     return {
                         gameId: g.id,
-                        opp: abbrById[oppId] || (isHome ? g.awayTeam : g.homeTeam) || '',
+                        opp: abbrById[oppId] || oppName || '',
+                        oppRank: rankByName[oppName] || null,
                         ha: isHome ? 'vs' : '@',
                         kickoff: g.startTimeTbd ? null : (g.startDate || null)
                     };
