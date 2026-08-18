@@ -875,6 +875,15 @@ function uhRankTag(rank) {
     if (!n || n < 1) return '';
     return `<span class="cap-rk${n <= 10 ? ' top10' : ''}">#${n}</span> `;
 }
+// The picker dates its tiles by the same rule the matchup card uses, from the
+// same code — h2h-card.js ships in the navbar on every page, so ccH2H is always
+// there. Guarded anyway: no helper means no dates, never a thrown picker.
+function uhDatingPlan(kickoffs) {
+    return (window.ccH2H && window.ccH2H.datingPlan) ? window.ccH2H.datingPlan(kickoffs) : null;
+}
+function uhNeedsDate(iso, plan) {
+    return !!(window.ccH2H && window.ccH2H.needsDate) && window.ccH2H.needsDate(iso, plan);
+}
 // "NC State", "NC State and LSU", "NC State, LSU and Duke".
 function uhAndList(names) {
     const a = (names || []).filter(Boolean);
@@ -926,9 +935,7 @@ async function hydrateCaptain(user, activeYear) {
     // plays a full week before the rest — and then "Sat 2:30 PM" names two
     // different Saturdays. Date the times when this week's slate straddles more
     // than one weekend, the same rule the matchup card uses.
-    const kicks = (state.slate || []).flatMap(x => (x.games || [])
-        .map(gm => Date.parse(gm.kickoff)).filter(n => !Number.isNaN(n)));
-    const datedSlate = kicks.length > 1 && (Math.max(...kicks) - Math.min(...kicks)) > 3 * 864e5;
+    const datePlan = uhDatingPlan((state.slate || []).flatMap(x => (x.games || []).map(gm => gm.kickoff)));
     // Which team actually closes the pick. The lock is the manager's EARLIEST
     // kickoff, which on an opening-weekend roster is rarely the team they were
     // looking at — so name it rather than leaving "your first team" to be
@@ -951,7 +958,7 @@ async function hydrateCaptain(user, activeYear) {
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
-        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: datedSlate })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
+        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: uhNeedsDate(state.lockAt, datePlan) })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
         else sub = 'Doubles this week’s points';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
@@ -963,7 +970,7 @@ async function hydrateCaptain(user, activeYear) {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
         const lines = games.length
-            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: datedSlate })) : ' · TBD'}</span>`).join('')
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: uhNeedsDate(g.kickoff, datePlan) })) : ' · TBD'}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
             <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
@@ -979,7 +986,7 @@ async function hydrateCaptain(user, activeYear) {
             return;
         }
         const lockLine = state.lockAt
-            ? ` Locks ${uhFmtLock(state.lockAt, { dated: datedSlate })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
+            ? ` Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
             : ' Locks when your first team kicks off.';
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length

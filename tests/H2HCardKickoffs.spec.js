@@ -62,13 +62,45 @@ describe('H2H card kickoffs', () => {
         expect(out[0]).toBe('Sat 9:00 PM');       // was "Sun 2:00 AM"
     });
 
-    test('adds the date when the matchup straddles more than one weekend', () => {
-        const out = kicks(card([team('USC', USC_SJSU), team('USC2', USC_FRES)], [team('Duke', '2026-09-05T23:30:00.000Z')]));
-        // Both USC games said "Sat" before — and one of them is a Friday.
+    // Dating EVERY row of a two-weekend card is most of the width on a phone,
+    // and it is unnecessary: the weekend nearly all the games sit on is the
+    // implicit default, so only the strays need a date. On a real week-1 card
+    // that is two or three rows out of twenty-plus instead of all of them.
+    test('dates only the games away from the card\'s main weekend', () => {
+        const out = kicks(card(
+            [team('USC', USC_SJSU), team('USC2', USC_FRES)],
+            [team('Duke', '2026-09-05T23:30:00.000Z')]));
+        expect(out[0]).toBe('Sat, 8/29 2:00 PM');   // the stray — dated
+        expect(out[1]).toBe('Fri 8:00 PM');          // main weekend — bare
+        expect(out[2]).toBe('Sat 6:30 PM');          // main weekend — bare
+        // Still unmistakable: the two USC games read Sat 8/29 and Fri.
+    });
+
+    test('dates everything when no weekend carries the card', () => {
+        // One game each weekend — neither can be the implicit default.
+        const out = kicks(card([team('USC', USC_SJSU)], [team('Duke', USC_FRES)]));
         expect(out[0]).toBe('Sat, 8/29 2:00 PM');
         expect(out[1]).toBe('Fri, 9/4 8:00 PM');
-        // The date applies to the whole card, so the two columns read alike.
-        expect(out[2]).toBe('Sat, 9/5 6:30 PM');
+    });
+
+    // Two weekends of equal size: neither carries the card, so neither can be
+    // the implicit "normal" one. Picking a winner would leave half the rows bare
+    // with no way to tell which weekend they belong to — and which half won
+    // would come down to object key order.
+    test('dates everything when two weekends are tied', () => {
+        const out = kicks(card(
+            [team('A', USC_SJSU), team('B', '2026-08-29T23:30:00.000Z')],
+            [team('C', USC_FRES), team('D', '2026-09-05T23:30:00.000Z')]));
+        out.forEach(k => expect(k).toMatch(/^[A-Z][a-z]{2}, \d{1,2}\/\d{1,2} /));
+    });
+
+    test('treats a Thursday-through-Monday slate as one weekend', () => {
+        // A college week runs Thu night through the Monday game; none of these
+        // need a date, their weekdays already differ.
+        const out = kicks(card(
+            [team('A', '2026-09-04T00:00:00.000Z'), team('B', '2026-09-05T23:30:00.000Z')],
+            [team('C', '2026-09-07T00:00:00.000Z'), team('D', '2026-09-08T00:30:00.000Z')]));
+        out.forEach(k => expect(k).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2} [AP]M$/));
     });
 
     test('leaves the date off an ordinary single-weekend week', () => {

@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const scoring = require('../modules/scoring');
@@ -644,7 +645,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
             };
         }).sort((a, b) => a.name.localeCompare(b.name));
 
-        const allTeams = await Team.find({}, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
+        const allTeams = await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
         const available = allTeams
             .filter(t => !taken.has(Number(t.id)))
             .map(t => ({ id: t.id, school: t.school, conference: t.conference || '', logo: pickLogo(t.logos) || null }))

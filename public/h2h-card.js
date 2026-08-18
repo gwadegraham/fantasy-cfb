@@ -40,28 +40,65 @@
     // adds the calendar date, for a week whose games don't all sit on one
     // weekend (see spansWeekends): "Sat 2:00 PM" can't tell Aug 29 from Sep 5.
     var CT = 'America/Chicago';
+    // Built once. A week-1 card carries 20+ kickoff rows and the schedule drawer
+    // renders thirteen such cards in a pass, so constructing these per row (which
+    // is what toLocaleDateString does internally) is hundreds of the most
+    // expensive call in this file, on exactly the phones the dating rule is for.
+    var DAY_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: CT });
+    var DATED_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT });
+    var TIME_FMT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
+    var YMD_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: CT, year: 'numeric', month: '2-digit', day: '2-digit' });
     function fmtKick(iso, dated) {
         if (!iso) return 'TBD';
         var d = new Date(iso);
         if (isNaN(d.getTime())) return 'TBD';
-        var day = d.toLocaleDateString('en-US', dated
-            ? { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT }
-            : { weekday: 'short', timeZone: CT });
-        return day + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
+        return (dated ? DATED_FMT : DAY_FMT).format(d) + ' ' + TIME_FMT.format(d);
     }
-    // Does this matchup's slate straddle more than one weekend? Only then is the
-    // date worth the width. A team playing twice in an API week is exactly the
-    // case that needs it.
-    function spansWeekends(teams) {
-        var ts = (teams || []).map(function (t) { return t.kickoff ? Date.parse(t.kickoff) : NaN; })
-            .filter(function (n) { return !isNaN(n); });
-        if (ts.length < 2) return false;
-        return (Math.max.apply(null, ts) - Math.min.apply(null, ts)) > 3 * 864e5;
+    // Which football week a kickoff belongs to, in Central. Epoch day 0 was a
+    // Thursday, so plain 7-day buckets already run Thu→Wed — which is how a
+    // college week runs, from the Thursday night game through the Monday one.
+    function weekKey(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        // en-CA gives YYYY-MM-DD; reading it back as UTC midnight makes the day
+        // arithmetic exact regardless of where the viewer is.
+        var day = Math.floor(Date.parse(YMD_FMT.format(d) + 'T00:00:00Z') / 864e5);
+        return String(Math.floor(day / 7));
+    }
+    // Which rows need a calendar date, as the week they must NOT match.
+    //
+    // Dating every row of a card that straddles two weekends is most of the
+    // width on a phone, and it is unnecessary: if all but a few games sit on one
+    // weekend, that weekend is the implicit default and only the strays need
+    // saying. API week 1 folds in the opening weekend, so on a real card that is
+    // two or three rows out of twenty-plus.
+    //
+    // null → never date (one weekend, nothing to disambiguate).
+    // '*'  → date everything (no weekend carries the card, so none is implicit).
+    function datingPlan(kickoffs) {
+        var count = {};
+        (kickoffs || []).forEach(function (iso) {
+            var k = weekKey(iso);
+            if (k) count[k] = (count[k] || 0) + 1;
+        });
+        var weeks = Object.keys(count);
+        if (weeks.length < 2) return null;
+        weeks.sort(function (a, b) { return count[b] - count[a]; });
+        // A weekend can only be the implicit default if it clearly carries the
+        // card. One game apiece, or two weekends tied, and nothing is implicit —
+        // date them all rather than letting object key order decide which half
+        // reads as "the normal one".
+        if (count[weeks[0]] < 2 || count[weeks[1]] === count[weeks[0]]) return '*';
+        return weeks[0];
+    }
+    function needsDate(iso, plan) {
+        return plan !== null && weekKey(iso) !== plan;
     }
     // A team's value: final points, LIVE, or kickoff time.
-    function teamVal(t, dated) {
+    function teamVal(t, plan) {
         return t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
-            : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, dated)) + '</span>'
+            : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>'
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
     // A ranked opponent, tiered the way the scoring tiers it: rankValue pays
@@ -74,7 +111,7 @@
     }
     // One team row; the right column mirrors (value → name → logo) so both teams'
     // scores hug the center divider, like a Sleeper matchup.
-    function teamRow(t, right, dated) {
+    function teamRow(t, right, plan) {
         var img = teamLink(t.teamId, '<img class="h2h-tlogo" src="' + esc(t.logo) + '" alt="">');
         // Captain doubles this team's points — mark it so the inflated score reads.
         var cap = t.captain ? '<span class="h2h-capx" title="Captain — points doubled">★2×</span>' : '';
@@ -84,15 +121,15 @@
             ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';
         var idcol = '<span class="h2h-tid">' + nm + sub + '</span>';
-        return right ? '<div class="h2h-trow">' + teamVal(t, dated) + idcol + img + '</div>'
-            : '<div class="h2h-trow">' + img + idcol + teamVal(t, dated) + '</div>';
+        return right ? '<div class="h2h-trow">' + teamVal(t, plan) + idcol + img + '</div>'
+            : '<div class="h2h-trow">' + img + idcol + teamVal(t, plan) + '</div>';
     }
     // Final weeks show only teams that scored; an unplayed week (live or still
     // to come) shows every team with a game, so in-progress and upcoming ones
     // are visible with their kickoff times instead of being mistaken for 0.
-    function teamList(teams, unplayed, right, dated) {
+    function teamList(teams, unplayed, right, plan) {
         var list = unplayed ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
-        return list.length ? list.map(function (t) { return teamRow(t, right, dated); }).join('')
+        return list.length ? list.map(function (t) { return teamRow(t, right, plan); }).join('')
             : '<div class="h2h-trow empty">no points</div>';
     }
     // Bar values: a finished matchup is settled (100/0 to the winner, tie 50/50);
@@ -152,7 +189,7 @@
         var unplayed = live || upcoming;
         var score = function (v) { return upcoming ? '&ndash;' : v; };
         var both = (g.aTeams || []).concat(g.bTeams || []);
-        var dated = spansWeekends(both);
+        var plan = datingPlan(both.map(function (t) { return t.kickoff; }));
         var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
         var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
@@ -166,8 +203,8 @@
             + '</div>'
             + winBar(g)
             + '<div class="h2h-mdetail">'
-            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, dated) + '</div>'
-            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, dated) + '</div>'
+            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, plan) + '</div>'
+            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, plan) + '</div>'
             + pregameLine(g, aName, bName)
             + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update as they finish</div>' : '')
             + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · kickoffs Central · odds are projected</div>' : '')
@@ -191,5 +228,10 @@
         });
     }
 
-    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf };
+    // weekKey/datingPlan/needsDate are exported because the Captain picker has
+    // to date its tiles by the same rule — the two surfaces show the same games,
+    // and a copy in userHome.js could drift so that one dates a kickoff the
+    // other leaves bare.
+    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf,
+        weekKey: weekKey, datingPlan: datingPlan, needsDate: needsDate };
 })();

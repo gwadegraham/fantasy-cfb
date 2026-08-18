@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const User = require('../models/user');
 const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
@@ -386,7 +387,7 @@ router.post('/:season/cfp-odds', async (req, res) => {
             return res.status(400).json({ message: 'No odds could be parsed from the input' });
         }
 
-        const teams = await Team.find({}, 'id school alt_name1 alt_name2 alt_name3 alternateNames conference seasons');
+        const teams = await Team.find(FBS_ONLY, 'id school alt_name1 alt_name2 alt_name3 alternateNames conference seasons');
         const match = buildTeamMatcher(teams);
 
         const matched = [], unmatched = [], seen = new Set();
@@ -422,7 +423,15 @@ router.post('/:season/cfp-odds', async (req, res) => {
 //Refreshing All
 router.post('/refresh', async (req, res) => {
     try {
-        const response = await fetch(`https://api.collegefootballdata.com/teams/fbs?year=${req.body.year}`, {
+        // /teams (not /teams/fbs) so FCS opponents come along — they are what
+        // most week-1 cupcakes are, and without them a matchup row falls back to
+        // the full school name and truncates ("vs Eastern Kent…"). CFBD carries a
+        // real abbreviation for 127 of the 128, which is the whole point.
+        //
+        // Still ONE call: the endpoint returns every division, so D-II and D-III
+        // (400+ rows the app has no use for) are dropped here rather than paid
+        // for in a second request.
+        const response = await fetch(`https://api.collegefootballdata.com/teams?year=${req.body.year}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -430,7 +439,38 @@ router.post('/refresh', async (req, res) => {
             }
         });
 
-        var allTeams = await response.json();
+        const everyDivision = await response.json();
+        if (!Array.isArray(everyDivision)) {
+            return res.status(502).json({ message: 'CFBD returned no teams' });
+        }
+        // A row is usable only if it can satisfy the model's required fields.
+        // Asked of the schema rather than hand-listed, so this cannot drift from
+        // models/team.js — and it has to be ALL of them, not just abbreviation:
+        // CFBD ships at least one FCS school with an abbreviation but no logos
+        // (West Florida) and another missing logos, location and abbreviation
+        // (Chicago State). insertMany is ordered, so a single invalid doc aborts
+        // the whole insert, 400s the refresh, and skips the roster/draft
+        // propagation that follows it.
+        const invalidFields = (t) => {
+            const err = new Team(Object.assign({}, t, {
+                seasons: [{ season: req.body.year, conference: t.conference }]
+            })).validateSync();
+            return err ? Object.keys(err.errors) : null;
+        };
+        const skipped = [];
+        var allTeams = everyDivision.filter(t => {
+            // Unknown classification is skipped, never assumed FBS: /teams
+            // returns every division, and guessing wrong would put a D-III
+            // school in the draft pool. A payload that lost the field entirely
+            // yields a visible "Refreshing 0 teams" rather than that.
+            const c = String(t.classification || '').toLowerCase();
+            if (c !== 'fbs' && c !== 'fcs') return false;
+            t.classification = c;
+            const bad = invalidFields(t);
+            if (bad) { skipped.push(t.school + ' (' + bad.join(', ') + ')'); return false; }
+            return true;
+        });
+        if (skipped.length) console.log('Skipping ' + skipped.length + ' team(s) missing required fields: ' + skipped.join('; '));
 
         var refreshedTeams = [];
         var newTeams = [];
@@ -442,6 +482,7 @@ router.post('/refresh', async (req, res) => {
                 existingTeam.school = team.school;
                 existingTeam.mascot = team.mascot;
                 existingTeam.abbreviation = team.abbreviation;
+                existingTeam.classification = team.classification;
                 existingTeam.alternateNames = team.alternateNames;
                 existingTeam.color = team.color;
                 existingTeam.alt_color = team.alt_color;
@@ -482,7 +523,8 @@ router.post('/refresh', async (req, res) => {
         }
 
         try {
-            console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams");
+            const fcsCount = allTeams.filter(t => t.classification === 'fcs').length;
+            console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams (" + fcsCount + " FCS, stored as opponent reference data)");
             const newCreatedTeams = await Team.insertMany(newTeams);
 
             // Propagate the fresh team fields (logos, school, mascot, colors, …)
