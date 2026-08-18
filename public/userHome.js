@@ -857,12 +857,21 @@ async function hydrateH2H(user, activeYear) {
 // Captain on (or ?captain=1). Glance shows the current pick; drawer is the team
 // picker (set/clear a 2× team for the current open week).
 // Kickoff-lock display helpers (Central time, matching the app's schedule).
-function uhFmtLock(iso, withTz) {
+function uhFmtLock(iso, opts) {
     if (!iso) return '';
+    const o = opts || {};
     const d = new Date(iso);
-    const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Chicago' });
+    const day = d.toLocaleDateString('en-US', o.dated
+        ? { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'America/Chicago' }
+        : { weekday: 'short', timeZone: 'America/Chicago' });
     const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
-    return `${day} ${time}${withTz ? ' CT' : ''}`;
+    return `${day} ${time}${o.tz ? ' CT' : ''}`;
+}
+// "NC State", "NC State and LSU", "NC State, LSU and Duke".
+function uhAndList(names) {
+    const a = (names || []).filter(Boolean);
+    if (a.length <= 1) return a[0] || '';
+    return a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 }
 function uhTimeLeft(iso) {
     if (!iso) return '';
@@ -903,6 +912,28 @@ async function hydrateCaptain(user, activeYear) {
     if (!(season.teams || []).length) return hide();
     if (tile) tile.hidden = false;
 
+    const slateBy = {};
+    (state.slate || []).forEach(x => { slateBy[x.teamId] = x.games || []; });
+    // API week 1 folds in the opening weekend, so a manager can hold a team that
+    // plays a full week before the rest — and then "Sat 2:30 PM" names two
+    // different Saturdays. Date the times when this week's slate straddles more
+    // than one weekend, the same rule the matchup card uses.
+    const kicks = (state.slate || []).flatMap(x => (x.games || [])
+        .map(gm => Date.parse(gm.kickoff)).filter(n => !Number.isNaN(n)));
+    const datedSlate = kicks.length > 1 && (Math.max(...kicks) - Math.min(...kicks)) > 3 * 864e5;
+    // Which team actually closes the pick. The lock is the manager's EARLIEST
+    // kickoff, which on an opening-weekend roster is rarely the team they were
+    // looking at — so name it rather than leaving "your first team" to be
+    // guessed from a grid where every tile reads the same time.
+    const lockMs = state.lockAt ? Date.parse(state.lockAt) : NaN;
+    const lockNames = (state.slate || [])
+        .filter(x => (x.games || []).some(gm => Date.parse(gm.kickoff) === lockMs))
+        .map(x => (teamById[x.teamId] || {}).school)
+        .filter(Boolean);
+    const lockWho = lockNames.length
+        ? `<b>${escapeHtml(uhAndList(lockNames))}</b> kick${lockNames.length === 1 ? 's' : ''} off`
+        : 'your first team kicks off';
+
     const g = document.getElementById('uh-glance-captain');
     const setGlance = () => {
         if (!g) return;
@@ -912,7 +943,7 @@ async function hydrateCaptain(user, activeYear) {
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
-        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, true)}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
+        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: datedSlate })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
         else sub = 'Doubles this week’s points';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
@@ -920,13 +951,11 @@ async function hydrateCaptain(user, activeYear) {
     // Two games is the case worth flagging: CFBD folds the opening weekend into
     // week 1, so a few teams play twice — and the captain doubles BOTH of them,
     // which a grid of bare logos gives no way to see.
-    const slateBy = {};
-    (state.slate || []).forEach(x => { slateBy[x.teamId] = x.games || []; });
     const tileBody = (t) => {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
         const lines = games.length
-            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff)) : ' · TBD'}</span>`).join('')
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: datedSlate })) : ' · TBD'}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
             <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
@@ -942,7 +971,7 @@ async function hydrateCaptain(user, activeYear) {
             return;
         }
         const lockLine = state.lockAt
-            ? ` Locks ${uhFmtLock(state.lockAt)} — when your first team kicks off${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
+            ? ` Locks ${uhFmtLock(state.lockAt, { dated: datedSlate })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
             : ' Locks when your first team kicks off.';
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length
