@@ -443,18 +443,34 @@ router.post('/refresh', async (req, res) => {
         if (!Array.isArray(everyDivision)) {
             return res.status(502).json({ message: 'CFBD returned no teams' });
         }
-        // `abbreviation` is required on the model, and a stray FCS school can
-        // arrive without one — skip it rather than fail the whole refresh or
-        // invent a value.
-        const noAbbr = [];
+        // A row is usable only if it can satisfy the model's required fields.
+        // Asked of the schema rather than hand-listed, so this cannot drift from
+        // models/team.js — and it has to be ALL of them, not just abbreviation:
+        // CFBD ships at least one FCS school with an abbreviation but no logos
+        // (West Florida) and another missing logos, location and abbreviation
+        // (Chicago State). insertMany is ordered, so a single invalid doc aborts
+        // the whole insert, 400s the refresh, and skips the roster/draft
+        // propagation that follows it.
+        const invalidFields = (t) => {
+            const err = new Team(Object.assign({}, t, {
+                seasons: [{ season: req.body.year, conference: t.conference }]
+            })).validateSync();
+            return err ? Object.keys(err.errors) : null;
+        };
+        const skipped = [];
         var allTeams = everyDivision.filter(t => {
-            const c = (t.classification || 'fbs').toLowerCase();
+            // Unknown classification is skipped, never assumed FBS: /teams
+            // returns every division, and guessing wrong would put a D-III
+            // school in the draft pool. A payload that lost the field entirely
+            // yields a visible "Refreshing 0 teams" rather than that.
+            const c = String(t.classification || '').toLowerCase();
             if (c !== 'fbs' && c !== 'fcs') return false;
             t.classification = c;
-            if (!t.abbreviation) { noAbbr.push(t.school); return false; }
+            const bad = invalidFields(t);
+            if (bad) { skipped.push(t.school + ' (' + bad.join(', ') + ')'); return false; }
             return true;
         });
-        if (noAbbr.length) console.log('Skipping ' + noAbbr.length + ' team(s) with no abbreviation:', noAbbr.join(', '));
+        if (skipped.length) console.log('Skipping ' + skipped.length + ' team(s) missing required fields: ' + skipped.join('; '));
 
         var refreshedTeams = [];
         var newTeams = [];

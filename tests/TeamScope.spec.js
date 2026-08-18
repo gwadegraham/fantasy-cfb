@@ -94,3 +94,52 @@ describe('FCS teams stay out of the league surfaces', () => {
         expect(sp.status).toBe('ready');
     });
 });
+
+// The refresh reads CFBD's /teams, which returns every division and is not
+// uniformly populated. A row that cannot satisfy the model's required fields
+// must be dropped BEFORE insertMany — that call is ordered, so one invalid doc
+// aborts the whole insert, 400s the refresh, and skips the roster/draft
+// propagation that runs after it. Both of these are real 2026 rows: Chicago
+// State has no abbreviation, logos or location; West Florida has an
+// abbreviation but no logos, which an abbreviation-only guard would let through.
+describe('the refresh drops rows it cannot insert', () => {
+    const cfbdTeam = (over) => Object.assign({
+        id: 500, school: 'Somebody', mascot: 'Mascot', abbreviation: 'SMB',
+        classification: 'fcs', conference: 'Big Sky', color: '#123456',
+        logos: ['http://x/logo.png'],
+        location: { venue_id: 500, name: 'Field', city: 'Town', state: 'ST' }
+    }, over);
+
+    test('keeps the valid fbs+fcs rows and skips the rest', async () => {
+        const payload = [
+            cfbdTeam({ id: 1, school: 'Texas', abbreviation: 'TEX', classification: 'fbs' }),
+            cfbdTeam({ id: 2, school: 'Eastern Kentucky', abbreviation: 'EKU' }),
+            // logos: null, not undefined — mongoose defaults a missing array to []
+        // and `required` accepts that, so only an explicit null reproduces it.
+        cfbdTeam({ id: 3, school: 'West Florida', abbreviation: 'UWF', logos: null }),
+            cfbdTeam({ id: 4, school: 'Chicago State', abbreviation: null, logos: null, location: null }),
+            cfbdTeam({ id: 5, school: 'Some D3 School', classification: 'iii' }),
+            cfbdTeam({ id: 6, school: 'No Division', classification: undefined })
+        ];
+        const realFetch = global.fetch;
+        global.fetch = async () => ({ ok: true, json: async () => payload });
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const app = express();
+        app.use(express.json());
+        app.use('/teams', require('../routes/teams'));
+        try {
+            const res = await request(app).post('/teams/refresh').send({ year: SEASON });
+            expect(res.status).toBe(201);
+        } finally {
+            global.fetch = realFetch;
+            console.log.mockRestore();
+        }
+
+        const stored = (await Team.find({}, { school: 1, classification: 1, _id: 0 }).lean())
+            .map(t => t.school).sort();
+        // Texas and Eastern Kentucky only. West Florida would have thrown inside
+        // insertMany and taken the whole refresh down with it.
+        expect(stored).toEqual(['Eastern Kentucky', 'Texas']);
+    });
+});
