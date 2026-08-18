@@ -914,25 +914,40 @@ async function hydrateCaptain(user, activeYear) {
         else sub = 'Doubles this week’s points';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
+    // A team's slate for the focus week, drawn under its name in the picker.
+    // Two games is the case worth flagging: CFBD folds the opening weekend into
+    // week 1, so a few teams play twice — and the captain doubles BOTH of them,
+    // which a grid of bare logos gives no way to see.
+    const slateBy = {};
+    (state.slate || []).forEach(x => { slateBy[x.teamId] = x.games || []; });
+    const tileBody = (t) => {
+        const games = slateBy[t.id] || [];
+        const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
+        const lines = games.length
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff)) : ' · TBD'}</span>`).join('')
+            : `<span class="cap-tg">No game this week</span>`;
+        return `<img src="${ccLogo(t.logos)}" alt="">
+            <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
+    };
     const paint = (container) => {
         if (state.locked) {
             const t = state.teamId != null ? teamById[state.teamId] : null;
             container.innerHTML = `<p class="captain-note">Locked — your first team of Week ${state.week} has kicked off. `
                 + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`) + `</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
-                    <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">
-                        <img src="${ccLogo(tm.logos)}" alt=""><span>${escapeHtml(tm.school)}</span>
-                    </div>`).join('')}</div>`;
+                    <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">${tileBody(tm)}</div>`).join('')}</div>`;
             return;
         }
         const lockLine = state.lockAt
             ? ` Locks ${uhFmtLock(state.lockAt)} — when your first team kicks off${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
             : ' Locks when your first team kicks off.';
-        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}</p>
+        const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
+        const twoLine = twoGamers.length
+            ? ` <b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice this week — captaining one doubles both games.`
+            : '';
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine}</p>
             <div class="captain-grid">${(season.teams || []).map(t => `
-                <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">
-                    <img src="${ccLogo(t.logos)}" alt=""><span>${escapeHtml(t.school)}</span>
-                </button>`).join('')}</div>`;
+                <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
             const teamId = Number(btn.getAttribute('data-team'));
             const next = Number(state.teamId) === teamId ? null : teamId;   // click current to clear

@@ -26,7 +26,7 @@ const CAPTAIN_WEEK_GRACE_MS = 6 * 60 * 60 * 1000;
 function captainGamesQuery(season, teamIds) {
     return Game.find(
         { season, seasonType: 'regular', $or: [{ homeId: { $in: teamIds } }, { awayId: { $in: teamIds } }] },
-        { week: 1, homeId: 1, awayId: 1, startDate: 1, startTimeTbd: 1, seasonType: 1, completed: 1 }
+        { id: 1, week: 1, homeId: 1, homeTeam: 1, awayId: 1, awayTeam: 1, startDate: 1, startTimeTbd: 1, seasonType: 1, completed: 1 }
     ).lean();
 }
 
@@ -116,12 +116,45 @@ router.get('/me/captain', async (req, res) => {
         if (!focus) return res.json(none);
 
         const pick = ((season.captains || []).find(c => Number(c.week) === focus.week) || {}).teamId;
+
+        // Each rostered team's slate for the focus week, so the picker can show
+        // who they play and when — and mark the teams playing TWICE. CFBD has no
+        // week 0 (the opening weekend is folded into week 1), so a handful of
+        // teams have two games in one week; captaining one of those doubles both
+        // of them, which is invisible from a grid of logos alone.
+        const weekGames = games
+            .filter(g => g.seasonType === 'regular' && Number(g.week) === focus.week)
+            .sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')));
+        const mine = new Set(teamIds);
+        const oppIds = [...new Set(weekGames.flatMap(g => [g.homeId, g.awayId]).filter(id => id != null && !mine.has(Number(id))))];
+        const abbrById = {};
+        if (oppIds.length) {
+            (await Team.find({ id: { $in: oppIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean())
+                .forEach(t => { abbrById[t.id] = t.abbreviation || null; });
+        }
+        const slate = teamIds.map(tid => ({
+            teamId: tid,
+            games: weekGames
+                .filter(g => Number(g.homeId) === tid || Number(g.awayId) === tid)
+                .map(g => {
+                    const isHome = Number(g.homeId) === tid;
+                    const oppId = isHome ? g.awayId : g.homeId;
+                    return {
+                        gameId: g.id,
+                        opp: abbrById[oppId] || (isHome ? g.awayTeam : g.homeTeam) || '',
+                        ha: isHome ? 'vs' : '@',
+                        kickoff: g.startTimeTbd ? null : (g.startDate || null)
+                    };
+                })
+        }));
+
         res.json({
             season: seasonYear,
             week: focus.week,
             lockAt: new Date(focus.first).toISOString(),
             teamId: pick != null ? Number(pick) : null,
-            locked: Date.now() >= focus.first
+            locked: Date.now() >= focus.first,
+            slate
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
