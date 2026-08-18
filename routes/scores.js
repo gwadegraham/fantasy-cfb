@@ -5,6 +5,7 @@ const User = require('../models/user');
 const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const Draft = require('../models/draft');
 const League = require('../models/league');
 const { computeAdminStatus, pendingRegularWeek } = require('../modules/admin-status');
@@ -83,7 +84,7 @@ router.get('/readiness/:season', async (req, res) => {
 
         // Only the readiness fields off each season subdoc — a bare `seasons: 1`
         // drags every team's weeklyScore array along for no reason.
-        const teams = await Team.find({}, {
+        const teams = await Team.find(FBS_ONLY, {
             id: 1, 'seasons.season': 1, 'seasons.talent': 1, 'seasons.spRating': 1,
             'seasons.expectedWins': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1,
             // coach + returningProduction aren't shown anywhere; they're carried

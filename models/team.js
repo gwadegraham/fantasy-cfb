@@ -142,6 +142,12 @@ const teamSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    // 'fbs' | 'fcs'. FCS teams are stored only as opponent reference data — see
+    // modules/team-scope.js. Absent on docs written before the field existed,
+    // all of which came from CFBD's /teams/fbs endpoint.
+    classification: {
+        type: String
+    },
     alt_name1: {
         type: String
     },

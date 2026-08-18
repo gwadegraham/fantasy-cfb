@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const User = require('../models/user');
 const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
@@ -386,7 +387,7 @@ router.post('/:season/cfp-odds', async (req, res) => {
             return res.status(400).json({ message: 'No odds could be parsed from the input' });
         }
 
-        const teams = await Team.find({}, 'id school alt_name1 alt_name2 alt_name3 alternateNames conference seasons');
+        const teams = await Team.find(FBS_ONLY, 'id school alt_name1 alt_name2 alt_name3 alternateNames conference seasons');
         const match = buildTeamMatcher(teams);
 
         const matched = [], unmatched = [], seen = new Set();
@@ -422,7 +423,15 @@ router.post('/:season/cfp-odds', async (req, res) => {
 //Refreshing All
 router.post('/refresh', async (req, res) => {
     try {
-        const response = await fetch(`https://api.collegefootballdata.com/teams/fbs?year=${req.body.year}`, {
+        // /teams (not /teams/fbs) so FCS opponents come along — they are what
+        // most week-1 cupcakes are, and without them a matchup row falls back to
+        // the full school name and truncates ("vs Eastern Kent…"). CFBD carries a
+        // real abbreviation for 127 of the 128, which is the whole point.
+        //
+        // Still ONE call: the endpoint returns every division, so D-II and D-III
+        // (400+ rows the app has no use for) are dropped here rather than paid
+        // for in a second request.
+        const response = await fetch(`https://api.collegefootballdata.com/teams?year=${req.body.year}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -430,7 +439,22 @@ router.post('/refresh', async (req, res) => {
             }
         });
 
-        var allTeams = await response.json();
+        const everyDivision = await response.json();
+        if (!Array.isArray(everyDivision)) {
+            return res.status(502).json({ message: 'CFBD returned no teams' });
+        }
+        // `abbreviation` is required on the model, and a stray FCS school can
+        // arrive without one — skip it rather than fail the whole refresh or
+        // invent a value.
+        const noAbbr = [];
+        var allTeams = everyDivision.filter(t => {
+            const c = (t.classification || 'fbs').toLowerCase();
+            if (c !== 'fbs' && c !== 'fcs') return false;
+            t.classification = c;
+            if (!t.abbreviation) { noAbbr.push(t.school); return false; }
+            return true;
+        });
+        if (noAbbr.length) console.log('Skipping ' + noAbbr.length + ' team(s) with no abbreviation:', noAbbr.join(', '));
 
         var refreshedTeams = [];
         var newTeams = [];
@@ -442,6 +466,7 @@ router.post('/refresh', async (req, res) => {
                 existingTeam.school = team.school;
                 existingTeam.mascot = team.mascot;
                 existingTeam.abbreviation = team.abbreviation;
+                existingTeam.classification = team.classification;
                 existingTeam.alternateNames = team.alternateNames;
                 existingTeam.color = team.color;
                 existingTeam.alt_color = team.alt_color;
@@ -482,7 +507,8 @@ router.post('/refresh', async (req, res) => {
         }
 
         try {
-            console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams");
+            const fcsCount = allTeams.filter(t => t.classification === 'fcs').length;
+            console.log("Refreshing " + refreshedTeams.length + " teams and adding " + newTeams.length + " new teams (" + fcsCount + " FCS, stored as opponent reference data)");
             const newCreatedTeams = await Team.insertMany(newTeams);
 
             // Propagate the fresh team fields (logos, school, mascot, colors, …)
