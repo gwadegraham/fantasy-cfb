@@ -631,6 +631,30 @@ function renderWeeklyScores(seasonObj, scoreCode) {
     `;
 }
 
+// This page renders game times in the BROWSER's zone, not Central like the rest
+// of the app — so it has to say which zone that is. The league spans two of
+// them, and "2:30 PM" means different things to different managers.
+//
+// Prefers the generic label (CT) over the seasonal one (CDT / CST): a schedule
+// runs August to January, straddling the November DST change, and both halves
+// are still "CT". Anything that isn't a US-style abbreviation — "GMT+2", "UTC" —
+// is shown exactly as the browser reported it.
+function tzGenericLabel(shortName) {
+    var name = String(shortName == null ? '' : shortName).trim();
+    var m = /^([A-Z]{1,3})[SD]T$/.exec(name);
+    return m ? m[1] + 'T' : name;
+}
+function localTzLabel(when) {
+    try {
+        var parts = new Intl.DateTimeFormat('en-US', { hour: 'numeric', timeZoneName: 'short' })
+            .formatToParts(when ? new Date(when) : new Date());
+        var found = parts.find(function (p) { return p.type === 'timeZoneName'; });
+        return tzGenericLabel(found && found.value);
+    } catch (e) {
+        return '';   // no label beats a wrong one
+    }
+}
+
 // Render schedule info
 function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, teamData) {
     const container = document.getElementById("schedule-container");
@@ -638,11 +662,15 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
 
     var nextGameHtml = renderNextGame(schedule, logos, teamId);
 
+    // Sits under the heading so it covers both the next-game card and the
+    // games list, and stays visible while the list is collapsed.
+    const tz = localTzLabel();
     var html = `
         <div class="schedule-head">
             <h2><i class="fa-solid fa-calendar-days fa-rank-stand"></i>${year} Schedule</h2>
             <i class="fa-solid fa-caret-down drop"></i>
         </div>
+        ${tz ? `<div class="schedule-tz">All times ${tz}</div>` : ''}
         ${nextGameHtml}
         <div class="games-container">
     `;
