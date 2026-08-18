@@ -875,6 +875,29 @@ function uhRankTag(rank) {
     if (!n || n < 1) return '';
     return `<span class="cap-rk${n <= 10 ? ' top10' : ''}">#${n}</span> `;
 }
+// Which football week a kickoff belongs to, in Central. Epoch day 0 was a
+// Thursday, so plain 7-day buckets already run Thu→Wed, the way a college week
+// runs. Mirrors weekKey in h2h-card.js so the two surfaces date alike.
+function uhWeekKey(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return String(Math.floor(Math.floor(Date.parse(ymd + 'T00:00:00Z') / 864e5) / 7));
+}
+// Which rows need a calendar date, as the week they must NOT match. Dating every
+// tile of a week that straddles two weekends is mostly wasted width on a phone —
+// if all but a few games sit on one weekend, only the strays need saying.
+// null → never date. '*' → date everything (no weekend carries the week).
+function uhDatingPlan(kickoffs) {
+    const count = {};
+    (kickoffs || []).forEach(k => { const w = uhWeekKey(k); if (w) count[w] = (count[w] || 0) + 1; });
+    const weeks = Object.keys(count);
+    if (weeks.length < 2) return null;
+    weeks.sort((a, b) => count[b] - count[a]);
+    return count[weeks[0]] > 1 ? weeks[0] : '*';
+}
+const uhNeedsDate = (iso, plan) => plan !== null && uhWeekKey(iso) !== plan;
 // "NC State", "NC State and LSU", "NC State, LSU and Duke".
 function uhAndList(names) {
     const a = (names || []).filter(Boolean);
@@ -926,9 +949,7 @@ async function hydrateCaptain(user, activeYear) {
     // plays a full week before the rest — and then "Sat 2:30 PM" names two
     // different Saturdays. Date the times when this week's slate straddles more
     // than one weekend, the same rule the matchup card uses.
-    const kicks = (state.slate || []).flatMap(x => (x.games || [])
-        .map(gm => Date.parse(gm.kickoff)).filter(n => !Number.isNaN(n)));
-    const datedSlate = kicks.length > 1 && (Math.max(...kicks) - Math.min(...kicks)) > 3 * 864e5;
+    const datePlan = uhDatingPlan((state.slate || []).flatMap(x => (x.games || []).map(gm => gm.kickoff)));
     // Which team actually closes the pick. The lock is the manager's EARLIEST
     // kickoff, which on an opening-weekend roster is rarely the team they were
     // looking at — so name it rather than leaving "your first team" to be
@@ -951,7 +972,7 @@ async function hydrateCaptain(user, activeYear) {
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
-        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: datedSlate })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
+        else if (state.lockAt) sub = `Locks ${uhFmtLock(state.lockAt, { tz: true, dated: uhNeedsDate(state.lockAt, datePlan) })}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}`;
         else sub = 'Doubles this week’s points';
         g.innerHTML = lead + `<span class="uh-cap-sub">${sub}</span>`;
     };
@@ -963,7 +984,7 @@ async function hydrateCaptain(user, activeYear) {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
         const lines = games.length
-            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: datedSlate })) : ' · TBD'}</span>`).join('')
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: uhNeedsDate(g.kickoff, datePlan) })) : ' · TBD'}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
             <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
@@ -979,7 +1000,7 @@ async function hydrateCaptain(user, activeYear) {
             return;
         }
         const lockLine = state.lockAt
-            ? ` Locks ${uhFmtLock(state.lockAt, { dated: datedSlate })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
+            ? ` Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
             : ' Locks when your first team kicks off.';
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length
