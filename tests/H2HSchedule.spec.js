@@ -55,10 +55,18 @@ async function manager(firstName, teams, weeks) {
 // date that can never drift into the past on a later test run.
 const PAST = '2026-09-05T23:00:00.000Z';
 const FUTURE = '2099-09-12T23:30:00.000Z';
-function game(id, week, homeId, awayId, completed) {
+// Deliberately ancient. Whether a game has KICKED OFF is decided against the
+// real clock, so "started" needs a date already elapsed no matter when the suite
+// runs — PAST above is only ever used on completed games, where gameStatus reads
+// `completed` and never looks at the date at all.
+const STARTED = '2020-09-05T23:00:00.000Z';
+// `started` = kicked off but not finished, which is the only thing that makes a
+// week LIVE. Without it every unfinished game sits in the future and the week is
+// merely upcoming.
+function game(id, week, homeId, awayId, completed, started) {
     return {
         id, season: SEASON, week, seasonType: 'regular',
-        startDate: completed ? PAST : FUTURE, startTimeTbd: false,
+        startDate: completed ? PAST : (started ? STARTED : FUTURE), startTimeTbd: false,
         neutralSite: false, conferenceGame: false,
         homeId, homeTeam: 'Home', awayId, awayTeam: 'Away',
         homePoints: completed ? 30 : null, awayPoints: completed ? 10 : null,
@@ -100,12 +108,15 @@ describe('GET /standings/h2h schedule', () => {
         expect(body.scheduleComplete).toBe(false);
     });
 
-    test('marks a settled week final, the live week neither, and later weeks upcoming', async () => {
+    test('marks a settled week final, and an unstarted current week upcoming', async () => {
         await seed();
         const body = await get();
 
         expect(weekOf(body, 1)).toMatchObject({ final: true, upcoming: false });
-        expect(weekOf(body, 2)).toMatchObject({ final: false, upcoming: false });
+        // Week 2 is the current week but nothing in it has kicked off, so it is
+        // upcoming rather than live — being the week you are IN is not the same
+        // as being under way.
+        expect(weekOf(body, 2)).toMatchObject({ final: false, upcoming: true });
         expect(weekOf(body, 3)).toMatchObject({ final: false, upcoming: true });
     });
 
@@ -162,8 +173,32 @@ describe('GET /standings/h2h schedule', () => {
         // out as the featured card, leaving its list with nothing to render.
         expect(body.schedule.map(s => s.week)).toEqual([1, 2]);
         expect(body.currentWeek).toBe(1);
-        expect(weekOf(body, 1)).toMatchObject({ final: false, upcoming: false });
+        // Nothing has kicked off, so week 1 is upcoming — not LIVE with an "in
+        // progress" footer, which is what it used to claim all preseason.
+        expect(weekOf(body, 1)).toMatchObject({ final: false, upcoming: true });
         expect(weekOf(body, 2).upcoming).toBe(true);
+    });
+
+    test('a week goes live once one of its games has kicked off', async () => {
+        await seed();
+        // Week 2's first game is now under way; its second has not started.
+        await Game.updateOne({ id: 201 }, { $set: { startDate: STARTED } });
+
+        const body = await get();
+        expect(body.currentWeek).toBe(2);
+        expect(weekOf(body, 2)).toMatchObject({ final: false, upcoming: false });
+        // The rest of the week rides along — the matchup itself is under way even
+        // though later games have not started.
+        expect(weekOf(body, 3).upcoming).toBe(true);
+    });
+
+    test('a TBD kickoff cannot make a week live on its own', async () => {
+        await seed();
+        // A placeholder start date that has drifted into the past must not count
+        // as a kickoff; nobody knows when the game actually begins.
+        await Game.updateOne({ id: 201 }, { $set: { startDate: STARTED, startTimeTbd: true } });
+
+        expect(weekOf(await get(), 2).upcoming).toBe(true);
     });
 
     // Deliberate, and unchanged: h2hManagerIds excludes managers with no scored

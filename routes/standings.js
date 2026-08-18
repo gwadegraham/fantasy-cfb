@@ -652,8 +652,22 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // nothing to list once the featured week was pulled out — and limited
         // the Standings week picker to weeks already behind you.
         const schedWeeks = h2hWeeks.slice().sort((a, b) => a - b);
+        // Has a ball actually been kicked off in this week yet? `currentWeek` only
+        // means "the first week that hasn't settled", which is true of week 1 all
+        // preseason — so on its own it marked every matchup LIVE with an "In
+        // progress · N games to play" footer weeks before anyone played. The
+        // per-game status was always right (rows showed kickoff times, not LIVE);
+        // it was the week-level flag that never asked.
+        //
+        // A TBD kickoff reads as 'scheduled' and so can never start a week by
+        // itself, which is correct — nobody knows when it begins.
+        const startedByWeek = {};
+        games.forEach(g => {
+            if (g.week == null) return;
+            if (gameStatus(g, now) !== 'scheduled') startedByWeek[g.week] = true;
+        });
         const schedule = schedWeeks.map(w => {
-            const live = (w === currentWeek) && !weekFinal[w];
+            const live = (w === currentWeek) && !weekFinal[w] && !!startedByWeek[w];
             const upcoming = !weekFinal[w] && !live;
             return { week: w, final: !!weekFinal[w], upcoming, games: (scheduleAll[w] || []).filter(([a, b]) => meta[a] && meta[b]).map(([a, b]) => gameFor(a, b, w, live || upcoming, upcoming)) };
         });
