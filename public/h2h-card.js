@@ -7,7 +7,7 @@
 //   window.ccH2H.wire(containerEl)                               -> attach toggles
 //
 // `game` is one entry from the /standings/h2h payload's schedule[].games:
-//   { aId, bId, aScore, bScore, aTeams, bTeams, winner, winP, final }
+//   { aId, bId, aScore, bScore, aTeams, bTeams, winner, winP, final, upcoming }
 // `byId` maps userId -> manager ({ franchise, name, avatarUrl, initials, color }).
 // Pass `youId` to orient that manager to the left and label them "You" (My Team);
 // pass `youLabel` to override that label with a name (viewing another's profile);
@@ -56,10 +56,11 @@
         return right ? '<div class="h2h-trow">' + teamVal(t) + idcol + img + '</div>'
             : '<div class="h2h-trow">' + img + idcol + teamVal(t) + '</div>';
     }
-    // Final weeks show only teams that scored; a live week shows every team with
-    // a game (so upcoming/in-progress ones are visible, not mistaken for 0).
-    function teamList(teams, live, right) {
-        var list = live ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
+    // Final weeks show only teams that scored; an unplayed week (live or still
+    // to come) shows every team with a game, so in-progress and upcoming ones
+    // are visible with their kickoff times instead of being mistaken for 0.
+    function teamList(teams, unplayed, right) {
+        var list = unplayed ? (teams || []) : (teams || []).filter(function (t) { return t.score > 0; });
         return list.length ? list.map(function (t) { return teamRow(t, right); }).join('')
             : '<div class="h2h-trow empty">no points</div>';
     }
@@ -97,7 +98,7 @@
             aTeams: g.bTeams, bTeams: g.aTeams,
             winner: g.winner === 'a' ? 'b' : g.winner === 'b' ? 'a' : g.winner,
             winP: g.winP ? { a: g.winP.b, b: g.winP.a } : g.winP,
-            final: g.final
+            final: g.final, upcoming: g.upcoming
         };
     }
 
@@ -111,24 +112,32 @@
         // name); default keeps the first-person "You" for the viewer's own pages.
         var aName = youLeft ? (opts.youLabel || 'You') : nameOf(A);
         var bName = nameOf(B);
-        var live = g.final === false;
+        // Three states, not two: a week that hasn't kicked off yet is neither
+        // final nor live. It shows the same per-team view as a live week (so
+        // kickoff times are visible) but reads as a preview — no LIVE badge, and
+        // no 0-0 scoreline pretending the matchup is already under way.
+        var upcoming = !!g.upcoming;
+        var live = g.final === false && !upcoming;
+        var unplayed = live || upcoming;
+        var score = function (v) { return upcoming ? '&ndash;' : v; };
         var remaining = (g.aTeams || []).concat(g.bTeams || []).filter(function (t) { return t.status && t.status !== 'final'; }).length;
         var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
-        return '<div class="h2h-mcard' + (live ? ' live' : '') + (opts.open ? ' open' : '') + '">'
+        return '<div class="h2h-mcard' + (live ? ' live' : '') + (upcoming ? ' upcoming' : '') + (opts.open ? ' open' : '') + '">'
             + '<div class="h2h-msum" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '">'
             + wk
-            + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + manLink(g.aId, avatar(A) + '<span class="h2h-mnm">' + aName + '</span>') + '<span class="h2h-msc">' + g.aScore + '</span></div>'
+            + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + manLink(g.aId, avatar(A) + '<span class="h2h-mnm">' + aName + '</span>') + '<span class="h2h-msc">' + score(g.aScore) + '</span></div>'
             + '<span class="h2h-msep">' + sep + '</span>'
-            + '<div class="h2h-mside r' + (g.winner === 'b' ? ' win' : '') + '"><span class="h2h-msc">' + g.bScore + '</span>' + manLink(g.bId, '<span class="h2h-mnm">' + bName + '</span>' + avatar(B)) + '</div>'
+            + '<div class="h2h-mside r' + (g.winner === 'b' ? ' win' : '') + '"><span class="h2h-msc">' + score(g.bScore) + '</span>' + manLink(g.bId, '<span class="h2h-mnm">' + bName + '</span>' + avatar(B)) + '</div>'
             + '<i class="fa-solid fa-chevron-down h2h-mcaret" aria-hidden="true"></i>'
             + '</div>'
             + winBar(g)
             + '<div class="h2h-mdetail">'
-            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, live, false) + '</div>'
-            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, live, true) + '</div>'
+            + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false) + '</div>'
+            + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true) + '</div>'
             + pregameLine(g, aName, bName)
             + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · scores update as they finish</div>' : '')
+            + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · odds are projected</div>' : '')
             + '</div></div>';
     }
 

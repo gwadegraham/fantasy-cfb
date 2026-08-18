@@ -733,7 +733,7 @@ async function hydrateH2H(user, activeYear) {
     (data.managers || []).forEach(m => { byId[m.userId] = m; });
     const uid = String(user._id);
     const mine = [];
-    (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, g }); });
+    (data.schedule || []).forEach(s => { const g = s.games.find(x => x.aId === uid || x.bId === uid); if (g) mine.push({ week: s.week, final: s.final !== false, upcoming: !!s.upcoming, g }); });
     if (!mine.length) return hide();
 
     // Win reveal: play the moment once when your latest matchup goes final —
@@ -779,9 +779,14 @@ async function hydrateH2H(user, activeYear) {
     }
 
     const liveWk = (data.currentWeek != null && mine.some(x => x.week === data.currentWeek)) ? data.currentWeek : null;
-    const featuredWk = liveWk != null ? liveWk : mine[mine.length - 1].week;
+    // The payload now carries weeks that haven't been played yet, so "latest"
+    // has to mean the last PLAYED week — otherwise a manager sitting out the
+    // current week (a bye, on an odd-sized league) would be featured with a
+    // matchup that hasn't happened.
+    const played = mine.filter(x => !x.upcoming);
+    const featuredWk = liveWk != null ? liveWk
+        : (played.length ? played[played.length - 1].week : mine[mine.length - 1].week);
     const featured = mine.find(x => x.week === featuredWk);
-    const rest = mine.slice().sort((a, b) => b.week - a.week);
     const cardOf = (x, open) => window.ccH2H.matchupCard(x.g, { byId, youId: uid, youLabel, week: x.week, open });
     // My-perspective summary of a matchup (for glances).
     const summary = (x) => {
@@ -828,9 +833,16 @@ async function hydrateH2H(user, activeYear) {
         } else sg.innerHTML = `<span class="uh-mu-opp">Full schedule</span>${me ? ` <span class="uh-glance-sub">${escapeHtml(me.record)}</span>` : ''}`;
     }
     uhDrawer.schedule = (body) => {
-        const listWeeks = liveWk != null ? rest.filter(x => x.week !== featuredWk) : rest;
+        // Two groups, each in the order you'd read it: what's still to come
+        // ascending (next opponent first), what's already happened descending
+        // (most recent result first). The live week is the lead card, so it's
+        // left out of both; when there is no live week nothing is pulled out.
+        const ahead = mine.filter(x => x.upcoming).sort((a, b) => a.week - b.week);
+        const behind = mine.filter(x => !x.upcoming && x.week !== liveWk).sort((a, b) => b.week - a.week);
         const lead = liveWk != null ? `<div class="uh-drawer-lead">This week</div>` + cardOf(featured, true) : '';
-        body.innerHTML = lead + `<div class="uh-drawer-cap">Full schedule · tap a week</div><div class="uh-h2h-log">${listWeeks.map(x => cardOf(x, false)).join('')}</div>`;
+        const group = (cap, list) => list.length
+            ? `<div class="uh-drawer-cap">${cap}</div><div class="uh-h2h-log">${list.map(x => cardOf(x, false)).join('')}</div>` : '';
+        body.innerHTML = lead + group('Upcoming · tap a week', ahead) + group('Results · tap a week', behind);
         window.ccH2H.wire(body);
     };
 }
