@@ -70,6 +70,23 @@ describe('uhFmtLock', () => {
     });
 });
 
+describe('uhRankTag', () => {
+    beforeEach(load);
+
+    // Tiered the way rankValue tiers the bonus: a top-10 win pays double.
+    test('marks a ranked opponent and flags the top ten', () => {
+        expect(uhRankTag(23)).toBe('<span class="cap-rk">#23</span> ');
+        expect(uhRankTag(10)).toBe('<span class="cap-rk top10">#10</span> ');
+        expect(uhRankTag(1)).toBe('<span class="cap-rk top10">#1</span> ');
+    });
+
+    test('is nothing at all for an unranked opponent', () => {
+        expect(uhRankTag(null)).toBe('');
+        expect(uhRankTag(undefined)).toBe('');
+        expect(uhRankTag(0)).toBe('');
+    });
+});
+
 describe('uhAndList', () => {
     beforeEach(load);
 

@@ -44,6 +44,10 @@
 .h2h-capx { flex: none; font-size: 0.5rem; font-weight: 800; letter-spacing: .02em; color: var(--cc-amber); border: 1px solid rgba(224,179,65,.45); border-radius: 99px; padding: 0 4px; line-height: 1.5; }
 .h2h-tsub { min-width: 0; max-width: 100%; font-size: 0.6rem; color: var(--cc-muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .h2h-mdcol.right .h2h-tnm, .h2h-mdcol.right .h2h-tsub { text-align: right; }
+/* Opponent's poll rank on the sub-line. Tiered like the scoring: a top-10 win
+   pays double, 11–25 single, so the two read differently at a glance. */
+.h2h-trk { font-weight: 800; color: var(--cc-info); }
+.h2h-trk.top10 { color: var(--cc-amber); }
 /* Full school name on desktop; team abbreviation on mobile (tight columns). */
 .tnm-abbr { display: none; }
 @media (max-width: 560px) { .tnm-full { display: none; } .tnm-abbr { display: inline; } }

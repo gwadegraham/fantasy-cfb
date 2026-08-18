@@ -867,6 +867,14 @@ function uhFmtLock(iso, opts) {
     const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
     return `${day} ${time}${o.tz ? ' CT' : ''}`;
 }
+// A ranked opponent, tiered the way the scoring tiers it: rankValue pays double
+// for a top-10 win and single for 11–25. Beating ranked teams is where much of
+// the model's value sits, so the pick shouldn't be made blind to it.
+function uhRankTag(rank) {
+    const n = Number(rank);
+    if (!n || n < 1) return '';
+    return `<span class="cap-rk${n <= 10 ? ' top10' : ''}">#${n}</span> `;
+}
 // "NC State", "NC State and LSU", "NC State, LSU and Duke".
 function uhAndList(names) {
     const a = (names || []).filter(Boolean);
@@ -955,7 +963,7 @@ async function hydrateCaptain(user, activeYear) {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
         const lines = games.length
-            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: datedSlate })) : ' · TBD'}</span>`).join('')
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: datedSlate })) : ' · TBD'}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
             <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
