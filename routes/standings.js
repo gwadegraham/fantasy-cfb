@@ -447,7 +447,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Which weeks have settled, the pairings, and each manager's result —
         // from the SAME function the scoring job uses to bank the bonus, so the
         // table and cumulativeScore can never tell different stories.
-        const { awards, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
+        const { awards, weeks: h2hWeeks, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
             users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK, pinnedIds
         });
 
@@ -553,22 +553,32 @@ router.get('/h2h/:league/:season', async (req, res) => {
         };
         const oddsFor = (a, b, w) => oddsFrom(entriesFor(a, w), entriesFor(b, w));
         const liveOddsFor = (a, b, w) => oddsFrom(liveEntriesFor(a, w), liveEntriesFor(b, w));
-        const gameFor = (a, b, w, live) => {
-            const sa = round(totals[a][w] || 0), sb = round(totals[b][w] || 0);
+        // `unplayed` covers both the in-progress week and the weeks still to
+        // come: neither has a decided winner, and both want the per-team view
+        // that shows kickoff times rather than the scored-teams-only one.
+        const gameFor = (a, b, w, unplayed, upcoming) => {
+            const sa = round((totals[a] || {})[w] || 0), sb = round((totals[b] || {})[w] || 0);
             return {
-                aId: a, aScore: sa, aTeams: live ? teamsLive(a, w) : teamsFinal(a, w),
-                bId: b, bScore: sb, bTeams: live ? teamsLive(b, w) : teamsFinal(b, w),
-                winner: live ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
-                winP: live ? liveOddsFor(a, b, w) : oddsFor(a, b, w),
-                final: !live
+                aId: a, aScore: sa, aTeams: unplayed ? teamsLive(a, w) : teamsFinal(a, w),
+                bId: b, bScore: sb, bTeams: unplayed ? teamsLive(b, w) : teamsFinal(b, w),
+                winner: unplayed ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
+                winP: unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w),
+                final: !unplayed,
+                upcoming: !!upcoming
             };
         };
-        const schedWeeks = finalWeeks.slice();
-        if (currentWeek && !schedWeeks.includes(currentWeek)) schedWeeks.push(currentWeek);
-        schedWeeks.sort((a, b) => a - b);
+        // EVERY derived H2H week, not just the played ones. The pairings are
+        // deterministic (positional round-robin over the pinned roster), so a
+        // week that hasn't happened yet is fully knowable: opponent, kickoff
+        // times, and pre-game odds. Emitting only final-plus-current is what
+        // left My Team's "Full schedule" drawer empty in week 1 — there was
+        // nothing to list once the featured week was pulled out — and limited
+        // the Standings week picker to weeks already behind you.
+        const schedWeeks = h2hWeeks.slice().sort((a, b) => a - b);
         const schedule = schedWeeks.map(w => {
             const live = (w === currentWeek) && !weekFinal[w];
-            return { week: w, final: !live, games: (scheduleAll[w] || []).map(([a, b]) => gameFor(a, b, w, live)) };
+            const upcoming = !weekFinal[w] && !live;
+            return { week: w, final: !!weekFinal[w], upcoming, games: (scheduleAll[w] || []).filter(([a, b]) => meta[a] && meta[b]).map(([a, b]) => gameFor(a, b, w, live || upcoming, upcoming)) };
         });
         let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
         let currentWeekOut = currentWeek;
@@ -579,7 +589,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // some live, some upcoming).
         if (req.query.h2hSim && process.env.NODE_ENV !== 'production' && schedule.length) {
             const mode = String(req.query.h2hSim);
-            const w = schedule[schedule.length - 1];
+            const w = schedule.find(x => x.week === featuredWeek) || schedule[schedule.length - 1];
             w.final = false;
             const doctor = (arr) => (arr || []).map((t, j) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));

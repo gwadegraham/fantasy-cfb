@@ -9,6 +9,9 @@
 
 .h2h-mcard { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: 12px; }
 .h2h-mcard.live { border-color: var(--cc-border-2); }
+/* Not played yet: same card, dialed back so it reads as a preview next to a
+   live or settled one. The em-dash scoreline is muted rather than bold. */
+.h2h-mcard.upcoming .h2h-msc { font-weight: 600; color: var(--cc-muted-2); }
 .h2h-msum { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.75rem; cursor: pointer; }
 .h2h-mwk { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cc-muted-2); flex-shrink: 0; min-width: 2.2rem; }
 .h2h-mside { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; }
