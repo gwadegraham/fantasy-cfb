@@ -330,6 +330,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const ids = h2hRoster(users, season, pinnedIds);
         const idSet = new Set(ids);
         const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {};
+        // teamDetail is keyed per (team, game) so a doubleheader keeps both
+        // results apart. scoreByTeam only started carrying gameId in 2024, so
+        // older entries key on the team alone — one row per team, as before.
+        const detailKey = (teamId, gameId) => gameId == null ? String(teamId) : teamId + ':' + gameId;
         const draftedSet = new Set();
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));
@@ -360,11 +364,17 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // BASE total (score minus any bonus already banked into it), so a
                 // week's own bonus never feeds back into deciding that week.
                 tw[w] = (tw[w] || 0) + baseWeekScore(e);
-                const byTeam = twTeams[w] || (twTeams[w] = {});
+                // Keyed per GAME, because a team can play twice in one API
+                // week — CFBD has no week 0, it folds the opening weekend into
+                // week 1 (12 draftable teams in 2026, 8 in 2025). Summing those
+                // into one row produced a two-game total labelled with one
+                // game's opponent. Entries from before scoreByTeam carried a
+                // gameId still aggregate per team, the way they always have.
+                const byGame = twTeams[w] || (twTeams[w] = {});
                 (e.scoreByTeam || []).forEach(st => {
-                    const k = st.teamId;
-                    if (!byTeam[k]) byTeam[k] = { teamId: st.teamId, school: st.team, abbr: abbrBy[st.teamId] || null, logo: logoBy[st.teamId] || null, score: 0 };
-                    byTeam[k].score += (st.score || 0);
+                    const k = detailKey(st.teamId, st.gameId);
+                    if (!byGame[k]) byGame[k] = { teamId: st.teamId, gameId: st.gameId == null ? null : st.gameId, school: st.team, abbr: abbrBy[st.teamId] || null, logo: logoBy[st.teamId] || null, score: 0 };
+                    byGame[k].score += (st.score || 0);
                 });
             });
             totals[id] = tw;
@@ -427,21 +437,44 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 const team = teamsById[String(tid)];
                 if (!team) return;
                 const proj = projectTeamPoints(team, gamesByTeam[tid] || [], poolCtx, rankings, cfg, seasonNum, { perGame: true });
+                // { [week]: { [teamId]: { [gameId]: proj } } } — nested by game
+                // rather than flat by team. Keying by team alone meant a team's
+                // second game in an API week silently overwrote its first, so
+                // half of that team's week never reached the odds.
                 (proj.perGame || []).forEach(pg => {
-                    if (pg.week == null) return;
-                    (projByWeek[pg.week] = projByWeek[pg.week] || {})[tid] = { winProb: pg.winProb, pointsIfWin: pg.pointsIfWin };
+                    if (pg.week == null || pg.gameId == null) return;
+                    const byTeam = projByWeek[pg.week] = projByWeek[pg.week] || {};
+                    (byTeam[tid] = byTeam[tid] || {})[pg.gameId] = { winProb: pg.winProb, pointsIfWin: pg.pointsIfWin };
                 });
             });
         }
 
+        // EVERY game a rostered team plays that week, in kickoff order. This
+        // used to keep one game per team per week, which silently dropped the
+        // other half of a doubleheader — and picked the survivor by document
+        // order, so which game showed was effectively arbitrary.
         const gameTW = {};
         games.forEach(g => {
             [g.homeId, g.awayId].forEach(tid => {
                 if (!draftedSet.has(tid)) return;
                 const m = gameTW[tid] || (gameTW[tid] = {});
-                if (!m[g.week] || (m[g.week].completed && !g.completed)) m[g.week] = g;   // prefer the unfinished game
+                (m[g.week] = m[g.week] || []).push(g);
             });
         });
+        Object.values(gameTW).forEach(byWeek => Object.values(byWeek).forEach(list =>
+            list.sort((a, b) => String(a.startDate || '').localeCompare(String(b.startDate || '')))));
+        const gamesOf = (teamId, w) => (gameTW[teamId] && gameTW[teamId][w]) || [];
+        const gameById = {};
+        games.forEach(g => { gameById[g.id] = g; });
+        // A team's scored points for ONE game. The legacy per-team fallback is
+        // only safe when that team played once that week — otherwise it would
+        // report the same two-game total against each of the two rows.
+        const scoredFor = (id, w, teamId, gameId) => {
+            const detail = (teamDetail[id] && teamDetail[id][w]) || {};
+            return detail[detailKey(teamId, gameId)]
+                || (gamesOf(teamId, w).length === 1 ? detail[String(teamId)] : null)
+                || null;
+        };
         const now = Date.now();
 
         // Which weeks have settled, the pairings, and each manager's result —
@@ -490,7 +523,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
             .map(t => {
                 // Opponent + final CFB score for the retrospective sub-line (same
                 // source the live week uses), so past matchup rows aren't bare.
-                const g = gameTW[t.teamId] && gameTW[t.teamId][w];
+                // The row knows its own game; only legacy rows (no gameId) fall
+                // back to the team's single game that week.
+                const g = t.gameId != null ? gameById[t.gameId] : gamesOf(t.teamId, w)[0];
                 let opp = '', ha = 'vs', gameScore = null;
                 if (g) {
                     const isHome = g.homeId === t.teamId;
@@ -509,11 +544,12 @@ router.get('/h2h/:league/:season', async (req, res) => {
             return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         };
         const statusOrder = { final: 0, live: 1, scheduled: 2 };
-        const teamsLive = (id, w) => (meta[id].teams || []).map(t => {
-            const g = gameTW[t.id] && gameTW[t.id][w];
-            if (!g) return null;   // bye / no game this week
+        // flatMap, not map: a team with two games that week gets a row for each,
+        // so neither is hidden and the footer's game count is honest. A team with
+        // no game contributes nothing (a bye).
+        const teamsLive = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
             const st = gameStatus(g, now);
-            const scored = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+            const scored = scoredFor(id, w, t.id, g.id);
             const isHome = g.homeId === t.id;
             const oppId = isHome ? g.awayId : g.homeId;
             const opp = oppAbbrById[oppId] || (isHome ? g.awayTeam : g.homeTeam) || '';
@@ -522,29 +558,26 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
             return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: !!(caps[id] && caps[id][w] === t.id) };
-        }).filter(Boolean).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
+        })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that
         // sum to 100 (or null when neither side has a projectable game).
         const entriesFor = (id, w) => (meta[id].teams || [])
-            .map(t => projByWeek[w] && projByWeek[w][t.id])
-            .filter(Boolean);
+            .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}));
         // Live odds recompute as the week plays out: a team whose game is already
         // FINAL contributes its actual scored points as a certainty; teams still
         // to play (live/upcoming) keep their projected win-prob × points-if-win.
         // So the bar shifts toward whoever's banked results are stronger, and by
         // the time every game is final it reads as the settled 100/0.
-        const liveEntriesFor = (id, w) => (meta[id].teams || []).map(t => {
-            const g = gameTW[t.id] && gameTW[t.id][w];
-            if (!g) return null;                                  // bye — no game this week
+        const liveEntriesFor = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
             if (gameStatus(g, now) === 'final') {
-                const s = teamDetail[id] && teamDetail[id][w] && teamDetail[id][w][t.id];
+                const s = scoredFor(id, w, t.id, g.id);
                 return { winProb: 1, pointsIfWin: s ? s.score : 0 };   // result locked in
             }
-            const p = projByWeek[w] && projByWeek[w][t.id];
+            const p = projByWeek[w] && projByWeek[w][t.id] && projByWeek[w][t.id][g.id];
             return p ? { winProb: p.winProb, pointsIfWin: p.pointsIfWin } : null;
-        }).filter(Boolean);
+        })).filter(Boolean);
         const oddsFrom = (ea, eb) => {
             const r = matchupWinProb(ea, eb);
             if (!r) return null;
