@@ -1,0 +1,86 @@
+/**
+ * @jest-environment jsdom
+ *
+ * Browser-side tests for the kickoff times on the shared H2H matchup card
+ * (public/h2h-card.js).
+ *
+ * These used to be formatted server-side with no timeZone option, so they came
+ * out in the dyno's zone — UTC on Heroku. Every kickoff read five hours late,
+ * and a night game landed on the wrong weekday outright: Memphis @ UNLV, a
+ * Saturday 9pm Central kickoff, displayed as "Sun 2:00 AM". Meanwhile the
+ * Captain picker rendered the same games in Central, so the two surfaces
+ * disagreed about when a team played.
+ *
+ * The payload now carries the kickoff INSTANT and the card renders it in
+ * Central, matching every other date in the app. The date is added only when a
+ * matchup's games straddle more than one weekend — which is exactly the API
+ * week that folds in the opening weekend, where "Sat 2:00 PM" can't tell Aug 29
+ * from Sep 5.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+function loadCard() {
+    (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'public', 'h2h-card.js'), 'utf8'));
+    return window.ccH2H;
+}
+
+const BY_ID = {
+    u1: { userId: 'u1', name: 'Ann T.', franchise: 'Big Mac', initials: 'AT', color: '#111' },
+    u2: { userId: 'u2', name: 'Bob R.', franchise: 'Always Next Year', initials: 'BR', color: '#222' }
+};
+function team(school, kickoff) {
+    return { teamId: school.length, school, abbr: school.slice(0, 3).toUpperCase(), logo: '', score: null, status: 'scheduled', kickoff, opp: 'OPP', ha: 'vs', gameScore: null, captain: false };
+}
+function card(aTeams, bTeams) {
+    const g = { aId: 'u1', bId: 'u2', aScore: 0, bScore: 0, aTeams, bTeams, winner: null, winP: { a: 50, b: 50 }, final: false, upcoming: true };
+    return loadCard().matchupCard(g, { byId: BY_ID });
+}
+// The rendered kickoff cells, in order.
+function kicks(html) {
+    document.body.innerHTML = html;
+    return [...document.querySelectorAll('.h2h-tv.sched')].map(el => el.textContent);
+}
+
+// Real 2026 week-1 kickoffs, as stored (UTC instants).
+const USC_SJSU = '2026-08-29T19:00:00.000Z';    // Sat Aug 29, 2:00 PM Central
+const USC_FRES = '2026-09-05T01:00:00.000Z';    // Fri Sep 4,  8:00 PM Central
+const MEM_UNLV = '2026-08-30T02:00:00.000Z';    // Sat Aug 29, 9:00 PM Central
+
+describe('H2H card kickoffs', () => {
+    test('render in Central, not the server zone', () => {
+        // Same weekend on both sides, so no dates — just the corrected time.
+        const out = kicks(card([team('USC', USC_SJSU)], [team('Duke', '2026-08-29T23:30:00.000Z')]));
+        expect(out[0]).toBe('Sat 2:00 PM');       // was "Sat 7:00 PM" (UTC)
+        expect(out[1]).toBe('Sat 6:30 PM');
+    });
+
+    test('a night game keeps its own weekday instead of rolling over in UTC', () => {
+        const out = kicks(card([team('Memphis', MEM_UNLV)], [team('Duke', '2026-08-29T23:30:00.000Z')]));
+        // Stored as Aug 30 UTC; it is a SATURDAY night game in Central.
+        expect(out[0]).toBe('Sat 9:00 PM');       // was "Sun 2:00 AM"
+    });
+
+    test('adds the date when the matchup straddles more than one weekend', () => {
+        const out = kicks(card([team('USC', USC_SJSU), team('USC2', USC_FRES)], [team('Duke', '2026-09-05T23:30:00.000Z')]));
+        // Both USC games said "Sat" before — and one of them is a Friday.
+        expect(out[0]).toBe('Sat, 8/29 2:00 PM');
+        expect(out[1]).toBe('Fri, 9/4 8:00 PM');
+        // The date applies to the whole card, so the two columns read alike.
+        expect(out[2]).toBe('Sat, 9/5 6:30 PM');
+    });
+
+    test('leaves the date off an ordinary single-weekend week', () => {
+        const out = kicks(card([team('USC', USC_SJSU)], [team('Duke', '2026-08-30T00:00:00.000Z')]));
+        out.forEach(k => expect(k).toMatch(/^[A-Z][a-z]{2} \d{1,2}:\d{2} [AP]M$/));
+    });
+
+    test('a kickoff with no firm time reads TBD', () => {
+        expect(kicks(card([team('USC', null)], [team('Duke', null)]))).toEqual(['TBD', 'TBD']);
+    });
+
+    test('an unparseable kickoff degrades to TBD rather than Invalid Date', () => {
+        expect(kicks(card([team('USC', 'not-a-date')], [team('Duke', USC_SJSU)]))[0]).toBe('TBD');
+    });
+});

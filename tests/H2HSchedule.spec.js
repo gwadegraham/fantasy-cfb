@@ -128,8 +128,10 @@ describe('GET /standings/h2h schedule', () => {
         // renderer handle both.
         expect(g.aTeams).toHaveLength(1);
         expect(g.aTeams[0]).toMatchObject({ teamId: 1, school: 'Oregon', status: 'scheduled', score: null });
-        expect(g.aTeams[0].kickoff).toBeTruthy();
-        expect(g.aTeams[0].kickoff).not.toBe('TBD');
+        // The kickoff INSTANT — the card renders it in Central; the server no
+        // longer formats it (and used to do so in the dyno's zone).
+        expect(Number.isNaN(Date.parse(g.aTeams[0].kickoff))).toBe(false);
+        expect(new Date(g.aTeams[0].kickoff).toISOString()).toBe(FUTURE);
     });
 
     test('unplayed weeks add no records or bonus', async () => {

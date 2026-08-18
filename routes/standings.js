@@ -21,6 +21,7 @@ const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
         h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
+const { resolveCaptain } = require('../modules/captain');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
 // most recent regular-season poll on file.
@@ -329,7 +330,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const pinnedIds = pinnedH2HIds(cfgDoc, season);
         const ids = h2hRoster(users, season, pinnedIds);
         const idSet = new Set(ids);
-        const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {};
+        const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {}, seasonById = {};
         // teamDetail is keyed per (team, game) so a doubleheader keeps both
         // results apart. scoreByTeam only started carrying gameId in 2024, so
         // older entries key on the team alone — one row per team, as before.
@@ -381,6 +382,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             teamDetail[id] = twTeams;
             caps[id] = {};
             (s.captains || []).forEach(c => { if (c && c.week != null) caps[id][c.week] = c.teamId; });
+            seasonById[id] = s;
         });
         if (!ids.length) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: [], managers: [], schedule: [] });
 
@@ -466,6 +468,35 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const gamesOf = (teamId, w) => (gameTW[teamId] && gameTW[teamId][w]) || [];
         const gameById = {};
         games.forEach(g => { gameById[g.id] = g; });
+
+        // The captain doubles a team for the week, and that doubling is already
+        // folded into the weekly total the card shows — so the win bar has to
+        // count it too, or the number and the bar tell different stories.
+        //
+        // Resolved with resolveCaptain, NOT the raw `captains` array: a manager
+        // who never picks still gets an auto-captain at scoring time (their best
+        // team, or the first rostered one in week 1). Reading only explicit picks
+        // would leave the bar disagreeing with the score for everyone who didn't
+        // set one.
+        const capEnabled = !!eng.captainEnabled;
+        const capMult = eng.captainMultiplier || 2;
+        const capCache = {};
+        const captainOf = (id, w) => {
+            if (!capEnabled) return null;
+            const key = id + ':' + w;
+            if (key in capCache) return capCache[key];
+            const s = seasonById[id];
+            if (!s) return (capCache[key] = null);
+            const prior = (s.weeklyScore || []).filter(e => e.season !== 'postseason' && Number(e.week) < Number(w));
+            return (capCache[key] = resolveCaptain(s.captains, w, s.teams, prior));
+        };
+        const isCaptain = (id, w, teamId) => {
+            const c = captainOf(id, w);
+            return c != null && Number(c) === Number(teamId);
+        };
+        // A projection entry with the captain's multiplier applied to its points.
+        const capped = (id, w, teamId, e) => (e && isCaptain(id, w, teamId))
+            ? { winProb: e.winProb, pointsIfWin: e.pointsIfWin * capMult } : e;
         // A team's scored points for ONE game. The legacy per-team fallback is
         // only safe when that team played once that week — otherwise it would
         // report the same two-game total against each of the two rows.
@@ -535,14 +566,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: !!(caps[id] && caps[id][w] === t.teamId), opp, ha, gameScore };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, gameScore };
             })
             .sort((a, b) => b.score - a.score);
-        const fmtKick = (g) => {
-            if (!g || !g.startDate || g.startTimeTbd) return 'TBD';
-            const d = new Date(g.startDate); if (isNaN(d.getTime())) return 'TBD';
-            return d.toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        };
+        // The kickoff INSTANT, not a rendered string. This used to format here
+        // with no timeZone, so it came out in the dyno's zone (UTC) — every
+        // kickoff five hours late, and night games landing on the wrong weekday
+        // entirely. Every other date in the app renders in Central; the client
+        // now does that for these too, off the ISO. null = time not yet firm.
+        const kickAt = (g) => (!g || !g.startDate || g.startTimeTbd) ? null : g.startDate;
         const statusOrder = { final: 0, live: 1, scheduled: 2 };
         // flatMap, not map: a team with two games that week gets a row for each,
         // so neither is hidden and the footer's game count is honest. A team with
@@ -557,14 +589,14 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.completed && g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? fmtKick(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: !!(caps[id] && caps[id][w] === t.id) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', gameScore, captain: isCaptain(id, w, t.id) };
         })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that
         // sum to 100 (or null when neither side has a projectable game).
         const entriesFor = (id, w) => (meta[id].teams || [])
-            .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}));
+            .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}).map(e => capped(id, w, t.id, e)));
         // Live odds recompute as the week plays out: a team whose game is already
         // FINAL contributes its actual scored points as a certainty; teams still
         // to play (live/upcoming) keep their projected win-prob × points-if-win.
@@ -573,10 +605,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const liveEntriesFor = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
             if (gameStatus(g, now) === 'final') {
                 const s = scoredFor(id, w, t.id, g.id);
-                return { winProb: 1, pointsIfWin: s ? s.score : 0 };   // result locked in
+                return capped(id, w, t.id, { winProb: 1, pointsIfWin: s ? s.score : 0 });   // result locked in
             }
             const p = projByWeek[w] && projByWeek[w][t.id] && projByWeek[w][t.id][g.id];
-            return p ? { winProb: p.winProb, pointsIfWin: p.pointsIfWin } : null;
+            return p ? capped(id, w, t.id, { winProb: p.winProb, pointsIfWin: p.pointsIfWin }) : null;
         })).filter(Boolean);
         const oddsFrom = (ea, eb) => {
             const r = matchupWinProb(ea, eb);
@@ -626,7 +658,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             w.final = false;
             const doctor = (arr) => (arr || []).map((t, j) => {
                 const status = mode === 'pregame' ? 'scheduled' : (j === 0 ? 'final' : (j === 1 ? 'live' : 'scheduled'));
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? 'Sat 3:30' : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null, captain: j === 0 };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, status, score: status === 'final' ? t.score : null, kickoff: status === 'scheduled' ? new Date(Date.now() + 864e5).toISOString() : null, opp: j % 2 ? 'UGA' : 'ARK', ha: j % 2 ? '@' : 'vs', gameScore: status === 'final' ? '31–20' : null, captain: j === 0 };
             });
             // Live odds from the doctored slate: final games lock their actual
             // points, everything else is a neutral coin-flip projection — so the
