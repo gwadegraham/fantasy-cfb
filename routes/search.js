@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const User = require('../models/user');
 const { pickLogo } = require('../public/logo.js');
 const { leagueCodeFor } = require('../modules/league-access');
@@ -47,7 +48,7 @@ router.get('/index', async (req, res) => {
         const season = Number(process.env.YEAR);
 
         const [teamDocs, userDocs] = await Promise.all([
-            Team.find({}, 'id school mascot abbreviation conference color logos alt_name1 alt_name2 alt_name3 alternateNames').lean(),
+            Team.find(FBS_ONLY, 'id school mascot abbreviation conference color logos alt_name1 alt_name2 alt_name3 alternateNames').lean(),
             User.find({ league }, 'firstName lastName avatarUrl color seasons').lean()
         ]);
 

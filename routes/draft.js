@@ -4,6 +4,7 @@ const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const User = require('../models/user');
 const Team = require('../models/team');
+const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
@@ -33,7 +34,7 @@ router.get('/grades/:league/:season', async (req, res) => {
         users.forEach(u => { usersById[String(u._id)] = u; });
 
         // SP+ / expected wins / CFP odds / conference live on the Team docs.
-        const teams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+        const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
         const teamsById = {};
         teams.forEach(t => { teamsById[String(t.id)] = t; });
 
@@ -93,7 +94,7 @@ router.get('/board/:league/:season', async (req, res) => {
         if (req.query.refresh === '1') boardCache.delete(key);
         let cached = boardCache.get(key);
         if (!cached) {
-            const teams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, logos: 1, seasons: 1 }).lean();
+            const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, logos: 1, seasons: 1 }).lean();
             const teamsById = {};
             teams.forEach(t => { if (t.id != null) teamsById[String(t.id)] = t; });
 
