@@ -40,14 +40,19 @@
     // adds the calendar date, for a week whose games don't all sit on one
     // weekend (see spansWeekends): "Sat 2:00 PM" can't tell Aug 29 from Sep 5.
     var CT = 'America/Chicago';
+    // Built once. A week-1 card carries 20+ kickoff rows and the schedule drawer
+    // renders thirteen such cards in a pass, so constructing these per row (which
+    // is what toLocaleDateString does internally) is hundreds of the most
+    // expensive call in this file, on exactly the phones the dating rule is for.
+    var DAY_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: CT });
+    var DATED_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT });
+    var TIME_FMT = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
+    var YMD_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: CT, year: 'numeric', month: '2-digit', day: '2-digit' });
     function fmtKick(iso, dated) {
         if (!iso) return 'TBD';
         var d = new Date(iso);
         if (isNaN(d.getTime())) return 'TBD';
-        var day = d.toLocaleDateString('en-US', dated
-            ? { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: CT }
-            : { weekday: 'short', timeZone: CT });
-        return day + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: CT });
+        return (dated ? DATED_FMT : DAY_FMT).format(d) + ' ' + TIME_FMT.format(d);
     }
     // Which football week a kickoff belongs to, in Central. Epoch day 0 was a
     // Thursday, so plain 7-day buckets already run Thu→Wed — which is how a
@@ -58,8 +63,7 @@
         if (isNaN(d.getTime())) return '';
         // en-CA gives YYYY-MM-DD; reading it back as UTC midnight makes the day
         // arithmetic exact regardless of where the viewer is.
-        var ymd = new Intl.DateTimeFormat('en-CA', { timeZone: CT, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-        var day = Math.floor(Date.parse(ymd + 'T00:00:00Z') / 864e5);
+        var day = Math.floor(Date.parse(YMD_FMT.format(d) + 'T00:00:00Z') / 864e5);
         return String(Math.floor(day / 7));
     }
     // Which rows need a calendar date, as the week they must NOT match.
@@ -72,16 +76,21 @@
     //
     // null → never date (one weekend, nothing to disambiguate).
     // '*'  → date everything (no weekend carries the card, so none is implicit).
-    function datingPlan(teams) {
+    function datingPlan(kickoffs) {
         var count = {};
-        (teams || []).forEach(function (t) {
-            var k = weekKey(t.kickoff);
+        (kickoffs || []).forEach(function (iso) {
+            var k = weekKey(iso);
             if (k) count[k] = (count[k] || 0) + 1;
         });
         var weeks = Object.keys(count);
         if (weeks.length < 2) return null;
         weeks.sort(function (a, b) { return count[b] - count[a]; });
-        return count[weeks[0]] > 1 ? weeks[0] : '*';
+        // A weekend can only be the implicit default if it clearly carries the
+        // card. One game apiece, or two weekends tied, and nothing is implicit —
+        // date them all rather than letting object key order decide which half
+        // reads as "the normal one".
+        if (count[weeks[0]] < 2 || count[weeks[1]] === count[weeks[0]]) return '*';
+        return weeks[0];
     }
     function needsDate(iso, plan) {
         return plan !== null && weekKey(iso) !== plan;
@@ -180,7 +189,7 @@
         var unplayed = live || upcoming;
         var score = function (v) { return upcoming ? '&ndash;' : v; };
         var both = (g.aTeams || []).concat(g.bTeams || []);
-        var plan = datingPlan(both);
+        var plan = datingPlan(both.map(function (t) { return t.kickoff; }));
         var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
         var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
@@ -219,5 +228,10 @@
         });
     }
 
-    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf };
+    // weekKey/datingPlan/needsDate are exported because the Captain picker has
+    // to date its tiles by the same rule — the two surfaces show the same games,
+    // and a copy in userHome.js could drift so that one dates a kickoff the
+    // other leaves bare.
+    window.ccH2H = { matchupCard: matchupCard, wire: wire, avatar: avatar, nameOf: nameOf,
+        weekKey: weekKey, datingPlan: datingPlan, needsDate: needsDate };
 })();

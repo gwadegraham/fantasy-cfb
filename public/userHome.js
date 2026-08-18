@@ -875,29 +875,15 @@ function uhRankTag(rank) {
     if (!n || n < 1) return '';
     return `<span class="cap-rk${n <= 10 ? ' top10' : ''}">#${n}</span> `;
 }
-// Which football week a kickoff belongs to, in Central. Epoch day 0 was a
-// Thursday, so plain 7-day buckets already run Thu→Wed, the way a college week
-// runs. Mirrors weekKey in h2h-card.js so the two surfaces date alike.
-function uhWeekKey(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    return String(Math.floor(Math.floor(Date.parse(ymd + 'T00:00:00Z') / 864e5) / 7));
-}
-// Which rows need a calendar date, as the week they must NOT match. Dating every
-// tile of a week that straddles two weekends is mostly wasted width on a phone —
-// if all but a few games sit on one weekend, only the strays need saying.
-// null → never date. '*' → date everything (no weekend carries the week).
+// The picker dates its tiles by the same rule the matchup card uses, from the
+// same code — h2h-card.js ships in the navbar on every page, so ccH2H is always
+// there. Guarded anyway: no helper means no dates, never a thrown picker.
 function uhDatingPlan(kickoffs) {
-    const count = {};
-    (kickoffs || []).forEach(k => { const w = uhWeekKey(k); if (w) count[w] = (count[w] || 0) + 1; });
-    const weeks = Object.keys(count);
-    if (weeks.length < 2) return null;
-    weeks.sort((a, b) => count[b] - count[a]);
-    return count[weeks[0]] > 1 ? weeks[0] : '*';
+    return (window.ccH2H && window.ccH2H.datingPlan) ? window.ccH2H.datingPlan(kickoffs) : null;
 }
-const uhNeedsDate = (iso, plan) => plan !== null && uhWeekKey(iso) !== plan;
+function uhNeedsDate(iso, plan) {
+    return !!(window.ccH2H && window.ccH2H.needsDate) && window.ccH2H.needsDate(iso, plan);
+}
 // "NC State", "NC State and LSU", "NC State, LSU and Duke".
 function uhAndList(names) {
     const a = (names || []).filter(Boolean);

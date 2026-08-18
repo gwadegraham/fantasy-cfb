@@ -21,12 +21,15 @@ const path = require('path');
 
 // userHome.js runs a little jQuery at the top level; the page itself only boots
 // from window.onload, which jsdom has already fired past.
-function load() {
+function load({ withCard = true } = {}) {
     const node = new Proxy(function () { return node; }, {
         get(t, k) { return k === 'length' ? 0 : node; },
         apply() { return node; }
     });
     global.$ = window.$ = function () { return node; };
+    delete window.ccH2H;
+    // The navbar ships h2h-card.js on every page, ahead of userHome.js.
+    if (withCard) (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'public', 'h2h-card.js'), 'utf8'));
     (0, eval)(fs.readFileSync(path.join(__dirname, '..', 'public', 'userHome.js'), 'utf8'));
 }
 
@@ -102,5 +105,36 @@ describe('uhAndList', () => {
         // A roster can hold both sides of one game (LSU vs Clemson), so blanks
         // are filtered rather than rendered as "and undefined".
         expect(uhAndList(['LSU', null, undefined])).toBe('LSU');
+    });
+});
+
+// The picker and the matchup card show the same games, so they must date them
+// alike. The picker now calls the card's helpers rather than keeping a copy that
+// could drift into dating a kickoff the card leaves bare.
+describe('the picker dates from the card\'s rule', () => {
+    const AUG29 = '2026-08-29T19:30:00.000Z';
+    const SEP5 = '2026-09-05T19:30:00.000Z';
+
+    test('delegates to ccH2H rather than reimplementing it', () => {
+        load();
+        const kicks = [AUG29, SEP5, SEP5, SEP5];
+        expect(uhDatingPlan(kicks)).toBe(window.ccH2H.datingPlan(kicks));
+        // The Aug 29 stray is dated; the September majority is not.
+        const plan = uhDatingPlan(kicks);
+        expect(uhNeedsDate(AUG29, plan)).toBe(true);
+        expect(uhNeedsDate(SEP5, plan)).toBe(false);
+    });
+
+    test('a single weekend dates nothing', () => {
+        load();
+        const plan = uhDatingPlan([SEP5, SEP5]);
+        expect(plan).toBeNull();
+        expect(uhNeedsDate(SEP5, plan)).toBe(false);
+    });
+
+    test('degrades to no dates rather than throwing if the card script is absent', () => {
+        load({ withCard: false });
+        expect(uhDatingPlan([AUG29, SEP5])).toBeNull();
+        expect(uhNeedsDate(AUG29, null)).toBe(false);
     });
 });

@@ -83,6 +83,17 @@ describe('H2H card kickoffs', () => {
         expect(out[1]).toBe('Fri, 9/4 8:00 PM');
     });
 
+    // Two weekends of equal size: neither carries the card, so neither can be
+    // the implicit "normal" one. Picking a winner would leave half the rows bare
+    // with no way to tell which weekend they belong to — and which half won
+    // would come down to object key order.
+    test('dates everything when two weekends are tied', () => {
+        const out = kicks(card(
+            [team('A', USC_SJSU), team('B', '2026-08-29T23:30:00.000Z')],
+            [team('C', USC_FRES), team('D', '2026-09-05T23:30:00.000Z')]));
+        out.forEach(k => expect(k).toMatch(/^[A-Z][a-z]{2}, \d{1,2}\/\d{1,2} /));
+    });
+
     test('treats a Thursday-through-Monday slate as one weekend', () => {
         // A college week runs Thu night through the Monday game; none of these
         // need a date, their weekdays already differ.
