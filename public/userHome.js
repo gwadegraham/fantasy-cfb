@@ -936,7 +936,7 @@ async function hydrateCaptain(user, activeYear) {
             const t = state.teamId != null ? teamById[state.teamId] : null;
             container.innerHTML = `<p class="captain-note">Locked — your first team of Week ${state.week} has kicked off. `
                 + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`)
-                + ` All kickoffs below are Central.</p>`
+                + ` All times Central.</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
                     <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">${tileBody(tm)}</div>`).join('')}</div>`;
             return;
@@ -948,7 +948,7 @@ async function hydrateCaptain(user, activeYear) {
         const twoLine = twoGamers.length
             ? ` <b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice this week — captaining one doubles both games.`
             : '';
-        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine} All kickoffs below are Central.</p>
+        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine} All times Central.</p>
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
