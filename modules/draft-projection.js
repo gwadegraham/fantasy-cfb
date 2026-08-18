@@ -179,7 +179,9 @@ function expectedCfpPoints(teamId, m, beta, q, rankings, cfg) {
 // opts.expectedWins: calibration target for the games passed (default: the
 //   team's season expected wins — used for a full-season projection; the
 //   standings projection passes REMAINING expected wins for a remaining subset).
-// opts.perGame: also return perGame [{ winProb, pointsIfWin }] for Monte-Carlo.
+// opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin }] for
+//   Monte-Carlo. Carrying the game id matters because a team can play twice in
+//   one API week — callers keying these by team alone lose one of the two.
 function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts = {}) {
     const teamId = team.id;
     const sp = spFor(team, season);
@@ -204,7 +206,7 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts
     reg.forEach((g, i) => {
         const pts = evaluate(cfg.model, teamId, synthWin(g, teamId), rankings, cfg);
         regular += probs[i] * pts;
-        if (opts.perGame) perGame.push({ week: g.week, winProb: probs[i], pointsIfWin: pts });
+        if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: probs[i], pointsIfWin: pts });
     });
     const projWins = probs.reduce((a, b) => a + b, 0);
 
