@@ -565,7 +565,8 @@
 .captain-unset { color: var(--cc-interactive); }
 .uh-captain { width: 92%; max-width: 720px; margin: 0 auto; overflow: hidden; max-height: 0; transition: max-height 0.32s ease; }
 .uh-captain.is-open { max-height: 1600px; margin-top: 1.1rem; }
-.captain-note { margin: 0 0 0.9em; color: var(--cc-muted); font-size: 0.9rem; }
+.captain-note { margin: 0 0 0.4em; color: var(--cc-text); font-size: 0.95rem; font-weight: 600; }
+.cap-lock { display: block; color: var(--cc-muted-2); font-size: 0.78rem; margin-bottom: 0.9em; }
 .captain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 0.6rem; }
 .captain-team { display: flex; align-items: flex-start; gap: 0.5rem; background: var(--cc-bg); border: 1px solid var(--cc-border); border-radius: 10px; padding: 0.5rem 0.7rem; color: var(--cc-text); font: inherit; font-size: 0.85rem; cursor: pointer; text-align: left; transition: border-color 0.15s ease, background 0.15s ease; }
 .captain-team img { height: 24px; width: 24px; object-fit: contain; flex-shrink: 0; }
@@ -588,6 +589,12 @@
 .captain-team.is-locked:hover { border-color: var(--cc-border); background: var(--cc-bg); }
 .captain-team.is-locked.is-captain:hover { border-color: var(--cc-interactive); background: rgba(142, 140, 240, 0.14); }
 @media (prefers-reduced-motion: reduce) { .uh-captain { transition: none; } }
+
+/* Captain analytics */
+.cap-analytics { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--cc-border); }
+.cap-analytics-hd { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted-2); margin-bottom: 10px; font-weight: 600; }
+.cap-analytics .uh-drawer-stats { margin-bottom: 0; }
+.cap-analytics .stat-value img { height: 1.1rem; width: auto; }
 
 /* ---------- H2H matchups (#230, My Team) ----------
    A spotlight banner in the profile hero for the current/latest matchup, plus an

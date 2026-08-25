@@ -978,21 +978,21 @@ async function hydrateCaptain(user, activeYear) {
     const paint = (container) => {
         if (state.locked) {
             const t = state.teamId != null ? teamById[state.teamId] : null;
-            container.innerHTML = `<p class="captain-note">Locked — your first team of Week ${state.week} has kicked off. `
-                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2× this week.` : `No captain was set (your best team auto-doubles).`)
-                + ` All times Central.</p>`
+            container.innerHTML = `<p class="captain-note">Locked for Week ${state.week}. `
+                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2×.` : `No captain was set (your best team auto-doubles).`)
+                + `</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
                     <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">${tileBody(tm)}</div>`).join('')}</div>`;
             return;
         }
         const lockLine = state.lockAt
-            ? ` Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} — when ${lockWho}${uhTimeLeft(state.lockAt) ? ` (${uhTimeLeft(state.lockAt)} left)` : ''}.`
-            : ' Locks when your first team kicks off.';
+            ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT when ${lockWho}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
+            : `<span class="cap-lock">Locks when your first team kicks off</span>`;
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length
-            ? ` <b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice this week — captaining one doubles both games.`
+            ? `<span class="cap-lock"><b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice — captaining one doubles both games</span>`
             : '';
-        container.innerHTML = `<p class="captain-note">Pick one team to score <b>2×</b> in Week ${state.week}. Tap the current pick to clear.${lockLine}${twoLine} All times Central.</p>
+        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${lockLine}${twoLine}
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
@@ -1019,8 +1019,55 @@ async function hydrateCaptain(user, activeYear) {
         }));
     };
 
+    // Captain analytics: hit rate, bonus earned, points left on the table.
+    // Only renders once at least one scored week has captain data.
+    function captainAnalytics() {
+        const weeks = (season.weeklyScore || []).filter(w =>
+            w.season !== 'postseason' && w.captainTeamId != null && (w.scoreByTeam || []).length);
+        if (!weeks.length) return '';
+
+        let optimal = 0, earned = 0, hits = 0, streak = 0, streakType = null;
+        let bestWeek = null;
+        weeks.forEach(w => {
+            const bonus = w.captainBonus || 0;
+            earned += bonus;
+            // Optimal: the team that would have earned the most captain bonus
+            const mult = 2;  // captainMultiplier — already baked into bonus as base*(mult-1)
+            let bestBase = 0;
+            (w.scoreByTeam || []).forEach(st => {
+                const teamBase = (w.scoreByTeam || [])
+                    .filter(s => Number(s.teamId) === Number(st.teamId))
+                    .reduce((sum, s) => sum + (s.score || 0), 0);
+                if (teamBase > bestBase) bestBase = teamBase;
+            });
+            const optBonus = Math.round(bestBase * (mult - 1) * 10) / 10;
+            optimal += optBonus;
+            const wasOptimal = bonus >= optBonus - 0.01;
+            if (wasOptimal) hits++;
+            if (bestWeek == null || bonus > bestWeek.bonus) bestWeek = { week: w.week, bonus, teamId: w.captainTeamId };
+            // Streak tracking (most recent first → iterate in order, track from end)
+            if (streakType === null) { streakType = wasOptimal; streak = 1; }
+            else if (wasOptimal === streakType) streak++;
+            else streakType = 'done';  // break
+        });
+
+        const left = Math.round((optimal - earned) * 10) / 10;
+        const t = bestWeek && teamById[bestWeek.teamId];
+        let html = '<div class="cap-analytics">';
+        html += '<div class="cap-analytics-hd">Captain performance</div>';
+        html += '<div class="uh-drawer-stats">';
+        html += statTile(`${hits}/${weeks.length}`, 'Optimal picks');
+        html += statTile(`+${earned}`, 'Bonus earned');
+        if (left > 0) html += statTile(`${left}`, 'Left on table');
+        if (t && bestWeek) html += statTile(
+            `<img src="${ccLogo(t.logos)}" alt=""> +${bestWeek.bonus}`,
+            `Best pick · Wk ${bestWeek.week}`);
+        html += '</div></div>';
+        return html;
+    }
+
     setGlance();
-    uhDrawer.captain = (body) => paint(body);
+    uhDrawer.captain = (body) => { paint(body); body.insertAdjacentHTML('beforeend', captainAnalytics()); };
 }
 
 // Weekly Recap (#212) → Your Week tile. Glance shows the latest week's narrative;
