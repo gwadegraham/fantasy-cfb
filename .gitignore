@@ -4,3 +4,5 @@ node_modules
 *.css.map
 main.css
 coverage
+scripts/sync-prod-to-dev.sh
+sleeper-data/
