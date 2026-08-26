@@ -894,6 +894,30 @@ footer {
     .dev-spoof-menu { right: auto; left: 50%; transform: translateX(-50%); }
 }
 
+/* Page-load stagger — children fade-slide in one by one. */
+@keyframes cc-stagger-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.cc-stagger > * {
+    opacity: 0;
+    animation: cc-stagger-in 0.4s ease-out forwards;
+}
+.cc-stagger > :nth-child(1)  { animation-delay: 0s; }
+.cc-stagger > :nth-child(2)  { animation-delay: 0.06s; }
+.cc-stagger > :nth-child(3)  { animation-delay: 0.12s; }
+.cc-stagger > :nth-child(4)  { animation-delay: 0.15s; }
+.cc-stagger > :nth-child(5)  { animation-delay: 0.18s; }
+.cc-stagger > :nth-child(6)  { animation-delay: 0.21s; }
+.cc-stagger > :nth-child(7)  { animation-delay: 0.24s; }
+.cc-stagger > :nth-child(8)  { animation-delay: 0.27s; }
+.cc-stagger > :nth-child(9)  { animation-delay: 0.30s; }
+.cc-stagger > :nth-child(10) { animation-delay: 0.33s; }
+.cc-stagger > :nth-child(n+11) { animation-delay: 0.36s; }
+@media (prefers-reduced-motion: reduce) {
+    .cc-stagger > * { animation: none; opacity: 1; }
+}
+
 /* Scheduled game date/time — muted metadata styling */
 .gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
 .gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }
