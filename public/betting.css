@@ -552,7 +552,7 @@
 
 /* History table */
 .history-section {
-    padding: 0 24px;
+    padding: 0 24px 3rem;
     width: 100%;
     box-sizing: border-box;
     overflow-x: auto;
@@ -651,7 +651,7 @@
     .leg { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
     .leg-contributor { min-width: 80px; }
     .season-summary { grid-template-columns: repeat(2, 1fr); padding: 0 16px; }
-    .history-section { padding: 0 16px; }
+    .history-section { padding: 0 16px 3rem; }
     .section-divider { margin: 16px; }
     .summary-title { padding: 0 16px; }
     .create-parlay-cta { margin: 0 16px; }
