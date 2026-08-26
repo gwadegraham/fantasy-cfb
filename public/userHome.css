@@ -715,7 +715,7 @@ body.uh-drawer-open { overflow: hidden; }
 
 /* Games drawer (#230 redesign) */
 .uh-games-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 11px; color: var(--cc-muted-2); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-.uh-games-pick select { background: #12162A; border: 1px solid var(--cc-border); border-radius: 8px; color: var(--cc-text); font: inherit; padding: 6px 8px; text-transform: none; letter-spacing: 0; }
+.uh-games-pick select { background: #12162A; border: 1px solid var(--cc-border); border-radius: 8px; color: var(--cc-text); color-scheme: dark; font: inherit; padding: 6px 8px; text-transform: none; letter-spacing: 0; }
 .uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; }
 
 /* Enriched tile glances (#230 redesign polish) */
@@ -770,7 +770,7 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-games-logos img { width: 24px; height: 24px; object-fit: contain; }
 .uh-games-wk { display: block; margin-top: 8px; }
 .uh-games-pick { display: block; margin-bottom: 14px; }
-.uh-games-pick select { background: #12162A; border: 1px solid var(--cc-border); border-radius: 8px; color: var(--cc-text); font: inherit; padding: 8px 10px; }
+.uh-games-pick select { background: #12162A; border: 1px solid var(--cc-border); border-radius: 8px; color: var(--cc-text); color-scheme: dark; font: inherit; padding: 8px 10px; }
 /* In the drawer the grid is a vertical column, so the card's flex-basis (340px)
    must not become its height — size cards to content, full width. */
 .uh-drawer-body .schedule-grid { display: flex; flex-direction: column; gap: 10px; padding: 0; }
