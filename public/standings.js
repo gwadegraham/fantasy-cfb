@@ -578,8 +578,8 @@ function renderH2HMatchups(d) {
     const done = !!d.scheduleComplete;
     const title = done ? 'Final Matchups' : "This Week's Matchups";
     const note = done
-        ? `Regular season complete — every matchup bonus is locked in and already folded into your <b>Total</b> above. Postseason points still count toward the title; the games are below. Your full matchup log is on My Team.`
-        : `Each week you face one rival — win the matchup for a <b>+${d.winBonus}</b> bonus${d.tieBonus > 0 ? `, or <b>+${d.tieBonus}</b> each on a tie` : ''} (regular season only). Bonuses are folded into your <b>Total</b> in the standings above; see your full matchup log on My Team.`;
+        ? `Regular season complete — all matchup bonuses are locked in. Postseason points still count toward the title.`
+        : `Win your weekly matchup for <b>+${d.winBonus}</b>${d.tieBonus > 0 ? ` · ties earn <b>+${d.tieBonus}</b> each` : ''}. Bonuses count toward your <b>Total</b> above.`;
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}${title}${preview}</h2>
         <p class="h2h-panel-note">${note}</p>
         <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
