@@ -1,3 +1,5 @@
+#betting-content { width: 100%; }
+
 .header {
     display: flex;
     flex-direction: column;
@@ -159,28 +161,27 @@
 
 /* ── Pick-your-game CTA (replaces old dropdown form) ── */
 .leg-pick-cta {
-    border: 1px solid var(--cc-interactive);
+    border: 1px dashed var(--cc-border);
     background: var(--cc-surface-2);
     border-radius: var(--cc-r-sm);
-    padding: 14px 12px;
+    padding: 8px 12px;
 }
-.leg-pick-cta-header {
+.leg-pick-cta-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 10px;
 }
-.leg-pick-cta-title { font-size: 14px; font-weight: 500; }
-.leg-pick-cta-sub { font-size: 11px; color: var(--cc-muted-2); }
+.leg-pick-cta-row .leg-contributor { flex-shrink: 0; }
 
 .btn-pick-game {
-    width: 100%;
-    padding: 10px 14px;
-    background: var(--cc-surface-3);
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    background: transparent;
     border: 1px solid var(--cc-border);
     border-radius: var(--cc-r-sm);
     color: var(--cc-muted);
-    font-size: 13px;
+    font-size: 12px;
     font-family: 'Poppins', sans-serif;
     text-align: left;
     cursor: pointer;
@@ -189,7 +190,7 @@
     justify-content: space-between;
 }
 .btn-pick-game:hover { border-color: var(--cc-interactive); color: var(--cc-text); }
-.btn-pick-game i { font-size: 11px; }
+.btn-pick-game i { font-size: 10px; }
 
 /* ── Game Picker Panel ── */
 .game-picker-backdrop {

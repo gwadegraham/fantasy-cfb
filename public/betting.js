@@ -242,13 +242,15 @@ function renderCurrentParlay() {
 
 function renderLegPickCTA(leg, parlayId, index, name, color, init) {
     return '<div class="leg-pick-cta" id="leg-cta-' + index + '">'
-        + '<div class="leg-pick-cta-header">'
+        + '<div class="leg-pick-cta-row">'
+        + '<div class="leg-contributor">'
         + avatarHtml(leg.contributor, color, init)
-        + '<div><div class="leg-pick-cta-title">' + name + '</div><div class="leg-pick-cta-sub">Pick a game and bet</div></div>'
+        + '<span class="leg-name">' + name + '</span>'
         + '</div>'
         + '<button type="button" class="btn-pick-game" onclick="openGamePicker(\'' + parlayId + '\',\'' + leg.contributor + '\',' + index + ')">'
         + '<span>Choose a game...</span><i class="fa-solid fa-chevron-right"></i>'
         + '</button>'
+        + '</div>'
         + '<div id="bet-board-' + index + '"></div>'
         + '</div>';
 }
