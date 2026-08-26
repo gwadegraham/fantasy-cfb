@@ -730,7 +730,7 @@
 /* ---------- H2H featured view: week selector + matchup scoreboards ---------- */
 .h2h-week-bar { display: flex; align-items: center; gap: 0.6rem; margin: 0.2rem 0 0.7rem; }
 .h2h-week-cap { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--cc-muted-2); }
-.h2h-week-bar select { background: var(--cc-bg); border: 1px solid var(--cc-border-2); border-radius: 8px; color: var(--cc-text); font: inherit; font-size: 0.85rem; padding: 5px 9px; cursor: pointer; }
+.h2h-week-bar select { background: var(--cc-bg); border: 1px solid var(--cc-border-2); border-radius: 8px; color: var(--cc-text); color-scheme: dark; font: inherit; font-size: 0.85rem; padding: 5px 9px; cursor: pointer; }
 .h2h-matches { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
 .h2h-empty { color: var(--cc-muted-2); font-size: 0.85rem; }
 

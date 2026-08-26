@@ -3,6 +3,7 @@ const { resolveConfig, MODELS, engagementForSeason, ruleEnabled, overridesFromDo
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { factsForGame } = require('./cfp-bracket');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
+const ScoringConfig = require('../models/scoringConfig');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
@@ -11,6 +12,37 @@ var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
 var rankingsApi = new cfb.RankingsApi();
+
+// On the first scoring run of a new season, freeze the previous season's config
+// so past-season "Why these points?" breakdowns stay accurate even if the
+// commissioner later changes point values. Idempotent: skips if already frozen.
+// Runs once per process to avoid repeated DB reads on every scoring pass.
+var _frozenCheck = false;
+async function freezePriorSeasonConfig(currentYear) {
+    if (_frozenCheck) return;
+    _frozenCheck = true;
+    try {
+        const priorYear = String(Number(currentYear) - 1);
+        const docs = await ScoringConfig.find({});
+        for (const doc of docs) {
+            if (doc.configBySeason && doc.configBySeason[priorYear]) continue;
+            if (!doc.configBySeason) doc.configBySeason = {};
+            doc.configBySeason[priorYear] = {
+                model: doc.model,
+                values: doc.values ? JSON.parse(JSON.stringify(doc.values)) : {},
+                combineMode: doc.combineMode,
+                disabled: (doc.disabled || []).slice(),
+                enabled: (doc.enabled || []).slice(),
+                ...(doc.powerConferences ? { powerConferences: doc.powerConferences.slice() } : {})
+            };
+            doc.markModified('configBySeason');
+            await doc.save();
+            console.log(`Froze ${doc.league} scoring config for ${priorYear}`);
+        }
+    } catch (err) {
+        console.error('freezePriorSeasonConfig failed (non-fatal):', err.message);
+    }
+}
 
 module.exports= {
 
@@ -73,6 +105,8 @@ module.exports= {
     },
 
     updateScores: async function(season, week) {
+        await freezePriorSeasonConfig(process.env.YEAR);
+
         // One ranking cache per call: every game in the week shares its poll doc
         // instead of re-reading it from Mongo per game.
         var rankingCache = new Map();

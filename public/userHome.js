@@ -6,6 +6,7 @@ var isMobile;
 // displaySchedule/ensureWeekSelected) read it instead of guessing with
 // seasons.at(-1), so every part of the page keys off the same season.
 var uhActiveYear;
+var uhHasFrozenConfig = true;
 
 // Escapes HTML special chars before interpolating values into innerHTML.
 function escapeHtml(value) {
@@ -118,12 +119,25 @@ function uhSeasonFor(user, year) {
 // ---------- My Team bento (#230 redesign, feat/my-team-redesign) ----------
 // Renders the tile grid; each tile is a glance that opens a slide-over drawer,
 // all keyed off the one active season (uhSeasonFor).
-async function renderBento(data) {
+async function renderBento(data, yearOverride) {
     const bento = document.getElementById('uh-bento');
     if (!bento || !data) return;
-    const activeYear = (window.APP_YEAR && String(window.APP_YEAR))
+    const currentYear = (window.APP_YEAR && String(window.APP_YEAR))
         || (data.seasons && data.seasons.length ? String(data.seasons[data.seasons.length - 1].season) : String(new Date().getFullYear()));
+    const activeYear = yearOverride ? String(yearOverride) : currentYear;
     uhActiveYear = activeYear;   // reused renderers read this (see var decl)
+    const isPastSeason = activeYear !== currentYear;
+    if (isPastSeason && data.league) {
+        try {
+            const cfgRes = await fetch('/scoring-config/' + encodeURIComponent(data.league), { headers: { Accept: 'application/json' } });
+            if (cfgRes.ok) {
+                const cfgData = await cfgRes.json();
+                uhHasFrozenConfig = (cfgData.frozenSeasons || []).includes(activeYear);
+            } else { uhHasFrozenConfig = false; }
+        } catch (_) { uhHasFrozenConfig = false; }
+    } else {
+        uhHasFrozenConfig = true;
+    }
     const season = uhSeasonFor(data, activeYear);
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
@@ -146,6 +160,18 @@ async function renderBento(data) {
 
     const tile = (k, label, glance, span, affordance) => `<button class="uh-tile${span === 2 ? ' span2' : ''}" id="uh-tile-${k}" data-tile="${k}"><span class="uh-tlabel">${label}<span class="uh-chev">${affordance || '›'}</span></span><span class="uh-glance" id="uh-glance-${k}">${glance}</span></button>`;
 
+    const draftedSeasons = (data.seasons || [])
+        .filter(s => (s.teams || []).length)
+        .sort((a, b) => Number(b.season) - Number(a.season));
+    const showPicker = draftedSeasons.length > 1;
+    const seasonPills = showPicker
+        ? `<div class="uh-season-picker">${draftedSeasons.map(s => {
+            const y = String(s.season);
+            const isCurrent = y === activeYear;
+            return '<button type="button" class="uh-season-pill' + (isCurrent ? ' active' : '') + '" data-season="' + escapeHtml(y) + '">' + escapeHtml(y) + '</button>';
+        }).join('')}</div>`
+        : '';
+
     bento.innerHTML =
         `<div class="uh-tile span2 uh-hero">
             <div class="uh-hero-av avatar avatar-lg" id="uh-hero-av"></div>
@@ -154,15 +180,16 @@ async function renderBento(data) {
                 <div class="uh-hero-name">${escapeHtml(franchise)}</div>
                 <div class="uh-hero-sub">${escapeHtml(franchise ? ('Managed by ' + manager) : manager)}</div>
                 <div class="uh-hero-stats" id="uh-hero-stats"></div>
+                ${seasonPills}
             </div>
-            ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
+            ${own && !isPastSeason ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
         </div>`
-        + tile('matchup', 'This week · matchup', uhPoss(own, true) + ' current H2H matchup', 2, 'Lineups ›')
+        + tile('matchup', isPastSeason ? 'H2H results' : 'This week · matchup', isPastSeason ? (activeYear + ' matchups') : (uhPoss(own, true) + ' current H2H matchup'), 2, isPastSeason ? 'Results ›' : 'Lineups ›')
         + tile('roster', 'Roster · top performers', uhPoss(own, true) + ' 10 teams', 2, 'All 10 teams ›')
-        + tile('captain', 'Captain', 'Double a team each week', 1)
-        + tile('recap', own ? 'Your week' : 'Their week', 'Latest recap', 1)
-        + tile('schedule', 'Schedule', 'Up next', 1, 'Full schedule ›')
-        + tile('games', 'Games', 'This week’s games', 1, 'This week ›')
+        + (isPastSeason ? '' : tile('captain', 'Captain', 'Double a team each week', 1))
+        + (isPastSeason ? '' : tile('recap', own ? 'Your week' : 'Their week', 'Latest recap', 1))
+        + tile('schedule', 'Schedule', isPastSeason ? (activeYear + ' schedule') : 'Up next', 1, 'Full schedule ›')
+        + tile('games', 'Games', isPastSeason ? (activeYear + ' games') : "This week's games", 1, isPastSeason ? 'Games ›' : 'This week ›')
         + tile('trajectory', 'Trajectory', 'Season points', 1)
         + tile('draft', 'Draft grade', 'Preseason projection', 1);
 
@@ -172,7 +199,7 @@ async function renderBento(data) {
     // Rank only once the season has really been played, and share a placement on
     // a tie ("T-3rd") — computeRank owns both calls, since both need the league.
     try {
-        const rank = await computeRank(data);
+        const rank = await computeRank(data, activeYear);
         if (rank) sh += statTile(escapeHtml((rank.tie ? 'T-' : '') + ordinal(rank.rank)), `of ${rank.total} teams`);
     } catch (e) { /* rank optional */ }
     sh += statTile(String(season.cumulativeScore || 0), 'Total points');
@@ -180,28 +207,28 @@ async function renderBento(data) {
     if (bt && bt.total > 0) sh += statTile(`<img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
     statsEl.innerHTML = sh;
 
-    if (own) setupEditModal(data, season, true);
+    if (own && !isPastSeason) setupEditModal(data, season, true);
 
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
 
-    // Recap drawer title tracks whose profile this is (the tile itself is
-    // hidden on other managers' profiles — see hydrateRecap).
+    bento.querySelectorAll('.uh-season-pill').forEach(pill => {
+        pill.addEventListener('click', () => renderBento(data, pill.getAttribute('data-season')));
+    });
+
     UH_DRAWERS.recap = own ? 'Your week' : 'Their week';
 
-    // Hydrate each tile's glance + drawer from the one active season.
     hydrateH2H(data, activeYear);
-    hydrateCaptain(data, activeYear);
-    hydrateRecap(data, activeYear);
+    if (!isPastSeason) {
+        hydrateCaptain(data, activeYear);
+        hydrateRecap(data, activeYear);
+    }
     hydrateDraft(data, activeYear);
     hydrateRoster(data, activeYear);
     hydrateTrajectory(data, activeYear);
     hydrateGames(data, activeYear);
 
-    // Preview only: ?win=win|loss|tie plays a sample Win reveal so the moment
-    // can be previewed anytime. The real trigger lives in hydrateH2H (fires once
-    // when your weekly matchup goes final).
-    maybePreviewWinReveal();
+    if (!isPastSeason) maybePreviewWinReveal();
 }
 
 function maybePreviewWinReveal() {
@@ -558,7 +585,7 @@ function hydrateTrajectory(user, activeYear) {
         let html = statTile(String(season.cumulativeScore || 0), 'Total points');
         if (bestWk > 0) html += statTile(String(bestWk), 'Best week');
         try {
-            const res = await fetch(`/users/league/${encodeURIComponent(user.league)}`, { headers: { Accept: 'application/json' } });
+            const res = await fetch(`/users/league/${encodeURIComponent(user.league)}?season=${encodeURIComponent(activeYear)}`, { headers: { Accept: 'application/json' } });
             if (res.ok) {
                 const ranked = (await res.json())
                     .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
@@ -1305,10 +1332,11 @@ function bestTeam(season) {
 // asked, too — before the season starts every cumulativeScore is 0, and any
 // placement drawn from that is really just each manager's position in the DB
 // result order wearing a rank's clothes.
-async function computeRank(data) {
+async function computeRank(data, year) {
     try {
         if (!data.league) return null;
-        const res = await fetch(`/users/league/${data.league}`, { headers: { 'Accept': 'application/json' } });
+        const seasonParam = year ? `?season=${encodeURIComponent(year)}` : '';
+        const res = await fetch(`/users/league/${data.league}${seasonParam}`, { headers: { 'Accept': 'application/json' } });
         if (!res.ok) return null;
         const users = await res.json();
         // Not "does this manager have a weekly entry" — the nightly scoring job
@@ -1608,7 +1636,8 @@ function renderProfileChart(data) {
 
 async function getGame(season, week, team) {
 
-    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}`, {
+    var seasonQ = uhActiveYear ? '?season=' + encodeURIComponent(uhActiveYear) : '';
+    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}${seasonQ}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json'
@@ -1770,16 +1799,18 @@ document.addEventListener('click', async function (e) {
     card.appendChild(box);
     btn.classList.add('is-open');
     try {
+        var seasonParam = uhActiveYear ? '&season=' + encodeURIComponent(uhActiveYear) : '';
         var res = await fetch('/scoring-config/' + encodeURIComponent(league) + '/explain?teamId='
-            + encodeURIComponent(teamId) + '&gameId=' + encodeURIComponent(gameId), { headers: { Accept: 'application/json' } });
+            + encodeURIComponent(teamId) + '&gameId=' + encodeURIComponent(gameId) + seasonParam, { headers: { Accept: 'application/json' } });
         var data = await res.json();
         if (!res.ok || !data || !Array.isArray(data.matched)) { box.textContent = 'Breakdown unavailable.'; return; }
         if (!data.matched.length) { box.textContent = 'No scoring rule applied to this game.'; return; }
         var rows = data.matched.map(function (m) {
             return '<div class="bd-row"><span class="bd-pts">+' + m.points + '</span><span class="bd-label">' + m.label + '</span></div>';
         }).join('');
+        var isPast = uhActiveYear !== String(window.APP_YEAR);
         var note = (typeof data.total === 'number' && data.total !== banked)
-            ? '<div class="bd-note">Scoring rules or rankings changed since this game was scored, so this differs from the banked +' + banked + '.</div>'
+            ? '<div class="bd-note">' + (isPast ? 'Scored under ' + uhActiveYear + ' rules.' : 'Scoring rules or rankings changed since this game was scored, so this differs from the banked +' + banked + '.') + '</div>'
             : '';
         box.innerHTML = rows + note;
     } catch (err) {
@@ -1861,7 +1892,11 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         const pts = teamGameScoreById(uhSeasonFor(userData, uhActiveYear).weeklyScore, id, game.id);
         // The badge is a button: tap to reveal WHY this team earned these points
         // (which scoring rule fired). See the delegated handler below.
-        return pts > 0 ? `<td class="score-added"><button type="button" class="score-explain" data-team="${id}" data-game="${game.id}" data-pts="${pts}" title="Why these points?"><strong>+${pts}</strong></button></td>` : '';
+        if (pts <= 0) return '';
+        if (uhActiveYear !== String(window.APP_YEAR) && !uhHasFrozenConfig) {
+            return `<td class="score-added"><strong>+${pts}</strong></td>`;
+        }
+        return `<td class="score-added"><button type="button" class="score-explain" data-team="${id}" data-game="${game.id}" data-pts="${pts}" title="Why these points?"><strong>+${pts}</strong></button></td>`;
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
 
