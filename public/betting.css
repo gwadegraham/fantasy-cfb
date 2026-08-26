@@ -228,7 +228,7 @@
     border: 1px solid var(--cc-border);
     border-radius: var(--cc-r-sm);
     color: var(--cc-text);
-    font-size: 14px;
+    font-size: 16px;
     font-family: 'Poppins', sans-serif;
 }
 .game-picker-head input:focus { border-color: var(--cc-interactive); outline: none; }
