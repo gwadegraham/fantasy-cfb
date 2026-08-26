@@ -91,6 +91,19 @@ async function loadTeamPage() {
     // Theme the page from the team's own colours before anything renders.
     applyTeamTheme(teamData);
 
+    // Swap the favicon to the team's logo so the browser tab shows their mark.
+    var teamLogoUrl = typeof ccLogo === 'function' ? ccLogo(teamData.logos) : (teamData.logos && teamData.logos[0] || '');
+    if (teamLogoUrl) {
+        var svgIcon = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+        var pngIcons = document.querySelectorAll('link[rel="icon"][type="image/png"]');
+        if (svgIcon) svgIcon.remove();
+        pngIcons.forEach(function (el) { el.remove(); });
+        var link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = teamLogoUrl;
+        document.head.appendChild(link);
+    }
+
     // Honour an explicit ?season=YYYY (from the season selector); otherwise show
     // the latest season with games played.
     const seasonParam = urlParams.get('season');
