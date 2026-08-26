@@ -1086,24 +1086,12 @@ async function displaySchedule(data) {
                     } else {
         
                         var centralDate = new Date(game.startDate);
-                        var militaryTime = centralDate.toString().substring(16,21);
-                        var time = militaryTime.split(':');
-                        var hours = parseInt(time[0]);
-                        var minutes = time[1];
-                        var standardTime = '';
-        
-                        if (hours < 12) {
-                            standardTime = hours.toString() + ":" + minutes +  "AM";
-                        }
-                        else if (hours == 12) {
-                            standardTime = hours.toString() + ":" + minutes + "PM";
-                        }
-                        else {
-                            standardTime =( hours - 12).toString() + ":" + minutes + "PM";
-                        }
-        
-                        topData = centralDate.toString().substring(4,10);
-                        bottomData = standardTime;
+                        var dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][centralDate.getDay()];
+                        var h = centralDate.getHours(), min = centralDate.getMinutes().toString().padStart(2, '0');
+                        var standardTime = h === 0 ? '12:' + min + 'AM' : h < 12 ? h + ':' + min + 'AM' : h === 12 ? '12:' + min + 'PM' : (h - 12) + ':' + min + 'PM';
+
+                        topData = '<span class="gc-date">' + dayAbbr + ' ' + (centralDate.getMonth() + 1) + '/' + centralDate.getDate() + '</span>';
+                        bottomData = '<span class="gc-time">' + standardTime + '</span>';
                     }
         
                     var teamTable = '<td><table class="schedule-table game-table"><tbody><tr firstRow></tr>';

@@ -893,3 +893,7 @@ footer {
     .dev-spoof { justify-content: center; padding: 0.5rem 0; }
     .dev-spoof-menu { right: auto; left: 50%; transform: translateX(-50%); }
 }
+
+/* Scheduled game date/time — muted metadata styling */
+.gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
+.gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }

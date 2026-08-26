@@ -477,8 +477,6 @@
    (the winner row trails a caret + points badge, which would otherwise push
    its number out of line under right-alignment). */
 .game-card .gc-score { text-align: left; white-space: nowrap; padding-left: 0.9em; width: 1%; }
-.game-card .gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
-.game-card .gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
 
 /* The "+N" badge is a button: tap to reveal the scoring breakdown. Looks like
