@@ -825,7 +825,7 @@ async function hydrateH2H(user, activeYear) {
         const meScore = iAmA ? g.aScore : g.bScore, opScore = iAmA ? g.bScore : g.aScore;
         const opp = byId[iAmA ? g.bId : g.aId];
         const nm = (opp && (opp.franchise || opp.name)) || 'Opponent';
-        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : 'LIVE';
+        const res = x.final ? (meScore > opScore ? 'W' : opScore > meScore ? 'L' : 'T') : x.upcoming ? '' : 'LIVE';
         return { meScore, opScore, nm, res };
     };
 
@@ -841,10 +841,12 @@ async function hydrateH2H(user, activeYear) {
         if (featured.final) youPct = s.res === 'W' ? 100 : s.res === 'L' ? 0 : 50;
         else if (g.winP) youPct = iAmA ? g.winP.a : g.winP.b;
         const wc = s.res === 'W' ? ' win' : '', oc = s.res === 'L' ? ' win' : '';
+        const vsLabel = featured.final ? (s.res === 'T' ? 'T' : 'vs') : featured.upcoming ? 'vs' : 'LIVE';
+        const showScores = !featured.upcoming;
         mg.innerHTML = `<span class="uh-mug">
-                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">${escapeHtml(youLabel)}</span><span class="uh-mug-sc num${wc}">${s.meScore}</span></span>
-                <span class="uh-mug-vs">${featured.final ? (s.res === 'T' ? 'T' : 'vs') : 'LIVE'}</span>
-                <span class="uh-mug-side r"><span class="uh-mug-sc num${oc}">${s.opScore}</span><span class="uh-mug-nm">${escapeHtml(s.nm)}</span>${av(oppM)}</span>
+                <span class="uh-mug-side">${av(me)}<span class="uh-mug-nm">${escapeHtml(youLabel)}</span>${showScores ? `<span class="uh-mug-sc num${wc}">${s.meScore}</span>` : ''}</span>
+                <span class="uh-mug-vs">${vsLabel}</span>
+                <span class="uh-mug-side r">${showScores ? `<span class="uh-mug-sc num${oc}">${s.opScore}</span>` : ''}<span class="uh-mug-nm">${escapeHtml(s.nm)}</span>${av(oppM)}</span>
             </span>${youPct == null ? '' : uhMiniBar(youPct)}`;
     }
     uhDrawer.matchup = (body) => {
