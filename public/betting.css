@@ -527,6 +527,8 @@
     gap: 8px;
     padding: 0 24px;
     margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
 }
 .stat-card {
     background: var(--cc-surface);
@@ -550,7 +552,9 @@
 
 /* History table */
 .history-section {
-    padding: 0 24px;
+    padding: 0 24px 3rem;
+    width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
 }
 .history-table {
@@ -577,13 +581,77 @@
 .history-table tr:nth-child(even) td { background: var(--cc-surface-2); }
 .text-right { text-align: right; }
 
+/* ── Resolve animation ── */
+.slot-spinner {
+    display: none; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--cc-surface-2); color: var(--cc-muted-2, var(--cc-muted));
+    align-items: center; justify-content: center; font-size: 11px;
+    overflow: hidden;
+}
+.leg--unrevealed .slot-reveal { display: none; }
+.leg--unrevealed .slot-spinner { display: flex; }
+.slot--spinning .slot-spinner {
+    animation: slotSpin 0.12s linear infinite;
+    filter: blur(1.5px);
+}
+.slot--revealed .slot-reveal {
+    display: flex; animation: slotRevealPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.slot--revealed .slot-spinner { display: none; }
+.parlay-status--unrevealed { visibility: hidden; }
+.parlay-status--revealed { visibility: visible; animation: revealPulse 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.payout-bar--unrevealed .payout-value { visibility: hidden; }
+.payout-bar--revealed .payout-value { visibility: visible; animation: revealFadeUp 0.4s ease-out; }
+.payout-bar--revealed .payout-won { animation: revealPulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); font-size: 18px; }
+
+@keyframes slotSpin {
+    0%   { transform: translateY(100%);  }
+    100% { transform: translateY(-100%); }
+}
+@keyframes slotRevealPop {
+    0%   { transform: scale(0.3); opacity: 0; }
+    60%  { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(1);   opacity: 1; }
+}
+@keyframes revealFadeUp {
+    0%   { transform: translateY(8px); opacity: 0; }
+    100% { transform: translateY(0);   opacity: 1; }
+}
+@keyframes revealPulse {
+    0%   { transform: scale(0.8); opacity: 0; }
+    50%  { transform: scale(1.05); }
+    100% { transform: scale(1);   opacity: 1; }
+}
+
+.money-particle {
+    position: fixed; z-index: 9999; pointer-events: none;
+    font-size: 30px; line-height: 1;
+    translate: -50% -50%;
+    scale: 0.5;
+    rotate: 0deg;
+    opacity: 1;
+    transition: translate 1.5s cubic-bezier(0.15, 0.8, 0.3, 1),
+                scale 1.5s cubic-bezier(0.15, 0.8, 0.3, 1),
+                rotate 1.5s ease-out,
+                opacity 1.2s ease-out 0.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .slot--spinning .slot-spinner,
+    .slot--revealed .slot-reveal,
+    .parlay-status--revealed,
+    .payout-bar--revealed .payout-value,
+    .payout-bar--revealed .payout-won,
+    .money-particle { animation: none; }
+}
+
 @media (max-width: 600px) {
     .header { padding: 16px 16px 10px; }
     .parlay-card { margin: 0 16px 12px; }
     .leg { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
     .leg-contributor { min-width: 80px; }
     .season-summary { grid-template-columns: repeat(2, 1fr); padding: 0 16px; }
-    .history-section { padding: 0 16px; }
+    .history-section { padding: 0 16px 3rem; }
     .section-divider { margin: 16px; }
     .summary-title { padding: 0 16px; }
     .create-parlay-cta { margin: 0 16px; }

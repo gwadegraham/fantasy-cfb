@@ -9,6 +9,18 @@ var myUserId = '';
 
 var MEMBER_COLORS = ['#ed5858', '#6C9BFF', '#22C37A', '#E0B341', '#8E8CF0', '#D27171'];
 
+var SEEN_KEY = 'parlay-seen-resolved';
+var SEEN_TTL = 30 * 24 * 60 * 60 * 1000;
+function getSeenMap() {
+    try { var m = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch (e) { var m = {}; }
+    var now = Date.now(), changed = false;
+    Object.keys(m).forEach(function (k) { if (now - m[k] > SEEN_TTL) { delete m[k]; changed = true; } });
+    if (changed) localStorage.setItem(SEEN_KEY, JSON.stringify(m));
+    return m;
+}
+function hasSeenResolve(id) { return !!getSeenMap()[id]; }
+function markResolveAsSeen(id) { var m = getSeenMap(); m[id] = Date.now(); localStorage.setItem(SEEN_KEY, JSON.stringify(m)); }
+
 function getMyUserId() {
     if (!window.userState) return '';
     var meta = userState.user_metadata && userState.user_metadata.metadata;
@@ -166,6 +178,10 @@ function renderCurrentParlay() {
         return;
     }
 
+    var shouldAnimate = parlay.status !== 'pending'
+        && !hasSeenResolve(parlay._id)
+        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     var statusClass = 'status-' + parlay.status;
     var statusLabel = parlay.status === 'won' ? 'Won' : (parlay.status === 'lost' ? 'Lost' : (parlay.status === 'push' ? 'Push' : 'Pending'));
 
@@ -197,6 +213,13 @@ function renderCurrentParlay() {
         else if (leg.result === 'push') resultHtml = '<div class="leg-result result-push"><i class="fa-solid fa-minus"></i></div>';
         else resultHtml = '<div class="leg-result result-pending"><i class="fa-solid fa-clock"></i></div>';
 
+        if (shouldAnimate && leg.result && leg.result !== 'pending') {
+            resultHtml = '<div class="leg-result-slot leg--unrevealed">'
+                + '<div class="slot-spinner"><i class="fa-solid fa-question"></i></div>'
+                + '<div class="slot-reveal">' + resultHtml + '</div>'
+                + '</div>';
+        }
+
         var editBtn = '';
         if (parlay.status === 'pending' && (leg.contributor === myUserId || window.IS_ADMIN)) {
             editBtn = '<button type="button" onclick="editLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\')" style="background:none;border:none;color:var(--cc-interactive);font-size:12px;cursor:pointer;padding:2px 4px;" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>';
@@ -216,6 +239,9 @@ function renderCurrentParlay() {
     var payoutDisplay = parlay.payout != null ? '$' + parlay.payout : potential;
     var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
 
+    var statusAnimClass = shouldAnimate ? ' parlay-status--unrevealed' : '';
+    var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
+
     var wagerHtml = '';
     if (window.IS_ADMIN && parlay.status === 'pending') {
         wagerHtml = '<div class="wager-section">'
@@ -227,15 +253,86 @@ function renderCurrentParlay() {
     container.innerHTML =
         '<div class="parlay-card">'
         + '<div class="parlay-header"><div class="parlay-week">Week ' + currentWeek + ' Parlay</div>'
-        + '<span class="parlay-status ' + statusClass + '">' + statusLabel + '</span></div>'
+        + '<span class="parlay-status ' + statusClass + statusAnimClass + '">' + statusLabel + '</span></div>'
         + '<div class="legs">' + legsHtml + '</div>'
-        + '<div class="payout-bar">'
+        + '<div class="payout-bar' + payoutAnimClass + '">'
         + '<div class="payout-item"><div class="payout-label">Wager</div><div class="payout-value">$' + (parlay.wager || 0) + '</div></div>'
         + '<div class="payout-item"><div class="payout-label">Combined Odds</div><div class="payout-value" style="font-size:13px;color:var(--cc-muted);">' + combined + '</div></div>'
         + '<div class="payout-item"><div class="payout-label">Payout</div><div class="payout-value ' + payoutClass + '">' + payoutDisplay + '</div></div>'
         + '</div>'
         + '</div>'
         + wagerHtml;
+
+    if (shouldAnimate) {
+        requestAnimationFrame(function () { playResolveAnimation(parlay); });
+    }
+}
+
+function delay(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+async function playResolveAnimation(parlay) {
+    var legs = document.querySelectorAll('.leg-result-slot');
+    var statusBadge = document.querySelector('.parlay-status--unrevealed');
+    var payoutBar = document.querySelector('.payout-bar--unrevealed');
+
+    await delay(600);
+
+    for (var i = 0; i < legs.length; i++) {
+        var el = legs[i];
+        el.classList.add('slot--spinning');
+        await delay(800);
+        el.classList.remove('slot--spinning');
+        el.classList.remove('leg--unrevealed');
+        el.classList.add('slot--revealed');
+        await delay(400);
+    }
+
+    await delay(500);
+    if (statusBadge) {
+        statusBadge.classList.remove('parlay-status--unrevealed');
+        statusBadge.classList.add('parlay-status--revealed');
+    }
+    if (payoutBar) {
+        payoutBar.classList.remove('payout-bar--unrevealed');
+        payoutBar.classList.add('payout-bar--revealed');
+        if (parlay.status === 'won') {
+            var payoutEl = payoutBar.querySelector('.payout-won') || payoutBar.querySelector('.payout-value:last-child');
+            if (payoutEl) moneyExplosion(payoutEl);
+        }
+    }
+
+    markResolveAsSeen(parlay._id);
+}
+
+function moneyExplosion(anchor) {
+    var rect = anchor.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2;
+    var cy = rect.top + rect.height / 2;
+    var symbols = ['💰', '💸', '💵', '🤑'];
+    var count = 32;
+    for (var i = 0; i < count; i++) {
+        var el = document.createElement('div');
+        el.className = 'money-particle';
+        el.textContent = symbols[i % symbols.length];
+        el.style.left = cx + 'px';
+        el.style.top = cy + 'px';
+        document.body.appendChild(el);
+        var angle = (i / count) * 2 * Math.PI;
+        var dist = 120 + Math.random() * 90;
+        var dx = Math.cos(angle) * dist;
+        var dy = Math.sin(angle) * dist;
+        (function (e, x, y) {
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    e.style.translate = 'calc(' + x + 'px - 50%) calc(' + y + 'px - 50%)';
+                    e.style.scale = '0.4';
+                    e.style.rotate = (x > 0 ? 540 : -540) + 'deg';
+                    e.style.opacity = '0';
+                });
+            });
+            setTimeout(function () { e.remove(); }, 2000);
+        })(el, dx, dy);
+    }
 }
 
 /* ── New leg entry: CTA button → game picker → bet board ── */
