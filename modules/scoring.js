@@ -21,22 +21,26 @@ var _frozenCheck = false;
 async function freezePriorSeasonConfig(currentYear) {
     if (_frozenCheck) return;
     _frozenCheck = true;
-    const priorYear = String(Number(currentYear) - 1);
-    const docs = await ScoringConfig.find({});
-    for (const doc of docs) {
-        if (doc.configBySeason && doc.configBySeason[priorYear]) continue;
-        if (!doc.configBySeason) doc.configBySeason = {};
-        doc.configBySeason[priorYear] = {
-            model: doc.model,
-            values: doc.values ? JSON.parse(JSON.stringify(doc.values)) : {},
-            combineMode: doc.combineMode,
-            disabled: (doc.disabled || []).slice(),
-            enabled: (doc.enabled || []).slice(),
-            ...(doc.powerConferences ? { powerConferences: doc.powerConferences.slice() } : {})
-        };
-        doc.markModified('configBySeason');
-        await doc.save();
-        console.log(`Froze ${doc.league} scoring config for ${priorYear}`);
+    try {
+        const priorYear = String(Number(currentYear) - 1);
+        const docs = await ScoringConfig.find({});
+        for (const doc of docs) {
+            if (doc.configBySeason && doc.configBySeason[priorYear]) continue;
+            if (!doc.configBySeason) doc.configBySeason = {};
+            doc.configBySeason[priorYear] = {
+                model: doc.model,
+                values: doc.values ? JSON.parse(JSON.stringify(doc.values)) : {},
+                combineMode: doc.combineMode,
+                disabled: (doc.disabled || []).slice(),
+                enabled: (doc.enabled || []).slice(),
+                ...(doc.powerConferences ? { powerConferences: doc.powerConferences.slice() } : {})
+            };
+            doc.markModified('configBySeason');
+            await doc.save();
+            console.log(`Froze ${doc.league} scoring config for ${priorYear}`);
+        }
+    } catch (err) {
+        console.error('freezePriorSeasonConfig failed (non-fatal):', err.message);
     }
 }
 
