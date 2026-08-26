@@ -48,6 +48,7 @@ function configResponse(league, doc, season, overrides) {
     cfg.engagement = engagementForSeason(bySeason, season);
     cfg.engagementBySeason = bySeason;
     cfg.season = String(season);
+    cfg.frozenSeasons = Object.keys((doc && doc.configBySeason) || {});
     return cfg;
 }
 

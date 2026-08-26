@@ -6,6 +6,7 @@ var isMobile;
 // displaySchedule/ensureWeekSelected) read it instead of guessing with
 // seasons.at(-1), so every part of the page keys off the same season.
 var uhActiveYear;
+var uhHasFrozenConfig = true;
 
 // Escapes HTML special chars before interpolating values into innerHTML.
 function escapeHtml(value) {
@@ -126,6 +127,17 @@ async function renderBento(data, yearOverride) {
     const activeYear = yearOverride ? String(yearOverride) : currentYear;
     uhActiveYear = activeYear;   // reused renderers read this (see var decl)
     const isPastSeason = activeYear !== currentYear;
+    if (isPastSeason && data.league) {
+        try {
+            const cfgRes = await fetch('/scoring-config/' + encodeURIComponent(data.league), { headers: { Accept: 'application/json' } });
+            if (cfgRes.ok) {
+                const cfgData = await cfgRes.json();
+                uhHasFrozenConfig = (cfgData.frozenSeasons || []).includes(activeYear);
+            } else { uhHasFrozenConfig = false; }
+        } catch (_) { uhHasFrozenConfig = false; }
+    } else {
+        uhHasFrozenConfig = true;
+    }
     const season = uhSeasonFor(data, activeYear);
     const manager = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     const franchise = season.franchiseName || `${data.firstName || 'Unnamed'}'s Team`;
@@ -1881,6 +1893,9 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         // The badge is a button: tap to reveal WHY this team earned these points
         // (which scoring rule fired). See the delegated handler below.
         if (pts <= 0) return '';
+        if (uhActiveYear !== String(window.APP_YEAR) && !uhHasFrozenConfig) {
+            return `<td class="score-added"><strong>+${pts}</strong></td>`;
+        }
         return `<td class="score-added"><button type="button" class="score-explain" data-team="${id}" data-game="${game.id}" data-pts="${pts}" title="Why these points?"><strong>+${pts}</strong></button></td>`;
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
