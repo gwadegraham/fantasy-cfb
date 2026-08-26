@@ -32,6 +32,7 @@ jest.mock('../modules/retrieve-games.js', () => ({
 jest.mock('../modules/team-scoring.js', () => ({ updateAllTeamScores: jest.fn(async () => {}) }));
 jest.mock('../modules/records.js', () => ({ updateAllTeamRecords: jest.fn(async () => {}) }));
 jest.mock('../modules/betting.js', () => ({ updateAllBettingLines: jest.fn(async () => {}) }));
+jest.mock('../modules/parlay-resolve', () => ({ resolveParlays: jest.fn(async () => {}) }));
 jest.mock('../modules/scoring.js', () => {
     const calls = [];
     return {
