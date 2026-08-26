@@ -560,7 +560,7 @@ describe('buildHighlights', () => {
                 { score: 15, scoreByTeam: [{ teamId: 1, team: 'Indiana', score: 15 }] }
             ], { teams })
         ]));
-        expect(cards['Best Team'].name).toBe('<img src="ind.png" class="hl-logo">Hoosiers');
+        expect(cards['Best Team'].name).toBe('<a href="/team?team=1" style="color:inherit;text-decoration:none"><img src="ind.png" class="hl-logo">Hoosiers</a>');
         expect(cards['Best Team'].value).toBe('+35');
     });
 
@@ -606,7 +606,7 @@ describe('buildHighlights', () => {
             user('b', 'Bob', 'Brown', [{ score: 10, scoreByTeam: [{ teamId: 2, team: 'Purdue', score: 10 }] }])
         ]));
         expect(cards['Top Single Game']).toMatchObject({ tag: 'one game', value: '+30' });
-        expect(cards['Top Single Game'].name).toBe('Indiana <span class="hl-sub">(Alice A.)</span>');
+        expect(cards['Top Single Game'].name).toBe('<a href="/team?team=1" style="color:inherit;text-decoration:none">Indiana</a> <span class="hl-sub">(Alice A.)</span>');
     });
 
     it('still reads as one game when the same team ties its own high', () => {

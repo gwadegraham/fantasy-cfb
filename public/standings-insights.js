@@ -209,7 +209,7 @@ function teamTotals(users) {
                     if (Number(st.teamId) === Number(team.id) || st.team === team.school) total += (st.score || 0);
                 });
             });
-            totals.push({ team: team.mascot, school: team.school, owner: initialName(u), logo: ccLogo(team.logos), score: total });
+            totals.push({ team: team.mascot, school: team.school, id: team.id, owner: initialName(u), logo: ccLogo(team.logos), score: total });
         });
     });
     return totals.sort((a, b) => b.score - a.score);
@@ -278,7 +278,7 @@ export function buildHighlights(users) {
     // Best team (season) + best single team-game
     const totals = teamTotals(users);
     if (totals.length && totals[0].score > 0) {
-        cards.push({ icon: 'medal', title: 'Best Team', tag: 'season', name: `<img src="${totals[0].logo}" class="hl-logo">${escapeHtml(totals[0].team)}`, value: `+${totals[0].score}`, tone: 'good' });
+        cards.push({ icon: 'medal', title: 'Best Team', tag: 'season', name: `<a href="/team?team=${totals[0].id}" style="color:inherit;text-decoration:none"><img src="${totals[0].logo}" class="hl-logo">${escapeHtml(totals[0].team)}</a>`, value: `+${totals[0].score}`, tone: 'good' });
     }
     // Top single game: the highest one-game team score. Since the postseason
     // bonuses make the max a frequent multi-way tie, show all tied teams.
@@ -286,8 +286,8 @@ export function buildHighlights(users) {
     let topGames = [];
     withWeeks.forEach(u => weekly(u).forEach(wk => (wk.scoreByTeam || []).forEach(st => {
         const sc = st.score || 0;
-        if (sc > topScore) { topScore = sc; topGames = [{ team: st.team, owner: initialName(u) }]; }
-        else if (sc === topScore && sc > 0) { topGames.push({ team: st.team, owner: initialName(u) }); }
+        if (sc > topScore) { topScore = sc; topGames = [{ team: st.team, teamId: st.teamId, owner: initialName(u) }]; }
+        else if (sc === topScore && sc > 0) { topGames.push({ team: st.team, teamId: st.teamId, owner: initialName(u) }); }
     })));
     if (topScore > 0 && topGames.length) {
         const teamNames = [...new Set(topGames.map(g => g.team))];
@@ -306,7 +306,7 @@ export function buildHighlights(users) {
             }
             cards.push({ icon: 'bolt', title: 'Top Single Game', tag: `${teamNames.length}-way tie`, name, value: `+${topScore}`, tone: 'good' });
         } else {
-            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: 'one game', name: `${escapeHtml(topGames[0].team)} <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
+            cards.push({ icon: 'bolt', title: 'Top Single Game', tag: 'one game', name: `<a href="/team?team=${topGames[0].teamId}" style="color:inherit;text-decoration:none">${escapeHtml(topGames[0].team)}</a> <span class="hl-sub">(${escapeHtml(topGames[0].owner)})</span>`, value: `+${topScore}`, tone: 'good' });
         }
     }
 

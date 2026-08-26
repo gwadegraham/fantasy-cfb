@@ -411,7 +411,7 @@ function renderProjPanel(managers) {
         <div class="pp-row">
             <span class="pp-rank">${i + 1}</span>
             ${projAvatarHtml(m)}
-            <span class="pp-id"><span class="pp-name">${escapeHtml(m.franchise || m.name)}</span>${m.franchise ? `<span class="pp-sub">${escapeHtml(m.name)}</span>` : ''}</span>
+            <a href="/userHome?user=${m.userId}" class="pp-id" style="color:inherit;text-decoration:none"><span class="pp-name">${escapeHtml(m.franchise || m.name)}</span>${m.franchise ? `<span class="pp-sub">${escapeHtml(m.name)}</span>` : ''}</a>
             <span class="pp-points"><span class="pp-cur">${m.banked}</span><i class="fa-solid fa-arrow-right pp-arrow"></i><span class="pp-proj">${m.projectedFinal}</span></span>
             <span class="pp-title"><span class="pp-bar"><i style="width:${Math.min(100, m.titleOdds)}%"></i></span><b>${m.titleOdds}%</b></span>
         </div>`).join('');
@@ -1111,12 +1111,12 @@ async function displaySchedule(data) {
 
                     teamTable += '<tr><td style="width: 250px;">';
         
-                    teamTable += awayImg + awayRank + awayTeam;
+                    teamTable += awayTeam.replace('>', '>' + awayImg + awayRank);
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData;
                     teamTable += '</tr>';
-        
+
                     teamTable += '<tr><td style="width: 250px;">';
-                    teamTable += homeImg + homeRank + homeTeam;
+                    teamTable += homeTeam.replace('>', '>' + homeImg + homeRank);
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;

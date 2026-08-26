@@ -205,7 +205,7 @@ async function renderBento(data, yearOverride) {
     } catch (e) { /* rank optional */ }
     sh += statTile(String(season.cumulativeScore || 0), 'Total points');
     const bt = bestTeam(season);
-    if (bt && bt.total > 0) sh += statTile(`<img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}`, `Best: ${bt.team.school}`);
+    if (bt && bt.total > 0) sh += statTile(`<a href="/team?team=${bt.team.id}" style="color:inherit;text-decoration:none"><img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}</a>`, `Best: ${escapeHtml(bt.team.school)}`);
     statsEl.innerHTML = sh;
 
     if (own && !isPastSeason) setupEditModal(data, season, true);
@@ -350,7 +350,7 @@ function preRecapHtml(prior, own, name) {
     weeklyColumns(prior).forEach(c => { if (!c.entry) return; cum += c.entry.score || 0; series.push(cum); });
     const spark = series.length >= 2 ? `<div class="uh-pre-spark">${uhSpark(series, 240, 40, '#5BD08D')}</div>` : '';
     const bestStat = (bt && bt.total > 0)
-        ? `<div class="uh-pre-stat"><span class="uh-pre-stat-v"><img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}</span><span class="uh-pre-stat-k">Best: ${escapeHtml(bt.team.school)}</span></div>`
+        ? `<div class="uh-pre-stat"><span class="uh-pre-stat-v"><a href="/team?team=${bt.team.id}" style="color:inherit;text-decoration:none"><img src="${ccLogo(bt.team.logos)}" alt="">${bt.total}</a></span><span class="uh-pre-stat-k">Best: ${escapeHtml(bt.team.school)}</span></div>`
         : '';
     return `<div class="uh-tile uh-pre-recap">
         <span class="uh-tlabel">${uhPoss(own, true)} ${escapeHtml(prior.season)} season</span>
@@ -380,7 +380,7 @@ function preHistoryHtml(data, activeYear, own) {
         const chips = ordered.map((t, i) => {
             const isBest = bestId != null && Number(t.id) === Number(bestId);
             const pts = isBest ? ` <span class="uh-hist-pts num">${best.total}</span>` : '';
-            return `<span class="uh-hist-chip${isBest ? ' r1' : ''}${i >= 4 ? ' uh-hist-extra' : ''}">${isBest ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}${pts}</span>`;
+            return `<a href="/team?team=${t.id}" class="uh-hist-chip${isBest ? ' r1' : ''}${i >= 4 ? ' uh-hist-extra' : ''}" style="color:inherit;text-decoration:none">${isBest ? '<span class="uh-hist-star">★</span>' : ''}${escapeHtml(t.school)}${pts}</a>`;
         }).join('');
         const moreN = ordered.length - 4;
         const more = moreN > 0 ? `<button type="button" class="uh-hist-more" data-more="+${moreN} more">+${moreN} more</button>` : '';
@@ -529,7 +529,7 @@ function hydrateRoster(user, activeYear) {
     const g = document.getElementById('uh-glance-roster');
     if (g) {
         g.innerHTML = top && top.pts > 0
-            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<span class="uh-rg-row"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></span>`).join('')}</span>`
+            ? `<span class="uh-rg">${cards.slice(0, 4).map((c, i) => `<a href="/team?team=${c.t.id}" class="uh-rg-row" style="color:inherit;text-decoration:none"><img src="${ccLogo(c.t.logos)}" alt=""><span class="uh-rg-nm">${escapeHtml(c.t.school)}${i === 0 ? ' <span class="uh-rg-star">★</span>' : ''}</span><span class="uh-rg-pts num">${c.pts}</span></a>`).join('')}</span>`
             : (uhOwns(user) ? 'Your 10 teams' : 'Their 10 teams');
     }
 
@@ -632,7 +632,7 @@ async function hydrateGames(user, activeYear) {
                 getGame(seasonType, week, t).then(gs => ({ t, plays: !!(gs && gs.length) })).catch(() => ({ t, plays: false }))));
             const playing = per.filter(x => x.plays).map(x => x.t);
             if (playing.length) {
-                const logos = playing.map(t => `<img src="${ccLogo(t.logos)}" alt="">`).join('');
+                const logos = playing.map(t => `<a href="/team?team=${t.id}" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""></a>`).join('');
                 g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of ${uhPoss(uhOwns(user))} teams · ${escapeHtml(label)}</span>`;
             } else {
                 g.innerHTML = `<span class="uh-glance-sub">No games for ${uhPoss(uhOwns(user))} teams · ${escapeHtml(label)}</span>`;
@@ -983,7 +983,7 @@ async function hydrateCaptain(user, activeYear) {
         if (!g) return;
         const t = state.teamId != null ? teamById[state.teamId] : null;
         const lead = t
-            ? `<span class="uh-cap-glance"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></span>`
+            ? `<a href="/team?team=${t.id}" class="uh-cap-glance" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""> ${escapeHtml(t.school)} <span class="uh-cap-2x">2×</span></a>`
             : `<span class="captain-unset">${state.locked ? 'No pick · Wk ' + state.week : 'Set for Wk ' + state.week}</span>`;
         let sub;
         if (state.locked) sub = 'Locked for this week';
@@ -1089,7 +1089,7 @@ async function hydrateCaptain(user, activeYear) {
         html += statTile(`+${earned}`, 'Bonus earned');
         if (left > 0) html += statTile(`${left}`, 'Left on table');
         if (t && bestWeek) html += statTile(
-            `<img src="${ccLogo(t.logos)}" alt=""> +${bestWeek.bonus}`,
+            `<a href="/team?team=${t.id}" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""> +${bestWeek.bonus}</a>`,
             `Best pick · Wk ${bestWeek.week}`);
         html += '</div></div>';
         return html;
@@ -1158,12 +1158,15 @@ async function hydrateBetting(user, activeYear) {
                                 const isHome = sel.includes(game.homeTeam.toLowerCase());
                                 const logos = isHome ? game.homeLogos : game.awayLogos;
                                 const src = typeof ccLogo === 'function' ? ccLogo(logos) : (logos && logos[0] || '');
-                                if (src) logoHtml = '<img src="' + src + '" alt="" style="height:18px;width:18px;vertical-align:middle;margin-right:4px;">';
+                                if (src) {
+                                    var teamId = isHome ? game.homeId : game.awayId;
+                                    logoHtml = '<a href="/team?team=' + teamId + '" style="color:inherit;text-decoration:none"><img src="' + src + '" alt="" style="height:18px;width:18px;vertical-align:middle;margin-right:4px;">' + escapeHtml(myLeg.selection) + '</a>';
+                                }
                             }
                         }
                     } catch (_) {}
                 }
-                g.innerHTML = 'Wk ' + target.week + ' · ' + logoHtml + escapeHtml(myLeg.selection);
+                g.innerHTML = 'Wk ' + target.week + ' · ' + (logoHtml || escapeHtml(myLeg.selection));
             } else {
                 g.textContent = 'Wk ' + target.week + ' · Pick your leg';
             }
@@ -1924,11 +1927,11 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
 
     const awayRostered = rosteredIds.has(game.awayId);
     const homeRostered = rosteredIds.has(game.homeId);
-    const nameHtml = (id, name, rostered) =>
-        `<a href="/team?team=${id}">${rostered ? '<strong>' + name + '</strong>' : name}</a>`;
+    const nameHtml = (id, name, rostered, logo) =>
+        `<a href="/team?team=${id}">${logo}${rostered ? '<strong>' + name + '</strong>' : name}</a>`;
 
-    const awayCol = logoHtmlFromMap(logoMap, game.awayId) + rankHtml(rankOf(game.awayTeam)) + nameHtml(game.awayId, game.awayTeam, awayRostered) + lineHtml(awayLine);
-    const homeCol = logoHtmlFromMap(logoMap, game.homeId) + rankHtml(rankOf(game.homeTeam)) + nameHtml(game.homeId, game.homeTeam, homeRostered) + lineHtml(homeLine);
+    const awayCol = nameHtml(game.awayId, game.awayTeam, awayRostered, logoHtmlFromMap(logoMap, game.awayId) + rankHtml(rankOf(game.awayTeam))) + lineHtml(awayLine);
+    const homeCol = nameHtml(game.homeId, game.homeTeam, homeRostered, logoHtmlFromMap(logoMap, game.homeId) + rankHtml(rankOf(game.homeTeam))) + lineHtml(homeLine);
 
     // A rostered team's points for this game -> a green badge cell, or '' at 0.
     const badgeCell = (id, rostered) => {
