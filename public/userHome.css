@@ -684,6 +684,38 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-drawer-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted-2); margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .uh-scrim, .uh-drawer, button.uh-tile { transition: none; } }
 
+/* Matchup tile shimmer — a slow light sweep along the border to draw the eye. */
+#uh-tile-matchup { position: relative; overflow: hidden; border-color: transparent; }
+#uh-tile-matchup::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+        105deg,
+        var(--cc-border) 0%,
+        var(--cc-border) 35%,
+        color-mix(in srgb, var(--cc-accent) 50%, transparent) 45%,
+        color-mix(in srgb, var(--cc-accent) 70%, transparent) 50%,
+        color-mix(in srgb, var(--cc-accent) 50%, transparent) 55%,
+        var(--cc-border) 65%,
+        var(--cc-border) 100%
+    );
+    background-size: 300% 100%;
+    animation: uh-shimmer 4s ease-in-out infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+}
+@keyframes uh-shimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -100% center; }
+}
+@media (prefers-reduced-motion: reduce) { #uh-tile-matchup::before { animation: none; background-position: center; } }
+
 /* Bento tile glances + drawer content (#230 redesign) */
 .uh-mu-glance { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--cc-text); font-weight: 700; min-width: 0; }
 .uh-mu-glance .num { font-variant-numeric: tabular-nums; }
