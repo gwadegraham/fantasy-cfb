@@ -5,7 +5,7 @@ module.exports = {
     // logged and swallowed so it can't fail the whole scoring job.
     updateAllBettingLines: async function() {
         try {
-            const response = await internalFetch(`${process.env.URL}/betting/new/${process.env.YEAR}`, {
+            const response = await internalFetch(`${process.env.URL}/betting-lines/new/${process.env.YEAR}`, {
                 method: 'POST',
                 headers: {
                 'Accept': 'application/json',

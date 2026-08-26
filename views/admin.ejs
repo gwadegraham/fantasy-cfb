@@ -293,6 +293,29 @@
         </div>
     </section>
 
+    <section class="admin-group">
+        <div class="group-head"><h2>Betting</h2><span class="group-count">1</span></div>
+        <div class="admin-functions">
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayBettingGroupContainer()">
+                        <i class="fa-solid fa-users" style="padding-right: 5px;"></i>
+                        Manage Betting Group
+                    </button>
+                </div>
+                <div class="sub-container" betting-group-container style="display: none">
+                    <p class="function-description">Control who can see the Betting page. Add or remove members below.</p>
+                    <div id="betting-group-members"></div>
+                    <div style="display: flex; gap: 8px; margin-top: 12px; align-items: center;">
+                        <select id="betting-group-add-user" style="flex:1; width: auto; margin: 0; padding: 8px;"><option value="">Add a member...</option></select>
+                        <button type="button" onclick="addBettingGroupMember()" style="width: auto; min-width: 60px; margin: 0; padding: 8px 16px;">Add</button>
+                    </div>
+                    <button type="button" onclick="saveBettingGroup()" style="margin-top: 12px;">Save Betting Group</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <% } %>
 
     <section class="admin-group">

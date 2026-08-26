@@ -370,6 +370,13 @@ async function doFullUpdate({ withBetting = false } = {}) {
         if (withBetting) await bettingModule.updateAllBettingLines();
     }
 
+    try {
+        const { resolveParlays } = require('./parlay-resolve');
+        await resolveParlays();
+    } catch (err) {
+        console.log('Parlay resolution failed (non-fatal):', err.message);
+    }
+
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 

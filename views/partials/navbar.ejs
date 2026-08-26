@@ -99,6 +99,9 @@
             <li><a href="./hall-of-fame">Hall of Fame</a></li>
             <li><a href="./rules">Scoring</a></li>
             <li><a href="./draft-room">Draft Room</a></li>
+            <% if (typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember) { %>
+            <li><a href="./betting">Betting</a></li>
+            <% } %>
             <!-- A <button>, not a link: it opens a dialog rather than navigating.
                  Icon-only on desktop with the label revealed in the stacked mobile
                  menu — the same .nav-label treatment "My Team" uses, which is what

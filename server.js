@@ -25,6 +25,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
+const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -163,6 +164,24 @@ app.use(async (req, res, next) => {
             }
         }
     } catch (e) { /* non-fatal: navbar falls back to the generic icon */ }
+    next();
+});
+
+// Betting group membership flag for the navbar and My Team links. HTML GETs
+// only so API calls and static assets skip the query.
+app.use(async (req, res, next) => {
+    res.locals.isBettingGroupMember = false;
+    try {
+        if (req.method === 'GET'
+            && (req.headers.accept || '').includes('text/html')
+            && req.oidc && req.oidc.isAuthenticated()) {
+            const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
+            if (innerMeta.userId) {
+                const group = await BettingGroup.findOne({ active: true, members: innerMeta.userId }).lean();
+                res.locals.isBettingGroupMember = !!group;
+            }
+        }
+    } catch (e) { /* non-fatal */ }
     next();
 });
 
@@ -525,6 +544,15 @@ app.get('/draft-board', (req, res) => {
     });
 });
 
+app.get('/betting', async (req, res) => {
+    if (!req.oidc.isAuthenticated()) return res.redirect('/login');
+    const user = buildUserContext(req.effUser);
+    if (!res.locals.isBettingGroupMember) return res.redirect('/');
+    const userState = safeJson(req.effUser);
+    const isAdmin = devRole.effectiveRoles(req).includes('Admin');
+    res.render('betting', { user, userState, year: process.env.YEAR, isAdmin });
+});
+
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
@@ -604,7 +632,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireAdmin(req, res, next);
 });
-app.use(['/scores', '/records', '/games', '/betting', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log'], (req, res, next) => {
+app.use(['/scores', '/records', '/games', '/betting-lines', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log', '/betting-groups'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireAdmin(req, res, next);
 });
@@ -640,8 +668,14 @@ app.use('/recruiting', requireAuthOrToken, recruitingRouter);
 const recordRouter = require('./routes/records');
 app.use('/records', requireAuthOrToken, recordRouter);
 
+const bettingLinesRouter = require('./routes/betting-lines');
+app.use('/betting-lines', requireAuthOrToken, bettingLinesRouter);
+
 const bettingRouter = require('./routes/betting');
 app.use('/betting', requireAuthOrToken, bettingRouter);
+
+const bettingGroupsRouter = require('./routes/betting-groups');
+app.use('/betting-groups', requireAuthOrToken, bettingGroupsRouter);
 
 const draftRouter = require('./routes/draft');
 app.use('/draft', requireAuthOrToken, draftRouter);
