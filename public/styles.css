@@ -918,6 +918,36 @@ footer {
     .cc-stagger > * { animation: none; opacity: 1; }
 }
 
+/* Pull-to-refresh indicator */
+.ptr-indicator {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    z-index: 9999;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.ptr-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--cc-border-2);
+    border-top-color: var(--cc-accent);
+    border-radius: 50%;
+}
+.ptr-ready .ptr-spinner { border-top-color: var(--cc-accent); }
+.ptr-loading .ptr-spinner { animation: ptr-spin 0.6s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
 /* Scheduled game date/time — muted metadata styling */
 .gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
 .gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }
