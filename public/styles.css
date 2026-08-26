@@ -948,6 +948,35 @@ footer {
 .ptr-loading .ptr-spinner { animation: ptr-spin 0.6s linear infinite; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 
+/* Tactile press — all interactive buttons get a subtle scale-down on tap/click. */
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.dropdown-toggle,
+.uh-season-pill,
+.welcome-actions button,
+.modal-actions button {
+    transition: transform 0.1s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-primary:active,
+.btn-secondary:active,
+.btn-ghost:active,
+.dropdown-toggle:active,
+.uh-season-pill:active,
+.welcome-actions button:active,
+.modal-actions button:active {
+    transform: scale(0.96);
+}
+@media (prefers-reduced-motion: reduce) {
+    .btn-primary:active,
+    .btn-secondary:active,
+    .btn-ghost:active,
+    .dropdown-toggle:active,
+    .uh-season-pill:active,
+    .welcome-actions button:active,
+    .modal-actions button:active { transform: none; }
+}
+
 /* Scheduled game date/time — muted metadata styling */
 .gc-date { font-size: 0.75rem; color: var(--cc-muted); font-weight: 500; }
 .gc-time { font-size: 0.8rem; color: #A4A9C2; font-weight: 500; }

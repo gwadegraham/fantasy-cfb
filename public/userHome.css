@@ -648,7 +648,7 @@ button.uh-tile:focus-visible { outline: 2px solid var(--cc-info); outline-offset
 .uh-hero-stats .stat-value img { height: 1.1rem; width: auto; }
 .uh-hero-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted-2); margin-top: 2px; }
 .uh-season-picker { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.uh-season-pill { all: unset; cursor: pointer; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--cc-border); color: var(--cc-muted-2); transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.uh-season-pill { all: unset; cursor: pointer; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--cc-border); color: var(--cc-muted-2); transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s ease; }
 .uh-season-pill:hover { color: var(--cc-text); border-color: var(--cc-muted); }
 .uh-season-pill.active { background: var(--cc-text); color: var(--cc-bg); border-color: var(--cc-text); }
 /* Preseason / undrafted-window empty state (active season not yet drafted). */
