@@ -26,8 +26,9 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     var week = req.params.weekNum;
     var teamId = req.params.team;
     var seasonType = req.params.seasonType;
+    var year = req.query.season || process.env.YEAR;
     try {
-        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":process.env.YEAR}, {seasonType: seasonType}, {week: week}]});
+        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]});
 
         // "This team had no game that week" is an empty result, not a client
         // error. It used to 400, which put one console error per rostered team

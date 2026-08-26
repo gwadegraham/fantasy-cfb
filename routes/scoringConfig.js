@@ -98,6 +98,7 @@ router.get('/:league', async (req, res) => {
 // for one game. Reuses the EXACT engine inputs (resolved config + the game's
 // week rankings) the scoring jobs use, so the breakdown reconciles with the
 // banked per-game score (barring rankings/rules changing after it was scored).
+// Pass ?season= to use a frozen per-season config (for past-season breakdowns).
 router.get('/:league/explain', async (req, res) => {
     try {
         const teamId = Number(req.query.teamId);
@@ -107,7 +108,19 @@ router.get('/:league/explain', async (req, res) => {
         }
         const game = await Game.findOne({ id: gameId }).lean();
         if (!game) return res.status(404).json({ message: 'Game not found' });
-        const cfg = await getScoringConfig(req.params.league);
+
+        const season = req.query.season;
+        let cfg;
+        if (season && String(season) !== String(process.env.YEAR)) {
+            const doc = await ScoringConfig.findOne({ league: req.params.league }).lean();
+            const frozen = doc && doc.configBySeason && doc.configBySeason[String(season)];
+            cfg = frozen
+                ? resolveConfig(req.params.league, frozen)
+                : await getScoringConfig(req.params.league);
+        } else {
+            cfg = await getScoringConfig(req.params.league);
+        }
+
         const rankings = await getRankingsForGame(game, game.week, game.season);
         const bracket = await getBracketForGame(game, game.season);
         res.json(explainGame(cfg.model, teamId, game, rankings, cfg, bracket));

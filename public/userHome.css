@@ -637,6 +637,10 @@ button.uh-tile:focus-visible { outline: 2px solid var(--cc-info); outline-offset
 .uh-hero-stats .stat-value { font-size: 1.15rem; font-weight: 800; color: var(--cc-text); display: flex; align-items: center; gap: 6px; }
 .uh-hero-stats .stat-value img { height: 1.1rem; width: auto; }
 .uh-hero-stats .stat-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted-2); margin-top: 2px; }
+.uh-season-picker { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.uh-season-pill { all: unset; cursor: pointer; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--cc-border); color: var(--cc-muted-2); transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.uh-season-pill:hover { color: var(--cc-text); border-color: var(--cc-muted); }
+.uh-season-pill.active { background: var(--cc-text); color: var(--cc-bg); border-color: var(--cc-text); }
 /* Preseason / undrafted-window empty state (active season not yet drafted). */
 .uh-preseason-pill { display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cc-amber); border: 1px solid rgba(224,179,65,0.4); border-radius: 99px; padding: 3px 10px; }
 .uh-preseason { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 40px 24px; }

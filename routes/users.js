@@ -306,10 +306,11 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
+    const year = req.query.season || process.env.YEAR;
     try {
-        console.log("finding all users in league", leagueCode);
-        const users = await User.find({"seasons.season": {"$eq": process.env.YEAR}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "avatarUrl": 1, "profilePrompted": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
+        console.log("finding all users in league", leagueCode, "season", year);
+        const users = await User.find({"seasons.season": {"$eq": year}, "league": leagueCode},
+                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "avatarUrl": 1, "profilePrompted": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});

@@ -53,6 +53,12 @@ const scoringConfigSchema = new mongoose.Schema({
     // list is pinned the first time a week settles and read verbatim after that.
     // See modules/h2h.js h2hRoster.
     h2hScheduleBySeason: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Frozen scoring config per completed season, keyed by year string, e.g.
+    // { "2025": { model, values, combineMode, disabled, enabled, powerConferences } }.
+    // Snapshotted at end-of-season so the "Why these points?" breakdown can
+    // recalculate past games with the rules that were in effect when they were
+    // scored. Seasons without an entry fall back to the live config.
+    configBySeason: { type: mongoose.Schema.Types.Mixed, default: {} },
     updatedAt: { type: Date, default: Date.now }
 });
 
