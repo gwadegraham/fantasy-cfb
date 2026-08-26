@@ -1119,22 +1119,15 @@ async function getRecruitingRankings(team, seasonYear) {
 // Helper: Format the date to readable format
 function formatDate(isTbd, dateStr) {
   const date = new Date(dateStr);
+  const day = ['SUN','MON','TUE','WED','THU','FRI','SAT'][date.getDay()];
+  const datePart = (date.getMonth() + 1) + '/' + date.getDate();
 
   if (isTbd) {
-    var formatDate = date.toLocaleString(undefined, {
-        month: 'numeric',
-        day: 'numeric',         // "30"
-    });
-
-    return formatDate + " TBD";
+    return day + ' ' + datePart + ' TBD';
   } else {
-    return date.toLocaleString(undefined, {
-        month: 'numeric',
-        day: 'numeric',         // "30"
-        hour: 'numeric',        // "1"
-        minute: '2-digit',      // "00"
-        hour12: true            // AM/PM
-    });
+    var h = date.getHours(), m = date.getMinutes().toString().padStart(2, '0');
+    var time = h === 0 ? '12:' + m + 'AM' : h < 12 ? h + ':' + m + 'AM' : h === 12 ? '12:' + m + 'PM' : (h - 12) + ':' + m + 'PM';
+    return day + ' ' + datePart + ', ' + time;
   }
 }
 
