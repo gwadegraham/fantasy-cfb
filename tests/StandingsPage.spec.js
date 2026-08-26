@@ -304,14 +304,14 @@ describe('head-to-head matchups panel', () => {
     it('describes the win and tie bonuses', async () => {
         const page = await loadStandingsPage(opts());
         expect(page.h2hPanel().innerHTML).toContain('<b>+5</b>');
-        expect(page.h2hPanel().innerHTML).toContain('<b>+2</b> each on a tie');
+        expect(page.h2hPanel().innerHTML).toContain('ties earn <b>+2</b> each');
     });
 
     it('omits the tie clause when there is no tie bonus', async () => {
         const page = await loadStandingsPage(Object.assign(opts(), {
             h2hMatchups: Object.assign({}, matchups, { tieBonus: 0 })
         }));
-        expect(page.h2hPanel().innerHTML).not.toContain('each on a tie');
+        expect(page.h2hPanel().innerHTML).not.toContain('ties earn');
     });
 
     it('preselects the featured week in the picker', async () => {
