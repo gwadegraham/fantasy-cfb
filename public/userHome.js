@@ -1955,8 +1955,9 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = (game.homePoints ?? 0) + (homeWon ? caret : '') + '</td>' + badgeCell(game.homeId, homeRostered);
     } else {
         const d = new Date(game.startDate);
-        awayScore = d.toString().substring(4, 10) + '</td>';
-        homeScore = (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</td>';
+        const dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
+        awayScore = '<span class="gc-date">' + dayAbbr + ' ' + (d.getMonth() + 1) + '/' + d.getDate() + '</span></td>';
+        homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
     }
 
     const isLive = !game.completed && game.startDate && new Date(game.startDate) < new Date();
