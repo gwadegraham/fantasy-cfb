@@ -1482,7 +1482,7 @@ if (bettingLinesForm) {
 
         const season = document.querySelector('[betting-season]').value;
 
-        const response = await fetch(`/betting/new/${season}`, {
+        const response = await fetch(`/betting-lines/new/${season}`, {
             method: 'POST',
             headers: {
             'Accept': 'application/json',
@@ -2409,3 +2409,100 @@ document.querySelectorAll('[scoring-config-shape] input[name="rule-shape"]').for
         loadScoringConfig(r.value);
     });
 });
+
+// ── Betting Group Management ──────────────────────────────────────────────
+var bettingGroupState = { id: null, members: [], allUsers: [] };
+
+function displayBettingGroupContainer() {
+    toggleSub('betting-group-container');
+    loadBettingGroup();
+}
+
+async function loadBettingGroup() {
+    try {
+        var res = await fetch('/betting-groups');
+        var group = await res.json();
+
+        var leagueCode = window.CC_LEAGUE && CC_LEAGUE.code;
+        if (!leagueCode) leagueCode = getDraftLeagueCode();
+        var usersRes = await fetch('/users/league/' + encodeURIComponent(leagueCode) + '/all');
+        var users = await usersRes.json();
+        bettingGroupState.allUsers = users.map(function (u) { return { _id: u._id, firstName: u.firstName, league: leagueCode }; });
+
+        if (group && group._id) {
+            bettingGroupState.id = group._id;
+            bettingGroupState.members = (group.members || []).map(function (m) { return m.toString(); });
+        } else {
+            bettingGroupState.id = null;
+            bettingGroupState.members = [];
+        }
+        renderBettingGroup();
+    } catch (err) {
+        console.error('Failed to load betting group:', err);
+    }
+}
+
+function renderBettingGroup() {
+    var container = document.getElementById('betting-group-members');
+    if (!container) return;
+
+    var html = '';
+    bettingGroupState.members.forEach(function (id) {
+        var u = bettingGroupState.allUsers.find(function (u) { return u._id === id; });
+        var name = u ? u.firstName : id;
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--cc-surface-2,#171B31);border-radius:6px;margin-bottom:6px;">'
+            + '<span style="font-weight:500;font-size:14px;">' + name + '</span>'
+            + '<span onclick="removeBettingGroupMember(\'' + id + '\')" style="font-size:12px;color:var(--cc-muted-2,#8A90A8);cursor:pointer;padding:2px 6px;">✕</span>'
+            + '</div>';
+    });
+    container.innerHTML = html || '<p style="color:var(--cc-muted,#A4A9C2);font-size:13px;">No members yet.</p>';
+
+    var select = document.getElementById('betting-group-add-user');
+    if (!select) return;
+    select.innerHTML = '<option value="">Add a member...</option>';
+    bettingGroupState.allUsers.forEach(function (u) {
+        if (bettingGroupState.members.indexOf(u._id) === -1) {
+            select.innerHTML += '<option value="' + u._id + '">' + u.firstName + '</option>';
+        }
+    });
+}
+
+function addBettingGroupMember() {
+    var select = document.getElementById('betting-group-add-user');
+    if (!select || !select.value) return;
+    bettingGroupState.members.push(select.value);
+    renderBettingGroup();
+}
+
+function removeBettingGroupMember(id) {
+    bettingGroupState.members = bettingGroupState.members.filter(function (m) { return m !== id; });
+    renderBettingGroup();
+}
+
+async function saveBettingGroup() {
+    try {
+        var url, method;
+        if (bettingGroupState.id) {
+            url = '/betting-groups/' + bettingGroupState.id;
+            method = 'PATCH';
+        } else {
+            url = '/betting-groups';
+            method = 'POST';
+        }
+        var res = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ members: bettingGroupState.members })
+        });
+        var data = await res.json();
+        if (res.ok) {
+            bettingGroupState.id = data._id;
+            if (window.ccToast) ccToast.success('Betting group saved');
+        } else {
+            if (window.ccToast) ccToast.error(data.message || 'Failed to save');
+        }
+    } catch (err) {
+        console.error('Failed to save betting group:', err);
+        if (window.ccToast) ccToast.error('Failed to save betting group');
+    }
+}

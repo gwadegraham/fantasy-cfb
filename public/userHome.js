@@ -185,6 +185,7 @@ async function renderBento(data, yearOverride) {
             ${own && !isPastSeason ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
         </div>`
         + tile('matchup', isPastSeason ? 'H2H results' : 'This week · matchup', isPastSeason ? (activeYear + ' matchups') : (uhPoss(own, true) + ' current H2H matchup'), 2, isPastSeason ? 'Results ›' : 'Lineups ›')
+        + (window.IS_BETTING_MEMBER && !isPastSeason ? `<a href="/betting" class="uh-tile" id="uh-tile-betting" style="text-decoration:none;"><span class="uh-tlabel">Betting<span class="uh-chev">›</span></span><span class="uh-glance" id="uh-glance-betting">Weekly parlays</span></a>` : '')
         + tile('roster', 'Roster · top performers', uhPoss(own, true) + ' 10 teams', 2, 'All 10 teams ›')
         + (isPastSeason ? '' : tile('captain', 'Captain', 'Double a team each week', 1))
         + (isPastSeason ? '' : tile('recap', own ? 'Your week' : 'Their week', 'Latest recap', 1))
@@ -222,6 +223,7 @@ async function renderBento(data, yearOverride) {
     if (!isPastSeason) {
         hydrateCaptain(data, activeYear);
         hydrateRecap(data, activeYear);
+        hydrateBetting(data, activeYear);
     }
     hydrateDraft(data, activeYear);
     hydrateRoster(data, activeYear);
@@ -1125,8 +1127,50 @@ async function hydrateRecap(user, activeYear) {
     }
 }
 
-// Draft grade → Draft grade tile. Glance shows the color-coded letter; drawer
-// renders this manager's full draft-grade card (reused from draftGrades.js).
+async function hydrateBetting(user, activeYear) {
+    const tile = document.getElementById('uh-tile-betting');
+    if (!tile || !window.IS_BETTING_MEMBER) return;
+    if (!uhOwns(user)) { tile.hidden = true; return; }
+    try {
+        const res = await fetch('/betting/list?season=' + activeYear, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return;
+        const parlays = await res.json();
+        if (!parlays || !parlays.length) return;
+        const uid = String(currentUserId());
+        const pending = parlays.filter(p => p.status === 'pending').sort((a, b) => a.week - b.week);
+        const filled = pending.find(p => (p.legs || []).some(l => String(l.contributor) === uid && l.selection));
+        const unfilled = pending.find(p => (p.legs || []).some(l => String(l.contributor) === uid && !l.selection));
+        const target = filled || unfilled || pending[0];
+        if (!target) return;
+        const myLeg = (target.legs || []).find(l => String(l.contributor) === uid);
+        const g = document.getElementById('uh-glance-betting');
+        if (g) {
+            if (myLeg && myLeg.selection) {
+                let logoHtml = '';
+                if (myLeg.gameId) {
+                    try {
+                        const gr = await fetch('/betting/games/' + activeYear + '/' + target.week, { headers: { Accept: 'application/json' } });
+                        if (gr.ok) {
+                            const games = await gr.json();
+                            const game = games.find(gm => gm.id === myLeg.gameId);
+                            if (game) {
+                                const sel = (myLeg.selection || '').toLowerCase();
+                                const isHome = sel.includes(game.homeTeam.toLowerCase());
+                                const logos = isHome ? game.homeLogos : game.awayLogos;
+                                const src = typeof ccLogo === 'function' ? ccLogo(logos) : (logos && logos[0] || '');
+                                if (src) logoHtml = '<img src="' + src + '" alt="" style="height:18px;width:18px;vertical-align:middle;margin-right:4px;">';
+                            }
+                        }
+                    } catch (_) {}
+                }
+                g.innerHTML = 'Wk ' + target.week + ' · ' + logoHtml + escapeHtml(myLeg.selection);
+            } else {
+                g.textContent = 'Wk ' + target.week + ' · Pick your leg';
+            }
+        }
+    } catch (e) { /* non-fatal */ }
+}
+
 async function hydrateDraft(user, activeYear) {
     const tile = document.getElementById('uh-tile-draft');
     const hide = () => { if (tile) tile.hidden = true; };
@@ -1743,7 +1787,7 @@ async function getAllBettingLines (seasonYear) {
     // year, so betting lines are fetched for the season actually being viewed.
     if (seasonYear == null) seasonYear = new Date().getFullYear();
 
-    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+    var bettingPromise = await fetch(`/betting-lines/${seasonYear}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -1912,7 +1956,8 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</td>';
     }
 
-    return '<div class="game-card"><table class="game-table"><tbody><tr></tr>'
+    const isLive = !game.completed && game.startDate && new Date(game.startDate) < new Date();
+    return '<div class="game-card' + (isLive ? ' gc-live' : '') + '"><table class="game-table"><tbody><tr></tr>'
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
         + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
         + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + '</td></tr>' : '')

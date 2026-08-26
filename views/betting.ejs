@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="styles.css" rel="stylesheet">
+    <link href="betting.css" rel="stylesheet">
+    <link href="loading.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <script src="logo.js"></script>
+    <script src="betting.js" defer></script>
+    <title data-league-title="Betting">Betting · Campus Clash</title>
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+</head>
+
+<body>
+    <%- include('partials/navbar') %>
+    <% if (userState) { %>
+        <script>
+            var userState = <%- userState %>;
+            var APP_YEAR = '<%= year %>';
+            var IS_ADMIN = <%= isAdmin %>;
+        </script>
+    <% } %>
+
+    <div class="header">
+        <div class="header-title">
+            <span class="header-league" league-label hidden></span>
+            Betting
+        </div>
+        <div class="week-nav">
+            <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="week-label" id="week-label">Week 1</span>
+            <button type="button" class="week-nav-btn" id="week-next" aria-label="Next week">
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="betting-content">
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+        </div>
+    </div>
+
+    <div class="section-divider"></div>
+
+    <div class="summary-title">Season <span id="summary-year"></span></div>
+    <div class="season-summary" id="season-summary"></div>
+
+    <div class="history-section">
+        <table class="history-table" id="history-table">
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Legs</th>
+                    <th>Wager</th>
+                    <th>Result</th>
+                    <th class="text-right">Pay</th>
+                </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </div>
+</body>
+</html>

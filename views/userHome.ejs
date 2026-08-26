@@ -37,6 +37,7 @@
         // My Team tile keys off the season the league is actually playing — not
         // the wall-clock year or "latest season with data".
         window.APP_YEAR = "<%= year %>";
+        window.IS_BETTING_MEMBER = <%= typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember %>;
     </script>
 
     <!-- My Team bento (#230 redesign, feat/my-team-redesign). Tiles rendered by

@@ -1,0 +1,592 @@
+.header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 24px 12px;
+    gap: 4px;
+}
+.header-title {
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+}
+.header-league {
+    display: block;
+    font-size: 11px;
+    color: var(--cc-muted);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.week-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+.week-nav-btn {
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted);
+    border-radius: var(--cc-r-sm);
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.week-nav-btn:hover {
+    background: var(--cc-surface-3);
+    color: var(--cc-text);
+}
+.week-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cc-muted-bright);
+    min-width: 60px;
+    text-align: center;
+}
+
+/* Parlay Card */
+.parlay-card {
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-md);
+    padding: 16px;
+    margin: 0 24px 16px;
+}
+.parlay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--cc-border);
+}
+.parlay-week {
+    font-size: 14px;
+    font-weight: 500;
+}
+.parlay-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: var(--cc-r-pill);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.status-won { background: rgba(34,195,122,0.15); color: var(--cc-success); }
+.status-pending { background: rgba(108,155,255,0.15); color: var(--cc-info); }
+.status-lost { background: rgba(181,66,63,0.15); color: var(--cc-danger-text); }
+.status-push { background: rgba(224,179,65,0.15); color: var(--cc-amber); }
+
+/* Legs */
+.legs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.leg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--cc-surface-2);
+    border-radius: var(--cc-r-sm);
+    font-size: 13px;
+}
+.leg-contributor {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.leg-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+    color: #fff;
+}
+.leg-avatar-img {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.leg-name {
+    color: var(--cc-muted-bright);
+    font-weight: 500;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.leg-detail { flex: 1; min-width: 0; }
+.leg-pick { font-weight: 500; }
+.leg-game { color: var(--cc-muted-2); font-size: 11px; }
+.leg-odds { color: var(--cc-muted); font-size: 12px; font-family: monospace; white-space: nowrap; }
+.leg-result {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.result-win { background: rgba(34,195,122,0.2); color: var(--cc-success); }
+.result-loss { background: rgba(181,66,63,0.2); color: var(--cc-danger-text); }
+.result-push { background: rgba(224,179,65,0.2); color: var(--cc-amber); }
+.result-pending { background: rgba(108,155,255,0.15); color: var(--cc-info); }
+.leg-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+/* Empty leg (awaiting pick) */
+.leg-empty {
+    border: 1px dashed var(--cc-border);
+    background: transparent;
+}
+.leg-empty .leg-pick { color: var(--cc-muted-2); font-weight: 400; font-style: italic; }
+
+/* ── Pick-your-game CTA (replaces old dropdown form) ── */
+.leg-pick-cta {
+    border: 1px solid var(--cc-interactive);
+    background: var(--cc-surface-2);
+    border-radius: var(--cc-r-sm);
+    padding: 14px 12px;
+}
+.leg-pick-cta-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.leg-pick-cta-title { font-size: 14px; font-weight: 500; }
+.leg-pick-cta-sub { font-size: 11px; color: var(--cc-muted-2); }
+
+.btn-pick-game {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--cc-surface-3);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-muted);
+    font-size: 13px;
+    font-family: 'Poppins', sans-serif;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.btn-pick-game:hover { border-color: var(--cc-interactive); color: var(--cc-text); }
+.btn-pick-game i { font-size: 11px; }
+
+/* ── Game Picker Panel ── */
+.game-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 900;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+}
+.game-picker {
+    background: var(--cc-bg);
+    border-radius: var(--cc-r-lg) var(--cc-r-lg) 0 0;
+    width: 100%;
+    max-width: 500px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.game-picker-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--cc-border);
+}
+.game-picker-head input {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 14px;
+    font-family: 'Poppins', sans-serif;
+}
+.game-picker-head input:focus { border-color: var(--cc-interactive); outline: none; }
+.game-picker-close {
+    background: none;
+    border: none;
+    color: var(--cc-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+.game-picker-list {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 8px 0;
+    flex: 1;
+    min-height: 200px;
+}
+.game-picker-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid var(--cc-surface-2);
+    gap: 6px;
+}
+.game-picker-item:hover { background: var(--cc-surface); }
+.game-picker-teams {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+}
+.game-picker-teams > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 1;
+}
+.game-picker-logo {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+.game-picker-rank {
+    font-size: 10px;
+    color: var(--cc-amber, #E0B341);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.game-picker-at {
+    color: var(--cc-muted-2);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+.game-picker-time { font-size: 11px; color: var(--cc-muted-2); white-space: nowrap; text-align: right; }
+.game-picker-empty {
+    text-align: center;
+    padding: 24px;
+    color: var(--cc-muted);
+    font-size: 13px;
+}
+
+/* ── Bet Type Cards (DraftKings-style) ── */
+.bet-board {
+    margin-top: 10px;
+}
+.bet-board-game {
+    font-size: 12px;
+    color: var(--cc-muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.bet-board-game button {
+    background: none;
+    border: none;
+    color: var(--cc-muted-2);
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.bet-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.bet-row-label {
+    min-width: 40px;
+    font-size: 10px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+}
+.bet-btn {
+    flex: 1;
+    padding: 10px 8px;
+    background: var(--cc-surface-3);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 12px;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transition: border-color 0.15s, background 0.15s;
+}
+.bet-btn:hover { border-color: var(--cc-interactive); }
+.bet-btn.selected {
+    border-color: var(--cc-interactive);
+    background: rgba(108,155,255,0.12);
+}
+.bet-btn-label { font-weight: 500; font-size: 12px; }
+.bet-btn-odds { font-size: 11px; color: var(--cc-muted); font-family: monospace; }
+.bet-btn.selected .bet-btn-odds { color: var(--cc-info); }
+.bet-btn-na {
+    flex: 1;
+    padding: 10px 8px;
+    background: var(--cc-surface-2);
+    border: 1px solid transparent;
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-muted-2);
+    font-size: 11px;
+    text-align: center;
+}
+
+/* Custom bet row */
+.bet-custom-input {
+    flex: 1;
+    padding: 8px 10px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 12px;
+    font-family: 'Poppins', sans-serif;
+    min-width: 0;
+}
+.bet-custom-input:focus { border-color: var(--cc-interactive); outline: none; }
+.bet-btn-custom { flex: 0 0 auto; min-width: 48px; }
+
+/* Custom odds override */
+.bet-custom-odds {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--cc-muted-2);
+}
+.bet-custom-odds input {
+    width: 70px;
+    padding: 5px 8px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 12px;
+    font-family: monospace;
+    text-align: center;
+}
+.bet-custom-odds input:focus { border-color: var(--cc-interactive); outline: none; }
+
+.bet-confirm {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+    gap: 8px;
+}
+.btn-submit-leg {
+    background: var(--cc-interactive);
+    border: none;
+    border-radius: var(--cc-r-sm);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 20px;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+}
+.btn-submit-leg:disabled { opacity: 0.4; cursor: default; }
+.dk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--cc-info);
+}
+
+/* Payout bar */
+.payout-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--cc-border);
+}
+.payout-item { text-align: center; flex: 1; }
+.payout-label {
+    font-size: 10px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.payout-value {
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.payout-won { color: var(--cc-success); }
+.payout-lost { color: var(--cc-danger-text); }
+
+/* Create parlay CTA */
+.create-parlay-cta {
+    text-align: center;
+    padding: 32px 24px;
+    margin: 0 24px;
+    background: var(--cc-surface);
+    border: 1px dashed var(--cc-border);
+    border-radius: var(--cc-r-md);
+}
+.create-parlay-cta p {
+    color: var(--cc-muted);
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+.btn-create-parlay {
+    background: var(--cc-interactive);
+    border: none;
+    border-radius: var(--cc-r-sm);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 20px;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+}
+
+/* Wager section (admin-editable) */
+.wager-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 24px 0;
+}
+.wager-section label {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.wager-input {
+    width: 80px;
+    padding: 6px 8px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+}
+
+/* Season summary */
+.section-divider {
+    height: 1px;
+    background: var(--cc-border);
+    margin: 20px 24px;
+}
+.summary-title {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 0 24px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+.season-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 0 24px;
+    margin-bottom: 16px;
+}
+.stat-card {
+    background: var(--cc-surface);
+    border-radius: var(--cc-r-sm);
+    padding: 10px 12px;
+    text-align: center;
+}
+.stat-label {
+    font-size: 10px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+.stat-positive { color: var(--cc-success); }
+.stat-negative { color: var(--cc-danger-text); }
+
+/* History table */
+.history-section {
+    padding: 0 24px;
+    overflow-x: auto;
+}
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.history-table th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--cc-muted-2);
+    font-weight: 500;
+    border-bottom: 1px solid var(--cc-border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.history-table td {
+    padding: 10px;
+    color: var(--cc-muted-bright);
+    border-bottom: 1px solid var(--cc-surface-2);
+    white-space: nowrap;
+}
+.history-table tr:nth-child(even) td { background: var(--cc-surface-2); }
+.text-right { text-align: right; }
+
+@media (max-width: 600px) {
+    .header { padding: 16px 16px 10px; }
+    .parlay-card { margin: 0 16px 12px; }
+    .leg { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+    .leg-contributor { min-width: 80px; }
+    .season-summary { grid-template-columns: repeat(2, 1fr); padding: 0 16px; }
+    .history-section { padding: 0 16px; }
+    .section-divider { margin: 16px; }
+    .summary-title { padding: 0 16px; }
+    .create-parlay-cta { margin: 0 16px; }
+    .wager-section { margin: 12px 16px 0; }
+    .bet-row-label { min-width: 32px; font-size: 9px; }
+    .game-picker { max-height: 90vh; border-radius: var(--cc-r-md) var(--cc-r-md) 0 0; }
+}
