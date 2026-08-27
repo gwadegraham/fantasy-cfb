@@ -82,23 +82,6 @@
         }
         .error-btn:hover { filter: brightness(1.1); }
         .error-btn:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
-
-        /* Football Easter egg — tumbles down from above and settles with a bounce */
-        .error-football {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 0.75rem;
-            animation: fb-tumble 1.2s cubic-bezier(0.22, 1, 0.36, 1) both;
-        }
-        @keyframes fb-tumble {
-            0%   { opacity: 0; transform: translateY(-80px) rotate(-200deg) scale(0.6); }
-            60%  { opacity: 1; transform: translateY(8px) rotate(15deg) scale(1.05); }
-            80%  { transform: translateY(-4px) rotate(-5deg) scale(0.98); }
-            100% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .error-football { animation: none; }
-        }
     </style>
 </head>
 
@@ -110,24 +93,6 @@
                 <div class="brand-clash">Clash</div>
             </div>
         </a>
-        <svg class="error-football" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <ellipse cx="32" cy="32" rx="28" ry="18" fill="#8B4513" stroke="#5C2D06" stroke-width="1.5"/>
-            <ellipse cx="32" cy="32" rx="28" ry="18" fill="url(#fb-shade)"/>
-            <!-- Laces -->
-            <line x1="24" y1="32" x2="40" y2="32" stroke="white" stroke-width="2" stroke-linecap="round"/>
-            <line x1="27" y1="28" x2="27" y2="36" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="32" y1="27" x2="32" y2="37" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-            <line x1="37" y1="28" x2="37" y2="36" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-            <!-- Seam lines -->
-            <path d="M6 26 Q 32 18 58 26" stroke="#5C2D06" stroke-width="0.8" fill="none" opacity="0.5"/>
-            <path d="M6 38 Q 32 46 58 38" stroke="#5C2D06" stroke-width="0.8" fill="none" opacity="0.5"/>
-            <defs>
-                <radialGradient id="fb-shade" cx="0.4" cy="0.35" r="0.6">
-                    <stop offset="0%" stop-color="white" stop-opacity="0.15"/>
-                    <stop offset="100%" stop-color="black" stop-opacity="0.2"/>
-                </radialGradient>
-            </defs>
-        </svg>
         <p class="error-status"><%= status %></p>
         <h1 class="error-heading"><%= heading %></h1>
         <p class="error-message"><%= message %></p>
