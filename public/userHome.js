@@ -211,6 +211,7 @@ async function renderBento(data, yearOverride) {
     if (own && !isPastSeason) setupEditModal(data, season, true);
 
     bento.classList.add('cc-stagger');
+    if (typeof ccCountUp === 'function') ccCountUp(bento);
     bento.querySelectorAll('[data-tile]').forEach(t => t.addEventListener('click', () => openDrawer(t.getAttribute('data-tile'))));
     setupDrawer();
 
@@ -293,6 +294,7 @@ function renderPreseason(bento, data, activeYear, ctx) {
 
     renderAvatar(document.getElementById('uh-hero-av'), data);
     bento.classList.add('cc-stagger');
+    if (typeof ccCountUp === 'function') ccCountUp(bento);
     // Name is editable only once the manager has an active-season entry to write
     // it onto; before that only the photo can be set.
     if (own) setupEditModal(data, activeEntry || {}, !!activeEntry);
@@ -603,6 +605,7 @@ function hydrateTrajectory(user, activeYear) {
             }
         } catch (e) { /* stats degrade to points-only */ }
         statsEl.innerHTML = html;
+        if (typeof ccCountUp === 'function') ccCountUp(statsEl);
     };
 }
 
