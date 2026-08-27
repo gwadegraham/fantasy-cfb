@@ -492,7 +492,7 @@ function renderBetBoard(index, game) {
 
     // Custom bet row
     html += '<div class="bet-row bet-row-custom"><div class="bet-row-label">Custom</div>'
-        + '<input type="text" class="bet-custom-input" id="custom-desc-' + index + '" placeholder="e.g. Saquon Over 2.5 TDs">'
+        + '<input type="text" class="bet-custom-input" id="custom-desc-' + index + '" placeholder="e.g. Arkansas Over 3.5 turnovers">'
         + '<button type="button" class="bet-btn bet-btn-custom" onclick="pickCustomBet(' + index + ', this)"><span class="bet-btn-label">Use</span></button>'
         + '</div>';
 
