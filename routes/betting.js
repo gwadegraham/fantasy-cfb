@@ -66,11 +66,14 @@ router.get('/games/:season/:week', async (req, res) => {
         const week = Number(req.params.week);
         const seasonType = req.query.seasonType || 'regular';
 
+        // Week 0 = early games from CFBD week 1 (before the main slate)
+        const dbWeek = week === 0 ? 1 : week;
+
         const teamIds = new Set();
         const [games, lines, ranking] = await Promise.all([
-            Game.find({ season, week, seasonType }).sort({ startDate: 1 }).lean(),
-            BettingLine.find({ season, week, seasonType }).lean(),
-            Ranking.findOne({ season, week, seasonType }).lean()
+            Game.find({ season, week: dbWeek, seasonType }).sort({ startDate: 1 }).lean(),
+            BettingLine.find({ season, week: dbWeek, seasonType }).lean(),
+            Ranking.findOne({ season, week: dbWeek, seasonType }).lean()
         ]);
 
         const rankMap = new Map();
@@ -116,6 +119,22 @@ router.get('/games/:season/:week', async (req, res) => {
             };
         });
 
+        // Week 0/1 split: find the gap between early games and the main slate
+        if (week === 0 || (week === 1 && dbWeek === 1)) {
+            const dates = merged.map(g => new Date(g.startDate).getTime()).sort((a, b) => a - b);
+            let cutoff = null;
+            for (let i = 1; i < dates.length; i++) {
+                const gap = (dates[i] - dates[i - 1]) / (1000 * 60 * 60);
+                if (gap >= 72) { cutoff = dates[i]; break; }
+            }
+            if (cutoff && week === 0) {
+                return res.json(merged.filter(g => new Date(g.startDate).getTime() < cutoff));
+            }
+            if (cutoff && week === 1) {
+                return res.json(merged.filter(g => new Date(g.startDate).getTime() >= cutoff));
+            }
+        }
+
         res.json(merged);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -139,7 +158,7 @@ router.post('/', async (req, res) => {
         const w = Number(week);
         const st = seasonType || 'regular';
 
-        if (!w) return res.status(400).json({ message: 'Week is required' });
+        if (w == null || isNaN(w)) return res.status(400).json({ message: 'Week is required' });
 
         const existing = await Parlay.findOne({
             group: req.bettingGroup._id, season: s, week: w

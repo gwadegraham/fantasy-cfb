@@ -1,4 +1,4 @@
-var currentWeek = 1;
+var currentWeek = 0;
 var currentSeason = window.APP_YEAR;
 var parlays = [];
 var games = [];
@@ -650,7 +650,7 @@ async function refresh() {
 }
 
 document.getElementById('week-prev').addEventListener('click', function () {
-    if (currentWeek > 1) { currentWeek--; updateWeekDisplay(); refresh(); }
+    if (currentWeek > 0) { currentWeek--; updateWeekDisplay(); refresh(); }
 });
 document.getElementById('week-next').addEventListener('click', function () {
     currentWeek++;
@@ -665,6 +665,7 @@ function updateWeekDisplay() {
 async function init() {
     myUserId = getMyUserId();
     currentSeason = window.APP_YEAR || new Date().getFullYear();
+    updateWeekDisplay();
     await refresh();
 }
 
