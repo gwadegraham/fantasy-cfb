@@ -668,21 +668,10 @@ async function createParlay() {
 
 async function updateWager(parlayId, value) {
     try {
-        var parlay = parlays.find(function (p) { return p._id === parlayId; });
-        var body = { wager: Number(value) };
-
-        if (parlay) {
-            parlay.wager = Number(value);
-            var computed = computeBoostFields(parlay);
-            if (computed && computed.totalPayout != null) {
-                body.totalPayout = computed.totalPayout;
-            }
-        }
-
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify({ wager: Number(value) })
         });
         if (res.ok) {
             if (window.ccToast) ccToast.success('Wager updated');
@@ -697,23 +686,11 @@ function decimalToAmerican(dec) {
     return 0;
 }
 
-function computeBoostFields(parlay) {
-    if (!parlay.parlayOdds) return null;
-
+function computeBoostedOdds(parlay) {
+    if (!parlay.parlayOdds || !parlay.boostPct) return null;
     var dec = americanToDecimal(parlay.parlayOdds);
-    var boostPct = parlay.boostPct || 0;
-    var boostedDec = boostPct ? 1 + (dec - 1) * (1 + boostPct / 100) : null;
-    var boostedOdds = boostedDec ? decimalToAmerican(boostedDec) : null;
-    var totalPayout = null;
-    if (parlay.wager) {
-        if (boostedDec) {
-            totalPayout = Math.round(((parlay.wager / 2) * boostedDec + (parlay.wager / 2) * dec) * 100) / 100;
-        } else {
-            totalPayout = Math.round(parlay.wager * dec * 100) / 100;
-        }
-    }
-
-    return { boostedOdds: boostedOdds, totalPayout: totalPayout };
+    var boostedDec = 1 + (dec - 1) * (1 + parlay.boostPct / 100);
+    return decimalToAmerican(boostedDec);
 }
 
 async function updateBoost(parlayId, field, value) {
@@ -725,11 +702,8 @@ async function updateBoost(parlayId, field, value) {
         var body = {};
         body[field] = Number(value);
 
-        var computed = computeBoostFields(parlay);
-        if (computed) {
-            if (computed.boostedOdds != null) body.boostedOdds = computed.boostedOdds;
-            if (computed.totalPayout != null) body.totalPayout = computed.totalPayout;
-        }
+        var boosted = computeBoostedOdds(parlay);
+        if (boosted != null) body.boostedOdds = boosted;
 
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
