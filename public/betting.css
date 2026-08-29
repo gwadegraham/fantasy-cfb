@@ -534,6 +534,11 @@
     text-align: center;
     font-family: 'Poppins', sans-serif;
 }
+.boost-input::placeholder {
+    color: var(--cc-muted-2);
+    opacity: 0.4;
+    font-weight: 400;
+}
 .boost-badge {
     display: inline-block;
     background: var(--cc-interactive);

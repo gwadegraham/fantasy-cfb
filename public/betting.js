@@ -278,13 +278,13 @@ function renderCurrentParlay() {
             + '</div>'
             + '<div class="boost-section">'
             + '<label>Odds</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="+342" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
             + '<label>Boost %</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="50" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
             + '<label>Boosted</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="+514" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
             + '<label>Payout $</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="105.66" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
+            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
             + '</div>';
     }
 
