@@ -8,6 +8,7 @@ const Ranking = require('../models/ranking');
 const requireBettingGroupMember = require('../modules/require-betting-group');
 const { effectiveRoles } = require('../modules/dev-role');
 const { parlayPayout, combinedAmericanOdds } = require('../modules/parlay-calc');
+const { deriveParlayStatus } = require('../modules/parlay-resolve');
 
 router.use(requireBettingGroupMember);
 
@@ -236,6 +237,47 @@ router.patch('/:id', async (req, res) => {
 
         if (req.body.wager != null) parlay.wager = req.body.wager;
         if (req.body.seasonType != null) parlay.seasonType = req.body.seasonType;
+        if (req.body.parlayOdds != null) parlay.parlayOdds = req.body.parlayOdds;
+        if (req.body.boostPct != null) parlay.boostPct = req.body.boostPct;
+        if (req.body.boostedOdds != null) parlay.boostedOdds = req.body.boostedOdds;
+        if (req.body.totalPayout != null) parlay.totalPayout = req.body.totalPayout;
+        parlay.updatedAt = new Date();
+        await parlay.save();
+        res.json(parlay);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.patch('/:id/legs/:contributor/resolve', async (req, res) => {
+    try {
+        if (!isAdmin(req)) {
+            return res.status(403).json({ message: 'Admin only' });
+        }
+
+        const { result } = req.body;
+        if (!['win', 'loss', 'push'].includes(result)) {
+            return res.status(400).json({ message: 'Result must be win, loss, or push' });
+        }
+
+        const parlay = await Parlay.findById(req.params.id);
+        if (!parlay) return res.status(404).json({ message: 'Parlay not found' });
+
+        const leg = parlay.legs.find(l => l.contributor && l.contributor.toString() === req.params.contributor);
+        if (!leg) return res.status(404).json({ message: 'Leg not found' });
+
+        leg.result = result;
+        leg.resolvedAt = new Date();
+
+        parlay.status = deriveParlayStatus(parlay.legs);
+        if (parlay.status === 'won' && parlay.wager) {
+            parlay.payout = parlay.totalPayout || parlayPayout(parlay.wager, parlay.legs);
+        } else if (parlay.status === 'lost') {
+            parlay.payout = 0;
+        } else if (parlay.status === 'push') {
+            parlay.payout = parlay.wager || 0;
+        }
+
         parlay.updatedAt = new Date();
         await parlay.save();
         res.json(parlay);

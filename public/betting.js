@@ -225,19 +225,37 @@ function renderCurrentParlay() {
             editBtn = '<button type="button" onclick="editLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\')" style="background:none;border:none;color:var(--cc-interactive);font-size:12px;cursor:pointer;padding:2px 4px;" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>';
         }
 
+        var resolveHtml = '';
+        if (window.IS_ADMIN && leg.gameId) {
+            resolveHtml = '<div class="leg-resolve">'
+                + '<button type="button" class="btn-resolve btn-resolve-win" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'win\')">W</button>'
+                + '<button type="button" class="btn-resolve btn-resolve-loss" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'loss\')">L</button>'
+                + '<button type="button" class="btn-resolve btn-resolve-push" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'push\')">P</button>'
+                + '</div>';
+        }
+
         return '<div class="leg">'
             + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
             + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game">' + matchup + '</div></div>'
             + '<div class="leg-odds">' + formatOdds(leg.odds) + '</div>'
-            + '<div class="leg-actions">' + resultHtml + editBtn + '</div>'
+            + '<div class="leg-actions">' + resultHtml + editBtn + resolveHtml + '</div>'
             + '</div>';
     }).join('');
 
     var filledLegs = parlay.legs.filter(function (l) { return l.odds; });
     var combined = filledLegs.length ? combinedOdds(filledLegs) : '—';
     var potential = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
-    var payoutDisplay = parlay.payout != null ? '$' + parlay.payout : potential;
+    var payoutDisplay = parlay.payout != null ? '$' + parlay.payout : (parlay.totalPayout ? '$' + parlay.totalPayout : potential);
     var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
+
+    var oddsDisplay = combined;
+    var boostBadge = '';
+    if (parlay.boostedOdds) {
+        oddsDisplay = formatOdds(parlay.boostedOdds);
+        boostBadge = '<span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span>';
+    } else if (parlay.parlayOdds) {
+        oddsDisplay = formatOdds(parlay.parlayOdds);
+    }
 
     var statusAnimClass = shouldAnimate ? ' parlay-status--unrevealed' : '';
     var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
@@ -247,6 +265,16 @@ function renderCurrentParlay() {
         wagerHtml = '<div class="wager-section">'
             + '<label>Wager $</label>'
             + '<input type="number" class="wager-input" value="' + (parlay.wager || '') + '" onchange="updateWager(\'' + parlay._id + '\', this.value)">'
+            + '</div>'
+            + '<div class="boost-section">'
+            + '<label>Odds</label>'
+            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="+342" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
+            + '<label>Boost %</label>'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="50" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
+            + '<label>Boosted</label>'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="+514" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
+            + '<label>Payout $</label>'
+            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="105.66" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
             + '</div>';
     }
 
@@ -257,7 +285,7 @@ function renderCurrentParlay() {
         + '<div class="legs">' + legsHtml + '</div>'
         + '<div class="payout-bar' + payoutAnimClass + '">'
         + '<div class="payout-item"><div class="payout-label">Wager</div><div class="payout-value">$' + (parlay.wager || 0) + '</div></div>'
-        + '<div class="payout-item"><div class="payout-label">Combined Odds</div><div class="payout-value" style="font-size:13px;color:var(--cc-muted);">' + combined + '</div></div>'
+        + '<div class="payout-item"><div class="payout-label">Combined Odds' + boostBadge + '</div><div class="payout-value" style="font-size:13px;color:var(--cc-muted);">' + oddsDisplay + '</div></div>'
         + '<div class="payout-item"><div class="payout-label">Payout</div><div class="payout-value ' + payoutClass + '">' + payoutDisplay + '</div></div>'
         + '</div>'
         + '</div>'
@@ -640,6 +668,47 @@ async function updateWager(parlayId, value) {
             await refresh();
         }
     } catch (e) { /* skip */ }
+}
+
+async function updateBoost(parlayId, field, value) {
+    try {
+        var body = {};
+        body[field] = Number(value);
+        var res = await fetch('/betting/' + parlayId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (res.ok) {
+            if (window.ccToast) ccToast.success(field + ' updated');
+            await refresh();
+        }
+    } catch (e) { /* skip */ }
+}
+
+async function resolveLeg(parlayId, contributor, result) {
+    try {
+        var res = await fetch('/betting/' + parlayId + '/legs/' + contributor + '/resolve', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ result: result })
+        });
+        if (res.ok) {
+            if (window.ccToast) ccToast.success('Leg marked as ' + result);
+            var data = await res.json();
+            if (data.status !== 'pending') {
+                var m = getSeenMap();
+                delete m[parlayId];
+                localStorage.setItem(SEEN_KEY, JSON.stringify(m));
+            }
+            await refresh();
+        } else {
+            var data = await res.json();
+            if (window.ccToast) ccToast.error(data.message || 'Failed to resolve');
+        }
+    } catch (e) {
+        if (window.ccToast) ccToast.error('Failed to resolve leg');
+    }
 }
 
 async function refresh() {
