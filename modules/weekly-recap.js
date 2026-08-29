@@ -132,7 +132,7 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
 //   leagueUsers  — every user in the league (full docs) for rank + average
 //   season       — the season to recap (number or string)
 //   upsetByGameId — optional output of indexUpsets(), for the upset narrative
-function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
+function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeWeeks }) {
     const mySeason = seasonOf(user, season);
     const result = { userId: String(user && user._id), season: Number(season), recaps: [] };
     // Cheap short-circuit only — a manager with no entries at all has no weeks.
@@ -164,6 +164,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId }) {
     // popup, the My Team tile, a future recap email — inherits the gate.
     const playedWeeks = new Set();
     leagueSeasons.forEach(ls => ls.weekly.forEach(e => { if (entryHasScoring(e)) playedWeeks.add(effWeek(e)); }));
+    if (completeWeeks) playedWeeks.forEach(w => { if (!completeWeeks.has(w)) playedWeeks.delete(w); });
     const weeksAsc = [...playedWeeks].sort((a, b) => a - b);
     if (!weeksAsc.length) return result;   // season hasn't kicked off yet
 
