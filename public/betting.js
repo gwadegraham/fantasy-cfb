@@ -621,6 +621,17 @@ async function submitLegNew(index) {
             activePick = null;
             selectedBet = null;
             await refresh();
+            var parlay = parlays.find(function (p) { return p.week === currentWeek; });
+            if (parlay) {
+                var computed = computeBoostFields(parlay);
+                if (computed) {
+                    var body = { parlayOdds: computed.parlayOdds };
+                    if (computed.boostedOdds != null) body.boostedOdds = computed.boostedOdds;
+                    if (computed.totalPayout != null) body.totalPayout = computed.totalPayout;
+                    await fetch('/betting/' + parlay._id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                    await refresh();
+                }
+            }
         } else {
             var data = await res.json();
             if (window.ccToast) ccToast.error(data.message || 'Failed to submit');
@@ -668,10 +679,21 @@ async function createParlay() {
 
 async function updateWager(parlayId, value) {
     try {
+        var parlay = parlays.find(function (p) { return p._id === parlayId; });
+        var body = { wager: Number(value) };
+
+        if (parlay) {
+            parlay.wager = Number(value);
+            var computed = computeBoostFields(parlay);
+            if (computed && computed.totalPayout != null) {
+                body.totalPayout = computed.totalPayout;
+            }
+        }
+
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wager: Number(value) })
+            body: JSON.stringify(body)
         });
         if (res.ok) {
             if (window.ccToast) ccToast.success('Wager updated');
@@ -680,17 +702,51 @@ async function updateWager(parlayId, value) {
     } catch (e) { /* skip */ }
 }
 
+function decimalToAmerican(dec) {
+    if (dec >= 2) return Math.round((dec - 1) * 100);
+    if (dec > 1) return Math.round(-100 / (dec - 1));
+    return 0;
+}
+
+function computeBoostFields(parlay) {
+    var legs = parlay.legs || [];
+    var active = legs.filter(function (l) { return l.odds && l.result !== 'push'; });
+    if (!active.length) return null;
+
+    var dec = active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1);
+    var parlayOdds = decimalToAmerican(dec);
+    var boostPct = parlay.boostPct || 0;
+    var boostedDec = 1 + (dec - 1) * (1 + boostPct / 100);
+    var boostedOdds = boostPct ? decimalToAmerican(boostedDec) : null;
+    var payoutDec = boostPct ? boostedDec : dec;
+    var totalPayout = parlay.wager ? Math.round(parlay.wager * payoutDec * 100) / 100 : null;
+
+    return { parlayOdds: parlayOdds, boostedOdds: boostedOdds, totalPayout: totalPayout };
+}
+
 async function updateBoost(parlayId, field, value) {
     try {
-        var body = {};
-        body[field] = Number(value);
+        var parlay = parlays.find(function (p) { return p._id === parlayId; });
+        if (!parlay) return;
+
+        parlay[field] = Number(value);
+        var computed = computeBoostFields(parlay);
+        if (!computed) return;
+
+        var body = {
+            parlayOdds: computed.parlayOdds,
+            boostPct: parlay.boostPct || 0
+        };
+        if (computed.boostedOdds != null) body.boostedOdds = computed.boostedOdds;
+        if (computed.totalPayout != null) body.totalPayout = computed.totalPayout;
+
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         if (res.ok) {
-            if (window.ccToast) ccToast.success(field + ' updated');
+            if (window.ccToast) ccToast.success('Boost updated');
             await refresh();
         }
     } catch (e) { /* skip */ }
