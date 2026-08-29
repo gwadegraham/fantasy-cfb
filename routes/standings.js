@@ -256,11 +256,27 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         });
         const idList = [...draftedIds];
         let upsetByGameId = {};
+        let completeWeeks = null;
         if (idList.length) {
-            const games = await Game.find(
-                { season: seasonNum, seasonType: 'regular', completed: true, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-                { id: 1, week: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
+            const allGames = await Game.find(
+                { season: seasonNum, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
+                { id: 1, week: 1, seasonType: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
             );
+            const games = allGames.filter(g => g.completed && g.seasonType === 'regular');
+
+            // A week is "complete" for recap purposes when ≥80% of its
+            // drafted-team games are final — keeps the popup from firing
+            // mid-week when the first Thursday game scores.
+            const weekTotal = {}, weekDone = {};
+            allGames.forEach(g => {
+                const ew = (g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week;
+                weekTotal[ew] = (weekTotal[ew] || 0) + 1;
+                if (g.completed) weekDone[ew] = (weekDone[ew] || 0) + 1;
+            });
+            completeWeeks = new Set();
+            for (const w in weekTotal) {
+                if ((weekDone[w] || 0) / weekTotal[w] >= 0.8) completeWeeks.add(Number(w));
+            }
             const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
             const spreadByGameId = {};
             betting.forEach(b => {
@@ -283,7 +299,7 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
             upsetByGameId = indexUpsets(games, spreadByGameId, rankByWeek);
         }
 
-        const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId });
+        const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId, completeWeeks });
         const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
         res.json({ league, ...recap, name });
     } catch (err) {

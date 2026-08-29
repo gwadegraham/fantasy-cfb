@@ -268,6 +268,21 @@ describe('only weeks the league actually played are recapped', () => {
         const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a], season: 2026 });
         expect(recaps.map(r => r.label)).toEqual(['Week 1']);
     });
+
+    test('completeWeeks filters out weeks where games are still in progress', () => {
+        const a = played('a', [[1, 20], [2, 30]]);
+        const b = played('b', [[1, 10], [2, 15]]);
+        const completeWeeks = new Set([1]);
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026, completeWeeks });
+        expect(recaps.map(r => r.week)).toEqual([1]);
+    });
+
+    test('without completeWeeks all played weeks appear (backward-compatible)', () => {
+        const a = played('a', [[1, 20], [2, 30]]);
+        const b = played('b', [[1, 10], [2, 15]]);
+        const { recaps } = buildWeeklyRecaps({ user: a, leagueUsers: [a, b], season: 2026 });
+        expect(recaps.map(r => r.week)).toEqual([1, 2]);
+    });
 });
 
 describe('indexUpsets + layered narrative', () => {
