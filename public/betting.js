@@ -246,13 +246,15 @@ function renderCurrentParlay() {
     var calcOdds = filledLegs.length ? combinedOdds(filledLegs) : '—';
     var calcPay = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
 
-    var oddsDisplay = calcOdds;
-    var boostBadge = '';
-    if (parlay.boostedOdds) {
-        oddsDisplay = formatOdds(parlay.boostedOdds);
-        boostBadge = '<span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span>';
+    var oddsHtml = '';
+    if (parlay.boostedOdds && parlay.parlayOdds) {
+        oddsHtml = '<span class="odds-original">' + formatOdds(parlay.parlayOdds) + '</span>'
+            + ' <span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span> '
+            + '<span class="odds-boosted">' + formatOdds(parlay.boostedOdds) + '</span>';
     } else if (parlay.parlayOdds) {
-        oddsDisplay = formatOdds(parlay.parlayOdds);
+        oddsHtml = formatOdds(parlay.parlayOdds);
+    } else {
+        oddsHtml = calcOdds;
     }
 
     var payoutDisplay;
@@ -293,7 +295,7 @@ function renderCurrentParlay() {
         + '<div class="legs">' + legsHtml + '</div>'
         + '<div class="payout-bar' + payoutAnimClass + '">'
         + '<div class="payout-item"><div class="payout-label">Wager</div><div class="payout-value">$' + (parlay.wager || 0) + '</div></div>'
-        + '<div class="payout-item"><div class="payout-label">Combined Odds' + boostBadge + '</div><div class="payout-value" style="font-size:13px;color:var(--cc-muted);">' + oddsDisplay + '</div></div>'
+        + '<div class="payout-item"><div class="payout-label">Odds</div><div class="payout-value payout-odds">' + oddsHtml + '</div></div>'
         + '<div class="payout-item"><div class="payout-label">Payout</div><div class="payout-value ' + payoutClass + '">' + payoutDisplay + '</div></div>'
         + '</div>'
         + '</div>'
