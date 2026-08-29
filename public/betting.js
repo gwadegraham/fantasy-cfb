@@ -243,12 +243,10 @@ function renderCurrentParlay() {
     }).join('');
 
     var filledLegs = parlay.legs.filter(function (l) { return l.odds; });
-    var combined = filledLegs.length ? combinedOdds(filledLegs) : '—';
-    var potential = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
-    var payoutDisplay = parlay.payout != null ? '$' + parlay.payout : (parlay.totalPayout ? '$' + parlay.totalPayout : potential);
-    var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
+    var calcOdds = filledLegs.length ? combinedOdds(filledLegs) : '—';
+    var calcPay = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
 
-    var oddsDisplay = combined;
+    var oddsDisplay = calcOdds;
     var boostBadge = '';
     if (parlay.boostedOdds) {
         oddsDisplay = formatOdds(parlay.boostedOdds);
@@ -256,6 +254,16 @@ function renderCurrentParlay() {
     } else if (parlay.parlayOdds) {
         oddsDisplay = formatOdds(parlay.parlayOdds);
     }
+
+    var payoutDisplay;
+    if (parlay.payout != null) {
+        payoutDisplay = '$' + parlay.payout;
+    } else if (parlay.totalPayout) {
+        payoutDisplay = '$' + parlay.totalPayout;
+    } else {
+        payoutDisplay = calcPay;
+    }
+    var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
 
     var statusAnimClass = shouldAnimate ? ' parlay-status--unrevealed' : '';
     var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
