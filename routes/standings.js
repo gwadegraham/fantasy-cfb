@@ -260,22 +260,25 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         if (idList.length) {
             const allGames = await Game.find(
                 { season: seasonNum, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-                { id: 1, week: 1, seasonType: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
+                { id: 1, week: 1, seasonType: 1, startDate: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
             );
             const games = allGames.filter(g => g.completed && g.seasonType === 'regular');
 
-            // A week is "complete" for recap purposes when ≥80% of its
-            // drafted-team games are final — keeps the popup from firing
-            // mid-week when the first Thursday game scores.
-            const weekTotal = {}, weekDone = {};
+            // A week is "complete" for recap purposes once every drafted-team
+            // game in that week has kicked off — i.e. the current time is past
+            // the last game's start. This keeps the popup from firing mid-week
+            // when early games (Thursday/Friday) finish before the Saturday
+            // slate even starts.
+            const now = new Date();
+            const weekLastStart = {};
             allGames.forEach(g => {
                 const ew = (g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week;
-                weekTotal[ew] = (weekTotal[ew] || 0) + 1;
-                if (g.completed) weekDone[ew] = (weekDone[ew] || 0) + 1;
+                const sd = g.startDate ? new Date(g.startDate) : null;
+                if (sd && (!weekLastStart[ew] || sd > weekLastStart[ew])) weekLastStart[ew] = sd;
             });
             completeWeeks = new Set();
-            for (const w in weekTotal) {
-                if ((weekDone[w] || 0) / weekTotal[w] >= 0.8) completeWeeks.add(Number(w));
+            for (const w in weekLastStart) {
+                if (now >= weekLastStart[w]) completeWeeks.add(Number(w));
             }
             const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
             const spreadByGameId = {};
