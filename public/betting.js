@@ -243,19 +243,29 @@ function renderCurrentParlay() {
     }).join('');
 
     var filledLegs = parlay.legs.filter(function (l) { return l.odds; });
-    var combined = filledLegs.length ? combinedOdds(filledLegs) : '—';
-    var potential = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
-    var payoutDisplay = parlay.payout != null ? '$' + parlay.payout : (parlay.totalPayout ? '$' + parlay.totalPayout : potential);
-    var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
+    var calcOdds = filledLegs.length ? combinedOdds(filledLegs) : '—';
+    var calcPay = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
 
-    var oddsDisplay = combined;
-    var boostBadge = '';
-    if (parlay.boostedOdds) {
-        oddsDisplay = formatOdds(parlay.boostedOdds);
-        boostBadge = '<span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span>';
+    var oddsHtml = '';
+    if (parlay.boostedOdds && parlay.parlayOdds) {
+        oddsHtml = '<span class="odds-original">' + formatOdds(parlay.parlayOdds) + '</span>'
+            + ' <span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span> '
+            + '<span class="odds-boosted">' + formatOdds(parlay.boostedOdds) + '</span>';
     } else if (parlay.parlayOdds) {
-        oddsDisplay = formatOdds(parlay.parlayOdds);
+        oddsHtml = formatOdds(parlay.parlayOdds);
+    } else {
+        oddsHtml = calcOdds;
     }
+
+    var payoutDisplay;
+    if (parlay.payout != null) {
+        payoutDisplay = '$' + parlay.payout;
+    } else if (parlay.totalPayout) {
+        payoutDisplay = '$' + parlay.totalPayout;
+    } else {
+        payoutDisplay = calcPay;
+    }
+    var payoutClass = parlay.status === 'won' ? 'payout-won' : (parlay.status === 'lost' ? 'payout-lost' : '');
 
     var statusAnimClass = shouldAnimate ? ' parlay-status--unrevealed' : '';
     var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
@@ -268,13 +278,13 @@ function renderCurrentParlay() {
             + '</div>'
             + '<div class="boost-section">'
             + '<label>Odds</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="+342" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
             + '<label>Boost %</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="50" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
             + '<label>Boosted</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="+514" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
             + '<label>Payout $</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="105.66" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
+            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
             + '</div>';
     }
 
@@ -285,7 +295,7 @@ function renderCurrentParlay() {
         + '<div class="legs">' + legsHtml + '</div>'
         + '<div class="payout-bar' + payoutAnimClass + '">'
         + '<div class="payout-item"><div class="payout-label">Wager</div><div class="payout-value">$' + (parlay.wager || 0) + '</div></div>'
-        + '<div class="payout-item"><div class="payout-label">Combined Odds' + boostBadge + '</div><div class="payout-value" style="font-size:13px;color:var(--cc-muted);">' + oddsDisplay + '</div></div>'
+        + '<div class="payout-item"><div class="payout-label">Odds</div><div class="payout-value payout-odds">' + oddsHtml + '</div></div>'
         + '<div class="payout-item"><div class="payout-label">Payout</div><div class="payout-value ' + payoutClass + '">' + payoutDisplay + '</div></div>'
         + '</div>'
         + '</div>'
@@ -670,17 +680,38 @@ async function updateWager(parlayId, value) {
     } catch (e) { /* skip */ }
 }
 
+function decimalToAmerican(dec) {
+    if (dec >= 2) return Math.round((dec - 1) * 100);
+    if (dec > 1) return Math.round(-100 / (dec - 1));
+    return 0;
+}
+
+function computeBoostedOdds(parlay) {
+    if (!parlay.parlayOdds || !parlay.boostPct) return null;
+    var dec = americanToDecimal(parlay.parlayOdds);
+    var boostedDec = 1 + (dec - 1) * (1 + parlay.boostPct / 100);
+    return decimalToAmerican(boostedDec);
+}
+
 async function updateBoost(parlayId, field, value) {
     try {
+        var parlay = parlays.find(function (p) { return p._id === parlayId; });
+        if (!parlay) return;
+
+        parlay[field] = Number(value);
         var body = {};
         body[field] = Number(value);
+
+        var boosted = computeBoostedOdds(parlay);
+        if (boosted != null) body.boostedOdds = boosted;
+
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
         if (res.ok) {
-            if (window.ccToast) ccToast.success(field + ' updated');
+            if (window.ccToast) ccToast.success('Boost updated');
             await refresh();
         }
     } catch (e) { /* skip */ }
