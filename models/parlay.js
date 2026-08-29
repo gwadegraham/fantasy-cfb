@@ -53,6 +53,18 @@ const parlaySchema = new mongoose.Schema({
     wager: {
         type: Number
     },
+    parlayOdds: {
+        type: Number
+    },
+    boostPct: {
+        type: Number
+    },
+    boostedOdds: {
+        type: Number
+    },
+    totalPayout: {
+        type: Number
+    },
     status: {
         type: String,
         enum: ['pending', 'won', 'lost', 'push'],

@@ -508,6 +508,64 @@
     font-family: 'Poppins', sans-serif;
 }
 
+/* Boost section (admin-editable) */
+.boost-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 24px 0;
+    flex-wrap: wrap;
+}
+.boost-section label {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.boost-input {
+    width: 72px;
+    padding: 6px 8px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+}
+.boost-badge {
+    display: inline-block;
+    background: var(--cc-interactive);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: var(--cc-r-sm);
+    margin-left: 4px;
+}
+
+/* Resolve buttons (admin) */
+.leg-resolve {
+    display: flex;
+    gap: 4px;
+    margin-left: 4px;
+}
+.btn-resolve {
+    border: none;
+    border-radius: var(--cc-r-sm);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 6px;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.btn-resolve-win { background: var(--cc-success); color: #fff; }
+.btn-resolve-loss { background: var(--cc-danger-text); color: #fff; }
+.btn-resolve-push { background: var(--cc-muted-2); color: #fff; }
+
 /* Season summary */
 .section-divider {
     height: 1px;

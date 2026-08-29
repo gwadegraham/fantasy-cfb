@@ -80,7 +80,7 @@ async function resolveParlays() {
             parlay.status = newStatus;
 
             if (newStatus === 'won' && parlay.wager) {
-                parlay.payout = parlayPayout(parlay.wager, parlay.legs);
+                parlay.payout = parlay.totalPayout || parlayPayout(parlay.wager, parlay.legs);
             } else if (newStatus === 'lost') {
                 parlay.payout = 0;
             } else if (newStatus === 'push') {
