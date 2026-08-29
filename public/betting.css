@@ -508,6 +508,28 @@
     font-family: 'Poppins', sans-serif;
 }
 
+/* Admin edit toggle */
+.parlay-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-admin-edit {
+    background: none;
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-muted-2);
+    font-size: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.btn-admin-edit:hover,
+.btn-admin-edit.active {
+    color: var(--cc-interactive);
+    border-color: var(--cc-interactive);
+}
+
 /* Boost section (admin-editable) */
 .boost-section {
     display: flex;

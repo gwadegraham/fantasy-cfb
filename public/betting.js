@@ -8,6 +8,7 @@ var memberFranchises = {};
 var myUserId = '';
 
 var MEMBER_COLORS = ['#ed5858', '#6C9BFF', '#22C37A', '#E0B341', '#8E8CF0', '#D27171'];
+var adminEditing = false;
 
 var SEEN_KEY = 'parlay-seen-resolved';
 var SEEN_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -221,12 +222,12 @@ function renderCurrentParlay() {
         }
 
         var editBtn = '';
-        if (parlay.status === 'pending' && (leg.contributor === myUserId || window.IS_ADMIN)) {
+        if (parlay.status === 'pending' && (leg.contributor === myUserId || (window.IS_ADMIN && adminEditing))) {
             editBtn = '<button type="button" onclick="editLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\')" style="background:none;border:none;color:var(--cc-interactive);font-size:12px;cursor:pointer;padding:2px 4px;" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>';
         }
 
         var resolveHtml = '';
-        if (window.IS_ADMIN && leg.gameId) {
+        if (window.IS_ADMIN && adminEditing && leg.gameId) {
             resolveHtml = '<div class="leg-resolve">'
                 + '<button type="button" class="btn-resolve btn-resolve-win" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'win\')">W</button>'
                 + '<button type="button" class="btn-resolve btn-resolve-loss" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'loss\')">L</button>'
@@ -271,7 +272,7 @@ function renderCurrentParlay() {
     var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
 
     var wagerHtml = '';
-    if (window.IS_ADMIN && parlay.status === 'pending') {
+    if (window.IS_ADMIN && adminEditing && parlay.status === 'pending') {
         wagerHtml = '<div class="wager-section">'
             + '<label>Wager $</label>'
             + '<input type="number" class="wager-input" value="' + (parlay.wager || '') + '" onchange="updateWager(\'' + parlay._id + '\', this.value)">'
@@ -291,7 +292,10 @@ function renderCurrentParlay() {
     container.innerHTML =
         '<div class="parlay-card">'
         + '<div class="parlay-header"><div class="parlay-week">Week ' + currentWeek + ' Parlay</div>'
-        + '<span class="parlay-status ' + statusClass + statusAnimClass + '">' + statusLabel + '</span></div>'
+        + '<div class="parlay-header-actions">'
+        + (window.IS_ADMIN ? '<button type="button" class="btn-admin-edit' + (adminEditing ? ' active' : '') + '" onclick="toggleAdminEdit()" title="Edit parlay"><i class="fa-solid fa-pen"></i></button>' : '')
+        + '<span class="parlay-status ' + statusClass + statusAnimClass + '">' + statusLabel + '</span>'
+        + '</div></div>'
         + '<div class="legs">' + legsHtml + '</div>'
         + '<div class="payout-bar' + payoutAnimClass + '">'
         + '<div class="payout-item"><div class="payout-label">Wager</div><div class="payout-value">$' + (parlay.wager || 0) + '</div></div>'
@@ -664,6 +668,11 @@ async function createParlay() {
     } catch (e) {
         if (window.ccToast) ccToast.error('Failed to create parlay');
     }
+}
+
+function toggleAdminEdit() {
+    adminEditing = !adminEditing;
+    renderCurrentParlay();
 }
 
 async function updateWager(parlayId, value) {
