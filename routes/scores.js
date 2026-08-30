@@ -276,6 +276,8 @@ router.post('/update', async (req, res) => {
         await applyH2HBonuses(process.env.YEAR);
         await scoringModule.updateCumulativeScores();
 
+        try { const { resolveParlays } = require('../modules/parlay-resolve'); await resolveParlays(); } catch (_) {}
+
         res.status(200).json({"seasonType": seasonType, "weekNumber": weekNumber});
     } catch (err) {
         res.status(500).json({message: err.message});
