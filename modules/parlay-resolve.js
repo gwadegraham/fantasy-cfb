@@ -50,7 +50,7 @@ function deriveParlayStatus(legs) {
 }
 
 async function resolveParlays() {
-    const pending = await Parlay.find({ status: 'pending' });
+    const pending = await Parlay.find({ 'legs.result': 'pending' });
     let resolved = 0;
 
     for (const parlay of pending) {

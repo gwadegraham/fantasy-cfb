@@ -57,7 +57,7 @@ async function manager(firstName, teams, weeklyScore) {
     });
 }
 
-const OPENING = '2026-08-29T23:00:00.000Z';     // the "week 0" Saturday
+const OPENING = '2099-08-29T23:00:00.000Z';     // far future so it never drifts past
 const REGULAR = '2099-09-05T23:30:00.000Z';     // far future so it never drifts past
 function game(id, homeId, awayId, awayTeam, startDate, completed) {
     return {
