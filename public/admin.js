@@ -1264,19 +1264,16 @@ if (enrichmentForm) {
         const opts = { method: 'POST', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } };
 
         try {
-            // Team ratings/talent/returning/coaches, then game broadcasts.
-            const teamsRes = await fetch(`/teams/${season}/enrich`, opts);
-            const teamsData = await teamsRes.json();
-            const mediaRes = await fetch(`/games/${season}/media`, opts);
-            const mediaData = await mediaRes.json();
+            const res = await fetch('/scores/enrichment-run', { ...opts, body: JSON.stringify({ season }) });
+            const data = await res.json();
 
             unblock_screen();
 
-            if (teamsRes.status == 200) {
-                successToast.options.text = `Enriched ${teamsData.updated} teams + ${mediaData.updated || 0} games for ${season}`;
+            if (res.ok) {
+                successToast.options.text = data.summary || 'Enrichment complete';
                 successToast.showToast();
             } else {
-                failToast.options.text = (teamsData && teamsData.message) || `${teamsRes.status} Enrichment failed`;
+                failToast.options.text = (data && data.message) || `Enrichment failed (${res.status})`;
                 failToast.showToast();
             }
         } catch (err) {
