@@ -72,6 +72,16 @@ async function run(opts = {}) {
             results.weather = await post(`/games/${season}/weather`, { week: currentWeek });
         }
 
+        // Retry stat-based parlay legs whose box scores weren't available on
+        // first resolution (1 CFBD call max, non-fatal).
+        if (!preseason) {
+            try {
+                results.statRetry = await post('/betting/retry-stat-legs', { season });
+            } catch (e) {
+                console.log(`[${JOB_NAME}] stat-leg retry warning:`, e.message);
+            }
+        }
+
         // A non-200 from a core leg means the data did NOT land.
         const coreLeg = [results.teams, results.media].filter(r => r.status !== 200);
         if (coreLeg.length) {
@@ -88,17 +98,21 @@ async function run(opts = {}) {
 
         const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
         const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
+        const statRetried = results.statRetry ? (results.statRetry.body.retried || 0) : 0;
+        const statResolved = results.statRetry ? (results.statRetry.body.resolved || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
         const summary = `${scope} · ${results.teams.body.updated} teams enriched · `
             + `${results.media.body.updated} games given media`
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
             + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
+            + (statRetried ? ` · ${statRetried} box score retries → ${statResolved} parlays resolved` : '')
             + ` (${secs}s)`;
         console.log(`[${JOB_NAME}] season ${season} (scope=${scope}):`,
             `teams enriched=${results.teams.body.updated}`,
             `media updated=${results.media.body.updated}`,
             wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
-            wxUpdated ? `weather updated=${wxUpdated}` : '');
+            wxUpdated ? `weather updated=${wxUpdated}` : '',
+            statRetried ? `statRetry=${statRetried} resolved=${statResolved}` : '');
         await finishRun(id, 'success', summary);
 
         if (emailOnSuccess()) {
@@ -112,6 +126,7 @@ async function run(opts = {}) {
                     ['Games w/ media', String(results.media.body.updated)],
                     ['Pregame WP', String(wpUpdated)],
                     ['Weather', String(wxUpdated)],
+                    ['Stat leg retries', statRetried ? `${statRetried} box scores → ${statResolved} parlays` : '0'],
                     ['Duration', `${secs}s`]
                 ]
             });

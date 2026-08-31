@@ -308,4 +308,16 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+router.post('/retry-stat-legs', async (req, res) => {
+    if (!isAdmin(req)) return res.status(403).json({ message: 'Admin only' });
+    try {
+        const season = Number(req.body.season || process.env.YEAR);
+        const { retryPendingStatLegs } = require('../modules/parlay-resolve');
+        const result = await retryPendingStatLegs(season);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 module.exports = router;
