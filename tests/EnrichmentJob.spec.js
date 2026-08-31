@@ -88,10 +88,11 @@ describe('update-enrichment-job run()', () => {
         const results = await enrichmentJob.run();
 
         const calls = dataCalls();
-        expect(calls).toHaveLength(2);
+        expect(calls).toHaveLength(3);
         const urls = calls.map(c => c[0]);
         expect(urls).toContain('http://test.local/teams/2025/enrich');
         expect(urls).toContain('http://test.local/games/2025/media');
+        expect(urls).toContain('http://test.local/betting/retry-stat-legs');
 
         // Every internal call carries the token and is a POST.
         calls.forEach(([, opts]) => {

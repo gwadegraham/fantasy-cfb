@@ -111,4 +111,45 @@ async function resolveParlays() {
     return resolved;
 }
 
-module.exports = { resolveParlays, resolveLeg, deriveParlayStatus };
+const CALL_BUFFER = 100;
+
+async function retryPendingStatLegs(season) {
+    const parlays = await Parlay.find({
+        'legs.result': 'pending',
+        'legs.betType': 'stat_over_under'
+    });
+
+    const gameIds = new Set();
+    for (const p of parlays) {
+        for (const leg of p.legs) {
+            if (leg.result === 'pending' && leg.betType === 'stat_over_under' && leg.gameId) {
+                gameIds.add(leg.gameId);
+            }
+        }
+    }
+    if (!gameIds.size) return { retried: 0, resolved: 0 };
+
+    const games = await Game.find({
+        id: { $in: [...gameIds] },
+        completed: true
+    }).lean();
+    const needBoxScores = games.filter(g => !g.teamStats || !Object.keys(g.teamStats).length);
+    if (!needBoxScores.length) {
+        const resolved = await resolveParlays();
+        return { retried: 0, resolved };
+    }
+
+    const { ingestBoxScores } = require('./box-scores');
+    const ids = needBoxScores.map(g => g.id);
+    const bs = await ingestBoxScores(ids, season);
+
+    if (bs.remainingCalls != null && bs.remainingCalls <= CALL_BUFFER) {
+        console.log(`retryPendingStatLegs: ${bs.remainingCalls} CFBD calls left — at budget ceiling`);
+    }
+
+    const resolved = await resolveParlays();
+    console.log(`retryPendingStatLegs: fetched box scores for ${bs.ingested} game(s), resolved ${resolved} parlay(s)`);
+    return { retried: bs.ingested, resolved, remainingCalls: bs.remainingCalls };
+}
+
+module.exports = { resolveParlays, resolveLeg, deriveParlayStatus, retryPendingStatLegs };
