@@ -35,6 +35,20 @@ function resolveLeg(leg, game) {
             const wentOver = total > leg.line;
             return (wentOver === isOver) ? 'win' : 'loss';
         }
+        case 'stat_over_under': {
+            if (!leg.statCategory || !leg.statTeamSide) return 'pending';
+            const stats = game.teamStats && game.teamStats.get
+                ? game.teamStats.get(leg.statTeamSide)
+                : game.teamStats && game.teamStats[leg.statTeamSide];
+            if (!stats) return 'pending';
+            const actual = stats[leg.statCategory];
+            if (actual == null) return 'pending';
+            // Match " over " as a word to avoid false positives on "turnovers"
+            const isOver = /\bover\b/.test(sel);
+            if (actual === leg.line) return 'push';
+            const wentOver = actual > leg.line;
+            return (wentOver === isOver) ? 'win' : 'loss';
+        }
         default:
             return 'pending';
     }

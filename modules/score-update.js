@@ -15,6 +15,7 @@ const teamScoringModule = require('./team-scoring.js');
 const recordsModule = require('./records.js');
 const bettingModule = require('./betting.js');
 const { updateFromScoreboard } = require('./scoreboard');
+const { ingestBoxScores } = require('./box-scores');
 
 // Distinct postseason weeks present in a mass-pull result, ascending. The
 // 12-team CFP spreads across several postseason weeks and scoring keys entries
@@ -424,6 +425,18 @@ async function doLiveUpdate() {
     // H2H bonuses + cumulative only when a game completed (they're heavier
     // and only matter once a result is locked in).
     if (result.newlyCompleted.length) {
+        // Fetch box scores for newly completed games (1 CFBD call) so stat-based
+        // parlay legs can resolve in the same pass as score-based ones.
+        try {
+            const season = Number(process.env.YEAR);
+            const bs = await ingestBoxScores(result.newlyCompleted, season);
+            if (typeof bs.remainingCalls === 'number') {
+                result.remainingCalls = bs.remainingCalls;
+            }
+        } catch (err) {
+            console.log('Box score ingestion failed (non-fatal):', err.message);
+        }
+
         await scoringModule.applyH2HBonuses();
         await scoringModule.updateCumulativeScores();
         await teamScoringModule.updateAllTeamScores();

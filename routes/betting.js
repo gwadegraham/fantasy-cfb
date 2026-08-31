@@ -193,7 +193,7 @@ router.patch('/:id/legs', async (req, res) => {
             return res.status(400).json({ message: 'Parlay is already resolved' });
         }
 
-        const { contributor, gameId, betType, selection, line, odds } = req.body;
+        const { contributor, gameId, betType, selection, line, odds, statCategory, statTeamSide } = req.body;
         if (!contributor) return res.status(400).json({ message: 'Contributor is required' });
 
         const isSelf = req.bettingUserId === contributor;
@@ -215,6 +215,8 @@ router.patch('/:id/legs', async (req, res) => {
         if (selection != null) leg.selection = selection;
         if (line !== undefined) leg.line = line;
         if (odds != null) leg.odds = odds;
+        if (statCategory !== undefined) leg.statCategory = statCategory;
+        if (statTeamSide !== undefined) leg.statTeamSide = statTeamSide;
         leg.result = 'pending';
         leg.resolvedAt = null;
 
