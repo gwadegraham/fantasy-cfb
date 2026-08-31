@@ -7,12 +7,14 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
+const Game = require('../models/game');
 const { getCalendar } = require('./cfbd-calendar');
 const retrieveGamesModule = require('./retrieve-games.js');
 const scoringModule = require('./scoring.js');
 const teamScoringModule = require('./team-scoring.js');
 const recordsModule = require('./records.js');
 const bettingModule = require('./betting.js');
+const { updateFromScoreboard } = require('./scoreboard');
 
 // Distinct postseason weeks present in a mass-pull result, ascending. The
 // 12-team CFP spreads across several postseason weeks and scoring keys entries
@@ -380,11 +382,87 @@ async function doFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
+// Lightweight live-update pipeline: fetch the CFBD /scoreboard (1 call),
+// write in-progress scores + game state to Game docs, then re-score the
+// current week so standings and H2H reflect the live state. Skips the
+// full runFullUpdate overhead (calendar resolution, rankings, full game
+// pull) since the poller only needs fresh scores.
+//
+// When a game newly completes, the full scoring pipeline runs for that
+// week so final fantasy points, H2H bonuses, and parlays are settled.
+// On ticks where nothing completed, we still re-score so in-progress
+// fantasy points feed the live H2H win-probability bar.
+async function doLiveUpdate() {
+    const season = Number(process.env.YEAR);
+    const result = await updateFromScoreboard();
+
+    if (!result.updated) {
+        return { updated: 0, remainingCalls: result.remainingCalls };
+    }
+
+    // Determine what week/seasonType to re-score from the calendar.
+    const calendar = await getCalendar(season);
+    const resolved = resolveCurrentWeek(calendar, new Date());
+    if (resolved.skip) {
+        return { updated: result.updated, skipped: resolved.skip, remainingCalls: result.remainingCalls };
+    }
+
+    const { week, seasonType } = resolved;
+    const isPostseason = seasonType === 'postseason';
+
+    if (isPostseason) {
+        // Postseason can span multiple weeks; score all that have games.
+        const games = await Game.find({ season, seasonType: 'postseason' }, { week: 1 }).lean();
+        const weeks = [...new Set(games.map(g => g.week).filter(w => w != null))].sort((a, b) => a - b);
+        for (const pw of (weeks.length ? weeks : [1])) {
+            await scoringModule.updateScores('postseason', pw);
+        }
+    } else {
+        await scoringModule.updateScores('regular', week);
+    }
+
+    // H2H bonuses + cumulative only when a game completed (they're heavier
+    // and only matter once a result is locked in).
+    if (result.newlyCompleted.length) {
+        await scoringModule.applyH2HBonuses();
+        await scoringModule.updateCumulativeScores();
+        await teamScoringModule.updateAllTeamScores();
+        await recordsModule.updateAllTeamRecords();
+
+        try {
+            const { resolveParlays } = require('./parlay-resolve');
+            await resolveParlays();
+        } catch (err) {
+            console.log('Parlay resolution failed (non-fatal):', err.message);
+        }
+    }
+
+    return {
+        updated: result.updated,
+        newlyCompleted: result.newlyCompleted.length,
+        week, seasonType,
+        remainingCalls: result.remainingCalls
+    };
+}
+
+let liveInFlight = null;
+
+function runLiveUpdate() {
+    if (liveInFlight) {
+        console.log('A live update is already running — skipping');
+        return Promise.resolve({ skipped: 'a live update was already running' });
+    }
+    if (inFlight) {
+        console.log('A full update is running — skipping live update');
+        return Promise.resolve({ skipped: 'a full update is running' });
+    }
+    liveInFlight = doLiveUpdate().finally(() => { liveInFlight = null; });
+    return liveInFlight;
+}
+
 module.exports = {
-    runFullUpdate, postseasonWeeksToScore, resolveCurrentWeek,
+    runFullUpdate, runLiveUpdate, postseasonWeeksToScore, resolveCurrentWeek,
     refreshCfpBracket, bracketWindowOpen, resetBracketThrottle,
     BRACKET_MAX_AGE_HOURS, BRACKET_LOOKAHEAD_DAYS,
-    // Exported so a test can prove the overlap guard releases; nothing in the app
-    // should need to clear it.
-    _clearInFlight: () => { inFlight = null; }
+    _clearInFlight: () => { inFlight = null; liveInFlight = null; }
 };

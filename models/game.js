@@ -112,6 +112,20 @@ const gameSchema = new mongoose.Schema({
     notes: {
         type: String,
     },
+    // Live game state from the CFBD /scoreboard endpoint, updated every poller
+    // tick while the game is in progress. Frozen once `completed` flips true.
+    period: {
+        type: Number
+    },
+    clock: {
+        type: String
+    },
+    possession: {
+        type: String
+    },
+    status: {
+        type: String
+    },
     // Broadcast info from CFBD /games/media (e.g. outlet "ABC", mediaType "tv").
     mediaType: {
         type: String

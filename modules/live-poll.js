@@ -20,13 +20,15 @@
 //      reserved buffer (default 100), so headroom for manual admin work is never
 //      touched. remainingCalls is authoritative (counts ALL usage).
 //
-// Each actual poll runs the shared scoring pipeline with betting off (calendar
-// cached, postseason mass-pulled → ~1 CFBD call) and records a JobRun (no email)
-// so the standings "last updated" badge advances during live play. runFullUpdate
-// picks the regular vs postseason pull from the calendar, matching the phase.
+// Each actual poll fetches the CFBD /scoreboard (Tier 1, 1 call) which returns
+// in-progress scores, period, clock, and possession — then re-scores the current
+// week so standings and H2H win probability reflect live game state. When a game
+// newly completes, the full scoring pipeline (H2H bonuses, cumulative, parlays)
+// runs. Records a JobRun (no email) so the standings "last updated" badge
+// advances during live play.
 
 const Game = require('../models/game');
-const { runFullUpdate } = require('./score-update');
+const { runLiveUpdate } = require('./score-update');
 const { startRun, finishRun } = require('./job-logger');
 const { internalFetch } = require('./internal-api');
 
@@ -150,23 +152,21 @@ async function run() {
         return { skipped: decision.reason };
     }
 
-    // Poll: shared pipeline, betting off (calendar cached / postseason mass-pull
-    // → ~1 CFBD call).
+    // Poll: lightweight scoreboard update (1 CFBD call) + re-score current week.
     console.log(`live-poll: ${phase} game in progress, refreshing scores (${remaining == null ? 'calls left unknown' : remaining + ' calls left'})`);
     const id = await startRun(JOB_NAME, { season: process.env.YEAR });
     try {
-        const r = await runFullUpdate({ withBetting: false });
-        // Keep the ceiling fresh for free from this poll's own CFBD response.
+        const r = await runLiveUpdate();
         if (typeof r.remainingCalls === 'number') lastKnownRemaining = r.remainingCalls;
-        // A live game whose calendar window has closed (or hasn't opened) —
-        // shouldn't happen, since the games-live gate ran first, but the pipeline
-        // has nothing to score and says so rather than guessing a week.
         if (r.skipped) {
             await finishRun(id, 'success', `Nothing to score — ${r.skipped}`);
             return { skipped: r.skipped };
         }
+        const detail = r.newlyCompleted
+            ? `${r.updated} updated, ${r.newlyCompleted} completed`
+            : `${r.updated} updated`;
         await finishRun(id, 'success',
-            `Live update ${r.seasonType} wk ${r.week} · ${r.gamesNew} new / ${r.gamesUpdated} updated`,
+            `Live update ${r.seasonType || phase} wk ${r.week || '?'} · ${detail}`,
             { week: r.week, seasonType: r.seasonType });
         return { polled: true, week: r.week };
     } catch (err) {

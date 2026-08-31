@@ -1954,12 +1954,30 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
     };
     const caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
 
-    let awayScore, homeScore;
+    const isLive = !game.completed && game.startDate && new Date(game.startDate) < new Date();
+    const hasLiveScores = isLive && game.homePoints != null && game.awayPoints != null;
+
+    let awayScore, homeScore, liveStatus = '';
     if (game.completed) {
         const awayWon = game.awayPoints > game.homePoints;
         const homeWon = game.homePoints > game.awayPoints;
         awayScore = (game.awayPoints ?? 0) + (awayWon ? caret : '') + '</td>' + badgeCell(game.awayId, awayRostered);
         homeScore = (game.homePoints ?? 0) + (homeWon ? caret : '') + '</td>' + badgeCell(game.homeId, homeRostered);
+    } else if (hasLiveScores) {
+        awayScore = '<span class="gc-live-pts">' + game.awayPoints + '</span></td>';
+        homeScore = '<span class="gc-live-pts">' + game.homePoints + '</span></td>';
+        var clockDisplay = '';
+        if (game.period) {
+            var qtr = game.period <= 4 ? 'Q' + game.period : 'OT' + (game.period > 5 ? game.period - 4 : '');
+            clockDisplay = game.clock ? qtr + ' ' + game.clock : qtr;
+        }
+        if (game.possession) {
+            var possTeam = game.possession === game.homeTeam ? '&#9679;' : '';
+            var possAway = game.possession === game.awayTeam ? '&#9679;' : '';
+            awayScore = (possAway ? '<span class="gc-poss">' + possAway + '</span> ' : '') + awayScore;
+            homeScore = (possTeam ? '<span class="gc-poss">' + possTeam + '</span> ' : '') + homeScore;
+        }
+        liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
     } else {
         const d = new Date(game.startDate);
         const dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
@@ -1967,10 +1985,10 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
     }
 
-    const isLive = !game.completed && game.startDate && new Date(game.startDate) < new Date();
     return '<div class="game-card' + (isLive ? ' gc-live' : '') + '"><table class="game-table"><tbody><tr></tr>'
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
         + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
+        + liveStatus
         + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
         + '</tbody></table></div>';

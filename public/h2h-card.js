@@ -95,10 +95,14 @@
     function needsDate(iso, plan) {
         return plan !== null && weekKey(iso) !== plan;
     }
-    // A team's value: final points, LIVE, or kickoff time.
+    // A team's value: final points, live score, or kickoff time.
     function teamVal(t, plan) {
-        return t.status === 'live' ? '<span class="h2h-tv live">LIVE</span>'
-            : t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>'
+        if (t.status === 'live') {
+            return t.score != null
+                ? '<span class="h2h-tv live">' + t.score + '</span>'
+                : '<span class="h2h-tv live">LIVE</span>';
+        }
+        return t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>'
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
     // A ranked opponent, tiered the way the scoring tiers it: rankValue pays
@@ -118,7 +122,7 @@
         var tnm = teamLink(t.teamId, '<span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>');
         var nm = '<span class="h2h-tnmline">' + tnm + cap + '</span>';
         var sub = t.opp
-            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.status === 'final' && t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
+            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
             : '';
         var idcol = '<span class="h2h-tid">' + nm + sub + '</span>';
         return right ? '<div class="h2h-trow">' + teamVal(t, plan) + idcol + img + '</div>'
@@ -206,7 +210,7 @@
             + '<div class="h2h-mdcol"><span class="h2h-mdcap">' + aName + '</span>' + teamList(g.aTeams, unplayed, false, plan) + '</div>'
             + '<div class="h2h-mdcol right"><span class="h2h-mdcap">' + bName + '</span>' + teamList(g.bTeams, unplayed, true, plan) + '</div>'
             + pregameLine(g, aName, bName)
-            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update as they finish</div>' : '')
+            + (live ? '<div class="h2h-mfoot">In progress · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' to play · kickoffs Central · scores update every 10 min</div>' : '')
             + (upcoming ? '<div class="h2h-mfoot">Not started · ' + remaining + ' game' + (remaining === 1 ? '' : 's') + ' scheduled · kickoffs Central · odds are projected</div>' : '')
             + '</div></div>';
     }
