@@ -324,7 +324,7 @@
     <% } %>
 
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count">8</span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count">9</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -517,6 +517,24 @@
                 <div class="sub-container" roster-correction-container style="display: none">
                     <p class="function-description">Fix a team that ended up on the wrong roster &mdash; a misclick on draft night, or a pick made for someone who wasn't there. The replacement must be a team nobody in the league has. This also corrects the <strong>draft record</strong>, so the draft board and draft grades match the roster.</p>
                     <div roster-correction-body class="roster-correction"></div>
+                </div>
+            </div>
+            <div class="function-container">
+                <div class="button-container">
+                    <button onclick="displayCaptainOverrideContainer()">
+                        <i class="fa-solid fa-crown" style="padding-right: 5px;"></i>
+                        Captain Override
+                    </button>
+                </div>
+                <div class="sub-container" captain-override-container style="display: none">
+                    <p class="function-description">Set any manager's captain pick for a week. Bypasses the kickoff lock — useful for syncing dev or correcting a missed pick.</p>
+                    <form id="captain-override-form">
+                        <div><select id="captain-override-user"><option value="" disabled selected>Select A Manager</option></select></div>
+                        <div><select id="captain-override-week" week-options></select></div>
+                        <div><select id="captain-override-team"><option value="" disabled selected>Select A Team</option></select></div>
+                        <div><button type="submit">Set Captain</button></div>
+                    </form>
+                    <div id="captain-override-current" style="margin-top: 8px; font-size: 0.85em; color: var(--cc-text-muted, #888);"></div>
                 </div>
             </div>
             <div class="function-container is-wide">
