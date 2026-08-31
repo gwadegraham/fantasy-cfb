@@ -189,26 +189,53 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts
 
     // 1. Regular season: expected points = Σ P(win) · points-if-win.
     //    Exclude conference-title games (modeled separately) and any non-regular.
+    //    Games with a CFBD pregameWinProb use it directly; the rest fall back to
+    //    the SP+ margin → calibrateToExpectedWins path.
     const reg = (teamGames || []).filter(g => g.seasonType === 'regular' && !isConferenceChampion(g));
-    const margins = reg.map(g => {
+
+    // Split into games with CFBD pregame WP vs those needing SP+ fallback.
+    const withWP = [], withoutWP = [];
+    reg.forEach(g => {
+        if (g.pregameWinProb != null) withWP.push(g);
+        else withoutWP.push(g);
+    });
+
+    // CFBD pregame WP is from the home team's perspective.
+    const cfbdProbs = withWP.map(g => {
+        const isHome = g.homeId === teamId;
+        return clamp01(isHome ? g.pregameWinProb : 1 - g.pregameWinProb);
+    });
+
+    // SP+ fallback for games without CFBD pregame WP.
+    const fallbackMargins = withoutWP.map(g => {
         const isHome = g.homeId === teamId;
         const oppId = isHome ? g.awayId : g.homeId;
         const opp = poolCtx.teamsById[String(oppId)];
-        const oppSp = opp ? spFor(opp, season) : null;           // null → FCS / non-DB
+        const oppSp = opp ? spFor(opp, season) : null;
         const effOpp = oppSp == null ? (mySp - FCS_SP_GAP) : oppSp;
         const hfa = g.neutralSite ? 0 : (isHome ? HFA : -HFA);
         return (mySp - effOpp) + hfa;
     });
     const target = opts.expectedWins != null ? opts.expectedWins : winsFor(team, season);
-    const { probs } = calibrateToExpectedWins(margins, target);
-    let regular = 0;
-    const perGame = [];
-    reg.forEach((g, i) => {
+    // Calibrate only the fallback games: subtract CFBD-sourced expected wins
+    // from the target so the sportsbook anchor covers only the SP+ portion.
+    const cfbdExpWins = cfbdProbs.reduce((a, b) => a + b, 0);
+    const fbTarget = target == null ? null : Math.max(0.1, target - cfbdExpWins);
+    const { probs: fallbackProbs } = calibrateToExpectedWins(fallbackMargins, fbTarget);
+
+    // Merge both sets back in original reg order.
+    let regular = 0, projWins = 0;
+    const perGame = [], allProbs = [];
+    let wpIdx = 0, fbIdx = 0;
+    reg.forEach(g => {
+        const hasCfbd = g.pregameWinProb != null;
+        const prob = hasCfbd ? cfbdProbs[wpIdx++] : fallbackProbs[fbIdx++];
+        allProbs.push(prob);
         const pts = evaluate(cfg.model, teamId, synthWin(g, teamId), rankings, cfg);
-        regular += probs[i] * pts;
-        if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: probs[i], pointsIfWin: pts });
+        regular += prob * pts;
+        projWins += prob;
+        if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: prob, pointsIfWin: pts });
     });
-    const projWins = probs.reduce((a, b) => a + b, 0);
 
     // 2. CFP (market odds, else SP+-rank fallback).
     let m = poolCtx.make[String(teamId)];
@@ -231,7 +258,7 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts
     }
 
     // 4. Bowl (non-playoff): P(≥6 wins)·(1 − P(make CFP)) × expected bowl value.
-    const dist = winTotalDistribution(probs);
+    const dist = winTotalDistribution(allProbs);
     const pBowl = pAtLeast(dist, 6) * (1 - m);
     const bowlWin = evaluate(cfg.model, teamId, synthResult({ seasonType: 'postseason', notes: 'Bowl', neutralSite: true }, teamId, true, true), rankings, cfg);
     const bowlLose = evaluate(cfg.model, teamId, synthResult({ seasonType: 'postseason', notes: 'Bowl', neutralSite: true }, teamId, true, false), rankings, cfg);

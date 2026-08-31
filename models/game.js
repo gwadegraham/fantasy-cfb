@@ -112,6 +112,17 @@ const gameSchema = new mongoose.Schema({
     notes: {
         type: String,
     },
+    // CFBD pregame win probability for the home team (0–1), fetched weekly from
+    // /metrics/wp/pregame. The projection engine reads this directly instead of
+    // computing win prob from SP+ margins. Away prob = 1 − pregameWinProb.
+    pregameWinProb: {
+        type: Number
+    },
+    // Live in-game win probability for the home team (0–1), updated every
+    // poller tick from the CFBD /scoreboard endpoint. Cleared when completed.
+    liveHomeWinProb: {
+        type: Number
+    },
     // Live game state from the CFBD /scoreboard endpoint, updated every poller
     // tick while the game is in progress. Frozen once `completed` flips true.
     period: {

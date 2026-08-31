@@ -97,6 +97,11 @@ const seasonSchema = new mongoose.Schema({
     spRank: {            // SP+ national ranking (1 = best)
         type: Number
     },
+    spHistory: [{        // weekly SP+ snapshots (week + rating + rank)
+        week:   { type: Number, required: true },
+        rating: { type: Number, required: true },
+        rank:   { type: Number }
+    }],
     fpiRating: {         // ESPN FPI rating
         type: Number
     },

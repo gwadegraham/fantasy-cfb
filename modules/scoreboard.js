@@ -53,7 +53,8 @@ function normalizeScoreboardGame(sb) {
         period: sb.period != null ? sb.period : undefined,
         clock: sb.clock || undefined,
         possession: sb.possession || undefined,
-        status: sb.status || undefined
+        status: sb.status || undefined,
+        homeWinProb: sb.homeWinProb != null ? sb.homeWinProb : undefined
     };
 }
 
@@ -88,7 +89,8 @@ async function updateFromScoreboard() {
         if (norm.clock !== undefined) $set.clock = norm.clock;
         if (norm.possession !== undefined) $set.possession = norm.possession;
         if (norm.status !== undefined) $set.status = norm.status;
-        if (norm.completed) $set.completed = true;
+        if (norm.homeWinProb !== undefined) $set.liveHomeWinProb = norm.homeWinProb;
+        if (norm.completed) { $set.completed = true; $set.liveHomeWinProb = null; }
 
         const result = await Game.updateOne({ id: sb.id }, { $set });
         if (result.modifiedCount > 0) {

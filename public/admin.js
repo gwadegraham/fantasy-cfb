@@ -1654,6 +1654,84 @@ function displayRosterCorrectionContainer() { if (toggleSub('roster-correction-c
 
 function displayAuditLogContainer() { if (toggleSub('audit-log-container')) loadAuditLog(); }
 
+function displayCaptainOverrideContainer() {
+    if (toggleSub('captain-override-container')) loadCaptainOverride();
+}
+
+function loadCaptainOverride() {
+    var userSel = document.getElementById('captain-override-user');
+    var teamSel = document.getElementById('captain-override-team');
+    var infoDiv = document.getElementById('captain-override-current');
+    if (!userSel) return;
+
+    var str = '<option value="" disabled selected>Select A Manager</option>';
+    userListSelect.forEach(function (u) {
+        str += '<option value="' + u._id + '">' + u.firstName + ' ' + u.lastName + '</option>';
+    });
+    userSel.innerHTML = str;
+    teamSel.innerHTML = '<option value="" disabled selected>Select A Team</option>';
+    if (infoDiv) infoDiv.textContent = '';
+
+    userSel.onchange = function () {
+        var user = userListSelect.find(function (u) { return u._id === userSel.value; });
+        if (!user) return;
+        var season = (user.seasons || [])[0];
+        var teams = (season && season.teams) || [];
+        var s = '<option value="" disabled selected>Select A Team</option>';
+        teams.forEach(function (t) {
+            var team = teamList.find(function (tl) { return tl.id === t.id; });
+            var name = (team && team.school) || t.school || ('Team ' + t.id);
+            s += '<option value="' + t.id + '">' + name + '</option>';
+        });
+        teamSel.innerHTML = s;
+
+        var captains = (season && season.captains) || [];
+        if (captains.length && infoDiv) {
+            var picks = captains.map(function (c) {
+                var team = teamList.find(function (tl) { return tl.id === c.teamId; });
+                return 'W' + c.week + ': ' + ((team && team.school) || c.teamId);
+            }).join(', ');
+            infoDiv.textContent = 'Current picks: ' + picks;
+        } else if (infoDiv) {
+            infoDiv.textContent = 'No captain picks set.';
+        }
+    };
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('captain-override-form');
+    if (form) form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var userId = document.getElementById('captain-override-user').value;
+        var week = document.getElementById('captain-override-week').value;
+        var teamId = document.getElementById('captain-override-team').value;
+        if (!userId || !week || !teamId) {
+            failToast.options.text = 'Select a manager, week, and team.';
+            failToast.showToast();
+            return;
+        }
+        try {
+            var res = await fetch('/users/' + userId + '/captain', {
+                method: 'PATCH',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ week: Number(week), teamId: Number(teamId) })
+            });
+            var data = await res.json();
+            if (res.ok) {
+                successToast.options.text = 'Captain set for week ' + week;
+                successToast.showToast();
+                loadCaptainOverride();
+            } else {
+                failToast.options.text = data.message || 'Failed';
+                failToast.showToast();
+            }
+        } catch (err) {
+            failToast.options.text = err.message;
+            failToast.showToast();
+        }
+    });
+});
+
 function displayTeamContainer() { toggleSub('calculate-team-score-container'); }
 
 function displayRankingsContainer() { toggleSub('rankings-container'); }

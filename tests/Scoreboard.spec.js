@@ -90,4 +90,20 @@ describe('normalizeScoreboardGame', () => {
         expect(result.homePoints).toBe(0);
         expect(result.awayPoints).toBe(0);
     });
+
+    it('extracts homeWinProb when present', () => {
+        const sb = {
+            id: 9, status: 'in_progress',
+            homeTeam: { points: 14 }, awayTeam: { points: 7 },
+            homeWinProb: 0.72
+        };
+        const result = normalizeScoreboardGame(sb);
+        expect(result.homeWinProb).toBe(0.72);
+        expect(result.completed).toBe(false);
+    });
+
+    it('omits homeWinProb when absent', () => {
+        const sb = { id: 10, status: 'in_progress', homeTeam: { points: 0 }, awayTeam: { points: 0 } };
+        expect(normalizeScoreboardGame(sb).homeWinProb).toBeUndefined();
+    });
 });

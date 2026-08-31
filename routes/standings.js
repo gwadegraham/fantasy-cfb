@@ -412,7 +412,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const draftedIds = [...draftedSet];
         const games = draftedIds.length ? await Game.find(
             { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
-            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, _id: 0 }
+            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, liveHomeWinProb: 1, _id: 0 }
         ).lean() : [];
         // Opponent rankings, read from the SAME poll the scorer reads (the
         // Playoff Committee's, else AP — see scoring-detectors findPoll). So a
@@ -448,7 +448,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
                 { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
                   completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
+                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+                  pregameWinProb: 1 }).lean();
             const gamesByTeam = {};
             regGames.forEach(g => {
                 [g.homeId, g.awayId].forEach(tid => {
@@ -640,6 +641,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 return capped(id, w, t.id, { winProb: 1, pointsIfWin: s ? s.score : 0 });
             }
             if (st === 'live') {
+                if (g.liveHomeWinProb != null) {
+                    const isHome = g.homeId === t.id;
+                    const wp = isHome ? g.liveHomeWinProb : 1 - g.liveHomeWinProb;
+                    const p = projByWeek[w] && projByWeek[w][t.id] && projByWeek[w][t.id][g.id];
+                    const ptsIfWin = p ? p.pointsIfWin : 0;
+                    return capped(id, w, t.id, { winProb: Math.max(0.001, Math.min(0.999, wp)), pointsIfWin: ptsIfWin });
+                }
                 const s = scoredFor(id, w, t.id, g.id);
                 if (s && s.score != null) {
                     return capped(id, w, t.id, { winProb: 0.95, pointsIfWin: s.score });

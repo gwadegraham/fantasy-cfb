@@ -222,6 +222,39 @@ router.patch('/me/captain', async (req, res) => {
     }
 });
 
+// Admin override: set any user's captain for any week (no kickoff lock).
+// body: { season?, week, teamId } — teamId null clears the pick.
+router.patch('/:id/captain', async (req, res) => {
+    if (!effectiveRoles(req).includes('Admin')) {
+        return res.status(403).json({ message: 'Admin only.' });
+    }
+    const week = parseInt(req.body.week, 10);
+    const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
+    const seasonYear = Number(req.body.season) || Number(process.env.YEAR);
+    if (!Number.isInteger(week) || week < 1 || week > 16) {
+        return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
+    }
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+        const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
+        if (!season) return res.status(404).json({ message: 'No roster for that season.' });
+        if (teamId != null) {
+            const teamIds = (season.teams || []).map(t => Number(t.id));
+            if (!teamIds.includes(teamId)) {
+                return res.status(400).json({ message: 'That team is not on their roster.' });
+            }
+        }
+        if (!Array.isArray(season.captains)) season.captains = [];
+        season.captains = season.captains.filter(c => Number(c.week) !== week);
+        if (teamId != null) season.captains.push({ week, teamId });
+        await user.save();
+        res.json({ userId: req.params.id, season: seasonYear, week, teamId, captains: season.captains });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting All
 router.get('/', async (req, res) => {
     try {

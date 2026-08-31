@@ -10,6 +10,16 @@ jest.mock('../modules/job-mailer', () => ({
     emailOnSuccess: () => false
 }));
 
+jest.mock('../modules/cfbd-calendar', () => ({
+    getCalendar: jest.fn(() => Promise.reject(new Error('no calendar stub')))
+}));
+jest.mock('../modules/score-update', () => ({
+    resolveCurrentWeek: jest.fn(() => null)
+}));
+
+const { getCalendar } = require('../modules/cfbd-calendar');
+const { resolveCurrentWeek } = require('../modules/score-update');
+
 const { internalFetch } = require('../modules/internal-api');
 const { sendJobEmail } = require('../modules/job-mailer');
 const enrichmentJob = require('../update-enrichment-job');
@@ -60,6 +70,9 @@ describe('update-enrichment-job run()', () => {
             } else if (url.includes('/media')) {
                 res.status = over.mediaStatus || 200;
                 res.json = () => Promise.resolve({ updated: 55 });
+            } else if (url.includes('/pregame-wp')) {
+                res.status = over.wpStatus || 200;
+                res.json = () => Promise.resolve(over.wpBody || { updated: 42 });
             } else {
                 res.json = () => Promise.resolve({});
             }
@@ -100,6 +113,41 @@ describe('update-enrichment-job run()', () => {
         await enrichmentJob.run({ preseason: true });  // preseason
         enrich = global.fetch.mock.calls.find(c => c[0].includes('/enrich'));
         expect(JSON.parse(enrich[1].body).scope).toBe('all');
+    });
+
+    test('fetches pregame WP when calendar resolves a current week', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 3 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 3, skip: false });
+        stubFetch();
+        const results = await enrichmentJob.run();
+
+        const wpCall = global.fetch.mock.calls.find(c => c[0].includes('/pregame-wp'));
+        expect(wpCall).toBeDefined();
+        expect(JSON.parse(wpCall[1].body)).toMatchObject({ week: 3 });
+        expect(results.pregameWP.body.updated).toBe(42);
+
+        const enrichCall = global.fetch.mock.calls.find(c => c[0].includes('/enrich'));
+        expect(JSON.parse(enrichCall[1].body).week).toBe(3);
+    });
+
+    test('pregame WP failure is non-fatal — job still succeeds', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 1 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 1, skip: false });
+        stubFetch({ wpStatus: 500, wpBody: { message: 'CFBD down' } });
+        const results = await enrichmentJob.run();
+
+        expect(results.pregameWP.status).toBe(500);
+        expect(results.teams.body.updated).toBe(130);
+    });
+
+    test('skips pregame WP on preseason runs even when currentWeek is resolved', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 1 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 1, skip: false });
+        stubFetch();
+        await enrichmentJob.run({ preseason: true });
+
+        const wpCall = global.fetch.mock.calls.find(c => c[0].includes('/pregame-wp'));
+        expect(wpCall).toBeUndefined();
     });
 
     test('a CLI season argument overrides the YEAR env var', async () => {
