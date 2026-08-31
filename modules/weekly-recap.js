@@ -97,13 +97,19 @@ function indexUpsets(games, spreadByGameId, rankByWeek) {
 // The one-line story. Deterministic and rule-based (the reliable base); when a
 // rostered team won as a betting underdog that week, the upset flavor takes
 // over ("Oregon's upset over Georgia as a 10.5-pt underdog powered your week").
-function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
+const WEATHER_FLAVOR = {
+    snow: 'in the snow', rain: 'in the rain', storm: 'through a storm',
+    cold: 'in frigid conditions', hot: 'in the heat', wind: 'in heavy wind'
+};
+
+function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset, weather }) {
     const place = rank != null ? (rankTie ? 'T-' : '') + ordinal(rank) : null;
     const move = rankDelta == null ? null
         : rankDelta > 0 ? `climbed ${rankDelta} spot${rankDelta > 1 ? 's' : ''}`
         : rankDelta < 0 ? `slipped ${-rankDelta} spot${-rankDelta > 1 ? 's' : ''}`
         : 'held steady';
     const moved = move && rankDelta; // truthy only on an actual climb/slip
+    const wxTag = weather && WEATHER_FLAVOR[weather.emoji] ? ` ${WEATHER_FLAVOR[weather.emoji]}` : '';
 
     if (score <= 0 && (!mvp || mvp.score <= 0)) return 'Quiet week — no points banked.';
 
@@ -113,14 +119,14 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
         const beat = foe ? ` over ${foe}` : '';
         const dog = upset.margin ? ` as a ${upset.margin}-pt underdog` : '';
         const tail = place ? (moved ? `, ${move} to ${place}` : `, good for ${place}`) : '';
-        return `${upset.team}'s upset${beat}${dog} powered your ${score}-pt week${tail}.`;
+        return `${upset.team}'s upset${beat}${dog}${wxTag} powered your ${score}-pt week${tail}.`;
     }
 
     const avg = vsLeagueAvg == null ? ''
         : vsLeagueAvg > 0 ? `, ${vsLeagueAvg} above the league average`
         : vsLeagueAvg < 0 ? `, ${-vsLeagueAvg} below the league average`
         : ', right on the league average';
-    const lead = mvp && mvp.score > 0 ? `${mvp.school}'s ${mvp.score} pts led the way` : `${score} pts`;
+    const lead = mvp && mvp.score > 0 ? `${mvp.school}'s ${mvp.score} pts${wxTag} led the way` : `${score} pts`;
     if (moved) return `${lead} as you ${move} to ${place}${avg}.`;
     return `${lead}${avg}${place ? ` — holding at ${place}` : ''}.`;
 }
@@ -132,7 +138,7 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset }) {
 //   leagueUsers  — every user in the league (full docs) for rank + average
 //   season       — the season to recap (number or string)
 //   upsetByGameId — optional output of indexUpsets(), for the upset narrative
-function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeWeeks }) {
+function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeWeeks, weatherByGameId }) {
     const mySeason = seasonOf(user, season);
     const result = { userId: String(user && user._id), season: Number(season), recaps: [] };
     // Cheap short-circuit only — a manager with no entries at all has no weeks.
@@ -260,6 +266,20 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
             });
         }
 
+        // Weather flavor: the most notable weather game among this week's roster.
+        let weather = null;
+        const notableWx = ['snow', 'rain', 'storm', 'cold', 'hot', 'wind'];
+        if (weatherByGameId) {
+            (entry.scoreByTeam || []).forEach(st => {
+                const wx = st.gameId != null ? weatherByGameId[st.gameId] : null;
+                if (wx && wx.emoji && notableWx.includes(wx.emoji)) {
+                    if (!weather || notableWx.indexOf(wx.emoji) < notableWx.indexOf(weather.emoji)) {
+                        weather = { team: st.team, emoji: wx.emoji, condition: wx.condition, temp: wx.temp, wind: wx.wind, logo: logoOf(st.teamId, st.team) };
+                    }
+                }
+            });
+        }
+
         // Momentum. "Season high" compares REGULAR-season weeks only — the
         // postseason is expected to be the biggest week (bonuses stack across
         // several games), so calling it a new high isn't real news. The finale
@@ -283,9 +303,10 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
             week: entry.week, effWeek: W, label: weekLabel(entry),
             score, rank, rankDelta, rankTie, leagueAvg, vsLeagueAvg, weekHigh, weekLow,
             mvpTeam: mvp, mvpTeams, mvpShare, dudTeam, isUpset: !!upset, upset,
+            weather,
             isSeasonHigh, aboveAvgStreak: aboveStreak, belowAvgStreak: belowStreak,
             cumTotal: round(runningTotal), milestone,
-            narrative: narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset })
+            narrative: narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset, weather })
         };
         recap.slides = buildSlides(recap);
         return recap;
@@ -347,6 +368,16 @@ function buildSlides(r) {
     if (r.upset) {
         const foe = `${r.upset.loserRank ? '#' + r.upset.loserRank + ' ' : ''}${r.upset.loser}`;
         slides.push({ id: 'upset', icon: 'dice', kicker: 'Upset alert', title: r.upset.team, big: 'UPSET', logo: r.upset.logo, sub: `beat ${foe} as a ${r.upset.margin}-pt underdog`, tone: 'good' });
+    }
+
+    // Weather — only when a rostered team played in notable conditions.
+    if (r.weather) {
+        const wxLabels = { snow: 'Snow game', rain: 'Rain game', storm: 'Storm game', cold: 'Frigid', hot: 'Scorcher', wind: 'Windy' };
+        const wxEmojis = { snow: '❄️', rain: '🌧️', storm: '⛈️', cold: '🥶', hot: '🥵', wind: '💨' };
+        const tempStr = r.weather.temp != null ? `${r.weather.temp}°F` : '';
+        const windStr = r.weather.wind != null ? `${r.weather.wind} mph wind` : '';
+        const detail = [tempStr, windStr].filter(Boolean).join(' · ') || (r.weather.condition || '');
+        slides.push({ id: 'weather', icon: 'stadium', kicker: wxLabels[r.weather.emoji] || 'Weather', title: r.weather.team, big: wxEmojis[r.weather.emoji] || '🌤️', logo: r.weather.logo, sub: detail, tone: 'neutral' });
     }
 
     // Momentum — a single beat. On the finale, wrap the season (the postseason

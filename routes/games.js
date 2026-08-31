@@ -326,6 +326,7 @@ router.post('/:season/media', async (req, res) => {
 // on Game docs. Called by the weekly enrichment job after ratings refresh.
 // body: { week: Number, seasonType?: 'regular'|'postseason' }
 const { updatePregameWP } = require('../modules/pregame-wp');
+const { updateWeather } = require('../modules/game-weather');
 
 router.post('/:season/pregame-wp', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
@@ -341,6 +342,24 @@ router.post('/:season/pregame-wp', async (req, res) => {
         res.status(200).json({ season, week: Number(week), ...result });
     } catch (err) {
         console.log('Error updating pregame WP:', err.message);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+router.post('/:season/weather', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    const week = req.body && req.body.week;
+    if (week == null || isNaN(Number(week))) {
+        return res.status(400).json({ message: 'week is required' });
+    }
+    try {
+        const result = await updateWeather(season, Number(week), req.body.seasonType);
+        res.status(200).json({ season, week: Number(week), ...result });
+    } catch (err) {
+        console.log('Error updating weather:', err.message);
         res.status(400).json({ message: err.message });
     }
 });

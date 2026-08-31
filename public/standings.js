@@ -1108,7 +1108,10 @@ async function displaySchedule(data) {
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
                     teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
-                    teamTable += `</tr>${game.outlet ? `<tr><td class="game-broadcast">${window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : ''} ${game.outlet}</td></tr>` : ''}<tr><td class="game-notes">`;
+                    var wxEmoji = game.weather && game.weather.emoji ? (window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] || '') : '';
+                    var wxTip = game.weather ? (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') : '';
+                    var wxSpan = wxEmoji ? `<span class="game-weather" title="${wxTip}">${wxEmoji}</span>` : '';
+                    teamTable += `</tr>${game.outlet || wxEmoji ? `<tr><td class="game-broadcast">${game.outlet ? (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet : ''}${wxEmoji ? ' ' + wxSpan : ''}</td></tr>` : ''}<tr><td class="game-notes">`;
                     teamTable += game.notes || '';
                     teamTable += '</td></tr><tbody></table></td>';
 
