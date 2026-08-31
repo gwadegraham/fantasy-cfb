@@ -448,7 +448,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
                 { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
                   completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
+                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+                  pregameWinProb: 1 }).lean();
             const gamesByTeam = {};
             regGames.forEach(g => {
                 [g.homeId, g.awayId].forEach(tid => {

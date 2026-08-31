@@ -342,6 +342,15 @@ router.post('/:season/enrich', async (req, res) => {
             if (spR) {
                 if (spR.rating != null) s.spRating = spR.rating;
                 if (spR.ranking != null) s.spRank = spR.ranking;
+                // Snapshot the weekly SP+ value so historical trends survive
+                // (the API overwrites in place, losing prior weeks).
+                if (spR.rating != null && req.body && req.body.week != null) {
+                    if (!Array.isArray(s.spHistory)) s.spHistory = [];
+                    const w = Number(req.body.week);
+                    const existing = s.spHistory.find(h => h.week === w);
+                    if (existing) { existing.rating = spR.rating; existing.rank = spR.ranking; }
+                    else s.spHistory.push({ week: w, rating: spR.rating, rank: spR.ranking });
+                }
             }
             if (fpiR) { s.fpiRating = fpiR.fpi; s.fpiRank = fpiR.rank; }
             if (tal) { s.talent = Number(tal.value); s.talentRank = tal.rank; }
