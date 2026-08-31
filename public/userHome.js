@@ -1989,7 +1989,7 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
         + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
         + liveStatus
-        + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + '</td></tr>' : '')
+        + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + (game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ' <span class="game-weather" title="' + (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') + '">' + window.ccWeatherEmoji[game.weather.emoji] + '</span>' : '') + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
         + '</tbody></table></div>';
 }
