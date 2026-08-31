@@ -283,4 +283,22 @@ router.post('/update', async (req, res) => {
         res.status(500).json({message: err.message});
     }
 });
+
+router.post('/enrichment-run', async (req, res) => {
+    try {
+        const enrichmentJob = require('../update-enrichment-job');
+        const results = await enrichmentJob.run();
+        const teamsUpdated = results.teams ? (results.teams.body.updated || 0) : 0;
+        const mediaUpdated = results.media ? (results.media.body.updated || 0) : 0;
+        const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
+        const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
+        const parts = [`${teamsUpdated} teams`, `${mediaUpdated} media`];
+        if (wpUpdated) parts.push(`${wpUpdated} pregame WP`);
+        if (wxUpdated) parts.push(`${wxUpdated} weather`);
+        res.json({ summary: parts.join(' · ') });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 module.exports = router;
