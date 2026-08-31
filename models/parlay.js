@@ -10,13 +10,21 @@ const legSchema = new mongoose.Schema({
     },
     betType: {
         type: String,
-        enum: ['spread', 'moneyline', 'over_under', 'custom']
+        enum: ['spread', 'moneyline', 'over_under', 'stat_over_under', 'custom']
     },
     selection: {
         type: String
     },
     line: {
         type: Number
+    },
+    // stat_over_under legs only: which stat and which team
+    statCategory: {
+        type: String
+    },
+    statTeamSide: {
+        type: String,
+        enum: ['home', 'away', null]
     },
     odds: {
         type: Number

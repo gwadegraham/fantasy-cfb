@@ -497,6 +497,16 @@ function renderBetBoard(index, game) {
         + '<button type="button" onclick="openGamePicker(\'' + activePick.parlayId + '\',\'' + activePick.contributor + '\',' + index + ')">change</button>'
         + '</div>';
 
+    // Tab bar
+    html += '<div class="bb-tabs" id="bb-tabs-' + index + '">'
+        + '<button type="button" class="bb-tab active" onclick="switchBetTab(' + index + ',\'lines\',this)">Lines</button>'
+        + '<button type="button" class="bb-tab" onclick="switchBetTab(' + index + ',\'stats\',this)">Stats</button>'
+        + '<button type="button" class="bb-tab" onclick="switchBetTab(' + index + ',\'custom\',this)">Custom</button>'
+        + '</div>';
+
+    // Lines panel
+    html += '<div class="bb-panel" data-tab="lines" id="bb-lines-' + index + '">';
+
     // Spread row
     html += '<div class="bet-row"><div class="bet-row-label">Spread</div>';
     if (dk && dk.spread != null) {
@@ -531,14 +541,26 @@ function renderBetBoard(index, game) {
         html += '<div class="bet-btn-na">N/A</div><div class="bet-btn-na">N/A</div>';
     }
     html += '</div>';
+    html += '</div>'; // end lines panel
 
-    // Custom bet row
-    html += '<div class="bet-row bet-row-custom"><div class="bet-row-label">Custom</div>'
-        + '<input type="text" class="bet-custom-input" id="custom-desc-' + index + '" placeholder="e.g. Arkansas Over 3.5 turnovers">'
-        + '<button type="button" class="bet-btn bet-btn-custom" onclick="pickCustomBet(' + index + ', this)"><span class="bet-btn-label">Use</span></button>'
+    // Stats panel
+    html += '<div class="bb-panel" data-tab="stats" id="bb-stats-' + index + '" style="display:none">'
+        + '<div class="stat-team-pick">'
+        + '<button type="button" class="stat-team-btn" data-side="away" onclick="pickStatTeam(' + index + ',\'away\',this)">' + game.awayTeam + '</button>'
+        + '<button type="button" class="stat-team-btn" data-side="home" onclick="pickStatTeam(' + index + ',\'home\',this)">' + game.homeTeam + '</button>'
+        + '</div>'
+        + '<div class="stat-cat-pick" id="stat-cats-' + index + '"></div>'
+        + '<div class="stat-slider-wrap" id="stat-slider-' + index + '"></div>'
         + '</div>';
 
-    // Custom odds + submit
+    // Custom panel
+    html += '<div class="bb-panel" data-tab="custom" id="bb-custom-' + index + '" style="display:none">'
+        + '<div class="bet-row bet-row-custom"><div class="bet-row-label">Custom</div>'
+        + '<input type="text" class="bet-custom-input" id="custom-desc-' + index + '" placeholder="e.g. Arkansas Over 3.5 turnovers">'
+        + '<button type="button" class="bet-btn bet-btn-custom" onclick="pickCustomBet(' + index + ', this)"><span class="bet-btn-label">Use</span></button>'
+        + '</div></div>';
+
+    // Odds + submit (shared across all tabs)
     html += '<div class="bet-custom-odds">Odds: <input type="number" id="custom-odds-' + index + '" value="" placeholder="auto"></div>';
     html += '<div class="bet-confirm"><button class="btn-submit-leg" id="btn-submit-' + index + '" onclick="submitLegNew(' + index + ')" disabled>Submit Leg</button></div>';
 
@@ -546,7 +568,31 @@ function renderBetBoard(index, game) {
     board.innerHTML = html;
 }
 
-var selectedBet = null; // { index, betType, selection, line, odds }
+function switchBetTab(index, tab, btn) {
+    var board = document.getElementById('bet-board-' + index);
+    if (!board) return;
+    board.querySelectorAll('.bb-tab').forEach(function (t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    board.querySelectorAll('.bb-panel').forEach(function (p) { p.style.display = 'none'; });
+    var panel = board.querySelector('.bb-panel[data-tab="' + tab + '"]');
+    if (panel) panel.style.display = '';
+}
+
+var selectedBet = null; // { index, betType, selection, line, odds, statCategory?, statTeamSide? }
+
+// Stat categories available for stat O/U legs, with default lines.
+var STAT_CATS = [
+    { key: 'totalYards',       label: 'Total Yards',    defaultLine: 350, step: 10, min: 100, max: 700 },
+    { key: 'netPassingYards',  label: 'Pass Yards',     defaultLine: 225, step: 5,  min: 50,  max: 500 },
+    { key: 'rushingYards',     label: 'Rush Yards',      defaultLine: 150, step: 5,  min: 30,  max: 400 },
+    { key: 'turnovers',        label: 'Turnovers',       defaultLine: 1.5, step: 0.5,min: 0.5, max: 5.5 },
+    { key: 'sacks',            label: 'Sacks',           defaultLine: 2.5, step: 0.5,min: 0.5, max: 8.5 },
+    { key: 'penalties',        label: 'Penalties',        defaultLine: 6.5, step: 0.5,min: 1.5, max: 15.5 },
+    { key: 'interceptions',    label: 'INTs',             defaultLine: 1.5, step: 0.5,min: 0.5, max: 4.5 },
+    { key: 'fumblesLost',      label: 'Fumbles Lost',     defaultLine: 0.5, step: 0.5,min: 0.5, max: 3.5 },
+];
+
+var activeStatPick = null; // { index, side, teamName, cat }
 
 function betButton(index, betType, label, line, odds, selection) {
     var safeSelection = selection.replace(/'/g, "\\'");
@@ -599,6 +645,123 @@ function pickCustomBet(index, btn) {
     if (submitBtn) submitBtn.disabled = false;
 }
 
+/* ── Stat O/U: team → category → slider → over/under ── */
+
+function pickStatTeam(index, side, btn) {
+    var section = document.getElementById('bb-stats-' + index);
+    if (!section) return;
+    section.querySelectorAll('.stat-team-btn').forEach(function (b) { b.classList.remove('selected'); });
+    btn.classList.add('selected');
+
+    var game = activePick && activePick.game;
+    var teamName = side === 'home' ? (game && game.homeTeam || 'Home') : (game && game.awayTeam || 'Away');
+    activeStatPick = { index: index, side: side, teamName: teamName, cat: null };
+
+    // Render stat category chips
+    var catsEl = document.getElementById('stat-cats-' + index);
+    if (catsEl) {
+        catsEl.innerHTML = STAT_CATS.map(function (c) {
+            return '<button type="button" class="stat-cat-chip" onclick="pickStatCat(' + index + ',\'' + c.key + '\',this)">' + c.label + '</button>';
+        }).join('');
+    }
+    // Clear slider
+    var sliderEl = document.getElementById('stat-slider-' + index);
+    if (sliderEl) sliderEl.innerHTML = '';
+}
+
+function pickStatCat(index, catKey, btn) {
+    if (!activeStatPick || activeStatPick.index !== index) return;
+    var section = document.getElementById('bb-stats-' + index);
+    if (section) section.querySelectorAll('.stat-cat-chip').forEach(function (b) { b.classList.remove('selected'); });
+    btn.classList.add('selected');
+
+    var cat = STAT_CATS.find(function (c) { return c.key === catKey; });
+    if (!cat) return;
+    activeStatPick.cat = cat;
+
+    renderStatSlider(index, cat);
+}
+
+function renderStatSlider(index, cat) {
+    var wrap = document.getElementById('stat-slider-' + index);
+    if (!wrap) return;
+
+    var steps = [];
+    for (var v = cat.min; v <= cat.max; v = Math.round((v + cat.step) * 100) / 100) {
+        steps.push(v);
+    }
+    var defaultIdx = 0;
+    var minDist = Infinity;
+    steps.forEach(function (s, i) {
+        var d = Math.abs(s - cat.defaultLine);
+        if (d < minDist) { minDist = d; defaultIdx = i; }
+    });
+
+    wrap.innerHTML =
+        '<div class="stat-slider-row">'
+        + '<span class="stat-slider-min">' + cat.min + '</span>'
+        + '<input type="range" class="stat-slider" id="stat-range-' + index + '" min="0" max="' + (steps.length - 1) + '" value="' + defaultIdx + '" oninput="updateStatLine(' + index + ')">'
+        + '<span class="stat-slider-max">' + cat.max + '</span>'
+        + '</div>'
+        + '<div class="stat-line-display" id="stat-line-val-' + index + '">' + steps[defaultIdx] + '</div>'
+        + '<div class="stat-ou-btns">'
+        + '<button type="button" class="bet-btn stat-ou-btn" onclick="pickStatOU(' + index + ',\'over\',this)"><span class="bet-btn-label">Over</span></button>'
+        + '<button type="button" class="bet-btn stat-ou-btn" onclick="pickStatOU(' + index + ',\'under\',this)"><span class="bet-btn-label">Under</span></button>'
+        + '</div>';
+
+    wrap.dataset.steps = JSON.stringify(steps);
+}
+
+function updateStatLine(index) {
+    var slider = document.getElementById('stat-range-' + index);
+    var display = document.getElementById('stat-line-val-' + index);
+    var wrap = document.getElementById('stat-slider-' + index);
+    if (!slider || !display || !wrap) return;
+    var steps = JSON.parse(wrap.dataset.steps || '[]');
+    display.textContent = steps[slider.value] != null ? steps[slider.value] : slider.value;
+
+    // Deselect over/under when line changes
+    wrap.querySelectorAll('.stat-ou-btn').forEach(function (b) { b.classList.remove('selected'); });
+    var submitBtn = document.getElementById('btn-submit-' + index);
+    if (submitBtn) submitBtn.disabled = true;
+}
+
+function pickStatOU(index, direction, btn) {
+    if (!activeStatPick || !activeStatPick.cat) return;
+    var wrap = document.getElementById('stat-slider-' + index);
+    if (!wrap) return;
+    wrap.querySelectorAll('.stat-ou-btn').forEach(function (b) { b.classList.remove('selected'); });
+    btn.classList.add('selected');
+
+    // Also deselect any standard bet buttons
+    var board = document.getElementById('bet-board-' + index);
+    if (board) board.querySelectorAll('.bet-btn:not(.stat-ou-btn):not(.bet-btn-custom)').forEach(function (b) { b.classList.remove('selected'); });
+
+    var slider = document.getElementById('stat-range-' + index);
+    var steps = JSON.parse(wrap.dataset.steps || '[]');
+    var line = steps[slider.value];
+
+    var cat = activeStatPick.cat;
+    var team = activeStatPick.teamName;
+    var sel = team + ' ' + (direction === 'over' ? 'Over' : 'Under') + ' ' + line + ' ' + cat.label;
+
+    selectedBet = {
+        index: index,
+        betType: 'stat_over_under',
+        selection: sel,
+        line: line,
+        odds: -110,
+        statCategory: cat.key,
+        statTeamSide: activeStatPick.side
+    };
+
+    var oddsInput = document.getElementById('custom-odds-' + index);
+    if (oddsInput) oddsInput.value = -110;
+
+    var submitBtn = document.getElementById('btn-submit-' + index);
+    if (submitBtn) submitBtn.disabled = false;
+}
+
 async function submitLegNew(index) {
     if (!activePick || !selectedBet) return;
 
@@ -617,7 +780,9 @@ async function submitLegNew(index) {
                 betType: selectedBet.betType,
                 selection: selectedBet.selection,
                 line: selectedBet.line,
-                odds: finalOdds
+                odds: finalOdds,
+                statCategory: selectedBet.statCategory || null,
+                statTeamSide: selectedBet.statTeamSide || null
             })
         });
         if (res.ok) {

@@ -133,6 +133,29 @@ const gameSchema = new mongoose.Schema({
     outlet: {
         type: String
     },
+    // Post-game team box scores from CFBD /games/teams, keyed by side ('home'/'away').
+    // Each value holds the stat categories for that team (e.g. passingYards, rushingYards).
+    teamStats: {
+        type: Map,
+        of: new mongoose.Schema({
+            totalYards:         Number,
+            netPassingYards:    Number,
+            rushingYards:       Number,
+            passingTDs:         Number,
+            rushingTDs:         Number,
+            turnovers:          Number,
+            fumblesLost:        Number,
+            interceptions:      Number,
+            sacks:              Number,
+            tacklesForLoss:     Number,
+            penalties:          Number,
+            thirdDownPct:       Number,
+            fourthDownPct:      Number,
+            totalPenaltiesYards:Number,
+            possessionSeconds:  Number,
+            pointsAllowed:      Number,
+        }, { _id: false })
+    },
     lastUpdated: {
         type: String
     },
