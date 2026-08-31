@@ -1162,7 +1162,8 @@ async function hydrateBetting(user, activeYear) {
                             const game = games.find(gm => gm.id === myLeg.gameId);
                             if (game) {
                                 const sel = (myLeg.selection || '').toLowerCase();
-                                const isHome = sel.includes(game.homeTeam.toLowerCase());
+                                const isHome = sel.includes(game.homeTeam.toLowerCase())
+                                    || (game.homeAbbr && sel.includes(game.homeAbbr.toLowerCase()));
                                 const logos = isHome ? game.homeLogos : game.awayLogos;
                                 const src = typeof ccLogo === 'function' ? ccLogo(logos) : (logos && logos[0] || '');
                                 if (src) {

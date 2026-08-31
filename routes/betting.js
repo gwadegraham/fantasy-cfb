@@ -86,8 +86,9 @@ router.get('/games/:season/:week', async (req, res) => {
         }
 
         games.forEach(g => { teamIds.add(g.homeId); teamIds.add(g.awayId); });
-        const teams = await Team.find({ id: { $in: [...teamIds] } }, 'id logos').lean();
+        const teams = await Team.find({ id: { $in: [...teamIds] } }, 'id logos abbreviation').lean();
         const logoMap = new Map(teams.map(t => [t.id, t.logos]));
+        const abbrMap = new Map(teams.map(t => [t.id, t.abbreviation]));
         const lineMap = new Map(lines.map(l => [l.id, l]));
 
         const merged = games.map(game => {
@@ -104,6 +105,8 @@ router.get('/games/:season/:week', async (req, res) => {
                 awayId: game.awayId,
                 homeLogos: logoMap.get(game.homeId) || [],
                 awayLogos: logoMap.get(game.awayId) || [],
+                homeAbbr: abbrMap.get(game.homeId) || null,
+                awayAbbr: abbrMap.get(game.awayId) || null,
                 homeRank: rankMap.get(game.homeTeam) || null,
                 awayRank: rankMap.get(game.awayTeam) || null,
                 startDate: game.startDate,
