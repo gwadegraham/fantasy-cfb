@@ -69,6 +69,7 @@ async function run(opts = {}) {
         // Preseason runs skip this — no games to project yet.
         if (!preseason && currentWeek != null) {
             results.pregameWP = await post(`/games/${season}/pregame-wp`, { week: currentWeek });
+            results.weather = await post(`/games/${season}/weather`, { week: currentWeek });
         }
 
         // A non-200 from a core leg means the data did NOT land.
@@ -77,21 +78,27 @@ async function run(opts = {}) {
             throw new Error(coreLeg.map(r => `${r.path} -> ${r.status}`
                 + (r.body && r.body.message ? ` (${r.body.message})` : '')).join('; '));
         }
-        // Pregame WP failure is non-fatal — log it but don't fail the job.
+        // Pregame WP / weather failures are non-fatal — log but don't fail.
         if (results.pregameWP && results.pregameWP.status !== 200) {
             console.log(`[${JOB_NAME}] pregame WP warning:`, results.pregameWP.body.message || results.pregameWP.status);
         }
+        if (results.weather && results.weather.status !== 200) {
+            console.log(`[${JOB_NAME}] weather warning:`, results.weather.body.message || results.weather.status);
+        }
 
         const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
+        const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
         const summary = `${scope} · ${results.teams.body.updated} teams enriched · `
             + `${results.media.body.updated} games given media`
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
+            + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
             + ` (${secs}s)`;
         console.log(`[${JOB_NAME}] season ${season} (scope=${scope}):`,
             `teams enriched=${results.teams.body.updated}`,
             `media updated=${results.media.body.updated}`,
-            wpUpdated ? `pregameWP updated=${wpUpdated}` : '');
+            wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
+            wxUpdated ? `weather updated=${wxUpdated}` : '');
         await finishRun(id, 'success', summary);
 
         if (emailOnSuccess()) {
@@ -104,6 +111,7 @@ async function run(opts = {}) {
                     ['Teams enriched', String(results.teams.body.updated)],
                     ['Games w/ media', String(results.media.body.updated)],
                     ['Pregame WP', String(wpUpdated)],
+                    ['Weather', String(wxUpdated)],
                     ['Duration', `${secs}s`]
                 ]
             });

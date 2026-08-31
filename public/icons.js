@@ -162,4 +162,5 @@
         hydrate();
     }
     window.ccHydrateIcons = hydrate;
+    window.ccWeatherEmoji = { snow: '❄️', rain: '🌧️', storm: '⛈️', fog: '🌫️', cloudy: '☁️', wind: '💨', cold: '🥶', hot: '🥵', sunny: '☀️', dome: '🏟️' };
 })();

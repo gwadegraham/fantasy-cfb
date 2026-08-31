@@ -256,11 +256,12 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         });
         const idList = [...draftedIds];
         let upsetByGameId = {};
+        let weatherByGameId = {};
         let completeWeeks = null;
         if (idList.length) {
             const allGames = await Game.find(
                 { season: seasonNum, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-                { id: 1, week: 1, seasonType: 1, startDate: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
+                { id: 1, week: 1, seasonType: 1, startDate: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, homeId: 1, awayId: 1, weather: 1, _id: 0 }
             );
             const games = allGames.filter(g => g.completed && g.seasonType === 'regular');
 
@@ -300,9 +301,13 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
             });
 
             upsetByGameId = indexUpsets(games, spreadByGameId, rankByWeek);
+
+            allGames.forEach(g => {
+                if (g.weather && g.weather.emoji) weatherByGameId[g.id] = g.weather;
+            });
         }
 
-        const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId, completeWeeks });
+        const recap = buildWeeklyRecaps({ user, leagueUsers: users, season, upsetByGameId, completeWeeks, weatherByGameId });
         const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
         res.json({ league, ...recap, name });
     } catch (err) {
@@ -412,7 +417,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const draftedIds = [...draftedSet];
         const games = draftedIds.length ? await Game.find(
             { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
-            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, liveHomeWinProb: 1, _id: 0 }
+            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, liveHomeWinProb: 1, weather: 1, _id: 0 }
         ).lean() : [];
         // Opponent rankings, read from the SAME poll the scorer reads (the
         // Playoff Committee's, else AP — see scoring-detectors findPoll). So a

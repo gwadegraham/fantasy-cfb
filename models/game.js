@@ -167,6 +167,12 @@ const gameSchema = new mongoose.Schema({
             pointsAllowed:      Number,
         }, { _id: false })
     },
+    weather: {
+        temp:      Number,
+        wind:      Number,
+        condition: String,
+        emoji:     String
+    },
     lastUpdated: {
         type: String
     },
