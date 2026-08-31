@@ -617,7 +617,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const oppName = isHome ? g.awayTeam : g.homeTeam;
             const opp = oppAbbrById[oppId] || oppName || '';
             let gameScore = null;
-            if (g.completed && g.homePoints != null && g.awayPoints != null) {
+            if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
             return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, captain: isCaptain(id, w, t.id) };
@@ -629,14 +629,21 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const entriesFor = (id, w) => (meta[id].teams || [])
             .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}).map(e => capped(id, w, t.id, e)));
         // Live odds recompute as the week plays out: a team whose game is already
-        // FINAL contributes its actual scored points as a certainty; teams still
-        // to play (live/upcoming) keep their projected win-prob × points-if-win.
-        // So the bar shifts toward whoever's banked results are stronger, and by
-        // the time every game is final it reads as the settled 100/0.
+        // FINAL contributes its actual scored points as a certainty; a LIVE game
+        // with in-progress scores uses the current fantasy points (from the
+        // scoreboard poller) as near-certainty; teams still to play keep their
+        // projected win-prob × points-if-win. The bar shifts as games unfold.
         const liveEntriesFor = (id, w) => (meta[id].teams || []).flatMap(t => gamesOf(t.id, w).map(g => {
-            if (gameStatus(g, now) === 'final') {
+            const st = gameStatus(g, now);
+            if (st === 'final') {
                 const s = scoredFor(id, w, t.id, g.id);
-                return capped(id, w, t.id, { winProb: 1, pointsIfWin: s ? s.score : 0 });   // result locked in
+                return capped(id, w, t.id, { winProb: 1, pointsIfWin: s ? s.score : 0 });
+            }
+            if (st === 'live') {
+                const s = scoredFor(id, w, t.id, g.id);
+                if (s && s.score != null) {
+                    return capped(id, w, t.id, { winProb: 0.95, pointsIfWin: s.score });
+                }
             }
             const p = projByWeek[w] && projByWeek[w][t.id] && projByWeek[w][t.id][g.id];
             return p ? capped(id, w, t.id, { winProb: p.winProb, pointsIfWin: p.pointsIfWin }) : null;

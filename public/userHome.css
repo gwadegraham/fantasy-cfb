@@ -478,6 +478,10 @@
    its number out of line under right-alignment). */
 .game-card .gc-score { text-align: left; white-space: nowrap; padding-left: 0.9em; width: 1%; }
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
+/* Live in-progress score + game clock */
+.game-card .gc-live-pts { font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; }
+.game-card .gc-poss { color: var(--cc-accent); font-size: 0.6em; vertical-align: middle; }
+.game-card .gc-clock { text-align: center; font-size: 0.72rem; font-weight: 700; color: var(--cc-accent); letter-spacing: 0.02em; padding-top: 0.3em; }
 
 /* The "+N" badge is a button: tap to reveal the scoring breakdown. Looks like
    the old badge, but signals it's tappable (pointer + dotted underline). */
