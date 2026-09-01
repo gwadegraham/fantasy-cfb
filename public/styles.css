@@ -715,21 +715,19 @@ footer {
 .gc-boxlink:hover {
     text-decoration: underline;
 }
-.gc-icon-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: var(--cc-r-sm);
-    background: rgba(142, 140, 240, 0.12);
-    color: var(--cc-interactive) !important;
-    font-size: 0.72rem;
-    transition: background 0.15s ease;
+/* Clickable game card (My Team completed games). */
+.gc-clickable {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
 }
-.gc-icon-link:hover {
-    background: rgba(142, 140, 240, 0.22);
-    text-decoration: none !important;
+.gc-clickable:hover {
+    border-color: var(--cc-interactive);
+}
+.gc-clickable:hover .gc-score {
+    color: var(--cc-interactive);
 }
 
 #loading {
