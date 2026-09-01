@@ -632,15 +632,6 @@ function renderWeeklyScores(seasonObj, scoreCode) {
     var merged = Object.values(byKey)
         .sort(function (a, b) { return (b.seasonType || '').localeCompare(a.seasonType || '') || a.week - b.week; });
 
-    // Only show weeks up through the latest one with a non-zero score.
-    // If nothing has been scored yet, hide the chart entirely.
-    var lastScoredIdx = -1;
-    for (var i = merged.length - 1; i >= 0; i--) {
-        if (merged[i].score > 0) { lastScoredIdx = i; break; }
-    }
-    if (lastScoredIdx < 0) return '';
-    merged = merged.slice(0, lastScoredIdx + 1);
-
     var max = Math.max(...merged.map(function (w) { return w.score; }), 1);
 
     var bars = merged.map(function (w, i) {
@@ -818,7 +809,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             `;
 
             html += `
-                <div class="game-row">
+                <div class="game-row${game.completed && game.id ? ' gc-clickable' : ''}"${game.completed && game.id ? ` data-game-id="${game.id}"` : ''}>
                     <div class="game-info">
                         <div class="team-row">
                             <span class="team-vs">${awayTeamHTML}
@@ -826,7 +817,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}${game.completed && game.id ? ` · <a class="gc-boxlink" href="/game/${game.id}">Box Score</a>` : ''}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -838,6 +829,12 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
 
     html += '</div>';
     container.innerHTML = html;
+
+    container.addEventListener('click', function (e) {
+        if (e.target.closest('a[href]')) return;
+        var card = e.target.closest('.gc-clickable[data-game-id]');
+        if (card) window.location.href = '/game/' + card.getAttribute('data-game-id');
+    });
 
     const scheduleButton = document.querySelector('#schedule-container .schedule-head');
 

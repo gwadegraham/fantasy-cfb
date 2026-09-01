@@ -700,14 +700,6 @@ footer {
     white-space: nowrap;
 }
 
-/* Inline "Box Score" text link (team schedule rows). */
-.gc-boxlink {
-    color: var(--cc-interactive);
-    text-decoration: none;
-}
-.gc-boxlink:hover {
-    text-decoration: underline;
-}
 /* Clickable game card — whole card navigates to game detail. */
 .gc-clickable {
     text-decoration: none;
