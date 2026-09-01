@@ -1113,7 +1113,11 @@ async function displaySchedule(data) {
                     var wxSpan = wxEmoji ? `<span class="game-weather" title="${wxTip}">${wxEmoji}</span>` : '';
                     teamTable += `</tr>${game.outlet || wxEmoji ? `<tr><td class="game-broadcast">${game.outlet ? (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet : ''}${wxEmoji ? ' ' + wxSpan : ''}</td></tr>` : ''}<tr><td class="game-notes">`;
                     teamTable += game.notes || '';
-                    teamTable += '</td></tr><tbody></table></td>';
+                    teamTable += '</td></tr>';
+                    if (game.completed) {
+                        teamTable += `<tr><td class="gc-boxscore"><a href="/game/${game.id}">Box Score</a></td></tr>`;
+                    }
+                    teamTable += '<tbody></table></td>';
 
                     var gameInfo = {
                         id: game.id,

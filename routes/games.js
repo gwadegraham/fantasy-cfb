@@ -67,6 +67,17 @@ router.get('/season/:season/teamId/:teamId', async (req, res) => {
     }
 });
 
+// Get a single game by its CFBD id (used by the game detail page).
+router.get('/detail/:gameId', async (req, res) => {
+    try {
+        const game = await Game.findOne({ id: Number(req.params.gameId) });
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+        res.status(200).json(game);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting API Calls Info
 router.get('/info', async (req, res) => {
     try {
@@ -327,6 +338,7 @@ router.post('/:season/media', async (req, res) => {
 // body: { week: Number, seasonType?: 'regular'|'postseason' }
 const { updatePregameWP } = require('../modules/pregame-wp');
 const { updateWeather } = require('../modules/game-weather');
+const { ingestPlayerStats } = require('../modules/player-box-scores');
 
 router.post('/:season/pregame-wp', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
@@ -360,6 +372,27 @@ router.post('/:season/weather', async (req, res) => {
         res.status(200).json({ season, week: Number(week), ...result });
     } catch (err) {
         console.log('Error updating weather:', err.message);
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Ingest player-level box scores from CFBD /games/players for a given week.
+// Called by the enrichment job for weekly backfill, or manually.
+// body: { week: Number, seasonType?: 'regular'|'postseason' }
+router.post('/:season/player-stats', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    const week = req.body && req.body.week;
+    if (week == null || isNaN(Number(week))) {
+        return res.status(400).json({ message: 'week is required' });
+    }
+    try {
+        const result = await ingestPlayerStats(season, Number(week), req.body.seasonType);
+        res.status(200).json({ season, week: Number(week), ...result });
+    } catch (err) {
+        console.log('Error ingesting player stats:', err.message);
         res.status(400).json({ message: err.message });
     }
 });

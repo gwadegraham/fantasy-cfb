@@ -700,6 +700,21 @@ footer {
     white-space: nowrap;
 }
 
+/* "Box Score" link inside game cards (standings, My Team, team page). */
+.gc-boxscore {
+    font-size: 0.72em;
+    padding-left: 0.5em !important;
+}
+.gc-boxscore a,
+.gc-boxlink {
+    color: var(--cc-interactive);
+    text-decoration: none;
+}
+.gc-boxscore a:hover,
+.gc-boxlink:hover {
+    text-decoration: underline;
+}
+
 #loading {
     position: fixed;
     display: block;
