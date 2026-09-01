@@ -9,7 +9,7 @@ html.gd-page, .gd-page body {
 .game-detail-container {
     max-width: 720px;
     margin: 0 auto;
-    padding: 16px 16px 60px;
+    padding: 16px 16px 32px;
     box-sizing: border-box;
     width: 100%;
 }
@@ -86,7 +86,10 @@ html.gd-page, .gd-page body {
     flex: 1;
     max-width: 45%;
     overflow: hidden;
+    text-decoration: none;
+    color: inherit;
 }
+a.gd-team:hover { opacity: 1; }
 .gd-team-info {
     min-width: 0;
     text-align: center;
