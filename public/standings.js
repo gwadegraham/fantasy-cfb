@@ -1115,7 +1115,7 @@ async function displaySchedule(data) {
                     teamTable += game.notes || '';
                     teamTable += '</td></tr>';
                     if (game.completed) {
-                        teamTable += `<tr><td class="gc-boxscore"><a href="/game/${game.id}">Box Score</a></td></tr>`;
+                        teamTable += `<tr><td class="gc-boxscore"><a href="/game/${game.id}" class="gc-icon-link" title="Box Score"><i class="fas fa-chart-bar"></i></a></td></tr>`;
                     }
                     teamTable += '<tbody></table></td>';
 

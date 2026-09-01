@@ -704,6 +704,7 @@ footer {
 .gc-boxscore {
     font-size: 0.72em;
     padding-left: 0.5em !important;
+    text-align: right;
 }
 .gc-boxscore a,
 .gc-boxlink {
@@ -713,6 +714,22 @@ footer {
 .gc-boxscore a:hover,
 .gc-boxlink:hover {
     text-decoration: underline;
+}
+.gc-icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--cc-r-sm);
+    background: rgba(142, 140, 240, 0.12);
+    color: var(--cc-interactive) !important;
+    font-size: 0.72rem;
+    transition: background 0.15s ease;
+}
+.gc-icon-link:hover {
+    background: rgba(142, 140, 240, 0.22);
+    text-decoration: none !important;
 }
 
 #loading {

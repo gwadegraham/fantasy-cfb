@@ -120,7 +120,8 @@
             html += '<a href="javascript:history.back()" class="gd-back"><i class="fas fa-arrow-left"></i> Back</a>';
 
             // ---- Header: matchup ----
-            html += '<div class="gd-header">';
+            var gradStyle = 'background: linear-gradient(90deg, ' + awayColor + '18 0%, transparent 38%, transparent 62%, ' + homeColor + '18 100%);';
+            html += '<div class="gd-header" style="' + gradStyle + '">';
             html += '<div class="gd-date">' + dateStr + '</div>';
             html += statusLabel;
             html += '<div class="gd-matchup">';

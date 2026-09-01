@@ -39,6 +39,8 @@ html.gd-page, .gd-page body {
 .gd-header {
     text-align: center;
     margin-bottom: 12px;
+    padding: 16px 12px;
+    border-radius: var(--cc-r-md);
 }
 .gd-date {
     font-size: 0.82rem;
