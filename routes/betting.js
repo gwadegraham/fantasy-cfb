@@ -22,7 +22,7 @@ router.get('/list', async (req, res) => {
         const parlays = await Parlay.find({
             group: req.bettingGroup._id,
             season: Number(season)
-        }).sort({ week: -1 }).lean();
+        }).sort({ week: -1 }).populate('placedBy', 'firstName lastName').lean();
         res.json(parlays);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -179,6 +179,7 @@ router.post('/', async (req, res) => {
             seasonType: st,
             week: w,
             wager: wager || null,
+            placedBy: req.bettingUserId,
             legs
         });
         await parlay.save();
@@ -246,6 +247,7 @@ router.patch('/:id', async (req, res) => {
         if (req.body.boostPct != null) parlay.boostPct = req.body.boostPct;
         if (req.body.boostedOdds != null) parlay.boostedOdds = req.body.boostedOdds;
         if (req.body.totalPayout != null) parlay.totalPayout = req.body.totalPayout;
+        if (req.body.placedBy != null) parlay.placedBy = req.body.placedBy || null;
         parlay.updatedAt = new Date();
         await parlay.save();
         res.json(parlay);

@@ -501,12 +501,14 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
         `<span class="form-dot ${f.win ? 'form-win' : 'form-loss'}" title="${f.us}-${f.them}">${f.win ? 'W' : 'L'}</span>`
     ).join('');
 
-    // Early season: the "actual vs expected" delta is misleading when only a few
-    // games have been played — 1 win vs 9.5 projected looks like a huge shortfall.
-    // Show the projection alone until at least 4 games are in the books.
+    // The "actual vs expected" delta is only meaningful once the regular season is
+    // over — mid-season it reads as a shortfall the team hasn't had yet. Show the
+    // projection alone until every regular-season game has been completed.
+    var regularGames = (schedule || []).filter(g => !g.seasonType || g.seasonType === 'regular');
+    var regularDone = regularGames.length > 0 && regularGames.every(g => g.completed);
     var expectedHtml = '';
     if (expected != null) {
-        expectedHtml = (played < 4)
+        expectedHtml = !regularDone
             ? `<p class="score expected-wins">${Number(expected).toFixed(1)} projected wins</p>`
             : `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
                  <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
