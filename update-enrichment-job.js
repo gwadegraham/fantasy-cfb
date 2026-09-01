@@ -9,32 +9,28 @@ const { getCalendar } = require('./modules/cfbd-calendar');
 const { resolveCurrentWeek } = require('./modules/score-update');
 
 // Pulls opponent-agnostic CFBD data onto each team's season, plus broadcast
-// outlets onto games. Two cadences (the enrich route splits by `scope`):
-//   weekly (default)  — SP+/FPI ratings + media = ~3 CFBD calls. Safe to run
-//                       every week; this is what modules/scheduler.js fires.
-//   preseason         — adds talent, returning production, coaches (all fixed
-//                       for the season) = ~6 CFBD calls. Run ONCE before the
-//                       season, ideally before the draft.
+// outlets onto games. Every run pulls all 5 team endpoints (SP+, FPI, talent,
+// returning production, coaches) = ~5 CFBD calls for the enrich leg. With the
+// 5k/mo Tier 1 budget this is cheap enough to run weekly.
+//
+// The 'preseason' flag now only controls whether pregame WP / weather / stat
+// retries are skipped (no games to score yet).
+//
 // Timing for the weekly run is owned by modules/scheduler.js; running this file
 // directly is a manual fallback:
-//   node update-enrichment-job.js 2026            (weekly: ratings + media)
-//   node update-enrichment-job.js 2026 preseason  (full: adds talent/returning/coaches)
+//   node update-enrichment-job.js 2026
+//   node update-enrichment-job.js 2026 preseason  (skips WP/weather/stat-retry)
 //
 // Like the scoring jobs, every run is recorded as a JobRun (start -> success/
-// error) and a failure emails the run report. Without that this job was the one
-// piece of automation with NO outward sign it had run: a broken weekly pull just
-// left last week's SP+ sitting on the team docs, and the only symptom was
-// standings projections that quietly stopped responding to results.
+// error) and a failure emails the run report.
 const JOB_NAME = 'enrichment';
 
 async function run(opts = {}) {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
     const season = parseInt(process.argv[2], 10) || parseInt(process.env.YEAR, 10);
-    // Weekly by default; 'preseason' (via opts or CLI arg) pulls everything.
     const preseason = opts.preseason || process.argv[3] === 'preseason';
-    const scope = preseason ? 'all' : 'weekly';
-    const label = `Enrichment (${scope})`;
+    const label = `Enrichment${preseason ? ' (preseason)' : ''}`;
     const results = {};
 
     async function post(path, body) {
@@ -60,7 +56,7 @@ async function run(opts = {}) {
 
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
-        const enrichBody = { scope };
+        const enrichBody = { scope: 'all' };
         if (currentWeek != null) enrichBody.week = currentWeek;
         results.teams = await post(`/teams/${season}/enrich`, enrichBody);
         results.media = await post(`/games/${season}/media`);
@@ -101,13 +97,13 @@ async function run(opts = {}) {
         const statRetried = results.statRetry ? (results.statRetry.body.retried || 0) : 0;
         const statResolved = results.statRetry ? (results.statRetry.body.resolved || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
-        const summary = `${scope} · ${results.teams.body.updated} teams enriched · `
+        const summary = `${results.teams.body.updated} teams enriched · `
             + `${results.media.body.updated} games given media`
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
             + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
             + (statRetried ? ` · ${statRetried} box score retries → ${statResolved} parlays resolved` : '')
             + ` (${secs}s)`;
-        console.log(`[${JOB_NAME}] season ${season} (scope=${scope}):`,
+        console.log(`[${JOB_NAME}] season ${season} (scope=all):`,
             `teams enriched=${results.teams.body.updated}`,
             `media updated=${results.media.body.updated}`,
             wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
@@ -120,7 +116,7 @@ async function run(opts = {}) {
                 label, when, ok: true,
                 rows: [
                     ['Season', String(season)],
-                    ['Scope', scope],
+                    ['Scope', 'all'],
                     ['Week', currentWeek != null ? String(currentWeek) : 'n/a'],
                     ['Teams enriched', String(results.teams.body.updated)],
                     ['Games w/ media', String(results.media.body.updated)],
@@ -139,7 +135,7 @@ async function run(opts = {}) {
         await finishRun(id, 'error', msg);
         await sendJobEmail({
             label, when, ok: false,
-            rows: [['Season', String(season)], ['Scope', scope], ['Failed after', `${secs}s`]],
+            rows: [['Season', String(season)], ['Scope', 'all'], ['Failed after', `${secs}s`]],
             error: (err && err.stack) ? err.stack : msg
         });
         throw err;

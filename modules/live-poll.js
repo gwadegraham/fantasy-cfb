@@ -1,24 +1,17 @@
 // Game-day live scoring poller.
 //
-// Refreshes scores frequently during games so standings feel "live" WITHOUT
-// blowing the CFBD monthly budget. The scheduler fires this every 10 min, every
-// day, but it only spends a CFBD call when a game is genuinely in progress.
-// Three independent guards, cheapest first:
+// Refreshes scores every 2 minutes during games so standings feel near-live.
+// The scheduler fires this every 2 min, every day, but it only spends a CFBD
+// call when a game is genuinely in progress. Two independent guards:
 //
-//   1. games-live gate + PHASE — read the local Game collection (0 CFBD calls,
-//      the schedule is ingested ahead of time) for any active-season game that
-//      kicked off within the last MAX_GAME_HOURS and isn't completed. Regular
-//      and postseason don't overlap in time, so at most one phase is live. This
-//      is what makes August, empty days, and finished slates spend nothing, and
-//      the 6h tail stops a stuck `completed` flag from polling forever.
-//   2. cadence — depends on the live phase:
-//        • regular    → Thu/Fri/Sat only (Sat every 10 min, Thu/Fri every 20).
-//        • postseason → every 10 min, ANY day. Bowls/CFP run Mon–Sat (the
-//          national championship is a Monday) and are sparse + high-value, so
-//          they get the tighter cadence on whatever day they fall.
-//   3. hard ceiling — skip if CFBD's own remainingCalls has fallen to the
-//      reserved buffer (default 100), so headroom for manual admin work is never
-//      touched. remainingCalls is authoritative (counts ALL usage).
+//   1. games-live gate — read the local Game collection (0 CFBD calls, the
+//      schedule is ingested ahead of time) for any active-season game that
+//      kicked off within the last MAX_GAME_HOURS and isn't completed. This
+//      is what makes August, empty days, and finished slates spend nothing,
+//      and the 6h tail stops a stuck `completed` flag from polling forever.
+//   2. hard ceiling — skip if CFBD's own remainingCalls has fallen to the
+//      reserved buffer (default 300), so headroom for manual admin work is
+//      never touched. remainingCalls is authoritative (counts ALL usage).
 //
 // Each actual poll fetches the CFBD /scoreboard (Tier 1, 1 call) which returns
 // in-progress scores, period, clock, and possession — then re-scores the current
@@ -36,28 +29,9 @@ const JOB_NAME = 'live-scores';
 
 // Tunables (env-overridable).
 const MAX_GAME_HOURS = Number(process.env.LIVE_POLL_MAX_GAME_HOURS) || 6;
-const CALL_BUFFER = Number(process.env.LIVE_POLL_CALL_BUFFER) || 100;
+const CALL_BUFFER = Number(process.env.LIVE_POLL_CALL_BUFFER) || 300;
 
 // ---- pure decision helpers (unit-tested) ------------------------------------
-
-// Central day-of-week: Thu(4) Fri(5) Sat(6) are the live-poll days.
-function isLivePollDay(dow) { return dow === 4 || dow === 5 || dow === 6; }
-
-// Saturday polls every 10-min mark; Thu/Fri every 20 (:00/:20/:40).
-function isOnCadence(dow, minute) {
-    if (dow === 6) return minute % 10 === 0;
-    if (dow === 4 || dow === 5) return minute % 20 === 0;
-    return false;
-}
-
-// Whether this fire is on-cadence for the live phase.
-//   postseason → every 10 min, any day (the scheduler fires on 10-min marks).
-//   regular    → Thu/Fri/Sat only, at the regular cadence above.
-function cadenceOk(phase, dow, minute) {
-    if (phase === 'postseason') return minute % 10 === 0;
-    if (phase === 'regular') return isLivePollDay(dow) && isOnCadence(dow, minute);
-    return false;
-}
 
 // Any game in progress right now? Kicked off within maxHours and not yet final.
 // `games` are already-narrowed active-season candidates (one phase) from the DB.
@@ -71,30 +45,15 @@ function anyGameInProgress(games, nowMs, maxHours) {
     });
 }
 
-// Final poll/skip verdict from already-gathered inputs. `phase` is the live
-// phase ('regular' | 'postseason' | null). remainingCalls === null means
-// "unknown" (info check failed) — we don't block scoring on that; the games-live
-// gate still bounds the spend.
-function decide({ dow, minute, phase, remainingCalls, buffer }) {
+// Final poll/skip verdict. `phase` is the live phase ('regular' | 'postseason'
+// | null). remainingCalls === null means "unknown" (info check failed) — we
+// don't block scoring on that; the games-live gate still bounds the spend.
+function decide({ phase, remainingCalls, buffer }) {
     if (!phase) return { poll: false, reason: 'no game in progress' };
-    if (!cadenceOk(phase, dow, minute)) {
-        return { poll: false, reason: phase === 'regular' ? 'regular game, off-cadence / not Thu-Fri-Sat' : 'off-cadence' };
-    }
     if (remainingCalls != null && remainingCalls <= buffer) {
         return { poll: false, reason: `ceiling reached: ${remainingCalls} CFBD calls left (buffer ${buffer})` };
     }
     return { poll: true, reason: `${phase} game in progress` };
-}
-
-// America/Chicago day-of-week + minute, without a tz library.
-function centralNow(now) {
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Chicago', weekday: 'short', minute: '2-digit', hour12: false
-    }).formatToParts(now);
-    const map = {};
-    parts.forEach(p => { map[p.type] = p.value; });
-    const dow = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[map.weekday];
-    return { dow, minute: Number(map.minute) };
 }
 
 // ---- CFBD remaining-calls, learned for free from the poll response ----------
@@ -124,7 +83,6 @@ async function run() {
 
     const now = new Date();
     const nowMs = now.getTime();
-    const { dow, minute } = centralNow(now);
 
     // Games-live gate (DB only, 0 CFBD calls). Not-completed games that have
     // already kicked off — normally just the current slate's live/unfinalized
@@ -141,12 +99,9 @@ async function run() {
     const phase = postLive ? 'postseason' : (regLive ? 'regular' : null);
     if (!phase) return { skipped: 'no game in progress' };
 
-    // Cadence for the live phase (pure). Off-cadence fires cost nothing more.
-    if (!cadenceOk(phase, dow, minute)) return { skipped: 'off-cadence' };
-
     // Hard ceiling (authoritative CFBD remainingCalls).
     const remaining = await currentRemaining();
-    const decision = decide({ dow, minute, phase, remainingCalls: remaining, buffer: CALL_BUFFER });
+    const decision = decide({ phase, remainingCalls: remaining, buffer: CALL_BUFFER });
     if (!decision.poll) {
         console.log(`live-poll skip — ${decision.reason}`);
         return { skipped: decision.reason };
@@ -180,7 +135,7 @@ async function run() {
 module.exports = {
     run, JOB_NAME,
     // exported for tests
-    isLivePollDay, isOnCadence, cadenceOk, anyGameInProgress, decide, centralNow,
+    anyGameInProgress, decide,
     _resetRemaining: () => { lastKnownRemaining = null; }
 };
 

@@ -323,7 +323,7 @@ describe('resolveCurrentWeek', () => {
 
 // The bracket is what tells scoring which round a postseason game is, so the
 // refresh has to land before updateScores. It's also one CFBD call against a
-// 1,000/month budget, so it must not fire outside the postseason — and it must
+// 5,000/month budget, so it must not fire outside the postseason — and it must
 // never abort a scoring run, because "no bracket yet" is the normal state for
 // most of the window (the bracket doesn't exist until selection day).
 describe('CFP bracket refresh', () => {

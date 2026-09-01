@@ -268,13 +268,10 @@ router.post('/:season/enrich', async (req, res) => {
 
     const norm = (s) => String(s == null ? '' : s).toLowerCase().trim();
 
-    // Enrichment splits into two cadences (see modules/scheduler.js):
-    //   weekly    — SP+/FPI ratings, which move every week all season
-    //   preseason — talent, returning production, coaches: FIXED for the whole
-    //               season, so re-pulling them weekly just burns CFBD budget
-    // Default 'all' keeps the admin button and preseason prep pulling everything
-    // in one shot. Only the requested endpoints are fetched, so scope=weekly
-    // costs 2 CFBD calls instead of 5.
+    // Default 'all' pulls every endpoint (5 CFBD calls). The weekly enrichment
+    // job also uses 'all' — with a 5k/mo budget it's cheap to keep talent,
+    // returning production, and coaches fresh alongside SP+/FPI. The 'weekly'
+    // and 'preseason' scopes are still valid for callers that want a subset.
     const scope = (req.body && req.body.scope) || 'all';
     if (!['all', 'weekly', 'preseason'].includes(scope)) {
         return res.status(400).json({ message: `Invalid scope '${scope}' (expected all|weekly|preseason)` });

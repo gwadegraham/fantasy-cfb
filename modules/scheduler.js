@@ -8,23 +8,19 @@ const JOB_SCHEDULES = [
     { job: 'daily-scores', modulePath: '../update-daily-scores-job', rule: { hour: 23, minute: 0 } },
     { job: 'saturday-scores', modulePath: '../update-saturday-scores-job', rule: { dayOfWeek: 6, hour: [15, 18, 22], minute: 0 } },
     { job: 'sunday-scores', modulePath: '../update-sunday-scores-job', rule: { dayOfWeek: 0, hour: [3, 6], minute: 0 } },
-    // Weekly enrichment (SP+/FPI ratings + broadcast outlets). Tuesday morning,
-    // after the weekend's ratings have refreshed. ~3 CFBD calls. Season-fixed
-    // fields (talent/returning/coaches) are pulled preseason instead — run
-    // `node update-enrichment-job.js <year> preseason` before the season/draft.
+    // Weekly enrichment (all 5 team endpoints + broadcast outlets). Tuesday
+    // morning, after the weekend's ratings have refreshed. ~8 CFBD calls.
     { job: 'enrichment', modulePath: '../update-enrichment-job', rule: { dayOfWeek: 2, hour: 5, minute: 30 } }
 ];
 
-// Opt-in game-day live poller (modules/live-poll.js). Fires every 10 min, every
-// day; the module's own phase-aware gates decide whether to actually spend a
-// CFBD call (a regular game live on Thu/Fri/Sat, or a postseason game live any
-// day — bowls/CFP run Mon–Sat — plus under the call ceiling). Firing daily is
-// cheap: the games-live gate is a local DB check, so non-game times cost nothing.
+// Opt-in game-day live poller (modules/live-poll.js). Fires every 2 min; the
+// module's own games-live gate (a local DB check, 0 CFBD calls) skips
+// immediately when no game is in progress, so non-game times cost nothing.
 // Kept OUT of the always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true
 // so it can be switched on/off independently of the core scoring jobs.
 const LIVE_POLL_SCHEDULE = {
     job: 'live-scores', modulePath: '../modules/live-poll',
-    rule: { minute: [0, 10, 20, 30, 40, 50] }
+    rule: { minute: new Array(30).fill(0).map((_, i) => i * 2) }
 };
 
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }

@@ -104,14 +104,14 @@ describe('update-enrichment-job run()', () => {
         expect(results.media.body.updated).toBe(55);
     });
 
-    test('defaults to the weekly scope; preseason opt widens it to "all"', async () => {
+    test('always sends scope "all" to the enrich endpoint', async () => {
         stubFetch();
-        await enrichmentJob.run();                    // default
+        await enrichmentJob.run();
         let enrich = global.fetch.mock.calls.find(c => c[0].includes('/enrich'));
-        expect(JSON.parse(enrich[1].body).scope).toBe('weekly');
+        expect(JSON.parse(enrich[1].body).scope).toBe('all');
 
         global.fetch.mockClear();
-        await enrichmentJob.run({ preseason: true });  // preseason
+        await enrichmentJob.run({ preseason: true });
         enrich = global.fetch.mock.calls.find(c => c[0].includes('/enrich'));
         expect(JSON.parse(enrich[1].body).scope).toBe('all');
     });
