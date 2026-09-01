@@ -625,6 +625,16 @@ app.get('/game/:id', async function(req, res) {
     }
 });
 
+app.get('/cfp-bracket', async function(req, res) {
+    if (req.oidc.isAuthenticated()) {
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
+        res.render('cfpBracket', { user, userState, year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser) });
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));
