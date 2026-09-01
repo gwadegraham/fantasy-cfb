@@ -81,6 +81,10 @@ const parlaySchema = new mongoose.Schema({
     payout: {
         type: Number
     },
+    placedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
     legs: [legSchema],
     createdAt: {
         type: Date,

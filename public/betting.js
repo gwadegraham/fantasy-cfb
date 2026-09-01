@@ -271,11 +271,23 @@ function renderCurrentParlay() {
     var statusAnimClass = shouldAnimate ? ' parlay-status--unrevealed' : '';
     var payoutAnimClass = shouldAnimate ? ' payout-bar--unrevealed' : '';
 
+    var placedByName = parlay.placedBy
+        ? (typeof parlay.placedBy === 'object' ? (parlay.placedBy.firstName || 'Unknown') : (memberNames[parlay.placedBy] || 'Unknown'))
+        : '';
+
     var wagerHtml = '';
     if (window.IS_ADMIN && adminEditing && parlay.status === 'pending') {
+        var placedByOptions = '<option value="">—</option>';
+        Object.keys(memberNames).forEach(function (id) {
+            var sel = (parlay.placedBy && ((typeof parlay.placedBy === 'object' ? parlay.placedBy._id : parlay.placedBy) === id)) ? ' selected' : '';
+            placedByOptions += '<option value="' + id + '"' + sel + '>' + memberNames[id] + '</option>';
+        });
+
         wagerHtml = '<div class="wager-section">'
             + '<label>Wager $</label>'
             + '<input type="number" class="wager-input" value="' + (parlay.wager || '') + '" onchange="updateWager(\'' + parlay._id + '\', this.value)">'
+            + '<label>Placed by</label>'
+            + '<select class="wager-input" onchange="updatePlacedBy(\'' + parlay._id + '\', this.value)">' + placedByOptions + '</select>'
             + '</div>'
             + '<div class="boost-section">'
             + '<label>Odds</label>'
@@ -291,7 +303,7 @@ function renderCurrentParlay() {
 
     container.innerHTML =
         '<div class="parlay-card">'
-        + '<div class="parlay-header"><div class="parlay-week">Week ' + currentWeek + ' Parlay</div>'
+        + '<div class="parlay-header"><div class="parlay-week">Week ' + currentWeek + ' Parlay' + (placedByName ? ' <span class="placed-by">placed by ' + placedByName + '</span>' : '') + '</div>'
         + '<div class="parlay-header-actions">'
         + (window.IS_ADMIN ? '<button type="button" class="btn-admin-edit' + (adminEditing ? ' active' : '') + '" onclick="toggleAdminEdit()" title="Edit parlay"><i class="fa-solid fa-pen"></i></button>' : '')
         + '<span class="parlay-status ' + statusClass + statusAnimClass + '">' + statusLabel + '</span>'
@@ -849,6 +861,20 @@ async function updateWager(parlayId, value) {
         });
         if (res.ok) {
             if (window.ccToast) ccToast.success('Wager updated');
+            await refresh();
+        }
+    } catch (e) { /* skip */ }
+}
+
+async function updatePlacedBy(parlayId, value) {
+    try {
+        var res = await fetch('/betting/' + parlayId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ placedBy: value || null })
+        });
+        if (res.ok) {
+            if (window.ccToast) ccToast.success('Placed by updated');
             await refresh();
         }
     } catch (e) { /* skip */ }
