@@ -700,19 +700,16 @@ footer {
     white-space: nowrap;
 }
 
-/* "Box Score" link inside game cards (standings, My Team, team page). */
-.gc-boxscore {
-    font-size: 0.72em;
-    padding-left: 0.5em !important;
-}
-.gc-boxscore a,
-.gc-boxlink {
-    color: var(--cc-interactive);
+/* Clickable game card — whole card navigates to game detail. */
+.gc-clickable {
     text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
 }
-.gc-boxscore a:hover,
-.gc-boxlink:hover {
-    text-decoration: underline;
+a.gc-clickable { display: block; }
+.gc-clickable:hover {
+    border-color: var(--cc-interactive);
 }
 
 #loading {

@@ -1986,14 +1986,18 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
     }
 
-    return '<div class="game-card' + (isLive ? ' gc-live' : '') + '"><table class="game-table"><tbody><tr></tr>'
+    var cardOpen = game.completed && game.id
+        ? '<a href="/game/' + game.id + '" class="game-card gc-clickable' + (isLive ? ' gc-live' : '') + '">'
+        : '<div class="game-card' + (isLive ? ' gc-live' : '') + '">';
+    var cardClose = game.completed && game.id ? '</a>' : '</div>';
+
+    return cardOpen + '<table class="game-table"><tbody><tr></tr>'
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
         + '<tr><td class="gc-team">' + homeCol + '</td><td class="gc-divider"></td><td class="gc-score">' + homeScore + '</tr>'
         + liveStatus
         + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + (game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ' <span class="game-weather" title="' + (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') + '">' + window.ccWeatherEmoji[game.weather.emoji] + '</span>' : '') + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
-        + (game.completed ? '<tr><td class="gc-boxscore"><a href="/game/' + game.id + '">Box Score</a></td></tr>' : '')
-        + '</tbody></table></div>';
+        + '</tbody></table>' + cardClose;
 }
 
 async function displaySchedule(data) {

@@ -501,11 +501,12 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
         `<span class="form-dot ${f.win ? 'form-win' : 'form-loss'}" title="${f.us}-${f.them}">${f.win ? 'W' : 'L'}</span>`
     ).join('');
 
-    // Preseason (no games yet): show the projection on its own — a red "actual vs
-    // expected" delta against zero wins reads as a shortfall the team hasn't had.
+    // Early season: the "actual vs expected" delta is misleading when only a few
+    // games have been played — 1 win vs 9.5 projected looks like a huge shortfall.
+    // Show the projection alone until at least 4 games are in the books.
     var expectedHtml = '';
     if (expected != null) {
-        expectedHtml = (played === 0)
+        expectedHtml = (played < 4)
             ? `<p class="score expected-wins">${Number(expected).toFixed(1)} projected wins</p>`
             : `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
                  <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
@@ -620,11 +621,21 @@ function renderWeeklyScores(seasonObj, scoreCode) {
     if (!weekly.length) return '';
 
     var key = (scoreCode == 'cumulativeScoreV1') ? 'scoreV1' : 'scoreV2';
-    var values = weekly.map(w => Number(w[key]) || 0);
-    var max = Math.max(...values, 1);
 
-    var bars = weekly.map((w, i) => {
-        var v = values[i];
+    // Deduplicate by week+seasonType (two games in the same week get summed).
+    var byKey = {};
+    weekly.forEach(function (w) {
+        var k = (w.seasonType || 'regular') + ':' + w.week;
+        if (!byKey[k]) byKey[k] = { week: w.week, seasonType: w.seasonType, score: 0 };
+        byKey[k].score += Number(w[key]) || 0;
+    });
+    var merged = Object.values(byKey)
+        .sort(function (a, b) { return (b.seasonType || '').localeCompare(a.seasonType || '') || a.week - b.week; });
+
+    var max = Math.max(...merged.map(function (w) { return w.score; }), 1);
+
+    var bars = merged.map(function (w, i) {
+        var v = w.score;
         var pct = Math.max(4, Math.round((v / max) * 100));
         var label = (w.seasonType && w.seasonType !== 'regular') ? 'P' + w.week : 'W' + w.week;
         return `
@@ -798,7 +809,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             `;
 
             html += `
-                <div class="game-row">
+                <div class="game-row${game.completed && game.id ? ' gc-clickable' : ''}"${game.completed && game.id ? ` data-game-id="${game.id}"` : ''}>
                     <div class="game-info">
                         <div class="team-row">
                             <span class="team-vs">${awayTeamHTML}
@@ -806,7 +817,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}${game.completed && game.id ? ` · <a class="gc-boxlink" href="/game/${game.id}">Box Score</a>` : ''}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
@@ -818,6 +829,12 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
 
     html += '</div>';
     container.innerHTML = html;
+
+    container.addEventListener('click', function (e) {
+        if (e.target.closest('a[href]')) return;
+        var card = e.target.closest('.gc-clickable[data-game-id]');
+        if (card) window.location.href = '/game/' + card.getAttribute('data-game-id');
+    });
 
     const scheduleButton = document.querySelector('#schedule-container .schedule-head');
 

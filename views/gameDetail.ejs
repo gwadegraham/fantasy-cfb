@@ -120,29 +120,30 @@
             html += '<a href="javascript:history.back()" class="gd-back"><i class="fas fa-arrow-left"></i> Back</a>';
 
             // ---- Header: matchup ----
-            html += '<div class="gd-header">';
+            var gradStyle = 'background: linear-gradient(90deg, ' + awayColor + '18 0%, transparent 38%, transparent 62%, ' + homeColor + '18 100%);';
+            html += '<div class="gd-header" style="' + gradStyle + '">';
             html += '<div class="gd-date">' + dateStr + '</div>';
             html += statusLabel;
             html += '<div class="gd-matchup">';
 
             // Away team
-            html += '<div class="gd-team' + (awayWon ? ' gd-winner' : '') + '">';
+            html += '<a href="/team?team=' + game.awayId + '" class="gd-team' + (awayWon ? ' gd-winner' : '') + '">';
             html += '<img class="gd-logo" src="' + awayLogo + '" alt="" />';
             html += '<div class="gd-team-info">';
             html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayAbbr + '</span></div>';
             html += '<div class="gd-score">' + fmt(game.awayPoints) + '</div>';
-            html += '</div></div>';
+            html += '</div></a>';
 
             // @ divider
             html += '<div class="gd-at">@</div>';
 
             // Home team
-            html += '<div class="gd-team' + (homeWon ? ' gd-winner' : '') + '">';
+            html += '<a href="/team?team=' + game.homeId + '" class="gd-team' + (homeWon ? ' gd-winner' : '') + '">';
             html += '<img class="gd-logo" src="' + homeLogo + '" alt="" />';
             html += '<div class="gd-team-info">';
             html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeAbbr + '</span></div>';
             html += '<div class="gd-score">' + fmt(game.homePoints) + '</div>';
-            html += '</div></div>';
+            html += '</div></a>';
 
             html += '</div>'; // .gd-matchup
             html += '</div>'; // .gd-header
