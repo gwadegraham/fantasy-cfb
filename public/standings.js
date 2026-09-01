@@ -884,6 +884,11 @@ document.addEventListener('click', async function (e) {
     }
 });
 
+document.addEventListener('click', function (e) {
+    var card = e.target.closest('.gc-clickable[data-game-id]');
+    if (card) window.location.href = '/game/' + card.getAttribute('data-game-id');
+});
+
 async function displaySchedule(data) {
     const scheduleStart = new Date();
     var usersAndTeams = [];
@@ -1094,7 +1099,7 @@ async function displaySchedule(data) {
                         bottomData = '<span class="gc-time">' + standardTime + '</span>';
                     }
         
-                    var teamTable = '<td><table class="schedule-table game-table"><tbody><tr firstRow></tr>';
+                    var teamTable = '<td><table class="schedule-table game-table' + (game.completed && game.id ? ' gc-clickable' : '') + '"' + (game.completed && game.id ? ' data-game-id="' + game.id + '"' : '') + '><tbody><tr firstRow></tr>';
                     teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
 
                     teamTable += '<tr><td style="width: 250px;">';
@@ -1114,9 +1119,6 @@ async function displaySchedule(data) {
                     teamTable += `</tr>${game.outlet || wxEmoji ? `<tr><td class="game-broadcast">${game.outlet ? (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet : ''}${wxEmoji ? ' ' + wxSpan : ''}</td></tr>` : ''}<tr><td class="game-notes">`;
                     teamTable += game.notes || '';
                     teamTable += '</td></tr>';
-                    if (game.completed) {
-                        teamTable += `<tr><td class="gc-boxscore"><a href="/game/${game.id}">Box Score ›</a></td></tr>`;
-                    }
                     teamTable += '<tbody></table></td>';
 
                     var gameInfo = {
