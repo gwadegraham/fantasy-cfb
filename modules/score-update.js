@@ -257,7 +257,7 @@ async function doFullUpdate({ withBetting = false } = {}) {
     // after the title game (`/rankings?year=2026&week=1&seasonType=postseason`
     // returns []), so retrieveRankings threw on data[0].polls and 400'd — every
     // run, all bowl season. With live polling at postseason cadence that is a CFBD
-    // call every 10 minutes against a 1,000/month budget, for a document nothing
+    // call every 2 minutes against the monthly budget, for a document nothing
     // would ever read.
     if (!isPostseason) {
         var rankingsRes = await internalFetch(`${process.env.URL}/rankings/${season}/${weekNumber}/regular`, {
