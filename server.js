@@ -615,6 +615,16 @@ app.get('/hall-of-fame', async function(req, res) {
     }
 });
 
+app.get('/game/:id', async function(req, res) {
+    if (req.oidc.isAuthenticated()) {
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
+        res.render('gameDetail', { user, userState, gameId: req.params.id, year: process.env.YEAR });
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/images',  express.static('images'));

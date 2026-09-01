@@ -34,6 +34,7 @@
     // card layout unchanged. No id -> no link (e.g. the dev sim's fake rows).
     function manLink(id, inner) { return id != null ? '<a class="h2h-mlink" href="/userHome?user=' + esc(id) + '">' + inner + '</a>' : inner; }
     function teamLink(id, inner) { return id != null ? '<a class="h2h-tlink" href="/team?team=' + esc(id) + '">' + inner + '</a>' : inner; }
+    function gameLink(id, inner) { return id != null ? '<a class="h2h-glink" href="/game/' + esc(id) + '">' + inner + '</a>' : inner; }
 
     // Kickoffs render in Central, the way every other date in the app does —
     // the payload carries the instant (ISO), not a rendered string. `dated`
@@ -122,7 +123,7 @@
         var tnm = teamLink(t.teamId, '<span class="h2h-tnm"><span class="tnm-full">' + esc(t.school) + '</span><span class="tnm-abbr">' + esc(t.abbr || t.school) + '</span></span>');
         var nm = '<span class="h2h-tnmline">' + tnm + cap + '</span>';
         var sub = t.opp
-            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.gameScore ? ' · ' + esc(t.gameScore) : '') + '</span>'
+            ? '<span class="h2h-tsub">' + esc(t.ha) + ' ' + rankTag(t.oppRank) + esc(t.opp) + (t.gameScore ? ' · ' + gameLink(t.gameId, esc(t.gameScore)) : '') + '</span>'
             : '';
         var idcol = '<span class="h2h-tid">' + nm + sub + '</span>';
         return right ? '<div class="h2h-trow">' + teamVal(t, plan) + idcol + img + '</div>'

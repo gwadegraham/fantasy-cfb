@@ -66,6 +66,7 @@ async function run(opts = {}) {
         if (!preseason && currentWeek != null) {
             results.pregameWP = await post(`/games/${season}/pregame-wp`, { week: currentWeek });
             results.weather = await post(`/games/${season}/weather`, { week: currentWeek });
+            results.playerStats = await post(`/games/${season}/player-stats`, { week: currentWeek });
         }
 
         // Retry stat-based parlay legs whose box scores weren't available on
@@ -94,6 +95,7 @@ async function run(opts = {}) {
 
         const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
         const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
+        const psIngested = results.playerStats ? (results.playerStats.body.ingested || 0) : 0;
         const statRetried = results.statRetry ? (results.statRetry.body.retried || 0) : 0;
         const statResolved = results.statRetry ? (results.statRetry.body.resolved || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
@@ -101,6 +103,7 @@ async function run(opts = {}) {
             + `${results.media.body.updated} games given media`
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
             + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
+            + (psIngested ? ` · ${psIngested} games given player stats` : '')
             + (statRetried ? ` · ${statRetried} box score retries → ${statResolved} parlays resolved` : '')
             + ` (${secs}s)`;
         console.log(`[${JOB_NAME}] season ${season} (scope=all):`,
@@ -108,6 +111,7 @@ async function run(opts = {}) {
             `media updated=${results.media.body.updated}`,
             wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
             wxUpdated ? `weather updated=${wxUpdated}` : '',
+            psIngested ? `playerStats ingested=${psIngested}` : '',
             statRetried ? `statRetry=${statRetried} resolved=${statResolved}` : '');
         await finishRun(id, 'success', summary);
 
@@ -122,6 +126,7 @@ async function run(opts = {}) {
                     ['Games w/ media', String(results.media.body.updated)],
                     ['Pregame WP', String(wpUpdated)],
                     ['Weather', String(wxUpdated)],
+                    ['Player stats', String(psIngested)],
                     ['Stat leg retries', statRetried ? `${statRetried} box scores → ${statResolved} parlays` : '0'],
                     ['Duration', `${secs}s`]
                 ]

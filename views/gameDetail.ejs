@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en" class="gd-page">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="/styles.css" rel="stylesheet">
+    <script src="/haptic.js"></script>
+    <link href="/gameDetail.css" rel="stylesheet">
+    <link href="/loading.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <title>Game Detail · Campus Clash</title>
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#101322" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+</head>
+
+<body>
+    <%- include('partials/navbar') %>
+    <% if (userState) { %>
+        <script>
+            var userState = <%- userState %>;
+        </script>
+    <% } %>
+
+    <div id="game-detail" class="game-detail-container">
+        <div class="gd-loading">Loading game data...</div>
+    </div>
+
+    <script>
+    (function () {
+        var GAME_ID = '<%= gameId %>';
+        var container = document.getElementById('game-detail');
+
+        function fmt(n) { return n != null ? String(n) : '-'; }
+        function pct(n) { return n != null ? n.toFixed(1) + '%' : '-'; }
+        function timeFmt(secs) {
+            if (secs == null) return '-';
+            var m = Math.floor(secs / 60);
+            var s = secs % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        async function load() {
+            try {
+                var res = await fetch('/games/detail/' + GAME_ID);
+                if (!res.ok) throw new Error('Game not found');
+                var game = await res.json();
+
+                // Fetch logos + colors for both teams (non-fatal if it fails)
+                var logoMap = {};
+                var colorMap = {};
+                var abbrMap = {};
+                try {
+                    var logoRes = await fetch('/teams/teamLogos', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ teams: [game.homeId, game.awayId] })
+                    });
+                    var logos = await logoRes.json();
+                    if (Array.isArray(logos)) {
+                        logos.forEach(function (t) {
+                            logoMap[t.id] = window.ccLogo ? window.ccLogo(t.logos) : (t.logos && t.logos[0] || '');
+                            var c = t.color || '';
+                            var ac = t.alt_color || '';
+                            colorMap[t.id] = { primary: c ? (c.startsWith('#') ? c : '#' + c) : null, alt: ac ? (ac.startsWith('#') ? ac : '#' + ac) : null, school: t.school };
+                            abbrMap[t.id] = t.abbreviation || t.school || '';
+                        });
+                    }
+                } catch (e) { /* logos are decorative */ }
+
+                render(game, logoMap, colorMap, abbrMap);
+            } catch (err) {
+                container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
+            }
+        }
+
+        function render(game, logos, colors, abbrs) {
+            var homeLogo = logos[game.homeId] || '';
+            var awayLogo = logos[game.awayId] || '';
+            var homeColor = (colors[game.homeId] && colors[game.homeId].primary) || 'var(--cc-interactive)';
+            var awayColor = (colors[game.awayId] && colors[game.awayId].primary) || 'var(--cc-interactive)';
+            var homeAbbr = abbrs[game.homeId] || game.homeTeam;
+            var awayAbbr = abbrs[game.awayId] || game.awayTeam;
+            var homeWon = game.homePoints > game.awayPoints;
+            var awayWon = game.awayPoints > game.homePoints;
+            var isFinal = game.completed;
+            var isLive = !isFinal && game.period;
+
+            // Game date
+            var dateStr = '';
+            if (game.startDate) {
+                var d = new Date(game.startDate);
+                dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            }
+
+            // Status label
+            var statusLabel = '';
+            if (isFinal) {
+                statusLabel = '<span class="gd-status gd-final">Final</span>';
+            } else if (isLive) {
+                var clockStr = game.clock ? ' · ' + game.clock : '';
+                statusLabel = '<span class="gd-status gd-live">Q' + game.period + clockStr + '</span>';
+            } else {
+                statusLabel = '<span class="gd-status gd-scheduled">Scheduled</span>';
+            }
+
+            var html = '';
+
+            // ---- Back link ----
+            html += '<a href="javascript:history.back()" class="gd-back"><i class="fas fa-arrow-left"></i> Back</a>';
+
+            // ---- Header: matchup ----
+            html += '<div class="gd-header">';
+            html += '<div class="gd-date">' + dateStr + '</div>';
+            html += statusLabel;
+            html += '<div class="gd-matchup">';
+
+            // Away team
+            html += '<div class="gd-team' + (awayWon ? ' gd-winner' : '') + '">';
+            html += '<img class="gd-logo" src="' + awayLogo + '" alt="" />';
+            html += '<div class="gd-team-info">';
+            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayAbbr + '</span></div>';
+            html += '<div class="gd-score">' + fmt(game.awayPoints) + '</div>';
+            html += '</div></div>';
+
+            // @ divider
+            html += '<div class="gd-at">@</div>';
+
+            // Home team
+            html += '<div class="gd-team' + (homeWon ? ' gd-winner' : '') + '">';
+            html += '<img class="gd-logo" src="' + homeLogo + '" alt="" />';
+            html += '<div class="gd-team-info">';
+            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeAbbr + '</span></div>';
+            html += '<div class="gd-score">' + fmt(game.homePoints) + '</div>';
+            html += '</div></div>';
+
+            html += '</div>'; // .gd-matchup
+            html += '</div>'; // .gd-header
+
+            // ---- Meta row: venue, weather, broadcast, attendance ----
+            var metaParts = [];
+            if (game.venue) metaParts.push('<i class="fas fa-location-dot"></i> ' + game.venue);
+            if (game.weather) {
+                var wxEmoji = game.weather.emoji && window.ccWeatherEmoji ? window.ccWeatherEmoji[game.weather.emoji] || '' : '';
+                var wxParts = [];
+                if (game.weather.condition) wxParts.push(game.weather.condition);
+                if (game.weather.temp != null) wxParts.push(game.weather.temp + '°F');
+                if (game.weather.wind != null) wxParts.push('Wind ' + game.weather.wind + ' mph');
+                if (wxParts.length) metaParts.push(wxEmoji + ' ' + wxParts.join(' · '));
+            }
+            if (game.outlet) metaParts.push((window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : '') + ' ' + game.outlet);
+            if (game.attendance) metaParts.push('<i class="fas fa-users"></i> ' + Number(game.attendance).toLocaleString());
+            if (metaParts.length) {
+                html += '<div class="gd-meta">' + metaParts.join('<span class="gd-meta-sep"></span>') + '</div>';
+            }
+
+            // ---- Score by quarter ----
+            var homeLS = game.homeLineScores || [];
+            var awayLS = game.awayLineScores || [];
+            var maxQ = Math.max(homeLS.length, awayLS.length, 4);
+            if (homeLS.length || awayLS.length) {
+                html += '<div class="gd-section">';
+                html += '<div class="gd-table-scroll"><table class="gd-linescore">';
+                html += '<thead><tr><th></th>';
+                for (var q = 0; q < maxQ; q++) {
+                    html += '<th>' + (q < 4 ? 'Q' + (q + 1) : 'OT' + (q > 4 ? q - 3 : '')) + '</th>';
+                }
+                html += '<th class="gd-total">T</th></tr></thead><tbody>';
+
+                // Away
+                html += '<tr class="' + (awayWon ? 'gd-row-winner' : '') + '">';
+                html += '<td class="gd-ls-team"><img src="' + awayLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.awayTeam + '</span><span class="gd-ls-abbr">' + awayAbbr + '</span></td>';
+                for (var q = 0; q < maxQ; q++) html += '<td>' + (awayLS[q] != null ? awayLS[q] : '-') + '</td>';
+                html += '<td class="gd-total">' + fmt(game.awayPoints) + '</td></tr>';
+
+                // Home
+                html += '<tr class="' + (homeWon ? 'gd-row-winner' : '') + '">';
+                html += '<td class="gd-ls-team"><img src="' + homeLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.homeTeam + '</span><span class="gd-ls-abbr">' + homeAbbr + '</span></td>';
+                for (var q = 0; q < maxQ; q++) html += '<td>' + (homeLS[q] != null ? homeLS[q] : '-') + '</td>';
+                html += '<td class="gd-total">' + fmt(game.homePoints) + '</td></tr>';
+
+                html += '</tbody></table></div>';
+                html += '</div>';
+            }
+
+            // ---- Team stats comparison ----
+            var hs = (game.teamStats && game.teamStats.home) || {};
+            var as = (game.teamStats && game.teamStats.away) || {};
+            if (Object.keys(hs).length || Object.keys(as).length) {
+                html += '<div class="gd-section">';
+                html += '<h3 class="gd-section-title">Team Stats</h3>';
+                html += '<div class="gd-stats-grid">';
+
+                var statRows = [
+                    ['Total Yards', fmt(as.totalYards), fmt(hs.totalYards)],
+                    ['Passing Yards', fmt(as.netPassingYards), fmt(hs.netPassingYards)],
+                    ['Rushing Yards', fmt(as.rushingYards), fmt(hs.rushingYards)],
+                    ['Passing TDs', fmt(as.passingTDs), fmt(hs.passingTDs)],
+                    ['Rushing TDs', fmt(as.rushingTDs), fmt(hs.rushingTDs)],
+                    ['Turnovers', fmt(as.turnovers), fmt(hs.turnovers)],
+                    ['Sacks', fmt(as.sacks), fmt(hs.sacks)],
+                    ['TFL', fmt(as.tacklesForLoss), fmt(hs.tacklesForLoss)],
+                    ['Penalties', fmt(as.penalties), fmt(hs.penalties)],
+                    ['3rd Down %', pct(as.thirdDownPct), pct(hs.thirdDownPct)],
+                    ['4th Down %', pct(as.fourthDownPct), pct(hs.fourthDownPct)],
+                    ['Possession', timeFmt(as.possessionSeconds), timeFmt(hs.possessionSeconds)],
+                ];
+
+                for (var i = 0; i < statRows.length; i++) {
+                    var row = statRows[i];
+                    var awayVal = parseFloat(row[1]) || 0;
+                    var homeVal = parseFloat(row[2]) || 0;
+                    var total = awayVal + homeVal;
+                    var awayPct = total > 0 ? (awayVal / total * 100) : 50;
+                    // Turnovers/penalties: lower is better
+                    var invertBar = row[0] === 'Turnovers' || row[0] === 'Penalties';
+                    var awayLead = invertBar ? awayVal < homeVal : awayVal > homeVal;
+                    var homeLead = invertBar ? homeVal < awayVal : homeVal > awayVal;
+
+                    html += '<div class="gd-stat-row">';
+                    html += '<div class="gd-stat-val' + (awayLead ? ' gd-stat-lead' : '') + '">' + row[1] + '</div>';
+                    html += '<div class="gd-stat-center">';
+                    html += '<div class="gd-stat-label">' + row[0] + '</div>';
+                    html += '<div class="gd-stat-bar"><div class="gd-stat-bar-fill" style="width:' + awayPct + '%;background:' + awayColor + '"></div><div class="gd-stat-bar-fill gd-stat-bar-right" style="width:' + (100 - awayPct) + '%;background:' + homeColor + '"></div></div>';
+                    html += '</div>';
+                    html += '<div class="gd-stat-val' + (homeLead ? ' gd-stat-lead' : '') + '">' + row[2] + '</div>';
+                    html += '</div>';
+                }
+
+                html += '</div></div>'; // .gd-stats-grid, .gd-section
+            }
+
+            // ---- Player stats ----
+            var hp = (game.playerStats && game.playerStats.home) || {};
+            var ap = (game.playerStats && game.playerStats.away) || {};
+            var teamCtx = {
+                away: { name: game.awayTeam, logo: awayLogo, color: awayColor },
+                home: { name: game.homeTeam, logo: homeLogo, color: homeColor }
+            };
+
+            if (Object.keys(hp).length || Object.keys(ap).length) {
+                html += renderPlayerSection('Passing', ap.passing, hp.passing,
+                    ['C/ATT', 'YDS', 'TD', 'INT', 'QBR'],
+                    function (p) { return [p.c + '/' + p.att, p.yds, p.td, p.int, p.qbr != null ? p.qbr.toFixed(1) : '-']; }, teamCtx);
+
+                html += renderPlayerSection('Rushing', ap.rushing, hp.rushing,
+                    ['CAR', 'YDS', 'TD', 'LNG'],
+                    function (p) { return [p.car, p.yds, p.td, p.lng]; }, teamCtx);
+
+                html += renderPlayerSection('Receiving', ap.receiving, hp.receiving,
+                    ['REC', 'YDS', 'TD', 'LNG'],
+                    function (p) { return [p.rec, p.yds, p.td, p.lng]; }, teamCtx);
+
+                html += renderPlayerSection('Defensive', ap.defensive, hp.defensive,
+                    ['TOT', 'SOLO', 'TFL', 'SACKS', 'INT'],
+                    function (p) { return [p.tot, p.solo, p.tfl, p.sacks, p.int]; }, teamCtx);
+
+                if ((ap.kicking && ap.kicking.length) || (hp.kicking && hp.kicking.length)) {
+                    html += renderPlayerSection('Kicking', ap.kicking, hp.kicking,
+                        ['FG', 'PCT', 'LNG', 'XP', 'PTS'],
+                        function (p) { return [p.fgm + '/' + p.fga, p.pct != null ? p.pct.toFixed(1) + '%' : '-', p.lng, p.xpm + '/' + p.xpa, p.pts]; }, teamCtx);
+                }
+
+                if ((ap.punting && ap.punting.length) || (hp.punting && hp.punting.length)) {
+                    html += renderPlayerSection('Punting', ap.punting, hp.punting,
+                        ['NO', 'YDS', 'AVG', 'LNG', 'IN20'],
+                        function (p) { return [p.no, p.yds, p.avg != null ? p.avg.toFixed(1) : '-', p.lng, p.in20]; }, teamCtx);
+                }
+            }
+
+            // ---- Additional info ----
+            var infoParts = [];
+            if (game.excitementIndex) infoParts.push(['Excitement', parseFloat(game.excitementIndex).toFixed(2)]);
+            if (game.pregameWinProb != null) infoParts.push(['Home Win Prob (pregame)', (game.pregameWinProb * 100).toFixed(1) + '%']);
+            if (game.notes) infoParts.push(['Notes', game.notes]);
+            if (infoParts.length) {
+                html += '<div class="gd-section gd-extra">';
+                for (var i = 0; i < infoParts.length; i++) {
+                    html += '<div class="gd-extra-item"><span class="gd-extra-label">' + infoParts[i][0] + '</span> ' + infoParts[i][1] + '</div>';
+                }
+                html += '</div>';
+            }
+
+            container.innerHTML = html;
+        }
+
+        function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {
+            awayPlayers = awayPlayers || [];
+            homePlayers = homePlayers || [];
+            if (!awayPlayers.length && !homePlayers.length) return '';
+
+            var html = '<div class="gd-section">';
+            html += '<h3 class="gd-section-title">' + title + '</h3>';
+            html += '<div class="gd-player-tables">';
+
+            html += playerTable(awayPlayers, cols, extractFn, teamCtx.away);
+            html += playerTable(homePlayers, cols, extractFn, teamCtx.home);
+
+            html += '</div></div>';
+            return html;
+        }
+
+        function playerTable(players, cols, extractFn, team) {
+            if (!players || !players.length) return '<div class="gd-player-table gd-player-empty">No stats</div>';
+            var html = '<div class="gd-player-table" style="border-top: 3px solid ' + team.color + '">';
+            html += '<div class="gd-pt-header"><img class="gd-pt-logo" src="' + team.logo + '" alt="" /> ' + team.name + '</div>';
+            html += '<div class="gd-table-scroll"><table>';
+            html += '<thead><tr><th class="gd-player-name">Player</th>';
+            for (var c = 0; c < cols.length; c++) html += '<th>' + cols[c] + '</th>';
+            html += '</tr></thead><tbody>';
+            for (var i = 0; i < players.length; i++) {
+                var vals = extractFn(players[i]);
+                html += '<tr><td class="gd-player-name">' + players[i].name + '</td>';
+                for (var c = 0; c < vals.length; c++) html += '<td>' + fmt(vals[c]) + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div></div>';
+            return html;
+        }
+
+        load();
+    })();
+    </script>
+</body>
+</html>

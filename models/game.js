@@ -37,7 +37,7 @@ const gameSchema = new mongoose.Schema({
         required: true
     },
     attendance: {
-        type: Boolean,
+        type: Number,
     },
     venueId: {
         type: Number
@@ -165,6 +165,37 @@ const gameSchema = new mongoose.Schema({
             totalPenaltiesYards:Number,
             possessionSeconds:  Number,
             pointsAllowed:      Number,
+        }, { _id: false })
+    },
+    // Per-player box scores from CFBD /games/players, keyed by side ('home'/'away').
+    // Each side holds arrays of top performers per stat category.
+    playerStats: {
+        type: Map,
+        of: new mongoose.Schema({
+            passing: [new mongoose.Schema({
+                name: String, c: Number, att: Number, yds: Number,
+                td: Number, int: Number, qbr: Number
+            }, { _id: false })],
+            rushing: [new mongoose.Schema({
+                name: String, car: Number, yds: Number,
+                td: Number, lng: Number
+            }, { _id: false })],
+            receiving: [new mongoose.Schema({
+                name: String, rec: Number, yds: Number,
+                td: Number, lng: Number
+            }, { _id: false })],
+            defensive: [new mongoose.Schema({
+                name: String, tot: Number, solo: Number,
+                tfl: Number, sacks: Number, int: Number
+            }, { _id: false })],
+            kicking: [new mongoose.Schema({
+                name: String, fgm: Number, fga: Number,
+                pct: Number, lng: Number, xpm: Number, xpa: Number, pts: Number
+            }, { _id: false })],
+            punting: [new mongoose.Schema({
+                name: String, no: Number, yds: Number,
+                avg: Number, lng: Number, tb: Number, in20: Number
+            }, { _id: false })],
         }, { _id: false })
     },
     weather: {

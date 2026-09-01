@@ -806,7 +806,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                         <div class="team-row">
                             <span class="team-vs">${homeTeamHTML}
                         </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
+                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}${game.completed && game.id ? ` · <a class="gc-boxlink" href="/game/${game.id}">Box Score</a>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>

@@ -1992,6 +1992,7 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         + liveStatus
         + (game.outlet ? '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + game.outlet + (game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ' <span class="game-weather" title="' + (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') + '">' + window.ccWeatherEmoji[game.weather.emoji] + '</span>' : '') + '</td></tr>' : '')
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
+        + (game.completed ? '<tr><td class="gc-boxscore"><a href="/game/' + game.id + '">Box Score</a></td></tr>' : '')
         + '</tbody></table></div>';
 }
 

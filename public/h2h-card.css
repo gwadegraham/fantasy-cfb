@@ -82,5 +82,7 @@
 .h2h-tlink:hover .h2h-tlogo { filter: drop-shadow(0 0 3px rgba(142, 140, 240, 0.7)); }
 .h2h-mlink:focus-visible .h2h-mnm,
 .h2h-tlink:focus-visible .h2h-tnm { outline: 2px solid var(--cc-info); outline-offset: 2px; border-radius: 4px; }
+.h2h-glink { color: var(--cc-interactive); text-decoration: none; }
+.h2h-glink:hover { text-decoration: underline; }
 
 @media (prefers-reduced-motion: reduce) { .h2h-mcaret, .h2h-mbfill { transition: none; } }

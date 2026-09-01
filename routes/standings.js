@@ -602,7 +602,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null };
             })
             .sort((a, b) => b.score - a.score);
         // The kickoff INSTANT, not a rendered string. This used to format here
@@ -626,7 +626,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, captain: isCaptain(id, w, t.id) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id) };
         })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play

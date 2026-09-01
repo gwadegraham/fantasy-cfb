@@ -16,6 +16,7 @@ const recordsModule = require('./records.js');
 const bettingModule = require('./betting.js');
 const { updateFromScoreboard } = require('./scoreboard');
 const { ingestBoxScores } = require('./box-scores');
+const { ingestPlayerStats } = require('./player-box-scores');
 
 // Distinct postseason weeks present in a mass-pull result, ascending. The
 // 12-team CFP spreads across several postseason weeks and scoring keys entries
@@ -435,6 +436,17 @@ async function doLiveUpdate() {
             }
         } catch (err) {
             console.log('Box score ingestion failed (non-fatal):', err.message);
+        }
+
+        // Player-level box scores for the game detail view (1 CFBD call).
+        // Fetches the whole week and filters to newly completed game IDs.
+        try {
+            const ps = await ingestPlayerStats(season, week, seasonType, result.newlyCompleted);
+            if (typeof ps.remainingCalls === 'number') {
+                result.remainingCalls = ps.remainingCalls;
+            }
+        } catch (err) {
+            console.log('Player box score ingestion failed (non-fatal):', err.message);
         }
 
         await scoringModule.applyH2HBonuses();
