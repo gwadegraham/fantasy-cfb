@@ -621,11 +621,30 @@ function renderWeeklyScores(seasonObj, scoreCode) {
     if (!weekly.length) return '';
 
     var key = (scoreCode == 'cumulativeScoreV1') ? 'scoreV1' : 'scoreV2';
-    var values = weekly.map(w => Number(w[key]) || 0);
-    var max = Math.max(...values, 1);
 
-    var bars = weekly.map((w, i) => {
-        var v = values[i];
+    // Deduplicate by week+seasonType (two games in the same week get summed).
+    var byKey = {};
+    weekly.forEach(function (w) {
+        var k = (w.seasonType || 'regular') + ':' + w.week;
+        if (!byKey[k]) byKey[k] = { week: w.week, seasonType: w.seasonType, score: 0 };
+        byKey[k].score += Number(w[key]) || 0;
+    });
+    var merged = Object.values(byKey)
+        .sort(function (a, b) { return (b.seasonType || '').localeCompare(a.seasonType || '') || a.week - b.week; });
+
+    // Only show weeks up through the latest one with a non-zero score.
+    // If nothing has been scored yet, hide the chart entirely.
+    var lastScoredIdx = -1;
+    for (var i = merged.length - 1; i >= 0; i--) {
+        if (merged[i].score > 0) { lastScoredIdx = i; break; }
+    }
+    if (lastScoredIdx < 0) return '';
+    merged = merged.slice(0, lastScoredIdx + 1);
+
+    var max = Math.max(...merged.map(function (w) { return w.score; }), 1);
+
+    var bars = merged.map(function (w, i) {
+        var v = w.score;
         var pct = Math.max(4, Math.round((v / max) * 100));
         var label = (w.seasonType && w.seasonType !== 'regular') ? 'P' + w.week : 'W' + w.week;
         return `
