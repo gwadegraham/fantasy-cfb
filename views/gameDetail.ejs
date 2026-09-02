@@ -166,6 +166,62 @@
                 html += '<div class="gd-meta">' + metaParts.join('<span class="gd-meta-sep"></span>') + '</div>';
             }
 
+            // ---- Betting lines ----
+            if (game.bettingLines) {
+                var bl = game.bettingLines;
+                html += '<div class="gd-section gd-betting">';
+                html += '<h3 class="gd-section-title"><i class="fas fa-chart-line"></i> Betting Lines</h3>';
+                html += '<div class="gd-betting-grid">';
+
+                // Spread
+                if (bl.spread != null) {
+                    var spreadMoved = bl.spreadOpen != null && bl.spread !== bl.spreadOpen;
+                    var spreadDelta = spreadMoved ? bl.spread - bl.spreadOpen : 0;
+                    html += '<div class="gd-bet-card">';
+                    html += '<div class="gd-bet-label">Spread</div>';
+                    html += '<div class="gd-bet-value">' + (bl.formattedSpread || (bl.spread > 0 ? '+' : '') + bl.spread) + '</div>';
+                    if (spreadMoved) {
+                        var arrow = spreadDelta < 0 ? '<i class="fas fa-arrow-down gd-line-down"></i>' : '<i class="fas fa-arrow-up gd-line-up"></i>';
+                        html += '<div class="gd-bet-movement">' + arrow + ' Opened ' + (bl.spreadOpen > 0 ? '+' : '') + bl.spreadOpen + '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                // Over/Under
+                if (bl.overUnder != null) {
+                    var ouMoved = bl.overUnderOpen != null && bl.overUnder !== bl.overUnderOpen;
+                    var ouDelta = ouMoved ? bl.overUnder - bl.overUnderOpen : 0;
+                    html += '<div class="gd-bet-card">';
+                    html += '<div class="gd-bet-label">Over/Under</div>';
+                    html += '<div class="gd-bet-value">' + bl.overUnder + '</div>';
+                    if (ouMoved) {
+                        var ouArrow = ouDelta > 0 ? '<i class="fas fa-arrow-up gd-line-up"></i>' : '<i class="fas fa-arrow-down gd-line-down"></i>';
+                        html += '<div class="gd-bet-movement">' + ouArrow + ' Opened ' + bl.overUnderOpen + '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                // Moneyline
+                if (bl.homeMoneyline != null || bl.awayMoneyline != null) {
+                    html += '<div class="gd-bet-card">';
+                    html += '<div class="gd-bet-label">Moneyline</div>';
+                    html += '<div class="gd-bet-ml">';
+                    if (bl.awayMoneyline != null) {
+                        html += '<span class="gd-ml-team">' + awayAbbr + '</span> <span class="gd-ml-odds">' + (bl.awayMoneyline > 0 ? '+' : '') + bl.awayMoneyline + '</span>';
+                    }
+                    if (bl.homeMoneyline != null) {
+                        html += '<span class="gd-ml-sep">|</span>';
+                        html += '<span class="gd-ml-team">' + homeAbbr + '</span> <span class="gd-ml-odds">' + (bl.homeMoneyline > 0 ? '+' : '') + bl.homeMoneyline + '</span>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                }
+
+                html += '</div>'; // .gd-betting-grid
+                html += '<div class="gd-bet-provider">' + (bl.provider || '') + '</div>';
+                html += '</div>'; // .gd-section
+            }
+
             // ---- Score by quarter ----
             var homeLS = game.homeLineScores || [];
             var awayLS = game.awayLineScores || [];

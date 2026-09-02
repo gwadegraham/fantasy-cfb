@@ -171,6 +171,60 @@ a.gd-team:hover { opacity: 1; }
     margin: 0 0 12px;
 }
 
+/* ---- Betting lines ---- */
+.gd-betting-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+@media (max-width: 500px) {
+    .gd-betting-grid { grid-template-columns: 1fr; }
+}
+.gd-bet-card {
+    background: var(--cc-surface-2);
+    border-radius: var(--cc-r-sm);
+    padding: 10px 12px;
+    text-align: center;
+}
+.gd-bet-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cc-muted-2);
+    margin-bottom: 4px;
+}
+.gd-bet-value {
+    font-family: 'Graduate', serif;
+    font-size: 1.15rem;
+    color: var(--cc-text);
+}
+.gd-bet-movement {
+    font-size: 0.72rem;
+    color: var(--cc-muted);
+    margin-top: 3px;
+}
+.gd-line-up { color: var(--cc-danger-text); margin-right: 3px; }
+.gd-line-down { color: var(--cc-success); margin-right: 3px; }
+.gd-bet-ml {
+    font-family: 'Graduate', serif;
+    font-size: 0.95rem;
+    color: var(--cc-text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+}
+.gd-ml-team { color: var(--cc-muted-bright); font-size: 0.75rem; }
+.gd-ml-sep { color: var(--cc-muted-2); }
+.gd-ml-odds { font-variant-numeric: tabular-nums; }
+.gd-bet-provider {
+    text-align: right;
+    font-size: 0.65rem;
+    color: var(--cc-muted-2);
+    margin-top: 8px;
+}
+
 /* ---- Line score table ---- */
 .gd-table-scroll { overflow-x: auto; max-width: 100%; }
 .gd-linescore {
