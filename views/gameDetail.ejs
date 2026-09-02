@@ -112,7 +112,12 @@
                 var clockStr = game.clock ? ' · ' + game.clock : '';
                 statusLabel = '<span class="gd-status gd-live">Q' + game.period + clockStr + '</span>';
             } else {
-                statusLabel = '<span class="gd-status gd-scheduled">Scheduled</span>';
+                var timeStr = 'Scheduled';
+                if (game.startDate && !game.startTimeTbd) {
+                    var dt = new Date(game.startDate);
+                    timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                }
+                statusLabel = '<span class="gd-status gd-scheduled">' + timeStr + '</span>';
             }
 
             var html = '';
