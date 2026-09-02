@@ -258,7 +258,7 @@ router.post('/week/mass-create', async (req, res) => {
         game.homeDivision = game.homeDivision;
         game.homePoints = game.homePoints;
         game.homeLineScores = game.homeLineScores;
-        game.homePostWinProb = game.homePostWinProb;
+        game.homePostWinProb = game.homePostgameWinProbability;
         game.homePregameElo = game.homePregameElo;
         game.homePostgameElo = game.homePostgameElo;
         game.awayId = game.awayId;
@@ -267,7 +267,7 @@ router.post('/week/mass-create', async (req, res) => {
         game.awayDivision = game.awayDivision;
         game.awayPoints = game.awayPoints;
         game.awayLineScores = game.awayLineScores;
-        game.awayPostWinProb = game.awayPostWinProb;
+        game.awayPostWinProb = game.awayPostgameWinProbability;
         game.awayPregameElo = game.awayPregameElo;
         game.awayPostgameElo = game.awayPostgameElo;
         game.excitementIndex = game.excitementIndex;
@@ -345,6 +345,8 @@ router.post('/:season/schedule', async (req, res) => {
     let created = 0, updated = 0;
     for (const g of gameData) {
         g.startTimeTbd = g.startTimeTBD;
+        g.homePostWinProb = g.homePostgameWinProbability;
+        g.awayPostWinProb = g.awayPostgameWinProbability;
         g.lastUpdated = centralTime;
         const exists = await Game.findOne({ id: g.id });
         if (!exists) {
