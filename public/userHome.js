@@ -1988,10 +1988,10 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
     }
 
-    var cardOpen = game.completed && game.id
+    var cardOpen = game.id
         ? '<a href="/game/' + game.id + '" class="game-card gc-clickable' + (isLive ? ' gc-live' : '') + '">'
         : '<div class="game-card' + (isLive ? ' gc-live' : '') + '">';
-    var cardClose = game.completed && game.id ? '</a>' : '</div>';
+    var cardClose = game.id ? '</a>' : '</div>';
 
     return cardOpen + '<table class="game-table"><tbody><tr></tr>'
         + '<tr><td class="gc-team">' + awayCol + '</td><td class="gc-divider"></td><td class="gc-score">' + awayScore + '</tr>'
