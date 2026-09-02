@@ -127,11 +127,14 @@
             html += statusLabel;
             html += '<div class="gd-matchup">';
 
+            var awayRankStr = game.awayRanking ? '<span class="gd-rank">' + game.awayRanking + '</span> ' : '';
+            var homeRankStr = game.homeRanking ? '<span class="gd-rank">' + game.homeRanking + '</span> ' : '';
+
             // Away team
             html += '<a href="/team?team=' + game.awayId + '" class="gd-team gd-away' + (awayWon ? ' gd-winner' : '') + '">';
             html += '<img class="gd-logo" src="' + awayLogo + '" alt="" />';
             html += '<div class="gd-team-info">';
-            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayAbbr + '</span></div>';
+            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + '</span></div>';
             html += '</div>';
             html += '<div class="gd-score">' + fmt(game.awayPoints) + '</div>';
             html += '</a>';
@@ -143,7 +146,7 @@
             html += '<a href="/team?team=' + game.homeId + '" class="gd-team gd-home' + (homeWon ? ' gd-winner' : '') + '">';
             html += '<img class="gd-logo" src="' + homeLogo + '" alt="" />';
             html += '<div class="gd-team-info">';
-            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeAbbr + '</span></div>';
+            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + '</span></div>';
             html += '</div>';
             html += '<div class="gd-score">' + fmt(game.homePoints) + '</div>';
             html += '</a>';

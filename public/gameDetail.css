@@ -112,6 +112,11 @@ a.gd-team:hover { opacity: 1; }
     line-height: 1.2;
     white-space: nowrap;
 }
+.gd-rank {
+    font-size: 0.75em;
+    color: var(--cc-muted);
+    font-weight: 400;
+}
 .gd-tnm-abbr { display: none; }
 .gd-ls-abbr { display: none; }
 .gd-score {

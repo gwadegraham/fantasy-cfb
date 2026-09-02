@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Game = require('../models/game');
 const BettingLine = require('../models/bettingLine');
+const Ranking = require('../models/ranking');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
@@ -79,6 +80,22 @@ router.get('/detail/:gameId', async (req, res) => {
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
         const obj = game.toObject();
+
+        // Look up AP rankings for this game's week
+        const ranking = await Ranking.findOne({
+            season: game.season,
+            seasonType: game.seasonType || 'regular',
+            week: game.week
+        }).lean();
+        if (ranking) {
+            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
+            if (ap) {
+                const homeRank = ap.ranks.find(r => r.school === game.homeTeam);
+                const awayRank = ap.ranks.find(r => r.school === game.awayTeam);
+                if (homeRank) obj.homeRanking = homeRank.rank;
+                if (awayRank) obj.awayRanking = awayRank.rank;
+            }
+        }
         if (bl && bl.lines && bl.lines.length) {
             const ranked = bl.lines.slice().sort((a, b) => {
                 const pri = p => {
