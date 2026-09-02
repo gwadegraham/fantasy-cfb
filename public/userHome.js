@@ -1840,6 +1840,8 @@ function teamGameScoreById(weeklyScore, teamId, gameId) {
 document.addEventListener('click', async function (e) {
     var btn = e.target && e.target.closest && e.target.closest('.score-explain');
     if (!btn) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
     var card = btn.closest('.game-card');
     if (!card) return;
     var open = card.querySelector('.gc-breakdown');

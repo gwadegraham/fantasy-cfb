@@ -850,6 +850,8 @@ function scoreBadge(teamId, gameId, pts) {
 document.addEventListener('click', async function (e) {
     var btn = e.target && e.target.closest && e.target.closest('.score-explain');
     if (!btn) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
     var table = btn.closest('table.game-table');
     if (!table) return;
     var open = table.querySelector('.gc-breakdown-row');
