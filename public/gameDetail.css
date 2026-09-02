@@ -427,6 +427,101 @@ html.gd-page, .gd-page body {
     color: var(--cc-muted-bright);
 }
 
+/* ---- Matchup Predictor (football field) ---- */
+.gd-field {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    aspect-ratio: 120 / 53.5;
+    margin: 12px 0;
+    background: #2d5a27;
+}
+.gd-field-ez {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8.333%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+.gd-field-ez-away { left: 0; border-right: 2px solid rgba(255,255,255,0.3); }
+.gd-field-ez-home { right: 0; border-left: 2px solid rgba(255,255,255,0.3); }
+.gd-field-ez span {
+    font-size: 9px;
+    font-weight: 700;
+    writing-mode: vertical-lr;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.9);
+}
+.gd-field-ez-away span { transform: rotate(180deg); }
+.gd-field-lines {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 8.333%;
+    right: 8.333%;
+    display: flex;
+    justify-content: space-evenly;
+}
+.gd-field-yl {
+    width: 1px;
+    background: rgba(255,255,255,0.18);
+    height: 100%;
+}
+.gd-field-yl-mid {
+    width: 2px;
+    background: rgba(255,255,255,0.35);
+}
+.gd-field-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255,255,255,0.5);
+    z-index: 2;
+    left: calc(8.333% + 83.333% * var(--wp, 0.5));
+}
+.gd-field-ball {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 18px;
+    z-index: 3;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+    left: calc(8.333% + 83.333% * var(--wp, 0.5));
+}
+.gd-field-probs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+}
+.gd-field-prob {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.gd-field-prob-right { flex-direction: row-reverse; text-align: right; }
+.gd-field-prob img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+.gd-field-pct {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.gd-field-name {
+    font-size: 0.75rem;
+    color: var(--cc-muted);
+    font-weight: 500;
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 600px) {
     .game-detail-container { padding: 12px 10px 50px; }
@@ -449,4 +544,8 @@ html.gd-page, .gd-page body {
     .gd-odds-hl { padding: 4px 8px; }
     .gd-odds-logo { width: 20px; height: 20px; }
     .gd-odds-table tbody td:first-child { font-size: 0.78rem; }
+    .gd-field-ez span { font-size: 8px; letter-spacing: 1.5px; }
+    .gd-field-ball { font-size: 15px; }
+    .gd-field-pct { font-size: 1.2rem; }
+    .gd-field-prob img { width: 24px; height: 24px; }
 }

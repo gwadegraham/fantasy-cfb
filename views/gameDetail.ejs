@@ -61,6 +61,7 @@
                 var logoMap = {};
                 var colorMap = {};
                 var abbrMap = {};
+                var mascotMap = {};
                 try {
                     var logoRes = await fetch('/teams/teamLogos', {
                         method: 'POST',
@@ -75,17 +76,18 @@
                             var ac = t.alt_color || '';
                             colorMap[t.id] = { primary: c ? (c.startsWith('#') ? c : '#' + c) : null, alt: ac ? (ac.startsWith('#') ? ac : '#' + ac) : null, school: t.school };
                             abbrMap[t.id] = t.abbreviation || t.school || '';
+                            mascotMap[t.id] = t.mascot || '';
                         });
                     }
                 } catch (e) { /* logos are decorative */ }
 
-                render(game, logoMap, colorMap, abbrMap);
+                render(game, logoMap, colorMap, abbrMap, mascotMap);
             } catch (err) {
                 container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
             }
         }
 
-        function render(game, logos, colors, abbrs) {
+        function render(game, logos, colors, abbrs, mascots) {
             var homeLogo = logos[game.homeId] || '';
             var awayLogo = logos[game.awayId] || '';
             var homeColor = (colors[game.homeId] && colors[game.homeId].primary) || 'var(--cc-interactive)';
@@ -193,7 +195,56 @@
                 html += '<div class="gd-meta">' + metaParts.join('<span class="gd-meta-sep"></span>') + '</div>';
             }
 
+            // ---- Matchup Predictor (football field) ----
+            var homeWP = null;
+            if (game.pregameWinProb != null) {
+                homeWP = game.pregameWinProb * 100;
+            } else if (game.homePregameElo != null && game.awayPregameElo != null) {
+                homeWP = 100 / (1 + Math.pow(10, -(game.homePregameElo - game.awayPregameElo) / 400));
+            }
+            if (homeWP != null && !isFinal) {
+                var awayWP = 100 - homeWP;
+
+                html += '<div class="gd-section gd-predictor">';
+                html += '<h3 class="gd-section-title"><i class="fas fa-football"></i> Matchup Predictor</h3>';
+                html += '<div class="gd-field" style="--wp:' + (homeWP / 100) + '">';
+
+                // End zones
+                var awayEZ = (mascots && mascots[game.awayId]) || awayAbbr;
+                var homeEZ = (mascots && mascots[game.homeId]) || homeAbbr;
+                html += '<div class="gd-field-ez gd-field-ez-away" style="background:' + awayColor + '"><span>' + awayEZ + '</span></div>';
+                html += '<div class="gd-field-ez gd-field-ez-home" style="background:' + homeColor + '"><span>' + homeEZ + '</span></div>';
+
+                // Yard lines
+                html += '<div class="gd-field-lines">';
+                for (var yl = 0; yl < 9; yl++) html += '<div class="gd-field-yl' + (yl === 4 ? ' gd-field-yl-mid' : '') + '"></div>';
+                html += '</div>';
+
+                // Ball marker at home win prob position (away end = 0%, home end = 100%)
+                html += '<div class="gd-field-marker"></div>';
+                html += '<div class="gd-field-ball">🏈</div>';
+
+                html += '</div>'; // .gd-field
+
+                // Probability labels
+                html += '<div class="gd-field-probs">';
+                html += '<div class="gd-field-prob">';
+                html += '<img src="' + awayLogo + '" alt="" />';
+                html += '<div><div class="gd-field-pct">' + awayWP.toFixed(1) + '%</div>';
+                html += '<div class="gd-field-name">' + game.awayTeam + '</div></div>';
+                html += '</div>';
+                html += '<div class="gd-field-prob gd-field-prob-right">';
+                html += '<div><div class="gd-field-pct">' + homeWP.toFixed(1) + '%</div>';
+                html += '<div class="gd-field-name">' + game.homeTeam + '</div></div>';
+                html += '<img src="' + homeLogo + '" alt="" />';
+                html += '</div>';
+                html += '</div>';
+
+                html += '</div>'; // .gd-predictor
+            }
+
             // ---- Betting lines (odds table) ----
+            var oddsHtml = '';
             if (game.bettingLines) {
                 var bl = game.bettingLines;
                 var homeSpread = bl.spread;
@@ -203,59 +254,60 @@
                 var hasML = bl.homeMoneyline != null || bl.awayMoneyline != null;
                 var hasOpen = bl.spreadOpen != null || bl.overUnderOpen != null;
 
-                html += '<div class="gd-section gd-betting">';
-                html += '<div class="gd-odds-header">';
-                html += '<h3 class="gd-section-title"><i class="fas fa-chart-line"></i> Game Odds</h3>';
-                if (bl.provider) html += '<span class="gd-odds-provider">' + bl.provider + '</span>';
-                html += '</div>';
+                oddsHtml += '<div class="gd-section gd-betting">';
+                oddsHtml += '<div class="gd-odds-header">';
+                oddsHtml += '<h3 class="gd-section-title"><i class="fas fa-chart-line"></i> Game Odds</h3>';
+                if (bl.provider) oddsHtml += '<span class="gd-odds-provider">' + bl.provider + '</span>';
+                oddsHtml += '</div>';
 
-                html += '<table class="gd-odds-table"><thead><tr><th></th>';
-                if (hasOpen) html += '<th>Open</th>';
-                if (hasSpread) html += '<th>Spread</th>';
-                if (hasOU) html += '<th>Total</th>';
-                if (hasML) html += '<th>ML</th>';
-                html += '</tr></thead><tbody>';
+                oddsHtml += '<table class="gd-odds-table"><thead><tr><th></th>';
+                if (hasOpen) oddsHtml += '<th>Open</th>';
+                if (hasSpread) oddsHtml += '<th>Spread</th>';
+                if (hasOU) oddsHtml += '<th>Total</th>';
+                if (hasML) oddsHtml += '<th>ML</th>';
+                oddsHtml += '</tr></thead><tbody>';
 
                 // Away team row
-                html += '<tr>';
-                html += '<td><div class="gd-odds-team"><img src="' + awayLogo + '" class="gd-odds-logo" /><span>' + awayAbbr + '</span></div></td>';
+                oddsHtml += '<tr>';
+                oddsHtml += '<td><div class="gd-odds-team"><img src="' + awayLogo + '" class="gd-odds-logo" /><span>' + awayAbbr + '</span></div></td>';
                 if (hasOpen) {
                     var awayOpen = bl.overUnderOpen != null ? 'o' + bl.overUnderOpen : (bl.spreadOpen != null ? ((-bl.spreadOpen) > 0 ? '+' : '') + (-bl.spreadOpen) : '—');
-                    html += '<td>' + awayOpen + '</td>';
+                    oddsHtml += '<td>' + awayOpen + '</td>';
                 }
                 if (hasSpread) {
                     var asFmt = awaySpread > 0 ? '+' + awaySpread : '' + awaySpread;
-                    html += '<td><span class="gd-odds-hl">' + asFmt + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">' + asFmt + '</span></td>';
                 }
                 if (hasOU) {
-                    html += '<td><span class="gd-odds-hl">o' + bl.overUnder + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">o' + bl.overUnder + '</span></td>';
                 }
                 if (hasML) {
-                    html += '<td>' + (bl.awayMoneyline != null ? (bl.awayMoneyline > 0 ? '+' : '') + bl.awayMoneyline : '—') + '</td>';
+                    oddsHtml += '<td>' + (bl.awayMoneyline != null ? (bl.awayMoneyline > 0 ? '+' : '') + bl.awayMoneyline : '—') + '</td>';
                 }
-                html += '</tr>';
+                oddsHtml += '</tr>';
 
                 // Home team row
-                html += '<tr>';
-                html += '<td><div class="gd-odds-team"><img src="' + homeLogo + '" class="gd-odds-logo" /><span>' + homeAbbr + '</span></div></td>';
+                oddsHtml += '<tr>';
+                oddsHtml += '<td><div class="gd-odds-team"><img src="' + homeLogo + '" class="gd-odds-logo" /><span>' + homeAbbr + '</span></div></td>';
                 if (hasOpen) {
                     var homeOpen = bl.spreadOpen != null ? (bl.spreadOpen > 0 ? '+' : '') + bl.spreadOpen : '—';
-                    html += '<td>' + homeOpen + '</td>';
+                    oddsHtml += '<td>' + homeOpen + '</td>';
                 }
                 if (hasSpread) {
                     var hsFmt = homeSpread > 0 ? '+' + homeSpread : '' + homeSpread;
-                    html += '<td><span class="gd-odds-hl">' + hsFmt + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">' + hsFmt + '</span></td>';
                 }
                 if (hasOU) {
-                    html += '<td><span class="gd-odds-hl">u' + bl.overUnder + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">u' + bl.overUnder + '</span></td>';
                 }
                 if (hasML) {
-                    html += '<td>' + (bl.homeMoneyline != null ? (bl.homeMoneyline > 0 ? '+' : '') + bl.homeMoneyline : '—') + '</td>';
+                    oddsHtml += '<td>' + (bl.homeMoneyline != null ? (bl.homeMoneyline > 0 ? '+' : '') + bl.homeMoneyline : '—') + '</td>';
                 }
-                html += '</tr>';
+                oddsHtml += '</tr>';
 
-                html += '</tbody></table></div>';
+                oddsHtml += '</tbody></table></div>';
             }
+            if (!isFinal) html += oddsHtml;
 
             // ---- Score by quarter ----
             var homeLS = game.homeLineScores || [];
@@ -374,7 +426,6 @@
             // ---- Additional info ----
             var infoParts = [];
             if (game.excitementIndex) infoParts.push(['Excitement', parseFloat(game.excitementIndex).toFixed(2)]);
-            if (game.pregameWinProb != null) infoParts.push(['Home Win Prob (pregame)', (game.pregameWinProb * 100).toFixed(1) + '%']);
             if (game.notes) infoParts.push(['Notes', game.notes]);
             if (infoParts.length) {
                 html += '<div class="gd-section gd-extra">';
@@ -383,6 +434,8 @@
                 }
                 html += '</div>';
             }
+
+            if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
         }
