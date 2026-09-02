@@ -130,33 +130,50 @@
             html += '<div class="gd-header" style="' + gradStyle + '">';
             html += '<div class="gd-date">' + dateStr + '</div>';
             html += statusLabel;
-            html += '<div class="gd-matchup">';
-
             var awayRankStr = game.awayRanking ? '<span class="gd-rank">' + game.awayRanking + '</span> ' : '';
             var homeRankStr = game.homeRanking ? '<span class="gd-rank">' + game.homeRanking + '</span> ' : '';
+            var awayScoreStr = game.awayPoints != null ? String(game.awayPoints) : '';
+            var homeScoreStr = game.homePoints != null ? String(game.homePoints) : '';
+            var awayRecord = game.awayRecord || '';
+            var homeRecord = game.homeRecord || '';
 
-            // Away team
-            html += '<a href="/team?team=' + game.awayId + '" class="gd-team gd-away' + (awayWon ? ' gd-winner' : '') + '">';
-            html += '<img class="gd-logo" src="' + awayLogo + '" alt="" />';
-            html += '<div class="gd-team-info">';
-            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + '</span></div>';
-            html += '</div>';
-            html += '<div class="gd-score">' + fmt(game.awayPoints) + '</div>';
-            html += '</a>';
+            var hasScores = game.awayPoints != null || game.homePoints != null;
 
-            // @ divider
-            html += '<div class="gd-at">@</div>';
+            if (hasScores) {
+                // 5-column grid: logo | score/record | status | score/record | logo
+                html += '<div class="gd-matchup-grid">';
 
-            // Home team
-            html += '<a href="/team?team=' + game.homeId + '" class="gd-team gd-home' + (homeWon ? ' gd-winner' : '') + '">';
-            html += '<img class="gd-logo" src="' + homeLogo + '" alt="" />';
-            html += '<div class="gd-team-info">';
-            html += '<div class="gd-team-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + '</span></div>';
-            html += '</div>';
-            html += '<div class="gd-score">' + fmt(game.homePoints) + '</div>';
-            html += '</a>';
+                // Row 1: logo | score | Final/Qn | score | logo
+                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-logo"><img class="gd-logo" src="' + awayLogo + '" alt="" /></a>';
+                html += '<div class="gd-mu-score' + (awayWon ? ' gd-winner' : '') + '">' + awayScoreStr + '</div>';
+                html += '<div class="gd-mu-center">' + (isLive ? 'Q' + game.period : '@') + '</div>';
+                html += '<div class="gd-mu-score' + (homeWon ? ' gd-winner' : '') + '">' + homeScoreStr + '</div>';
+                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
 
-            html += '</div>'; // .gd-matchup
+                // Row 2: name | record | · | record | name
+                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + '</span></a>';
+                html += '<div class="gd-mu-record">' + awayRecord + '</div>';
+                html += '<div class="gd-mu-sub-center"></div>';
+                html += '<div class="gd-mu-record">' + homeRecord + '</div>';
+                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + '</span></a>';
+
+                html += '</div>';
+            } else {
+                // Pre-game: compact row — logo | name (record) | @ | name (record) | logo
+                html += '<div class="gd-matchup-pre">';
+                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-logo"><img class="gd-logo" src="' + awayLogo + '" alt="" /></a>';
+                html += '<div class="gd-mu-pre-team">';
+                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + '</span></a>';
+                if (awayRecord) html += '<div class="gd-mu-record">' + awayRecord + '</div>';
+                html += '</div>';
+                html += '<div class="gd-mu-at">@</div>';
+                html += '<div class="gd-mu-pre-team">';
+                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + '</span></a>';
+                if (homeRecord) html += '<div class="gd-mu-record">' + homeRecord + '</div>';
+                html += '</div>';
+                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
+                html += '</div>';
+            }
             html += '</div>'; // .gd-header
 
             // ---- Meta row: venue, weather, broadcast, attendance ----

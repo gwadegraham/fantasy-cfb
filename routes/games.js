@@ -3,6 +3,7 @@ const router = express.Router();
 const Game = require('../models/game');
 const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
+const Record = require('../models/record');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
@@ -79,7 +80,15 @@ router.get('/detail/:gameId', async (req, res) => {
         ]);
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
+        const [homeRec, awayRec] = await Promise.all([
+            Record.findOne({ teamId: game.homeId, year: game.season }).lean(),
+            Record.findOne({ teamId: game.awayId, year: game.season }).lean()
+        ]);
+
         const obj = game.toObject();
+
+        if (homeRec && homeRec.total) obj.homeRecord = homeRec.total.wins + '-' + homeRec.total.losses;
+        if (awayRec && awayRec.total) obj.awayRecord = awayRec.total.wins + '-' + awayRec.total.losses;
 
         // Look up AP rankings for this game's week
         const ranking = await Ranking.findOne({
