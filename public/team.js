@@ -811,7 +811,7 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             `;
 
             html += `
-                <div class="game-row${game.completed && game.id ? ' gc-clickable' : ''}"${game.completed && game.id ? ` data-game-id="${game.id}"` : ''}>
+                <div class="game-row${game.id ? ' gc-clickable' : ''}"${game.id ? ` data-game-id="${game.id}"` : ''}>
                     <div class="game-info">
                         <div class="team-row">
                             <span class="team-vs">${awayTeamHTML}
@@ -877,7 +877,7 @@ function renderNextGame(schedule, logos, teamId) {
     var prefix = game.neutralSite ? 'vs' : (isHome ? 'vs' : '@');
 
     return `
-        <a class="next-game" href="/team?team=${oppId}">
+        <a class="next-game" href="${game.id ? '/game/' + game.id : '/team?team=' + oppId}">
             <span class="next-game-tag">Next Up</span>
             <div class="next-game-body">
                 <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>

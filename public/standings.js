@@ -1101,7 +1101,7 @@ async function displaySchedule(data) {
                         bottomData = '<span class="gc-time">' + standardTime + '</span>';
                     }
         
-                    var teamTable = '<td><table class="schedule-table game-table' + (game.completed && game.id ? ' gc-clickable' : '') + '"' + (game.completed && game.id ? ' data-game-id="' + game.id + '"' : '') + '><tbody><tr firstRow></tr>';
+                    var teamTable = '<td><table class="schedule-table game-table' + (game.id ? ' gc-clickable' : '') + '"' + (game.id ? ' data-game-id="' + game.id + '"' : '') + '><tbody><tr firstRow></tr>';
                     teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
 
                     teamTable += '<tr><td style="width: 250px;">';
