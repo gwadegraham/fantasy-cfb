@@ -32,7 +32,7 @@ describe('scheduler config', () => {
         const byJob = {};
         JOB_SCHEDULES.forEach(s => { byJob[s.job] = s.rule; });
         expect(byJob['daily-scores']).toEqual({ hour: 23, minute: 0 });
-        expect(byJob['saturday-scores']).toEqual({ dayOfWeek: 6, hour: [15, 18, 22], minute: 0 });
+        expect(byJob['saturday-scores']).toEqual({ dayOfWeek: 6, hour: [10, 15, 18, 22], minute: 0 });
         expect(byJob['sunday-scores']).toEqual({ dayOfWeek: 0, hour: [3, 6], minute: 0 });
         expect(byJob['enrichment']).toEqual({ dayOfWeek: 2, hour: 5, minute: 30 });
     });
