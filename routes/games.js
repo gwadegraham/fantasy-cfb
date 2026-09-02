@@ -85,7 +85,7 @@ router.get('/detail/:gameId', async (req, res) => {
             Record.findOne({ teamId: game.awayId, year: game.season }).lean()
         ]);
 
-        const obj = game.toObject();
+        const obj = game.toObject({ flattenMaps: true });
 
         if (homeRec && homeRec.total) obj.homeRecord = homeRec.total.wins + '-' + homeRec.total.losses;
         if (awayRec && awayRec.total) obj.awayRecord = awayRec.total.wins + '-' + awayRec.total.losses;
