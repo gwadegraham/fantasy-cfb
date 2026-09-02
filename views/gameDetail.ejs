@@ -244,6 +244,7 @@
             }
 
             // ---- Betting lines (odds table) ----
+            var oddsHtml = '';
             if (game.bettingLines) {
                 var bl = game.bettingLines;
                 var homeSpread = bl.spread;
@@ -253,59 +254,60 @@
                 var hasML = bl.homeMoneyline != null || bl.awayMoneyline != null;
                 var hasOpen = bl.spreadOpen != null || bl.overUnderOpen != null;
 
-                html += '<div class="gd-section gd-betting">';
-                html += '<div class="gd-odds-header">';
-                html += '<h3 class="gd-section-title"><i class="fas fa-chart-line"></i> Game Odds</h3>';
-                if (bl.provider) html += '<span class="gd-odds-provider">' + bl.provider + '</span>';
-                html += '</div>';
+                oddsHtml += '<div class="gd-section gd-betting">';
+                oddsHtml += '<div class="gd-odds-header">';
+                oddsHtml += '<h3 class="gd-section-title"><i class="fas fa-chart-line"></i> Game Odds</h3>';
+                if (bl.provider) oddsHtml += '<span class="gd-odds-provider">' + bl.provider + '</span>';
+                oddsHtml += '</div>';
 
-                html += '<table class="gd-odds-table"><thead><tr><th></th>';
-                if (hasOpen) html += '<th>Open</th>';
-                if (hasSpread) html += '<th>Spread</th>';
-                if (hasOU) html += '<th>Total</th>';
-                if (hasML) html += '<th>ML</th>';
-                html += '</tr></thead><tbody>';
+                oddsHtml += '<table class="gd-odds-table"><thead><tr><th></th>';
+                if (hasOpen) oddsHtml += '<th>Open</th>';
+                if (hasSpread) oddsHtml += '<th>Spread</th>';
+                if (hasOU) oddsHtml += '<th>Total</th>';
+                if (hasML) oddsHtml += '<th>ML</th>';
+                oddsHtml += '</tr></thead><tbody>';
 
                 // Away team row
-                html += '<tr>';
-                html += '<td><div class="gd-odds-team"><img src="' + awayLogo + '" class="gd-odds-logo" /><span>' + awayAbbr + '</span></div></td>';
+                oddsHtml += '<tr>';
+                oddsHtml += '<td><div class="gd-odds-team"><img src="' + awayLogo + '" class="gd-odds-logo" /><span>' + awayAbbr + '</span></div></td>';
                 if (hasOpen) {
                     var awayOpen = bl.overUnderOpen != null ? 'o' + bl.overUnderOpen : (bl.spreadOpen != null ? ((-bl.spreadOpen) > 0 ? '+' : '') + (-bl.spreadOpen) : '—');
-                    html += '<td>' + awayOpen + '</td>';
+                    oddsHtml += '<td>' + awayOpen + '</td>';
                 }
                 if (hasSpread) {
                     var asFmt = awaySpread > 0 ? '+' + awaySpread : '' + awaySpread;
-                    html += '<td><span class="gd-odds-hl">' + asFmt + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">' + asFmt + '</span></td>';
                 }
                 if (hasOU) {
-                    html += '<td><span class="gd-odds-hl">o' + bl.overUnder + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">o' + bl.overUnder + '</span></td>';
                 }
                 if (hasML) {
-                    html += '<td>' + (bl.awayMoneyline != null ? (bl.awayMoneyline > 0 ? '+' : '') + bl.awayMoneyline : '—') + '</td>';
+                    oddsHtml += '<td>' + (bl.awayMoneyline != null ? (bl.awayMoneyline > 0 ? '+' : '') + bl.awayMoneyline : '—') + '</td>';
                 }
-                html += '</tr>';
+                oddsHtml += '</tr>';
 
                 // Home team row
-                html += '<tr>';
-                html += '<td><div class="gd-odds-team"><img src="' + homeLogo + '" class="gd-odds-logo" /><span>' + homeAbbr + '</span></div></td>';
+                oddsHtml += '<tr>';
+                oddsHtml += '<td><div class="gd-odds-team"><img src="' + homeLogo + '" class="gd-odds-logo" /><span>' + homeAbbr + '</span></div></td>';
                 if (hasOpen) {
                     var homeOpen = bl.spreadOpen != null ? (bl.spreadOpen > 0 ? '+' : '') + bl.spreadOpen : '—';
-                    html += '<td>' + homeOpen + '</td>';
+                    oddsHtml += '<td>' + homeOpen + '</td>';
                 }
                 if (hasSpread) {
                     var hsFmt = homeSpread > 0 ? '+' + homeSpread : '' + homeSpread;
-                    html += '<td><span class="gd-odds-hl">' + hsFmt + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">' + hsFmt + '</span></td>';
                 }
                 if (hasOU) {
-                    html += '<td><span class="gd-odds-hl">u' + bl.overUnder + '</span></td>';
+                    oddsHtml += '<td><span class="gd-odds-hl">u' + bl.overUnder + '</span></td>';
                 }
                 if (hasML) {
-                    html += '<td>' + (bl.homeMoneyline != null ? (bl.homeMoneyline > 0 ? '+' : '') + bl.homeMoneyline : '—') + '</td>';
+                    oddsHtml += '<td>' + (bl.homeMoneyline != null ? (bl.homeMoneyline > 0 ? '+' : '') + bl.homeMoneyline : '—') + '</td>';
                 }
-                html += '</tr>';
+                oddsHtml += '</tr>';
 
-                html += '</tbody></table></div>';
+                oddsHtml += '</tbody></table></div>';
             }
+            if (!isFinal) html += oddsHtml;
 
             // ---- Score by quarter ----
             var homeLS = game.homeLineScores || [];
@@ -432,6 +434,8 @@
                 }
                 html += '</div>';
             }
+
+            if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
         }
