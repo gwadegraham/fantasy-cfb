@@ -45,6 +45,10 @@
     color: var(--cc-text);
 }
 
+body {
+    font-family: "Poppins", sans-serif;
+}
+
 button {
     cursor: pointer;
 }

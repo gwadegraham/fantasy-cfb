@@ -79,7 +79,7 @@
         <ul>
             <% var _role = (user && user.role) || ''; %>
             <% if (_role === 'Admin' || _role === 'League Manager') { %>
-            <li><a admin-page href="./admin"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
+            <li><a admin-page href="/admin"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
             <% } %>
             <% if (_role === 'Admin') { %>
             <li league-selector>
@@ -95,12 +95,12 @@
                 </div>
             </li>
             <% } %>
-            <li><a href="./standings">Standings</a></li>
-            <li><a href="./hall-of-fame">Hall of Fame</a></li>
-            <li><a href="./rules">Scoring</a></li>
-            <li><a href="./draft-room">Draft Room</a></li>
+            <li><a href="/standings">Standings</a></li>
+            <li><a href="/hall-of-fame">Hall of Fame</a></li>
+            <li><a href="/rules">Scoring</a></li>
+            <li><a href="/draft-room">Draft Room</a></li>
             <% if (typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember) { %>
-            <li><a href="./betting">Betting</a></li>
+            <li><a href="/betting">Betting</a></li>
             <% } %>
             <!-- A <button>, not a link: it opens a dialog rather than navigating.
                  Icon-only on desktop with the label revealed in the stacked mobile
@@ -147,7 +147,7 @@
                 </div>
             </li>
             <% } %>
-            <li><a href="./logout">Logout</a></li>
+            <li><a href="/logout">Logout</a></li>
         </ul>
     </div>
 </nav>
