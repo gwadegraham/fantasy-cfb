@@ -652,7 +652,7 @@ app.use('/teams', (req, res, next) => {
     if (req.method === 'GET' || (req.method === 'POST' && req.path === '/teamLogos')) return next();
     return requireAdmin(req, res, next);
 });
-app.use(['/scores', '/records', '/games', '/betting-lines', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log', '/betting-groups'], (req, res, next) => {
+app.use(['/scores', '/records', '/games', '/betting-lines', '/team-season-stats', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log', '/betting-groups'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireAdmin(req, res, next);
 });
@@ -690,6 +690,9 @@ app.use('/records', requireAuthOrToken, recordRouter);
 
 const bettingLinesRouter = require('./routes/betting-lines');
 app.use('/betting-lines', requireAuthOrToken, bettingLinesRouter);
+
+const teamSeasonStatsRouter = require('./routes/team-season-stats');
+app.use('/team-season-stats', requireAuthOrToken, teamSeasonStatsRouter);
 
 const bettingRouter = require('./routes/betting');
 app.use('/betting', requireAuthOrToken, bettingRouter);

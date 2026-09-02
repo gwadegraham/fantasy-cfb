@@ -4,6 +4,7 @@ const Game = require('../models/game');
 const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
 const Record = require('../models/record');
+const TeamSeasonStat = require('../models/teamSeasonStat');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
@@ -80,9 +81,11 @@ router.get('/detail/:gameId', async (req, res) => {
         ]);
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
-        const [homeRec, awayRec] = await Promise.all([
+        const [homeRec, awayRec, homeSeasonStats, awaySeasonStats] = await Promise.all([
             Record.findOne({ teamId: game.homeId, year: game.season }).lean(),
-            Record.findOne({ teamId: game.awayId, year: game.season }).lean()
+            Record.findOne({ teamId: game.awayId, year: game.season }).lean(),
+            TeamSeasonStat.findOne({ season: game.season, team: game.homeTeam }).lean(),
+            TeamSeasonStat.findOne({ season: game.season, team: game.awayTeam }).lean()
         ]);
 
         const obj = game.toObject({ flattenMaps: true });
@@ -104,6 +107,14 @@ router.get('/detail/:gameId', async (req, res) => {
                 if (homeRank) obj.homeRanking = homeRank.rank;
                 if (awayRank) obj.awayRanking = awayRank.rank;
             }
+        }
+        if (homeSeasonStats || awaySeasonStats) {
+            const toPlain = (doc) => {
+                if (!doc) return null;
+                const s = doc.stats instanceof Map ? Object.fromEntries(doc.stats) : (doc.stats || {});
+                return { team: doc.team, conference: doc.conference, games: doc.games, stats: s };
+            };
+            obj.seasonStats = { home: toPlain(homeSeasonStats), away: toPlain(awaySeasonStats) };
         }
         if (bl && bl.lines && bl.lines.length) {
             const ranked = bl.lines.slice().sort((a, b) => {

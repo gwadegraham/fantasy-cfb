@@ -522,6 +522,73 @@ html.gd-page, .gd-page body {
     font-weight: 500;
 }
 
+/* ---- Season Stats (tug-of-war bars) ---- */
+.gd-ss-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.gd-ss-header .gd-section-title { margin: 0; }
+.gd-ss-team-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.gd-ss-team-label img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+.gd-ss-team-label span {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--cc-muted-bright);
+}
+.gd-ss-row { margin-bottom: 12px; }
+.gd-ss-row:last-child { margin-bottom: 0; }
+.gd-ss-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+.gd-ss-label {
+    font-size: 0.72rem;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.gd-ss-vals {
+    display: flex;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+.gd-ss-val-away { font-weight: 600; }
+.gd-ss-val-home { font-weight: 600; }
+.gd-ss-sep { color: var(--cc-muted-2); }
+.gd-ss-track {
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    overflow: hidden;
+    background: var(--cc-surface-3);
+}
+.gd-ss-fill {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #fff;
+    padding: 0 8px;
+    min-width: 0;
+    transition: width 0.3s ease;
+}
+.gd-ss-fill-away { justify-content: flex-start; }
+.gd-ss-fill-home { justify-content: flex-end; }
+
 /* ---- Mobile ---- */
 @media (max-width: 600px) {
     .game-detail-container { padding: 12px 10px 50px; }
@@ -544,6 +611,10 @@ html.gd-page, .gd-page body {
     .gd-odds-hl { padding: 4px 8px; }
     .gd-odds-logo { width: 20px; height: 20px; }
     .gd-odds-table tbody td:first-child { font-size: 0.78rem; }
+    .gd-ss-track { height: 18px; }
+    .gd-ss-fill { font-size: 0.6rem; padding: 0 6px; }
+    .gd-ss-team-label img { width: 18px; height: 18px; }
+    .gd-ss-team-label span { font-size: 0.72rem; }
     .gd-field-ez span { font-size: 8px; letter-spacing: 1.5px; }
     .gd-field-ball { font-size: 15px; }
     .gd-field-pct { font-size: 1.2rem; }
