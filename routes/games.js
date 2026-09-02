@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Game = require('../models/game');
+const BettingLine = require('../models/bettingLine');
+const Ranking = require('../models/ranking');
+const Record = require('../models/record');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
@@ -70,9 +73,73 @@ router.get('/season/:season/teamId/:teamId', async (req, res) => {
 // Get a single game by its CFBD id (used by the game detail page).
 router.get('/detail/:gameId', async (req, res) => {
     try {
-        const game = await Game.findOne({ id: Number(req.params.gameId) });
+        const gameId = Number(req.params.gameId);
+        const [game, bl] = await Promise.all([
+            Game.findOne({ id: gameId }),
+            BettingLine.findOne({ id: gameId })
+        ]);
         if (!game) return res.status(404).json({ message: 'Game not found' });
-        res.status(200).json(game);
+
+        const [homeRec, awayRec] = await Promise.all([
+            Record.findOne({ teamId: game.homeId, year: game.season }).lean(),
+            Record.findOne({ teamId: game.awayId, year: game.season }).lean()
+        ]);
+
+        const obj = game.toObject();
+
+        if (homeRec && homeRec.total) obj.homeRecord = homeRec.total.wins + '-' + homeRec.total.losses;
+        if (awayRec && awayRec.total) obj.awayRecord = awayRec.total.wins + '-' + awayRec.total.losses;
+
+        // Look up AP rankings for this game's week
+        const ranking = await Ranking.findOne({
+            season: game.season,
+            seasonType: game.seasonType || 'regular',
+            week: game.week
+        }).lean();
+        if (ranking) {
+            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
+            if (ap) {
+                const homeRank = ap.ranks.find(r => r.school === game.homeTeam);
+                const awayRank = ap.ranks.find(r => r.school === game.awayTeam);
+                if (homeRank) obj.homeRanking = homeRank.rank;
+                if (awayRank) obj.awayRanking = awayRank.rank;
+            }
+        }
+        if (bl && bl.lines && bl.lines.length) {
+            const ranked = bl.lines.slice().sort((a, b) => {
+                const pri = p => {
+                    if (!p) return 9;
+                    const lc = p.toLowerCase();
+                    if (lc.includes('draftkings')) return 0;
+                    if (lc.includes('consensus')) return 1;
+                    return 2;
+                };
+                return pri(a.provider) - pri(b.provider);
+            });
+            const best = ranked[0];
+            const merged = {
+                provider: best.provider,
+                spread: best.spread,
+                spreadOpen: best.spreadOpen,
+                formattedSpread: best.formattedSpread,
+                overUnder: best.overUnder,
+                overUnderOpen: best.overUnderOpen,
+                homeMoneyline: best.homeMoneyline,
+                awayMoneyline: best.awayMoneyline
+            };
+            for (const line of ranked) {
+                if (merged.overUnder == null && line.overUnder != null) {
+                    merged.overUnder = line.overUnder;
+                    merged.overUnderOpen = line.overUnderOpen;
+                }
+                if (merged.homeMoneyline == null && line.homeMoneyline != null) {
+                    merged.homeMoneyline = line.homeMoneyline;
+                    merged.awayMoneyline = line.awayMoneyline;
+                }
+            }
+            obj.bettingLines = merged;
+        }
+        res.status(200).json(obj);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
