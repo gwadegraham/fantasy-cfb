@@ -171,12 +171,21 @@ function cardHtml(game) {
 }
 
 // The chips filter the slate the browser already has — no refetch. A week is
-// ~90 games and it all arrived in one response, so every chip is instant.
+// ~90 games and it all arrived in one response, so every filter is instant.
+//
+// Exactly ONE filter applies at a time: the three chips and the conference
+// dropdown are a single choice, not a stack. Combining them mostly produced
+// dead ends — "Top 25 + Sun Belt" is usually zero games, and the empty screen
+// gives no hint which of the two to relax.
 function visibleGames() {
+    if (sbState.conf) {
+        return sbState.games.filter(function (g) {
+            return g.home.conference === sbState.conf || g.away.conference === sbState.conf;
+        });
+    }
     return sbState.games.filter(function (g) {
-        if (sbState.filter === 'league' && !g.leagueGame) return false;
-        if (sbState.filter === 'top25' && !g.ranked) return false;
-        if (sbState.conf && g.home.conference !== sbState.conf && g.away.conference !== sbState.conf) return false;
+        if (sbState.filter === 'league') return g.leagueGame;
+        if (sbState.filter === 'top25') return g.ranked;
         return true;
     });
 }
@@ -237,6 +246,21 @@ function renderWeekNav() {
     document.getElementById('week-next').disabled = i < 0 || i >= sbState.weeks.length - 1;
 }
 
+// Paints whichever of the four controls is the active filter, and only that
+// one. A chosen conference is shown by the select itself carrying the active
+// styling, with no chip lit — otherwise "All" would sit highlighted next to a
+// dropdown reading "SEC", which claims two filters are on at once.
+function renderFilterState() {
+    var sel = document.getElementById('conf-filter');
+    var confActive = !!sbState.conf;
+    sel.classList.toggle('is-active', confActive);
+    document.querySelectorAll('.sb-chip').forEach(function (c) {
+        var on = !confActive && c.getAttribute('data-filter') === sbState.filter;
+        c.classList.toggle('is-active', on);
+        c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
 // Options are { name, label }: the value stays the full conference name the
 // games carry, while the label is the short form that fits the control.
 function renderConfOptions(conferences) {
@@ -251,6 +275,8 @@ function renderConfOptions(conferences) {
     // leaving the chip row claiming a filter that matches nothing.
     sel.value = list.some(function (c) { return c.name === keep; }) ? keep : '';
     sbState.conf = sel.value;
+    if (!sbState.conf) sbState.filter = sbState.filter || 'all';
+    renderFilterState();
 }
 
 function renderLiveCount() {
@@ -435,9 +461,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.sb-chip').forEach(function (chip) {
         chip.addEventListener('click', function () {
-            document.querySelectorAll('.sb-chip').forEach(function (c) { c.classList.remove('is-active'); });
-            chip.classList.add('is-active');
+            // Picking a chip drops any conference: one filter at a time.
             sbState.filter = chip.getAttribute('data-filter');
+            sbState.conf = '';
+            document.getElementById('conf-filter').value = '';
+            renderFilterState();
             render();
         });
     });
@@ -463,7 +491,13 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('conf-filter').addEventListener('change', function () {
+        var had = sbState.conf;
         sbState.conf = this.value;
+        // Clearing a conference lands on "All". Picking the placeholder while a
+        // CHIP is active is not a clear of anything — it must leave that chip
+        // alone rather than silently resetting the filter the user did choose.
+        if (!sbState.conf && had) sbState.filter = 'all';
+        renderFilterState();
         render();
     });
 

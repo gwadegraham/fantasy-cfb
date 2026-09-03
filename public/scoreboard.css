@@ -135,6 +135,13 @@
     font-size: 13px;
     max-width: 190px;
 }
+/* The dropdown is the fourth option in the same single-choice group as the
+   chips, so it takes the same active treatment when it is the one in effect. */
+.sb-conf.is-active {
+    background: var(--cc-accent);
+    border-color: var(--cc-accent);
+    color: #fff;
+}
 
 .sb-status {
     display: flex;
