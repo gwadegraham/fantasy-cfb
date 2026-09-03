@@ -158,6 +158,10 @@ body > * { position: relative; z-index: 1; }
     position: sticky;
     top: 0;
     z-index: 50;
+    /* The viewport is viewport-fit=cover, so the page extends under the status
+       bar / notch — without this the wordmark sits beneath the clock on an
+       installed iPhone. Zero on every device that reports no inset. */
+    padding-top: env(safe-area-inset-top, 0px);
 }
 
 .brand-link {
@@ -588,6 +592,10 @@ body > * { position: relative; z-index: 1; }
     background: var(--cc-surface-2);
     border-top: 1px solid var(--cc-border);
     padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Landscape on a notched phone insets one side; without these the outer
+       tabs sit under it. */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
     /* border-box so --cc-tab-h is the bar's REAL height, border included. The
        body's clearance and the More panel's offset are both computed from that
        number, and a 1px border left out of it puts a seam between them. */
