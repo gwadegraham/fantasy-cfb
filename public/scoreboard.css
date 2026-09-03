@@ -116,6 +116,22 @@
     .sb-weeks { display: flex; }
 }
 
+/* Its own pinned row on a phone. It sits above the filters in the same sticky
+   stack, and deliberately does NOT carry the page title with it — "Scores" is
+   the least useful thing to spend pinned height on. */
+@media (max-width: 600px) {
+    .week-nav {
+        position: sticky;
+        top: var(--sb-sticky-top, 0px);
+        z-index: 41;
+        justify-content: center;
+        width: 100%;
+        padding: 6px 16px 8px;
+        background: var(--cc-bg);
+        box-shadow: 0 -6px 0 0 var(--cc-bg);
+    }
+}
+
 .sb-weeks {
     gap: 6px;
     padding: 8px 16px 10px;

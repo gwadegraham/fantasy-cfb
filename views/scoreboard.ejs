@@ -47,20 +47,22 @@
                 <span class="sb-updated" id="sb-updated"></span>
             </div>
         </div>
-        <!-- Narrow screens get the compact picker; wide screens get the strip
-             below and only need to be told which week they are looking at. -->
-        <div class="week-nav">
-            <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
-                <i class="fa-solid fa-chevron-left"></i>
-            </button>
-            <span class="week-label">
-                <select class="week-select" id="week-select" aria-label="Week"></select>
-                <span class="week-dates"></span>
-            </span>
-            <button type="button" class="week-nav-btn" id="week-next" aria-label="Next week">
-                <i class="fa-solid fa-chevron-right"></i>
-            </button>
-        </div>
+    </div>
+
+    <!-- The narrow-screen week control, in its own row so it can pin without
+         dragging the page title along with it. Hidden once the strip below
+         takes over. -->
+    <div class="week-nav">
+        <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
+            <i class="fa-solid fa-chevron-left"></i>
+        </button>
+        <span class="week-label">
+            <select class="week-select" id="week-select" aria-label="Week"></select>
+            <span class="week-dates"></span>
+        </span>
+        <button type="button" class="week-nav-btn" id="week-next" aria-label="Next week">
+            <i class="fa-solid fa-chevron-right"></i>
+        </button>
     </div>
 
     <div class="sb-weeks" id="week-strip" role="group" aria-label="Week"></div>

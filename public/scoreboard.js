@@ -421,7 +421,7 @@ function scrollToCurrent() {
 
         var stuck = document.querySelector('.sb-filters');
         var offset = (stuck ? stuck.getBoundingClientRect().height : 0)
-            + stripHeightPx() + stickyTopPx() + 12;
+            + weekBarHeightPx() + stickyTopPx() + 12;
         var y = target.getBoundingClientRect().top + window.scrollY - offset;
         window.scrollTo(0, Math.max(0, y));
     };
@@ -512,22 +512,29 @@ function stickyTopPx() {
     var nav = document.getElementById('navbar');
     return nav ? Math.floor(nav.getBoundingClientRect().height) : 0;
 }
-// The strip is sticky too on wide screens, so the filter row has to pin BELOW
-// it rather than at the navbar. Its height is published as a variable because
-// it is zero on a phone (the strip is display:none there) and CSS can't measure
-// it on its own.
-function stripHeightPx() {
-    var strip = document.getElementById('week-strip');
-    if (!strip || getComputedStyle(strip).display === 'none') return 0;
-    // Floor for the same reason stickyTopPx does: half a pixel short tucks the
-    // filter row under the strip, half a pixel long shows a hairline of
-    // scrolling content between them.
-    return Math.floor(strip.getBoundingClientRect().height);
+// Whichever week control is on screen — the strip on a wide screen, the arrows
+// and picker on a phone — is sticky, and the filter row pins below it. Only one
+// is ever displayed, so this measures the visible one and CSS offsets the
+// filters by it. Published as a variable because CSS cannot measure the height
+// of an element it has itself set to display:none.
+//
+// Floor for the same reason stickyTopPx does: half a pixel short tucks the
+// filter row under the control, half a pixel long shows a hairline of scrolling
+// content between them.
+function weekBarHeightPx() {
+    var els = [document.getElementById('week-strip'), document.querySelector('.week-nav')];
+    for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el && getComputedStyle(el).display !== 'none') {
+            return Math.floor(el.getBoundingClientRect().height);
+        }
+    }
+    return 0;
 }
 function syncStickyTop() {
     var root = document.documentElement.style;
     root.setProperty('--sb-sticky-top', stickyTopPx() + 'px');
-    root.setProperty('--sb-weeks-h', stripHeightPx() + 'px');
+    root.setProperty('--sb-weeks-h', weekBarHeightPx() + 'px');
 }
 
 document.addEventListener('DOMContentLoaded', function () {
