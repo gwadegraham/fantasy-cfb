@@ -546,10 +546,30 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
         ? `<span class="fantasy-rank">#<span data-countup="${fantasyRank.rank}">0</span> of ${fantasyRank.total}</span>`
         : '';
 
-    // Head coach (from the weekly enrichment job) — a subtle line in the header.
-    var coachHtml = seasonObj.coach
-        ? `<p class="team-coach"><i class="fa-solid fa-clipboard-user"></i> ${seasonObj.coach}</p>`
-        : '';
+    // Record pills. The hero owns the record the way the Game Detail hero owns
+    // the score, so the details grid below no longer repeats it.
+    var overallRec = `${record?.total?.wins || 0}-${record?.total?.losses || 0}`;
+    var confRec = `${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}`;
+    var statusHtml = (played === 0)
+        ? `<span class="tv-status tv-status--pre">${seasonObj.season} Preseason</span>`
+        : `<span class="tv-status">${overallRec} Overall</span>` +
+          `<span class="tv-status tv-status--sub">${confRec} ${formatConference}</span>`;
+
+    // Meta row (conference / coach / stadium / stadium facts) — one wrapping
+    // line in the same shape as the Game Detail hero's venue+weather row.
+    // Each part is a single flex item so the row only ever wraps BETWEEN parts.
+    var metaParts = [];
+    metaParts.push(`<img class="conf-logo" src="${confLogo}" alt="" /> ${formatConference}`);
+    if (seasonObj.coach) metaParts.push(`<i class="fa-solid fa-clipboard-user"></i> ${seasonObj.coach}`);
+    if (loc.name) {
+        var where = (loc.city && loc.state) ? ` · ${loc.city}, ${loc.state}` : '';
+        metaParts.push(`<i class="fa-solid fa-location-dot"></i> ${loc.name}${where}`);
+    }
+    stadiumChips.forEach(function (c) { metaParts.push(c); });
+    var metaHtml = `<div class="tv-meta">` +
+        metaParts.map(function (m) { return `<span class="tv-meta-item">${m}</span>`; })
+                 .join('<span class="tv-meta-sep"></span>') +
+        `</div>`;
 
     // Outlook block: SP+/FPI power ratings, talent, returning production. Only
     // rendered once the enrichment job has populated these (absent otherwise).
@@ -589,33 +609,21 @@ function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fa
                 <h2 class="team-name">${team.school} ${team.mascot}</h2>
                 ${renderSeasonSelector(team.seasons, seasonObj.season)}
             </div>
-            <p class="team-conf"><img class="conf-logo" src="${confLogo}" alt="${formatConference}" /> ${formatConference}</p>
-            ${coachHtml}
+            <div class="tv-status-row">${statusHtml}</div>
+            ${expectedHtml}
             <div class="team-meta-links">${twitterHtml}${ownerHtml}</div>
             ${formStrip ? `<div class="form-strip" title="Most recent results">${formStrip}</div>` : ''}
             </div>
         </div>
 
-        <hr class="divider" />
+        ${metaHtml}
 
         <div class="team-details">
             <div>
-                <h4>${seasonObj.season} Record</h4>
-                <p class="score">${record?.total?.wins || 0}-${record?.total?.losses || 0}    Overall</p>
-                <p class="score">${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}    Conference</p>
-                ${expectedHtml}
-            </div>
-            <div>
                 <h4>${window.ccIcon ? window.ccIcon('riser', { size: 21 }) : ''} Season Score</h4>
-                <p class="score"><span data-countup="${seasonScore}">0</span> Points ${rankHtml}</p>
+                <p class="score"><span class="tv-score-value" data-countup="${seasonScore}">0</span> Points ${rankHtml}</p>
                 <h4>Recruiting Rank</h4>
                 <p class="score">${recruitingRank}</p>
-            </div>
-            <div>
-                <h4>${window.ccIcon ? window.ccIcon('stadium', { size: 21 }) : ''} Stadium</h4>
-                <p>${loc.name || '—'}</p>
-                ${(loc.city && loc.state) ? `<p><small>${loc.city}, ${loc.state}</small></p>` : ''}
-                ${stadiumChips.length ? `<div class="stadium-chips">${stadiumChips.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}
             </div>
             ${outlookHtml}
         </div>
