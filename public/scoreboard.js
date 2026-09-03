@@ -236,15 +236,25 @@ function weekDateLabel(range) {
     return a === b ? a : a + ' \u2013 ' + b;
 }
 
-// The week control is a jump list, not just a label. Stepping from week 3 to
-// week 12 and back was fourteen clicks on the arrows; the arrows stay for
-// moving one week, which is the common case.
+// Two controls for the same job, one shown per screen size (CSS decides which):
+// a strip of every week where there is room to lay the season out, and the
+// arrows-plus-picker on a phone, where a strip would cost a row of height and
+// still need swiping. Both are always rendered, so neither can go stale in the
+// moment the viewport crosses the breakpoint.
 function renderWeekNav() {
-    var sel = document.getElementById('week-select');
     var weeks = sbState.weeks || [];
+    var label = sbState.week != null ? 'Week ' + sbState.week : 'No games';
 
+    document.querySelectorAll('.week-label-name').forEach(function (el) {
+        el.textContent = label;
+    });
+    document.querySelectorAll('.week-dates').forEach(function (el) {
+        el.textContent = weekDateLabel(sbState.weekRange);
+    });
+
+    var sel = document.getElementById('week-select');
     if (!weeks.length) {
-        sel.innerHTML = '<option>' + (sbState.week != null ? 'Week ' + sbState.week : 'No games') + '</option>';
+        sel.innerHTML = '<option>' + label + '</option>';
         sel.disabled = true;
     } else {
         sel.innerHTML = weeks.map(function (w) {
@@ -254,11 +264,29 @@ function renderWeekNav() {
         sel.disabled = false;
     }
 
-    document.getElementById('week-dates').textContent = weekDateLabel(sbState.weekRange);
+    document.getElementById('week-strip').innerHTML = weeks.map(function (w) {
+        var on = w === sbState.week;
+        return '<button type="button" class="sb-week' + (on ? ' is-active' : '') + '"'
+            + ' data-week="' + w + '" aria-pressed="' + (on ? 'true' : 'false') + '">Week ' + w + '</button>';
+    }).join('');
 
     var i = weeks.indexOf(sbState.week);
     document.getElementById('week-prev').disabled = i <= 0;
     document.getElementById('week-next').disabled = i < 0 || i >= weeks.length - 1;
+
+    centerActiveWeek();
+}
+
+// Keep the chosen week in view without letting the browser scroll the PAGE to
+// get there — scrollIntoView on a horizontally scrolling strip will happily
+// move the document too, which on this page means jumping away from the games.
+// Setting scrollLeft directly only ever moves the strip.
+function centerActiveWeek() {
+    var strip = document.getElementById('week-strip');
+    var active = strip.querySelector('.sb-week.is-active');
+    if (!active) return;
+    var target = active.offsetLeft - (strip.clientWidth / 2) + (active.offsetWidth / 2);
+    strip.scrollLeft = Math.max(0, target);
 }
 
 // Paints whichever of the four controls is the active filter, and only that
@@ -514,6 +542,14 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!sbState.conf && had) sbState.filter = 'all';
         renderFilterState();
         render();
+    });
+
+    // Delegated: the strip is rebuilt on every week change.
+    document.getElementById('week-strip').addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.sb-week') : null;
+        if (!btn) return;
+        var w = Number(btn.getAttribute('data-week'));
+        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w);
     });
 
     document.getElementById('week-select').addEventListener('change', function () {

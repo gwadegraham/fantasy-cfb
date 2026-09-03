@@ -47,19 +47,27 @@
                 <span class="sb-updated" id="sb-updated"></span>
             </div>
         </div>
+        <!-- Narrow screens get the compact picker; wide screens get the strip
+             below and only need to be told which week they are looking at. -->
         <div class="week-nav">
             <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>
             <span class="week-label">
                 <select class="week-select" id="week-select" aria-label="Week"></select>
-                <span class="week-dates" id="week-dates"></span>
+                <span class="week-dates"></span>
             </span>
             <button type="button" class="week-nav-btn" id="week-next" aria-label="Next week">
                 <i class="fa-solid fa-chevron-right"></i>
             </button>
         </div>
+        <span class="week-label week-label-wide">
+            <span class="week-label-name"></span>
+            <span class="week-dates"></span>
+        </span>
     </div>
+
+    <div class="sb-weeks" id="week-strip" role="group" aria-label="Week"></div>
 
     <!-- One row that scrolls sideways rather than wrapping: wrapping cost a
          whole extra line on every phone, and the chips are the one control

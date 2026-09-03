@@ -5,6 +5,7 @@
    content instead of filling the page — the same reason .navbar sets width
    explicitly. Without this the 99-card grid collapses to one 300px column. */
 .sb-head,
+.sb-weeks,
 .sb-filters,
 #scoreboard-content {
     width: 100%;
@@ -65,7 +66,18 @@
     min-width: 92px;
     text-align: center;
 }
-/* Looks like the label it replaced, behaves like a control. Bare `appearance`
+.week-label-wide {
+    align-items: flex-end;
+    text-align: right;
+    min-width: 0;
+}
+.week-label-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cc-muted-bright);
+}
+
+/* Looks like the label beside it, behaves like a control. Bare `appearance`
    reset rather than the .sb-conf pill treatment: this sits between two arrow
    buttons and a boxed control there reads as a third button. */
 .week-select {
@@ -82,12 +94,8 @@
     text-align-last: center;
     cursor: pointer;
 }
-.week-select:hover:not(:disabled) {
-    color: var(--cc-text);
-}
-.week-select:disabled {
-    cursor: default;
-}
+.week-select:hover:not(:disabled) { color: var(--cc-text); }
+.week-select:disabled { cursor: default; }
 .week-select:focus-visible {
     outline: 2px solid var(--cc-info);
     outline-offset: 2px;
@@ -96,6 +104,56 @@
 .week-select option {
     background: var(--cc-surface);
     color: var(--cc-text);
+}
+
+/* ---- Two week controls, one per screen size --------------------------------
+   Mobile-first: the arrows + picker are the default, and the strip and the
+   wide-screen label are switched on at the breakpoint. A strip on a phone costs
+   a 42px row of the height this page was tuned to save and still needs swiping
+   to reach December; the native picker gets there in one gesture. */
+.sb-weeks,
+.week-label-wide {
+    display: none;
+}
+
+@media (min-width: 601px) {
+    .week-nav { display: none; }
+    .week-label-wide { display: flex; }
+    .sb-weeks { display: flex; }
+}
+
+.sb-weeks {
+    gap: 6px;
+    padding: 0 16px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.sb-weeks::-webkit-scrollbar {
+    display: none;
+}
+/* grow, don't shrink: the weeks share out whatever width the screen has, so the
+   strip always spans it, and past the point where the labels stop fitting the
+   row scrolls instead of squeezing them. */
+.sb-week {
+    flex: 1 0 auto;
+    min-width: 76px;
+    padding: 6px 10px;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-muted);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.sb-week:hover {
+    background: var(--cc-surface-3);
+    color: var(--cc-text);
+}
+.sb-week.is-active {
+    background: var(--cc-accent);
+    border-color: var(--cc-accent);
+    color: #fff;
 }
 /* The slate's actual dates. A week number means nothing on its own once you're
    paging back through the season — "Week 6" and "Oct 3 – 4" answer different
