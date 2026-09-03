@@ -28,8 +28,8 @@ async function getUserProfile() {
             if (leagueCode && (leagueCode != "undefined")) {
                 const currentSelectedLeague = window.sessionStorage.getItem("league");
                 if (currentSelectedLeague) {
-                    var btn = document.getElementById("dropdownMenuButton");
-                    if (btn) btn.textContent = currentSelectedLeague;
+                    var _lSel = document.querySelector('[league-select]');
+                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
                 }
             }
         }
@@ -45,26 +45,14 @@ window.onload = function() {
     loadTeamPage();
 };
 
-// Vanilla replacement for the old jQuery league-selector handler. The navbar's
-// Bootstrap handles opening the dropdown; this only wires the item clicks.
 function initLeagueSelector() {
-    const items = document.querySelectorAll('[league-selector] a');
-    if (!items.length) return;
-
-    const button = document.getElementById('dropdownMenuButton');
-    items.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const label = item.textContent;
-            const value = item.getAttribute('value');
-            if (button) {
-                button.textContent = label;
-                button.value = value;
-            }
-            window.sessionStorage.setItem("league", label);
-            window.localStorage.setItem("leagueCode", value);
-            window.location.reload();
-        });
+    var sel = document.querySelector('[league-select]');
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+        var opt = this.options[this.selectedIndex];
+        window.sessionStorage.setItem("league", opt.text);
+        window.localStorage.setItem("leagueCode", opt.value);
+        window.location.reload();
     });
 }
 

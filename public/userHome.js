@@ -43,8 +43,9 @@ async function getUserProfile() {
 
         weekCode = window.localStorage.getItem("weekCode");
         const currentSelectedWeek = window.localStorage.getItem("week");
-        if (currentSelectedWeek) {
-            $("#dropdownMenuButtonWeek").text(currentSelectedWeek);
+        var _rwSel = document.querySelector('[rivalry-week]');
+        if (currentSelectedWeek && _rwSel) {
+            _rwSel.value = window.localStorage.getItem("weekCode");
         }
 
         // Only set leagueCode from metaData if it's not already stored
@@ -59,7 +60,8 @@ async function getUserProfile() {
             if (leagueCode && (leagueCode != "undefined")) {
                 const currentSelectedLeague = window.sessionStorage.getItem("league");
                 if (currentSelectedLeague) {
-                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                    var _lSel = document.querySelector('[league-select]');
+                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
                 }
             }
         }    
@@ -75,14 +77,12 @@ window.onload = function() {
     getUserProfile();
 };
 
-if ($(".dropdown-menu-week")) {
-    $(".dropdown-menu-week a").click(function(){
-        $(this).parents(".dropdownWeek").find('.btn').html($(this).text());
-        $(this).parents(".dropdownWeek").find('.btn').val($(this).attr('value'));
-        var selectedWeek = $("#dropdownMenuButtonWeek").text();
-        var selectedWeekCode = $("#dropdownMenuButtonWeek").val();
-        window.localStorage.setItem("week", selectedWeek);
-        window.localStorage.setItem("weekCode", selectedWeekCode);
+var _uhRivalryWeek = document.querySelector('[rivalry-week]');
+if (_uhRivalryWeek) {
+    _uhRivalryWeek.addEventListener('change', function () {
+        var opt = this.options[this.selectedIndex];
+        window.localStorage.setItem("week", opt.text);
+        window.localStorage.setItem("weekCode", opt.value);
 
         document.querySelector('.football-loader').style.display = "flex";
         document.querySelector('[schedule-body]').style.display = "none";
@@ -1238,7 +1238,8 @@ function ensureWeekSelected(data) {
     window.localStorage.setItem('weekCode', code);
     window.localStorage.setItem('week', label);
     weekCode = code;
-    $('#dropdownMenuButtonWeek').text(label);
+    var _rwSel = document.querySelector('[rivalry-week]');
+    if (_rwSel) _rwSel.value = code;
 }
 // ---------- Profile hero ----------
 
@@ -2047,19 +2048,17 @@ async function displaySchedule(data) {
     document.querySelector('[schedule-body]').style.display = 'flex';
 }
 
-if ($("[league-selector]")) {
-    setTimeout(() => {
-        $("[league-selector] a").click(function(){
-            $(this).parents(".dropdown").find('.btn').html($(this).text());
-            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-            var selectedLeague = $("#dropdownMenuButton").text();
-            var selectedLeagueCode = $("#dropdownMenuButton").val();
-            window.sessionStorage.setItem("league", selectedLeague);
-            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+setTimeout(() => {
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) {
+        _lSel.addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            window.sessionStorage.setItem("league", opt.text);
+            window.localStorage.setItem("leagueCode", opt.value);
             window.location.reload();
         });
-    }, "200");
-}
+    }
+}, 200);
 
 
 const noGamesMessages = [

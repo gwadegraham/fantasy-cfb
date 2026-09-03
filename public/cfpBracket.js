@@ -388,15 +388,12 @@
 
     load();
 
-    // League switcher: store selection and reload
-    document.querySelectorAll('[league-selector] a').forEach(function (a) {
-        a.addEventListener('click', function (e) {
-            e.preventDefault();
-            var code = a.getAttribute('value');
-            if (code) {
-                try { window.localStorage.setItem('leagueCode', code); } catch (e) {}
-                window.location.reload();
-            }
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) {
+        _lSel.addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            try { window.localStorage.setItem('leagueCode', opt.value); } catch (e) {}
+            window.location.reload();
         });
-    });
+    }
 })();

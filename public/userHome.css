@@ -180,10 +180,6 @@
         width: 100%;
     }
 
-    .dropdown-item {
-        cursor: pointer;
-    }
-
     /* No Games CSS */
     #no-games-container {
         margin-left: 5%;
@@ -315,16 +311,9 @@
         height: 2px;
     }
 
-    .dropdownWeek {
+    .rivalry-week-select {
         margin-left: 1em;
         margin-right: auto;
-    }
-
-    .dropdownWeek button {
-        font-size: 2rem;
-    }
-
-    .dropdown-item {
         font-size: 1.5rem;
     }
 
