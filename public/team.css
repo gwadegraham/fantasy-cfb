@@ -236,8 +236,16 @@
         font-variant-numeric: tabular-nums;
     }
 
+    /* Winner bright + bold, loser muted. Don't tint the winner with
+       --team-accent: readableOnDark only lifts a colour to luminance 0.22, so
+       dark-primary teams (UVA -> #868b9c) came out dimmer than the default
+       text and the loser looked like the highlighted side. */
     .game-winner, .game-winner a {
-        color: var(--team-accent, var(--cc-accent)) !important;
+        color: var(--cc-text) !important;
+    }
+
+    .game-loser, .game-loser a {
+        color: var(--cc-muted) !important;
     }
 
     .rank {
@@ -270,14 +278,20 @@
         flex-wrap: wrap;
     }
 
+    /* Match the hero card's box (.team-card is 75% + margin:auto) so the
+       columns' outer edges line up with it, then let the cards inside fill
+       their column edge-to-edge instead of shrinking to 75% again. */
     .standings-container {
         flex-direction: row;
-        max-width: 75%;
+        align-items: flex-start;
+        gap: 1rem;
+        width: 75%;
+        margin: 0 auto;
     }
-
-    .standings-table {
-        display: block;
-    }
+    .tv-left-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+    .tv-right-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1rem; }
+    .tv-left-col > .team-card,
+    .tv-right-col > .team-card { width: 100%; margin-left: 0; margin-right: 0; }
 
     .drop {
         display: none !important;
@@ -669,6 +683,79 @@
     border-left: 3px solid var(--team-accent, var(--cc-accent));
 }
 
+/* Collapsed-state peek at the viewed team's standings line (mobile only —
+   desktop keeps the full table open, so the peek would just duplicate it).
+   Carries the same accent wash + left rule as .viewed-team-row so the two read
+   as the same row. JS adds .is-hidden once the table is expanded. */
+.standings-peek {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    border-left: 3px solid var(--team-accent, var(--cc-accent));
+    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
+}
+
+.standings-peek.is-hidden { display: none; }
+
+.standings-peek-rank {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--team-accent, var(--cc-accent));
+    flex: 0 0 auto;
+}
+
+.standings-peek-team {
+    display: flex;
+    align-items: center;
+    gap: 0.35em;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.standings-peek-team img,
+.standings-peek-team i {
+    height: 1.4em;
+    flex: 0 0 auto;
+}
+
+.standings-peek-team span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Records hug the right edge, mirroring the table's Conf / Overall columns. */
+.standings-peek-recs {
+    display: flex;
+    gap: 0.8em;
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+.standings-peek-rec {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.standings-peek-rec small {
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-2);
+}
+
+@media only screen and (min-width: 64em) {
+    .standings-peek { display: none; }
+}
+
 /* ==================================================================== */
 /* Entrance animations. All are defined ONLY inside the                 */
 /* prefers-reduced-motion:no-preference query, so a reader who opts out */
@@ -743,6 +830,11 @@
 @media only screen and (min-width: 64em) {
     /* Desktop: always visible, no clipping */
     .games-container, .standings-table { max-height: none; overflow: visible; }
+    /* The collapse animation above needs display:block (max-height is a no-op
+       on display:table), but that drops the cells into a shrink-wrapped
+       anonymous table that ignores the card width. Desktop doesn't collapse,
+       so restore real table layout and let it fill the card. */
+    .standings-table { display: table; width: 100%; }
 }
 /* Head coach line in the team header + SP+/FPI rating value in the Outlook block
    (populated by the weekly enrichment job). */
@@ -789,4 +881,149 @@
     .team-card.schedule { padding-left: 1em; padding-right: 1em; }
     .standings-table .standingColumn { padding: 0.5rem 0.3rem; }
     .standings-table thead .standingColumn { font-size: 0.82rem; }
+}
+
+/* Team Stats + Season Leaders share one left rail: the title's leading icon
+   occupies a fixed-width slot and every row below is indented by that same
+   amount. The slot has to be a fixed width because the two glyphs differ
+   (fa-chart-simple ~21px vs fa-user-shield ~26px) — indenting by each glyph's
+   natural width would put the two cards on different rails. */
+:root { --tv-icon-indent: 1.9rem; }
+
+.tv-ts-title i,
+.tv-pl-title i {
+    display: inline-block;
+    width: var(--tv-icon-indent);
+    margin: 0;
+    text-align: left;
+}
+
+/* ---- Team Season Stats (team view) ---- */
+.tv-ts-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cc-muted-bright);
+    margin: 0 0 4px;
+}
+.tv-ts-subtitle {
+    font-size: 0.72rem;
+    color: var(--cc-muted);
+    margin-bottom: 12px;
+    padding-left: var(--tv-icon-indent);
+}
+.tv-ts-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0 6px var(--tv-icon-indent);
+    border-bottom: 1px solid var(--cc-border);
+}
+.tv-ts-row:last-child { border-bottom: none; }
+.tv-ts-label {
+    font-size: 0.78rem;
+    color: var(--cc-muted-bright);
+}
+.tv-ts-val {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--cc-accent);
+}
+
+/* ---- Player Season Leaders (team view) ---- */
+.tv-pl-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cc-muted-bright);
+    margin: 0 0 10px;
+}
+/* 7 categories x up to 2 players makes this the tallest card on the page, so
+   the vertical rhythm is deliberately tight: the group/category gaps and the
+   row padding are where the height accumulates. */
+.tv-pl-group {
+    margin-bottom: 10px;
+}
+.tv-pl-group:last-child { margin-bottom: 0; }
+/* Category line: name on the left, that category's column labels on the right,
+   sitting directly above the player rows they describe. */
+.tv-pl-cathead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 2px;
+    padding-left: var(--tv-icon-indent);
+}
+.tv-pl-cat {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-2);
+    min-width: 0;
+}
+.tv-pl-hcell {
+    width: var(--tv-pl-cell);
+    flex: 0 0 var(--tv-pl-cell);
+    text-align: right;
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--cc-muted-2);
+}
+.tv-pl-player {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0 4px var(--tv-icon-indent);
+    border-bottom: 1px solid var(--cc-border);
+}
+.tv-pl-player:last-child { border-bottom: none; }
+.tv-pl-player-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.tv-pl-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--cc-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tv-pl-pos {
+    font-size: 0.65rem;
+    color: var(--cc-muted-2);
+    flex-shrink: 0;
+}
+/* Fixed cell width, used by BOTH the header labels and the row values — the
+   two are separate elements, so a content-sized column would let a wide value
+   (1062, 13.5) drift out from under its label. */
+:root { --tv-pl-cell: 2rem; }
+
+.tv-pl-stats {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.tv-pl-stat-cell {
+    width: var(--tv-pl-cell);
+    flex: 0 0 var(--tv-pl-cell);
+    text-align: right;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--cc-accent);
+    font-variant-numeric: tabular-nums;
+}
+
+@media only screen and (max-width: 600px) {
+    :root { --tv-pl-cell: 1.85rem; }
+    .tv-pl-stats { gap: 5px; }
+    .tv-pl-stat-cell { font-size: 0.72rem; }
+    .tv-pl-name { font-size: 0.75rem; }
 }

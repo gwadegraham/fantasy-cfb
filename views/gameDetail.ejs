@@ -8,6 +8,7 @@
     <link href="/styles.css" rel="stylesheet">
     <script src="/haptic.js"></script>
     <script src="/pull-to-refresh.js"></script>
+    <script src="/fit-names.js"></script>
     <link href="/gameDetail.css" rel="stylesheet">
     <link href="/loading.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -196,18 +197,25 @@
             html += '</div>'; // .gd-header
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
+            // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.
+            // Unwrapped, an icon and its label are separate flex items and the
+            // row's flex-wrap could break between them — leaving the broadcast
+            // icon stranded at the end of one line and "ESPN" on the next.
             var metaParts = [];
-            if (game.venue) metaParts.push('<i class="fas fa-location-dot"></i> ' + game.venue);
+            function metaItem(inner) {
+                return '<span class="gd-meta-item">' + inner + '</span>';
+            }
+            if (game.venue) metaParts.push(metaItem('<i class="fas fa-location-dot"></i> ' + game.venue));
             if (game.weather) {
                 var wxEmoji = game.weather.emoji && window.ccWeatherEmoji ? window.ccWeatherEmoji[game.weather.emoji] || '' : '';
                 var wxParts = [];
                 if (game.weather.condition) wxParts.push(game.weather.condition);
                 if (game.weather.temp != null) wxParts.push(game.weather.temp + '°F');
                 if (game.weather.wind != null) wxParts.push('Wind ' + game.weather.wind + ' mph');
-                if (wxParts.length) metaParts.push(wxEmoji + ' ' + wxParts.join(' · '));
+                if (wxParts.length) metaParts.push(metaItem(wxEmoji + ' ' + wxParts.join(' · ')));
             }
-            if (game.outlet) metaParts.push((window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : '') + ' ' + game.outlet);
-            if (game.attendance) metaParts.push('<i class="fas fa-users"></i> ' + Number(game.attendance).toLocaleString());
+            if (game.outlet) metaParts.push(metaItem((window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : '') + ' ' + game.outlet));
+            if (game.attendance) metaParts.push(metaItem('<i class="fas fa-users"></i> ' + Number(game.attendance).toLocaleString()));
             if (metaParts.length) {
                 html += '<div class="gd-meta">' + metaParts.join('<span class="gd-meta-sep"></span>') + '</div>';
             }
@@ -310,6 +318,68 @@
                         html += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
                         html += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
                         html += '</div></div>';
+                    }
+
+                    html += '</div>'; // .gd-section
+                }
+            }
+
+            // ---- Player Season Leaders (pre-game only) ----
+            if (game.playerLeaders && !isFinal) {
+                var hpl = game.playerLeaders.home;
+                var apl = game.playerLeaders.away;
+                if (hpl || apl) {
+                    var plCats = [
+                        { key: 'passing', label: 'Passing', stat: 'YDS', unit: 'yds' },
+                        { key: 'rushing', label: 'Rushing', stat: 'YDS', unit: 'yds' },
+                        { key: 'receiving', label: 'Receiving', stat: 'YDS', unit: 'yds' },
+                        { key: 'tackles', label: 'Tackles', stat: 'TOT', unit: '' },
+                        { key: 'sacks', label: 'Sacks', stat: 'SACKS', unit: '' },
+                        { key: 'interceptions', label: 'Interceptions', stat: 'INT', unit: '' },
+                        { key: 'kicking', label: 'Kicking', stat: 'PTS', unit: 'pts' }
+                    ];
+
+                    html += '<div class="gd-section">';
+                    html += '<div class="gd-ss-header">';
+                    html += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
+                    html += '<h3 class="gd-section-title"><i class="fas fa-user-shield"></i> Season Leaders</h3>';
+                    html += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
+                    html += '</div>';
+
+                    for (var pli = 0; pli < plCats.length; pli++) {
+                        var pc = plCats[pli];
+                        var aLeader = apl && apl[pc.key] && apl[pc.key][0] ? apl[pc.key][0] : null;
+                        var hLeader = hpl && hpl[pc.key] && hpl[pc.key][0] ? hpl[pc.key][0] : null;
+                        if (!aLeader && !hLeader) continue;
+
+                        var aName = aLeader ? aLeader.name : '—';
+                        var aPos = aLeader && aLeader.pos ? aLeader.pos : '';
+                        var hName = hLeader ? hLeader.name : '—';
+                        var hPos = hLeader && hLeader.pos ? hLeader.pos : '';
+
+                        // No leader means no data, NOT a zero. Rendering "0 yds"
+                        // beside the dash claimed a team whose stats simply
+                        // haven't been ingested yet had a 0-yard leader.
+                        var aStat = aLeader
+                            ? (aLeader[pc.stat] || 0) + (pc.unit ? ' ' + pc.unit : '')
+                            : '';
+                        var hStat = hLeader
+                            ? (hLeader[pc.stat] || 0) + (pc.unit ? ' ' + pc.unit : '')
+                            : '';
+
+                        html += '<div class="gd-pl-row">';
+                        html += '<div class="gd-pl-player gd-pl-away">';
+                        html += '<span class="gd-pl-name">' + aName + '</span>';
+                        if (aPos) html += '<span class="gd-pl-pos">' + aPos + '</span>';
+                        if (aStat) html += '<span class="gd-pl-stat">' + aStat + '</span>';
+                        html += '</div>';
+                        html += '<div class="gd-pl-cat">' + pc.label + '</div>';
+                        html += '<div class="gd-pl-player gd-pl-home">';
+                        if (hStat) html += '<span class="gd-pl-stat">' + hStat + '</span>';
+                        if (hPos) html += '<span class="gd-pl-pos">' + hPos + '</span>';
+                        html += '<span class="gd-pl-name">' + hName + '</span>';
+                        html += '</div>';
+                        html += '</div>';
                     }
 
                     html += '</div>'; // .gd-section
@@ -511,6 +581,14 @@
             if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
+
+            // Season Leaders names get whatever width is left after the stat
+            // columns; shorten only the ones that would clip. Shared with the
+            // team view — see public/fit-names.js.
+            if (window.ccFitNames) {
+                ccFitNames('.gd-pl-name', container);
+                ccWatchNameFit('.gd-pl-name', container);
+            }
         }
 
         function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {

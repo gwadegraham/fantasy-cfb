@@ -128,7 +128,9 @@ async function loadTeamPage() {
         getRankings(seasonYear),
         getAllBettingLines(seasonYear),
         getTeamOwner(teamId, seasonYear, leagueCode),
-        getTeamFantasyRank(teamId, seasonYear, leagueCode)
+        getTeamFantasyRank(teamId, seasonYear, leagueCode),
+        getPlayerSeasonLeaders(teamData.school, seasonYear),
+        getTeamSeasonStats(teamData.school, seasonYear)
     ]);
     const val = (i, fallback) => results[i].status === 'fulfilled' && results[i].value != null ? results[i].value : fallback;
     const record = val(0, undefined);
@@ -140,10 +142,36 @@ async function loadTeamPage() {
     const bettingLines = val(6, []);
     const owner = val(7, null);
     const fantasyRank = val(8, null);
+    const playerLeaders = val(9, null);
+    const teamStats = val(10, null);
 
-    renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
+    await renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
     renderTeamInfo(teamData, record, recruiting, seasonObj, schedule, owner, fantasyRank);
     renderTeamScheduleInfo(schedule, allLogos, rankings, bettingLines, seasonYear, teamData);
+    renderTeamSeasonStats(teamStats);
+    renderPlayerSeasonLeaders(playerLeaders);
+
+    // Runs last: it depends on the final visibility of all three cards above.
+    placeStandingsColumn();
+}
+
+// Early in a season a team can have no team stats and no player leaders yet
+// (both cards stay hidden). That leaves the right column empty, so the schedule
+// would run at half width with dead space beside it and the standings stranded
+// underneath. When that happens, move the standings up into the right column.
+function placeStandingsColumn() {
+    const rightCol = document.querySelector('.tv-right-col');
+    const standings = document.getElementById('conference-standings');
+    if (!rightCol || !standings) return;
+
+    // Nothing to fill the gap with if the standings itself didn't render
+    // (e.g. FBS Independents, where renderConferenceStandings hides it).
+    if (getComputedStyle(standings).display === 'none') return;
+
+    const hasStatCard = Array.from(rightCol.children)
+        .some(card => getComputedStyle(card).display !== 'none');
+
+    if (!hasStatCard) rightCol.appendChild(standings);
 }
 
 // Find the fantasy manager who drafted this team in the given season/league.
@@ -773,6 +801,19 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             const homeIsWinner = game.completed && Number(homePoints) > Number(awayPoints);
             const awayIsWinner = game.completed && Number(awayPoints) > Number(homePoints);
 
+            // A completed game emphasises the winner and mutes the loser. The
+            // winner can't be marked by team colour alone: readableOnDark only
+            // lifts a colour to luminance 0.22, so a navy/black team (UVA ->
+            // #868b9c) ends up dimmer than the default text and the LOSER
+            // reads as the highlighted side. Ties leave both sides alone.
+            const isTieGame = game.completed && Number(homePoints) === Number(awayPoints);
+            const loserOpen = game.completed && !isTieGame ? '<span class="game-loser">' : '';
+            const loserClose = game.completed && !isTieGame ? '</span>' : '';
+            const awayOpen = awayIsWinner ? '<strong class="game-winner">' : loserOpen;
+            const awayClose = awayIsWinner ? '</strong>' : loserClose;
+            const homeOpen = homeIsWinner ? '<strong class="game-winner">' : loserOpen;
+            const homeClose = homeIsWinner ? '</strong>' : loserClose;
+
             // Result badge from the VIEWED team's perspective (W/L/T + score),
             // so a completed game reads at a glance without relying on colour.
             var resultBadge = '';
@@ -789,24 +830,24 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
             }
 
             const awayTeamHTML = `
-                ${awayIsWinner ? '<strong class="game-winner">' : ''}
+                ${awayOpen}
                <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
-                ${awayIsWinner ? '</strong>' : ''}
+                ${awayClose}
                 </span><span class="betting-line">${awayLine ? '-' + awayLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
-                ${awayIsWinner ? '<strong class="game-winner">' : ''}
+                ${awayOpen}
                 ${awayPoints ? awayPoints : ''}
-                ${awayIsWinner ? '</strong>' : ''}
+                ${awayClose}
                 </span>
             `;
 
             const homeTeamHTML = `
-                ${homeIsWinner ? '<strong class="game-winner">' : ''}
+                ${homeOpen}
                <a href="/team?team=${game.homeId}">${homeLogo}${homeRank}${game.homeTeam}</a>
-                ${homeIsWinner ? '</strong>' : ''}
+                ${homeClose}
                 </span><span class="betting-line">${homeLine ? '-' + homeLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
-                ${homeIsWinner ? '<strong class="game-winner">' : ''}
+                ${homeOpen}
                 ${homePoints ? homePoints : ''}
-                ${homeIsWinner ? '</strong>' : ''}
+                ${homeClose}
                 </span>
             `;
 
@@ -948,12 +989,37 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
     }
 
     if (standings.length > 0 && conference != 'FBS Independents') {
+        // Collapsed-state peek: the viewed team's own standings line, so mobile
+        // shows where the team sits without expanding the whole table. Mirrors
+        // the schedule's "Next Up" hero. Hidden on desktop (table is always
+        // open there) and hidden by the toggle once the table is expanded.
+        const peekIdx = standings.findIndex(t => t.team == teamData.school);
+        let peekHtml = '';
+        if (peekIdx >= 0) {
+            const pk = standings[peekIdx];
+            let pkLogo = ccLogo((logos.find((logo) => logo.id == pk.teamId))?.logos);
+            pkLogo = pkLogo
+                ? `<img src="${pkLogo}" alt="">`
+                : '<i class="fa-solid fa-helmet-un"></i>';
+            peekHtml = `
+                <div class="standings-peek">
+                    <span class="standings-peek-rank">#${peekIdx + 1}</span>
+                    <span class="standings-peek-team">${pkLogo}<span>${pk.team}</span></span>
+                    <span class="standings-peek-recs">
+                        <span class="standings-peek-rec"><small>CONF</small>${pk.conferenceGames.wins}-${pk.conferenceGames.losses}</span>
+                        <span class="standings-peek-rec"><small>OVR</small>${pk.total.wins}-${pk.total.losses}</span>
+                    </span>
+                </div>
+            `;
+        }
+
         // Build table HTML
         let html = `
             <div class="standing-head">
                 <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0]?.conference || conference} Standings</h2>
                 <i class="fa-solid fa-caret-down drop"></i>
             </div>
+            ${peekHtml}
             <table class="standings-table">
                 <thead>
                     <tr>
@@ -1012,8 +1078,13 @@ async function renderConferenceStandings(data, teamData, logos, conference) {
                 const toggle = document.querySelector('#conference-standings .standing-head');
                 const content = document.querySelector('.standings-table');
 
+                const peek = container.querySelector('.standings-peek');
+
                 toggle.addEventListener('click', () => {
                     content.classList.toggle('active');
+
+                    // The peek only earns its space while the table is closed.
+                    if (peek) peek.classList.toggle('is-hidden', content.classList.contains('active'));
 
                     if (content.classList.contains('active')) {
                         document.querySelector('#conference-standings .drop').classList.add('fa-caret-up');
@@ -1146,6 +1217,129 @@ async function getRecruitingRankings(team, seasonYear) {
     var recruitingRankings = await response.json();
 
     return Array.isArray(recruitingRankings) ? recruitingRankings[0] : undefined;
+}
+
+async function getTeamSeasonStats(team, seasonYear) {
+    var res = await fetch('/team-season-stats?season=' + seasonYear + '&teams=' + encodeURIComponent(team), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    });
+    var data = await res.json();
+    return Array.isArray(data) && data.length ? data[0] : null;
+}
+
+function renderTeamSeasonStats(data) {
+    var container = document.getElementById('team-stats-container');
+    if (!container || !data || !data.stats || !data.games) return;
+
+    var s = data.stats;
+    var g = data.games;
+
+    var rows = [
+        { label: 'Total YPG', val: (s.totalYards || 0) / g },
+        { label: 'Opp YPG', val: (s.totalYardsOpponent || 0) / g },
+        { label: 'Rush YPG', val: (s.rushingYards || 0) / g },
+        { label: 'Pass YPG', val: (s.netPassingYards || 0) / g },
+        { label: 'Points / game', val: (s.totalPoints || 0) / g },
+        { label: 'Opp PPG', val: (s.totalPointsOpponent || 0) / g },
+        { label: 'Turnovers / game', val: (s.turnovers || 0) / g },
+        { label: 'Sacks / game', val: (s.sacks || 0) / g },
+        { label: '3rd down %', val: s.thirdDowns > 0 ? (s.thirdDownConversions || 0) / s.thirdDowns * 100 : 0, isPct: true }
+    ];
+
+    // The icon sits in a fixed-width slot (--tv-icon-indent) and the rows below
+    // are indented by the same amount, so the title text and the data share one
+    // left rail regardless of which glyph is used. See team.css.
+    var html = '<h3 class="tv-ts-title"><i class="fas fa-chart-simple"></i>Team Stats</h3>';
+    html += '<div class="tv-ts-subtitle">' + g + ' games</div>';
+
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var disp = r.isPct ? r.val.toFixed(1) + '%' : r.val.toFixed(1);
+        html += '<div class="tv-ts-row">';
+        html += '<span class="tv-ts-label">' + r.label + '</span>';
+        html += '<span class="tv-ts-val">' + disp + '</span>';
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+    container.style.display = '';
+}
+
+async function getPlayerSeasonLeaders(team, seasonYear) {
+    var res = await fetch('/player-season-leaders?season=' + seasonYear + '&teams=' + encodeURIComponent(team), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    });
+    var data = await res.json();
+    return Array.isArray(data) && data.length ? data[0] : null;
+}
+
+function renderPlayerSeasonLeaders(data) {
+    var container = document.getElementById('player-leaders-container');
+    if (!container || !data || !data.leaders) return;
+
+    var cats = [
+        { key: 'passing', label: 'Passing', cols: ['YDS', 'TD', 'INT', 'PCT'], colLabels: { 'PCT': 'CMP%' } },
+        { key: 'rushing', label: 'Rushing', cols: ['CAR', 'YDS', 'TD', 'YPC'] },
+        { key: 'receiving', label: 'Receiving', cols: ['REC', 'YDS', 'TD', 'YPR'] },
+        { key: 'tackles', label: 'Tackles', cols: ['TOT', 'SOLO', 'TFL', 'SACKS'] },
+        // 'QB HUR' is the widest label of any category; shortened so it doesn't
+        // force every fixed-width column wider than the values need.
+        { key: 'sacks', label: 'Sacks', cols: ['SACKS', 'TFL', 'QB HUR'], colLabels: { 'QB HUR': 'HUR' } },
+        { key: 'interceptions', label: 'Interceptions', cols: ['INT', 'YDS', 'TD'] },
+        { key: 'kicking', label: 'Kicking', cols: ['FGM', 'FGA', 'XPM', 'XPA', 'PTS'] }
+    ];
+
+    // Icon slot + matching row indent (see the note in renderTeamSeasonStats).
+    var html = '<h3 class="tv-pl-title"><i class="fas fa-user-shield"></i>Season Leaders</h3>';
+
+    for (var ci = 0; ci < cats.length; ci++) {
+        var cat = cats[ci];
+        var players = data.leaders[cat.key];
+        if (!players || !players.length) continue;
+
+        html += '<div class="tv-pl-group">';
+
+        // Column labels belong to the category, not the player: they sit once on
+        // the category line and every player row below lines up under them. The
+        // label and value cells share a fixed width (--tv-pl-cell) so a wide
+        // value can't widen its own column and knock the rows out of alignment.
+        html += '<div class="tv-pl-cathead">';
+        html += '<span class="tv-pl-cat">' + cat.label + '</span>';
+        html += '<span class="tv-pl-stats">';
+        for (var hi = 0; hi < cat.cols.length; hi++) {
+            var hst = cat.cols[hi];
+            var hLabel = (cat.colLabels && cat.colLabels[hst]) || hst;
+            html += '<span class="tv-pl-hcell">' + hLabel + '</span>';
+        }
+        html += '</span></div>';
+
+        for (var pi = 0; pi < players.length; pi++) {
+            var p = players[pi];
+            html += '<div class="tv-pl-player">';
+            html += '<div class="tv-pl-player-info">';
+            html += '<span class="tv-pl-name">' + p.name + '</span>';
+            if (p.pos) html += '<span class="tv-pl-pos">' + p.pos + '</span>';
+            html += '</div>';
+            html += '<div class="tv-pl-stats">';
+            for (var si = 0; si < cat.cols.length; si++) {
+                var st = cat.cols[si];
+                var v = p[st] != null ? p[st] : 0;
+                var displayVal = st === 'PCT' ? (v <= 1 ? Math.round(v * 100) : v) + '%' : v;
+                html += '<span class="tv-pl-stat-cell">' + displayVal + '</span>';
+            }
+            html += '</div></div>';
+        }
+
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+    container.style.display = '';
+    // Shared with the game detail leaders card — see public/fit-names.js.
+    ccFitNames('.tv-pl-name', container);
+    ccWatchNameFit('.tv-pl-name', container);
 }
 
 // Helper: Format the date to readable format

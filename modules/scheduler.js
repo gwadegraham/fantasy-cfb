@@ -12,7 +12,9 @@ const JOB_SCHEDULES = [
     // morning, after the weekend's ratings have refreshed. ~8 CFBD calls.
     { job: 'enrichment', modulePath: '../update-enrichment-job', rule: { dayOfWeek: 2, hour: 5, minute: 30 } },
     // Weekly season stats (CFBD /stats/season). 1 API call, all FBS teams.
-    { job: 'season-stats', modulePath: '../update-season-stats-job', rule: { dayOfWeek: 2, hour: 6, minute: 0 } }
+    { job: 'season-stats', modulePath: '../update-season-stats-job', rule: { dayOfWeek: 2, hour: 6, minute: 0 } },
+    // Weekly player season leaders (CFBD /stats/player/season). 1 API call, all FBS teams.
+    { job: 'player-season-leaders', modulePath: '../update-player-season-leaders-job', rule: { dayOfWeek: 2, hour: 6, minute: 30 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 2 min; the

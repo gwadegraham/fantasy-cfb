@@ -157,6 +157,17 @@ html.gd-page, .gd-page body {
     box-sizing: border-box;
     max-width: 100%;
 }
+/* One flex item per meta part, so .gd-meta only ever wraps BETWEEN parts —
+   an icon can never be orphaned from its label. nowrap keeps each part whole;
+   the labels are short (venue, "Wind 10.3 mph", "ACC Network") so no single
+   part gets wide enough to overflow the card. */
+.gd-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
 .gd-meta-sep {
     width: 3px;
     height: 3px;
@@ -164,6 +175,7 @@ html.gd-page, .gd-page body {
     background: var(--cc-muted-2);
     display: inline-block;
     vertical-align: middle;
+    flex-shrink: 0;
 }
 
 /* ---- Sections ---- */
@@ -578,6 +590,54 @@ html.gd-page, .gd-page body {
 .gd-ss-fill-away { justify-content: flex-start; }
 .gd-ss-fill-home { justify-content: flex-end; }
 
+/* ---- Player Season Leaders (side-by-side) ---- */
+.gd-pl-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--cc-border);
+}
+.gd-pl-row:last-child { border-bottom: none; }
+.gd-pl-cat {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-2);
+    white-space: nowrap;
+    text-align: center;
+    min-width: 70px;
+}
+.gd-pl-player {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.gd-pl-away { justify-content: flex-start; }
+.gd-pl-home { justify-content: flex-end; }
+.gd-pl-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--cc-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.gd-pl-pos {
+    font-size: 0.65rem;
+    color: var(--cc-muted-2);
+    flex-shrink: 0;
+}
+.gd-pl-stat {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--cc-accent);
+    flex-shrink: 0;
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 600px) {
     .game-detail-container { padding: 12px 10px 50px; }
@@ -605,6 +665,11 @@ html.gd-page, .gd-page body {
     .gd-ss-label { font-size: 0.65rem; }
     .gd-ss-team-label img { width: 18px; height: 18px; }
     .gd-ss-team-label span { font-size: 0.72rem; }
+    .gd-pl-row { gap: 4px; }
+    .gd-pl-cat { font-size: 0.6rem; min-width: 55px; }
+    .gd-pl-name { font-size: 0.7rem; }
+    .gd-pl-stat { font-size: 0.72rem; }
+    .gd-pl-pos { font-size: 0.58rem; }
     .gd-field-ez span { font-size: 8px; letter-spacing: 1.5px; }
     .gd-field-ball { font-size: 15px; }
     .gd-field-pct { font-size: 1.2rem; }
