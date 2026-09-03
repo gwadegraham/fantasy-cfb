@@ -6,7 +6,15 @@ const Ranking = require('../models/ranking');
 const Record = require('../models/record');
 const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
+const User = require('../models/user');
+const Team = require('../models/team');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
+const { pickLogo } = require('../public/logo.js');
+const {
+    ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
+    conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
+    shapeGames
+} = require('../modules/league-scoreboard');
 
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -160,6 +168,154 @@ router.get('/detail/:gameId', async (req, res) => {
             obj.bettingLines = merged;
         }
         res.status(200).json(obj);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// The poll to show against a week's games: that week's if it exists, otherwise
+// the most recent one before it.
+//
+// A poll is only published for weeks that have been played, so an exact-week
+// lookup returns nothing for every upcoming week — which left the AP rank off
+// every future game and made the Top 25 filter match zero games rather than
+// none-yet-ranked. The current poll is also the honest answer to "is this a
+// ranked matchup" for a game that hasn't kicked off.
+//
+// Postseason falls back to the final regular-season poll, since bowl and CFP
+// weeks carry no polls of their own.
+async function latestRanking(season, seasonType, week) {
+    const found = await Ranking.findOne(
+        { season, seasonType, week: { $lte: week } }, null, { sort: { week: -1 } }
+    ).lean();
+    if (found || seasonType !== 'postseason') return found;
+
+    return Ranking.findOne(
+        { season, seasonType: 'regular' }, null, { sort: { week: -1 } }
+    ).lean();
+}
+
+// League scoreboard — the whole FBS slate for one week, with the league's
+// drafted teams marked up with owner + live fantasy points.
+//
+// Zero CFBD calls: the schedule, the live scores (live poller -> /scoreboard)
+// and the fantasy points (re-scored every tick) are all already in Mongo. This
+// is one indexed Game read plus the league's users.
+//
+// Two modes:
+//   full  — the slate, the week list, and the conference filter options
+//   ?live=1 — only games in progress, for the client's refresh loop. A week is
+//             ~90 games; polling that every 30s to watch ~12 of them change is
+//             most of the payload wasted, so the refresh asks for the live ones
+//             and patches those rows in place.
+//
+// Week is optional: omitted, it resolves to the week you'd want on a Saturday
+// (see defaultWeek). The league is a path param to match the other league-
+// scoped reads (/standings/:league/..., /users/league/:league/...).
+router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const season = Number(req.params.season);
+        if (!Number.isFinite(season)) {
+            return res.status(400).json({ message: 'Invalid season' });
+        }
+        const seasonType = req.query.seasonType === 'postseason' ? 'postseason' : 'regular';
+        const liveOnly = req.query.live === '1' || req.query.live === 'true';
+        const nowMs = Date.now();
+
+        // Week windows drive both the week picker and the default week. Skipped
+        // when the caller already named a week AND only wants the live rows —
+        // the refresh loop shouldn't re-read the season's start dates every 30s.
+        let windows = null;
+        let week = req.params.week != null ? Number(req.params.week) : NaN;
+        if (!Number.isFinite(week) || !liveOnly) {
+            const weekRows = await Game.find(
+                { season, seasonType },
+                { week: 1, startDate: 1, _id: 0 }
+            ).lean();
+            windows = weekWindows(weekRows);
+            if (!Number.isFinite(week)) week = defaultWeek(windows, nowMs);
+        }
+
+        if (week == null || !Number.isFinite(week)) {
+            return res.json({
+                league, season, seasonType, week: null,
+                weeks: [], conferences: [], games: [], liveCount: 0
+            });
+        }
+
+        const [games, users] = await Promise.all([
+            Game.find(
+                { season, seasonType, week },
+                {
+                    id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1,
+                    completed: 1, neutralSite: 1, period: 1, clock: 1, possession: 1,
+                    homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+                    awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+                    outlet: 1, weather: 1, notes: 1, venue: 1, _id: 0
+                }
+            ).lean(),
+            User.find(
+                { league, 'seasons.season': season },
+                {
+                    firstName: 1, lastName: 1, color: 1, avatarUrl: 1,
+                    seasons: { $elemMatch: { season } }
+                }
+            ).lean()
+        ]);
+
+        const owners = ownersByTeam(users, season);
+        const points = pointsByTeamGame(users, season, week);
+
+        // Logos and abbreviations for everyone on the slate. One read of ~130
+        // unique teams rather than the two-per-game the Game docs would imply.
+        const teamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]))];
+        const [teamDocs, ranking, lines, recordDocs] = await Promise.all([
+            Team.find({ id: { $in: teamIds } },
+                { id: 1, abbreviation: 1, logos: 1, conference: 1, classification: 1, _id: 0 }).lean(),
+            latestRanking(season, seasonType, week),
+            BettingLine.find({ season, seasonType, week: week }, { id: 1, lines: 1, _id: 0 }).lean(),
+            Record.find({ year: season, teamId: { $in: teamIds } },
+                { teamId: 1, total: 1, _id: 0 }).lean()
+        ]);
+
+        const teams = {};
+        teamDocs.forEach(t => {
+            teams[t.id] = { abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null };
+        });
+
+        const ranks = {};
+        if (ranking && ranking.polls) {
+            const ap = ranking.polls.find(p => p.poll === 'AP Top 25');
+            (ap && ap.ranks ? ap.ranks : []).forEach(r => { ranks[r.school] = r.rank; });
+        }
+
+        // DraftKings when they have a line, else whoever does — the game cards
+        // on My Team already prefer DK, and disagreeing here would show two
+        // different spreads for the same game on two pages.
+        const lineMap = {};
+        lines.forEach(bl => {
+            const all = bl.lines || [];
+            const chosen = all.find(l => l.provider === 'DraftKings') || all[0];
+            if (chosen) lineMap[bl.id] = chosen;
+        });
+
+        const ctx = {
+            owners, points, teams, ranks, lines: lineMap, nowMs,
+            records: recordsByTeam(recordDocs)
+        };
+        let shaped = shapeGames(games, ctx);
+        const liveCount = shaped.filter(g => g.state === 'live').length;
+        if (liveOnly) shaped = shaped.filter(g => g.state === 'live');
+
+        res.json({
+            league, season, seasonType, week,
+            weeks: windows ? weekList(windows) : undefined,
+            weekRange: windows ? weekRangeOf(windows, week) : undefined,
+            conferences: liveOnly ? undefined : conferenceList(games, fbsConferenceNames(teamDocs)),
+            liveCount,
+            games: shaped
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

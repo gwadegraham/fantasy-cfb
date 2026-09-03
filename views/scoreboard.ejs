@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="styles.css" rel="stylesheet">
+    <script src="haptic.js"></script>
+    <script src="pull-to-refresh.js"></script>
+    <link href="scoreboard.css" rel="stylesheet">
+    <link href="loading.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
+    <script src="logo.js"></script>
+    <script src="scoreboard.js" defer></script>
+    <title data-league-title="Scores">Scores · Campus Clash</title>
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#101322" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+</head>
+
+<body>
+    <%- include('partials/navbar') %>
+    <script>
+        var userState = <%- userState %>;
+        var APP_YEAR = '<%= year %>';
+        var LEAGUE_CODE = '<%= leagueCode %>';
+    </script>
+
+    <!-- Deliberately NOT the shared .header/.header-title block the other pages
+         use. That centres a 3rem title on its own rows and, with the week nav
+         and filters stacked under it, put 301px of chrome above the first score
+         on a phone. Here the title, status and week nav share one row. -->
+    <div class="sb-head">
+        <div class="sb-head-id">
+            <h1 class="sb-title">Scores</h1>
+            <div class="sb-status">
+                <span class="sb-live-count" id="live-count" hidden></span>
+                <span class="sb-updated" id="sb-updated"></span>
+            </div>
+        </div>
+        <!-- Narrow screens get the compact picker; wide screens get the strip
+             below and only need to be told which week they are looking at. -->
+        <div class="week-nav">
+            <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="week-label">
+                <select class="week-select" id="week-select" aria-label="Week"></select>
+                <span class="week-dates"></span>
+            </span>
+            <button type="button" class="week-nav-btn" id="week-next" aria-label="Next week">
+                <i class="fa-solid fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="sb-weeks" id="week-strip" role="group" aria-label="Week"></div>
+
+    <!-- One row that scrolls sideways rather than wrapping: wrapping cost a
+         whole extra line on every phone, and the chips are the one control
+         people reach for mid-slate. -->
+    <div class="sb-filters" role="group" aria-label="Filter games">
+        <button type="button" class="sb-chip is-active" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="sb-chip" data-filter="league" aria-pressed="false">My league</button>
+        <button type="button" class="sb-chip" data-filter="top25" aria-pressed="false">Top 25</button>
+        <select class="sb-conf" id="conf-filter" aria-label="Conference">
+            <option value="">Conference</option>
+        </select>
+    </div>
+
+    <div id="scoreboard-content">
+        <div class="football-loader">
+            <i class="fa-solid fa-football football-icon"></i>
+            <div class="loading-text">Loading the slate…</div>
+        </div>
+    </div>
+
+    <footer></footer>
+</body>
+
+</html>
