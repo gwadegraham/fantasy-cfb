@@ -573,20 +573,53 @@ body > * { position: relative; z-index: 1; }
     gap: 3px;
     background: none;
     border: 0;
-    color: var(--cc-muted-2);
     font-size: 10px;
     font-family: inherit;
     text-decoration: none;
+}
+/* Colour has to be set on the icon and the label THEMSELVES, not on the tab.
+   The global `* { color: var(--cc-text) }` at the top of this file applies
+   directly to every element, so a child never inherits its parent's colour —
+   styling only .tab-item left every tab plain white, active and inactive
+   alike. */
+.tab-item i,
+.tab-item span:not(.tab-avatar) {
+    color: var(--cc-muted-2);
 }
 .tab-item i {
     font-size: 18px;
     padding: 0;          /* .fas/.fa carry a global padding-left */
 }
-.tab-item.active,
-.tab-item[aria-expanded="true"] {
+/* :not(.tab-avatar) throughout — the avatar is a span too, and colouring it
+   repaints the manager's initials over their own colour chip. */
+.tab-item.active i,
+.tab-item.active span:not(.tab-avatar),
+.tab-item[aria-expanded="true"] i,
+.tab-item[aria-expanded="true"] span:not(.tab-avatar) {
     color: var(--cc-accent);
 }
-.tab-avatar {
+/* A second, non-colour cue: colour alone fails anyone who cannot separate the
+   accent from the muted grey. */
+.tab-item.active span:not(.tab-avatar),
+.tab-item[aria-expanded="true"] span:not(.tab-avatar) {
+    font-weight: 500;
+}
+.tab-item.active::before,
+.tab-item[aria-expanded="true"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--cc-accent);
+}
+.tab-item {
+    position: relative;
+}
+.tab-item .tab-avatar {
     width: 20px;
     height: 20px;
     border-radius: 50%;
@@ -598,7 +631,7 @@ body > * { position: relative; z-index: 1; }
     font-weight: 500;
     color: #fff;
 }
-.tab-avatar img {
+.tab-item .tab-avatar img {
     width: 100%;
     height: 100%;
     object-fit: cover;
