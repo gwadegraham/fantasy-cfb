@@ -343,11 +343,16 @@ function renderConfOptions(conferences) {
     renderFilterState();
 }
 
+// Two copies of the status line exist — one in the desktop header, one in the
+// phone week row — and only ever one is displayed. Update both.
 function renderLiveCount() {
-    var el = document.getElementById('live-count');
-    if (!sbState.liveCount) { el.hidden = true; return; }
-    el.hidden = false;
-    el.textContent = sbState.liveCount + (sbState.liveCount === 1 ? ' game live' : ' games live');
+    var text = sbState.liveCount
+        ? sbState.liveCount + (sbState.liveCount === 1 ? ' game live' : ' games live')
+        : '';
+    document.querySelectorAll('.sb-live-count').forEach(function (el) {
+        el.hidden = !sbState.liveCount;
+        el.textContent = text;
+    });
 }
 
 // ---- data -------------------------------------------------------------------
@@ -494,8 +499,10 @@ function loadLastUpdated() {
         if (!run) return;
         var when = new Date(run.finishedAt || run.startedAt);
         if (isNaN(when)) return;
-        document.getElementById('sb-updated').textContent = 'Updated ' +
-            when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        var label = 'Updated ' + when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        document.querySelectorAll('.sb-updated').forEach(function (el) {
+            el.textContent = label;
+        });
     }).catch(function () { /* the badge is a nicety, not worth a toast */ });
 }
 
