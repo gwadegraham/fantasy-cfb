@@ -305,16 +305,10 @@
                         var hLead = sr.invert ? hVal < aVal : hVal > aVal;
 
                         html += '<div class="gd-ss-row">';
-                        html += '<div class="gd-ss-row-header">';
                         html += '<div class="gd-ss-label">' + sr.label + '</div>';
-                        html += '<div class="gd-ss-vals">';
-                        html += '<span class="gd-ss-val-away" style="color:' + awayBarColor + '">' + aDisp + '</span>';
-                        html += '<span class="gd-ss-sep">-</span>';
-                        html += '<span class="gd-ss-val-home" style="color:' + homeBarColor + '">' + hDisp + '</span>';
-                        html += '</div></div>';
                         html += '<div class="gd-ss-track">';
-                        html += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '"></div>';
-                        html += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '"></div>';
+                        html += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
+                        html += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
                         html += '</div></div>';
                     }
 
