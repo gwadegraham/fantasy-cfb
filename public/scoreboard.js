@@ -186,7 +186,14 @@ function render() {
     var games = visibleGames();
 
     if (!games.length) {
-        container.innerHTML = '<p class="sb-empty">No games match this filter.</p>';
+        // An empty week and an over-narrow filter are different problems, and
+        // telling someone their filter is wrong when the week simply has no
+        // games sends them hunting for a chip to un-click. Championship week
+        // sits empty until the matchups are known, so this is a real state.
+        var msg = sbState.games.length
+            ? 'No games match this filter.'
+            : 'No games scheduled this week.';
+        container.innerHTML = '<p class="sb-empty">' + msg + '</p>';
         return;
     }
 
