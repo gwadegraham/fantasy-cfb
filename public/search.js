@@ -227,8 +227,12 @@
 
     // ---- Wiring --------------------------------------------------------------
     function init() {
-        var btn = document.getElementById('nav-search');
-        if (btn) btn.addEventListener('click', function (e) { e.preventDefault(); open(); });
+        // Every .nav-search opens the palette: the one in the menu and, on
+        // phones, the icon in the navbar. Was getElementById, which bound only
+        // the first and silently left the other dead.
+        document.querySelectorAll('.nav-search').forEach(function (btn) {
+            btn.addEventListener('click', function (e) { e.preventDefault(); open(); });
+        });
 
         document.addEventListener('keydown', function (e) {
             // Cmd/Ctrl-K only. A bare "/" is the other common palette binding and

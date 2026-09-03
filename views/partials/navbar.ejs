@@ -70,6 +70,15 @@
             <div class="brand-clash">Clash</div>
         </div>
     </a>
+    <!-- Phone-only search trigger, in the slot the hamburger vacates at <=767px.
+         Search opens a dialog rather than navigating, so it has no business in
+         the tab bar alongside three destinations — but buried in More it is two
+         taps and invisible, and an icon is its only discovery route on a phone
+         (⌘K carries it on desktop). Shares the .nav-search class with the copy
+         in the menu; search.js binds every one of them. -->
+    <button type="button" class="nav-search nav-search-top" aria-label="Search teams and managers">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+    </button>
     <button type="button" class="toggle-button" aria-label="Toggle navigation" aria-controls="navbar-links" aria-expanded="false">
         <span class="bar"></span>
         <span class="bar"></span>
