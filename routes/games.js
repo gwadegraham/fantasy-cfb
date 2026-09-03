@@ -172,6 +172,28 @@ router.get('/detail/:gameId', async (req, res) => {
     }
 });
 
+// The poll to show against a week's games: that week's if it exists, otherwise
+// the most recent one before it.
+//
+// A poll is only published for weeks that have been played, so an exact-week
+// lookup returns nothing for every upcoming week — which left the AP rank off
+// every future game and made the Top 25 filter match zero games rather than
+// none-yet-ranked. The current poll is also the honest answer to "is this a
+// ranked matchup" for a game that hasn't kicked off.
+//
+// Postseason falls back to the final regular-season poll, since bowl and CFP
+// weeks carry no polls of their own.
+async function latestRanking(season, seasonType, week) {
+    const found = await Ranking.findOne(
+        { season, seasonType, week: { $lte: week } }, null, { sort: { week: -1 } }
+    ).lean();
+    if (found || seasonType !== 'postseason') return found;
+
+    return Ranking.findOne(
+        { season, seasonType: 'regular' }, null, { sort: { week: -1 } }
+    ).lean();
+}
+
 // League scoreboard — the whole FBS slate for one week, with the league's
 // drafted teams marked up with owner + live fantasy points.
 //
@@ -250,7 +272,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         const [teamDocs, ranking, lines, recordDocs] = await Promise.all([
             Team.find({ id: { $in: teamIds } },
                 { id: 1, abbreviation: 1, logos: 1, conference: 1, classification: 1, _id: 0 }).lean(),
-            Ranking.findOne({ season, seasonType, week }).lean(),
+            latestRanking(season, seasonType, week),
             BettingLine.find({ season, seasonType, week: week }, { id: 1, lines: 1, _id: 0 }).lean(),
             Record.find({ year: season, teamId: { $in: teamIds } },
                 { teamId: 1, total: 1, _id: 0 }).lean()

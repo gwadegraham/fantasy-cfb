@@ -270,6 +270,52 @@ describe('enrichment', () => {
     });
 });
 
+describe('ranking fallback', () => {
+    // Polls are only published for weeks that have been played, so an exact-week
+    // lookup returns nothing for every upcoming week — which stripped the AP
+    // rank off future games and made the Top 25 filter match zero of them.
+    test('a week with no poll of its own uses the most recent one', async () => {
+        await Game.create(gameDoc({ id: 600, week: 3, startDate: at(14 * DAY),
+            homeId: OSU, homeTeam: 'Ohio State', homeConference: 'Big Ten',
+            awayId: BAMA, awayTeam: 'Alabama', awayConference: 'SEC' }));
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/3`);
+        const g = res.body.games.find(x => x.id === 600);
+        expect(g.home.rank).toBe(3);
+        expect(g.ranked).toBe(true);
+    });
+
+    // The fallback must not outrank a poll the week actually has: seed an older
+    // week-1 poll that disagrees, and week 2 should still use its own.
+    test('a week with its own poll ignores earlier ones', async () => {
+        await Ranking.create({
+            season: SEASON, seasonType: 'regular', week: 1,
+            polls: [{ poll: 'AP Top 25', ranks: [{ rank: 11, school: 'Ohio State' }] }]
+        });
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
+        const g401 = res.body.games.find(g => g.id === 401);
+        expect(g401.home.rank).toBe(3);
+    });
+
+    // Bowl and CFP weeks carry no polls of their own.
+    test('postseason falls back to the final regular-season poll', async () => {
+        await Game.create(gameDoc({ id: 900, week: 1, seasonType: 'postseason',
+            startDate: at(100 * DAY),
+            homeId: OSU, homeTeam: 'Ohio State', homeConference: 'Big Ten',
+            awayId: TEX, awayTeam: 'Texas', awayConference: 'SEC' }));
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/1?seasonType=postseason`);
+        const g = res.body.games.find(x => x.id === 900);
+        expect(g.home.rank).toBe(3);
+        expect(g.away.rank).toBe(7);
+    });
+
+    test('a season with no polls at all leaves games unranked rather than erroring', async () => {
+        await Ranking.deleteMany({});
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
+        expect(res.status).toBe(200);
+        expect(res.body.games.every(g => g.ranked === false)).toBe(true);
+    });
+});
+
 describe('records and spread', () => {
     test('a team record rides on the side it belongs to', async () => {
         const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
