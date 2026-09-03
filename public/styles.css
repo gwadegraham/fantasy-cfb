@@ -534,6 +534,33 @@ body > * { position: relative; z-index: 1; }
     to { opacity: 1; transform: none; }
 }
 
+/* "New" dot. Sits on the icon in the tab bar and after the label in the desktop
+   row, so it never competes with the accent that means "you are here". The ring
+   is the surface behind it, which keeps the dot legible where it overlaps a
+   glyph. */
+.nav-new-wrap {
+    position: relative;
+    display: inline-flex;
+    line-height: 0;
+}
+.nav-new-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cc-accent);
+    display: inline-block;
+}
+.nav-new-wrap .nav-new-dot {
+    position: absolute;
+    top: -1px;
+    right: -4px;
+    border: 1.5px solid var(--cc-surface-2);
+}
+.navbar-links .nav-new-dot {
+    margin-left: 6px;
+    vertical-align: 2px;
+}
+
 /* ---- Phone tab bar ---------------------------------------------------------
    Hidden by default and switched on only at phone widths. The hamburger keeps
    serving 768px-1024px: a bottom bar is a thumb pattern, and a small laptop

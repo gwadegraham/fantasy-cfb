@@ -100,7 +100,7 @@
             </li>
             <% } %>
             <li><a href="/standings">Standings</a></li>
-            <li><a href="/scoreboard">Scores</a></li>
+            <li><a href="/scoreboard">Scores<span class="nav-new-dot" data-new="scoreboard" hidden></span></a></li>
             <li><a href="/hall-of-fame">Hall of Fame</a></li>
             <li><a href="/rules">Scoring</a></li>
             <li><a href="/draft-room">Draft Room</a></li>
@@ -171,7 +171,10 @@
         <span>Standings</span>
     </a>
     <a class="tab-item" href="/scoreboard">
-        <i class="fa-solid fa-football" aria-hidden="true"></i>
+        <span class="nav-new-wrap">
+            <i class="fa-solid fa-football" aria-hidden="true"></i>
+            <span class="nav-new-dot" data-new="scoreboard" hidden></span>
+        </span>
         <span>Scores</span>
     </a>
     <% if (user && user.userId) { %>
@@ -279,6 +282,33 @@
                 a.setAttribute('aria-current', 'page');
             }
         });
+
+        // --- "New" dot on Scores. ---
+        // Two ways off, whichever comes first: the person opens /scoreboard, or
+        // the date passes. The date is what guarantees it cannot nag forever —
+        // the seen-flag is per-device, so someone who visits on their phone
+        // would otherwise meet the dot again on a laptop. After EXPIRES this
+        // whole block is inert and can be deleted along with the markup.
+        (function () {
+            var EXPIRES = new Date('2026-09-10T00:00:00');
+            var SEEN_KEY = 'ccNewSeen:scoreboard';
+            var dots = document.querySelectorAll('.nav-new-dot[data-new="scoreboard"]');
+            if (!dots.length) return;
+
+            var expired = new Date() >= EXPIRES;
+            var seen = false;
+            try { seen = localStorage.getItem(SEEN_KEY) === '1'; } catch (e) { seen = false; }
+
+            // Landing on the page counts as seeing it — record it even when the
+            // dot is already gone, so nothing re-appears if the clock is wrong.
+            if (here === '/scoreboard') {
+                try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) { /* private mode */ }
+                seen = true;
+            }
+
+            if (expired || seen) return;
+            dots.forEach(function (d) { d.hidden = false; });
+        })();
 
         // --- Dev-only role spoof (rendered only when canSpoof). ---
         // The chip expands into a popover with the three choices. No need to
