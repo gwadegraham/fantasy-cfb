@@ -199,6 +199,17 @@ function weekRangeOf(windows, week) {
     return { first: new Date(w.first).toISOString(), last: new Date(w.last).toISOString() };
 }
 
+// Every week with its dates, for the week picker. The strip labels each button
+// with its own range, so the client needs all of them rather than just the one
+// being viewed.
+function weekList(windows) {
+    return (windows || []).map(w => ({
+        week: w.week,
+        first: new Date(w.first).toISOString(),
+        last: new Date(w.last).toISOString()
+    }));
+}
+
 // "Georgia Tech -7" -> which side is laying the points, and the number itself.
 //
 // Parsed from the END rather than split on '-': plenty of teams carry a hyphen
@@ -311,6 +322,6 @@ function shapeGames(games, ctx) {
 module.exports = {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
-    recordsByTeam, spreadSideOf, shapeGame, shapeGames, initialsOf,
+    recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf,
     CONFERENCE_ABBR, TAIL_MS
 };

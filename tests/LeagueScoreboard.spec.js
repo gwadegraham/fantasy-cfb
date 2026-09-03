@@ -5,7 +5,7 @@
 const {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
-    recordsByTeam, spreadSideOf, shapeGames, initialsOf, TAIL_MS
+    weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf, TAIL_MS
 } = require('../modules/league-scoreboard');
 
 const HOUR = 3600 * 1000;
@@ -382,5 +382,24 @@ describe('weekRangeOf', () => {
     test('a week with no games is null, not a broken range', () => {
         expect(weekRangeOf(windows, 9)).toBe(null);
         expect(weekRangeOf(null, 1)).toBe(null);
+    });
+});
+
+describe('weekList', () => {
+    const windows = weekWindows([
+        { week: 1, startDate: '2026-08-29T16:00:00.000Z' },
+        { week: 1, startDate: '2026-09-01T02:30:00.000Z' },
+        { week: 2, startDate: '2026-09-05T16:00:00.000Z' }
+    ]);
+
+    test('every week carries its own dates for the picker', () => {
+        expect(weekList(windows)).toEqual([
+            { week: 1, first: '2026-08-29T16:00:00.000Z', last: '2026-09-01T02:30:00.000Z' },
+            { week: 2, first: '2026-09-05T16:00:00.000Z', last: '2026-09-05T16:00:00.000Z' }
+        ]);
+    });
+
+    test('no windows is an empty list, not a throw', () => {
+        expect(weekList(null)).toEqual([]);
     });
 });

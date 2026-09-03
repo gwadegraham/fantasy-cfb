@@ -12,7 +12,8 @@ const { massCreateInputError, gamesResponseError } = require('../modules/retriev
 const { pickLogo } = require('../public/logo.js');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
-    conferenceList, fbsConferenceNames, weekRangeOf, recordsByTeam, shapeGames
+    conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
+    shapeGames
 } = require('../modules/league-scoreboard');
 
 // Configure API key authorization: ApiKeyAuth
@@ -309,7 +310,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
 
         res.json({
             league, season, seasonType, week,
-            weeks: windows ? windows.map(w => w.week) : undefined,
+            weeks: windows ? weekList(windows) : undefined,
             weekRange: windows ? weekRangeOf(windows, week) : undefined,
             conferences: liveOnly ? undefined : conferenceList(games, fbsConferenceNames(teamDocs)),
             liveCount,

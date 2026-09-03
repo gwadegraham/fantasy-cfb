@@ -138,7 +138,16 @@ describe('week resolution', () => {
 
     test('the week list spans the season so the picker can page', async () => {
         const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
-        expect(res.body.weeks).toEqual([1, 2, 3]);
+        expect(res.body.weeks.map(w => w.week)).toEqual([1, 2, 3]);
+    });
+
+    // The strip labels every button with its own range, so each week carries its
+    // dates rather than only the one being viewed.
+    test('every week in the list carries its own dates', async () => {
+        const res = await get(`/games/scoreboard/${LEAGUE}/${SEASON}/2`);
+        const w2 = res.body.weeks.find(w => w.week === 2);
+        expect(w2).toEqual({ week: 2, first: W2_FINAL, last: W2_LIVE });
+        expect(res.body.weeks.every(w => w.first && w.last)).toBe(true);
     });
 
     test('omitting the week resolves one instead of erroring', async () => {

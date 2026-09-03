@@ -8,6 +8,7 @@
 var sbState = {
     week: null,
     weeks: [],
+    weekMeta: [],
     weekRange: null,
     games: [],
     filter: 'all',
@@ -241,6 +242,22 @@ function weekDateLabel(range) {
 // arrows-plus-picker on a phone, where a strip would cost a row of height and
 // still need swiping. Both are always rendered, so neither can go stale in the
 // moment the viewport crosses the breakpoint.
+// "Oct 6 - 10" when a week sits inside one month, "Aug 29 - Sep 7" when it
+// straddles two, "Dec 12" for a one-day week. Short enough to sit under a
+// "Week 6" without widening the button.
+function weekDateShort(range) {
+    if (!range) return '';
+    var opts = { month: 'short', day: 'numeric' };
+    var a = new Date(range.first), b = new Date(range.last);
+    if (isNaN(a) || isNaN(b)) return '';
+    var first = a.toLocaleDateString('en-US', opts);
+    if (a.toDateString() === b.toDateString()) return first;
+    if (a.getMonth() === b.getMonth()) {
+        return first + ' \u2013 ' + b.getDate();
+    }
+    return first + ' \u2013 ' + b.toLocaleDateString('en-US', opts);
+}
+
 function renderWeekNav() {
     var weeks = sbState.weeks || [];
     var label = sbState.week != null ? 'Week ' + sbState.week : 'No games';
@@ -264,10 +281,13 @@ function renderWeekNav() {
         sel.disabled = false;
     }
 
-    document.getElementById('week-strip').innerHTML = weeks.map(function (w) {
-        var on = w === sbState.week;
+    document.getElementById('week-strip').innerHTML = (sbState.weekMeta || []).map(function (m) {
+        var on = m.week === sbState.week;
         return '<button type="button" class="sb-week' + (on ? ' is-active' : '') + '"'
-            + ' data-week="' + w + '" aria-pressed="' + (on ? 'true' : 'false') + '">Week ' + w + '</button>';
+            + ' data-week="' + m.week + '" aria-pressed="' + (on ? 'true' : 'false') + '">'
+            + '<span class="sb-week-n">Week ' + m.week + '</span>'
+            + '<span class="sb-week-d">' + esc(weekDateShort(m)) + '</span>'
+            + '</button>';
     }).join('');
 
     var i = weeks.indexOf(sbState.week);
@@ -275,6 +295,7 @@ function renderWeekNav() {
     document.getElementById('week-next').disabled = i < 0 || i >= weeks.length - 1;
 
     centerActiveWeek();
+    syncStickyTop();
 }
 
 // Keep the chosen week in view without letting the browser scroll the PAGE to
@@ -342,7 +363,10 @@ function sbUrl(week, live) {
 function loadWeek(week, jumpToCurrent) {
     return sbApi(sbUrl(week, false)).then(function (data) {
         sbState.week = data.week;
-        sbState.weeks = data.weeks || [];
+        // The payload carries each week with its dates; the arrows only need the
+        // numbers, so keep both rather than mapping on every keystroke.
+        sbState.weekMeta = data.weeks || [];
+        sbState.weeks = sbState.weekMeta.map(function (m) { return m.week; });
         sbState.weekRange = data.weekRange || null;
         sbState.games = data.games || [];
         sbState.liveCount = data.liveCount || 0;
@@ -397,7 +421,7 @@ function scrollToCurrent() {
 
         var stuck = document.querySelector('.sb-filters');
         var offset = (stuck ? stuck.getBoundingClientRect().height : 0)
-            + stickyTopPx() + 12;
+            + stripHeightPx() + stickyTopPx() + 12;
         var y = target.getBoundingClientRect().top + window.scrollY - offset;
         window.scrollTo(0, Math.max(0, y));
     };
@@ -488,8 +512,22 @@ function stickyTopPx() {
     var nav = document.getElementById('navbar');
     return nav ? Math.floor(nav.getBoundingClientRect().height) : 0;
 }
+// The strip is sticky too on wide screens, so the filter row has to pin BELOW
+// it rather than at the navbar. Its height is published as a variable because
+// it is zero on a phone (the strip is display:none there) and CSS can't measure
+// it on its own.
+function stripHeightPx() {
+    var strip = document.getElementById('week-strip');
+    if (!strip || getComputedStyle(strip).display === 'none') return 0;
+    // Floor for the same reason stickyTopPx does: half a pixel short tucks the
+    // filter row under the strip, half a pixel long shows a hairline of
+    // scrolling content between them.
+    return Math.floor(strip.getBoundingClientRect().height);
+}
 function syncStickyTop() {
-    document.documentElement.style.setProperty('--sb-sticky-top', stickyTopPx() + 'px');
+    var root = document.documentElement.style;
+    root.setProperty('--sb-sticky-top', stickyTopPx() + 'px');
+    root.setProperty('--sb-weeks-h', stripHeightPx() + 'px');
 }
 
 document.addEventListener('DOMContentLoaded', function () {
