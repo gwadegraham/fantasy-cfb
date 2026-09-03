@@ -1181,14 +1181,17 @@ async function displaySchedule(data) {
     document.querySelector('.schedule-table').style.display = "flex";
 }
 
-document.querySelector('[rivalry-week]').addEventListener('change', function () {
-    var sel = this.options[this.selectedIndex];
-    window.localStorage.setItem("week", sel.text);
-    window.localStorage.setItem("weekCode", sel.value);
-    document.querySelector('.football-loader').style.display = "flex";
-    document.querySelector('.schedule-table').style.display = "none";
-    displaySchedule(usersData);
-});
+var _rivalryWeekEl = document.querySelector('[rivalry-week]');
+if (_rivalryWeekEl) {
+    _rivalryWeekEl.addEventListener('change', function () {
+        var sel = this.options[this.selectedIndex];
+        window.localStorage.setItem("week", sel.text);
+        window.localStorage.setItem("weekCode", sel.value);
+        document.querySelector('.football-loader').style.display = "flex";
+        document.querySelector('.schedule-table').style.display = "none";
+        displaySchedule(usersData);
+    });
+}
 
 setTimeout(() => {
     var leagueSel = document.querySelector('[league-select]');
