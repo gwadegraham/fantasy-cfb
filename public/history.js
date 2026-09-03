@@ -222,13 +222,12 @@
             el.innerHTML = '<p class="hof-empty">Couldn’t load league history. Please refresh.</p>';
         }
 
-        // Admin league switch (mirrors the other pages): reload on selection.
-        if (window.jQuery) {
-            jQuery('[league-selector] a').on('click', function () {
-                var $b = jQuery(this).parents('.dropdown').find('.btn');
-                $b.html(jQuery(this).text()).val(jQuery(this).attr('value'));
-                window.sessionStorage.setItem('league', jQuery('#dropdownMenuButton').text());
-                window.localStorage.setItem('leagueCode', jQuery(this).attr('value'));
+        var _lSel = document.querySelector('[league-select]');
+        if (_lSel) {
+            _lSel.addEventListener('change', function () {
+                var opt = this.options[this.selectedIndex];
+                window.sessionStorage.setItem('league', opt.text);
+                window.localStorage.setItem('leagueCode', opt.value);
                 window.location.reload();
             });
         }

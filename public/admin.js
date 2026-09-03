@@ -220,7 +220,8 @@ async function getUserProfile() {
             if (leagueCode && (leagueCode != "undefined")) {
                 const currentSelectedLeague = window.sessionStorage.getItem("league");
                 if (currentSelectedLeague) {
-                    $("#dropdownMenuButton").text(currentSelectedLeague);
+                    var _lSel = document.querySelector('[league-select]');
+                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
                 }
             }
         }     
@@ -678,11 +679,10 @@ function applyLeagueRename(code, name) {
     ((window.CC_LEAGUE && window.CC_LEAGUE.all) || []).forEach(function (l) {
         if (l.code === code) l.name = name;
     });
-    var item = document.querySelector('[league-selector] a[value="' + code + '"]');
-    if (item) item.textContent = name;
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) { for (var i = 0; i < _lSel.options.length; i++) { if (_lSel.options[i].value === code) { _lSel.options[i].text = name; break; } } }
     if (typeof getDraftLeagueCode === 'function' && getDraftLeagueCode() === code) {
         window.sessionStorage.setItem('league', name);
-        if ($('#dropdownMenuButton').length) $('#dropdownMenuButton').text(name);
         var hdr = document.querySelector('[scoring-config-model]');
         if (hdr && scoringConfigData) hdr.textContent = scoringHeaderLabel();
     }
@@ -1931,19 +1931,17 @@ if (typeof window !== 'undefined') {
     window.addEventListener('unhandledrejection', function () { unblock_screen(); });
 }
 
-if ($("[league-selector]")) {
-    setTimeout(() => {
-        $("[league-selector] a").click(function(){
-            $(this).parents(".dropdown").find('.btn').html($(this).text());
-            $(this).parents(".dropdown").find('.btn').val($(this).attr('value'));
-            var selectedLeague = $("#dropdownMenuButton").text();
-            var selectedLeagueCode = $("#dropdownMenuButton").val();
-            window.sessionStorage.setItem("league", selectedLeague);
-            window.localStorage.setItem("leagueCode", selectedLeagueCode);
+setTimeout(() => {
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) {
+        _lSel.addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            window.sessionStorage.setItem("league", opt.text);
+            window.localStorage.setItem("leagueCode", opt.value);
             window.location.reload();
         });
-    }, "200");
-}
+    }
+}, 200);
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
 

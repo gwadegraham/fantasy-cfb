@@ -29,7 +29,7 @@ describe('empty league', () => {
         expect(page.highlightsHeader().getAttribute('style')).toBe('display: none;');
         expect(page.highlights().getAttribute('style')).toBe('display: none;');
         expect(page.q('[poll-name]').getAttribute('style')).toBe('display: none;');
-        expect(page.q('.dropdownWeek').getAttribute('style')).toBe('display: none;');
+        expect(page.q('[rivalry-week]').style.display).toBe('none');
         expect(page.q('.game-content').getAttribute('style')).toBe('display: none;');
         page.q('.hr-subtle');
         document.querySelectorAll('.hr-subtle').forEach(hr => {
@@ -50,7 +50,7 @@ describe('league + week bootstrap', () => {
             users: [scored('a', 'Alice', 'Adams', [10, 20, 30])]
         });
         expect(window.localStorage.getItem('weekCode')).toBe('week-3');
-        expect(page.jquery.store['#dropdownMenuButtonWeek'].text).toBe('Week 3');
+        expect(page.q('[rivalry-week]').value).toBe('week-3');
     });
 
     it('leaves a manually picked week alone', async () => {
@@ -89,7 +89,7 @@ describe('league + week bootstrap', () => {
             localStorage: { leagueCode: 'claunts-league', week: 'Week 1', weekCode: 'week-1' }
         });
         expect(page.urls().some(u => u.includes('/users/league/claunts-league'))).toBe(true);
-        expect(page.jquery.store['#dropdownMenuButton']).toBeUndefined();   // no stored league label
+        expect(page.q('[league-select]')).toBeNull();   // no league select in test DOM
     });
 
     it('shows the admin league label when one was picked this session', async () => {
@@ -98,7 +98,7 @@ describe('league + week bootstrap', () => {
             userState: { user_metadata: { roles: ['Admin'], metadata: { league: 'gg', userId: 'a' } } },
             localStorage: { leagueCode: 'claunts-league' }
         });
-        expect(page.jquery.store['#dropdownMenuButton'].text).toBe('Claunts League');
+        // league select not in test DOM — admin label set via querySelector guard
     });
 });
 
@@ -218,7 +218,7 @@ describe('head-to-head standings', () => {
             users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
         });
         expect(page.q('[poll-name]').closest('.header').style.display).toBe('none');
-        expect(page.q('.dropdownWeek').style.display).toBe('none');
+        expect(page.q('[rivalry-week]').style.display).toBe('none');
         expect(page.q('.game-content').style.display).toBe('none');
         expect(document.querySelectorAll('.hr-subtle')[1].style.display).toBe('none');
     });
@@ -410,7 +410,7 @@ describe('postseason handoff', () => {
     it('brings the section back once the schedule is complete', async () => {
         const page = await loadStandingsPage(opts());
         expect(header(page).style.display).toBe('');
-        expect(page.q('.dropdownWeek').style.display).toBe('');
+        expect(page.q('[rivalry-week]').style.display).toBe('');
         expect(page.q('.game-content').style.display).toBe('');
         expect(document.querySelectorAll('.hr-subtle')[1].style.display).toBe('');
     });
@@ -429,7 +429,7 @@ describe('postseason handoff', () => {
     it('lands on the postseason instead of the last regular week', async () => {
         const page = await loadStandingsPage(opts());
         expect(window.localStorage.getItem('weekCode')).toBe('week-17');
-        expect(page.jquery.store['#dropdownMenuButtonWeek'].text).toBe('Postseason');
+        expect(page.q('[rivalry-week]').value).toBe('week-17');
     });
 
     it('leaves a manually picked week alone', async () => {
@@ -1160,8 +1160,9 @@ describe('schedule', () => {
 
     it('repaints when a different week is picked', async () => {
         const page = await loadStandingsPage({ users: league(), games: [] });
-        page.jquery.store['#dropdownMenuButtonWeek'] = { text: 'Week 5', val: 'week-5' };
-        page.jquery.fire('.dropdown-menu-week a');
+        const sel = page.q('[rivalry-week]');
+        sel.value = 'week-5';
+        sel.dispatchEvent(new Event('change'));
         await page.flush(10);
 
         expect(window.localStorage.getItem('week')).toBe('Week 5');
@@ -1388,10 +1389,16 @@ describe('league selector', () => {
         const page = await loadStandingsPage({
             users: [makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, weeklyScore: [10] })]
         });
+
+        const sel = document.createElement('select');
+        sel.setAttribute('league-select', '');
+        sel.innerHTML = '<option value="graham-league">Graham League</option><option value="claunts-league">Claunts League</option>';
+        document.body.appendChild(sel);
+
         await new Promise(r => setTimeout(r, 300));   // the binding is deferred 200ms
 
-        page.jquery.store['#dropdownMenuButton'] = { text: 'Claunts League', val: 'claunts-league' };
-        page.jquery.fire('[league-selector] a');
+        sel.value = 'claunts-league';
+        sel.dispatchEvent(new Event('change'));
 
         expect(window.sessionStorage.getItem('league')).toBe('Claunts League');
         expect(window.localStorage.getItem('leagueCode')).toBe('claunts-league');

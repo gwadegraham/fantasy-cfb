@@ -39,10 +39,25 @@ const FIXTURE = `
 <hr class="hr-subtle">
 <div class="header"><div class="header-title" poll-name>Rivalry Games</div></div>
 <p class="section-note" schedule-note hidden></p>
-<div class="dropdown dropdownWeek">
-    <button id="dropdownMenuButtonWeek"></button>
-    <div class="dropdown-menu dropdown-menu-week"><a class="dropdown-item" value="week-1">Week 1</a></div>
-</div>
+<select class="rivalry-week-select" rivalry-week aria-label="Rivalry week">
+    <option value="week-1">Week 1</option>
+    <option value="week-2">Week 2</option>
+    <option value="week-3">Week 3</option>
+    <option value="week-4">Week 4</option>
+    <option value="week-5">Week 5</option>
+    <option value="week-6">Week 6</option>
+    <option value="week-7">Week 7</option>
+    <option value="week-8">Week 8</option>
+    <option value="week-9">Week 9</option>
+    <option value="week-10">Week 10</option>
+    <option value="week-11">Week 11</option>
+    <option value="week-12">Week 12</option>
+    <option value="week-13">Week 13</option>
+    <option value="week-14">Week 14</option>
+    <option value="week-15">Week 15</option>
+    <option value="week-16">Week 16</option>
+    <option value="week-17">Postseason</option>
+</select>
 <div class="game-content">
     <div class="football-loader"></div>
     <div class="get-users-container">

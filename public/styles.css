@@ -349,22 +349,32 @@ body > * { position: relative; z-index: 1; }
     transform: scaleX(1);
 }
 
-.dropdown {
-    padding: 0.5rem;
+.rivalry-week-select,
+.league-select {
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: 8px;
+    color: var(--cc-text);
+    color-scheme: dark;
+    font: inherit;
+    padding: 8px 10px;
+    cursor: pointer;
 }
 
-.dropdown-menu, #dropdownMenuButton {
-    background-color: var(--cc-bg)  !important;
-    border: none;
-}
-
-#dropdownMenuButtonWeek {
-    background-color: var(--cc-bg) !important;
+.rivalry-week-select {
     margin-top: 10px;
 }
 
-.dropdown-week {
-    color: var(--cc-text) !important;
+.league-select {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.9rem;
+}
+
+[league-selector] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
 }
 
 .toggle-button {
@@ -968,7 +978,6 @@ a.gc-clickable { display: block; }
 .btn-primary,
 .btn-secondary,
 .btn-ghost,
-.dropdown-toggle,
 .uh-season-pill,
 .welcome-actions button,
 .modal-actions button {
@@ -977,7 +986,6 @@ a.gc-clickable { display: block; }
 .btn-primary:active,
 .btn-secondary:active,
 .btn-ghost:active,
-.dropdown-toggle:active,
 .uh-season-pill:active,
 .welcome-actions button:active,
 .modal-actions button:active {
@@ -987,7 +995,6 @@ a.gc-clickable { display: block; }
     .btn-primary:active,
     .btn-secondary:active,
     .btn-ghost:active,
-    .dropdown-toggle:active,
     .uh-season-pill:active,
     .welcome-actions button:active,
     .modal-actions button:active { transform: none; }

@@ -83,16 +83,11 @@
             <% } %>
             <% if (_role === 'Admin') { %>
             <li league-selector>
-                <div class="dropdown dropdown-nav">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        Leagues
-                    </button>
-                    <div league-selector class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuButton">
-                        <% (typeof leagues !== 'undefined' && leagues || []).forEach(function (lg) { %>
-                        <a class="dropdown-item" href="#" value="<%= lg.code %>"><%= lg.name %></a>
-                        <% }) %>
-                    </div>
-                </div>
+                <select class="league-select" league-select aria-label="League">
+                    <% (typeof leagues !== 'undefined' && leagues || []).forEach(function (lg) { %>
+                    <option value="<%= lg.code %>"><%= lg.name %></option>
+                    <% }) %>
+                </select>
             </li>
             <% } %>
             <li><a href="/standings">Standings</a></li>

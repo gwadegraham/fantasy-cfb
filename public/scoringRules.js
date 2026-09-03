@@ -17,7 +17,7 @@ window.onload = function () {
     // cannot loop — after the redirect the URL carries ?league=, and the server
     // renders that same league for an Admin.
     if (isAdmin && !hasParam && stored && stored !== rendered
-        && document.querySelector('[league-selector] a[value="' + stored + '"]')) {
+        && document.querySelector('[league-select] option[value="' + stored + '"]')) {
         window.location.replace('/rules?league=' + encodeURIComponent(stored));
         return;
     }
@@ -25,25 +25,27 @@ window.onload = function () {
     // Otherwise reflect the rendered league in the dropdown label + sticky
     // storage, so the label always matches the rules shown.
     window.localStorage.setItem('leagueCode', rendered);
-    var item = document.querySelector('[league-selector] a[value="' + rendered + '"]');
-    if (item) {
-        window.sessionStorage.setItem('league', item.textContent);
-        $('#dropdownMenuButton').text(item.textContent).val(rendered);
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) {
+        _lSel.value = rendered;
+        var opt = _lSel.options[_lSel.selectedIndex];
+        if (opt) window.sessionStorage.setItem('league', opt.text);
     }
 };
 
 // Picking a league navigates to that league's rules via the server param (the
 // page is server-rendered, so a plain reload wouldn't switch it).
-if ($("[league-selector]")) {
-    setTimeout(function () {
-        $("[league-selector] a").click(function () {
-            var code = $(this).attr('value');
-            window.sessionStorage.setItem('league', $(this).text());
-            window.localStorage.setItem('leagueCode', code);
-            window.location.href = '/rules?league=' + encodeURIComponent(code);
+setTimeout(function () {
+    var _lSel = document.querySelector('[league-select]');
+    if (_lSel) {
+        _lSel.addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            window.sessionStorage.setItem('league', opt.text);
+            window.localStorage.setItem('leagueCode', opt.value);
+            window.location.href = '/rules?league=' + encodeURIComponent(opt.value);
         });
-    }, 200);
-}
+    }
+}, 200);
 
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
