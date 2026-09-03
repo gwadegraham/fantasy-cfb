@@ -249,6 +249,20 @@ body > * { position: relative; z-index: 1; }
     position: relative;
 }
 
+/* Between the point the desktop row appears (64em) and the width it has room to
+   breathe, trim the per-link padding. At 1rem a side, nine items spend ~290px on
+   padding alone, and an Admin — who also carries the Admin link and the league
+   select — wrapped the row onto two lines in that band. This buys back more than
+   the "Scores" link costs, and tightens a row that was already over-spaced at
+   those widths. */
+@media (min-width: 64em) and (max-width: 80em) {
+    .navbar-links li a,
+    .navbar-links li .nav-search {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+    }
+}
+
 .navbar-links li a[user-home] {
     display: inline-flex;
     align-items: center;
@@ -491,6 +505,123 @@ body > * { position: relative; z-index: 1; }
 
 @keyframes nav-drop {
     from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* ---- Phone tab bar ---------------------------------------------------------
+   Hidden by default and switched on only at phone widths. The hamburger keeps
+   serving 768px-1024px: a bottom bar is a thumb pattern, and a small laptop
+   window has no thumb.
+
+   --cc-tab-h is the bar's own height; the safe-area inset is added separately
+   so the bar sits above an iPhone's home indicator instead of under it. */
+:root {
+    --cc-tab-h: 56px;
+}
+
+.tab-bar {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    background: var(--cc-surface-2);
+    border-top: 1px solid var(--cc-border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* border-box so --cc-tab-h is the bar's REAL height, border included. The
+       body's clearance and the More panel's offset are both computed from that
+       number, and a 1px border left out of it puts a seam between them. */
+    box-sizing: border-box;
+    height: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+}
+
+.tab-item {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: 0;
+    color: var(--cc-muted-2);
+    font-size: 10px;
+    font-family: inherit;
+    text-decoration: none;
+}
+.tab-item i {
+    font-size: 18px;
+    padding: 0;          /* .fas/.fa carry a global padding-left */
+}
+.tab-item.active,
+.tab-item[aria-expanded="true"] {
+    color: var(--cc-accent);
+}
+.tab-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 500;
+    color: #fff;
+}
+.tab-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.tab-item.active .tab-avatar {
+    box-shadow: 0 0 0 2px var(--cc-accent);
+}
+
+@media (max-width: 767px) {
+    .tab-bar {
+        display: flex;
+    }
+
+    /* More replaces the hamburger at this width — two controls for one menu on
+       one screen would be a bug, not a convenience. */
+    .toggle-button {
+        display: none;
+    }
+
+    /* Clear the fixed bar so the last card/footer isn't trapped under it. */
+    body {
+        padding-bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* The menu opens FROM the control that opened it. Dropping it out of the
+       navbar at the top of the page while the user's thumb is at the bottom is
+       the kind of disorientation that makes people think they mis-tapped. */
+    .navbar-links.active {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+        width: 100%;
+        max-height: 60vh;
+        overflow-y: auto;
+        z-index: 54;
+        border-top: 1px solid var(--cc-border);
+        box-shadow: 0 -10px 12px -7px rgba(0, 0, 0, 0.6);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .navbar-links.active {
+            animation: nav-rise 0.22s ease;
+        }
+    }
+}
+
+@keyframes nav-rise {
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
 }
 
