@@ -236,14 +236,29 @@ function weekDateLabel(range) {
     return a === b ? a : a + ' \u2013 ' + b;
 }
 
+// The week control is a jump list, not just a label. Stepping from week 3 to
+// week 12 and back was fourteen clicks on the arrows; the arrows stay for
+// moving one week, which is the common case.
 function renderWeekNav() {
-    var label = document.getElementById('week-label');
-    label.textContent = sbState.week != null ? 'Week ' + sbState.week : 'No games';
+    var sel = document.getElementById('week-select');
+    var weeks = sbState.weeks || [];
+
+    if (!weeks.length) {
+        sel.innerHTML = '<option>' + (sbState.week != null ? 'Week ' + sbState.week : 'No games') + '</option>';
+        sel.disabled = true;
+    } else {
+        sel.innerHTML = weeks.map(function (w) {
+            return '<option value="' + w + '">Week ' + w + '</option>';
+        }).join('');
+        sel.value = String(sbState.week);
+        sel.disabled = false;
+    }
+
     document.getElementById('week-dates').textContent = weekDateLabel(sbState.weekRange);
 
-    var i = sbState.weeks.indexOf(sbState.week);
+    var i = weeks.indexOf(sbState.week);
     document.getElementById('week-prev').disabled = i <= 0;
-    document.getElementById('week-next').disabled = i < 0 || i >= sbState.weeks.length - 1;
+    document.getElementById('week-next').disabled = i < 0 || i >= weeks.length - 1;
 }
 
 // Paints whichever of the four controls is the active filter, and only that
@@ -499,6 +514,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!sbState.conf && had) sbState.filter = 'all';
         renderFilterState();
         render();
+    });
+
+    document.getElementById('week-select').addEventListener('change', function () {
+        var w = Number(this.value);
+        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w);
     });
 
     document.getElementById('week-prev').addEventListener('click', function () {

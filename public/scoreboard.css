@@ -65,10 +65,37 @@
     min-width: 92px;
     text-align: center;
 }
-.week-label-name {
+/* Looks like the label it replaced, behaves like a control. Bare `appearance`
+   reset rather than the .sb-conf pill treatment: this sits between two arrow
+   buttons and a boxed control there reads as a third button. */
+.week-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0 2px;
     font-size: 14px;
     font-weight: 500;
+    font-family: inherit;
     color: var(--cc-muted-bright);
+    text-align: center;
+    text-align-last: center;
+    cursor: pointer;
+}
+.week-select:hover:not(:disabled) {
+    color: var(--cc-text);
+}
+.week-select:disabled {
+    cursor: default;
+}
+.week-select:focus-visible {
+    outline: 2px solid var(--cc-info);
+    outline-offset: 2px;
+    border-radius: var(--cc-r-sm);
+}
+.week-select option {
+    background: var(--cc-surface);
+    color: var(--cc-text);
 }
 /* The slate's actual dates. A week number means nothing on its own once you're
    paging back through the season — "Week 6" and "Oct 3 – 4" answer different
