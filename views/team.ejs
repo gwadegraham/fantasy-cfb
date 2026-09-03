@@ -14,6 +14,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <!-- jQuery, popper and Bootstrap are loaded by the navbar partial; don't
          re-include (an older jQuery here used to clobber the navbar's copy). -->
+    <script defer src="fit-names.js"></script>
     <script defer src="team.js"></script>
     <title data-league-title="Team">Team · Campus Clash</title>
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
@@ -42,9 +43,15 @@
     </div>
     <hr class="hr-subtle">
     <div class="standings-container">
-        <div class="team-card schedule" id="schedule-container"></div>
-        <div class="team-card schedule" id="conference-standings"></div>
+        <div class="tv-left-col">
+            <div class="team-card schedule" id="schedule-container"></div>
+        </div>
+        <div class="tv-right-col">
+            <div class="team-card schedule" id="team-stats-container" style="display:none"></div>
+            <div class="team-card schedule" id="player-leaders-container" style="display:none"></div>
+        </div>
     </div>
+    <div class="team-card schedule" id="conference-standings"></div>
     <footer>
         <a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
     </footer>

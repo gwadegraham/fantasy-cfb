@@ -694,6 +694,9 @@ app.use('/betting-lines', requireAuthOrToken, bettingLinesRouter);
 const teamSeasonStatsRouter = require('./routes/team-season-stats');
 app.use('/team-season-stats', requireAuthOrToken, teamSeasonStatsRouter);
 
+const playerSeasonLeadersRouter = require('./routes/player-season-leaders');
+app.use('/player-season-leaders', requireAuthOrToken, playerSeasonLeadersRouter);
+
 const bettingRouter = require('./routes/betting');
 app.use('/betting', requireAuthOrToken, bettingRouter);
 

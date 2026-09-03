@@ -5,6 +5,7 @@ const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
 const Record = require('../models/record');
 const TeamSeasonStat = require('../models/teamSeasonStat');
+const PlayerSeasonLeader = require('../models/playerSeasonLeader');
 const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
 
 // Configure API key authorization: ApiKeyAuth
@@ -81,11 +82,13 @@ router.get('/detail/:gameId', async (req, res) => {
         ]);
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
-        const [homeRec, awayRec, homeSeasonStats, awaySeasonStats] = await Promise.all([
+        const [homeRec, awayRec, homeSeasonStats, awaySeasonStats, homeLeaders, awayLeaders] = await Promise.all([
             Record.findOne({ teamId: game.homeId, year: game.season }).lean(),
             Record.findOne({ teamId: game.awayId, year: game.season }).lean(),
             TeamSeasonStat.findOne({ season: game.season, team: game.homeTeam }).lean(),
-            TeamSeasonStat.findOne({ season: game.season, team: game.awayTeam }).lean()
+            TeamSeasonStat.findOne({ season: game.season, team: game.awayTeam }).lean(),
+            PlayerSeasonLeader.findOne({ season: game.season, team: game.homeTeam }).lean(),
+            PlayerSeasonLeader.findOne({ season: game.season, team: game.awayTeam }).lean()
         ]);
 
         const obj = game.toObject({ flattenMaps: true });
@@ -115,6 +118,12 @@ router.get('/detail/:gameId', async (req, res) => {
                 return { team: doc.team, conference: doc.conference, games: doc.games, stats: s };
             };
             obj.seasonStats = { home: toPlain(homeSeasonStats), away: toPlain(awaySeasonStats) };
+        }
+        if (homeLeaders || awayLeaders) {
+            obj.playerLeaders = {
+                home: homeLeaders ? homeLeaders.leaders : null,
+                away: awayLeaders ? awayLeaders.leaders : null
+            };
         }
         if (bl && bl.lines && bl.lines.length) {
             const ranked = bl.lines.slice().sort((a, b) => {
