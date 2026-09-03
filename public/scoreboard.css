@@ -1,0 +1,379 @@
+/* Game-day scoreboard. Dense by design: a week is ~90 games, so the unit is a
+   compact two-row card, not the roomier .game-card the My Team schedule uses. */
+
+/* body is a centred flex COLUMN (styles.css), so a block child shrinks to its
+   content instead of filling the page — the same reason .navbar sets width
+   explicitly. Without this the 99-card grid collapses to one 300px column. */
+.sb-head,
+.sb-filters,
+#scoreboard-content {
+    width: 100%;
+    max-width: 1400px;
+}
+
+/* Title, freshness and week nav on ONE row. The status line tucks under the
+   title inside the same row, so it costs the row's spare height rather than a
+   line of its own. */
+.sb-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 10px;
+}
+.sb-title {
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--cc-text);
+    margin: 0;
+    line-height: 1.1;
+}
+
+/* Week nav — same control as the Betting page's, duplicated rather than lifted
+   into styles.css so this page can be reverted without touching that one. */
+.week-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.week-nav-btn {
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted);
+    border-radius: var(--cc-r-sm);
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.week-nav-btn:hover:not(:disabled) {
+    background: var(--cc-surface-3);
+    color: var(--cc-text);
+}
+.week-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.week-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.2;
+    min-width: 92px;
+    text-align: center;
+}
+.week-label-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cc-muted-bright);
+}
+/* The slate's actual dates. A week number means nothing on its own once you're
+   paging back through the season — "Week 6" and "Oct 3 – 4" answer different
+   questions, and only one of them is the one you asked. */
+.week-dates {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+}
+
+/* Sticky under the navbar, which is itself sticky at a height that changes with
+   the viewport — so the offset is measured at runtime into --sb-sticky-top
+   rather than guessed here. Without this you scroll 90 cards and have to come
+   all the way back up to change a filter.
+   z-index sits under the navbar's 50 and over the cards' stacking context,
+   which `body > *` gives a z-index of 1. */
+.sb-filters {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 16px 12px;
+    scrollbar-width: none;
+    position: sticky;
+    top: var(--sb-sticky-top, 0px);
+    z-index: 40;
+    background: var(--cc-bg);
+    border-bottom: 1px solid var(--cc-border);
+    /* Paints the page colour upward, covering any sub-pixel seam between the
+       navbar's bottom edge and this row. A ::before would be clipped by this
+       element's own overflow-x; a box-shadow is drawn outside the border box
+       and is not. */
+    box-shadow: 0 -6px 0 0 var(--cc-bg);
+}
+.sb-filters::-webkit-scrollbar {
+    display: none;
+}
+.sb-chip {
+    white-space: nowrap;
+    flex-shrink: 0;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted-bright);
+    border-radius: var(--cc-r-pill);
+    padding: 6px 14px;
+    font-size: 13px;
+}
+.sb-chip:hover {
+    background: var(--cc-surface-3);
+    color: var(--cc-text);
+}
+.sb-chip.is-active {
+    background: var(--cc-accent);
+    border-color: var(--cc-accent);
+    color: #fff;
+}
+.sb-conf {
+    flex-shrink: 0;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted-bright);
+    border-radius: var(--cc-r-pill);
+    padding: 6px 12px;
+    font-size: 13px;
+    max-width: 190px;
+}
+
+.sb-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    margin-top: 3px;
+    min-height: 14px;
+}
+.sb-live-count {
+    color: var(--cc-accent);
+    font-weight: 500;
+}
+.sb-live-count::before {
+    content: "\25CF";
+    padding-right: 5px;
+}
+
+.sb-day {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+    padding: 12px 20px 6px;
+    margin: 0;
+}
+
+.sb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+    padding: 0 16px;
+}
+
+.sb-card {
+    cursor: pointer;
+    display: block;
+    background: var(--cc-surface);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-md);
+    padding: 10px 12px;
+    text-decoration: none;
+}
+.sb-card:hover {
+    border-color: var(--cc-border-2);
+    background: var(--cc-surface-2);
+}
+.sb-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.sb-state {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cc-muted-2);
+    white-space: nowrap;
+}
+.sb-state-live .sb-state {
+    color: var(--cc-accent);
+    font-weight: 500;
+}
+.sb-state-live .sb-state::before {
+    content: "\25CF";
+    padding-right: 5px;
+}
+.sb-meta {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sb-side {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+}
+.sb-logo {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+.sb-logo-fallback {
+    width: 20px;
+    text-align: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.sb-rank {
+    font-size: 11px;
+    color: var(--cc-muted);
+    flex-shrink: 0;
+}
+/* Season record, after the name. Dimmer than the rank in front of it so the
+   team name stays the thing the eye lands on. */
+.sb-record {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    flex-shrink: 0;
+}
+/* The spread, in the score slot before kickoff. Deliberately quieter than a
+   score — it occupies the same position, and only one of the two is ever real. */
+.sb-line {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--cc-muted-2);
+}
+.sb-team {
+    color: var(--cc-muted-bright);
+    font-size: 14px;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sb-side.is-rostered .sb-team {
+    color: var(--cc-text);
+    font-weight: 500;
+}
+.sb-side.is-winner .sb-team {
+    color: var(--cc-text);
+}
+/* The score is the one thing every row is scanned for — it stays pinned right
+   regardless of how long the team name is. */
+.sb-score {
+    margin-left: auto;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--cc-muted);
+    min-width: 26px;
+    text-align: right;
+    flex-shrink: 0;
+}
+.sb-side.is-winner .sb-score {
+    color: var(--cc-text);
+}
+.sb-state-live .sb-score {
+    color: var(--cc-text);
+}
+.sb-poss {
+    color: var(--cc-amber);
+    font-size: 9px;
+    flex-shrink: 0;
+}
+
+/* Winner caret. Present on both rows of a final and merely hidden on the
+   loser's, which is what holds the two scores in a single column. */
+.sb-win {
+    padding-left: 4px;
+    font-size: 12px;
+    color: var(--cc-success);
+    visibility: hidden;
+}
+.sb-win.is-win {
+    visibility: visible;
+}
+
+/* Announced, not shown: the winner is otherwise conveyed by brightness alone. */
+.sb-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.sb-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+/* Padding grows the tap target from the chip's 20px to 32px; the equal negative
+   margin means the row lays out exactly as if it were still 20px. A bare 20px
+   target is under any reasonable minimum, and this one sits between two other
+   targets (the team name and the card itself). */
+.sb-owner-link {
+    display: inline-flex;
+    padding: 6px;
+    margin: -6px;
+    border-radius: 50%;
+    line-height: 0;
+}
+.sb-owner-link:focus-visible {
+    outline: 2px solid var(--cc-info);
+    outline-offset: -2px;
+}
+/* 20px to match the team logo beside it. Profile photos are busy at chip size,
+   so the ring gives them an edge against the card instead of bleeding into it. */
+.sb-owner-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px var(--cc-border-2);
+}
+.sb-owner-chip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.sb-owner-initials {
+    background: var(--cc-surface-3);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 500;
+}
+.sb-owner-pts {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--cc-success);
+}
+
+.sb-empty {
+    text-align: center;
+    color: var(--cc-muted);
+    padding: 40px 20px;
+}
+
+@media (max-width: 600px) {
+    .sb-grid { grid-template-columns: 1fr; }
+    .sb-title { font-size: 1.35rem; }
+    .sb-head { padding: 10px 16px 8px; }
+}

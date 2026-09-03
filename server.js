@@ -553,6 +553,22 @@ app.get('/betting', async (req, res) => {
     res.render('betting', { user, userState, year: process.env.YEAR, isAdmin });
 });
 
+// Game-day scoreboard — every FBS game for the week, with the league's drafted
+// teams marked up with their owner and live fantasy points. Deliberately NOT in
+// the navbar yet: the nav is at capacity (see views/partials/navbar.ejs) and
+// where this lives is a decision to make after seeing it used on a Saturday.
+// Reachable by URL in the meantime.
+app.get('/scoreboard', (req, res) => {
+    if (!req.oidc.isAuthenticated()) return res.redirect('/login');
+    const user = buildUserContext(req.effUser);
+    res.render('scoreboard', {
+        user,
+        userState: safeJson(req.effUser),
+        year: process.env.YEAR,
+        leagueCode: leagueCodeFor(req.effUser)
+    });
+});
+
 app.get('/admin', (req, res) => {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
