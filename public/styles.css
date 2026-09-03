@@ -249,6 +249,20 @@ body > * { position: relative; z-index: 1; }
     position: relative;
 }
 
+/* Between the point the desktop row appears (64em) and the width it has room to
+   breathe, trim the per-link padding. At 1rem a side, nine items spend ~290px on
+   padding alone, and an Admin — who also carries the Admin link and the league
+   select — wrapped the row onto two lines in that band. This buys back more than
+   the "Scores" link costs, and tightens a row that was already over-spaced at
+   those widths. */
+@media (min-width: 64em) and (max-width: 80em) {
+    .navbar-links li a,
+    .navbar-links li .nav-search {
+        padding-left: 0.6rem;
+        padding-right: 0.6rem;
+    }
+}
+
 .navbar-links li a[user-home] {
     display: inline-flex;
     align-items: center;
@@ -377,6 +391,32 @@ body > * { position: relative; z-index: 1; }
     padding: 0 0.5rem;
 }
 
+/* Sits where the hamburger does, because at this width the hamburger is gone.
+   Padding makes a 40px tap target around an 18px glyph; the negative right
+   offset keeps the glyph itself aligned with the 1rem gutter. */
+.nav-search-top {
+    display: none;
+    position: absolute;
+    top: 1.1rem;
+    right: 5px;      /* + 11px padding = the glyph lands on the 1rem gutter */
+    padding: 11px;
+    background: none;
+    border: 0;
+    color: var(--cc-text);
+    cursor: pointer;
+    line-height: 0;
+}
+.nav-search-top i {
+    font-size: 18px;
+    padding: 0;          /* .fas/.fa carry a global padding-left */
+}
+
+@media (max-width: 767px) {
+    .nav-search-top {
+        display: inline-flex;
+    }
+}
+
 .toggle-button {
     position: absolute;
     top: .75rem;
@@ -491,6 +531,211 @@ body > * { position: relative; z-index: 1; }
 
 @keyframes nav-drop {
     from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* "New" dot. Sits on the icon in the tab bar and after the label in the desktop
+   row, so it never competes with the accent that means "you are here". The ring
+   is the surface behind it, which keeps the dot legible where it overlaps a
+   glyph. */
+.nav-new-wrap {
+    position: relative;
+    display: inline-flex;
+    line-height: 0;
+}
+.nav-new-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cc-accent);
+    display: inline-block;
+}
+/* Setting `display` on the class means the `hidden` attribute is only honoured
+   because the UA marks its rule important. Pair them explicitly, as every other
+   [hidden] toggle in this file does. */
+.nav-new-dot[hidden] {
+    display: none;
+}
+.nav-new-wrap .nav-new-dot {
+    position: absolute;
+    top: -1px;
+    right: -4px;
+    border: 1.5px solid var(--cc-surface-2);
+}
+.navbar-links .nav-new-dot {
+    margin-left: 6px;
+    vertical-align: 2px;
+}
+
+/* ---- Phone tab bar ---------------------------------------------------------
+   Hidden by default and switched on only at phone widths. The hamburger keeps
+   serving 768px-1024px: a bottom bar is a thumb pattern, and a small laptop
+   window has no thumb.
+
+   --cc-tab-h is the bar's own height; the safe-area inset is added separately
+   so the bar sits above an iPhone's home indicator instead of under it. */
+:root {
+    --cc-tab-h: 56px;
+}
+
+.tab-bar {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    background: var(--cc-surface-2);
+    border-top: 1px solid var(--cc-border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* border-box so --cc-tab-h is the bar's REAL height, border included. The
+       body's clearance and the More panel's offset are both computed from that
+       number, and a 1px border left out of it puts a seam between them. */
+    box-sizing: border-box;
+    height: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Lift page-level bottom-right controls clear of the bar. The draft room's mute
+   button is fixed at bottom:14px with z-index 1000, which put it squarely on
+   top of the More tab — 40x40px inside the tab's own hit area, painting above
+   it and taking the taps.
+
+   Qualified with body.has-tab-bar for two reasons: it only applies where the
+   bar actually exists, and the extra specificity beats .dr-mute in
+   draftRoom.css, which loads after this file and would otherwise win on order
+   alone. */
+@media (max-width: 767px) {
+    body.has-tab-bar .dr-mute {
+        bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px) + 14px);
+    }
+}
+
+.tab-item {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: 0;
+    font-size: 10px;
+    font-family: inherit;
+    text-decoration: none;
+}
+/* Colour has to be set on the icon and the label THEMSELVES, not on the tab.
+   The global `* { color: var(--cc-text) }` at the top of this file applies
+   directly to every element, so a child never inherits its parent's colour —
+   styling only .tab-item left every tab plain white, active and inactive
+   alike. */
+/* --cc-muted-bright, not --cc-muted-2: the dim-caption token reads as a
+   disabled control on a nav. These tabs are all available; only one is current,
+   and the accent, the bar and the heavier label say which. */
+.tab-item i,
+.tab-item span:not(.tab-avatar) {
+    color: var(--cc-muted-bright);
+}
+.tab-item i {
+    font-size: 18px;
+    padding: 0;          /* .fas/.fa carry a global padding-left */
+}
+/* :not(.tab-avatar) throughout — the avatar is a span too, and colouring it
+   repaints the manager's initials over their own colour chip. */
+.tab-item.active i,
+.tab-item.active span:not(.tab-avatar),
+.tab-item[aria-expanded="true"] i,
+.tab-item[aria-expanded="true"] span:not(.tab-avatar) {
+    color: var(--cc-accent);
+}
+/* A second, non-colour cue: colour alone fails anyone who cannot separate the
+   accent from the muted grey. */
+.tab-item.active span:not(.tab-avatar),
+.tab-item[aria-expanded="true"] span:not(.tab-avatar) {
+    font-weight: 500;
+}
+.tab-item.active::before,
+.tab-item[aria-expanded="true"]::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--cc-accent);
+}
+.tab-item {
+    position: relative;
+}
+.tab-item .tab-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 500;
+    color: #fff;
+}
+.tab-item .tab-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.tab-item.active .tab-avatar {
+    box-shadow: 0 0 0 2px var(--cc-accent);
+}
+
+@media (max-width: 767px) {
+    .tab-bar {
+        display: flex;
+    }
+
+    /* More replaces the hamburger at this width — two controls for one menu on
+       one screen would be a bug, not a convenience. */
+    .toggle-button {
+        display: none;
+    }
+
+    /* Clear the fixed bar so the last card/footer isn't trapped under it.
+       Keyed on a class the navbar partial sets rather than :has(), which would
+       drop the whole rule on an engine without support and trap content UNDER
+       the bar — a worse failure than the dead space this is fixing. Pages
+       without the partial (error.ejs, invite.ejs) render no bar and no class. */
+    body.has-tab-bar {
+        padding-bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* The menu opens FROM the control that opened it. Dropping it out of the
+       navbar at the top of the page while the user's thumb is at the bottom is
+       the kind of disorientation that makes people think they mis-tapped. */
+    .navbar-links.active {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+        width: 100%;
+        max-height: 60vh;
+        overflow-y: auto;
+        z-index: 54;
+        border-top: 1px solid var(--cc-border);
+        box-shadow: 0 -10px 12px -7px rgba(0, 0, 0, 0.6);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .navbar-links.active {
+            animation: nav-rise 0.22s ease;
+        }
+    }
+}
+
+@keyframes nav-rise {
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
 }
 

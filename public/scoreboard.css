@@ -116,6 +116,45 @@
     .sb-weeks { display: flex; }
 }
 
+/* Its own pinned row on a phone. It sits above the filters in the same sticky
+   stack, and deliberately does NOT carry the page title with it — "Scores" is
+   the least useful thing to spend pinned height on. */
+@media (max-width: 600px) {
+    /* No page title on a phone: the tab bar highlights Scores, which says where
+       you are more reliably than a heading you have to scroll to see. The
+       freshness line it used to carry moves into the week row below. */
+    .sb-head {
+        display: none;
+    }
+
+    .week-nav {
+        position: sticky;
+        top: var(--sb-sticky-top, 0px);
+        z-index: 41;
+        justify-content: space-between;
+        width: 100%;
+        padding: 8px 16px;
+        background: var(--cc-bg);
+        box-shadow: 0 -6px 0 0 var(--cc-bg);
+    }
+
+    .week-nav .sb-status {
+        margin-top: 0;
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+}
+
+.week-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
 .sb-weeks {
     gap: 6px;
     padding: 8px 16px 10px;

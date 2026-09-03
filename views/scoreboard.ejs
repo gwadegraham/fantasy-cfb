@@ -43,13 +43,23 @@
         <div class="sb-head-id">
             <h1 class="sb-title">Scores</h1>
             <div class="sb-status">
-                <span class="sb-live-count" id="live-count" hidden></span>
-                <span class="sb-updated" id="sb-updated"></span>
+                <span class="sb-live-count" hidden></span>
+                <span class="sb-updated"></span>
             </div>
         </div>
-        <!-- Narrow screens get the compact picker; wide screens get the strip
-             below and only need to be told which week they are looking at. -->
-        <div class="week-nav">
+    </div>
+
+    <!-- The narrow-screen week control, in its own row so it can pin without
+         dragging the page title along with it. Hidden once the strip below
+         takes over. -->
+    <div class="week-nav">
+        <!-- The page title is gone on phones — the tab bar already says which
+             page you are on — so this row carries the freshness line instead. -->
+        <div class="sb-status">
+            <span class="sb-live-count" hidden></span>
+            <span class="sb-updated"></span>
+        </div>
+        <div class="week-step">
             <button type="button" class="week-nav-btn" id="week-prev" aria-label="Previous week">
                 <i class="fa-solid fa-chevron-left"></i>
             </button>

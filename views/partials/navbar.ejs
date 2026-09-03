@@ -70,6 +70,15 @@
             <div class="brand-clash">Clash</div>
         </div>
     </a>
+    <!-- Phone-only search trigger, in the slot the hamburger vacates at <=767px.
+         Search opens a dialog rather than navigating, so it has no business in
+         the tab bar alongside three destinations — but buried in More it is two
+         taps and invisible, and an icon is its only discovery route on a phone
+         (⌘K carries it on desktop). Shares the .nav-search class with the copy
+         in the menu; search.js binds every one of them. -->
+    <button type="button" class="nav-search nav-search-top" aria-label="Search teams and managers">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+    </button>
     <button type="button" class="toggle-button" aria-label="Toggle navigation" aria-controls="navbar-links" aria-expanded="false">
         <span class="bar"></span>
         <span class="bar"></span>
@@ -91,6 +100,7 @@
             </li>
             <% } %>
             <li><a href="/standings">Standings</a></li>
+            <li><a href="/scoreboard">Scores<span class="nav-new-dot" data-new="scoreboard" hidden></span></a></li>
             <li><a href="/hall-of-fame">Hall of Fame</a></li>
             <li><a href="/rules">Scoring</a></li>
             <li><a href="/draft-room">Draft Room</a></li>
@@ -146,6 +156,46 @@
         </ul>
     </div>
 </nav>
+
+<!--
+    Phone-only bottom tab bar (<=767px). The three destinations people actually
+    move between on a game day, plus More — which opens the very same
+    #navbar-links panel the hamburger does, so there is one menu in the app, not
+    two that can drift. The hamburger itself is hidden at this width; between
+    768px and the desktop row it is still the nav, because a bottom bar is a
+    thumb pattern and a 900px browser window has no thumb.
+-->
+<nav class="tab-bar" aria-label="Primary">
+    <a class="tab-item" href="/standings">
+        <i class="fa-solid fa-trophy" aria-hidden="true"></i>
+        <span>Standings</span>
+    </a>
+    <a class="tab-item" href="/scoreboard">
+        <span class="nav-new-wrap">
+            <i class="fa-solid fa-football" aria-hidden="true"></i>
+            <span class="nav-new-dot" data-new="scoreboard" hidden></span>
+        </span>
+        <span>Scores</span>
+    </a>
+    <% if (user && user.userId) { %>
+    <a class="tab-item" tab-user-home href="/userHome?user=<%= user.userId %>">
+        <% var tnu = (typeof navUser !== 'undefined' && navUser) || null; %>
+        <% if (tnu && tnu.avatarUrl) { %>
+            <% var tabAv = tnu.avatarUrl.indexOf('/upload/') !== -1 ? tnu.avatarUrl.replace('/upload/', '/upload/c_fill,g_face,w_64,h_64,q_auto,f_auto/') : tnu.avatarUrl; %>
+            <span class="tab-avatar"><img src="<%= tabAv %>" alt=""></span>
+        <% } else if (tnu && tnu.initials) { %>
+            <span class="tab-avatar tab-avatar-initials" style="background: <%= tnu.color || '#333' %>"><%= tnu.initials %></span>
+        <% } else { %>
+            <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+        <% } %>
+        <span>My Team</span>
+    </a>
+    <% } %>
+    <button type="button" class="tab-item tab-more" aria-controls="navbar-links" aria-expanded="false">
+        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        <span>More</span>
+    </button>
+</nav>
 <script>
     // Navbar behaviors that belong to the navbar itself: wire the hamburger,
     // seed the "My team" link, and highlight the current page. This runs inline
@@ -156,16 +206,32 @@
         if (!nav) return;
         var links = document.getElementById('navbar-links');
         var toggle = nav.querySelector('.toggle-button');
+        var tabBar = document.querySelector('.tab-bar');
+        // Marks the page as carrying the bottom bar, so the body's bottom
+        // clearance applies here and not on pages that omit this partial.
+        if (tabBar) document.body.classList.add('has-tab-bar');
+        // The hamburger and the tab bar's More button open the SAME panel, so
+        // both have to report the same state — one of them is always the one on
+        // screen at a given width.
+        var toggles = [toggle, tabBar && tabBar.querySelector('.tab-more')].filter(Boolean);
 
         // --- Hamburger: single click binding, plus close on Escape / outside
         // click / link tap, so the mobile menu doesn't get stuck open. ---
         function setOpen(open) {
             links.classList.toggle('active', open);
-            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            toggles.forEach(function (t) {
+                t.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
         }
-        if (links && toggle) {
-            toggle.addEventListener('click', function () {
-                setOpen(!links.classList.contains('active'));
+        if (links && toggles.length) {
+            toggles.forEach(function (t) {
+                // No stopPropagation here: the outside-click handler below
+                // already ignores clicks inside the navbar and inside the tab
+                // bar, and stopping the event also stopped the dev role-spoof
+                // popover from closing when you tapped a menu toggle.
+                t.addEventListener('click', function () {
+                    setOpen(!links.classList.contains('active'));
+                });
             });
             // Tapping a destination link closes the menu (dropdown toggles are
             // <button>s, so opening "Leagues" leaves the menu open). Search is
@@ -181,7 +247,10 @@
                 }
             });
             document.addEventListener('click', function (e) {
-                if (links.classList.contains('active') && !nav.contains(e.target)) setOpen(false);
+                if (!links.classList.contains('active')) return;
+                if (nav.contains(e.target)) return;
+                if (tabBar && tabBar.contains(e.target)) return;   // More lives out here
+                setOpen(false);
             });
         }
 
@@ -193,13 +262,21 @@
             var userId = inner.userId || window.localStorage.getItem('userId');
             if (userId) {
                 window.localStorage.setItem('userId', userId);
-                var myLink = nav.querySelector('[user-home]');
-                if (myLink) myLink.href = '/userHome?user=' + userId;
+                document.querySelectorAll('[user-home], [tab-user-home]').forEach(function (myLink) {
+                    myLink.href = '/userHome?user=' + userId;
+                });
             }
         } catch (e) { /* non-fatal: link falls back to its server-rendered href */ }
 
         // --- Highlight the current page. ---
         var here = (location.pathname.replace(/\/+$/, '') || '/');
+        document.querySelectorAll('.tab-bar .tab-item[href]').forEach(function (a) {
+            var p = (a.pathname || '').replace(/\/+$/, '') || '/';
+            if (p === here) {
+                a.classList.add('active');
+                a.setAttribute('aria-current', 'page');
+            }
+        });
         nav.querySelectorAll('.navbar-links a').forEach(function (a) {
             // Skip in-page/dropdown anchors (href="#") — their pathname resolves
             // to the current page and would falsely match.
@@ -211,6 +288,33 @@
                 a.setAttribute('aria-current', 'page');
             }
         });
+
+        // --- "New" dot on Scores. ---
+        // Two ways off, whichever comes first: the person opens /scoreboard, or
+        // the date passes. The date is what guarantees it cannot nag forever —
+        // the seen-flag is per-device, so someone who visits on their phone
+        // would otherwise meet the dot again on a laptop. After EXPIRES this
+        // whole block is inert and can be deleted along with the markup.
+        (function () {
+            var EXPIRES = new Date('2026-09-10T00:00:00');
+            var SEEN_KEY = 'ccNewSeen:scoreboard';
+            var dots = document.querySelectorAll('.nav-new-dot[data-new="scoreboard"]');
+            if (!dots.length) return;
+
+            var expired = new Date() >= EXPIRES;
+            var seen = false;
+            try { seen = localStorage.getItem(SEEN_KEY) === '1'; } catch (e) { seen = false; }
+
+            // Landing on the page counts as seeing it — record it even when the
+            // dot is already gone, so nothing re-appears if the clock is wrong.
+            if (here === '/scoreboard') {
+                try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) { /* private mode */ }
+                seen = true;
+            }
+
+            if (expired || seen) return;
+            dots.forEach(function (d) { d.hidden = false; });
+        })();
 
         // --- Dev-only role spoof (rendered only when canSpoof). ---
         // The chip expands into a popover with the three choices. No need to
