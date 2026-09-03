@@ -582,9 +582,12 @@ body > * { position: relative; z-index: 1; }
    directly to every element, so a child never inherits its parent's colour —
    styling only .tab-item left every tab plain white, active and inactive
    alike. */
+/* --cc-muted-bright, not --cc-muted-2: the dim-caption token reads as a
+   disabled control on a nav. These tabs are all available; only one is current,
+   and the accent, the bar and the heavier label say which. */
 .tab-item i,
 .tab-item span:not(.tab-avatar) {
-    color: var(--cc-muted-2);
+    color: var(--cc-muted-bright);
 }
 .tab-item i {
     font-size: 18px;
