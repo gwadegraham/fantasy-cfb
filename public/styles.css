@@ -550,6 +550,12 @@ body > * { position: relative; z-index: 1; }
     background: var(--cc-accent);
     display: inline-block;
 }
+/* Setting `display` on the class means the `hidden` attribute is only honoured
+   because the UA marks its rule important. Pair them explicitly, as every other
+   [hidden] toggle in this file does. */
+.nav-new-dot[hidden] {
+    display: none;
+}
 .nav-new-wrap .nav-new-dot {
     position: absolute;
     top: -1px;
@@ -587,6 +593,21 @@ body > * { position: relative; z-index: 1; }
        number, and a 1px border left out of it puts a seam between them. */
     box-sizing: border-box;
     height: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Lift page-level bottom-right controls clear of the bar. The draft room's mute
+   button is fixed at bottom:14px with z-index 1000, which put it squarely on
+   top of the More tab — 40x40px inside the tab's own hit area, painting above
+   it and taking the taps.
+
+   Qualified with body.has-tab-bar for two reasons: it only applies where the
+   bar actually exists, and the extra specificity beats .dr-mute in
+   draftRoom.css, which loads after this file and would otherwise win on order
+   alone. */
+@media (max-width: 767px) {
+    body.has-tab-bar .dr-mute {
+        bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px) + 14px);
+    }
 }
 
 .tab-item {
@@ -681,8 +702,12 @@ body > * { position: relative; z-index: 1; }
         display: none;
     }
 
-    /* Clear the fixed bar so the last card/footer isn't trapped under it. */
-    body {
+    /* Clear the fixed bar so the last card/footer isn't trapped under it.
+       Keyed on a class the navbar partial sets rather than :has(), which would
+       drop the whole rule on an engine without support and trap content UNDER
+       the bar — a worse failure than the dead space this is fixing. Pages
+       without the partial (error.ejs, invite.ejs) render no bar and no class. */
+    body.has-tab-bar {
         padding-bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
     }
 

@@ -207,6 +207,9 @@
         var links = document.getElementById('navbar-links');
         var toggle = nav.querySelector('.toggle-button');
         var tabBar = document.querySelector('.tab-bar');
+        // Marks the page as carrying the bottom bar, so the body's bottom
+        // clearance applies here and not on pages that omit this partial.
+        if (tabBar) document.body.classList.add('has-tab-bar');
         // The hamburger and the tab bar's More button open the SAME panel, so
         // both have to report the same state — one of them is always the one on
         // screen at a given width.
@@ -222,8 +225,11 @@
         }
         if (links && toggles.length) {
             toggles.forEach(function (t) {
-                t.addEventListener('click', function (e) {
-                    e.stopPropagation();   // else the outside-click handler closes it again
+                // No stopPropagation here: the outside-click handler below
+                // already ignores clicks inside the navbar and inside the tab
+                // bar, and stopping the event also stopped the dev role-spoof
+                // popover from closing when you tapped a menu toggle.
+                t.addEventListener('click', function () {
                     setOpen(!links.classList.contains('active'));
                 });
             });
