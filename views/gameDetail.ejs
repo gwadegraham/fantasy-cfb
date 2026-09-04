@@ -9,6 +9,7 @@
     <script src="/haptic.js"></script>
     <script src="/pull-to-refresh.js"></script>
     <script src="/fit-names.js"></script>
+    <script src="/wp-chart.js"></script>
     <link href="/gameDetail.css" rel="stylesheet">
     <link href="/loading.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -323,7 +324,25 @@
             } else if (game.homePregameElo != null && game.awayPregameElo != null) {
                 homeWP = 100 / (1 + Math.pow(10, -(game.homePregameElo - game.awayPregameElo) / 400));
             }
-            if (homeWP != null && !isFinal) {
+            // Once the game is in progress the field gives way to the curve the
+            // game has actually traced (public/wp-chart.js). It returns '' when
+            // there aren't yet two points to draw a line between — the first
+            // minutes of a game, or a game that predates the snapshot series —
+            // and the predictor stands in until there are.
+            var wpChartHtml = '';
+            if (isLive && window.ccWpChart) {
+                wpChartHtml = ccWpChart.render(game, {
+                    homeTeam: game.homeTeam, awayTeam: game.awayTeam,
+                    homeAbbr: homeAbbr, awayAbbr: awayAbbr,
+                    homeLogo: homeLogo, awayLogo: awayLogo,
+                    homeColor: ensureBarContrast(homeColor),
+                    awayColor: ensureBarContrast(awayColor)
+                });
+            }
+
+            if (wpChartHtml) {
+                html += wpChartHtml;
+            } else if (homeWP != null && !isFinal) {
                 var awayWP = 100 - homeWP;
 
                 html += '<div class="gd-section gd-predictor">';
@@ -685,6 +704,11 @@
                 ccFitNames('.gd-pl-name', container);
                 ccWatchNameFit('.gd-pl-name', container);
             }
+
+            // The chart's scrubbing is wired here rather than inline, because
+            // the 30s live refresh replaces this container wholesale — every
+            // repaint needs the handlers back on the new nodes.
+            if (window.ccWpChart) ccWpChart.attach(container);
         }
 
         function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {
