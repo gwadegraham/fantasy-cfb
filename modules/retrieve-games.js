@@ -42,6 +42,34 @@ function gamesResponseError(responseOk, status, gameData) {
     return null;
 }
 
+// CFBD's /games carries a score only once a game is FINAL — an in-progress game
+// comes back with `homePoints: null, awayPoints: null` and no lineScores. Both
+// ingest paths write the CFBD row wholesale (`$set: game`), so those nulls land
+// on top of the live score modules/scoreboard.js wrote minutes earlier off the
+// /scoreboard endpoint, which DOES report in-progress scores.
+//
+// The damage is not a stale number, it's a card that reads as un-played: the
+// renderers treat a null score on a not-completed game as "hasn't kicked off"
+// and fall back to the kickoff time (public/userHome.js buildGameCard), so a
+// game in the fourth quarter advertises a 7:00 PM start until the next poll.
+// The league scoreboard blanks both scores under a running clock, and the
+// re-score that follows the ingest books no win for the game (two nulls never
+// compare greater, see modules/scoring-detectors.js).
+//
+// So: never let an absent value overwrite a present one. Deleting the key drops
+// it from the $set, leaving whatever is already stored — which for a game that
+// genuinely hasn't started is null anyway, and for a live one is the truth.
+// The same reasoning the situation/lastPlay clear in routes/games.js applies
+// from the other direction.
+const LIVE_SCORE_FIELDS = ['homePoints', 'awayPoints', 'homeLineScores', 'awayLineScores'];
+
+function stripAbsentScores(game) {
+    LIVE_SCORE_FIELDS.forEach(function (field) {
+        if (game[field] == null) delete game[field];
+    });
+    return game;
+}
+
 module.exports = {
 
     retrieveTeams: async () => {
@@ -123,5 +151,7 @@ module.exports = {
     // Exported for testing.
     dedupeGamesById: dedupeGamesById,
     massCreateInputError: massCreateInputError,
-    gamesResponseError: gamesResponseError
+    gamesResponseError: gamesResponseError,
+    stripAbsentScores: stripAbsentScores,
+    LIVE_SCORE_FIELDS: LIVE_SCORE_FIELDS
 };

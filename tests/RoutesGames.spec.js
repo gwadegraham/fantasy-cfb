@@ -193,6 +193,49 @@ describe('POST /games/week/mass-create', () => {
         expect(saved.lastPlay).toBe('Nussmeier pass complete for 8 yds');
     });
 
+    // The regression that made a fourth-quarter game advertise its kickoff time.
+    // CFBD's /games sends null points until a game is final, and `$set: game`
+    // wrote those over the live score the /scoreboard poller had just stored —
+    // for the ~2 minutes until the next poll, buildGameCard saw a not-completed
+    // game with no score and rendered the pre-game card. The nightly 23:00 full
+    // update lands mid-game on any weeknight kickoff.
+    test('does not overwrite a live score with the nulls CFBD sends mid-game', async () => {
+        await Game.create(gameDoc({
+            id: 501, completed: false,
+            homePoints: 27, awayPoints: 24,
+            homeLineScores: [7, 3, 7, 10], awayLineScores: [7, 7, 3, 7]
+        }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({
+            homePoints: null, awayPoints: null,
+            homeLineScores: null, awayLineScores: null, completed: false
+        })]));
+
+        await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+
+        const saved = await Game.findOne({ id: 501 }).lean();
+        expect(saved.homePoints).toBe(27);
+        expect(saved.awayPoints).toBe(24);
+        expect(saved.homeLineScores).toEqual([7, 3, 7, 10]);
+        // The rest of the row still updates — the guard is per-field, not a
+        // skip of the whole game.
+        expect(saved.conferenceGame).toBe(true);
+    });
+
+    // A game that truly hasn't kicked off must still ingest with no score,
+    // rather than the guard leaving a stale value behind on a fresh insert.
+    test('ingests an upcoming game with no score at all', async () => {
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({
+            id: 505, homePoints: null, awayPoints: null, completed: false
+        })]));
+
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+        expect(res.status).toBe(201);
+
+        const saved = await Game.findOne({ id: 505 }).lean();
+        expect(saved.homePoints ?? null).toBe(null);
+        expect(saved.awayPoints ?? null).toBe(null);
+    });
+
     // The race this route has to survive. The Saturday job fires at 15:00/18:00/
     // 22:00 on the minute and the live poller fires on every :00 mark, so two runs
     // land together three times a Saturday. Under the old find-then-insertMany

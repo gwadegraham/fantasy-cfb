@@ -1,4 +1,4 @@
-const { dedupeGamesById, massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
+const { dedupeGamesById, massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 
 describe('dedupeGamesById', () => {
     it('removes games with duplicate ids (distinct object references)', () => {
@@ -72,5 +72,58 @@ describe('gamesResponseError', () => {
     it('passes a normal array of games', () => {
         expect(gamesResponseError(true, 200, [{ id: 1 }, { id: 2 }])).toBeNull();
         expect(gamesResponseError(true, 200, [])).toBeNull();
+    });
+});
+
+describe('stripAbsentScores', () => {
+    // The bug this exists for: CFBD /games reports no score until a game is
+    // final, both ingest paths write the row wholesale, and the null landed on
+    // top of the live score the /scoreboard poller had written — which the card
+    // renderers read as "this game hasn't kicked off", kickoff time and all.
+    it('drops null scores so they cannot overwrite a live score', () => {
+        const game = {
+            id: 501, completed: false,
+            homePoints: null, awayPoints: null,
+            homeLineScores: null, awayLineScores: null
+        };
+
+        stripAbsentScores(game);
+
+        expect('homePoints' in game).toBe(false);
+        expect('awayPoints' in game).toBe(false);
+        expect('homeLineScores' in game).toBe(false);
+        expect('awayLineScores' in game).toBe(false);
+        expect(game.id).toBe(501);            // everything else is untouched
+        expect(game.completed).toBe(false);
+    });
+
+    it('keeps a real score, including a shutout 0', () => {
+        // 0 is a score, not an absence — `== null` and not falsiness is what
+        // separates them, and a 0-0 first quarter is the common case.
+        const game = {
+            homePoints: 0, awayPoints: 0,
+            homeLineScores: [0], awayLineScores: [0]
+        };
+
+        stripAbsentScores(game);
+
+        expect(game).toEqual({
+            homePoints: 0, awayPoints: 0,
+            homeLineScores: [0], awayLineScores: [0]
+        });
+    });
+
+    it('drops an undefined score as well as an explicit null', () => {
+        const game = { homePoints: 31, awayPoints: undefined };
+
+        stripAbsentScores(game);
+
+        expect(game.homePoints).toBe(31);
+        expect('awayPoints' in game).toBe(false);
+    });
+
+    it('returns the same object it was handed', () => {
+        const game = { homePoints: null };
+        expect(stripAbsentScores(game)).toBe(game);
     });
 });
