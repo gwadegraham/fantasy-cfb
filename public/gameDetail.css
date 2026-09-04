@@ -76,7 +76,11 @@ html.gd-page, .gd-page body {
 /* ---- Live strip: down & distance, possession, last play ---- */
 /* Only rendered while a game is in progress, so the accent bar reads as "this
    is happening now" without needing a state class to switch it off. */
-.gd-livestrip {
+/* Two class selectors, not one. .gd-section sets `border: 1px solid` and is
+   declared further down this file — at equal specificity source order wins, so
+   a bare .gd-livestrip lost the border it was asking for. This is the accent
+   that makes the block read as live rather than as one more section. */
+.gd-section.gd-livestrip {
     border-left: 3px solid var(--cc-accent);
 }
 .gd-ls-head {

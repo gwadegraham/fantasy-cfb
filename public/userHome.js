@@ -1986,18 +1986,17 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         if (homeHasBall) homeScore = ball + homeScore;
         liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
 
-        // Down-and-distance and the last play. Both ride along free in the
-        // scoreboard poll the app already pays for (modules/scoreboard.js), and
-        // both are cleared the moment a game goes final, so their presence is
-        // itself the "this game is live" signal.
+        // Down-and-distance. Rides along free in the scoreboard poll the app
+        // already pays for (modules/scoreboard.js) and is cleared the moment a
+        // game goes final, so its presence is itself the "this game is live"
+        // signal.
         //
-        // Unlike the league scoreboard's forty-card grid, My Team shows only the
-        // handful of games a manager actually owns — so the play description is
-        // allowed to wrap to a second line instead of being cut off.
-        if (game.situation || game.lastPlay) {
+        // The last play description is deliberately not here, matching the
+        // league scoreboard: the situation is what reads at a glance on a card,
+        // and the game detail page one tap away carries the prose.
+        if (game.situation) {
             liveStatus += '<tr><td colspan="3" class="gc-live-line">'
-                + (game.situation ? '<span class="gc-situation">' + escapeHtml(game.situation) + '</span>' : '')
-                + (game.lastPlay ? '<span class="gc-lastplay">' + escapeHtml(game.lastPlay) + '</span>' : '')
+                + '<span class="gc-situation">' + escapeHtml(game.situation) + '</span>'
                 + '</td></tr>';
         }
     } else {
