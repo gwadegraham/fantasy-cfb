@@ -387,9 +387,10 @@ function sbUrl(week, live) {
     return base + (live ? '?live=1' : '');
 }
 
-// `jumpToCurrent` is only ever true for the first paint. A refresh that falls
-// back to a full reload must NOT yank the page around under someone who is
-// reading a different part of the slate.
+// `jumpToCurrent` is set by the first paint and by the week nav — both are
+// arrivals at a slate nobody has looked at yet. A REFRESH that falls back to a
+// full reload must not pass it: yanking the page around under someone who is
+// reading a different part of the slate is exactly what this flag guards.
 function loadWeek(week, jumpToCurrent) {
     return sbApi(sbUrl(week, false)).then(function (data) {
         sbState.week = data.week;
@@ -433,9 +434,9 @@ function loadWeek(week, jumpToCurrent) {
 // nothing for prefers-reduced-motion to object to.
 function scrollToCurrent() {
     var run = function () {
+        var content = document.getElementById('scoreboard-content');
         var card = document.querySelector('.sb-card.sb-state-live')
             || document.querySelector('.sb-card.sb-state-pre');
-        if (!card) return;
 
         // When the card we're aiming at opens its day, aim at the day heading
         // instead — landing on a bare "5:00 PM" with THURSDAY hidden behind the
@@ -443,11 +444,20 @@ function scrollToCurrent() {
         // targets keep the card itself: scrolling back to the heading would bury
         // the game under everything already played that day.
         var target = card;
-        var grid = card.parentElement;
-        if (!card.previousElementSibling && grid && grid.previousElementSibling
-            && grid.previousElementSibling.classList.contains('sb-day')) {
-            target = grid.previousElementSibling;
+        if (card) {
+            var grid = card.parentElement;
+            if (!card.previousElementSibling && grid && grid.previousElementSibling
+                && grid.previousElementSibling.classList.contains('sb-day')) {
+                target = grid.previousElementSibling;
+            }
+        } else {
+            // Nothing left to play — a past week, or a filter that matches only
+            // finals. There is no "next game" to anchor on, so the top of the
+            // slate is the answer; leaving the old scroll depth in place would
+            // strand the reader mid-list in a slate they've never seen.
+            target = content && content.firstElementChild;
         }
+        if (!target) return;
 
         var stuck = document.querySelector('.sb-filters');
         var offset = (stuck ? stuck.getBoundingClientRect().height : 0)
@@ -587,6 +597,11 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('conf-filter').value = '';
             renderFilterState();
             render();
+            // A filter rewrites the whole list, so the scroll depth that landed
+            // on the next kickoff in the full slate lands on nothing in
+            // particular in the filtered one. Re-anchor for the same reason the
+            // first paint does.
+            scrollToCurrent();
         });
     });
 
@@ -619,6 +634,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!sbState.conf && had) sbState.filter = 'all';
         renderFilterState();
         render();
+        scrollToCurrent();
     });
 
     // Delegated: the strip is rebuilt on every week change.
@@ -626,21 +642,21 @@ document.addEventListener('DOMContentLoaded', function () {
         var btn = e.target.closest ? e.target.closest('.sb-week') : null;
         if (!btn) return;
         var w = Number(btn.getAttribute('data-week'));
-        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w);
+        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w, true);
     });
 
     document.getElementById('week-select').addEventListener('change', function () {
         var w = Number(this.value);
-        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w);
+        if (Number.isFinite(w) && w !== sbState.week) loadWeek(w, true);
     });
 
     document.getElementById('week-prev').addEventListener('click', function () {
         var i = sbState.weeks.indexOf(sbState.week);
-        if (i > 0) loadWeek(sbState.weeks[i - 1]);
+        if (i > 0) loadWeek(sbState.weeks[i - 1], true);
     });
     document.getElementById('week-next').addEventListener('click', function () {
         var i = sbState.weeks.indexOf(sbState.week);
-        if (i > -1 && i < sbState.weeks.length - 1) loadWeek(sbState.weeks[i + 1]);
+        if (i > -1 && i < sbState.weeks.length - 1) loadWeek(sbState.weeks[i + 1], true);
     });
 
     document.addEventListener('visibilitychange', function () {
