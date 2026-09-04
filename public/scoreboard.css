@@ -466,13 +466,20 @@
 .sb-state-live .sb-score {
     color: var(--cc-text);
 }
-/* Football beside the team with the ball. Slightly larger than the 9px dot it
-   replaces, because a glyph with internal detail needs the room to read as a
-   football rather than a smudge. */
+/* Football beside the score of the team with the ball. Larger than the 9px dot
+   it replaces, because a glyph with internal detail needs the room to read as a
+   football rather than a smudge.
+
+   Present on BOTH score rows and hidden on the one without the ball —
+   `visibility`, not `display`, so the hidden twin keeps its box and the two
+   scores stay in one column. Same approach as .sb-win below. */
 .sb-poss {
     color: var(--cc-amber);
     font-size: 11px;
-    flex-shrink: 0;
+    visibility: hidden;
+}
+.sb-poss.has-ball {
+    visibility: visible;
 }
 
 /* Winner caret. Present on both rows of a final and merely hidden on the

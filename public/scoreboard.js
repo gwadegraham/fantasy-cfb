@@ -111,11 +111,20 @@ function sideHtml(side, game, isWinner) {
     // final score is the more interesting number anyway.
     var record = (side.record && game.state !== 'final')
         ? '<span class="sb-record">(' + esc(side.record) + ')</span>' : '';
-    // A football beside the team with the ball. CFBD reports possession as the
-    // side ('home' / 'away'), which modules/league-scoreboard.js resolves — the
-    // old comparison against a school name never matched, so this never drew.
-    var poss = (game.state === 'live' && side.possession)
-        ? '<i class="fa-solid fa-football sb-poss" aria-label="Has possession"></i>' : '';
+    // A football beside the SCORE of the team with the ball, matching the My Team
+    // cards. CFBD reports possession as the side ('home' / 'away'), which
+    // modules/league-scoreboard.js resolves — the old comparison against a school
+    // name never matched, so this never drew at all.
+    //
+    // Rendered on BOTH rows and merely hidden on the one without the ball, the
+    // same way .sb-win handles the winner caret: the hidden twin keeps its box,
+    // so the two rows' scores stay in a single column. Emitted only when someone
+    // actually has the ball, so pre and final cards pay nothing for it.
+    var anyBall = game.state === 'live' && !!(game.home.possession || game.away.possession);
+    var poss = anyBall
+        ? '<i class="fa-solid fa-football sb-poss' + (side.possession ? ' has-ball' : '') + '"'
+            + (side.possession ? ' aria-label="Has possession"' : ' aria-hidden="true"') + '></i> '
+        : '';
 
     // The right-hand slot is the score once there is one; before kickoff it
     // carries the spread, on the row of the team laying the points. That reads
@@ -142,8 +151,8 @@ function sideHtml(side, game, isWinner) {
     return '<div class="sb-side' + (isWinner ? ' is-winner' : '') + (side.owner ? ' is-rostered' : '') + '">'
         + logo + rank
         + '<a class="sb-team" href="/team?team=' + side.id + '">' + esc(side.team) + '</a>'
-        + record + poss + ownerHtml(side)
-        + '<span class="sb-score">' + trailing + '</span>'
+        + record + ownerHtml(side)
+        + '<span class="sb-score">' + poss + trailing + '</span>'
         + '</div>';
 }
 
