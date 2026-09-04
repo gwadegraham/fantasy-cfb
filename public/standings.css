@@ -818,6 +818,14 @@
 @media (max-width: 767px) {
     .mode-h2h .standings-row .score-sub .score-math { display: none; }
     .fl-table.mode-h2h .std-roster-logos img { height: 22px; }
+
+    /* Let a long franchise name wrap onto a second line. The table inherits
+       `white-space: nowrap`, so the longest name used to set the table's width
+       (366px at 375px wide) and shove the roster caret off the right edge,
+       behind the wrapper's horizontal scroll. Wrapping lets the auto-width name
+       column shrink into whatever rank/record/total/caret leave behind. */
+    .mode-h2h .standings-row .name-cell { min-width: 0; }
+    .mode-h2h .standings-row .std-name { white-space: normal; overflow-wrap: break-word; }
 }
 
 /* ---------- "Data as of" freshness badge (last successful scoring run) ------- */
