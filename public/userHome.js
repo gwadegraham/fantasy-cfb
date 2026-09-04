@@ -1975,12 +1975,15 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
             var qtr = game.period <= 4 ? 'Q' + game.period : 'OT' + (game.period > 5 ? game.period - 4 : '');
             clockDisplay = game.clock ? qtr + ' ' + game.clock : qtr;
         }
-        if (game.possession) {
-            var possTeam = game.possession === game.homeTeam ? '&#9679;' : '';
-            var possAway = game.possession === game.awayTeam ? '&#9679;' : '';
-            awayScore = (possAway ? '<span class="gc-poss">' + possAway + '</span> ' : '') + awayScore;
-            homeScore = (possTeam ? '<span class="gc-poss">' + possTeam + '</span> ' : '') + homeScore;
-        }
+        // CFBD reports possession as the SIDE ('home' / 'away'), not a team name —
+        // the old `=== game.homeTeam` comparison was never true, so this marker
+        // never actually drew. A team-name match stays as a fallback.
+        var possSide = String(game.possession || '').toLowerCase();
+        var homeHasBall = possSide === 'home' || game.possession === game.homeTeam;
+        var awayHasBall = possSide === 'away' || game.possession === game.awayTeam;
+        var ball = '<i class="fa-solid fa-football gc-poss" aria-label="Has possession"></i> ';
+        if (awayHasBall) awayScore = ball + awayScore;
+        if (homeHasBall) homeScore = ball + homeScore;
         liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
 
         // Down-and-distance and the last play. Both ride along free in the

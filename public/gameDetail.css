@@ -91,12 +91,13 @@ html.gd-page, .gd-page body {
     font-weight: 700;
     color: var(--cc-accent);
 }
-.gd-ls-poss {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--cc-muted-bright);
+/* Football beside the team name of whoever has the ball. Replaces a
+   "HOME BALL" text tag that read as a label rather than a live indicator — and
+   which exposed that CFBD sends the side, not a team name. */
+.gd-poss {
+    color: var(--cc-amber);
+    font-size: 0.8em;
+    vertical-align: baseline;
 }
 /* The one place a last play is allowed its full length — this page has the room,
    and truncating a play description is what the compact cards are for. */

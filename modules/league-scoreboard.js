@@ -233,6 +233,23 @@ function spreadSideOf(formattedSpread, game) {
     return null;
 }
 
+// Does `which` side ('home' | 'away') have the ball?
+//
+// CFBD's /scoreboard reports possession as the SIDE — literally "home" or
+// "away" — not a team name. The original check here was
+// `game.possession === team`, comparing that against a school name, so it was
+// never true and the possession marker never rendered on any surface. Verified
+// against a live game: { possession: "away", home: "Buffalo Bulls", ... }.
+//
+// A team-name match is still accepted as a fallback, so a future payload that
+// does send a name keeps working rather than silently going blank again.
+function hasPossession(possession, which, team) {
+    if (!possession) return false;
+    const p = String(possession).toLowerCase();
+    if (p === 'home' || p === 'away') return p === which;
+    return possession === team;
+}
+
 function sideOf(game, which, ctx) {
     const id = which === 'home' ? game.homeId : game.awayId;
     const team = which === 'home' ? game.homeTeam : game.awayTeam;
@@ -251,7 +268,7 @@ function sideOf(game, which, ctx) {
         record: ctx.records[id] || null,
         line: ctx.spread && ctx.spread.side === which ? ctx.spread.line : null,
         points: points != null ? points : null,
-        possession: !!(game.possession && game.possession === team),
+        possession: hasPossession(game.possession, which, team),
         owner: owner ? {
             userId: owner.userId,
             name: owner.name,
@@ -292,8 +309,11 @@ function shapeGame(game, ctx) {
         // Gated on `live` like period/clock: a card that is pre or final has no
         // use for down-and-distance, and shipping it would only give the client
         // something it has to remember not to draw.
+        //
+        // `lastPlay` is deliberately NOT shipped here. The situation alone is
+        // what reads at a glance in a forty-card grid; the full play description
+        // belongs on the game detail page, which has the room for it.
         situation: state === 'live' ? (game.situation || null) : null,
-        lastPlay: state === 'live' ? (game.lastPlay || null) : null,
         outlet: game.outlet || null,
         weather: game.weather && game.weather.emoji ? {
             emoji: game.weather.emoji,
@@ -327,6 +347,6 @@ function shapeGames(games, ctx) {
 module.exports = {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
-    recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf,
+    recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf, hasPossession,
     CONFERENCE_ABBR, TAIL_MS
 };

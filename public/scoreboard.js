@@ -111,7 +111,11 @@ function sideHtml(side, game, isWinner) {
     // final score is the more interesting number anyway.
     var record = (side.record && game.state !== 'final')
         ? '<span class="sb-record">(' + esc(side.record) + ')</span>' : '';
-    var poss = (game.state === 'live' && side.possession) ? '<span class="sb-poss" aria-label="Has possession">&#9679;</span>' : '';
+    // A football beside the team with the ball. CFBD reports possession as the
+    // side ('home' / 'away'), which modules/league-scoreboard.js resolves — the
+    // old comparison against a school name never matched, so this never drew.
+    var poss = (game.state === 'live' && side.possession)
+        ? '<i class="fa-solid fa-football sb-poss" aria-label="Has possession"></i>' : '';
 
     // The right-hand slot is the score once there is one; before kickoff it
     // carries the spread, on the row of the team laying the points. That reads
@@ -155,22 +159,16 @@ function cardHtml(game) {
         meta.push(window.ccWeatherEmoji[game.weather.emoji]);
     }
 
-    // Down-and-distance and the last play, live only. Both come free with the
-    // scoreboard poll (modules/scoreboard.js) and only exist while a game is in
-    // progress, so no state check beyond "is it there".
+    // Down-and-distance, live only — it comes free with the scoreboard poll
+    // (modules/scoreboard.js) and only exists while a game is in progress.
     //
-    // The situation is the half worth reading at a glance, so it leads and is
-    // never truncated. lastPlay is a full sentence and routinely longer than a
-    // card is wide — it gets the remaining space and an ellipsis, with the
-    // whole thing on the title for anyone who wants it.
-    var live = '';
-    if (game.situation || game.lastPlay) {
-        live = '<div class="sb-live-line"'
-            + (game.lastPlay ? ' title="' + esc(game.lastPlay) + '"' : '') + '>'
-            + (game.situation ? '<span class="sb-situation">' + esc(game.situation) + '</span>' : '')
-            + (game.lastPlay ? '<span class="sb-lastplay">' + esc(game.lastPlay) + '</span>' : '')
-            + '</div>';
-    }
+    // The last play description is deliberately NOT here. It is a full sentence,
+    // routinely wider than a card, and in a forty-card grid it was noise next to
+    // the one line that actually reads at a glance. The game detail page carries
+    // the prose.
+    var live = game.situation
+        ? '<div class="sb-live-line"><span class="sb-situation">' + esc(game.situation) + '</span></div>'
+        : '';
 
     // A div, not an <a>. The card links to the game detail page AND each team
     // name links to that team — and an <a> inside an <a> is invalid HTML that

@@ -227,6 +227,16 @@
 
             var hasScores = game.awayPoints != null || game.homePoints != null;
 
+            // Who has the ball. CFBD reports possession as the SIDE ('home' /
+            // 'away'), not a team name — comparing it against a school name (as
+            // every surface used to) is never true. A name match stays as a
+            // fallback in case a future payload sends one. Live games only: the
+            // field lingers on a final until the next poll clears it.
+            var possSide = String(game.possession || '').toLowerCase();
+            var awayBall = isLive && (possSide === 'away' || game.possession === game.awayTeam);
+            var homeBall = isLive && (possSide === 'home' || game.possession === game.homeTeam);
+            var ballIcon = ' <i class="fa-solid fa-football gd-poss" aria-label="Has possession"></i>';
+
             if (hasScores) {
                 // 5-column grid: logo | score/record | status | score/record | logo
                 html += '<div class="gd-matchup-grid">';
@@ -239,11 +249,11 @@
                 html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
 
                 // Row 2: name | record | · | record | name
-                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + '</span></a>';
+                html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-name"><span class="gd-tnm-full">' + awayRankStr + game.awayTeam + (awayBall ? ballIcon : '') + '</span><span class="gd-tnm-abbr">' + awayRankStr + awayAbbr + (awayBall ? ballIcon : '') + '</span></a>';
                 html += '<div class="gd-mu-record">' + awayRecord + '</div>';
                 html += '<div class="gd-mu-sub-center"></div>';
                 html += '<div class="gd-mu-record">' + homeRecord + '</div>';
-                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + '</span></a>';
+                html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-name"><span class="gd-tnm-full">' + homeRankStr + game.homeTeam + (homeBall ? ballIcon : '') + '</span><span class="gd-tnm-abbr">' + homeRankStr + homeAbbr + (homeBall ? ballIcon : '') + '</span></a>';
 
                 html += '</div>';
             } else {
@@ -277,10 +287,7 @@
             // final score is a worse failure than showing nothing.
             if (!isFinal && (game.situation || game.lastPlay)) {
                 html += '<div class="gd-section gd-livestrip">';
-                var lead = [];
-                if (game.situation) lead.push('<span class="gd-ls-situation">' + esc(game.situation) + '</span>');
-                if (game.possession) lead.push('<span class="gd-ls-poss">' + esc(game.possession) + ' ball</span>');
-                if (lead.length) html += '<div class="gd-ls-head">' + lead.join('') + '</div>';
+                if (game.situation) html += '<div class="gd-ls-head"><span class="gd-ls-situation">' + esc(game.situation) + '</span></div>';
                 if (game.lastPlay) html += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
                 html += '</div>';
             }
