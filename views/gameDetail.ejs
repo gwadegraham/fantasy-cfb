@@ -245,7 +245,10 @@
                 // Row 1: logo | score | Final/Qn | score | logo
                 html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-logo"><img class="gd-logo" src="' + awayLogo + '" alt="" /></a>';
                 html += '<div class="gd-mu-score' + (awayWon ? ' gd-winner' : '') + '">' + awayScoreStr + '</div>';
-                html += '<div class="gd-mu-center">' + (isLive ? 'Q' + game.period : '@') + '</div>';
+                // Always the matchup separator, never the period: the status pill
+                // above already carries "Q4 · 3:12", and a live game was the one
+                // state where this cell repeated it a few pixels away.
+                html += '<div class="gd-mu-center">@</div>';
                 html += '<div class="gd-mu-score' + (homeWon ? ' gd-winner' : '') + '">' + homeScoreStr + '</div>';
                 html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
 
