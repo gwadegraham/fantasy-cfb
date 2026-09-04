@@ -11,6 +11,10 @@
 // Everything here is pure (no DB, no req/res) so the week/owner/points logic
 // can be unit-tested without a Mongo harness. The route feeds it query results.
 
+// The one exception to "pure": a shared constant, so the live/final cutoff
+// here cannot drift from the one the live poller gates on.
+const { MAX_GAME_MS } = require('./game-window');
+
 // Fantasy points are re-scored on every live-poll tick with no `completed`
 // gate (see modules/score-update.js doLiveUpdate), so a team's points for an
 // in-progress game are already correct in weeklyScore — nothing here has to
@@ -78,18 +82,24 @@ function weekWindows(games) {
     return [...by.values()].sort((a, b) => a.week - b.week);
 }
 
-const TAIL_MS = 6 * 3600 * 1000;
+// The scoreboard's own tail, for picking a default week only — deliberately
+// NOT the game-window ceiling. "Is this slate still the current one" and "is
+// this game still being played" are different questions, and widening the
+// second to cover weather delays should not also change which week the page
+// opens on.
+const WEEK_TAIL_MS = 6 * 3600 * 1000;
 
 // Which week should the page open on? "The one you'd want on a Saturday":
 //   1. a week currently in progress (first kickoff .. last kickoff + 6h)
 //   2. otherwise the next week to come  — Tue-Thu sits between slates and
 //      should look forward, not back at a settled week
 //   3. otherwise the last week that happened (season over)
-// The 6h tail matches the live poller's own window (modules/live-poll.js), so
-// the page and the poller agree on when a slate stops being current.
+// The tail here is WEEK_TAIL_MS, not the game window — a slate stops being the
+// current one on a schedule of its own, independent of how long one delayed
+// game inside it is still being played.
 function defaultWeek(windows, nowMs) {
     if (!windows || !windows.length) return null;
-    const live = windows.find(w => nowMs >= w.first && nowMs <= w.last + TAIL_MS);
+    const live = windows.find(w => nowMs >= w.first && nowMs <= w.last + WEEK_TAIL_MS);
     if (live) return live.week;
     const next = windows.find(w => w.first > nowMs);
     if (next) return next.week;
@@ -97,14 +107,18 @@ function defaultWeek(windows, nowMs) {
 }
 
 // A game's display state. `completed` is authoritative for finals; anything
-// kicked off and not final reads as live. The 6h tail keeps a stuck `completed`
-// flag (CFBD occasionally never flips one) from showing a Tuesday game as live
-// all week — it falls back to "final" once the window passes.
+// kicked off and not final reads as live. The game window keeps a stuck
+// `completed` flag (CFBD occasionally never flips one) from showing a Tuesday
+// game as live all week — it falls back to "final" once the window passes.
+//
+// Shared with the live poller on purpose: past this same ceiling the poller
+// stops fetching, so a card that stayed "live" any longer would be showing a
+// running clock over a score that had quietly stopped moving.
 function gameState(game, nowMs) {
     if (game.completed) return 'final';
     const start = Date.parse(game.startDate);
     if (Number.isNaN(start) || start > nowMs) return 'pre';
-    return (nowMs - start) <= TAIL_MS ? 'live' : 'final';
+    return (nowMs - start) <= MAX_GAME_MS ? 'live' : 'final';
 }
 
 // Short labels for the conference filter. CFBD gives us only full names — there
@@ -348,5 +362,5 @@ module.exports = {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
     recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf, hasPossession,
-    CONFERENCE_ABBR, TAIL_MS
+    CONFERENCE_ABBR, WEEK_TAIL_MS, MAX_GAME_MS
 };

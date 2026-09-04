@@ -5,7 +5,8 @@
 const {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
-    weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf, TAIL_MS
+    weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf,
+    WEEK_TAIL_MS, MAX_GAME_MS
 } = require('../modules/league-scoreboard');
 
 const HOUR = 3600 * 1000;
@@ -106,8 +107,8 @@ describe('weekWindows / defaultWeek', () => {
         expect(defaultWeek(windows, Date.parse('2026-09-05T20:00:00.000Z'))).toBe(2);
     });
 
-    test('the 6h tail keeps a just-finished slate current', () => {
-        const justInside = Date.parse('2026-09-05T16:00:00.000Z') + TAIL_MS - HOUR;
+    test('the week tail keeps a just-finished slate current', () => {
+        const justInside = Date.parse('2026-09-05T16:00:00.000Z') + WEEK_TAIL_MS - HOUR;
         expect(defaultWeek(windows, justInside)).toBe(2);
     });
 
@@ -143,8 +144,23 @@ describe('gameState', () => {
         expect(gameState(game(), start + HOUR)).toBe('live');
     });
 
-    test('a stuck completed flag reads final once the 6h window passes', () => {
-        expect(gameState(game(), start + TAIL_MS + HOUR)).toBe('final');
+    test('a stuck completed flag reads final once the game window passes', () => {
+        expect(gameState(game(), start + MAX_GAME_MS + HOUR)).toBe('final');
+    });
+
+    // Regression: UAlbany at Buffalo, 3 Sep 2026. A weather delay put the 4th
+    // quarter past the old 6h cutoff, so the card read FINAL — with a frozen
+    // score, because the poller gates on the same number and had stopped too —
+    // while the game was still on TV.
+    test('a game delayed past six hours is still live', () => {
+        expect(gameState(game(), start + 7 * HOUR)).toBe('live');
+    });
+
+    // The window is what stops a stuck `completed` flag from reading live all
+    // week, so it must stay finite even as it widens.
+    test('the game window is between six and twelve hours', () => {
+        expect(MAX_GAME_MS).toBeGreaterThan(6 * HOUR);
+        expect(MAX_GAME_MS).toBeLessThanOrEqual(12 * HOUR);
     });
 });
 
