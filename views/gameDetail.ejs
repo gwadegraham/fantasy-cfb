@@ -329,8 +329,13 @@
             // there aren't yet two points to draw a line between — the first
             // minutes of a game, or a game that predates the snapshot series —
             // and the predictor stands in until there are.
+            //
+            // Built for finals too, but placed further down the page — see the
+            // "Win probability (final games)" block below. During play it is a
+            // prediction and belongs up here; afterwards it is history, and
+            // reads better under the box score than above it.
             var wpChartHtml = '';
-            if (isLive && window.ccWpChart) {
+            if (window.ccWpChart && (isLive || isFinal)) {
                 wpChartHtml = ccWpChart.render(game, {
                     homeTeam: game.homeTeam, awayTeam: game.awayTeam,
                     homeAbbr: homeAbbr, awayAbbr: awayAbbr,
@@ -340,7 +345,7 @@
                 });
             }
 
-            if (wpChartHtml) {
+            if (isLive && wpChartHtml) {
                 html += wpChartHtml;
             } else if (homeWP != null && !isFinal) {
                 var awayWP = 100 - homeWP;
@@ -642,6 +647,14 @@
 
                 html += '</div></div>'; // .gd-stats-grid, .gd-section
             }
+
+            // ---- Win probability (final games) ----
+            // The series survives the completion cleanup that nulls every other
+            // live field, and the poller closes it with a terminal 1/0 built
+            // from the final score — so the whole arc of a finished game is
+            // still here to read back. Empty for anything that finished before
+            // the snapshots existed, which is every game before Sep 2026.
+            if (isFinal && wpChartHtml) html += wpChartHtml;
 
             // ---- Player stats ----
             var hp = (game.playerStats && game.playerStats.home) || {};

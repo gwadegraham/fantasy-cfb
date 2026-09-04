@@ -281,6 +281,25 @@ describe('render', () => {
         expect(html).toContain('26.5%');   // away, the complement
     });
 
+    // The poller closes the series with a terminal 1/0 built from the final
+    // score (buildFinalSnapshot in modules/scoreboard.js). The card is shown
+    // again below the box score once a game is final, so that point is what a
+    // reader lands on.
+    it('ends a finished game pinned at certainty', () => {
+        const html = wp.render(game([
+            snap(1, '13:00', 0.58),
+            snap(4, '2:00', 0.71),
+            snap(4, '0:00', 1, { homePoints: 31, awayPoints: 24, situation: null, lastPlay: null })
+        ], { completed: true }), ctx);
+
+        expect(html).toContain('100.0%');
+        expect(html).toContain('0.0%');
+    });
+
+    it('has nothing to draw for a game that finished before the series existed', () => {
+        expect(wp.render({ homeTeam: 'LSU', awayTeam: 'Alabama', completed: true }, ctx)).toBe('');
+    });
+
     it('keeps the predictor card\'s shape so nothing jumps at kickoff', () => {
         const html = wp.render(game([snap(1, '13:00', 0.58)]), ctx);
 
