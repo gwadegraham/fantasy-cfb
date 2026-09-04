@@ -289,6 +289,11 @@ function shapeGame(game, ctx) {
         state,
         period: state === 'live' ? (game.period != null ? game.period : null) : null,
         clock: state === 'live' ? (game.clock || null) : null,
+        // Gated on `live` like period/clock: a card that is pre or final has no
+        // use for down-and-distance, and shipping it would only give the client
+        // something it has to remember not to draw.
+        situation: state === 'live' ? (game.situation || null) : null,
+        lastPlay: state === 'live' ? (game.lastPlay || null) : null,
         outlet: game.outlet || null,
         weather: game.weather && game.weather.emoji ? {
             emoji: game.weather.emoji,

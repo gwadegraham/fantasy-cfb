@@ -137,6 +137,20 @@ const gameSchema = new mongoose.Schema({
     status: {
         type: String
     },
+    // Down-and-distance ("3rd & 7 at LSU 32") and the description of the most
+    // recent play, both straight from /scoreboard — no extra CFBD call, they
+    // ride along in the same response the poller already pays for.
+    //
+    // CLEARED when the game completes, the same as liveHomeWinProb. CFBD leaves
+    // lastPlay set to "End of 4th quarter." on a finished game, which is noise
+    // on a final card; nulling both means "these are populated" is a clean
+    // signal that a game is genuinely in progress.
+    situation: {
+        type: String
+    },
+    lastPlay: {
+        type: String
+    },
     // Broadcast info from CFBD /games/media (e.g. outlet "ABC", mediaType "tv").
     mediaType: {
         type: String

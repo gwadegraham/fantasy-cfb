@@ -301,6 +301,12 @@ html.cfp-page, .cfp-page body {
     display: inline-block;
 }
 .cfp-game-outlet i { font-size: 0.6rem; }
+/* Down-and-distance, live only — leads the meta row and takes the accent so it
+   reads as the one part of that row that is changing. */
+.cfp-game-situation {
+    font-weight: 700;
+    color: var(--cc-accent);
+}
 
 /* ---- Champion display ---- */
 .cfp-champion {

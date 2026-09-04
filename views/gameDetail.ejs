@@ -45,6 +45,13 @@
 
         function fmt(n) { return n != null ? String(n) : '-'; }
         function pct(n) { return n != null ? n.toFixed(1) + '%' : '-'; }
+        // The live strip interpolates CFBD-authored prose (the last play) into
+        // innerHTML, so it goes through here first.
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
         function timeFmt(secs) {
             if (secs == null) return '-';
             var m = Math.floor(secs / 60);
@@ -83,10 +90,71 @@
                 } catch (e) { /* logos are decorative */ }
 
                 render(game, logoMap, colorMap, abbrMap, mascotMap);
+
+                // Logos, colours and abbreviations are fixed for the life of the
+                // page, so the refresh below re-renders against these instead of
+                // asking /teams/teamLogos again every 30 seconds.
+                gdArt = { logoMap: logoMap, colorMap: colorMap, abbrMap: abbrMap, mascotMap: mascotMap };
+                gdSchedule(game);
             } catch (err) {
                 container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
             }
         }
+
+        // ---- live refresh -------------------------------------------------
+        //
+        // Same 30s cadence and hidden-tab rule as the league scoreboard. Only
+        // this one game is refetched, and only while it is actually in progress
+        // — a final or not-yet-kicked-off game arms no timer at all.
+        var GD_LIVE_MS = 30000;
+        var gdTimer = null;
+        var gdArt = null;
+        var gdGame = null;
+
+        function gdIsLive(game) {
+            if (!game || game.completed) return false;
+            if (!game.startDate) return false;
+            return Date.parse(game.startDate) <= Date.now();
+        }
+
+        function gdSchedule(game) {
+            gdGame = game;
+            clearTimeout(gdTimer);
+            if (!gdIsLive(game) || document.hidden) return;
+            gdTimer = setTimeout(gdRefresh, GD_LIVE_MS);
+        }
+
+        async function gdRefresh() {
+            try {
+                var res = await fetch('/games/detail/' + GAME_ID);
+                if (!res.ok) throw new Error('refresh failed');
+                var game = await res.json();
+
+                // A full re-render replaces the container, which would otherwise
+                // drop someone reading the box score back to the top of the
+                // page. Sections don't come and go during live play, so putting
+                // the scroll position back lands exactly where it was; on the
+                // one tick where a game finals and the stat sections appear, it
+                // lands close enough.
+                var y = window.scrollY;
+                render(game, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+                window.scrollTo(0, y);
+
+                gdSchedule(game);
+            } catch (err) {
+                // A missed tick is a stale clock, not a broken page — keep the
+                // loop alive so the next one can recover.
+                console.error('Live game refresh failed:', err);
+                gdTimer = setTimeout(gdRefresh, GD_LIVE_MS);
+            }
+        }
+
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) { clearTimeout(gdTimer); return; }
+            // Only catch up on a game that is still running — coming back to a
+            // final game should cost nothing.
+            if (gdArt && gdIsLive(gdGame)) gdRefresh();
+        });
 
         // Ensure a hex color is bright enough for bar fills on a dark background.
         // Returns the color lightened to at least minLum relative luminance.
@@ -195,6 +263,27 @@
                 html += '</div>';
             }
             html += '</div>'; // .gd-header
+
+            // ---- Live strip: down & distance, possession, last play ----
+            // This page has the most room of any surface that shows a live game,
+            // so it gets the fullest treatment: the situation and who has the
+            // ball on one line, the last play spelled out underneath.
+            //
+            // Both fields come free with the scoreboard poll and are nulled when
+            // a game finals — in modules/scoreboard.js and again in the
+            // /games/week/mass-create upsert. `completed` is still checked here
+            // rather than trusting the fields to be empty: it is the one flag
+            // every ingest path agrees on, and a stale "3rd & 7" sitting under a
+            // final score is a worse failure than showing nothing.
+            if (!isFinal && (game.situation || game.lastPlay)) {
+                html += '<div class="gd-section gd-livestrip">';
+                var lead = [];
+                if (game.situation) lead.push('<span class="gd-ls-situation">' + esc(game.situation) + '</span>');
+                if (game.possession) lead.push('<span class="gd-ls-poss">' + esc(game.possession) + ' ball</span>');
+                if (lead.length) html += '<div class="gd-ls-head">' + lead.join('') + '</div>';
+                if (game.lastPlay) html += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
+                html += '</div>';
+            }
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
             // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.

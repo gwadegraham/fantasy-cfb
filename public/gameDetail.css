@@ -73,6 +73,39 @@ html.gd-page, .gd-page body {
     color: var(--cc-muted);
 }
 
+/* ---- Live strip: down & distance, possession, last play ---- */
+/* Only rendered while a game is in progress, so the accent bar reads as "this
+   is happening now" without needing a state class to switch it off. */
+.gd-livestrip {
+    border-left: 3px solid var(--cc-accent);
+}
+.gd-ls-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+.gd-ls-situation {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--cc-accent);
+}
+.gd-ls-poss {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cc-muted-bright);
+}
+/* The one place a last play is allowed its full length — this page has the room,
+   and truncating a play description is what the compact cards are for. */
+.gd-ls-play {
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--cc-muted);
+}
+
 /* ---- Matchup grid ---- */
 .gd-matchup-grid {
     display: grid;

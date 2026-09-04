@@ -362,6 +362,38 @@
     white-space: nowrap;
 }
 
+/* Live footer: down-and-distance + last play. Only rendered on a live card, so
+   no .sb-state-live qualifier is needed to hide it elsewhere.
+
+   One line that never wraps: a card in a grid of forty must not change height
+   because one game's last play ran long. The situation keeps its intrinsic
+   width (flex-shrink: 0) and the play description absorbs the ellipsis, so the
+   half that matters at a glance is the half that always survives. */
+.sb-live-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--cc-border);
+    font-size: 11px;
+    min-width: 0;
+}
+.sb-situation {
+    flex: 0 0 auto;
+    font-weight: 600;
+    color: var(--cc-accent);
+    white-space: nowrap;
+}
+.sb-lastplay {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--cc-muted-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sb-side {
     display: flex;
     align-items: center;
