@@ -8,7 +8,7 @@ const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
 const User = require('../models/user');
 const Team = require('../models/team');
-const { massCreateInputError, gamesResponseError } = require('../modules/retrieve-games');
+const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
@@ -449,6 +449,10 @@ router.post('/week/mass-create', async (req, res) => {
         game.awayPostgameElo = game.awayPostgameElo;
         game.excitementIndex = game.excitementIndex;
 
+        // Keep the live poller's in-progress score from being overwritten by the
+        // nulls CFBD's /games sends for a game that isn't final yet.
+        stripAbsentScores(game);
+
         var date = new Date();
         var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
         game.lastUpdated = centralTime;
@@ -541,6 +545,9 @@ router.post('/:season/schedule', async (req, res) => {
         g.homePostWinProb = g.homePostgameWinProbability;
         g.awayPostWinProb = g.awayPostgameWinProbability;
         g.lastUpdated = centralTime;
+        // Same clobber as mass-create: this is a preseason prerequisite, but it
+        // is re-runnable in season and writes the CFBD row wholesale.
+        stripAbsentScores(g);
         const exists = await Game.findOne({ id: g.id });
         if (!exists) {
             try { await new Game(g).save(); created++; }
