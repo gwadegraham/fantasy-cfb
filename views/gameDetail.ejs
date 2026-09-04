@@ -9,6 +9,7 @@
     <script src="/haptic.js"></script>
     <script src="/pull-to-refresh.js"></script>
     <script src="/fit-names.js"></script>
+    <script src="/wp-chart.js"></script>
     <link href="/gameDetail.css" rel="stylesheet">
     <link href="/loading.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -244,7 +245,10 @@
                 // Row 1: logo | score | Final/Qn | score | logo
                 html += '<a href="/team?team=' + game.awayId + '" class="gd-mu-logo"><img class="gd-logo" src="' + awayLogo + '" alt="" /></a>';
                 html += '<div class="gd-mu-score' + (awayWon ? ' gd-winner' : '') + '">' + awayScoreStr + '</div>';
-                html += '<div class="gd-mu-center">' + (isLive ? 'Q' + game.period : '@') + '</div>';
+                // Always the matchup separator, never the period: the status pill
+                // above already carries "Q4 · 3:12", and a live game was the one
+                // state where this cell repeated it a few pixels away.
+                html += '<div class="gd-mu-center">@</div>';
                 html += '<div class="gd-mu-score' + (homeWon ? ' gd-winner' : '') + '">' + homeScoreStr + '</div>';
                 html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
 
@@ -323,7 +327,30 @@
             } else if (game.homePregameElo != null && game.awayPregameElo != null) {
                 homeWP = 100 / (1 + Math.pow(10, -(game.homePregameElo - game.awayPregameElo) / 400));
             }
-            if (homeWP != null && !isFinal) {
+            // Once the game is in progress the field gives way to the curve the
+            // game has actually traced (public/wp-chart.js). It returns '' when
+            // there aren't yet two points to draw a line between — the first
+            // minutes of a game, or a game that predates the snapshot series —
+            // and the predictor stands in until there are.
+            //
+            // Built for finals too, but placed further down the page — see the
+            // "Win probability (final games)" block below. During play it is a
+            // prediction and belongs up here; afterwards it is history, and
+            // reads better under the box score than above it.
+            var wpChartHtml = '';
+            if (window.ccWpChart && (isLive || isFinal)) {
+                wpChartHtml = ccWpChart.render(game, {
+                    homeTeam: game.homeTeam, awayTeam: game.awayTeam,
+                    homeAbbr: homeAbbr, awayAbbr: awayAbbr,
+                    homeLogo: homeLogo, awayLogo: awayLogo,
+                    homeColor: ensureBarContrast(homeColor),
+                    awayColor: ensureBarContrast(awayColor)
+                });
+            }
+
+            if (isLive && wpChartHtml) {
+                html += wpChartHtml;
+            } else if (homeWP != null && !isFinal) {
                 var awayWP = 100 - homeWP;
 
                 html += '<div class="gd-section gd-predictor">';
@@ -624,6 +651,14 @@
                 html += '</div></div>'; // .gd-stats-grid, .gd-section
             }
 
+            // ---- Win probability (final games) ----
+            // The series survives the completion cleanup that nulls every other
+            // live field, and the poller closes it with a terminal 1/0 built
+            // from the final score — so the whole arc of a finished game is
+            // still here to read back. Empty for anything that finished before
+            // the snapshots existed, which is every game before Sep 2026.
+            if (isFinal && wpChartHtml) html += wpChartHtml;
+
             // ---- Player stats ----
             var hp = (game.playerStats && game.playerStats.home) || {};
             var ap = (game.playerStats && game.playerStats.away) || {};
@@ -685,6 +720,11 @@
                 ccFitNames('.gd-pl-name', container);
                 ccWatchNameFit('.gd-pl-name', container);
             }
+
+            // The chart's scrubbing is wired here rather than inline, because
+            // the 30s live refresh replaces this container wholesale — every
+            // repaint needs the handlers back on the new nodes.
+            if (window.ccWpChart) ccWpChart.attach(container);
         }
 
         function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {

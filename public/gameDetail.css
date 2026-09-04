@@ -572,6 +572,97 @@ html.gd-page, .gd-page body {
     font-weight: 500;
 }
 
+/* ---- Win Probability chart (live games) ----
+   Replaces the Matchup Predictor once a game is in progress. Keeps the
+   predictor's probability readout underneath (.gd-field-probs et al) so the
+   card doesn't change shape at kickoff — only the graphic above it does. */
+.gd-wp-plot {
+    margin: 4px 0 2px;
+    /* pan-y, not none: a vertical swipe over the card still scrolls the page,
+       while a horizontal drag scrubs the chart. */
+    touch-action: pan-y;
+    cursor: crosshair;
+    border-radius: var(--cc-r-sm);
+}
+.gd-wp-plot:focus-visible {
+    outline: 2px solid var(--cc-info);
+    outline-offset: 2px;
+}
+.gd-wp-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+.gd-wp-divider {
+    stroke: var(--cc-border-2);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+}
+.gd-wp-mid {
+    stroke: var(--cc-muted-2);
+    stroke-width: 1;
+}
+.gd-wp-dot { stroke: var(--cc-surface); stroke-width: 1.4; }
+.gd-wp-now { stroke: var(--cc-surface); stroke-width: 1.6; }
+.gd-wp-cursor { stroke: var(--cc-text); stroke-width: 1; stroke-opacity: 0.55; }
+.gd-wp-pin { stroke: var(--cc-surface); stroke-width: 1.6; }
+.gd-wp-axlab, .gd-wp-qlab {
+    font-size: 8.5px;
+    font-weight: 600;
+}
+.gd-wp-qlab {
+    fill: var(--cc-muted-2);
+    letter-spacing: 0.06em;
+}
+/* Both ends of the axis read "100", so the endpoint labels are tinted to the
+   team colors to say whose certainty each end is. That colour rides on a fill
+   ATTRIBUTE, and any CSS fill would beat it — so only the labels WITHOUT one
+   take the muted default. */
+.gd-wp-axlab:not([fill]) { fill: var(--cc-muted-2); }
+
+/* The scrubber readout. Reports the game state AT a sample — clock, score,
+   down & distance, last play — and never claims a play caused a swing; see the
+   header comment in public/wp-chart.js. Min-height holds the card steady as
+   lines come and go between samples. */
+.gd-wp-readout {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--cc-border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    min-height: 56px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--cc-muted);
+}
+.gd-wp-when {
+    font-weight: 700;
+    color: var(--cc-muted-bright);
+    font-variant-numeric: tabular-nums;
+}
+.gd-wp-score {
+    font-weight: 600;
+    color: var(--cc-text);
+    font-variant-numeric: tabular-nums;
+}
+.gd-wp-wp {
+    font-weight: 600;
+    color: var(--cc-interactive);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}
+.gd-wp-situation,
+.gd-wp-play,
+.gd-wp-hint {
+    flex-basis: 100%;
+    margin: 0;
+}
+.gd-wp-situation { color: var(--cc-muted-bright); font-weight: 500; }
+.gd-wp-hint { color: var(--cc-muted-2); font-style: italic; }
+
 /* ---- Season Stats (tug-of-war bars) ---- */
 .gd-ss-header {
     display: flex;

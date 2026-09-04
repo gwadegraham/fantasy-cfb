@@ -123,6 +123,31 @@ const gameSchema = new mongoose.Schema({
     liveHomeWinProb: {
         type: Number
     },
+    // Time series of live win probability, one entry per poller tick while the
+    // game is in progress. This is the ONLY way to get an in-game WP curve:
+    // CFBD's /metrics/wp returns the full per-play series but only AFTER a game
+    // is final (it answers with zero points mid-game), and /scoreboard sends
+    // winProbability only WHILE a game is in progress — null before and after.
+    // So the curve has to be accumulated as it happens; it cannot be backfilled.
+    //
+    // Resolution is the poll cadence (2 min), not per-play, so fast swings that
+    // start and reverse between ticks leave no trace. Unlike the live fields
+    // above, these are NOT cleared on completion — the series is the archive.
+    // Anchor the front of the chart with pregameWinProb; the last entry is the
+    // terminal 1/0 written from the final score on the completion tick.
+    wpSnapshots: {
+        type: [new mongoose.Schema({
+            at:          Date,   // wall clock, for ordering and gap detection
+            period:      Number,
+            clock:       String, // game clock — the x-axis worth plotting against
+            homeWinProb: Number, // 0–1, home perspective (away = 1 − this)
+            homePoints:  Number,
+            awayPoints:  Number,
+            situation:   String,
+            lastPlay:    String
+        }, { _id: false })],
+        default: undefined
+    },
     // Live game state from the CFBD /scoreboard endpoint, updated every poller
     // tick while the game is in progress. Frozen once `completed` flips true.
     period: {
