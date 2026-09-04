@@ -289,12 +289,17 @@
             // rather than trusting the fields to be empty: it is the one flag
             // every ingest path agrees on, and a stale "3rd & 7" sitting under a
             // final score is a worse failure than showing nothing.
+            //
+            // While the game is in progress the strip is held back and placed
+            // under the box score instead — see the live assembly below.
+            var liveStripHtml = '';
             if (!isFinal && (game.situation || game.lastPlay)) {
-                html += '<div class="gd-section gd-livestrip">';
-                if (game.situation) html += '<div class="gd-ls-head"><span class="gd-ls-situation">' + esc(game.situation) + '</span></div>';
-                if (game.lastPlay) html += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
-                html += '</div>';
+                liveStripHtml += '<div class="gd-section gd-livestrip">';
+                if (game.situation) liveStripHtml += '<div class="gd-ls-head"><span class="gd-ls-situation">' + esc(game.situation) + '</span></div>';
+                if (game.lastPlay) liveStripHtml += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
+                liveStripHtml += '</div>';
             }
+            if (!isLive) html += liveStripHtml;
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
             // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.
@@ -348,50 +353,53 @@
                 });
             }
 
+            var wpSectionHtml = '';
             if (isLive && wpChartHtml) {
-                html += wpChartHtml;
+                wpSectionHtml += wpChartHtml;
             } else if (homeWP != null && !isFinal) {
                 var awayWP = 100 - homeWP;
 
-                html += '<div class="gd-section gd-predictor">';
-                html += '<h3 class="gd-section-title"><i class="fas fa-football"></i> Matchup Predictor</h3>';
-                html += '<div class="gd-field" style="--wp:' + (homeWP / 100) + '">';
+                wpSectionHtml += '<div class="gd-section gd-predictor">';
+                wpSectionHtml += '<h3 class="gd-section-title"><i class="fas fa-football"></i> Matchup Predictor</h3>';
+                wpSectionHtml += '<div class="gd-field" style="--wp:' + (homeWP / 100) + '">';
 
                 // End zones
                 var awayEZ = (mascots && mascots[game.awayId]) || awayAbbr;
                 var homeEZ = (mascots && mascots[game.homeId]) || homeAbbr;
-                html += '<div class="gd-field-ez gd-field-ez-away" style="background:' + awayColor + '"><span>' + awayEZ + '</span></div>';
-                html += '<div class="gd-field-ez gd-field-ez-home" style="background:' + homeColor + '"><span>' + homeEZ + '</span></div>';
+                wpSectionHtml += '<div class="gd-field-ez gd-field-ez-away" style="background:' + awayColor + '"><span>' + awayEZ + '</span></div>';
+                wpSectionHtml += '<div class="gd-field-ez gd-field-ez-home" style="background:' + homeColor + '"><span>' + homeEZ + '</span></div>';
 
                 // Yard lines
-                html += '<div class="gd-field-lines">';
-                for (var yl = 0; yl < 9; yl++) html += '<div class="gd-field-yl' + (yl === 4 ? ' gd-field-yl-mid' : '') + '"></div>';
-                html += '</div>';
+                wpSectionHtml += '<div class="gd-field-lines">';
+                for (var yl = 0; yl < 9; yl++) wpSectionHtml += '<div class="gd-field-yl' + (yl === 4 ? ' gd-field-yl-mid' : '') + '"></div>';
+                wpSectionHtml += '</div>';
 
                 // Ball marker at home win prob position (away end = 0%, home end = 100%)
-                html += '<div class="gd-field-marker"></div>';
-                html += '<div class="gd-field-ball">🏈</div>';
+                wpSectionHtml += '<div class="gd-field-marker"></div>';
+                wpSectionHtml += '<div class="gd-field-ball">🏈</div>';
 
-                html += '</div>'; // .gd-field
+                wpSectionHtml += '</div>'; // .gd-field
 
                 // Probability labels
-                html += '<div class="gd-field-probs">';
-                html += '<div class="gd-field-prob">';
-                html += '<img src="' + awayLogo + '" alt="" />';
-                html += '<div><div class="gd-field-pct">' + awayWP.toFixed(1) + '%</div>';
-                html += '<div class="gd-field-name">' + game.awayTeam + '</div></div>';
-                html += '</div>';
-                html += '<div class="gd-field-prob gd-field-prob-right">';
-                html += '<div><div class="gd-field-pct">' + homeWP.toFixed(1) + '%</div>';
-                html += '<div class="gd-field-name">' + game.homeTeam + '</div></div>';
-                html += '<img src="' + homeLogo + '" alt="" />';
-                html += '</div>';
-                html += '</div>';
+                wpSectionHtml += '<div class="gd-field-probs">';
+                wpSectionHtml += '<div class="gd-field-prob">';
+                wpSectionHtml += '<img src="' + awayLogo + '" alt="" />';
+                wpSectionHtml += '<div><div class="gd-field-pct">' + awayWP.toFixed(1) + '%</div>';
+                wpSectionHtml += '<div class="gd-field-name">' + game.awayTeam + '</div></div>';
+                wpSectionHtml += '</div>';
+                wpSectionHtml += '<div class="gd-field-prob gd-field-prob-right">';
+                wpSectionHtml += '<div><div class="gd-field-pct">' + homeWP.toFixed(1) + '%</div>';
+                wpSectionHtml += '<div class="gd-field-name">' + game.homeTeam + '</div></div>';
+                wpSectionHtml += '<img src="' + homeLogo + '" alt="" />';
+                wpSectionHtml += '</div>';
+                wpSectionHtml += '</div>';
 
-                html += '</div>'; // .gd-predictor
+                wpSectionHtml += '</div>'; // .gd-predictor
             }
+            if (!isLive) html += wpSectionHtml;
 
             // ---- Season Averages (tug-of-war bars, pre-game only) ----
+            var preGameStatsHtml = '';
             if (game.seasonStats && !isFinal) {
                 var hss = game.seasonStats.home;
                 var ass = game.seasonStats.away;
@@ -414,12 +422,12 @@
                     var awayBarColor = ensureBarContrast(awayColor);
                     var homeBarColor = ensureBarContrast(homeColor);
 
-                    html += '<div class="gd-section">';
-                    html += '<div class="gd-ss-header">';
-                    html += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
-                    html += '<h3 class="gd-section-title"><i class="fas fa-chart-simple"></i> Season Averages</h3>';
-                    html += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
-                    html += '</div>';
+                    preGameStatsHtml += '<div class="gd-section">';
+                    preGameStatsHtml += '<div class="gd-ss-header">';
+                    preGameStatsHtml += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
+                    preGameStatsHtml += '<h3 class="gd-section-title"><i class="fas fa-chart-simple"></i> Season Averages</h3>';
+                    preGameStatsHtml += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
+                    preGameStatsHtml += '</div>';
 
                     for (var si = 0; si < ssRows.length; si++) {
                         var sr = ssRows[si];
@@ -435,15 +443,15 @@
                         var aLead = sr.invert ? aVal < hVal : aVal > hVal;
                         var hLead = sr.invert ? hVal < aVal : hVal > aVal;
 
-                        html += '<div class="gd-ss-row">';
-                        html += '<div class="gd-ss-label">' + sr.label + '</div>';
-                        html += '<div class="gd-ss-track">';
-                        html += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
-                        html += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
-                        html += '</div></div>';
+                        preGameStatsHtml += '<div class="gd-ss-row">';
+                        preGameStatsHtml += '<div class="gd-ss-label">' + sr.label + '</div>';
+                        preGameStatsHtml += '<div class="gd-ss-track">';
+                        preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
+                        preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
+                        preGameStatsHtml += '</div></div>';
                     }
 
-                    html += '</div>'; // .gd-section
+                    preGameStatsHtml += '</div>'; // .gd-section
                 }
             }
 
@@ -462,12 +470,12 @@
                         { key: 'kicking', label: 'Kicking', stat: 'PTS', unit: 'pts' }
                     ];
 
-                    html += '<div class="gd-section">';
-                    html += '<div class="gd-ss-header">';
-                    html += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
-                    html += '<h3 class="gd-section-title"><i class="fas fa-user-shield"></i> Season Leaders</h3>';
-                    html += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
-                    html += '</div>';
+                    preGameStatsHtml += '<div class="gd-section">';
+                    preGameStatsHtml += '<div class="gd-ss-header">';
+                    preGameStatsHtml += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
+                    preGameStatsHtml += '<h3 class="gd-section-title"><i class="fas fa-user-shield"></i> Season Leaders</h3>';
+                    preGameStatsHtml += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
+                    preGameStatsHtml += '</div>';
 
                     for (var pli = 0; pli < plCats.length; pli++) {
                         var pc = plCats[pli];
@@ -490,24 +498,25 @@
                             ? (hLeader[pc.stat] || 0) + (pc.unit ? ' ' + pc.unit : '')
                             : '';
 
-                        html += '<div class="gd-pl-row">';
-                        html += '<div class="gd-pl-player gd-pl-away">';
-                        html += '<span class="gd-pl-name">' + aName + '</span>';
-                        if (aPos) html += '<span class="gd-pl-pos">' + aPos + '</span>';
-                        if (aStat) html += '<span class="gd-pl-stat">' + aStat + '</span>';
-                        html += '</div>';
-                        html += '<div class="gd-pl-cat">' + pc.label + '</div>';
-                        html += '<div class="gd-pl-player gd-pl-home">';
-                        if (hStat) html += '<span class="gd-pl-stat">' + hStat + '</span>';
-                        if (hPos) html += '<span class="gd-pl-pos">' + hPos + '</span>';
-                        html += '<span class="gd-pl-name">' + hName + '</span>';
-                        html += '</div>';
-                        html += '</div>';
+                        preGameStatsHtml += '<div class="gd-pl-row">';
+                        preGameStatsHtml += '<div class="gd-pl-player gd-pl-away">';
+                        preGameStatsHtml += '<span class="gd-pl-name">' + aName + '</span>';
+                        if (aPos) preGameStatsHtml += '<span class="gd-pl-pos">' + aPos + '</span>';
+                        if (aStat) preGameStatsHtml += '<span class="gd-pl-stat">' + aStat + '</span>';
+                        preGameStatsHtml += '</div>';
+                        preGameStatsHtml += '<div class="gd-pl-cat">' + pc.label + '</div>';
+                        preGameStatsHtml += '<div class="gd-pl-player gd-pl-home">';
+                        if (hStat) preGameStatsHtml += '<span class="gd-pl-stat">' + hStat + '</span>';
+                        if (hPos) preGameStatsHtml += '<span class="gd-pl-pos">' + hPos + '</span>';
+                        preGameStatsHtml += '<span class="gd-pl-name">' + hName + '</span>';
+                        preGameStatsHtml += '</div>';
+                        preGameStatsHtml += '</div>';
                     }
 
-                    html += '</div>'; // .gd-section
+                    preGameStatsHtml += '</div>'; // .gd-section
                 }
             }
+            if (!isLive) html += preGameStatsHtml;
 
             // ---- Betting lines (odds table) ----
             var oddsHtml = '';
@@ -573,36 +582,52 @@
 
                 oddsHtml += '</tbody></table></div>';
             }
-            if (!isFinal) html += oddsHtml;
+            if (!isFinal && !isLive) html += oddsHtml;
 
             // ---- Score by quarter ----
+            var lineScoreHtml = '';
             var homeLS = game.homeLineScores || [];
             var awayLS = game.awayLineScores || [];
             var maxQ = Math.max(homeLS.length, awayLS.length, 4);
             if (homeLS.length || awayLS.length) {
-                html += '<div class="gd-section">';
-                html += '<div class="gd-table-scroll"><table class="gd-linescore">';
-                html += '<thead><tr><th></th>';
+                lineScoreHtml += '<div class="gd-section">';
+                lineScoreHtml += '<div class="gd-table-scroll"><table class="gd-linescore">';
+                lineScoreHtml += '<thead><tr><th></th>';
                 for (var q = 0; q < maxQ; q++) {
-                    html += '<th>' + (q < 4 ? 'Q' + (q + 1) : 'OT' + (q > 4 ? q - 3 : '')) + '</th>';
+                    lineScoreHtml += '<th>' + (q < 4 ? 'Q' + (q + 1) : 'OT' + (q > 4 ? q - 3 : '')) + '</th>';
                 }
-                html += '<th class="gd-total">T</th></tr></thead><tbody>';
+                lineScoreHtml += '<th class="gd-total">T</th></tr></thead><tbody>';
 
                 // Away
-                html += '<tr class="' + (awayWon ? 'gd-row-winner' : '') + '">';
-                html += '<td class="gd-ls-team"><img src="' + awayLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.awayTeam + '</span><span class="gd-ls-abbr">' + awayAbbr + '</span></td>';
-                for (var q = 0; q < maxQ; q++) html += '<td>' + (awayLS[q] != null ? awayLS[q] : '-') + '</td>';
-                html += '<td class="gd-total">' + fmt(game.awayPoints) + '</td></tr>';
+                lineScoreHtml += '<tr class="' + (awayWon ? 'gd-row-winner' : '') + '">';
+                lineScoreHtml += '<td class="gd-ls-team"><img src="' + awayLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.awayTeam + '</span><span class="gd-ls-abbr">' + awayAbbr + '</span></td>';
+                for (var q = 0; q < maxQ; q++) lineScoreHtml += '<td>' + (awayLS[q] != null ? awayLS[q] : '-') + '</td>';
+                lineScoreHtml += '<td class="gd-total">' + fmt(game.awayPoints) + '</td></tr>';
 
                 // Home
-                html += '<tr class="' + (homeWon ? 'gd-row-winner' : '') + '">';
-                html += '<td class="gd-ls-team"><img src="' + homeLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.homeTeam + '</span><span class="gd-ls-abbr">' + homeAbbr + '</span></td>';
-                for (var q = 0; q < maxQ; q++) html += '<td>' + (homeLS[q] != null ? homeLS[q] : '-') + '</td>';
-                html += '<td class="gd-total">' + fmt(game.homePoints) + '</td></tr>';
+                lineScoreHtml += '<tr class="' + (homeWon ? 'gd-row-winner' : '') + '">';
+                lineScoreHtml += '<td class="gd-ls-team"><img src="' + homeLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.homeTeam + '</span><span class="gd-ls-abbr">' + homeAbbr + '</span></td>';
+                for (var q = 0; q < maxQ; q++) lineScoreHtml += '<td>' + (homeLS[q] != null ? homeLS[q] : '-') + '</td>';
+                lineScoreHtml += '<td class="gd-total">' + fmt(game.homePoints) + '</td></tr>';
 
-                html += '</tbody></table></div>';
-                html += '</div>';
+                lineScoreHtml += '</tbody></table></div>';
+                lineScoreHtml += '</div>';
             }
+            // Live games get the mobile-first running order: hero, venue/weather,
+            // box score, last play, win probability, odds — then the pre-game
+            // season context, which matters least once the game is under way.
+            // Everything above deferred its markup into a variable to make this
+            // one ordering decision, rather than scattering it through the page.
+            if (isLive) {
+                html += lineScoreHtml;
+                html += liveStripHtml;
+                html += wpSectionHtml;
+                html += oddsHtml;
+                html += preGameStatsHtml;
+            } else {
+                html += lineScoreHtml;
+            }
+
 
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
