@@ -1981,9 +1981,20 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         var possSide = String(game.possession || '').toLowerCase();
         var homeHasBall = possSide === 'home' || game.possession === game.homeTeam;
         var awayHasBall = possSide === 'away' || game.possession === game.awayTeam;
-        var ball = '<i class="fa-solid fa-football gc-poss" aria-label="Has possession"></i> ';
-        if (awayHasBall) awayScore = ball + awayScore;
-        if (homeHasBall) homeScore = ball + homeScore;
+        // Rendered on BOTH rows and merely HIDDEN on the one without the ball —
+        // the same trick the scoreboard's winner caret uses (.sb-win). Prepending
+        // it only to the possessing row would shift that score right by the width
+        // of the icon, knocking the two scores out of a single column. Nothing is
+        // emitted at all when neither side has possession, so a card with no
+        // possession data doesn't pay for an indent it never shows.
+        if (awayHasBall || homeHasBall) {
+            var ball = function (has) {
+                return '<i class="fa-solid fa-football gc-poss' + (has ? ' has-ball' : '') + '"'
+                    + (has ? ' aria-label="Has possession"' : ' aria-hidden="true"') + '></i> ';
+            };
+            awayScore = ball(awayHasBall) + awayScore;
+            homeScore = ball(homeHasBall) + homeScore;
+        }
         liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
 
         // Down-and-distance. Rides along free in the scoreboard poll the app
