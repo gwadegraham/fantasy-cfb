@@ -5,7 +5,8 @@
 const {
     pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
-    weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf, TAIL_MS
+    weekList, recordsByTeam, spreadSideOf, shapeGames, initialsOf,
+    WEEK_TAIL_MS, MAX_GAME_MS
 } = require('../modules/league-scoreboard');
 
 const HOUR = 3600 * 1000;
@@ -106,8 +107,8 @@ describe('weekWindows / defaultWeek', () => {
         expect(defaultWeek(windows, Date.parse('2026-09-05T20:00:00.000Z'))).toBe(2);
     });
 
-    test('the 6h tail keeps a just-finished slate current', () => {
-        const justInside = Date.parse('2026-09-05T16:00:00.000Z') + TAIL_MS - HOUR;
+    test('the week tail keeps a just-finished slate current', () => {
+        const justInside = Date.parse('2026-09-05T16:00:00.000Z') + WEEK_TAIL_MS - HOUR;
         expect(defaultWeek(windows, justInside)).toBe(2);
     });
 
@@ -143,8 +144,23 @@ describe('gameState', () => {
         expect(gameState(game(), start + HOUR)).toBe('live');
     });
 
-    test('a stuck completed flag reads final once the 6h window passes', () => {
-        expect(gameState(game(), start + TAIL_MS + HOUR)).toBe('final');
+    test('a stuck completed flag reads final once the game window passes', () => {
+        expect(gameState(game(), start + MAX_GAME_MS + HOUR)).toBe('final');
+    });
+
+    // Regression: UAlbany at Buffalo, 3 Sep 2026. A weather delay put the 4th
+    // quarter past the old 6h cutoff, so the card read FINAL — with a frozen
+    // score, because the poller gates on the same number and had stopped too —
+    // while the game was still on TV.
+    test('a game delayed past six hours is still live', () => {
+        expect(gameState(game(), start + 7 * HOUR)).toBe('live');
+    });
+
+    // The window is what stops a stuck `completed` flag from reading live all
+    // week, so it must stay finite even as it widens.
+    test('the game window is between six and twelve hours', () => {
+        expect(MAX_GAME_MS).toBeGreaterThan(6 * HOUR);
+        expect(MAX_GAME_MS).toBeLessThanOrEqual(12 * HOUR);
     });
 });
 
@@ -185,29 +201,48 @@ describe('shapeGames', () => {
         expect(g.clock).toBe(null);
     });
 
-    test('situation and lastPlay ride along on a live game', () => {
+    test('situation rides along on a live game', () => {
         const [g] = shapeGames([game({
-            period: 3, clock: '7:42',
-            situation: '3rd & 7 at LSU 32',
-            lastPlay: 'Quinn Ewers pass complete for 8 yds'
+            period: 3, clock: '7:42', situation: '3rd & 7 at LSU 32'
         })], ctx());
         expect(g.state).toBe('live');
         expect(g.situation).toBe('3rd & 7 at LSU 32');
-        expect(g.lastPlay).toBe('Quinn Ewers pass complete for 8 yds');
     });
 
-    test('situation and lastPlay are dropped once a game is not live', () => {
-        const [g] = shapeGames([game({
-            completed: true, situation: '3rd & 7 at LSU 32', lastPlay: 'End of 4th quarter.'
-        })], ctx());
+    test('situation is dropped once a game is not live', () => {
+        const [g] = shapeGames([game({ completed: true, situation: '3rd & 7 at LSU 32' })], ctx());
         expect(g.state).toBe('final');
         expect(g.situation).toBe(null);
-        expect(g.lastPlay).toBe(null);
     });
 
-    test('possession is flagged on the side that has the ball', () => {
+    // The card shows down-and-distance only; the play description is a full
+    // sentence that belongs on the game detail page, not in a 40-card grid.
+    test('lastPlay is not shipped to the scoreboard client', () => {
+        const [g] = shapeGames([game({
+            period: 3, situation: '3rd & 7 at LSU 32', lastPlay: 'Ewers pass complete for 8 yds'
+        })], ctx());
+        expect(g.lastPlay).toBeUndefined();
+    });
+
+    // CFBD sends the SIDE, not a team name — verified against a live game:
+    // { possession: 'away', homeTeam: 'Buffalo Bulls', ... }. The old
+    // `possession === team` check compared that to a school name, so it was
+    // never true and the marker never rendered on any surface.
+    test('possession is flagged from the CFBD side value', () => {
+        const [g] = shapeGames([game({ possession: 'away', period: 3 })], ctx());
+        expect(g.away.possession).toBe(true);
+        expect(g.home.possession).toBe(false);
+    });
+
+    test('possession still resolves if CFBD ever sends a team name instead', () => {
         const [g] = shapeGames([game({ possession: 'Texas', period: 3 })], ctx());
         expect(g.away.possession).toBe(true);
+        expect(g.home.possession).toBe(false);
+    });
+
+    test('no possession value leaves both sides unflagged', () => {
+        const [g] = shapeGames([game({ period: 3 })], ctx());
+        expect(g.away.possession).toBe(false);
         expect(g.home.possession).toBe(false);
     });
 

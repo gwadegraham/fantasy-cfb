@@ -1975,26 +1975,39 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
             var qtr = game.period <= 4 ? 'Q' + game.period : 'OT' + (game.period > 5 ? game.period - 4 : '');
             clockDisplay = game.clock ? qtr + ' ' + game.clock : qtr;
         }
-        if (game.possession) {
-            var possTeam = game.possession === game.homeTeam ? '&#9679;' : '';
-            var possAway = game.possession === game.awayTeam ? '&#9679;' : '';
-            awayScore = (possAway ? '<span class="gc-poss">' + possAway + '</span> ' : '') + awayScore;
-            homeScore = (possTeam ? '<span class="gc-poss">' + possTeam + '</span> ' : '') + homeScore;
+        // CFBD reports possession as the SIDE ('home' / 'away'), not a team name —
+        // the old `=== game.homeTeam` comparison was never true, so this marker
+        // never actually drew. A team-name match stays as a fallback.
+        var possSide = String(game.possession || '').toLowerCase();
+        var homeHasBall = possSide === 'home' || game.possession === game.homeTeam;
+        var awayHasBall = possSide === 'away' || game.possession === game.awayTeam;
+        // Rendered on BOTH rows and merely HIDDEN on the one without the ball —
+        // the same trick the scoreboard's winner caret uses (.sb-win). Prepending
+        // it only to the possessing row would shift that score right by the width
+        // of the icon, knocking the two scores out of a single column. Nothing is
+        // emitted at all when neither side has possession, so a card with no
+        // possession data doesn't pay for an indent it never shows.
+        if (awayHasBall || homeHasBall) {
+            var ball = function (has) {
+                return '<i class="fa-solid fa-football gc-poss' + (has ? ' has-ball' : '') + '"'
+                    + (has ? ' aria-label="Has possession"' : ' aria-hidden="true"') + '></i> ';
+            };
+            awayScore = ball(awayHasBall) + awayScore;
+            homeScore = ball(homeHasBall) + homeScore;
         }
         liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
 
-        // Down-and-distance and the last play. Both ride along free in the
-        // scoreboard poll the app already pays for (modules/scoreboard.js), and
-        // both are cleared the moment a game goes final, so their presence is
-        // itself the "this game is live" signal.
+        // Down-and-distance. Rides along free in the scoreboard poll the app
+        // already pays for (modules/scoreboard.js) and is cleared the moment a
+        // game goes final, so its presence is itself the "this game is live"
+        // signal.
         //
-        // Unlike the league scoreboard's forty-card grid, My Team shows only the
-        // handful of games a manager actually owns — so the play description is
-        // allowed to wrap to a second line instead of being cut off.
-        if (game.situation || game.lastPlay) {
+        // The last play description is deliberately not here, matching the
+        // league scoreboard: the situation is what reads at a glance on a card,
+        // and the game detail page one tap away carries the prose.
+        if (game.situation) {
             liveStatus += '<tr><td colspan="3" class="gc-live-line">'
-                + (game.situation ? '<span class="gc-situation">' + escapeHtml(game.situation) + '</span>' : '')
-                + (game.lastPlay ? '<span class="gc-lastplay">' + escapeHtml(game.lastPlay) + '</span>' : '')
+                + '<span class="gc-situation">' + escapeHtml(game.situation) + '</span>'
                 + '</td></tr>';
         }
     } else {

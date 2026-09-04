@@ -27,8 +27,9 @@ const { internalFetch } = require('./internal-api');
 
 const JOB_NAME = 'live-scores';
 
-// Tunables (env-overridable).
-const MAX_GAME_HOURS = Number(process.env.LIVE_POLL_MAX_GAME_HOURS) || 6;
+// Tunables (env-overridable). MAX_GAME_HOURS lives in modules/game-window.js
+// because the scoreboard's live/final cutoff has to be the same number.
+const { MAX_GAME_HOURS } = require('./game-window');
 const CALL_BUFFER = Number(process.env.LIVE_POLL_CALL_BUFFER) || 300;
 
 // ---- pure decision helpers (unit-tested) ------------------------------------

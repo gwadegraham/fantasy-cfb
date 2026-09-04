@@ -76,7 +76,11 @@ html.gd-page, .gd-page body {
 /* ---- Live strip: down & distance, possession, last play ---- */
 /* Only rendered while a game is in progress, so the accent bar reads as "this
    is happening now" without needing a state class to switch it off. */
-.gd-livestrip {
+/* Two class selectors, not one. .gd-section sets `border: 1px solid` and is
+   declared further down this file — at equal specificity source order wins, so
+   a bare .gd-livestrip lost the border it was asking for. This is the accent
+   that makes the block read as live rather than as one more section. */
+.gd-section.gd-livestrip {
     border-left: 3px solid var(--cc-accent);
 }
 .gd-ls-head {
@@ -91,12 +95,13 @@ html.gd-page, .gd-page body {
     font-weight: 700;
     color: var(--cc-accent);
 }
-.gd-ls-poss {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--cc-muted-bright);
+/* Football beside the team name of whoever has the ball. Replaces a
+   "HOME BALL" text tag that read as a label rather than a live indicator — and
+   which exposed that CFBD sends the side, not a team name. */
+.gd-poss {
+    color: var(--cc-amber);
+    font-size: 0.8em;
+    vertical-align: baseline;
 }
 /* The one place a last play is allowed its full length — this page has the room,
    and truncating a play description is what the compact cards are for. */

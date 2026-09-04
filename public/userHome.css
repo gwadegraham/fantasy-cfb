@@ -469,14 +469,16 @@
 .game-card .score-added { white-space: nowrap; padding-left: 0.5em; }
 /* Live in-progress score + game clock */
 .game-card .gc-live-pts { font-weight: 800; color: var(--cc-text); font-variant-numeric: tabular-nums; }
-.game-card .gc-poss { color: var(--cc-accent); font-size: 0.6em; vertical-align: middle; }
+/* On both score rows, visible only on the one with the ball — visibility rather
+   than display so the hidden twin keeps its box and the two scores stay in one
+   column. Same approach as the scoreboard's winner caret. */
+.game-card .gc-poss { color: var(--cc-amber); font-size: 0.72em; vertical-align: middle; visibility: hidden; }
+.game-card .gc-poss.has-ball { visibility: visible; }
 .game-card .gc-clock { text-align: center; font-size: 0.72rem; font-weight: 700; color: var(--cc-accent); letter-spacing: 0.02em; padding-top: 0.3em; }
-/* Live footer: down-and-distance, then the last play. My Team shows only a
-   manager's own games, so the play is allowed to wrap to a second line rather
-   than being clipped the way the forty-card league scoreboard grid needs. */
+/* Live footer: down-and-distance only, matching the league scoreboard. The play
+   description lives on the game detail page, which has room for a sentence. */
 .game-card .gc-live-line { text-align: center; padding-top: 0.35em; line-height: 1.35; }
 .game-card .gc-situation { display: block; font-size: 0.7rem; font-weight: 700; color: var(--cc-accent); }
-.game-card .gc-lastplay { display: block; font-size: 0.68rem; color: var(--cc-muted-2); }
 
 /* The "+N" badge is a button: tap to reveal the scoring breakdown. Looks like
    the old badge, but signals it's tappable (pointer + dotted underline). */

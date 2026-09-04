@@ -327,6 +327,18 @@
     border-radius: var(--cc-r-md);
     padding: 10px 12px;
     text-decoration: none;
+    /* A grid item defaults to min-width:auto, which means "never shrink below my
+       min-content width". The live line's .sb-lastplay is white-space:nowrap, so
+       ITS min-content is the entire play description — and a long one dragged the
+       card from the 358px track out to 475px, overflowing the document and
+       leaving the sticky header narrower than the slate. min-width:0 pins the
+       card to its track and lets the ellipsis do its job.
+
+       Note this is NOT covered by the min-width:0 already on .sb-lastplay: that
+       lets the item FLEX smaller, but a nowrap run still contributes its full
+       width to an ancestor's min-content sizing. The floor has to be lifted on
+       the grid item itself. */
+    min-width: 0;
 }
 .sb-card:hover {
     border-color: var(--cc-border-2);
@@ -370,28 +382,19 @@
    width (flex-shrink: 0) and the play description absorbs the ellipsis, so the
    half that matters at a glance is the half that always survives. */
 .sb-live-line {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--cc-border);
     font-size: 11px;
     min-width: 0;
 }
+/* Down-and-distance only. It is short enough to wrap harmlessly on a narrow
+   phone, so no nowrap here — a nowrap run inflates an ancestor's min-content
+   width and is exactly what blew the card out of its grid track before. */
 .sb-situation {
-    flex: 0 0 auto;
     font-weight: 600;
     color: var(--cc-accent);
-    white-space: nowrap;
-}
-.sb-lastplay {
-    flex: 1 1 auto;
-    min-width: 0;
-    color: var(--cc-muted-2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .sb-side {
@@ -463,9 +466,12 @@
 .sb-state-live .sb-score {
     color: var(--cc-text);
 }
+/* Football beside the team with the ball. Slightly larger than the 9px dot it
+   replaces, because a glyph with internal detail needs the room to read as a
+   football rather than a smudge. */
 .sb-poss {
     color: var(--cc-amber);
-    font-size: 9px;
+    font-size: 11px;
     flex-shrink: 0;
 }
 
