@@ -289,6 +289,14 @@ describe('readoutHtml', () => {
         expect(html).toContain('Nussmeier pass complete');
     });
 
+    // The headline numbers above the readout carry the scrubbed split, so
+    // repeating it down here would show the same figure twice.
+    it('leaves the percentage to the headline once past the anchor', () => {
+        const html = at(game([snap(3, '7:42', 0.58)]), 1);
+
+        expect(html).not.toContain('58.0%');
+    });
+
     // The whole point of the redesign: state, never causation.
     it('never asserts that a play caused the move', () => {
         const html = at(game([snap(4, '6:02', 0.28, { lastPlay: 'Simpson 34-yd TD run' })]), 1);
@@ -406,6 +414,38 @@ describe('scrubbing', () => {
 
         expect(readout.textContent).toContain('Pregame');
         expect(readout.textContent).toContain('Drag across the chart');
+    });
+
+    const headline = () => [...document.querySelectorAll('.gd-wp .gd-field-pct')].map(e => e.textContent);
+
+    it('opens on the latest split, not on the moment under the scrubber', () => {
+        mount();
+
+        // 0.81 home at the last sample -> 19.0 away / 81.0 home.
+        expect(headline()).toEqual(['19.0%', '81.0%']);
+    });
+
+    it('moves the headline percentages with the scrubber', () => {
+        const { plot } = mount();
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+        expect(headline()).toEqual(['38.0%', '62.0%']);   // the pregame anchor
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(headline()).toEqual(['42.0%', '58.0%']);
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(headline()).toEqual(['56.0%', '44.0%']);   // away ahead
+    });
+
+    it('puts the headline back to the latest split when the scrub ends', () => {
+        const { plot } = mount();
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+        expect(headline()).toEqual(['38.0%', '62.0%']);
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        expect(headline()).toEqual(['19.0%', '81.0%']);
     });
 
     it('walks the series with the arrow keys', () => {

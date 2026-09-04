@@ -257,7 +257,10 @@
         var html = '';
         if (when.length) html += '<span class="gd-wp-when">' + esc(when.join(' · ')) + '</span>';
         html += score;
-        html += '<span class="gd-wp-wp">' + esc(home) + ' ' + pct(pt.wp) + '</span>';
+        // No percentage here: while scrubbing, the headline numbers above show
+        // this sample's split. Repeating it would put the same figure on screen
+        // twice, and showing a different one there is what made the card read as
+        // contradictory in the first place.
         if (pt.situation) html += '<span class="gd-wp-situation">' + esc(pt.situation) + '</span>';
         if (pt.lastPlay) html += '<span class="gd-wp-play">' + esc(pt.lastPlay) + '</span>';
         return html;
@@ -389,6 +392,8 @@
         var cursor = plot.querySelector('.gd-wp-cursor');
         var pin = plot.querySelector('.gd-wp-pin');
         var readout = scope.querySelector('.gd-wp-readout');
+        // Away first, then home — the order the card lays them out in.
+        var pcts = scope.querySelectorAll('.gd-wp .gd-field-pct');
         if (!svg || !cursor || !pin || !readout) return;
 
         var model = state.model;
@@ -397,9 +402,19 @@
         var homeColor = ctx.homeColor || 'var(--cc-interactive)';
         var awayColor = ctx.awayColor || 'var(--cc-accent)';
 
+        // The headline split, for whichever moment is being read. Dragging back
+        // through the game moves these with the line, so the big numbers and the
+        // curve always describe the same instant.
+        function setHeadline(wp) {
+            if (pcts.length < 2) return;
+            pcts[0].textContent = ((1 - wp) * 100).toFixed(1) + '%';
+            pcts[1].textContent = (wp * 100).toFixed(1) + '%';
+        }
+
         function show(idx) {
             if (idx == null) {
                 pinned = null;
+                setHeadline(pts[pts.length - 1].wp);
                 cursor.setAttribute('hidden', '');
                 pin.setAttribute('hidden', '');
                 readout.innerHTML = readoutHtml(pts[0], ctx);
@@ -418,6 +433,7 @@
             pin.setAttribute('fill', p.wp >= 0.5 ? homeColor : awayColor);
             pin.removeAttribute('hidden');
             readout.innerHTML = readoutHtml(p, ctx);
+            setHeadline(p.wp);
             plot.setAttribute('aria-valuenow', String(idx));
             plot.classList.add('is-scrubbing');
         }
