@@ -250,6 +250,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
                 {
                     id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1,
                     completed: 1, neutralSite: 1, period: 1, clock: 1, possession: 1,
+                    situation: 1, lastPlay: 1,
                     homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
                     awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
                     outlet: 1, weather: 1, notes: 1, venue: 1, _id: 0
@@ -451,6 +452,22 @@ router.post('/week/mass-create', async (req, res) => {
         var date = new Date();
         var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
         game.lastUpdated = centralTime;
+
+        // This route is a SECOND path to completed:true — CFBD's /games carries
+        // the flag, and `$set: game` writes it. modules/scoreboard.js nulls the
+        // live-only fields on its own completion tick, but it cannot be relied
+        // on to get there first: /scoreboard only returns games in its current
+        // window, and the poller's games-live gate stops firing the moment the
+        // last live game reads final. Set completed here and the poller may
+        // never run again for that game, leaving a stale "3rd & 7" on a final
+        // card. So clear them here too.
+        //
+        // Only on a completed game — doing it unconditionally would wipe the
+        // fresh situation the poller just wrote for a game still in progress.
+        if (game.completed) {
+            game.situation = null;
+            game.lastPlay = null;
+        }
 
         // findOneAndUpdate does not run validators, and the `required` validator
         // doesn't fire for a merely-absent path on upsert — so validate the

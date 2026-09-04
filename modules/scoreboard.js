@@ -54,6 +54,8 @@ function normalizeScoreboardGame(sb) {
         clock: sb.clock || undefined,
         possession: sb.possession || undefined,
         status: sb.status || undefined,
+        situation: sb.situation || undefined,
+        lastPlay: sb.lastPlay || undefined,
         homeWinProb: sb.homeWinProb != null ? sb.homeWinProb : undefined
     };
 }
@@ -89,8 +91,18 @@ async function updateFromScoreboard() {
         if (norm.clock !== undefined) $set.clock = norm.clock;
         if (norm.possession !== undefined) $set.possession = norm.possession;
         if (norm.status !== undefined) $set.status = norm.status;
+        if (norm.situation !== undefined) $set.situation = norm.situation;
+        if (norm.lastPlay !== undefined) $set.lastPlay = norm.lastPlay;
         if (norm.homeWinProb !== undefined) $set.liveHomeWinProb = norm.homeWinProb;
-        if (norm.completed) { $set.completed = true; $set.liveHomeWinProb = null; }
+        // Order matters: the clears below have to overwrite the assignments above,
+        // because CFBD keeps sending lastPlay ("End of 4th quarter.") after a game
+        // is final. Idempotent — a later tick on an already-final game re-clears.
+        if (norm.completed) {
+            $set.completed = true;
+            $set.liveHomeWinProb = null;
+            $set.situation = null;
+            $set.lastPlay = null;
+        }
 
         const result = await Game.updateOne({ id: sb.id }, { $set });
         if (result.modifiedCount > 0) {

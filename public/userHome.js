@@ -1982,6 +1982,21 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
             homeScore = (possTeam ? '<span class="gc-poss">' + possTeam + '</span> ' : '') + homeScore;
         }
         liveStatus = clockDisplay ? '<tr><td colspan="3" class="gc-clock">' + clockDisplay + '</td></tr>' : '';
+
+        // Down-and-distance and the last play. Both ride along free in the
+        // scoreboard poll the app already pays for (modules/scoreboard.js), and
+        // both are cleared the moment a game goes final, so their presence is
+        // itself the "this game is live" signal.
+        //
+        // Unlike the league scoreboard's forty-card grid, My Team shows only the
+        // handful of games a manager actually owns — so the play description is
+        // allowed to wrap to a second line instead of being cut off.
+        if (game.situation || game.lastPlay) {
+            liveStatus += '<tr><td colspan="3" class="gc-live-line">'
+                + (game.situation ? '<span class="gc-situation">' + escapeHtml(game.situation) + '</span>' : '')
+                + (game.lastPlay ? '<span class="gc-lastplay">' + escapeHtml(game.lastPlay) + '</span>' : '')
+                + '</td></tr>';
+        }
     } else {
         const d = new Date(game.startDate);
         const dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
@@ -1989,8 +2004,10 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
     }
 
+    // data-game is what the live refresh below patches against — without an id
+    // on the card there is no way to replace one game's markup in place.
     var cardOpen = game.id
-        ? '<a href="/game/' + game.id + '" class="game-card gc-clickable' + (isLive ? ' gc-live' : '') + '">'
+        ? '<a href="/game/' + game.id + '" data-game="' + game.id + '" class="game-card gc-clickable' + (isLive ? ' gc-live' : '') + '">'
         : '<div class="game-card' + (isLive ? ' gc-live' : '') + '">';
     var cardClose = game.id ? '</a>' : '</div>';
 
@@ -2002,6 +2019,11 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
         + '<tr><td class="game-notes">' + (game.notes || '') + '</td></tr>'
         + '</tbody></table>' + cardClose;
 }
+
+// Live game-card refresh state. Declared ahead of displaySchedule (its first
+// writer) so the initialization can never land after a call to it.
+var UH_LIVE_MS = 30000;
+var uhLive = { timer: null, ctx: null };
 
 async function displaySchedule(data) {
     const scheduleContainer = document.querySelector('[schedule-body]');
@@ -2046,7 +2068,88 @@ async function displaySchedule(data) {
 
     document.querySelector('.football-loader').style.display = 'none';
     document.querySelector('[schedule-body]').style.display = 'flex';
+
+    // Everything the card renderer needs, kept so the live refresh below can
+    // rebuild one card without re-running this whole function (which would
+    // refetch rankings, betting lines, every team's games and every logo).
+    uhLive.ctx = { seasonType, week, games, rosteredIds, logoMap, rankingsInfo, allBettingLines, teamsList };
+    uhScheduleLive();
 }
+
+// ---- live game-card refresh -------------------------------------------------
+//
+// The league scoreboard has patched its live cards every 30s since it shipped;
+// My Team never did, so a game's clock, score and possession were as old as the
+// page load. Same cadence and same hidden-tab rule as public/scoreboard.js, but
+// a much narrower fetch: only the rostered teams sitting in a game that has
+// kicked off get re-read — one or two of a manager's eleven on a normal
+// Saturday, and zero the rest of the week.
+//
+// Known gap: the green +points badge comes from the userData snapshot taken at
+// page load, so a game that goes final under a live refresh shows the final
+// score without its badge until the next load. That is unchanged from before —
+// the card used not to update at all — so it is a gap, not a regression.
+
+function uhScheduleLive() {
+    clearTimeout(uhLive.timer);
+    if (!uhLive.ctx) return;
+    // Every game on the list is final: nothing can change again, so a timer
+    // here would tick for the rest of the session for no reason.
+    if (uhLive.ctx.games.every(g => g.completed)) return;
+    // A hidden tab is a phone in a pocket. The visibilitychange handler catches
+    // up on the way back, so stopping costs nothing.
+    if (document.hidden) return;
+    uhLive.timer = setTimeout(uhRefreshLive, UH_LIVE_MS);
+}
+
+async function uhRefreshLive() {
+    const c = uhLive.ctx;
+    if (!c) return;
+
+    // "Kicked off and not final" rather than "has a period", so a game that
+    // starts while the page sits open flips from its kickoff time to live
+    // scores on its own instead of waiting for a reload.
+    const nowMs = Date.now();
+    const live = c.games.filter(g => !g.completed && g.startDate && Date.parse(g.startDate) <= nowMs);
+
+    if (live.length) {
+        const wanted = new Set();
+        live.forEach(g => {
+            if (c.rosteredIds.has(g.homeId)) wanted.add(g.homeId);
+            if (c.rosteredIds.has(g.awayId)) wanted.add(g.awayId);
+        });
+        const teams = c.teamsList.filter(t => wanted.has(t.id));
+
+        try {
+            const fresh = (await Promise.all(teams.map(t => getGame(c.seasonType, c.week, t)))).flat();
+            fresh.forEach(g => {
+                const i = c.games.findIndex(x => x.id === g.id);
+                if (i > -1) c.games[i] = g;
+
+                // Patch in place rather than repainting the list — a manager
+                // scrolled halfway down their slate should not get yanked back
+                // to the top every 30 seconds.
+                const card = document.querySelector('.game-card[data-game="' + g.id + '"]');
+                if (!card) return;
+                const holder = document.createElement('div');
+                holder.innerHTML = buildGameCard(g, c.rosteredIds, c.logoMap, c.rankingsInfo, c.allBettingLines);
+                const next = holder.firstChild;
+                card.className = next.className;
+                card.innerHTML = next.innerHTML;
+            });
+        } catch (err) {
+            // A dropped refresh is a stale clock, not a broken page.
+            console.error('Live game-card refresh failed:', err);
+        }
+    }
+
+    uhScheduleLive();
+}
+
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { clearTimeout(uhLive.timer); return; }
+    if (uhLive.ctx) uhRefreshLive();
+});
 
 setTimeout(() => {
     var _lSel = document.querySelector('[league-select]');

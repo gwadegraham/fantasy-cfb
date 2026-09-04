@@ -185,6 +185,26 @@ describe('shapeGames', () => {
         expect(g.clock).toBe(null);
     });
 
+    test('situation and lastPlay ride along on a live game', () => {
+        const [g] = shapeGames([game({
+            period: 3, clock: '7:42',
+            situation: '3rd & 7 at LSU 32',
+            lastPlay: 'Quinn Ewers pass complete for 8 yds'
+        })], ctx());
+        expect(g.state).toBe('live');
+        expect(g.situation).toBe('3rd & 7 at LSU 32');
+        expect(g.lastPlay).toBe('Quinn Ewers pass complete for 8 yds');
+    });
+
+    test('situation and lastPlay are dropped once a game is not live', () => {
+        const [g] = shapeGames([game({
+            completed: true, situation: '3rd & 7 at LSU 32', lastPlay: 'End of 4th quarter.'
+        })], ctx());
+        expect(g.state).toBe('final');
+        expect(g.situation).toBe(null);
+        expect(g.lastPlay).toBe(null);
+    });
+
     test('possession is flagged on the side that has the ball', () => {
         const [g] = shapeGames([game({ possession: 'Texas', period: 3 })], ctx());
         expect(g.away.possession).toBe(true);

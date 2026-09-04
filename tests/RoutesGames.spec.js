@@ -158,6 +158,41 @@ describe('POST /games/week/mass-create', () => {
         expect(saved).toMatchObject({ homePoints: 30, completed: true });
     });
 
+    // This route is a second path to completed:true, and the live poller cannot
+    // be counted on to clear the scoreboard-only fields afterwards: /scoreboard
+    // only returns games in its current window, and the poller's games-live gate
+    // stops firing the moment the last live game reads final. Without this the
+    // leftover down-and-distance renders as a live strip under a final score.
+    test('clears situation and lastPlay when a game arrives completed', async () => {
+        await Game.create(gameDoc({
+            id: 501, completed: false,
+            situation: '3rd & 7 at LSU 32', lastPlay: 'Nussmeier pass complete for 8 yds'
+        }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({ homePoints: 31, awayPoints: 24, completed: true })]));
+
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+        expect(res.status).toBe(201);
+
+        const saved = await Game.findOne({ id: 501 }).lean();
+        expect(saved.completed).toBe(true);
+        expect(saved.situation ?? null).toBe(null);
+        expect(saved.lastPlay ?? null).toBe(null);
+    });
+
+    test('leaves situation and lastPlay alone while a game is still in progress', async () => {
+        await Game.create(gameDoc({
+            id: 501, completed: false,
+            situation: '3rd & 7 at LSU 32', lastPlay: 'Nussmeier pass complete for 8 yds'
+        }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({ homePoints: 21, awayPoints: 17, completed: false })]));
+
+        await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+
+        const saved = await Game.findOne({ id: 501 }).lean();
+        expect(saved.situation).toBe('3rd & 7 at LSU 32');
+        expect(saved.lastPlay).toBe('Nussmeier pass complete for 8 yds');
+    });
+
     // The race this route has to survive. The Saturday job fires at 15:00/18:00/
     // 22:00 on the minute and the live poller fires on every :00 mark, so two runs
     // land together three times a Saturday. Under the old find-then-insertMany

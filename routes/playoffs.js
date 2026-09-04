@@ -599,7 +599,7 @@ router.get('/bracket/:season/:league', async (req, res) => {
             { id: { $in: gameIds } },
             { id: 1, homeId: 1, awayId: 1, homeTeam: 1, awayTeam: 1, homePoints: 1,
               awayPoints: 1, completed: 1, venue: 1, startDate: 1, period: 1, clock: 1,
-              outlet: 1, notes: 1, attendance: 1, neutralSite: 1 }
+              situation: 1, outlet: 1, notes: 1, attendance: 1, neutralSite: 1 }
         );
         const gameMap = {};
         gameDocs.forEach(g => { gameMap[g.id] = g; });
@@ -663,6 +663,11 @@ router.get('/bracket/:season/:league', async (req, res) => {
                     startDate: gameDoc.startDate,
                     period: gameDoc.period,
                     clock: gameDoc.clock,
+                    // Down-and-distance only. lastPlay is deliberately left out:
+                    // a bracket matchup is the tightest card in the app and a
+                    // full play description has nowhere to go on it. The game
+                    // detail page one tap away carries the prose.
+                    situation: gameDoc.situation,
                     outlet: gameDoc.outlet,
                     notes: gameDoc.notes,
                     attendance: gameDoc.attendance,

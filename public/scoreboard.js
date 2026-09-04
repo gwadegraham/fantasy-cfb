@@ -155,6 +155,23 @@ function cardHtml(game) {
         meta.push(window.ccWeatherEmoji[game.weather.emoji]);
     }
 
+    // Down-and-distance and the last play, live only. Both come free with the
+    // scoreboard poll (modules/scoreboard.js) and only exist while a game is in
+    // progress, so no state check beyond "is it there".
+    //
+    // The situation is the half worth reading at a glance, so it leads and is
+    // never truncated. lastPlay is a full sentence and routinely longer than a
+    // card is wide — it gets the remaining space and an ellipsis, with the
+    // whole thing on the title for anyone who wants it.
+    var live = '';
+    if (game.situation || game.lastPlay) {
+        live = '<div class="sb-live-line"'
+            + (game.lastPlay ? ' title="' + esc(game.lastPlay) + '"' : '') + '>'
+            + (game.situation ? '<span class="sb-situation">' + esc(game.situation) + '</span>' : '')
+            + (game.lastPlay ? '<span class="sb-lastplay">' + esc(game.lastPlay) + '</span>' : '')
+            + '</div>';
+    }
+
     // A div, not an <a>. The card links to the game detail page AND each team
     // name links to that team — and an <a> inside an <a> is invalid HTML that
     // browsers "fix" by closing the outer one early, which drops every row out
@@ -168,6 +185,7 @@ function cardHtml(game) {
         + '</div>'
         + sideHtml(game.away, game, awayWon)
         + sideHtml(game.home, game, homeWon)
+        + live
         + '</div>';
 }
 

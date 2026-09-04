@@ -106,4 +106,39 @@ describe('normalizeScoreboardGame', () => {
         const sb = { id: 10, status: 'in_progress', homeTeam: { points: 0 }, awayTeam: { points: 0 } };
         expect(normalizeScoreboardGame(sb).homeWinProb).toBeUndefined();
     });
+
+    it('extracts situation and lastPlay while a game is in progress', () => {
+        const sb = {
+            id: 11, status: 'in_progress', period: 3, clock: '7:42', possession: 'LSU',
+            situation: '3rd & 7 at LSU 32',
+            lastPlay: 'Garrett Nussmeier pass complete to Aaron Anderson for 8 yds',
+            homeTeam: { points: 21 }, awayTeam: { points: 17 }
+        };
+        const result = normalizeScoreboardGame(sb);
+        expect(result.situation).toBe('3rd & 7 at LSU 32');
+        expect(result.lastPlay).toBe('Garrett Nussmeier pass complete to Aaron Anderson for 8 yds');
+    });
+
+    it('omits situation and lastPlay when CFBD sends null (pre-game)', () => {
+        const sb = {
+            id: 12, status: 'scheduled', situation: null, lastPlay: null,
+            homeTeam: { points: null }, awayTeam: { points: null }
+        };
+        const result = normalizeScoreboardGame(sb);
+        expect(result.situation).toBeUndefined();
+        expect(result.lastPlay).toBeUndefined();
+    });
+
+    // CFBD keeps lastPlay populated on a finished game ("End of 4th quarter."),
+    // so normalize still surfaces it — updateFromScoreboard is what nulls both
+    // out on the completion tick. Guards the ordering of those two $set groups.
+    it('still reports lastPlay on a completed game (the clear happens on write)', () => {
+        const sb = {
+            id: 13, status: 'completed', lastPlay: 'End of 4th quarter.',
+            homeTeam: { points: 31 }, awayTeam: { points: 24 }
+        };
+        const result = normalizeScoreboardGame(sb);
+        expect(result.completed).toBe(true);
+        expect(result.lastPlay).toBe('End of 4th quarter.');
+    });
 });

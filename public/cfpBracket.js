@@ -115,6 +115,14 @@
                          '<span class="cfp-game-outlet"><i class="fas fa-tv"></i> ' + escapeHtml(game.outlet) + '</span>';
         }
 
+        // Down-and-distance, live only. The field is nulled when a game finals,
+        // but `completed` is checked too — it is the flag every ingest path
+        // agrees on, and a stale "3rd & 7" under a final score reads as broken.
+        if (game && !game.completed && game.situation) {
+            venueHtml = '<span class="cfp-game-situation">' + escapeHtml(game.situation) + '</span>' +
+                        (venueHtml ? '<span class="cfp-meta-dot"></span>' + venueHtml : '');
+        }
+
         var roundPts = data.pointsByRound[bracketGame.round] || 0;
         var ptsLabel = roundPts ? '+' + roundPts + ' pts' : '';
         if (bracketGame.round === 'quarterfinal' && data.pointsByRound.quarterfinalByeBonus) {
@@ -182,6 +190,7 @@
             var data = await res.json();
 
             render(data);
+            cfpSchedule(data);
         } catch (e) {
             container.innerHTML = '<div class="cfp-error">' +
                 '<i class="fas fa-football-ball"></i>' +
@@ -189,6 +198,57 @@
                 '<a href="/standings">Back to Standings</a></div>';
         }
     }
+
+    // ---- live refresh ---------------------------------------------------
+    //
+    // Same 30s cadence and hidden-tab rule as the league scoreboard. A bracket
+    // is at most a handful of games and only ever live in late December, so the
+    // timer arms only while one of them is actually in progress.
+    var CFP_LIVE_MS = 30000;
+    var cfpTimer = null;
+    var cfpData = null;
+
+    function cfpAnyLive(data) {
+        var now = Date.now();
+        return (data && data.games || []).some(function (bg) {
+            var g = bg.game;
+            return g && !g.completed && g.startDate && Date.parse(g.startDate) <= now;
+        });
+    }
+
+    function cfpSchedule(data) {
+        cfpData = data;
+        clearTimeout(cfpTimer);
+        if (!cfpAnyLive(data) || document.hidden) return;
+        cfpTimer = setTimeout(cfpRefresh, CFP_LIVE_MS);
+    }
+
+    async function cfpRefresh() {
+        try {
+            var activeLeague = (typeof ccLeague !== 'undefined' && ccLeague.code()) || LEAGUE;
+            var res = await fetch('/playoffs/bracket/' + SEASON + '/' + activeLeague);
+            if (!res.ok) throw new Error('refresh failed');
+            var data = await res.json();
+
+            // The bracket is a fixed-height grid of matchups, so a repaint moves
+            // nothing — but put the scroll position back anyway, since the
+            // franchise table underneath it does grow as games settle.
+            var y = window.scrollY;
+            render(data);
+            window.scrollTo(0, y);
+
+            cfpSchedule(data);
+        } catch (e) {
+            // A missed tick is a stale clock, not a broken bracket.
+            console.error('Bracket refresh failed:', e);
+            cfpTimer = setTimeout(cfpRefresh, CFP_LIVE_MS);
+        }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) { clearTimeout(cfpTimer); return; }
+        if (cfpAnyLive(cfpData)) cfpRefresh();
+    });
 
     function render(data) {
         var html = '';
