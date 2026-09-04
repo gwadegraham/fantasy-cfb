@@ -157,6 +157,54 @@ describe('buildModel', () => {
     });
 });
 
+describe('splitAtMidline', () => {
+    const at = (...probs) => wp.splitAtMidline(
+        probs.map((w, i) => ({ x: i * 10, y: 0, wp: w })), 50
+    );
+
+    it('leaves a curve that never crosses as a single run', () => {
+        const runs = at(0.6, 0.7, 0.8);
+
+        expect(runs).toHaveLength(1);
+        expect(runs[0].home).toBe(true);
+    });
+
+    it('cuts the line where the lead changes hands', () => {
+        const runs = at(0.6, 0.4);
+
+        expect(runs.map(r => r.home)).toEqual([true, false]);
+    });
+
+    // The two runs have to meet exactly on the midline, or the join shows as a
+    // notch at every lead change.
+    it('joins the two runs on the midline, with no gap', () => {
+        const [first, second] = at(0.6, 0.4);
+        const end = first.pts[first.pts.length - 1];
+
+        expect(end.y).toBe(50);
+        expect(second.pts[0]).toBe(end);
+    });
+
+    it('puts the crossing where the line actually crosses, not at a sample', () => {
+        // 0.6 -> 0.4 crosses exactly halfway between x=0 and x=10.
+        const [first] = at(0.6, 0.4);
+
+        expect(first.pts[first.pts.length - 1].x).toBeCloseTo(5, 5);
+    });
+
+    it('handles a game that changes hands repeatedly', () => {
+        const runs = at(0.6, 0.4, 0.7, 0.3);
+
+        expect(runs.map(r => r.home)).toEqual([true, false, true, false]);
+    });
+
+    it('treats a dead-even sample as the home side rather than splitting twice', () => {
+        const runs = at(0.5, 0.5);
+
+        expect(runs).toHaveLength(1);
+    });
+});
+
 describe('indexAt', () => {
     // A swing is drawn as the segment BETWEEN two samples, and it is the later
     // one whose score and lastPlay explain the move. Snapping backwards would
@@ -272,6 +320,30 @@ describe('render', () => {
 
     it('returns nothing when there is not yet a curve to draw', () => {
         expect(wp.render(game([], { pregameWinProb: null }), ctx)).toBe('');
+    });
+
+    // The complaint that drove this: a game Alabama won rendered as an all-purple
+    // LSU-coloured chart, which read as though LSU had won it.
+    it('ends a game the away team won in the away colour', () => {
+        const html = wp.render(game([
+            snap(1, '13:00', 0.62), snap(4, '2:00', 0.30), snap(4, '0:00', 0)
+        ], { completed: true }), { homeTeam: 'LSU', awayTeam: 'Alabama',
+             homeColor: '#5c388c', awayColor: '#a2243a' });
+
+        // The final point, and the run reaching it, both belong to Alabama.
+        expect(html).toContain('class="gd-wp-now"');
+        expect(html.slice(html.indexOf('gd-wp-now') - 120, html.indexOf('gd-wp-now'))).toContain('#a2243a');
+    });
+
+    it('draws a separate stroke for each side of the midline', () => {
+        const html = wp.render(game([
+            snap(1, '13:00', 0.62), snap(3, '5:00', 0.30), snap(4, '1:00', 0.66)
+        ]), { homeTeam: 'LSU', awayTeam: 'Alabama', homeColor: '#5c388c', awayColor: '#a2243a' });
+        const strokes = (html.match(/class="gd-wp-line"/g) || []).length;
+
+        expect(strokes).toBe(3);
+        expect(html).toContain('#5c388c');
+        expect(html).toContain('#a2243a');
     });
 
     it('shows the latest sample as the headline probability', () => {

@@ -14,6 +14,12 @@
 // nothing about cause. The score sits next to the play, which lets a reader draw
 // the connection themselves where one genuinely exists.
 //
+// COLOUR MEANS ONE THING: who is ahead. The line is cut at the 50% mark and each
+// run drawn in the leading team's colour, so a game the away team won reads as
+// theirs. Drawing the whole line in the home team's colour — which is what the
+// y-axis is measured in — spends the most noticeable channel on a technical
+// detail and leaves a chart that looks like the home team won it.
+//
 // UMD so a spec can require the pure builders directly (same as logo.js).
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -131,6 +137,39 @@
         return kept;
     }
 
+    // Split the curve where it crosses 50%, inserting the crossing point itself
+    // so the two runs meet exactly on the midline.
+    //
+    // This is what lets color mean "who is ahead" rather than "whose axis this
+    // is". A single-color line spends the most noticeable channel on a
+    // technical detail: a game the away team won still renders entirely in the
+    // home team's color, which reads as though the home team won it.
+    function splitAtMidline(points, midY) {
+        if (!points.length) return [];
+        var runs = [];
+        var cur = { home: points[0].wp >= 0.5, pts: [points[0]] };
+
+        for (var i = 1; i < points.length; i++) {
+            var prev = points[i - 1];
+            var p = points[i];
+            var home = p.wp >= 0.5;
+
+            if (home === cur.home) {
+                cur.pts.push(p);
+                continue;
+            }
+            // Straddles the midline: cut there and start the other run from the
+            // same point, so there is no gap and no overshoot.
+            var f = (0.5 - prev.wp) / (p.wp - prev.wp);
+            var cross = { x: prev.x + (p.x - prev.x) * f, y: midY, wp: 0.5 };
+            cur.pts.push(cross);
+            runs.push(cur);
+            cur = { home: home, pts: [cross, p] };
+        }
+        runs.push(cur);
+        return runs;
+    }
+
     // Everything the SVG and the scrubber need. Null when there isn't enough of
     // a series to draw a line.
     function buildModel(game) {
@@ -167,6 +206,7 @@
 
         return {
             points: points,
+            runs: splitAtMidline(points, MID),
             dots: swingDots(points),
             dividers: bounds.slice(1, -1).map(xAt),
             segments: segments,
@@ -249,10 +289,22 @@
                  +  '" class="gd-wp-qlab" text-anchor="middle">' + esc(seg.label) + '</text>';
         });
 
+        // One colour meaning on the whole chart: who is ahead. The dots mark
+        // where the line moved most and double as touch targets — coloring them
+        // by the DIRECTION of the move instead would put a second, competing
+        // colour semantic on top of the first.
+        var sideColor = function (wp) { return wp >= 0.5 ? homeColor : awayColor; };
+
+        var line = model.runs.map(function (run) {
+            return '<path d="' + path(run.pts) + '" fill="none" stroke="'
+                 + (run.home ? homeColor : awayColor) + '" stroke-width="1.8"'
+                 + ' stroke-linejoin="round" stroke-linecap="round" class="gd-wp-line" />';
+        }).join('');
+
         var dots = model.dots.map(function (d) {
             var p = pts[d.i];
             return '<circle cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="3"'
-                 + ' fill="' + (d.d > 0 ? homeColor : awayColor) + '" class="gd-wp-dot" />';
+                 + ' fill="' + sideColor(p.wp) + '" class="gd-wp-dot" />';
         }).join('');
 
         var label = c.homeTeam
@@ -263,13 +315,12 @@
              +   grid
              +   '<line x1="' + box.PADL + '" y1="' + box.MID + '" x2="' + (box.W - box.PADR)
              +     '" y2="' + box.MID + '" class="gd-wp-mid" />'
-             +   '<path d="' + path(pts) + '" fill="none" stroke="' + homeColor + '" stroke-width="1.8"'
-             +     ' stroke-linejoin="round" stroke-linecap="round" class="gd-wp-line" />'
+             +   line
              +   dots
              +   '<circle cx="' + last.x.toFixed(2) + '" cy="' + last.y.toFixed(2) + '" r="3.6"'
-             +     ' fill="' + homeColor + '" class="gd-wp-now" />'
+             +     ' fill="' + sideColor(last.wp) + '" class="gd-wp-now" />'
              +   '<line class="gd-wp-cursor" x1="0" y1="' + box.TOP + '" x2="0" y2="' + box.BOT + '" hidden />'
-             +   '<circle class="gd-wp-pin" cx="0" cy="0" r="4.2" fill="' + homeColor + '" hidden />'
+             +   '<circle class="gd-wp-pin" cx="0" cy="0" r="4.2" fill="' + sideColor(last.wp) + '" hidden />'
              // Both ends of the axis read "100", so the numbers alone don't say
              // whose certainty each end is. Tinting them to the team colors
              // answers that without spending the width an abbreviation needs.
@@ -343,6 +394,8 @@
         var model = state.model;
         var ctx = state.ctx;
         var pts = model.points;
+        var homeColor = ctx.homeColor || 'var(--cc-interactive)';
+        var awayColor = ctx.awayColor || 'var(--cc-accent)';
 
         function show(idx) {
             if (idx == null) {
@@ -362,6 +415,7 @@
             cursor.removeAttribute('hidden');
             pin.setAttribute('cx', p.x.toFixed(2));
             pin.setAttribute('cy', p.y.toFixed(2));
+            pin.setAttribute('fill', p.wp >= 0.5 ? homeColor : awayColor);
             pin.removeAttribute('hidden');
             readout.innerHTML = readoutHtml(p, ctx);
             plot.setAttribute('aria-valuenow', String(idx));
@@ -414,6 +468,7 @@
         gameSeconds: gameSeconds,
         buildSeries: buildSeries,
         buildModel: buildModel,
+        splitAtMidline: splitAtMidline,
         swingDots: swingDots,
         indexAt: indexAt,
         readoutHtml: readoutHtml,
