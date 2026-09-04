@@ -462,7 +462,11 @@
             if (e.pointerType === 'mouse') show(null);
         });
         plot.addEventListener('keydown', function (e) {
-            var at = pinned == null ? pts.length - 1 : pinned;
+            // Resume from the point the readout is actually showing. At rest
+            // that is the pregame anchor, so starting from the END of the series
+            // would send the first arrow key somewhere unrelated to what is on
+            // screen — and disagree with the aria-valuenow of 0 that rest sets.
+            var at = pinned == null ? 0 : pinned;
             if (e.key === 'ArrowRight') { show(at + 1); e.preventDefault(); }
             else if (e.key === 'ArrowLeft') { show(at - 1); e.preventDefault(); }
             else if (e.key === 'Home') { show(0); e.preventDefault(); }

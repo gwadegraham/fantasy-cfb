@@ -147,6 +147,31 @@ describe('wpSnapshots at completion', () => {
         expect(await snapshots()).toHaveLength(2);
     });
 
+    // Regression: the terminal point used to be written only when the poller
+    // itself saw the game finish. routes/games.js is a second path to
+    // completed:true and, per the comment there, the poller cannot be relied on
+    // to get there first — so gating on that meant the curve was simply never
+    // closed whenever the poller was skipped (CFBD ceiling, poller disabled, a
+    // restart, or a delayed game past MAX_GAME_HOURS).
+    it('closes the curve even when something else marked the game final first', async () => {
+        await tick({ homeWP: 0.62, clock: '7:42' });
+        await Game.updateOne({ id: GAME_ID }, { $set: { completed: true } });
+
+        await tick({ status: 'completed', period: 4, homeWP: null, homePts: 31, awayPts: 24 });
+
+        const series = await snapshots();
+        expect(series).toHaveLength(2);
+        expect(series[1]).toMatchObject({ homeWinProb: 1, clock: '0:00' });
+    });
+
+    it('gives the terminal point a period when CFBD sends none', async () => {
+        await tick({ homeWP: 0.62, period: 4, clock: '7:42' });
+        await tick({ status: 'completed', period: null, homeWP: null, homePts: 31, awayPts: 24 });
+
+        const series = await snapshots();
+        expect(series[series.length - 1].period).toBe(4);
+    });
+
     it('still reports the game as newly completed on the completion tick', async () => {
         await tick({ homeWP: 0.62 });
         const res = await tick({ status: 'completed', period: 4, homeWP: null, homePts: 31, awayPts: 24 });

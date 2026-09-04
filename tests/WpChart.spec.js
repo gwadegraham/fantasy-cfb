@@ -448,6 +448,26 @@ describe('scrubbing', () => {
         expect(headline()).toEqual(['19.0%', '81.0%']);
     });
 
+    // Regression: the arrow keys used to resume from the END of the series while
+    // the readout at rest showed the pregame anchor, so the first keypress
+    // jumped somewhere unrelated to what was on screen.
+    it('resumes the arrow keys from the point the readout is showing', () => {
+        const { plot, readout } = mount();
+
+        expect(readout.textContent).toContain('Pregame');
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        expect(readout.textContent).toContain('Q1');
+        expect(readout.textContent).toContain('Kickoff');
+    });
+
+    it('holds at the anchor when arrowing left from rest', () => {
+        const { plot, readout } = mount();
+
+        plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+        expect(readout.textContent).toContain('Pregame');
+    });
+
     it('walks the series with the arrow keys', () => {
         const { plot, readout } = mount();
 

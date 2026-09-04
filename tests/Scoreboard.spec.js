@@ -210,6 +210,30 @@ describe('win-probability snapshots', () => {
             { completed: true, period: 4, homePoints: h, awayPoints: a }, NOW
         );
 
+        // Regression: CFBD nulls `period` on a completed game, so the terminal
+        // point used to be stored without one. The chart plots against elapsed
+        // game time and can't place a point with no period — it landed 60s after
+        // the previous sample rather than at the end of the game.
+        it('falls back to the last live period when CFBD nulls it', () => {
+            const norm = { completed: true, period: undefined, homePoints: 31, awayPoints: 24 };
+
+            expect(buildFinalSnapshot(norm, NOW, 4).period).toBe(4);
+        });
+
+        // An overtime game has to close at the end of OT, not the end of
+        // regulation, or the curve stops before the period it was decided in.
+        it('closes an overtime game in the overtime period', () => {
+            const norm = { completed: true, period: undefined, homePoints: 34, awayPoints: 31 };
+
+            expect(buildFinalSnapshot(norm, NOW, 5).period).toBe(5);
+        });
+
+        it('assumes the 4th when there is no previous snapshot to learn from', () => {
+            const norm = { completed: true, period: undefined, homePoints: 31, awayPoints: 24 };
+
+            expect(buildFinalSnapshot(norm, NOW).period).toBe(4);
+        });
+
         it('closes the curve at 1 when the home team won', () => {
             expect(final(31, 24)).toEqual({
                 at: NOW, period: 4, clock: '0:00', homeWinProb: 1, homePoints: 31, awayPoints: 24
@@ -241,6 +265,14 @@ describe('win-probability snapshots', () => {
         it('accepts the next tick once the clock has moved', () => {
             const a = buildSnapshot(live(), NOW);
             const b = buildSnapshot(live({ clock: '5:12' }), NOW);
+            expect(isDuplicateSnapshot(a, b)).toBe(false);
+        });
+
+        // A stopped clock plus an unchanged probability is not proof that nothing
+        // happened — an extra point moves the score without moving the odds.
+        it('accepts a tick where only the score moved', () => {
+            const a = buildSnapshot(live(), NOW);
+            const b = buildSnapshot(live({ homePoints: 22 }), NOW);
             expect(isDuplicateSnapshot(a, b)).toBe(false);
         });
 

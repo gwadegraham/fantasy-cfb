@@ -86,18 +86,28 @@ function buildSnapshot(norm, now) {
     };
 }
 
-// The closing point of the curve, written on the tick a game goes final. CFBD
-// stops sending winProbability the moment a game completes, so the true 1/0
-// ending has to come from the score instead — without this the chart just stops
-// at whatever the last live sample happened to say.
-function buildFinalSnapshot(norm, now) {
+// The closing point of the curve, written once a game is final. CFBD stops
+// sending winProbability the moment a game completes, so the true 1/0 ending has
+// to come from the score instead — without this the chart just stops at whatever
+// the last live sample happened to say.
+//
+// `lastPeriod` is the period from the previous stored snapshot, and it matters:
+// CFBD also nulls `period` on a completed game, so without a fallback this point
+// carries no period at all. The chart plots against elapsed game time, and a
+// point with no period can't be placed — it lands 60s after the previous sample
+// instead of at the end, short of the right edge. Carrying the last live period
+// forward is what makes an overtime game close at the end of OT rather than at
+// the end of regulation.
+function buildFinalSnapshot(norm, now, lastPeriod) {
     if (!norm.completed) return null;
     if (norm.homePoints == null || norm.awayPoints == null) return null;
     const homeWon = norm.homePoints > norm.awayPoints;
     const tied = norm.homePoints === norm.awayPoints;
+    const period = norm.period != null ? norm.period
+                 : (lastPeriod != null ? lastPeriod : 4);
     return {
         at: now,
-        period: norm.period != null ? norm.period : undefined,
+        period: period,
         clock: '0:00',
         homeWinProb: tied ? 0.5 : (homeWon ? 1 : 0),
         homePoints: norm.homePoints,
@@ -109,11 +119,19 @@ function buildFinalSnapshot(norm, now) {
 // clock, but the game clock stops — a timeout, a review, or a TV break can leave
 // two ticks describing the identical game moment. Without this the series grows
 // flat duplicates that distort a chart plotted against game clock.
+//
+// The score is part of the comparison because a tick can carry a NEW score under
+// an unchanged clock and probability — an extra point after a touchdown moves
+// 21-17 to 21-18 without meaningfully shifting the odds. Comparing only the
+// clock and the probability would throw that tick away, and the series would
+// hold a score that had already changed.
 function isDuplicateSnapshot(last, snap) {
     if (!last || !snap) return false;
     return last.period === snap.period
         && last.clock === snap.clock
-        && last.homeWinProb === snap.homeWinProb;
+        && last.homeWinProb === snap.homeWinProb
+        && last.homePoints === snap.homePoints
+        && last.awayPoints === snap.awayPoints;
 }
 
 // Update Game docs from scoreboard data. Only updates games that already exist
@@ -167,14 +185,23 @@ async function updateFromScoreboard() {
         }
 
         // Accumulate the win-probability curve. A live tick appends the current
-        // sample; the tick that flips a game final appends the terminal 1/0.
-        // Both are $push, so the series survives the $set clears above.
+        // sample; a completed game appends the terminal 1/0. Both are $push, so
+        // the series survives the $set clears above.
+        //
+        // Deliberately NOT gated on this poll being the one that saw the game
+        // finish. routes/games.js is a second path to completed:true and, as the
+        // comment there says, the poller cannot be relied on to get there first
+        // — whenever it doesn't (CFBD ceiling reached, poller disabled, a
+        // restart, a delayed game past MAX_GAME_HOURS), gating on that would
+        // mean the curve is never closed at all. Re-polling a final game is
+        // harmless because isDuplicateSnapshot rejects the repeat.
         const now = new Date();
-        const snap = norm.completed && !wasCompleted.has(sb.id)
-            ? buildFinalSnapshot(norm, now)
+        const last = lastSnapshot.get(sb.id);
+        const snap = norm.completed
+            ? buildFinalSnapshot(norm, now, last && last.period)
             : buildSnapshot(norm, now);
         const update = { $set };
-        if (snap && !isDuplicateSnapshot(lastSnapshot.get(sb.id), snap)) {
+        if (snap && !isDuplicateSnapshot(last, snap)) {
             update.$push = { wpSnapshots: snap };
         }
 
