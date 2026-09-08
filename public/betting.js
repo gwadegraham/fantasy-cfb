@@ -1,3 +1,6 @@
+// Seeded from the league calendar in init(). The literal here is only what the
+// label shows for the blink before that resolves — it used to be the permanent
+// answer, which parked the page on week 0 for the whole season.
 var currentWeek = 0;
 var currentSeason = window.APP_YEAR;
 var parlays = [];
@@ -965,6 +968,15 @@ function updateWeekDisplay() {
 async function init() {
     myUserId = getMyUserId();
     currentSeason = window.APP_YEAR || new Date().getFullYear();
+
+    // Open on the week people are actually betting. Week 0 is a real week here
+    // (early-season games), so it stays reachable with the arrows — it just
+    // isn't where the page should land in November.
+    if (window.ccCurrentWeek) {
+        var wk = await window.ccCurrentWeek.get(currentSeason);
+        if (wk != null) currentWeek = wk;
+    }
+
     updateWeekDisplay();
     await refresh();
 }

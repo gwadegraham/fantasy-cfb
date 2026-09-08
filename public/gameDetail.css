@@ -695,6 +695,20 @@ html.gd-page, .gd-page body {
     letter-spacing: 0.04em;
     text-align: center;
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+/* Points at whichever team is winning the row. Both carets are always in the
+   DOM and the loser's is only made invisible, so the label text stays centred
+   on every row — including a tie, where neither shows. The colour is the
+   contrast-corrected bar colour, so a navy or black team stays visible against
+   the card rather than disappearing into it. */
+.gd-ss-caret {
+    flex: none;
+    font-size: 0.6rem;
+    line-height: 1;
 }
 .gd-ss-track {
     height: 24px;

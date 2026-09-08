@@ -81,6 +81,40 @@ router.get('/season/:season/teamId/:teamId', async (req, res) => {
 });
 
 // Get a single game by its CFBD id (used by the game detail page).
+// Points for / against across a team's played games.
+//
+// CFBD's season-stats payload carries no scoring of any kind, so the only place
+// points exist is the games themselves. Regular season only, to match the
+// denominator the rest of the season averages are built on, and only games with
+// a score — an unplayed schedule must not drag an average down.
+async function seasonScoring(season, teamId) {
+    const rows = await Game.aggregate([
+        {
+            $match: {
+                season,
+                seasonType: 'regular',
+                homePoints: { $ne: null },
+                awayPoints: { $ne: null },
+                $or: [{ homeId: teamId }, { awayId: teamId }]
+            }
+        },
+        {
+            $group: {
+                _id: null,
+                games: { $sum: 1 },
+                pointsFor: { $sum: { $cond: [{ $eq: ['$homeId', teamId] }, '$homePoints', '$awayPoints'] } },
+                pointsAgainst: { $sum: { $cond: [{ $eq: ['$homeId', teamId] }, '$awayPoints', '$homePoints'] } }
+            }
+        }
+    ]);
+    const r = rows[0];
+    return {
+        games: r ? r.games : 0,
+        pointsFor: r ? r.pointsFor : 0,
+        pointsAgainst: r ? r.pointsAgainst : 0
+    };
+}
+
 router.get('/detail/:gameId', async (req, res) => {
     try {
         const gameId = Number(req.params.gameId);
@@ -90,13 +124,16 @@ router.get('/detail/:gameId', async (req, res) => {
         ]);
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
-        const [homeRec, awayRec, homeSeasonStats, awaySeasonStats, homeLeaders, awayLeaders] = await Promise.all([
+        const [homeRec, awayRec, homeSeasonStats, awaySeasonStats, homeLeaders, awayLeaders,
+               homeScoring, awayScoring] = await Promise.all([
             Record.findOne({ teamId: game.homeId, year: game.season }).lean(),
             Record.findOne({ teamId: game.awayId, year: game.season }).lean(),
             TeamSeasonStat.findOne({ season: game.season, team: game.homeTeam }).lean(),
             TeamSeasonStat.findOne({ season: game.season, team: game.awayTeam }).lean(),
             PlayerSeasonLeader.findOne({ season: game.season, team: game.homeTeam }).lean(),
-            PlayerSeasonLeader.findOne({ season: game.season, team: game.awayTeam }).lean()
+            PlayerSeasonLeader.findOne({ season: game.season, team: game.awayTeam }).lean(),
+            seasonScoring(game.season, game.homeId),
+            seasonScoring(game.season, game.awayId)
         ]);
 
         const obj = game.toObject({ flattenMaps: true });
@@ -120,12 +157,18 @@ router.get('/detail/:gameId', async (req, res) => {
             }
         }
         if (homeSeasonStats || awaySeasonStats) {
-            const toPlain = (doc) => {
+            const toPlain = (doc, scoring) => {
                 if (!doc) return null;
                 const s = doc.stats instanceof Map ? Object.fromEntries(doc.stats) : (doc.stats || {});
-                return { team: doc.team, conference: doc.conference, games: doc.games, stats: s };
+                // `scoring` carries its own games count: it comes from the games
+                // collection, not from CFBD's aggregate, so it must not be divided
+                // by a denominator it wasn't summed over.
+                return { team: doc.team, conference: doc.conference, games: doc.games, stats: s, scoring };
             };
-            obj.seasonStats = { home: toPlain(homeSeasonStats), away: toPlain(awaySeasonStats) };
+            obj.seasonStats = {
+                home: toPlain(homeSeasonStats, homeScoring),
+                away: toPlain(awaySeasonStats, awayScoring)
+            };
         }
         if (homeLeaders || awayLeaders) {
             obj.playerLeaders = {

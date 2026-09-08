@@ -305,3 +305,75 @@ describe('POST /games/:season/media', () => {
         expect(g.mediaType).toBe('tv');
     });
 });
+
+
+// ---------------------------------------------------------------------------
+// GET /games/detail/:gameId — the pre-game Season Averages comparison
+// ---------------------------------------------------------------------------
+//
+// Points are the one row that cannot come from CFBD's season-stats aggregate:
+// that payload has 57 keys and not one of them is scoring. (The team page read
+// a `totalPoints` field that has never existed and rendered a flat 0.0 for it.)
+// The server sums points off the games instead, and ships its own games count
+// with them so the average isn't divided by a denominator it wasn't summed over.
+describe('GET /games/detail/:gameId — season scoring', () => {
+    const TeamSeasonStat = require('../models/teamSeasonStat');
+
+    async function seedStats() {
+        await TeamSeasonStat.create([
+            { season: 2025, team: 'Oregon', games: 2, stats: { totalYards: 800 } },
+            { season: 2025, team: 'Duke', games: 2, stats: { totalYards: 600 } }
+        ]);
+    }
+
+    test('sums points for and against from whichever side the team played on', async () => {
+        await Game.create([
+            gameDoc({ id: 401, week: 1, homeId: 1, homeTeam: 'Oregon', awayId: 2, awayTeam: 'Duke', homePoints: 30, awayPoints: 10 }),
+            // Oregon on the road: its points are the AWAY column here.
+            gameDoc({ id: 402, week: 2, homeId: 3, homeTeam: 'Utah', awayId: 1, awayTeam: 'Oregon', homePoints: 14, awayPoints: 21 })
+        ]);
+        await seedStats();
+
+        const res = await request(app).get('/games/detail/401');
+
+        expect(res.status).toBe(200);
+        expect(res.body.seasonStats.home.scoring).toEqual({ games: 2, pointsFor: 51, pointsAgainst: 24 });
+        expect(res.body.seasonStats.away.scoring).toEqual({ games: 1, pointsFor: 10, pointsAgainst: 30 });
+    });
+
+    test('ignores games that have not been played', async () => {
+        await Game.create([
+            gameDoc({ id: 401, week: 1, homePoints: 30, awayPoints: 10 }),
+            gameDoc({ id: 403, week: 3, homeId: 1, homeTeam: 'Oregon', awayId: 4, awayTeam: 'UCLA', homePoints: null, awayPoints: null })
+        ]);
+        await seedStats();
+
+        const res = await request(app).get('/games/detail/401');
+
+        expect(res.body.seasonStats.home.scoring.games).toBe(1);
+        expect(res.body.seasonStats.home.scoring.pointsFor).toBe(30);
+    });
+
+    // The other rows divide by CFBD's regular-season games count, so this has to
+    // be summed over the same slate or the two halves of the card disagree.
+    test('counts the regular season only', async () => {
+        await Game.create([
+            gameDoc({ id: 401, week: 1, homePoints: 30, awayPoints: 10 }),
+            gameDoc({ id: 404, week: 1, seasonType: 'postseason', homeId: 1, homeTeam: 'Oregon', awayId: 5, awayTeam: 'Ohio State', homePoints: 60, awayPoints: 3 })
+        ]);
+        await seedStats();
+
+        const res = await request(app).get('/games/detail/401');
+
+        expect(res.body.seasonStats.home.scoring).toEqual({ games: 1, pointsFor: 30, pointsAgainst: 10 });
+    });
+
+    test('reports zeros rather than dividing by nothing before kickoff', async () => {
+        await Game.create(gameDoc({ id: 401, homePoints: null, awayPoints: null }));
+        await seedStats();
+
+        const res = await request(app).get('/games/detail/401');
+
+        expect(res.body.seasonStats.home.scoring).toEqual({ games: 0, pointsFor: 0, pointsAgainst: 0 });
+    });
+});

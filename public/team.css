@@ -592,21 +592,27 @@
 }
 
 /* Per-game result badge (W/L/T + score) from the viewed team's perspective */
+/* W/L/T on the viewed team's own line. Solid rather than the old 22%-opacity
+   wash behind a hairline ring: at this size the washed fill read as disabled,
+   and the ring was doing the colour work the fill should. Dark glyph on the two
+   light chips, light on the dark one, so each pair carries its own contrast. */
 .game-result {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.9em;
-    height: 1.9em;
+    width: 1.75em;
+    height: 1.75em;
     border-radius: 50%;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--cc-text);
+    font-size: 0.8rem;
+    font-weight: 800;
 }
-.result-win { background-color: rgba(63, 157, 90, 0.22); border: 1px solid var(--cc-success); }
-.result-loss { background-color: color-mix(in srgb, var(--cc-danger) 22%, transparent); border: 1px solid var(--cc-danger); }
-.result-tie { background-color: rgba(164, 169, 194, 0.18); border: 1px solid var(--cc-muted); }
+.result-win { background-color: var(--cc-success); color: var(--cc-bg); }
+.result-loss { background-color: var(--cc-danger); color: var(--cc-text); }
+.result-tie { background-color: var(--cc-muted); color: var(--cc-bg); }
+/* Reserves the badge's width on the line that doesn't have one, so both team
+   rows keep a shared right edge. */
+.game-result-ghost { visibility: hidden; }
 
 /* Standings team cell: keep the logo and (possibly wrapping) name aligned as
    two columns instead of letting the name fall under the logo. */

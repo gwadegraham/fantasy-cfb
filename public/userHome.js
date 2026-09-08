@@ -83,6 +83,7 @@ if (_uhRivalryWeek) {
         var opt = this.options[this.selectedIndex];
         window.localStorage.setItem("week", opt.text);
         window.localStorage.setItem("weekCode", opt.value);
+        if (window.ccCurrentWeek) window.ccCurrentWeek.pin();
 
         document.querySelector('.football-loader').style.display = "flex";
         document.querySelector('[schedule-body]').style.display = "none";
@@ -622,7 +623,7 @@ async function hydrateGames(user, activeYear) {
         window.localStorage.removeItem('week');
         window.localStorage.setItem('weekSeason', String(activeYear));
     }
-    ensureWeekSelected(user);
+    await ensureWeekSelected(user);
 
     // Resting state: only the logos of your teams that actually play this week.
     const g = document.getElementById('uh-glance-games');
@@ -663,6 +664,7 @@ async function hydrateGames(user, activeYear) {
             const label = sel.options[sel.selectedIndex].text;
             window.localStorage.setItem('weekCode', sel.value);
             window.localStorage.setItem('week', label);
+            if (window.ccCurrentWeek) window.ccCurrentWeek.pin();
             const wk = g && g.querySelector('.uh-games-wk'); if (wk) wk.textContent = label;
             run();
         });
@@ -1221,10 +1223,26 @@ async function hydrateDraft(user, activeYear) {
     }
 }
 
-// The Games week defaults to the latest played week when nothing is stored,
-// so the dropdown never shows the literal "Week X" placeholder (and
-// displaySchedule never reads a null weekCode) on a fresh visit.
-function ensureWeekSelected(data) {
+// The Games week follows the league calendar, so the tile that calls itself
+// "this week's games" shows the week the rest of the app is on. It falls back to
+// the latest played week when the calendar can't be reached, so the dropdown
+// never shows the literal "Week X" placeholder (and displaySchedule never reads
+// a null weekCode) on a fresh visit.
+//
+// A week the viewer actually picked is left alone. This used to write `week`
+// unconditionally, and Standings reads that key as "the user chose this" — so a
+// single visit here froze the picker on whatever week it first landed on, for
+// the rest of the season. See the pinning note in public/current-week.js.
+async function ensureWeekSelected(data) {
+    if (window.ccCurrentWeek) {
+        const synced = await window.ccCurrentWeek.sync(uhActiveYear);
+        if (synced) {
+            weekCode = synced;
+            const sel = document.querySelector('[rivalry-week]');
+            if (sel) sel.value = synced;
+            return;
+        }
+    }
     if (window.localStorage.getItem('weekCode') && window.localStorage.getItem('week')) return;
     const weekly = uhSeasonFor(data, uhActiveYear).weeklyScore || [];
     let maxWeek = 0, hasPost = false;

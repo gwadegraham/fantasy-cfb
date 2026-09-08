@@ -136,7 +136,7 @@ async function loadTeamPage() {
     await renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
     renderTeamInfo(teamData, record, recruiting, seasonObj, schedule, owner, fantasyRank);
     renderTeamScheduleInfo(schedule, allLogos, rankings, bettingLines, seasonYear, teamData);
-    renderTeamSeasonStats(teamStats);
+    renderTeamSeasonStats(teamStats, schedule);
     renderPlayerSeasonLeaders(playerLeaders);
 
     // Runs last: it depends on the final visibility of all three cards above.
@@ -332,10 +332,14 @@ async function getTeamLogos () {
     return _allLogosPromise;
 }
 
+// Vegas spreads for the schedule rows. /betting is the PARLAY router — asking it
+// for a season ran Parlay.findById("2026"), which threw a CastError and 500'd on
+// every team page load. The failure was invisible because a non-200 degrades to
+// an empty array here and the spread just renders blank.
 async function getAllBettingLines (seasonYear) {
     if (seasonYear == null) seasonYear = new Date().getFullYear();
 
-    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+    var bettingPromise = await fetch(`/betting-lines/${seasonYear}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -812,7 +816,13 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
 
             // Result badge from the VIEWED team's perspective (W/L/T + score),
             // so a completed game reads at a glance without relying on colour.
-            var resultBadge = '';
+            //
+            // It sits on the viewed team's own line rather than in a column of
+            // its own. Centred against the whole row it landed beside the OTHER
+            // team's score, which is exactly the association it exists to make.
+            // The line without it still gets one, hidden, so both scores keep a
+            // shared right edge instead of one row hanging past the other.
+            var awayBadge = '', homeBadge = '';
             if (game.completed) {
                 var teamIsHome = String(game.homeId) === String(teamId);
                 var us = Number(teamIsHome ? homePoints : awayPoints);
@@ -822,7 +832,13 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
                 // Just the W/L/T (the per-team scores already show the numbers);
                 // keep the exact score available on hover.
-                resultBadge = `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`;
+                var resultBadge = function (shown) {
+                    return shown
+                        ? `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`
+                        : `<span class="game-result game-result-ghost" aria-hidden="true">${letter}</span>`;
+                };
+                awayBadge = resultBadge(!teamIsHome);
+                homeBadge = resultBadge(teamIsHome);
             }
 
             const awayTeamHTML = `
@@ -851,16 +867,15 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 <div class="game-row${game.id ? ' gc-clickable' : ''}"${game.id ? ` data-game-id="${game.id}"` : ''}>
                     <div class="game-info">
                         <div class="team-row">
-                            <span class="team-vs">${awayTeamHTML}
+                            <span class="team-vs">${awayTeamHTML}${awayBadge}
                         </div>
                         <div class="team-row">
-                            <span class="team-vs">${homeTeamHTML}
+                            <span class="team-vs">${homeTeamHTML}${homeBadge}
                         </div>
                         <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
-                    ${resultBadge}
                 </div>
             `;
         });
@@ -1224,20 +1239,43 @@ async function getTeamSeasonStats(team, seasonYear) {
     return Array.isArray(data) && data.length ? data[0] : null;
 }
 
-function renderTeamSeasonStats(data) {
+// Points for / against off the played games. Season stats know the team by name,
+// the schedule by name on either side, so match on that and count only games
+// that have a score — an unplayed schedule must not drag the average down.
+function teamScoring(games, teamName) {
+    var pf = 0, pa = 0, n = 0;
+    (games || []).forEach(function (gm) {
+        if (gm.homePoints == null || gm.awayPoints == null) return;
+        var isHome = gm.homeTeam === teamName;
+        var isAway = gm.awayTeam === teamName;
+        if (!isHome && !isAway) return;
+        pf += isHome ? gm.homePoints : gm.awayPoints;
+        pa += isHome ? gm.awayPoints : gm.homePoints;
+        n++;
+    });
+    return { pointsFor: pf, pointsAgainst: pa, games: n };
+}
+
+function renderTeamSeasonStats(data, scheduleGames) {
     var container = document.getElementById('team-stats-container');
     if (!container || !data || !data.stats || !data.games) return;
 
     var s = data.stats;
     var g = data.games;
 
+    // CFBD's season-stats payload carries no scoring at all — there is no
+    // totalPoints field on it, so both point tiles read undefined and rendered a
+    // flat 0.0 next to real yardage. Points live on the games, which the page has
+    // already fetched for the schedule.
+    var scoring = teamScoring(scheduleGames, data.team);
+
     var rows = [
         { label: 'Total YPG', val: (s.totalYards || 0) / g },
         { label: 'Opp YPG', val: (s.totalYardsOpponent || 0) / g },
         { label: 'Rush YPG', val: (s.rushingYards || 0) / g },
         { label: 'Pass YPG', val: (s.netPassingYards || 0) / g },
-        { label: 'Points / game', val: (s.totalPoints || 0) / g },
-        { label: 'Opp PPG', val: (s.totalPointsOpponent || 0) / g },
+        { label: 'Points / game', val: scoring.games ? scoring.pointsFor / scoring.games : 0 },
+        { label: 'Opp PPG', val: scoring.games ? scoring.pointsAgainst / scoring.games : 0 },
         { label: 'Turnovers / game', val: (s.turnovers || 0) / g },
         { label: 'Sacks / game', val: (s.sacks || 0) / g },
         { label: '3rd down %', val: s.thirdDowns > 0 ? (s.thirdDownConversions || 0) / s.thirdDowns * 100 : 0, isPct: true }
@@ -1247,7 +1285,7 @@ function renderTeamSeasonStats(data) {
     // are indented by the same amount, so the title text and the data share one
     // left rail regardless of which glyph is used. See team.css.
     var html = '<h3 class="tv-ts-title"><i class="fas fa-chart-simple"></i>Team Stats</h3>';
-    html += '<div class="tv-ts-subtitle">' + g + ' games</div>';
+    html += '<div class="tv-ts-subtitle">' + g + (g === 1 ? ' game' : ' games') + '</div>';
 
     for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
