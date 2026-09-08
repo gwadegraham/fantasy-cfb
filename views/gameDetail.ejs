@@ -448,12 +448,27 @@
                         var aDisp = sr.isPct ? aVal.toFixed(1) + '%' : aVal.toFixed(1);
                         var hDisp = sr.isPct ? hVal.toFixed(1) + '%' : hVal.toFixed(1);
 
-                        // Highlight the leader
+                        // Which team is winning the row. The bar cannot say it:
+                        // its length is proportional to the NUMBER, so on an
+                        // "allowed" row the team that gave up more gets the
+                        // longer bar and the glance reads backwards. `invert`
+                        // says which direction wins — it was computed here and
+                        // thrown away until a marker existed to use it. Neither
+                        // side is marked on a tie.
                         var aLead = sr.invert ? aVal < hVal : aVal > hVal;
                         var hLead = sr.invert ? hVal < aVal : hVal > aVal;
 
+                        var caret = function (win, color, glyph) {
+                            return '<span class="gd-ss-caret" aria-hidden="true" style="color:' + color
+                                + (win ? '' : ';visibility:hidden') + '">' + glyph + '</span>';
+                        };
+
                         preGameStatsHtml += '<div class="gd-ss-row">';
-                        preGameStatsHtml += '<div class="gd-ss-label">' + sr.label + '</div>';
+                        preGameStatsHtml += '<div class="gd-ss-label">'
+                            + caret(aLead, awayBarColor, '\u25c0')
+                            + '<span>' + sr.label + '</span>'
+                            + caret(hLead, homeBarColor, '\u25b6')
+                            + '</div>';
                         preGameStatsHtml += '<div class="gd-ss-track">';
                         preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
                         preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
