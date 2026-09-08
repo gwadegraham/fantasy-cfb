@@ -114,7 +114,10 @@ html.gd-page, .gd-page body {
 /* ---- Matchup grid ---- */
 .gd-matchup-grid {
     display: grid;
-    grid-template-columns: 60px 1fr auto 1fr 60px;
+    /* Row 2 puts the team name in the same column as row 1's logo, so a column
+       sized only for the logo leaves a long name to overflow past the card.
+       Let the name govern the width and give the scores what is left. */
+    grid-template-columns: minmax(60px, max-content) 1fr auto 1fr minmax(60px, max-content);
     align-items: center;
     justify-items: center;
     row-gap: 6px;

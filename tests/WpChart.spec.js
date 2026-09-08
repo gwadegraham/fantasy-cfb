@@ -155,6 +155,43 @@ describe('buildModel', () => {
         expect(model.segments.map(s => s.label)).toContain('OT');
         expect(model.span).toBeGreaterThan(3600);
     });
+
+    // Regression. CFBD repeats and rewinds the clock constantly, and the nudge
+    // that keeps the series ordered used to be a full minute. It ratcheted:
+    // once a bump pushed the series ahead of real game time, every later sample
+    // looked backwards too and got bumped as well. Washington State at
+    // Washington (2026 wk 2, 24-10, no overtime) bumped 58 of 85 snapshots and
+    // finished at t=4752 instead of 3600, which drew OT1 and OT2 onto a game
+    // that ended in regulation. The domain now comes from the periods the
+    // snapshots actually carry, never from the nudged timeline.
+    it('does not invent overtime when the clock repeats all game', () => {
+        const stale = ['12:00', '12:00', '9:30', '9:30', '9:30'];
+        const snaps = [];
+        for (let p = 1; p <= 4; p++) {
+            for (let i = 0; i < 20; i++) snaps.push(snap(p, stale[i % stale.length], 0.5));
+        }
+
+        const model = wp.buildModel(game(snaps));
+
+        expect(model.segments.map(s => s.label)).toEqual(['1st', '2nd', '3rd', '4th']);
+        expect(model.dividers).toHaveLength(3);
+        expect(model.span).toBe(3600);
+    });
+
+    // The nudges can still carry a t past the domain; they must not carry the
+    // drawing past it, or the curve runs out of the card.
+    it('keeps every point inside the plotted area', () => {
+        const snaps = [];
+        for (let i = 0; i < 40; i++) snaps.push(snap(4, '0:30', 0.5));
+
+        const model = wp.buildModel(game(snaps));
+        const rightEdge = model.box.W - model.box.PADR;
+
+        model.points.forEach(pt => {
+            expect(pt.x).toBeLessThanOrEqual(rightEdge + 0.001);
+            expect(pt.x).toBeGreaterThanOrEqual(model.box.PADL - 0.001);
+        });
+    });
 });
 
 describe('splitAtMidline', () => {

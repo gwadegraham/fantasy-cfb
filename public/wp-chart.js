@@ -29,6 +29,7 @@
 
     var QUARTER = 900;              // seconds in a regulation quarter
     var PREGAME_LEAD = 60;          // where the pregame anchor sits, left of kickoff
+    var CLOCK_NUDGE = 1;            // how far a repeated clock is pushed to keep order
     var REGULATION = 4 * QUARTER;
 
     // Drawing box, in viewBox units. The <svg> is width:100% so these are
@@ -97,8 +98,12 @@
             if (!s || s.homeWinProb == null) continue;
             // A missing or backwards clock (a stuck period, a mid-period null)
             // must not fold the curve back on itself, so time only ever advances.
+            // The nudge stays a hair rather than a full minute: CFBD repeats the
+            // clock often enough that a coarse bump ratchets — every later sample
+            // then looks backwards too — and drifts the series minutes past where
+            // the game really was. Ordering is all this needs to buy.
             var t = gameSeconds(s.period, s.clock);
-            if (t == null || t < prev) t = prev + 60;
+            if (t == null || t < prev) t = prev + CLOCK_NUDGE;
             prev = t;
             out.push({
                 t: t, wp: s.homeWinProb, anchor: false,
@@ -176,7 +181,15 @@
         var series = buildSeries(game);
         if (series.length < 2) return null;
 
-        var span = Math.max(REGULATION, series[series.length - 1].t) || REGULATION;
+        // The axis domain comes from the periods the game actually reached, never
+        // from the last plotted t. t is nudged to keep the curve ordered, and
+        // letting those nudges widen the domain is what used to append phantom
+        // OT segments to a game that ended in regulation.
+        var maxPeriod = 0;
+        for (var m = 0; m < series.length; m++) {
+            if (series[m].period != null && series[m].period > maxPeriod) maxPeriod = series[m].period;
+        }
+        var span = Math.max(REGULATION, maxPeriod * QUARTER);
         var start = series[0].t;
         var innerW = W - PADL - PADR;
         var xAt = function (t) { return PADL + ((t - start) / (span - start)) * innerW; };
@@ -184,7 +197,7 @@
 
         var points = series.map(function (p, i) {
             return {
-                i: i, x: xAt(p.t), y: yAt(p.wp), t: p.t, wp: p.wp, anchor: p.anchor,
+                i: i, x: xAt(Math.min(p.t, span)), y: yAt(p.wp), t: p.t, wp: p.wp, anchor: p.anchor,
                 period: p.period, clock: p.clock,
                 homePoints: p.homePoints, awayPoints: p.awayPoints,
                 situation: p.situation, lastPlay: p.lastPlay
