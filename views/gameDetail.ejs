@@ -406,6 +406,13 @@
                 if (hss && ass && hss.games > 0 && ass.games > 0) {
                     var hs_ = hss.stats || {};
                     var as_ = ass.stats || {};
+                    // Scoring is the one row that can't come from `stats` — CFBD's
+                    // season aggregate has no points field at all — so the server
+                    // sums it off the games, and it brings its own games count.
+                    var ppg = function (side, key) {
+                        var sc = side && side.scoring;
+                        return (sc && sc.games) ? sc[key] / sc.games : 0;
+                    };
                     var hg = hss.games;
                     var ag = ass.games;
 
@@ -414,6 +421,8 @@
                         { label: 'Yards allowed / game', away: (as_.totalYardsOpponent || 0) / ag, home: (hs_.totalYardsOpponent || 0) / hg, invert: true },
                         { label: 'Rush YPG', away: (as_.rushingYards || 0) / ag, home: (hs_.rushingYards || 0) / hg },
                         { label: 'Pass YPG', away: (as_.netPassingYards || 0) / ag, home: (hs_.netPassingYards || 0) / hg },
+                        { label: 'Points / game', away: ppg(ass, 'pointsFor'), home: ppg(hss, 'pointsFor') },
+                        { label: 'Points allowed / game', away: ppg(ass, 'pointsAgainst'), home: ppg(hss, 'pointsAgainst'), invert: true },
                         { label: 'Turnovers / game', away: (as_.turnovers || 0) / ag, home: (hs_.turnovers || 0) / hg, invert: true },
                         { label: 'Sacks / game', away: (as_.sacks || 0) / ag, home: (hs_.sacks || 0) / hg },
                         { label: '3rd down %', away: (as_.thirdDowns > 0 ? (as_.thirdDownConversions || 0) / as_.thirdDowns * 100 : 0), home: (hs_.thirdDowns > 0 ? (hs_.thirdDownConversions || 0) / hs_.thirdDowns * 100 : 0), isPct: true }
