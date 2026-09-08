@@ -816,7 +816,13 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
 
             // Result badge from the VIEWED team's perspective (W/L/T + score),
             // so a completed game reads at a glance without relying on colour.
-            var resultBadge = '';
+            //
+            // It sits on the viewed team's own line rather than in a column of
+            // its own. Centred against the whole row it landed beside the OTHER
+            // team's score, which is exactly the association it exists to make.
+            // The line without it still gets one, hidden, so both scores keep a
+            // shared right edge instead of one row hanging past the other.
+            var awayBadge = '', homeBadge = '';
             if (game.completed) {
                 var teamIsHome = String(game.homeId) === String(teamId);
                 var us = Number(teamIsHome ? homePoints : awayPoints);
@@ -826,7 +832,13 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
                 // Just the W/L/T (the per-team scores already show the numbers);
                 // keep the exact score available on hover.
-                resultBadge = `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`;
+                var resultBadge = function (shown) {
+                    return shown
+                        ? `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`
+                        : `<span class="game-result game-result-ghost" aria-hidden="true">${letter}</span>`;
+                };
+                awayBadge = resultBadge(!teamIsHome);
+                homeBadge = resultBadge(teamIsHome);
             }
 
             const awayTeamHTML = `
@@ -855,16 +867,15 @@ function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, t
                 <div class="game-row${game.id ? ' gc-clickable' : ''}"${game.id ? ` data-game-id="${game.id}"` : ''}>
                     <div class="game-info">
                         <div class="team-row">
-                            <span class="team-vs">${awayTeamHTML}
+                            <span class="team-vs">${awayTeamHTML}${awayBadge}
                         </div>
                         <div class="team-row">
-                            <span class="team-vs">${homeTeamHTML}
+                            <span class="team-vs">${homeTeamHTML}${homeBadge}
                         </div>
                         <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
                         <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
                         <span class="game-date">${game.notes ? game.notes : ''}</span>
                     </div>
-                    ${resultBadge}
                 </div>
             `;
         });
