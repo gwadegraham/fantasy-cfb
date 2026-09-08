@@ -139,16 +139,24 @@ async function getUsers() {
             document.querySelectorAll('.hr-subtle').forEach(x => x.setAttribute('style', 'display: none;'));
             document.querySelector('.game-content').setAttribute('style', 'display: none;');
         } else {
-            // Default the schedule to the current week unless the user has
-            // manually picked one (stored as "week").
-            if (!window.localStorage.getItem('week')) {
-                const cw = latestWeek(data);
-                if (cw) {
-                    window.localStorage.setItem('weekCode', 'week-' + cw);
-                    weekCode = 'week-' + cw;
-                    var _rwSel = document.querySelector('[rivalry-week]');
-                    if (_rwSel) _rwSel.value = 'week-' + cw;
-                }
+            // Default the schedule to the current week unless the viewer picked
+            // one. The test used to be "is `week` stored?", but My Team writes
+            // that key automatically, so one visit there looked like a choice and
+            // pinned this picker for the season. Only a real pick sets weekPinned
+            // (see public/current-week.js); latestWeek is the fallback for when
+            // the calendar can't be reached.
+            const activeSeason = data[0]?.seasons?.[0]?.season || window.APP_YEAR;
+            let cwCode = window.ccCurrentWeek ? await window.ccCurrentWeek.sync(activeSeason) : null;
+            // Fallback only: with no calendar to consult, seed a week when
+            // nothing is stored and otherwise leave the stored one be.
+            if (!cwCode && !window.localStorage.getItem('week') && latestWeek(data)) {
+                cwCode = 'week-' + latestWeek(data);
+            }
+            if (cwCode) {
+                window.localStorage.setItem('weekCode', cwCode);
+                weekCode = cwCode;
+                var _rwSel = document.querySelector('[rivalry-week]');
+                if (_rwSel) _rwSel.value = cwCode;
             }
             // Standings table: decide the layout before painting so an H2H
             // league doesn't flash the classic table then swap (see below). It
@@ -1186,6 +1194,7 @@ if (_rivalryWeekEl) {
     _rivalryWeekEl.addEventListener('change', function () {
         var sel = this.options[this.selectedIndex];
         window.localStorage.setItem("week", sel.text);
+        if (window.ccCurrentWeek) window.ccCurrentWeek.pin();
         window.localStorage.setItem("weekCode", sel.value);
         document.querySelector('.football-loader').style.display = "flex";
         document.querySelector('.schedule-table').style.display = "none";

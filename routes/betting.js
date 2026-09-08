@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const Parlay = require('../models/parlay');
 const Game = require('../models/game');
@@ -145,8 +146,15 @@ router.get('/games/:season/:week', async (req, res) => {
     }
 });
 
+// Catch-all: it sits below every named /betting route, so anything unmatched
+// lands here as a parlay id. A non-id (public/team.js used to ask this router
+// for a SEASON) made Mongoose throw a CastError that surfaced as a 500 — a
+// server fault for what is a bad request. Reject the shape up front.
 router.get('/:id', async (req, res) => {
     try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ message: 'Invalid parlay id' });
+        }
         const parlay = await Parlay.findById(req.params.id).lean();
         if (!parlay) return res.status(404).json({ message: 'Parlay not found' });
         res.json(parlay);

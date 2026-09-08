@@ -61,6 +61,52 @@ describe('league + week bootstrap', () => {
         expect(window.localStorage.getItem('weekCode')).toBe('week-2');
     });
 
+    // The calendar, when we can reach it, outranks whatever is in storage. The
+    // contract is unit-tested in CurrentWeek.spec.js; these two pin the wiring.
+    describe('with the league calendar available', () => {
+        const stubCurrentWeek = (week, pinned = false) => {
+            window.ccCurrentWeek = {
+                pinned: () => pinned,
+                pin: () => {},
+                unpin: () => {},
+                get: async () => week,
+                sync: async () => {
+                    if (pinned) return window.localStorage.getItem('weekCode');
+                    if (week == null) return null;
+                    window.localStorage.setItem('weekCode', 'week-' + week);
+                    window.localStorage.setItem('week', 'Week ' + week);
+                    return 'week-' + week;
+                }
+            };
+        };
+
+        afterEach(() => { delete window.ccCurrentWeek; });
+
+        // The regression. A stored week used to mean "the user chose this", but
+        // My Team writes that key on its own, so the picker stuck on whatever
+        // week it first saw — week 1, for the rest of the season.
+        it('advances a stale picker to the current week', async () => {
+            stubCurrentWeek(4);
+            const page = await loadStandingsPage({
+                users: [scored('a', 'Alice', 'Adams', [10, 20, 30])],
+                localStorage: { week: 'Week 1', weekCode: 'week-1' }
+            });
+
+            expect(window.localStorage.getItem('weekCode')).toBe('week-4');
+            expect(page.q('[rivalry-week]').value).toBe('week-4');
+        });
+
+        it('still leaves a week the viewer pinned alone', async () => {
+            stubCurrentWeek(9, true);
+            await loadStandingsPage({
+                users: [scored('a', 'Alice', 'Adams', [10, 20, 30])],
+                localStorage: { week: 'Week 2', weekCode: 'week-2', weekPinned: '1' }
+            });
+
+            expect(window.localStorage.getItem('weekCode')).toBe('week-2');
+        });
+    });
+
     it('ignores the postseason bucket when picking the latest week', async () => {
         await loadStandingsPage({
             users: [scored('a', 'Alice', 'Adams', [10, { week: 2, score: 5 }, { season: 'postseason', week: 1, score: 40 }])]

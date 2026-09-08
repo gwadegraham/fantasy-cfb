@@ -35,6 +35,11 @@
     window.CC_LEAGUE = <%- (typeof leagueSeed !== 'undefined' && leagueSeed) || '{}' %>;
 </script>
 <script src="/league.js"></script>
+<!-- Shared current week (ccCurrentWeek): one answer to "what week is it",
+     read off the scoreboard calendar. Loaded after league.js, which it uses to
+     know which league to ask about. Pages default their week pickers from this
+     instead of each guessing; see the pinning note in the module. -->
+<script src="/current-week.js"></script>
 <!-- Weekly Recap: shared card rendering + the once-a-week popup, app-wide so the
      popup can greet the logged-in viewer on whatever page they land on. -->
 <link rel="stylesheet" type="text/css" href="/weekly-recap.css">
