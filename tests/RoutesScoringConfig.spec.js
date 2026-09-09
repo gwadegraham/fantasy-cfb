@@ -12,6 +12,7 @@
 const express = require('express');
 const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
+const { restoreEnv } = require('./helpers/env');
 const ScoringConfig = require('../models/scoringConfig');
 const scoringConfigRouter = require('../routes/scoringConfig');
 
@@ -34,7 +35,7 @@ beforeAll(() => {
     prevToken = process.env.INTERNAL_API_TOKEN; process.env.INTERNAL_API_TOKEN = TOKEN;
     prevYear = process.env.YEAR; process.env.YEAR = '2026';
 });
-afterAll(() => { process.env.INTERNAL_API_TOKEN = prevToken; process.env.YEAR = prevYear; });
+afterAll(() => { restoreEnv('INTERNAL_API_TOKEN', prevToken); restoreEnv('YEAR', prevYear); });
 
 function seed(extra) {
     return ScoringConfig.create(Object.assign({

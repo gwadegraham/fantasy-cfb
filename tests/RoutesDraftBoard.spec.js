@@ -9,6 +9,7 @@ const express = require('express');
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
+const { restoreEnv } = require('./helpers/env');
 const Draft = require('../models/draft');
 const Team = require('../models/team');
 const Game = require('../models/game');
@@ -29,7 +30,7 @@ useMongo();
 
 let prevToken;
 beforeAll(() => { prevToken = process.env.INTERNAL_API_TOKEN; process.env.INTERNAL_API_TOKEN = TOKEN; });
-afterAll(() => { process.env.INTERNAL_API_TOKEN = prevToken; });
+afterAll(() => { restoreEnv('INTERNAL_API_TOKEN', prevToken); });
 
 // Notre Dame (independent) plus an ACC opponent and a filler, so the
 // powerConferences setting has something to bite on.
