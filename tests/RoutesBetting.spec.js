@@ -128,3 +128,94 @@ describe('PATCH /betting/:id/legs — alternate spreads', () => {
         expect(res.body.legs[0].teamSide).toBe('home');
     });
 });
+
+// The weekly enrichment job calls this endpoint server-to-server: no Auth0
+// session, identity carried by the X-Internal-Token header. It used to sit
+// below `router.use(requireBettingGroupMember)`, which resolves the caller from
+// req.effUser — so the job was refused with a 403 before its handler ever ran,
+// on every run since the route existed. The failure was silent: a 403 is not a
+// thrown error, so the job logged one line and reported success.
+//
+// Mounted on its own bare app because this route deliberately sits ABOVE the
+// member gate, so the suite's effUser stub must not be in the way.
+describe('POST /betting/retry-stat-legs', () => {
+    const TOKEN = 'internal-token-for-tests';
+
+    jest.mock('../modules/parlay-resolve', () => {
+        const actual = jest.requireActual('../modules/parlay-resolve');
+        return { ...actual, retryPendingStatLegs: jest.fn(() => Promise.resolve({ retried: 2, resolved: 1 })) };
+    });
+    const { retryPendingStatLegs } = require('../modules/parlay-resolve');
+
+    // No effUser middleware: this is what a job's request actually looks like.
+    const jobApp = express();
+    jobApp.use(express.json());
+    jobApp.use('/betting', bettingRouter);
+
+    const OLD_ENV = process.env;
+    beforeEach(() => {
+        process.env = { ...OLD_ENV, INTERNAL_API_TOKEN: TOKEN, YEAR: '2026' };
+        retryPendingStatLegs.mockClear();
+    });
+    afterEach(() => { process.env = OLD_ENV; });
+
+    test('accepts the internal token from a session-less job', async () => {
+        const res = await request(jobApp)
+            .post('/betting/retry-stat-legs')
+            .set('X-Internal-Token', TOKEN)
+            .send({ season: 2026 });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ retried: 2, resolved: 1 });
+        expect(retryPendingStatLegs).toHaveBeenCalledWith(2026);
+    });
+
+    test('does not require betting-group membership to get through', async () => {
+        // No active group at all — the member gate would 403 on this first.
+        await BettingGroup.deleteMany({});
+        const res = await request(jobApp)
+            .post('/betting/retry-stat-legs')
+            .set('X-Internal-Token', TOKEN)
+            .send({ season: 2026 });
+
+        expect(res.status).toBe(200);
+    });
+
+    test('falls back to the configured season when the body omits one', async () => {
+        await request(jobApp)
+            .post('/betting/retry-stat-legs')
+            .set('X-Internal-Token', TOKEN)
+            .send({});
+        expect(retryPendingStatLegs).toHaveBeenCalledWith(2026);
+    });
+
+    test('still refuses a caller with neither a token nor an Admin session', async () => {
+        const res = await request(jobApp).post('/betting/retry-stat-legs').send({ season: 2026 });
+        expect(res.status).toBe(403);
+        expect(retryPendingStatLegs).not.toHaveBeenCalled();
+    });
+
+    test('refuses a wrong token', async () => {
+        const res = await request(jobApp)
+            .post('/betting/retry-stat-legs')
+            .set('X-Internal-Token', 'nope')
+            .send({ season: 2026 });
+        expect(res.status).toBe(403);
+        expect(retryPendingStatLegs).not.toHaveBeenCalled();
+    });
+
+    test('an ordinary logged-in member is still not an admin', async () => {
+        const memberApp = express();
+        memberApp.use(express.json());
+        memberApp.use((req, res, next) => {
+            req.effUser = { user_metadata: { metadata: { userId: MEMBER.toString() }, roles: [] } };
+            req.oidc = { isAuthenticated: () => true, user: { user_metadata: { roles: [] } } };
+            next();
+        });
+        memberApp.use('/betting', bettingRouter);
+
+        const res = await request(memberApp).post('/betting/retry-stat-legs').send({ season: 2026 });
+        expect(res.status).toBe(403);
+        expect(retryPendingStatLegs).not.toHaveBeenCalled();
+    });
+});
