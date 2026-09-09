@@ -7,10 +7,36 @@ const Team = require('../models/team');
 const BettingLine = require('../models/bettingLine');
 const Ranking = require('../models/ranking');
 const requireBettingGroupMember = require('../modules/require-betting-group');
+const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
 const { parlayPayout, combinedAmericanOdds } = require('../modules/parlay-calc');
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
 
+// Maintenance endpoint, called by the weekly enrichment job — not a member
+// action. It re-grades stat legs whose box scores weren't available when the
+// game finished, across every parlay, so it needs no betting-group context.
+//
+// Mounted ABOVE the member gate on purpose. That gate identifies the caller
+// from its Auth0 session, and the job has no session — it's the server calling
+// itself with the internal token — so every run this route has ever had was
+// turned away with a 403 before reaching the handler. requireAdmin is the
+// shared guard that accepts EITHER the internal token or an Admin session,
+// which is what every other job-invoked route in the app already uses.
+//
+// The 403 was silent: it isn't a thrown error, so the job logged one line and
+// still reported success.
+router.post('/retry-stat-legs', requireAdmin, async (req, res) => {
+    try {
+        const season = Number(req.body.season || process.env.YEAR);
+        const { retryPendingStatLegs } = require('../modules/parlay-resolve');
+        const result = await retryPendingStatLegs(season);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Everything below is a member action and needs the caller's betting group.
 router.use(requireBettingGroupMember);
 
 // Widest alternate spread the board offers, and the ceiling the API enforces.
@@ -335,18 +361,6 @@ router.delete('/:id', async (req, res) => {
         }
         await Parlay.findByIdAndDelete(req.params.id);
         res.json({ message: 'Deleted' });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-router.post('/retry-stat-legs', async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ message: 'Admin only' });
-    try {
-        const season = Number(req.body.season || process.env.YEAR);
-        const { retryPendingStatLegs } = require('../modules/parlay-resolve');
-        const result = await retryPendingStatLegs(season);
-        res.json(result);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
