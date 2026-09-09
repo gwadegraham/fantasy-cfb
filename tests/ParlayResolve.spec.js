@@ -137,6 +137,65 @@ describe('resolveLeg — existing types still work', () => {
     });
 });
 
+describe('resolveLeg — spread, including alternate lines', () => {
+    // Alabama 24, LSU 31 — the away side wins by 7.
+    const game = mkGame();
+
+    test.each([
+        ['away favorite covers the number it laid', 'away', -3, 'win'],
+        ['away favorite laying more than it won by loses', 'away', -10, 'loss'],
+        ['away favorite landing exactly on the number pushes', 'away', -7, 'push'],
+        ['away dog covers with points it did not need', 'away', 3.5, 'win'],
+        ['home dog getting more than it lost by covers', 'home', 10, 'win'],
+        ['home dog getting less than it lost by does not', 'home', 3, 'loss'],
+        ['home dog landing exactly on the number pushes', 'home', 7, 'push']
+    ])('%s', (_label, teamSide, line, expected) => {
+        const leg = mkLeg({ betType: 'spread', teamSide, line, selection: 'alt' });
+        expect(resolveLeg(leg, game)).toBe(expected);
+    });
+
+    // Regression. The away branch used to negate the stored line — it graded
+    // "LSU -10" as though LSU were getting 10 — so every away spread that
+    // wasn't a blowout resolved backwards. It went unnoticed because the board
+    // only ever offered the book number, where the error is usually invisible;
+    // the alt ladder makes the gap between the pick and the result wide enough
+    // to flip results routinely.
+    test('an away favorite laying too many points is not credited a win', () => {
+        const leg = mkLeg({ betType: 'spread', selection: 'LSU -10', line: -10 });
+        expect(resolveLeg(leg, game)).toBe('loss');
+    });
+
+    test('grades a leg written before teamSide existed off its selection text', () => {
+        expect(resolveLeg(mkLeg({ betType: 'spread', selection: 'LSU -3', line: -3 }), game)).toBe('win');
+        expect(resolveLeg(mkLeg({ betType: 'spread', selection: 'Alabama +3', line: 3 }), game)).toBe('loss');
+    });
+
+    test('the stored side beats the selection text when they disagree', () => {
+        // Selection text is a display string; a name that appears in both teams
+        // ("Miami" @ "Miami (OH)") makes reading a side out of it a coin toss.
+        const leg = mkLeg({ betType: 'spread', selection: 'LSU -3', teamSide: 'home', line: 3 });
+        expect(resolveLeg(leg, game)).toBe('loss');
+    });
+
+    test('stays pending rather than guessing when a spread leg has no line', () => {
+        expect(resolveLeg(mkLeg({ betType: 'spread', teamSide: 'away', line: null }), game)).toBe('pending');
+    });
+});
+
+describe('resolveLeg — moneyline side', () => {
+    const game = mkGame();
+
+    test('uses the stored side', () => {
+        expect(resolveLeg(mkLeg({ betType: 'moneyline', teamSide: 'away', selection: 'x' }), game)).toBe('win');
+        expect(resolveLeg(mkLeg({ betType: 'moneyline', teamSide: 'home', selection: 'x' }), game)).toBe('loss');
+    });
+
+    test('a tie pushes whichever side was picked', () => {
+        const tied = mkGame({ homePoints: 21, awayPoints: 21 });
+        expect(resolveLeg(mkLeg({ betType: 'moneyline', teamSide: 'home' }), tied)).toBe('push');
+    });
+});
+
 describe('deriveParlayStatus', () => {
     it('returns won when all non-push legs win', () => {
         expect(deriveParlayStatus([

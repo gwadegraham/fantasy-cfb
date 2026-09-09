@@ -58,3 +58,73 @@ describe('GET /betting/:id', () => {
         expect(res.body.season).toBe(2026);
     });
 });
+
+describe('PATCH /betting/:id/legs — alternate spreads', () => {
+    let parlay;
+    beforeEach(async () => {
+        parlay = await Parlay.create({
+            group: group._id, season: 2026, week: 3, wager: 20,
+            legs: [{ contributor: MEMBER }]
+        });
+    });
+
+    const patch = body => request(app)
+        .patch(`/betting/${parlay._id}/legs`)
+        .send({ contributor: MEMBER.toString(), gameId: 401856660, ...body });
+
+    test('stores an alternate line off the book number as a real spread leg', async () => {
+        const res = await patch({
+            betType: 'spread', selection: 'LSU -6.5', line: -6.5, teamSide: 'home', odds: -181
+        });
+
+        expect(res.status).toBe(200);
+        const leg = res.body.legs[0];
+        expect(leg.betType).toBe('spread');
+        expect(leg.line).toBe(-6.5);
+        expect(leg.teamSide).toBe('home');
+        expect(leg.result).toBe('pending');
+    });
+
+    // The whole point of the feature: these used to come in as betType 'custom',
+    // which the resolver has no arithmetic for, so an admin graded them by hand.
+    test('refuses a spread leg with no side, rather than storing one nothing can grade', async () => {
+        const res = await patch({ betType: 'spread', selection: 'LSU -6.5', line: -6.5, odds: -181 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/team side/i);
+    });
+
+    test('refuses a spread leg with no line', async () => {
+        const res = await patch({ betType: 'spread', selection: 'LSU', teamSide: 'home', odds: -110 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/half-point/i);
+    });
+
+    test.each([
+        ['a quarter point the board cannot produce', -6.25],
+        ['a fat-fingered line', -750]
+    ])('refuses %s', async (_label, line) => {
+        const res = await patch({ betType: 'spread', selection: 'LSU', line, teamSide: 'home', odds: -110 });
+        expect(res.status).toBe(400);
+    });
+
+    test('lets a later patch change only the odds without resupplying the line', async () => {
+        await patch({ betType: 'spread', selection: 'LSU -6.5', line: -6.5, teamSide: 'home', odds: -181 });
+
+        const res = await patch({ odds: -175 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].odds).toBe(-175);
+        expect(res.body.legs[0].line).toBe(-6.5);
+        expect(res.body.legs[0].teamSide).toBe('home');
+    });
+
+    test('leaves the other bet types alone', async () => {
+        const res = await patch({ betType: 'moneyline', selection: 'LSU ML', teamSide: 'home', odds: -410 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].line).toBeUndefined();
+        expect(res.body.legs[0].teamSide).toBe('home');
+    });
+});

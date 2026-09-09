@@ -18,6 +18,15 @@ const legSchema = new mongoose.Schema({
     line: {
         type: Number
     },
+    // spread/moneyline legs: which team was picked. `line` is stored from that
+    // team's point of view (a favorite is negative), so the side is the other
+    // half of the bet and the resolver can't infer it from the number alone.
+    // Older legs predate this field; parlay-resolve falls back to reading the
+    // team out of `selection` when it's absent.
+    teamSide: {
+        type: String,
+        enum: ['home', 'away', null]
+    },
     // stat_over_under legs only: which stat and which team
     statCategory: {
         type: String

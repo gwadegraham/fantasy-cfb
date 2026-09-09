@@ -202,7 +202,7 @@ function renderCurrentParlay() {
             if (window.IS_ADMIN) {
                 return renderLegPickCTA(leg, parlay._id, i, name, color, init);
             }
-            return '<div class="leg leg-empty">'
+            return '<div class="leg leg-empty" data-contributor="' + leg.contributor + '">'
                 + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
                 + '<div class="leg-detail"><div class="leg-pick">Awaiting pick...</div></div>'
                 + '</div>';
@@ -238,7 +238,7 @@ function renderCurrentParlay() {
                 + '</div>';
         }
 
-        return '<div class="leg">'
+        return '<div class="leg" data-contributor="' + leg.contributor + '">'
             + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
             + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game">' + matchup + '</div></div>'
             + '<div class="leg-odds">' + formatOdds(leg.odds) + '</div>'
@@ -395,7 +395,7 @@ function moneyExplosion(anchor) {
 /* ── New leg entry: CTA button → game picker → bet board ── */
 
 function renderLegPickCTA(leg, parlayId, index, name, color, init) {
-    return '<div class="leg-pick-cta" id="leg-cta-' + index + '">'
+    return '<div class="leg-pick-cta" id="leg-cta-' + index + '" data-contributor="' + leg.contributor + '">'
         + '<div class="leg-pick-cta-row">'
         + '<div class="leg-contributor">'
         + avatarHtml(leg.contributor, color, init)
@@ -410,6 +410,24 @@ function renderLegPickCTA(leg, parlayId, index, name, color, init) {
 }
 
 var activePick = null; // { parlayId, contributor, index, gameId, game }
+
+// Keep the eye on the row that was just acted on.
+//
+// renderCurrentParlay() replaces all of #betting-content, and an open bet board
+// is taller than a phone viewport. When it collapses on submit, the page does
+// not scroll at all — roughly 600px above the fold simply stops existing, so an
+// unchanged scroll offset ends up pointing at whatever slid up into it, which
+// in practice is the season summary two sections down. Restoring the old
+// scrollTop wouldn't help: the element it was measured against is gone. Anchor
+// on the contributor's row instead, which survives every one of these renders
+// in one shape or another.
+function scrollLegIntoView(contributor, position) {
+    if (!contributor) return;
+    var el = document.querySelector('#betting-content [data-contributor="' + contributor + '"]');
+    if (!el || !el.scrollIntoView) return;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: position || 'center', behavior: reduced ? 'auto' : 'smooth' });
+}
 
 function openGamePicker(parlayId, contributor, index) {
     activePick = { parlayId: parlayId, contributor: contributor, index: index };
@@ -497,6 +515,9 @@ function selectGame(gameId) {
     if (btn) btn.innerHTML = '<span>' + game.awayTeam + ' @ ' + game.homeTeam + '</span><i class="fa-solid fa-chevron-down"></i>';
 
     renderBetBoard(activePick.index, game);
+    // 'start' rather than 'center': the board is taller than the viewport, so
+    // centring it would cut off the tabs and the spread row at the top.
+    scrollLegIntoView(activePick.contributor, 'start');
 }
 
 function renderBetBoard(index, game) {
@@ -529,18 +550,28 @@ function renderBetBoard(index, game) {
         var awaySpread = -homeSpread;
         var homeFmt = (homeSpread >= 0 ? '+' : '') + homeSpread;
         var awayFmt = (awaySpread >= 0 ? '+' : '') + awaySpread;
-        html += betButton(index, 'spread', game.homeTeam + ' ' + homeFmt, homeSpread, -110, game.homeTeam + ' ' + homeFmt);
-        html += betButton(index, 'spread', game.awayTeam + ' ' + awayFmt, awaySpread, -110, game.awayTeam + ' ' + awayFmt);
+        html += betButton(index, 'spread', game.homeTeam + ' ' + homeFmt, homeSpread, -110, game.homeTeam + ' ' + homeFmt, 'home');
+        html += betButton(index, 'spread', game.awayTeam + ' ' + awayFmt, awaySpread, -110, game.awayTeam + ' ' + awayFmt, 'away');
     } else {
         html += '<div class="bet-btn-na">N/A</div><div class="bet-btn-na">N/A</div>';
     }
     html += '</div>';
 
+    // Alt spread: pick a team, then slide off the book number. Home on the left,
+    // away on the right — the same order as the Spread and ML rows this sits
+    // between. (The Stats panel below runs away-then-home, but it's a separate
+    // tab; here the mismatch reads as the teams having swapped sides.)
+    html += '<div class="bet-row alt-team-row"><div class="bet-row-label">Alt</div>'
+        + '<button type="button" class="alt-team-btn" data-side="home" onclick="pickAltTeam(' + index + ',\'home\',this)">' + game.homeTeam + '</button>'
+        + '<button type="button" class="alt-team-btn" data-side="away" onclick="pickAltTeam(' + index + ',\'away\',this)">' + game.awayTeam + '</button>'
+        + '</div>';
+    html += '<div class="alt-spread-wrap" id="alt-spread-' + index + '"></div>';
+
     // Moneyline row
     html += '<div class="bet-row"><div class="bet-row-label">ML</div>';
     if (dk && (dk.homeMoneyline != null || dk.awayMoneyline != null)) {
-        html += betButton(index, 'moneyline', game.homeTeam + ' ML', null, dk.homeMoneyline, game.homeTeam + ' ML');
-        html += betButton(index, 'moneyline', game.awayTeam + ' ML', null, dk.awayMoneyline, game.awayTeam + ' ML');
+        html += betButton(index, 'moneyline', game.homeTeam + ' ML', null, dk.homeMoneyline, game.homeTeam + ' ML', 'home');
+        html += betButton(index, 'moneyline', game.awayTeam + ' ML', null, dk.awayMoneyline, game.awayTeam + ' ML', 'away');
     } else {
         html += '<div class="bet-btn-na">N/A</div><div class="bet-btn-na">N/A</div>';
     }
@@ -593,7 +624,7 @@ function switchBetTab(index, tab, btn) {
     if (panel) panel.style.display = '';
 }
 
-var selectedBet = null; // { index, betType, selection, line, odds, statCategory?, statTeamSide? }
+var selectedBet = null; // { index, betType, selection, line, odds, teamSide?, statCategory?, statTeamSide? }
 
 // Stat categories available for stat O/U legs, with default lines.
 var STAT_CATS = [
@@ -609,17 +640,17 @@ var STAT_CATS = [
 
 var activeStatPick = null; // { index, side, teamName, cat }
 
-function betButton(index, betType, label, line, odds, selection) {
+function betButton(index, betType, label, line, odds, selection, side) {
     var safeSelection = selection.replace(/'/g, "\\'");
     return '<button type="button" class="bet-btn" '
-        + 'onclick="pickBet(' + index + ',\'' + betType + '\',\'' + safeSelection + '\',' + (line != null ? line : 'null') + ',' + (odds != null ? odds : 'null') + ', this)">'
+        + 'onclick="pickBet(' + index + ',\'' + betType + '\',\'' + safeSelection + '\',' + (line != null ? line : 'null') + ',' + (odds != null ? odds : 'null') + ',\'' + (side || '') + '\', this)">'
         + '<span class="bet-btn-label">' + label + '</span>'
         + '<span class="bet-btn-odds">' + formatOdds(odds) + '</span>'
         + '</button>';
 }
 
-function pickBet(index, betType, selection, line, odds, btn) {
-    selectedBet = { index: index, betType: betType, selection: selection, line: line, odds: odds };
+function pickBet(index, betType, selection, line, odds, side, btn) {
+    selectedBet = { index: index, betType: betType, selection: selection, line: line, odds: odds, teamSide: side || null };
 
     // Toggle selected state
     var board = document.getElementById('bet-board-' + index);
@@ -655,6 +686,144 @@ function pickCustomBet(index, btn) {
 
     var oddsInput = document.getElementById('custom-odds-' + index);
     if (oddsInput) { oddsInput.value = ''; oddsInput.focus(); }
+
+    var submitBtn = document.getElementById('btn-submit-' + index);
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+/* ── Alt spread: team → half-point ladder off the book number ── */
+//
+// The point of this section: an alt spread submits as a REAL spread leg
+// (betType 'spread' + line + teamSide), so modules/parlay-resolve.js grades it
+// on Saturday night like any other. Typed into the Custom box — which is where
+// these picks used to go — it would have waited on an admin.
+
+var activeAltPick = null; // { index, side, teamName, base, steps }
+
+// How far either side of the book number the ladder reaches. 21 points covers
+// buying a big favorite down to a coin flip and taking a dog out to a blowout.
+var ALT_REACH = 21;
+
+function pickAltTeam(index, side, btn) {
+    var board = document.getElementById('bet-board-' + index);
+    if (board) board.querySelectorAll('.alt-team-btn').forEach(function (b) { b.classList.remove('selected'); });
+    btn.classList.add('selected');
+
+    var game = activePick && activePick.game;
+    if (!game) return;
+
+    // Book spread from the PICKED team's point of view — dk.spread is always
+    // the home team's, so the away side is its mirror.
+    var base = game.dk && game.dk.spread != null
+        ? (side === 'home' ? game.dk.spread : -game.dk.spread)
+        : null;
+
+    activeAltPick = {
+        index: index,
+        side: side,
+        teamName: side === 'home' ? game.homeTeam : game.awayTeam,
+        base: base,
+        steps: ccAltSpread.ladder(base, ALT_REACH)
+    };
+
+    renderAltLadder(index);
+}
+
+function renderAltLadder(index) {
+    var wrap = document.getElementById('alt-spread-' + index);
+    if (!wrap || !activeAltPick) return;
+
+    var steps = activeAltPick.steps;
+    var startIdx = steps.indexOf(activeAltPick.base == null ? 0 : Math.round(activeAltPick.base * 2) / 2);
+    if (startIdx < 0) startIdx = Math.floor(steps.length / 2);
+
+    wrap.innerHTML =
+        '<div class="alt-line-row">'
+        + '<button type="button" class="alt-nudge" onclick="nudgeAltLine(' + index + ',-1)" aria-label="Half point down">&minus;</button>'
+        + '<div class="alt-line-display" id="alt-line-val-' + index + '"></div>'
+        + '<button type="button" class="alt-nudge" onclick="nudgeAltLine(' + index + ',1)" aria-label="Half point up">+</button>'
+        + '</div>'
+        + '<input type="range" class="stat-slider alt-slider" id="alt-range-' + index + '" min="0" max="' + (steps.length - 1) + '" value="' + startIdx + '" oninput="updateAltLine(' + index + ')">'
+        + '<div class="alt-line-note" id="alt-line-note-' + index + '"></div>'
+        + '<button type="button" class="bet-btn alt-use-btn" onclick="pickAltSpread(' + index + ', this)"><span class="bet-btn-label">Use this line</span></button>';
+
+    updateAltLine(index, true);
+}
+
+function altLineAt(index) {
+    var slider = document.getElementById('alt-range-' + index);
+    if (!slider || !activeAltPick) return null;
+    var v = activeAltPick.steps[Number(slider.value)];
+    return v == null ? null : v;
+}
+
+function updateAltLine(index, keepSelection) {
+    if (!activeAltPick || activeAltPick.index !== index) return;
+    var line = altLineAt(index);
+    if (line == null) return;
+
+    var display = document.getElementById('alt-line-val-' + index);
+    if (display) display.textContent = activeAltPick.teamName + ' ' + ccAltSpread.formatLine(line);
+
+    var suggested = ccAltSpread.suggestedOdds(activeAltPick.base, line);
+    var note = document.getElementById('alt-line-note-' + index);
+    if (note) {
+        if (activeAltPick.base == null) {
+            note.textContent = 'No book line for this game — set the odds yourself.';
+        } else if (line === Math.round(activeAltPick.base * 2) / 2) {
+            note.textContent = 'The book number · est. ' + formatOdds(suggested);
+        } else {
+            note.textContent = 'Book has ' + ccAltSpread.formatLine(activeAltPick.base)
+                + ' · est. ' + formatOdds(suggested);
+        }
+    }
+
+    // Moving the line invalidates the price the user already agreed to, so make
+    // them press Use again rather than silently submitting a stale pairing.
+    if (!keepSelection) {
+        var wrap = document.getElementById('alt-spread-' + index);
+        if (wrap) wrap.querySelectorAll('.alt-use-btn').forEach(function (b) { b.classList.remove('selected'); });
+        if (selectedBet && selectedBet.isAlt) {
+            selectedBet = null;
+            var submitBtn = document.getElementById('btn-submit-' + index);
+            if (submitBtn) submitBtn.disabled = true;
+        }
+    }
+}
+
+function nudgeAltLine(index, direction) {
+    var slider = document.getElementById('alt-range-' + index);
+    if (!slider) return;
+    var next = Number(slider.value) + direction;
+    if (next < 0 || next > Number(slider.max)) return;
+    slider.value = next;
+    updateAltLine(index);
+}
+
+function pickAltSpread(index, btn) {
+    if (!activeAltPick || activeAltPick.index !== index) return;
+    var line = altLineAt(index);
+    if (line == null) return;
+
+    var board = document.getElementById('bet-board-' + index);
+    if (board) board.querySelectorAll('.bet-btn').forEach(function (b) { b.classList.remove('selected'); });
+    btn.classList.add('selected');
+
+    var suggested = ccAltSpread.suggestedOdds(activeAltPick.base, line);
+    selectedBet = {
+        index: index,
+        betType: 'spread',
+        selection: activeAltPick.teamName + ' ' + ccAltSpread.formatLine(line),
+        line: line,
+        odds: suggested,
+        teamSide: activeAltPick.side,
+        isAlt: true
+    };
+
+    // The estimate is a starting point — whatever price the book actually shows
+    // belongs in this box, and it's what gets stored.
+    var oddsInput = document.getElementById('custom-odds-' + index);
+    if (oddsInput) oddsInput.value = suggested == null ? '' : suggested;
 
     var submitBtn = document.getElementById('btn-submit-' + index);
     if (submitBtn) submitBtn.disabled = false;
@@ -780,6 +949,9 @@ function pickStatOU(index, direction, btn) {
 async function submitLegNew(index) {
     if (!activePick || !selectedBet) return;
 
+    // Read before refresh() clears activePick — it's the anchor afterwards.
+    var contributor = activePick.contributor;
+
     var oddsInput = document.getElementById('custom-odds-' + index);
     var finalOdds = oddsInput && oddsInput.value ? Number(oddsInput.value) : selectedBet.odds;
 
@@ -796,6 +968,7 @@ async function submitLegNew(index) {
                 selection: selectedBet.selection,
                 line: selectedBet.line,
                 odds: finalOdds,
+                teamSide: selectedBet.teamSide || null,
                 statCategory: selectedBet.statCategory || null,
                 statTeamSide: selectedBet.statTeamSide || null
             })
@@ -805,6 +978,7 @@ async function submitLegNew(index) {
             activePick = null;
             selectedBet = null;
             await refresh();
+            scrollLegIntoView(contributor);
         } else {
             var data = await res.json();
             if (window.ccToast) ccToast.error(data.message || 'Failed to submit');
@@ -824,6 +998,7 @@ function editLeg(parlayId, contributor) {
     if (!leg) return;
     leg.gameId = null;
     renderCurrentParlay();
+    scrollLegIntoView(contributor, 'start');
 }
 
 async function createParlay() {
