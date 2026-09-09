@@ -13,6 +13,7 @@ const express = require('express');
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
+const { restoreEnv } = require('./helpers/env');
 const Team = require('../models/team');
 const User = require('../models/user');
 const searchRouter = require('../routes/search');
@@ -42,7 +43,7 @@ useMongo();
 
 let prevYear;
 beforeAll(() => { prevYear = process.env.YEAR; process.env.YEAR = String(SEASON); });
-afterAll(() => { process.env.YEAR = prevYear; });
+afterAll(() => { restoreEnv('YEAR', prevYear); });
 
 // CFBD hands back many logo URLs — 8 sizes x light/dark. The dark 500 is the one
 // pickLogo should choose, and it arrives over http, which must be upgraded.

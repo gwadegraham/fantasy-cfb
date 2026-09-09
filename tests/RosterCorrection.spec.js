@@ -292,9 +292,15 @@ describe('PATCH /users/:id/roster-team', () => {
                 { round: 1, overall: 2, userId: bob._id, team: { id: 9, school: 'Oregon' } }
             ]
         });
-        // Free Oregon up first, then hand it to Ann.
+        // Free Oregon up first, then hand it to Ann. Assert the freeing step:
+        // if it quietly fails, Bob keeps Oregon and the SECOND patch correctly
+        // returns 409 "already on Bob's roster" — a truthful answer to a question
+        // the test didn't mean to ask, which reads as a flake in the assertion
+        // below rather than as the failure it actually is.
         await Team.create([fullTeam(3, 'Utah')]);
-        await patch(bob._id, { fromTeamId: 9, toTeamId: 3 });
+        const freed = await patch(bob._id, { fromTeamId: 9, toTeamId: 3 });
+        expect(freed.status).toBe(200);
+
         const res = await patch(ann._id, { fromTeamId: 1, toTeamId: 9 });
         expect(res.status).toBe(200);
 
