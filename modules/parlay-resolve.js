@@ -2,6 +2,18 @@ const Parlay = require('../models/parlay');
 const Game = require('../models/game');
 const { parlayPayout } = require('./parlay-calc');
 
+// Which team a spread/moneyline leg backs. Legs written since the alt-spread
+// board carry it outright; older ones only have the selection text ("LSU -3"),
+// so fall back to matching the away team's name in it. That fallback is a guess
+// — it reads "Miami" as the away side of Miami @ Miami (OH) — which is why the
+// stored side wins whenever it's there.
+function pickedHomeSide(leg, game) {
+    if (leg.teamSide === 'home') return true;
+    if (leg.teamSide === 'away') return false;
+    const sel = (leg.selection || '').toLowerCase();
+    return !sel.includes((game.awayTeam || '').toLowerCase());
+}
+
 function resolveLeg(leg, game) {
     if (leg.result !== 'pending') return leg.result;
     if (!game || !game.completed) return 'pending';
@@ -14,11 +26,14 @@ function resolveLeg(leg, game) {
 
     switch (leg.betType) {
         case 'spread': {
-            const margin = home - away;
-            const isHomePick = !sel.includes(game.awayTeam.toLowerCase());
-            const covered = isHomePick
-                ? margin + leg.line
-                : (away - home) + (-leg.line);
+            if (leg.line == null || isNaN(leg.line)) return 'pending';
+            // `line` is from the picked team's point of view, so the same
+            // arithmetic grades the book's number and any alternate off it:
+            // add the points you were given (or lay the ones you took) to your
+            // own margin. A whole number can land on zero, which is a push.
+            const pickedHome = pickedHomeSide(leg, game);
+            const margin = pickedHome ? (home - away) : (away - home);
+            const covered = margin + Number(leg.line);
             if (covered > 0) return 'win';
             if (covered === 0) return 'push';
             return 'loss';
@@ -26,8 +41,7 @@ function resolveLeg(leg, game) {
         case 'moneyline': {
             if (home === away) return 'push';
             const homeWon = home > away;
-            const pickedHome = !sel.includes(game.awayTeam.toLowerCase());
-            return (homeWon === pickedHome) ? 'win' : 'loss';
+            return (homeWon === pickedHomeSide(leg, game)) ? 'win' : 'loss';
         }
         case 'over_under': {
             const isOver = sel.includes('over');
@@ -152,4 +166,4 @@ async function retryPendingStatLegs(season) {
     return { retried: bs.ingested, resolved, remainingCalls: bs.remainingCalls };
 }
 
-module.exports = { resolveParlays, resolveLeg, deriveParlayStatus, retryPendingStatLegs };
+module.exports = { resolveParlays, resolveLeg, pickedHomeSide, deriveParlayStatus, retryPendingStatLegs };
