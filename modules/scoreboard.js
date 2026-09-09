@@ -182,6 +182,12 @@ async function updateFromScoreboard() {
             $set.liveHomeWinProb = null;
             $set.situation = null;
             $set.lastPlay = null;
+            // `possession` belongs with them: it's the last team to have the ball,
+            // which is meaningless on a final. Every surface that draws the
+            // football already gates on the game being live, so this is hygiene
+            // rather than a visible fix — but leaving a live-only field populated
+            // on a finished game is a trap for the next surface that forgets.
+            $set.possession = null;
         }
 
         // Accumulate the win-probability curve. A live tick appends the current

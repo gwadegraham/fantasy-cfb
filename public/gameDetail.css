@@ -666,6 +666,15 @@ html.gd-page, .gd-page body {
 .gd-wp-situation { color: var(--cc-muted-bright); font-weight: 500; }
 .gd-wp-hint { color: var(--cc-muted-2); font-style: italic; }
 
+/* Caveat under a curve the poller only partly captured. Deliberately quiet —
+   it qualifies the chart, it isn't a warning about it. */
+.gd-wp-coverage {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--cc-muted-2);
+}
+
 /* ---- Season Stats (tug-of-war bars) ---- */
 .gd-ss-header {
     display: flex;

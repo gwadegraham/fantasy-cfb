@@ -7,8 +7,17 @@ const { startRun, finishRun } = require('./modules/job-logger');
 const { sendJobEmail, emailOnSuccess } = require('./modules/job-mailer');
 
 const JOB_NAME = 'season-stats';
+const LABEL = 'Season Stats';
 
+// `message` on a JobRun is a String, and sendJobEmail takes a single options
+// object. Both used to be handed the raw response body — which made the PATCH
+// that finishes the run fail its cast (leaving every run stuck at 'running'
+// forever) and every email render as "undefined FAILED" even on success.
+// Neither failure was visible from inside the job: job-logger swallows a bad
+// response and the mailer never throws.
 async function run() {
+    const startMs = Date.now();
+    const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
     const season = parseInt(process.env.YEAR, 10);
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
@@ -20,14 +29,39 @@ async function run() {
         if (res.status !== 200) {
             throw new Error(`Ingest failed: ${body.message || res.status}`);
         }
-        console.log(`[${JOB_NAME}] ${body.teams} teams ingested (${body.created} new, ${body.updated} updated)`);
-        await finishRun(id, 'success', body);
-        if (emailOnSuccess()) sendJobEmail(JOB_NAME, 'success', body);
+        const secs = Math.round((Date.now() - startMs) / 1000);
+        const summary = `${body.teams} teams ingested `
+            + `(${body.created} new, ${body.updated} updated) (${secs}s)`;
+        console.log(`[${JOB_NAME}] ${summary}`);
+        await finishRun(id, 'success', summary);
+
+        if (emailOnSuccess()) {
+            await sendJobEmail({
+                label: LABEL, when, ok: true,
+                rows: [
+                    ['Season', String(season)],
+                    ['Teams ingested', String(body.teams)],
+                    ['New', String(body.created)],
+                    ['Updated', String(body.updated)],
+                    ['Duration', `${secs}s`]
+                ]
+            });
+        }
+        return body;
     } catch (err) {
-        console.error(`[${JOB_NAME}] failed:`, err.message);
-        await finishRun(id, 'error', { message: err.message });
-        sendJobEmail(JOB_NAME, 'error', { message: err.message });
+        const secs = Math.round((Date.now() - startMs) / 1000);
+        const msg = (err && err.message) ? err.message : String(err);
+        console.error(`[${JOB_NAME}] failed:`, msg);
+        await finishRun(id, 'error', msg);
+        await sendJobEmail({
+            label: LABEL, when, ok: false,
+            rows: [['Season', String(season)], ['Failed after', `${secs}s`]],
+            error: (err && err.stack) ? err.stack : msg
+        });
+        // Rethrow so the scheduler's catch sees a failed run. Swallowing it here
+        // made a broken ingest indistinguishable from a healthy one.
+        throw err;
     }
 }
 
-module.exports = { run, JOB_NAME };
+module.exports = { run, JOB_NAME, LABEL };

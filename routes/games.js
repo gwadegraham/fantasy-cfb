@@ -651,6 +651,7 @@ router.post('/:season/media', async (req, res) => {
 const { updatePregameWP } = require('../modules/pregame-wp');
 const { updateWeather } = require('../modules/game-weather');
 const { ingestPlayerStats } = require('../modules/player-box-scores');
+const { ingestBoxScores } = require('../modules/box-scores');
 
 router.post('/:season/pregame-wp', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
@@ -691,6 +692,30 @@ router.post('/:season/weather', async (req, res) => {
 // Ingest player-level box scores from CFBD /games/players for a given week.
 // Called by the enrichment job for weekly backfill, or manually.
 // body: { week: Number, seasonType?: 'regular'|'postseason' }
+// Ingest team-level box scores from CFBD /games/teams for a given week.
+// Called by the enrichment job to backfill any game the live poller's
+// completion hook missed (a poller outage, a CFBD 502, a game that reached
+// completed:true through routes/games.js instead). Idempotent — re-running a
+// week just rewrites the same stats.
+// body: { week: Number, seasonType?: 'regular'|'postseason' }
+router.post('/:season/team-stats', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    const week = req.body && req.body.week;
+    if (week == null || isNaN(Number(week))) {
+        return res.status(400).json({ message: 'week is required' });
+    }
+    try {
+        const result = await ingestBoxScores(season, Number(week), req.body.seasonType);
+        res.status(200).json({ season, week: Number(week), ...result });
+    } catch (err) {
+        console.log('Error ingesting team stats:', err.message);
+        res.status(400).json({ message: err.message });
+    }
+});
+
 router.post('/:season/player-stats', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({ message: 'Invalid season' });

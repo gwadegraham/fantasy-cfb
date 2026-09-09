@@ -153,17 +153,35 @@ async function retryPendingStatLegs(season) {
         return { retried: 0, resolved };
     }
 
+    // /games/teams is fetched a week at a time (see box-scores.js), so group the
+    // games that still need one and spend a single call per distinct week rather
+    // than one per game. Legs on the same slate collapse to one call.
     const { ingestBoxScores } = require('./box-scores');
-    const ids = needBoxScores.map(g => g.id);
-    const bs = await ingestBoxScores(ids, season);
+    const byWeek = new Map();
+    for (const g of needBoxScores) {
+        const key = `${g.seasonType || 'regular'}:${g.week}`;
+        if (!byWeek.has(key)) byWeek.set(key, { week: g.week, seasonType: g.seasonType, ids: [] });
+        byWeek.get(key).ids.push(g.id);
+    }
 
-    if (bs.remainingCalls != null && bs.remainingCalls <= CALL_BUFFER) {
-        console.log(`retryPendingStatLegs: ${bs.remainingCalls} CFBD calls left — at budget ceiling`);
+    let ingested = 0;
+    let remainingCalls = null;
+    for (const { week, seasonType, ids } of byWeek.values()) {
+        const bs = await ingestBoxScores(season, week, seasonType, ids);
+        ingested += bs.ingested;
+        if (bs.remainingCalls != null) remainingCalls = bs.remainingCalls;
+        // Stop before the budget floor rather than after — the remaining weeks
+        // retry on the next run, and the calls left are worth more to the live
+        // poller than to a backfill.
+        if (remainingCalls != null && remainingCalls <= CALL_BUFFER) {
+            console.log(`retryPendingStatLegs: ${remainingCalls} CFBD calls left — at budget ceiling, stopping`);
+            break;
+        }
     }
 
     const resolved = await resolveParlays();
-    console.log(`retryPendingStatLegs: fetched box scores for ${bs.ingested} game(s), resolved ${resolved} parlay(s)`);
-    return { retried: bs.ingested, resolved, remainingCalls: bs.remainingCalls };
+    console.log(`retryPendingStatLegs: fetched box scores for ${ingested} game(s), resolved ${resolved} parlay(s)`);
+    return { retried: ingested, resolved, remainingCalls };
 }
 
 module.exports = { resolveParlays, resolveLeg, pickedHomeSide, deriveParlayStatus, retryPendingStatLegs };

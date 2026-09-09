@@ -193,3 +193,80 @@ describe('update-enrichment-job run()', () => {
         expect(sendJobEmail).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
     });
 });
+
+// The backfill legs are the ones that broke: they were pointed at `currentWeek`,
+// the slate about to be played, so they asked CFBD for box scores of games that
+// had not happened and ingested nothing, every week, in silence.
+describe('update-enrichment-job box score backfill', () => {
+    function stubFetch() {
+        global.fetch = jest.fn((url, opts) => {
+            const res = { status: 200, __opts: opts };
+            if (url.includes('/job-runs')) {
+                res.status = opts && opts.method === 'POST' ? 201 : 200;
+                res.json = () => Promise.resolve({ _id: 'run-1' });
+            } else if (url.includes('/enrich')) {
+                res.json = () => Promise.resolve({ updated: 130 });
+            } else if (url.includes('/media')) {
+                res.json = () => Promise.resolve({ updated: 55 });
+            } else if (url.includes('/player-stats') || url.includes('/team-stats')) {
+                res.json = () => Promise.resolve({ ingested: 7 });
+            } else {
+                res.json = () => Promise.resolve({ updated: 0 });
+            }
+            return Promise.resolve(res);
+        });
+    }
+    const bodyOf = (fragment) => {
+        const call = global.fetch.mock.calls.find(c => c[0].includes(fragment));
+        return call ? JSON.parse(call[1].body) : null;
+    };
+
+    test('backfills the LAST COMPLETED week, not the upcoming one', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 5 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 5, skip: false });
+        stubFetch();
+        await enrichmentJob.run();
+
+        // Forward-looking legs stay on the current week...
+        expect(bodyOf('/pregame-wp')).toMatchObject({ week: 5 });
+        expect(bodyOf('/weather')).toMatchObject({ week: 5 });
+        // ...backward-looking ones go to the week whose games are finished.
+        expect(bodyOf('/player-stats')).toMatchObject({ week: 4 });
+        expect(bodyOf('/team-stats')).toMatchObject({ week: 4 });
+    });
+
+    test('skips the backfill in week 1 — there is no completed week yet', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 1 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 1, skip: false });
+        stubFetch();
+        const results = await enrichmentJob.run();
+
+        expect(bodyOf('/pregame-wp')).toMatchObject({ week: 1 });
+        expect(global.fetch.mock.calls.some(c => c[0].includes('/player-stats'))).toBe(false);
+        expect(global.fetch.mock.calls.some(c => c[0].includes('/team-stats'))).toBe(false);
+        expect(results.teamStats).toBeUndefined();
+    });
+
+    test('preseason runs skip both backfill legs', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 4 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 4, skip: false });
+        stubFetch();
+        await enrichmentJob.run({ preseason: true });
+
+        expect(global.fetch.mock.calls.some(c => c[0].includes('/player-stats'))).toBe(false);
+        expect(global.fetch.mock.calls.some(c => c[0].includes('/team-stats'))).toBe(false);
+    });
+
+    test('team stat backfill counts land in the run summary', async () => {
+        getCalendar.mockResolvedValueOnce([{ week: 3 }]);
+        resolveCurrentWeek.mockReturnValueOnce({ week: 3, skip: false });
+        stubFetch();
+        await enrichmentJob.run();
+
+        const finish = global.fetch.mock.calls.find(
+            c => c[0].includes('/job-runs/') && c[1].method === 'PATCH');
+        const summary = JSON.parse(finish[1].body).message;
+        expect(typeof summary).toBe('string');
+        expect(summary).toContain('7 games given team stats');
+    });
+});
