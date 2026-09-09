@@ -13,8 +13,8 @@ const { resolveCurrentWeek } = require('./modules/score-update');
 // returning production, coaches) = ~5 CFBD calls for the enrich leg. With the
 // 5k/mo Tier 1 budget this is cheap enough to run weekly.
 //
-// The 'preseason' flag now only controls whether pregame WP / weather / stat
-// retries are skipped (no games to score yet).
+// The 'preseason' flag now only controls whether pregame WP / weather / box
+// score backfill / stat retries are skipped (no games to score yet).
 //
 // Timing for the weekly run is owned by modules/scheduler.js; running this file
 // directly is a manual fallback:
@@ -61,12 +61,23 @@ async function run(opts = {}) {
         results.teams = await post(`/teams/${season}/enrich`, enrichBody);
         results.media = await post(`/games/${season}/media`);
 
-        // Pregame win probabilities: fetch for the current week (weekly runs).
-        // Preseason runs skip this — no games to project yet.
+        // Pregame win probabilities and weather look FORWARD, at the week about
+        // to be played.
+        //
+        // Box scores look BACKWARD. They only exist for games that have already
+        // finished, so asking for `currentWeek` — the upcoming slate — fetched a
+        // week with no results in it and ingested nothing, every single week.
+        // The last completed week is the one with games to backfill; this runs
+        // Tuesday morning, by which point week N-1 is finished down to its
+        // Monday-night game.
+        const backfillWeek = currentWeek != null && currentWeek > 1 ? currentWeek - 1 : null;
         if (!preseason && currentWeek != null) {
             results.pregameWP = await post(`/games/${season}/pregame-wp`, { week: currentWeek });
             results.weather = await post(`/games/${season}/weather`, { week: currentWeek });
-            results.playerStats = await post(`/games/${season}/player-stats`, { week: currentWeek });
+        }
+        if (!preseason && backfillWeek != null) {
+            results.playerStats = await post(`/games/${season}/player-stats`, { week: backfillWeek });
+            results.teamStats = await post(`/games/${season}/team-stats`, { week: backfillWeek });
         }
 
         // Retry stat-based parlay legs whose box scores weren't available on
@@ -96,6 +107,7 @@ async function run(opts = {}) {
         const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
         const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
         const psIngested = results.playerStats ? (results.playerStats.body.ingested || 0) : 0;
+        const tsIngested = results.teamStats ? (results.teamStats.body.ingested || 0) : 0;
         const statRetried = results.statRetry ? (results.statRetry.body.retried || 0) : 0;
         const statResolved = results.statRetry ? (results.statRetry.body.resolved || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
@@ -104,6 +116,7 @@ async function run(opts = {}) {
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
             + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
             + (psIngested ? ` · ${psIngested} games given player stats` : '')
+            + (tsIngested ? ` · ${tsIngested} games given team stats` : '')
             + (statRetried ? ` · ${statRetried} box score retries → ${statResolved} parlays resolved` : '')
             + ` (${secs}s)`;
         console.log(`[${JOB_NAME}] season ${season} (scope=all):`,
@@ -112,6 +125,7 @@ async function run(opts = {}) {
             wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
             wxUpdated ? `weather updated=${wxUpdated}` : '',
             psIngested ? `playerStats ingested=${psIngested}` : '',
+            tsIngested ? `teamStats ingested=${tsIngested}` : '',
             statRetried ? `statRetry=${statRetried} resolved=${statResolved}` : '');
         await finishRun(id, 'success', summary);
 
@@ -122,11 +136,13 @@ async function run(opts = {}) {
                     ['Season', String(season)],
                     ['Scope', 'all'],
                     ['Week', currentWeek != null ? String(currentWeek) : 'n/a'],
+                    ['Backfilled week', backfillWeek != null ? String(backfillWeek) : 'n/a'],
                     ['Teams enriched', String(results.teams.body.updated)],
                     ['Games w/ media', String(results.media.body.updated)],
                     ['Pregame WP', String(wpUpdated)],
                     ['Weather', String(wxUpdated)],
                     ['Player stats', String(psIngested)],
+                    ['Team stats', String(tsIngested)],
                     ['Stat leg retries', statRetried ? `${statRetried} box scores → ${statResolved} parlays` : '0'],
                     ['Duration', `${secs}s`]
                 ]
