@@ -567,3 +567,73 @@ describe('scrubbing', () => {
         expect(readout.textContent).toContain('Pregame');
     });
 });
+
+// The curve is a poller artifact, not a CFBD series: every tick missed (an
+// outage, a 502, a game that kicked off before the poller was watching) is drawn
+// as a straight line across the gap. 20 of week 1's 99 games came out of the
+// weekend with fewer than 5 samples, which draws as a confident arc over a game
+// nobody was watching. The card has to say so.
+describe('coverage note', () => {
+    const ctx = { homeTeam: 'LSU', awayTeam: 'Alabama' };
+
+    // Snapshots evenly across the four quarters.
+    function fullGame() {
+        const snaps = [];
+        for (let period = 1; period <= 4; period++) {
+            for (let m = 14; m >= 0; m -= 1) {
+                snaps.push({ period, clock: `${m}:00`, homeWinProb: 0.5 + (period * 0.05) });
+            }
+        }
+        return { pregameWinProb: 0.6, wpSnapshots: snaps };
+    }
+
+    it('says nothing when every quarter is sampled', () => {
+        const html = wp.render(fullGame(), ctx);
+        expect(html).not.toContain('gd-wp-coverage');
+        expect(html).not.toContain('Partial coverage');
+    });
+
+    it('names a quarter with no samples at all', () => {
+        const game = fullGame();
+        game.wpSnapshots = game.wpSnapshots.filter(s => s.period !== 2);
+        const html = wp.render(game, ctx);
+        expect(html).toContain('gd-wp-coverage');
+        expect(html).toContain('Partial coverage');
+        expect(html).toContain('2nd');
+    });
+
+    it('pluralises when several quarters are missing', () => {
+        const game = fullGame();
+        game.wpSnapshots = game.wpSnapshots.filter(s => s.period === 3 || s.period === 4);
+        const html = wp.render(game, ctx);
+        expect(html).toContain('1st, 2nd');
+        expect(html).toContain('quarters');
+    });
+
+    it('flags a game that got only a handful of ticks', () => {
+        const game = {
+            pregameWinProb: 0.6,
+            wpSnapshots: [
+                { period: 1, clock: '10:00', homeWinProb: 0.6 },
+                { period: 2, clock: '10:00', homeWinProb: 0.7 },
+                { period: 3, clock: '10:00', homeWinProb: 0.8 },
+                { period: 4, clock: '10:00', homeWinProb: 0.9 }
+            ]
+        };
+        const html = wp.render(game, ctx);
+        expect(html).toContain('Partial coverage');
+        expect(html).toContain('samples recorded');
+    });
+
+    it('still refuses to draw anything from a single point', () => {
+        expect(wp.render({ wpSnapshots: [{ period: 1, clock: '10:00', homeWinProb: 0.6 }] }, ctx)).toBe('');
+    });
+
+    it('exposes the coverage it measured on the model', () => {
+        const game = fullGame();
+        game.wpSnapshots = game.wpSnapshots.filter(s => s.period !== 3);
+        const model = wp.buildModel(game);
+        expect(model.coverage.missing).toEqual([3]);
+        expect(model.coverage.periods).toBe(4);
+    });
+});

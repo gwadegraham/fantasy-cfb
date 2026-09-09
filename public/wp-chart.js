@@ -217,6 +217,20 @@
             segments.push({ label: label, x: xAt((bounds[s] + bounds[s + 1]) / 2) });
         }
 
+        // Which periods the game reached actually have a sample. The curve is a
+        // poller artifact, not a CFBD series — every tick it missed (an outage, a
+        // 502, a game that kicked off before the poller was watching) is drawn as
+        // a straight line across the gap, which reads as "nothing happened" when
+        // the truth is "nobody was looking". Whole quarters can be missing that
+        // way, so the card says so rather than presenting the line as the arc of
+        // the game.
+        var sampled = {};
+        for (var q = 0; q < series.length; q++) {
+            if (!series[q].anchor && series[q].period != null) sampled[series[q].period] = true;
+        }
+        var missing = [];
+        for (var per = 1; per <= maxPeriod; per++) if (!sampled[per]) missing.push(per);
+
         return {
             points: points,
             runs: splitAtMidline(points, MID),
@@ -224,8 +238,28 @@
             dividers: bounds.slice(1, -1).map(xAt),
             segments: segments,
             span: span,
+            coverage: { samples: points.length, periods: maxPeriod, missing: missing },
             box: { W: W, H: H, PADL: PADL, PADR: PADR, TOP: TOP, BOT: BOT, MID: MID }
         };
+    }
+
+    // A one-line caveat when the curve is too thin to read as the whole game.
+    // Either a quarter has no sample at all, or the game got so few ticks that
+    // the line is a sketch between widely spaced points.
+    var THIN_SAMPLES = 12;
+    function coverageNote(model) {
+        var cov = model.coverage || {};
+        var missing = cov.missing || [];
+        var names = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th' };
+        if (missing.length) {
+            var labels = missing.map(function (p) { return names[p] || ('OT' + (p - 4)); });
+            return 'Partial coverage — no samples in the '
+                 + labels.join(', ') + (missing.length > 1 ? ' quarters' : ' quarter');
+        }
+        if (cov.samples != null && cov.samples < THIN_SAMPLES) {
+            return 'Partial coverage — only ' + cov.samples + ' samples recorded';
+        }
+        return '';
     }
 
     // Which sample a pointer at viewBox-x `px` refers to.
@@ -382,6 +416,8 @@
         html += '</div>';
 
         html += '<div class="gd-wp-readout" aria-live="polite">' + readoutHtml(pts[0], c) + '</div>';
+        var note = coverageNote(model);
+        if (note) html += '<div class="gd-wp-coverage">' + esc(note) + '</div>';
         html += '</div>';
 
         state = { model: model, ctx: c };

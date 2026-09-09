@@ -123,8 +123,9 @@ describe('wpSnapshots at completion', () => {
         expect(series[series.length - 1].homeWinProb).toBe(0);
     });
 
-    // liveHomeWinProb, situation and lastPlay are all nulled on completion. The
-    // series must not be caught up in that cleanup — it is the archive.
+    // liveHomeWinProb, situation, lastPlay and possession are all nulled on
+    // completion. The series must not be caught up in that cleanup — it is the
+    // archive.
     it('survives the completion cleanup that clears the other live fields', async () => {
         await tick({ homeWP: 0.62, clock: '7:42' });
         await tick({ status: 'completed', period: 4, homeWP: null, homePts: 31, awayPts: 24 });
@@ -134,6 +135,20 @@ describe('wpSnapshots at completion', () => {
         expect(g.liveHomeWinProb).toBeNull();
         expect(g.lastPlay).toBeNull();
         expect(g.wpSnapshots.length).toBe(2);
+    });
+
+    // possession was the field left out of that cleanup: 89 of week 1's 99
+    // finished games still named a team with the ball. Nothing drew it — every
+    // surface gates on the game being live — but a populated live-only field on
+    // a final is a trap for the next surface that forgets to.
+    it('clears possession on completion too', async () => {
+        await tick({ homeWP: 0.62, possession: 'home' });
+        let g = await Game.findOne({ id: GAME_ID }).lean();
+        expect(g.possession).toBe('home');
+
+        await tick({ status: 'completed', period: 4, possession: 'home', homeWP: null, homePts: 31, awayPts: 24 });
+        g = await Game.findOne({ id: GAME_ID }).lean();
+        expect(g.possession).toBeNull();
     });
 
     // CFBD keeps returning finished games for the rest of the day, and the
