@@ -429,8 +429,7 @@ async function doLiveUpdate() {
         // Fetch box scores for newly completed games (1 CFBD call) so stat-based
         // parlay legs can resolve in the same pass as score-based ones.
         try {
-            const season = Number(process.env.YEAR);
-            const bs = await ingestBoxScores(result.newlyCompleted, season);
+            const bs = await ingestBoxScores(season, week, seasonType, result.newlyCompleted);
             if (typeof bs.remainingCalls === 'number') {
                 result.remainingCalls = bs.remainingCalls;
             }
