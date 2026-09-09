@@ -202,7 +202,7 @@ function renderCurrentParlay() {
             if (window.IS_ADMIN) {
                 return renderLegPickCTA(leg, parlay._id, i, name, color, init);
             }
-            return '<div class="leg leg-empty">'
+            return '<div class="leg leg-empty" data-contributor="' + leg.contributor + '">'
                 + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
                 + '<div class="leg-detail"><div class="leg-pick">Awaiting pick...</div></div>'
                 + '</div>';
@@ -238,7 +238,7 @@ function renderCurrentParlay() {
                 + '</div>';
         }
 
-        return '<div class="leg">'
+        return '<div class="leg" data-contributor="' + leg.contributor + '">'
             + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
             + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game">' + matchup + '</div></div>'
             + '<div class="leg-odds">' + formatOdds(leg.odds) + '</div>'
@@ -395,7 +395,7 @@ function moneyExplosion(anchor) {
 /* ── New leg entry: CTA button → game picker → bet board ── */
 
 function renderLegPickCTA(leg, parlayId, index, name, color, init) {
-    return '<div class="leg-pick-cta" id="leg-cta-' + index + '">'
+    return '<div class="leg-pick-cta" id="leg-cta-' + index + '" data-contributor="' + leg.contributor + '">'
         + '<div class="leg-pick-cta-row">'
         + '<div class="leg-contributor">'
         + avatarHtml(leg.contributor, color, init)
@@ -410,6 +410,24 @@ function renderLegPickCTA(leg, parlayId, index, name, color, init) {
 }
 
 var activePick = null; // { parlayId, contributor, index, gameId, game }
+
+// Keep the eye on the row that was just acted on.
+//
+// renderCurrentParlay() replaces all of #betting-content, and an open bet board
+// is taller than a phone viewport. When it collapses on submit, the page does
+// not scroll at all — roughly 600px above the fold simply stops existing, so an
+// unchanged scroll offset ends up pointing at whatever slid up into it, which
+// in practice is the season summary two sections down. Restoring the old
+// scrollTop wouldn't help: the element it was measured against is gone. Anchor
+// on the contributor's row instead, which survives every one of these renders
+// in one shape or another.
+function scrollLegIntoView(contributor, position) {
+    if (!contributor) return;
+    var el = document.querySelector('#betting-content [data-contributor="' + contributor + '"]');
+    if (!el || !el.scrollIntoView) return;
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: position || 'center', behavior: reduced ? 'auto' : 'smooth' });
+}
 
 function openGamePicker(parlayId, contributor, index) {
     activePick = { parlayId: parlayId, contributor: contributor, index: index };
@@ -497,6 +515,9 @@ function selectGame(gameId) {
     if (btn) btn.innerHTML = '<span>' + game.awayTeam + ' @ ' + game.homeTeam + '</span><i class="fa-solid fa-chevron-down"></i>';
 
     renderBetBoard(activePick.index, game);
+    // 'start' rather than 'center': the board is taller than the viewport, so
+    // centring it would cut off the tabs and the spread row at the top.
+    scrollLegIntoView(activePick.contributor, 'start');
 }
 
 function renderBetBoard(index, game) {
@@ -928,6 +949,9 @@ function pickStatOU(index, direction, btn) {
 async function submitLegNew(index) {
     if (!activePick || !selectedBet) return;
 
+    // Read before refresh() clears activePick — it's the anchor afterwards.
+    var contributor = activePick.contributor;
+
     var oddsInput = document.getElementById('custom-odds-' + index);
     var finalOdds = oddsInput && oddsInput.value ? Number(oddsInput.value) : selectedBet.odds;
 
@@ -954,6 +978,7 @@ async function submitLegNew(index) {
             activePick = null;
             selectedBet = null;
             await refresh();
+            scrollLegIntoView(contributor);
         } else {
             var data = await res.json();
             if (window.ccToast) ccToast.error(data.message || 'Failed to submit');
@@ -973,6 +998,7 @@ function editLeg(parlayId, contributor) {
     if (!leg) return;
     leg.gameId = null;
     renderCurrentParlay();
+    scrollLegIntoView(contributor, 'start');
 }
 
 async function createParlay() {
