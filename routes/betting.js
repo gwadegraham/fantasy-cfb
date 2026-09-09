@@ -13,6 +13,11 @@ const { deriveParlayStatus } = require('../modules/parlay-resolve');
 
 router.use(requireBettingGroupMember);
 
+// Widest alternate spread the board offers, and the ceiling the API enforces.
+// The real board tops out around 40 points; 75 leaves room above every line
+// CFBD has ever carried while still rejecting a fat-fingered 750.
+const MAX_SPREAD = 75;
+
 function isAdmin(req) {
     return effectiveRoles(req).includes('Admin');
 }
@@ -205,7 +210,7 @@ router.patch('/:id/legs', async (req, res) => {
             return res.status(400).json({ message: 'Parlay is already resolved' });
         }
 
-        const { contributor, gameId, betType, selection, line, odds, statCategory, statTeamSide } = req.body;
+        const { contributor, gameId, betType, selection, line, odds, teamSide, statCategory, statTeamSide } = req.body;
         if (!contributor) return res.status(400).json({ message: 'Contributor is required' });
 
         const isSelf = req.bettingUserId === contributor;
@@ -227,10 +232,27 @@ router.patch('/:id/legs', async (req, res) => {
         if (selection != null) leg.selection = selection;
         if (line !== undefined) leg.line = line;
         if (odds != null) leg.odds = odds;
+        if (teamSide !== undefined) leg.teamSide = teamSide;
         if (statCategory !== undefined) leg.statCategory = statCategory;
         if (statTeamSide !== undefined) leg.statTeamSide = statTeamSide;
         leg.result = 'pending';
         leg.resolvedAt = null;
+
+        // Spread legs are graded arithmetically off `line` and `teamSide`, so a
+        // leg missing either — or carrying a quarter-point the board can't have
+        // produced — would sit pending forever and land back on an admin. Refuse
+        // it at the door instead. Checked against the leg AFTER the patch is
+        // applied, because the client may be sending only the odds.
+        if (leg.betType === 'spread') {
+            const n = Number(leg.line);
+            if (leg.line == null || isNaN(n) || Math.abs(n) > MAX_SPREAD || (n * 2) % 1 !== 0) {
+                return res.status(400).json({ message: 'Spread must be a half-point number within ' + MAX_SPREAD });
+            }
+            if (leg.teamSide !== 'home' && leg.teamSide !== 'away') {
+                return res.status(400).json({ message: 'Spread legs need a team side' });
+            }
+            leg.line = n;
+        }
 
         parlay.updatedAt = new Date();
         await parlay.save();
