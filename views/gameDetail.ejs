@@ -874,6 +874,21 @@
             var pbp = container.querySelector('#gd-pbp');
             if (pbp) {
                 pbp.addEventListener('click', function (e) {
+                    // Collapsing a quarter is done in place rather than by
+                    // repainting the list, so the reader keeps their scroll
+                    // position on the quarter they were just reading.
+                    var period = e.target.closest('[data-pbp-period]');
+                    if (period) {
+                        var open = period.getAttribute('aria-expanded') !== 'true';
+                        gdPlayOpen[period.getAttribute('data-pbp-period')] = open;
+                        period.setAttribute('aria-expanded', open ? 'true' : 'false');
+                        var group = period.parentNode;
+                        group.classList.toggle('gd-pbp-group-on', open);
+                        var body = group.querySelector('.gd-pbp-period-body');
+                        if (body) body.hidden = !open;
+                        return;
+                    }
+
                     var btn = e.target.closest('[data-pbp-tab]');
                     if (!btn) return;
                     var tab = btn.getAttribute('data-pbp-tab');
@@ -907,6 +922,7 @@
         var gdPlaysStatus = null;    // 'live' | 'final' | 'none' | 'stale' | null
         var gdPlaysDone = false;     // a final's plays never change: fetch once
         var gdPlayTab = 'scoring';   // survives the 30s re-render, unlike the DOM
+        var gdPlayOpen = {};         // periodLabel -> expanded; reader choices only
         var gdTeamCtx = null;        // last render's per-side context, for repaints
 
         function gdPlayTabs() {
@@ -972,9 +988,34 @@
                 + '</div>';
         }
 
-        // The list body, with a quarter heading inserted whenever the label
-        // changes. The plays arrive already ordered and already labelled, so
-        // this is a render detail rather than a second grouping implementation.
+        // Plays by quarter, in the order the feed introduced each period. Not
+        // "insert a heading whenever the label changes": a feed that revisits a
+        // period would then scatter its plays across two headings, and a
+        // collapsible group has to own every play in its quarter.
+        function gdPlayGroups(rows) {
+            var groups = [];
+            var byLabel = {};
+            for (var i = 0; i < rows.length; i++) {
+                var label = rows[i].periodLabel;
+                if (!byLabel[label]) {
+                    byLabel[label] = { label: label, plays: [] };
+                    groups.push(byLabel[label]);
+                }
+                byLabel[label].plays.push(rows[i]);
+            }
+            return groups;
+        }
+
+        // Is this quarter expanded? gdPlayOpen holds only the reader's explicit
+        // choices, so a quarter they've never touched follows the default —
+        // newest open, everything before it closed. That also means a live game
+        // reaching Q3 opens Q3 and folds Q2 away on its own, with no bookkeeping.
+        function gdPeriodOpen(label, isNewest) {
+            return label in gdPlayOpen ? gdPlayOpen[label] : isNewest;
+        }
+
+        // The list body. Scoring plays are nine rows for a whole game, so they
+        // stay a flat list; All Plays is ~175 and collapses by quarter.
         function gdPlayList(teamCtx) {
             var rows = gdPlayTab === 'scoring'
                 ? gdPlays.filter(function (p) { return p.scoring; })
@@ -987,14 +1028,36 @@
                 return '<div class="gd-pbp-empty">' + empty + '</div>';
             }
 
+            var groups = gdPlayGroups(rows);
+            var collapsible = gdPlayTab === 'all';
             var html = '';
-            var lastLabel = null;
-            for (var i = 0; i < rows.length; i++) {
-                if (rows[i].periodLabel !== lastLabel) {
-                    lastLabel = rows[i].periodLabel;
-                    html += '<h4 class="gd-pbp-period">' + esc(lastLabel) + '</h4>';
+            for (var g = 0; g < groups.length; g++) {
+                var group = groups[g];
+                var body = '';
+                for (var i = 0; i < group.plays.length; i++) {
+                    body += gdPlayCard(group.plays[i], teamCtx);
                 }
-                html += gdPlayCard(rows[i], teamCtx);
+
+                if (!collapsible) {
+                    html += '<div class="gd-pbp-group">'
+                         + '<h4 class="gd-pbp-period">' + esc(group.label) + '</h4>'
+                         + '<div class="gd-pbp-period-body">' + body + '</div>'
+                         + '</div>';
+                    continue;
+                }
+
+                var open = gdPeriodOpen(group.label, g === groups.length - 1);
+                var count = group.plays.length + (group.plays.length === 1 ? ' play' : ' plays');
+                html += '<div class="gd-pbp-group' + (open ? ' gd-pbp-group-on' : '') + '">'
+                     + '<button type="button" class="gd-pbp-period gd-pbp-period-btn"'
+                     + ' data-pbp-period="' + esc(group.label) + '"'
+                     + ' aria-expanded="' + (open ? 'true' : 'false') + '">'
+                     + '<span class="gd-pbp-caret" aria-hidden="true"></span>'
+                     + '<span class="gd-pbp-period-label">' + esc(group.label) + '</span>'
+                     + '<span class="gd-pbp-period-count">' + count + '</span>'
+                     + '</button>'
+                     + '<div class="gd-pbp-period-body"' + (open ? '' : ' hidden') + '>' + body + '</div>'
+                     + '</div>';
             }
             return html;
         }

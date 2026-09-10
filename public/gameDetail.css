@@ -894,7 +894,61 @@ html.gd-page, .gd-page body {
     margin: 0 0 8px;
     padding: 14px 0 4px;
 }
-.gd-pbp-period:first-child { padding-top: 0; }
+.gd-pbp-group:first-child .gd-pbp-period { padding-top: 0; }
+
+/* ---- collapsible quarter (All Plays only) ---- */
+/* All Plays is ~175 rows. Every quarter but the newest starts folded, so the
+   section opens as a four-line index of the game instead of a wall. */
+.gd-pbp-period-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    /* The sticky background has to span the list, so the button carries the
+       heading's padding rather than sitting inside it. The right side clears
+       the list's scrollbar, which would otherwise sit on top of the count. */
+    padding: 14px 10px 8px 2px;
+    /* No margin below it, unlike the plain heading: a sticky element's
+       background stops at its border box, so an 8px margin here lets the row
+       being scrolled under the heading show through as a sliver of text just
+       below the rule. The gap has to be padding, inside the background. */
+    margin-bottom: 0;
+    border: 0;
+    border-bottom: 1px solid var(--cc-border);
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--cc-muted);
+    text-align: left;
+    cursor: pointer;
+}
+.gd-pbp-period-btn:hover { color: var(--cc-text); }
+.gd-pbp-period-btn:focus-visible {
+    outline: 2px solid var(--cc-accent);
+    outline-offset: -2px;
+}
+.gd-pbp-period-label { flex: 1 1 auto; }
+.gd-pbp-period-count {
+    flex: 0 0 auto;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    opacity: 0.8;
+}
+/* A CSS caret rather than an icon: one glyph-free triangle that rotates, so it
+   needs no asset and inherits the heading's color. */
+.gd-pbp-caret {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform 120ms ease;
+}
+.gd-pbp-group-on .gd-pbp-caret { transform: rotate(90deg) translateX(1px); }
 
 .gd-pbp-logo {
     width: 26px;
