@@ -131,6 +131,23 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        "./modules/env-num.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        // The only billable live endpoint. Its cache and its "is this final"
+        // check are what keep a game detail page from costing a call per view,
+        // and both fail silently in the direction of spending money — a TTL
+        // that never hits just looks like a working page. Held to the
+        // pure-module bar.
+        "./modules/live-plays.js": {
+            statements: 95,
+            branches: 90,
+            functions: 90,
+            lines: 95
+        },
         // Debounce timing for the live poller's post-completion work. The
         // rules decide how much billable CFBD work a fast poll cadence costs,
         // and getting them wrong is invisible in the UI (finals just settle

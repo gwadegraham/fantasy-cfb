@@ -29,20 +29,15 @@
 // scoring passes are all idempotent re-runs. The MAX_WAIT_MS cap also bounds
 // how much can ever be in flight.
 
+const { envNum } = require('./env-num');
+
 // Hold a cluster until it has been this quiet. Set QUIET_MS to 0 to restore the
 // old flush-on-every-tick behavior (a kill switch that needs no code change).
-const QUIET_MS = envMs('LIVE_COMPLETION_QUIET_MS', 120000);
+const QUIET_MS = envNum('LIVE_COMPLETION_QUIET_MS', 120000);
 // Never hold longer than this, even if finals keep trickling in. A busy
 // Saturday evening can produce a new final every minute for a while; without
 // the cap a continuous trickle would defer the pass indefinitely.
-const MAX_WAIT_MS = envMs('LIVE_COMPLETION_MAX_WAIT_MS', 300000);
-
-function envMs(name, fallback) {
-    const raw = process.env[name];
-    if (raw == null || raw === '') return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
+const MAX_WAIT_MS = envNum('LIVE_COMPLETION_MAX_WAIT_MS', 300000);
 
 // ---- pure decision ---------------------------------------------------------
 
@@ -141,6 +136,6 @@ function takePending() {
 module.exports = {
     addPending, pendingCount, shouldFlush, takePending,
     // exported for tests
-    decideFlush, groupPending, envMs, QUIET_MS, MAX_WAIT_MS,
+    decideFlush, groupPending, QUIET_MS, MAX_WAIT_MS,
     _reset: () => { pending = new Map(); firstAddedMs = null; lastAddedMs = null; }
 };

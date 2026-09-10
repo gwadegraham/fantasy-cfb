@@ -243,6 +243,44 @@ const gameSchema = new mongoose.Schema({
         condition: String,
         emoji:     String
     },
+    // Drive chart + advanced box score from CFBD /live/plays, written ONCE when
+    // a completed game is first viewed (see modules/live-plays.js).
+    //
+    // That endpoint is billable and its payload is terminal on a final, so
+    // persisting it here is what makes a finished game cost zero calls to look
+    // at ever again. Its presence is the cache key: a game doc that has this
+    // never asks CFBD for plays.
+    //
+    // Drive-level only — the per-play arrays are ~90% of the payload and a
+    // drive chart doesn't read them (8KB per game stored, against 79KB raw).
+    livePlays: new mongoose.Schema({
+        fetchedAt: Date,
+        teams: [new mongoose.Schema({
+            teamId: Number, team: String, homeAway: String, lineScores: [Number],
+            points: Number, drives: Number, plays: Number,
+            scoringOpportunities: Number, pointsPerOpportunity: Number,
+            averageStartYardLine: Number,
+            lineYards: Number, lineYardsPerRush: Number,
+            secondLevelYards: Number, secondLevelYardsPerRush: Number,
+            openFieldYards: Number, openFieldYardsPerRush: Number,
+            totalEpa: Number, epaPerPlay: Number,
+            passingEpa: Number, epaPerPass: Number,
+            rushingEpa: Number, epaPerRush: Number,
+            successRate: Number, standardDownSuccessRate: Number,
+            passingDownSuccessRate: Number,
+            explosiveness: Number, deserveToWin: Number
+        }, { _id: false })],
+        drives: [new mongoose.Schema({
+            id: String,
+            offense: String, offenseId: Number,
+            defense: String, defenseId: Number,
+            playCount: Number, yards: Number,
+            startPeriod: Number, startClock: String, startYardsToGoal: Number,
+            endPeriod: Number, endClock: String, endYardsToGoal: Number,
+            duration: String, scoringOpportunity: Boolean,
+            result: String, pointsGained: Number
+        }, { _id: false })]
+    }, { _id: false }),
     lastUpdated: {
         type: String
     },
