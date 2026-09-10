@@ -78,6 +78,44 @@ function isScoringPlay(play, prev) {
     return c !== 'unknown' && c !== 'same' && c !== 'invalid';
 }
 
+// What kind of outcome a play had, for the badge on the field and on a pass in
+// the log. Matched on CFBD's playType vocabulary, which is small and stable
+// (measured across two games: Rush, Pass Reception, Pass Incompletion, Sack,
+// Kickoff, Punt, Timeout, Penalty, and the scoring variants).
+//
+// Unlike the scoring detection, a vocabulary match is the right tool here: this
+// only decides whether to draw a badge, so a playType CFBD adds tomorrow gets
+// 'other' and no badge — the display degrades, nothing is reported wrongly.
+// Scoring is read off the score precisely because a miss there would be a lie.
+//
+// 'incomplete' is the one that earns this whole feature: an incomplete pass
+// does not move the ball, so without a badge a live viewer cannot tell a
+// stationary field from a stale page.
+function playResult(playType) {
+    const t = String(playType || '').toLowerCase();
+    if (!t) return 'other';
+    if (t.includes('interception') || t.includes('fumble')) return 'turnover';
+    if (t.includes('sack')) return 'sack';
+    if (t.includes('incompletion') || t.includes('incomplete')) return 'incomplete';
+    if (t.includes('touchdown')) return 'score';
+    if (t.includes('field goal good')) return 'score';
+    if (t.includes('reception') || t.includes('pass completion')) return 'complete';
+    return 'other';
+}
+
+// Short label for the badge. Null means "no badge" — most plays don't need one,
+// and a badge on every row is noise rather than signal.
+const RESULT_LABELS = {
+    complete: 'Complete',
+    incomplete: 'Incomplete',
+    sack: 'Sack',
+    turnover: 'Turnover',
+    score: 'Score'
+};
+function playResultLabel(result) {
+    return RESULT_LABELS[result] || null;
+}
+
 // Quarter heading. Periods past 4 are overtime — CFBD keeps counting (5, 6, …)
 // so the label counts OT periods rather than showing "5TH QUARTER".
 function periodLabel(period) {
@@ -201,6 +239,10 @@ function buildPlayByPlay(payload) {
                 yardsGained: play.yardsGained != null ? play.yardsGained : null,
                 homeScore: play.homeScore != null ? play.homeScore : null,
                 awayScore: play.awayScore != null ? play.awayScore : null,
+                // Named to mirror a drive's `outcome`: a bucket, with a label
+                // that is null when the play does not warrant a badge.
+                outcome: playResult(play.playType),
+                outcomeLabel: playResultLabel(playResult(play.playType)),
                 scoring,
                 // Who the points went to, and how many. NOT play.teamId, which
                 // is the team on offense: on a pick-six or a fumble return the
@@ -230,6 +272,92 @@ function buildPlayByPlay(payload) {
     return out;
 }
 
+// ---- drive chart -----------------------------------------------------------
+//
+// The drives are already in the payload, already persisted, and were being
+// thrown away. Shaped here for the same reason the plays are: one tested
+// function has to serve a live payload and a stored one identically.
+//
+// Field position: startYardsToGoal is measured from the OFFENSE's perspective,
+// so 75 means their own 25. Converted to "yards from the offense's own goal"
+// (0-100) because that is what a bar has to be drawn in, and clamped because a
+// drive that ends in a defensive score reports an end position behind where it
+// started.
+function driveFieldSpan(drive) {
+    const start = drive.startYardsToGoal != null ? 100 - drive.startYardsToGoal : null;
+    if (start == null) return { start: null, end: null };
+    const gained = drive.yards != null ? drive.yards : 0;
+    const clamp = (n) => Math.max(0, Math.min(100, n));
+    return { start: clamp(start), end: clamp(start + gained) };
+}
+
+// How a drive ended, as one of four buckets the page can colour.
+//
+// Matched on a lowercased substring, and defaulting to 'other', so a result
+// CFBD words differently — or capitalizes differently, and it does: both
+// 'End Of Half' and 'End of Half' appear in one game — lands somewhere sane
+// instead of nowhere. Turnovers are checked BEFORE touchdowns because
+// 'Interception Touchdown' is a defensive score: a disaster for the offense
+// whose drive it was, not a touchdown for them.
+function driveOutcome(result) {
+    const r = String(result || '').toLowerCase();
+    if (!r) return 'other';
+    if (r.includes('interception') || r.includes('fumble')) return 'turnover';
+    if (r.includes('safety')) return 'turnover';
+    if (r.includes('touchdown')) return 'touchdown';
+    if (r.includes('missed') || r.includes('blocked') || r.includes('failed')) return 'other';
+    if (r.includes('field goal') || r.includes('fg')) return 'field-goal';
+    if (r.includes('punt')) return 'punt';
+    if (r.includes('downs')) return 'turnover';
+    return 'other';
+}
+
+// CFBD labels the drive that ends the game 'End of Half' — correct for the
+// second quarter, wrong at the end of the fourth. Relabelled only for the LAST
+// drive of a payload that is already final, which is the one case where "the
+// half ended" definitely means the game did. Anything mid-game, and any earlier
+// half, keeps CFBD's own wording. `result` stays raw; this is display only.
+function driveLabel(result, isLastOfFinal) {
+    if (!isLastOfFinal) return result || null;
+    return /end\s+of\s+half/i.test(String(result || '')) ? 'End of Game' : (result || null);
+}
+
+function buildDriveChart(payload) {
+    const sides = sideTeamIds(payload);
+    const drives = (payload && payload.drives) || [];
+    const isFinal = /final/i.test(String((payload && payload.status) || ''));
+    return drives.map((drive, driveIndex) => {
+        const span = driveFieldSpan(drive);
+        // pointsGained is from the offense's point of view, so it goes negative
+        // on a drive the defense scored on. The sign is the cleanest signal
+        // there is that a drive ended badly rather than well.
+        const points = drive.pointsGained != null ? drive.pointsGained : null;
+        return {
+            driveIndex,
+            offense: drive.offense || null,
+            offenseId: drive.offenseId != null ? drive.offenseId : null,
+            side: drive.offenseId != null && drive.offenseId === sides.home ? 'home'
+                : (drive.offenseId != null && drive.offenseId === sides.away ? 'away' : null),
+            startPeriod: drive.startPeriod != null ? drive.startPeriod : null,
+            startClock: drive.startClock || null,
+            endPeriod: drive.endPeriod != null ? drive.endPeriod : null,
+            endClock: drive.endClock || null,
+            periodLabel: periodLabel(drive.startPeriod),
+            playCount: drive.playCount != null ? drive.playCount : null,
+            yards: drive.yards != null ? drive.yards : null,
+            duration: drive.duration || null,
+            summary: driveSummary(drive),
+            result: drive.result || null,
+            label: driveLabel(drive.result, isFinal && driveIndex === drives.length - 1),
+            outcome: driveOutcome(drive.result),
+            points,
+            scoredAgainst: points != null && points < 0,
+            fieldStart: span.start,
+            fieldEnd: span.end
+        };
+    });
+}
+
 // Group an ordered play list into quarters for rendering. Groups in encounter
 // order rather than by sorting on period, so a feed that revisits a period
 // (it happens around period boundaries) doesn't scatter plays into two headings.
@@ -253,7 +381,9 @@ function scoringPlays(plays) {
 }
 
 module.exports = {
-    buildPlayByPlay, groupByPeriod, scoringPlays,
+    buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText, MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
+    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
+    playResult, playResultLabel,
+    MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
 };

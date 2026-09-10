@@ -1,7 +1,8 @@
 const {
-    buildPlayByPlay, groupByPeriod, scoringPlays,
+    buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText
+    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
+    playResult, playResultLabel
 } = require('../modules/play-by-play');
 
 // Shaping for the play-by-play log. The load-bearing decision here is that a
@@ -408,6 +409,199 @@ describe('buildPlayByPlay', () => {
         expect(buildPlayByPlay({ drives: [] })).toEqual([]);
         expect(buildPlayByPlay({ drives: [drive(null)] })).toEqual([]);
         expect(buildPlayByPlay({ drives: [{}] })).toEqual([]);
+    });
+});
+
+// The drive chart. All fixtures are real rows from LSU-Clemson (401856660).
+describe('playResult', () => {
+    it('separates a complete pass from an incomplete one', () => {
+        // The distinction the badge exists for: an incomplete pass leaves the
+        // ball where it was, so a stationary field needs explaining.
+        expect(playResult('Pass Reception')).toBe('complete');
+        expect(playResult('Pass Incompletion')).toBe('incomplete');
+    });
+
+    it('buckets the rest of the vocabulary a real game produced', () => {
+        expect(playResult('Sack')).toBe('sack');
+        expect(playResult('Pass Interception Return')).toBe('turnover');
+        expect(playResult('Passing Touchdown')).toBe('score');
+        expect(playResult('Field Goal Good')).toBe('score');
+        // A rush's result is already in its own text, so no badge.
+        expect(playResult('Rush')).toBe('other');
+        expect(playResult('Kickoff')).toBe('other');
+        expect(playResult('Punt')).toBe('other');
+        expect(playResult('Penalty')).toBe('other');
+        expect(playResult('Field Goal Missed')).toBe('other');
+    });
+
+    it('reads an interception as a turnover, not as the touchdown it became', () => {
+        expect(playResult('Interception Return Touchdown')).toBe('turnover');
+    });
+
+    it('gives an unknown play type no badge rather than a wrong one', () => {
+        // Safe direction to fail: this only decides whether to draw a badge.
+        expect(playResult('Some New CFBD Play')).toBe('other');
+        expect(playResult(null)).toBe('other');
+        expect(playResultLabel('other')).toBeNull();
+        expect(playResultLabel(playResult('Rush'))).toBeNull();
+    });
+
+    it('is attached to every shaped play', () => {
+        const payload = { drives: [drive([
+            play({ playType: 'Pass Incompletion' }),
+            play({ playType: 'Rush' })
+        ])] };
+        const out = buildPlayByPlay(payload);
+        expect(out[0]).toMatchObject({ outcome: 'incomplete', outcomeLabel: 'Incomplete' });
+        expect(out[1]).toMatchObject({ outcome: 'other', outcomeLabel: null });
+    });
+});
+
+describe('driveOutcome', () => {
+    it('buckets the results a real game produced', () => {
+        expect(driveOutcome('Touchdown')).toBe('touchdown');
+        expect(driveOutcome('Field Goal')).toBe('field-goal');
+        expect(driveOutcome('Punt')).toBe('punt');
+        expect(driveOutcome('Interception')).toBe('turnover');
+        expect(driveOutcome('Missed FG')).toBe('other');
+    });
+
+    it('reads a defensive score as a turnover, not a touchdown', () => {
+        // 'Interception Touchdown' is the offense's disaster. Checking
+        // touchdown first would have painted it as a scoring drive for them.
+        expect(driveOutcome('Interception Touchdown')).toBe('turnover');
+        expect(driveOutcome('Fumble Return Touchdown')).toBe('turnover');
+    });
+
+    it('survives CFBD disagreeing with itself about capitalization', () => {
+        // Both spellings appear in ONE game's payload.
+        expect(driveOutcome('End Of Half')).toBe('other');
+        expect(driveOutcome('End of Half')).toBe('other');
+        expect(driveOutcome('END OF HALF')).toBe('other');
+    });
+
+    it('buckets the two results neither stored game happened to contain', () => {
+        // Not in either LSU-Clemson or FSU-SMU, but both are ordinary football:
+        // a safety and a turnover on downs are losses of possession, so they
+        // read as turnovers rather than as a punt or a nothing.
+        expect(driveOutcome('Safety')).toBe('turnover');
+        expect(driveOutcome('Turnover on Downs')).toBe('turnover');
+        expect(driveOutcome('Downs')).toBe('turnover');
+    });
+
+    it('puts an unknown result somewhere sane', () => {
+        expect(driveOutcome('Some New CFBD Result')).toBe('other');
+        expect(driveOutcome(null)).toBe('other');
+        expect(driveOutcome('')).toBe('other');
+    });
+});
+
+describe('driveFieldSpan', () => {
+    it('converts yards-to-goal into yards from the offense own goal', () => {
+        // Real drive: LSU started at their own 11 and scored. 89 to go, 89
+        // gained, so the bar runs from 11 to the goal line.
+        expect(driveFieldSpan({ startYardsToGoal: 89, yards: 89 })).toEqual({ start: 11, end: 100 });
+        expect(driveFieldSpan({ startYardsToGoal: 75, yards: 8 })).toEqual({ start: 25, end: 33 });
+    });
+
+    it('clamps a drive that reports past either goal line', () => {
+        // A drive ending in a defensive score reports an end position behind
+        // where it started, and CFBD's own numbers can overshoot.
+        expect(driveFieldSpan({ startYardsToGoal: 79, yards: 40 }).end).toBe(61);
+        expect(driveFieldSpan({ startYardsToGoal: 5, yards: 40 }).end).toBe(100);
+        expect(driveFieldSpan({ startYardsToGoal: 95, yards: -40 }).end).toBe(0);
+    });
+
+    it('says nothing when there is no start position', () => {
+        expect(driveFieldSpan({ yards: 20 })).toEqual({ start: null, end: null });
+    });
+
+    it('treats missing yards as no gain rather than as a broken bar', () => {
+        expect(driveFieldSpan({ startYardsToGoal: 60 })).toEqual({ start: 40, end: 40 });
+    });
+});
+
+describe('buildDriveChart', () => {
+    const teams = [
+        { teamId: 99, team: 'LSU', homeAway: 'home' },
+        { teamId: 228, team: 'Clemson', homeAway: 'away' }
+    ];
+    const realDrive = {
+        id: '4018566602', offense: 'LSU', offenseId: 99,
+        defense: 'Clemson', defenseId: 228,
+        playCount: 2, yards: 8,
+        startPeriod: 1, startClock: '15:00', startYardsToGoal: 75,
+        endPeriod: 1, endClock: '14:30', endYardsToGoal: 67,
+        duration: '0:30', scoringOpportunity: true,
+        result: 'Interception', pointsGained: 0, plays: []
+    };
+
+    it('shapes a real drive', () => {
+        const [d] = buildDriveChart({ teams, drives: [realDrive] });
+        expect(d).toMatchObject({
+            driveIndex: 0, offense: 'LSU', side: 'home',
+            startClock: '15:00', periodLabel: '1ST QUARTER',
+            summary: '2 plays, 8 yards, 0:30',
+            result: 'Interception', outcome: 'turnover',
+            fieldStart: 25, fieldEnd: 33,
+            scoredAgainst: false
+        });
+    });
+
+    it('flags a drive the defence scored on, off the sign of pointsGained', () => {
+        // Clemson's pick-six drive: -7 points, from THEIR point of view.
+        const picked = { ...realDrive, offense: 'Clemson', offenseId: 228,
+            result: 'Interception Touchdown', pointsGained: -7 };
+        const [d] = buildDriveChart({ teams, drives: [picked] });
+        expect(d.side).toBe('away');
+        expect(d.points).toBe(-7);
+        expect(d.scoredAgainst).toBe(true);
+        expect(d.outcome).toBe('turnover');
+    });
+
+    it('does not call a scoreless drive "scored against"', () => {
+        const [d] = buildDriveChart({ teams, drives: [{ ...realDrive, pointsGained: 0 }] });
+        expect(d.scoredAgainst).toBe(false);
+        // Nor one that is simply missing the field.
+        const [e] = buildDriveChart({ teams, drives: [{ ...realDrive, pointsGained: null }] });
+        expect(e.scoredAgainst).toBe(false);
+    });
+
+    it('leaves side null when the offense matches neither team', () => {
+        const [d] = buildDriveChart({ teams, drives: [{ ...realDrive, offenseId: 4242 }] });
+        expect(d.side).toBeNull();
+    });
+
+    it('handles an empty or absent payload', () => {
+        expect(buildDriveChart({ teams, drives: [] })).toEqual([]);
+        expect(buildDriveChart({})).toEqual([]);
+        expect(buildDriveChart(null)).toEqual([]);
+    });
+});
+
+describe('driveLabel', () => {
+    it('renames only the last drive of a finished game', () => {
+        expect(driveLabel('End of Half', true)).toBe('End of Game');
+        expect(driveLabel('End Of Half', true)).toBe('End of Game');
+        // Halftime, and any drive mid-game, keeps CFBD's wording.
+        expect(driveLabel('End of Half', false)).toBe('End of Half');
+    });
+
+    it('leaves every other result alone', () => {
+        expect(driveLabel('Touchdown', true)).toBe('Touchdown');
+        expect(driveLabel('Punt', true)).toBe('Punt');
+        expect(driveLabel(null, true)).toBeNull();
+    });
+
+    it('is applied by buildDriveChart only when the payload is final', () => {
+        const drives = [{ result: 'End Of Half', startPeriod: 2 }, { result: 'End of Half', startPeriod: 4 }];
+        const fin = buildDriveChart({ status: 'Final', drives });
+        expect(fin.map(d => d.label)).toEqual(['End Of Half', 'End of Game']);
+        // Mid-game the last drive is not the end of anything.
+        const live = buildDriveChart({ status: 'In Progress', drives });
+        expect(live.map(d => d.label)).toEqual(['End Of Half', 'End of Half']);
+        // result stays raw either way.
+        expect(fin[1].result).toBe('End of Half');
     });
 });
 

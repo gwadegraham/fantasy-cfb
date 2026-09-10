@@ -198,7 +198,14 @@
                 var data = await res.json();
 
                 gdPlays = Array.isArray(data.plays) ? data.plays : [];
+                gdDrives = Array.isArray(data.drives) ? data.drives : [];
                 gdPlaysStatus = data.status || null;
+                gdPlaysLive = data.status === 'live';
+                gdSituation = {
+                    period: data.period, clock: data.clock,
+                    possession: data.possession, down: data.down,
+                    distance: data.distance, yardsToGoal: data.yardsToGoal
+                };
 
                 // Stop asking once the answer can no longer change. 'db' means
                 // the server already has it stored; 'final' means this response
@@ -230,11 +237,23 @@
             var container = document.getElementById('game-detail');
             if (!container) return;
             var existing = container.querySelector('#gd-pbp');
-            if (existing) {
-                // Section is already on the page: swap the list in place so a
-                // reader keeps their scroll position and their chosen tab.
+            var drives = container.querySelector('.gd-dr-list');
+            var field = container.querySelector('.gd-lf-section');
+            // Every section this fetch feeds has to already be on the page for
+            // an in-place swap to be enough. If the field or the drive chart is
+            // missing — first arrival, or a game that just went live — fall
+            // through to the full re-render that places them.
+            var needsField = gdPlaysLive && !field;
+            if (existing && drives && !needsField) {
+                // Swap the lists in place so a reader keeps their scroll
+                // position, their chosen tab, and their open quarters.
                 var list = existing.querySelector('.gd-pbp-list');
                 if (list) list.innerHTML = gdPlayList(gdTeamCtx);
+                drives.innerHTML = gdDriveRows(gdTeamCtx);
+                if (field && !gdFieldUpdate(field, gdTeamCtx)) {
+                    // Nothing left to show — the game just went final.
+                    field.remove();
+                }
                 return;
             }
             // First arrival — the section didn't exist at last paint, so the
@@ -756,7 +775,9 @@
             // modules/live-plays.js. So it renders from whatever gdPlays holds
             // and is filled in asynchronously; on first paint it shows nothing
             // rather than blocking the page on a network round trip.
+            html += gdFieldGraphic(teamCtx);
             html += renderPlaysSection(teamCtx);
+            html += renderDrivesSection(teamCtx);
 
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
@@ -929,6 +950,9 @@
         var gdPlaysDone = false;     // a final's plays never change: fetch once
         var gdPlayTab = 'scoring';   // survives the 30s re-render, unlike the DOM
         var gdPlayOpen = {};         // periodLabel -> expanded; reader choices only
+        var gdDrives = [];           // shaped drive chart, from the same fetch
+        var gdPlaysLive = false;     // is the game in progress? decides feed order
+        var gdSituation = null;      // down/distance/possession, for the field
         var gdTeamCtx = null;        // last render's per-side context, for repaints
 
         function gdPlayTabs() {
@@ -971,12 +995,28 @@
                 if (play.down != null && play.distance != null && gdHasDownAndDistance(play.playType)) {
                     situation = gdOrdinal(play.down) + ' & ' + play.distance;
                 }
+                // Pass outcomes and turnovers get a badge; a rush does not,
+                // because its result is already in its own text ("for 7
+                // yards") whereas complete-vs-incomplete is the thing that is
+                // hard to scan for. Scores never reach here — they render as
+                // cards — so 'score' is deliberately absent.
+                var badge = '';
+                if (play.outcome === 'complete' || play.outcome === 'incomplete'
+                    || play.outcome === 'sack' || play.outcome === 'turnover') {
+                    badge = '<span class="gd-pbp-badge gd-pbp-badge-' + play.outcome + '">'
+                          + esc(play.outcomeLabel || '') + '</span>';
+                }
                 return '<div class="gd-pbp-row">'
                     + '<div class="gd-pbp-row-meta">' + logo
                     + '<span class="gd-pbp-clock">' + esc(clockStr) + '</span>'
                     + (situation ? '<span class="gd-pbp-situation">' + esc(situation) + '</span>' : '')
                     + '</div>'
-                    + '<div class="gd-pbp-row-text">' + esc(play.playText || play.playType || '') + '</div>'
+                    // The badge leads the text rather than sitting in the meta
+                    // column: that column is a fixed 148px so every play's text
+                    // starts on the same edge, and a badge in it overflowed
+                    // straight into the text.
+                    + '<div class="gd-pbp-row-text">' + badge
+                    + esc(play.playText || play.playType || '') + '</div>'
                     + '</div>';
             }
 
@@ -1046,6 +1086,23 @@
 
             var groups = gdPlayGroups(rows);
             var collapsible = gdPlayTab === 'all';
+
+            // While the game is on, the play you want is the one that just
+            // happened, so the feed runs newest first — quarters reversed, and
+            // the plays inside each quarter reversed with them. On a final it
+            // stays chronological, because then you are reading the game rather
+            // than following it.
+            //
+            // 'newest' is worked out BEFORE the reverse, so the collapse
+            // default still opens the current quarter whichever way the list
+            // is facing.
+            var newestLabel = groups.length ? groups[groups.length - 1].label : null;
+            if (gdPlaysLive) {
+                groups = groups.slice().reverse().map(function (grp) {
+                    return { label: grp.label, plays: grp.plays.slice().reverse() };
+                });
+            }
+
             var html = '';
             for (var g = 0; g < groups.length; g++) {
                 var group = groups[g];
@@ -1062,7 +1119,7 @@
                     continue;
                 }
 
-                var open = gdPeriodOpen(group.label, g === groups.length - 1);
+                var open = gdPeriodOpen(group.label, group.label === newestLabel);
                 var count = group.plays.length + (group.plays.length === 1 ? ' play' : ' plays');
                 html += '<div class="gd-pbp-group' + (open ? ' gd-pbp-group-on' : '') + '">'
                      + '<button type="button" class="gd-pbp-period gd-pbp-period-btn"'
@@ -1076,6 +1133,234 @@
                      + '</div>';
             }
             return html;
+        }
+
+        // ---- the field ---------------------------------------------------
+        //
+        // Where the ball is, which way the drive is going, and where the line
+        // to gain is. Drawn only for a live game: on a final it would be a
+        // picture of the last snap, which is noise.
+        //
+        // The possessing team ALWAYS drives left to right, with the defending
+        // team's end zone on the right. CFBD's yardsToGoal is measured from the
+        // offense's perspective, so this orientation makes the arithmetic one
+        // subtraction and never depends on who is home — the alternative, a
+        // fixed home/away orientation, has to flip the field every change of
+        // possession and gets it wrong the moment `possession` is missing.
+        // The geometry, worked out once and shared by the first paint and the
+        // in-place update, so the two can never drift apart.
+        function gdFieldState(teamCtx) {
+            var sit = gdSituation;
+            if (!gdPlaysLive || !sit || sit.yardsToGoal == null) return null;
+
+            var possSide = String(sit.possession || '').toLowerCase();
+            var offense = possSide === 'home' ? teamCtx.home
+                        : (possSide === 'away' ? teamCtx.away : null);
+            var defense = possSide === 'home' ? teamCtx.away
+                        : (possSide === 'away' ? teamCtx.home : null);
+            if (!offense) return null;
+
+            // 0 = offense's own goal line, 100 = the line they are driving at.
+            var ball = Math.max(0, Math.min(100, 100 - sit.yardsToGoal));
+            // The line to gain, capped at the goal line — inside the distance
+            // to go it does not exist, it is first-and-goal.
+            var goalToGo = sit.distance != null && ball + sit.distance >= 100;
+            var toGain = sit.distance != null && !goalToGo ? ball + sit.distance : null;
+
+            var situationText = '';
+            if (sit.down != null && sit.distance != null) {
+                situationText = gdOrdinal(sit.down) + ' & ' + (goalToGo ? 'Goal' : sit.distance);
+            }
+            var spotText = sit.yardsToGoal <= 50
+                ? (defense ? defense.abbr + ' ' + sit.yardsToGoal : sit.yardsToGoal + ' to go')
+                : (offense.abbr + ' ' + (100 - sit.yardsToGoal));
+
+            // The last play, in feed order. Without it a stationary ball is
+            // ambiguous — an incomplete pass and a page that stopped updating
+            // look identical.
+            var last = gdPlays.length ? gdPlays[gdPlays.length - 1] : null;
+
+            return {
+                offense: offense, defense: defense,
+                ball: ball, toGain: toGain, goalToGo: goalToGo,
+                situationText: situationText, spotText: spotText,
+                lastText: last ? (last.playText || last.playType || '') : '',
+                lastOutcome: last ? (last.outcome || 'other') : 'other',
+                lastLabel: last ? last.outcomeLabel : null,
+                label: offense.name + ' ' + situationText + ' at the ' + spotText
+            };
+        }
+
+        function gdFieldGraphic(teamCtx) {
+            var st = gdFieldState(teamCtx);
+            if (!st) return '';
+
+            var logo = st.offense.logo
+                ? '<img class="gd-lf-logo" src="' + st.offense.logo + '" alt="" />'
+                : '<span class="gd-lf-logo"></span>';
+
+            // The line to gain is always in the DOM and toggled with `hidden`,
+            // not added and removed. An element that comes and goes cannot
+            // transition, and first-and-goal is exactly when it would vanish.
+            return '<div class="gd-section gd-lf-section" data-offense="' + esc(String(st.offense.id)) + '">'
+                + '<h3 class="gd-section-title">On the Field</h3>'
+                + '<div class="gd-lf-head">' + logo
+                + '<span class="gd-lf-team">' + esc(st.offense.name) + '</span>'
+                + '<span class="gd-lf-sit"' + (st.situationText ? '' : ' hidden') + '>'
+                + esc(st.situationText) + '</span>'
+                + '<span class="gd-lf-spot">' + esc(st.spotText) + '</span>'
+                + '</div>'
+                + '<div class="gd-lf" role="img" aria-label="' + esc(st.label) + '">'
+                + '<div class="gd-lf-ez gd-lf-ez-own"><span>' + esc(st.offense.abbr) + '</span></div>'
+                + '<div class="gd-lf-turf">'
+                + '<div class="gd-lf-gained" style="width:' + st.ball + '%"></div>'
+                + '<div class="gd-lf-togain" style="left:' + (st.toGain != null ? st.toGain : 0) + '%"'
+                + (st.toGain != null ? '' : ' hidden') + '></div>'
+                + '<div class="gd-lf-ball" style="left:' + st.ball + '%">'
+                + '<i class="fa-solid fa-football" aria-hidden="true"></i></div>'
+                + '</div>'
+                + '<div class="gd-lf-ez gd-lf-ez-target"><span>'
+                + esc(st.defense ? st.defense.abbr : '') + '</span></div>'
+                + '</div>'
+                + '<div class="gd-lf-last gd-lf-last-' + esc(st.lastOutcome) + '"'
+                + (st.lastText ? '' : ' hidden') + '>'
+                + '<span class="gd-lf-badge"' + (st.lastLabel ? '' : ' hidden') + '>'
+                + esc(st.lastLabel || '') + '</span>'
+                + '<span class="gd-lf-last-text">' + esc(st.lastText) + '</span>'
+                + '</div>'
+                + '</div>';
+        }
+
+        // Move the existing field rather than rebuilding it. Replacing the node
+        // is what killed the ball's CSS transition: a brand-new element has no
+        // previous position to animate from, so every refresh was a jump.
+        //
+        // Returns false when it cannot do the job in place — no field on the
+        // page, or nothing to show any more — and the caller falls back to a
+        // full render or removes the section.
+        function gdFieldUpdate(section, teamCtx) {
+            var st = gdFieldState(teamCtx);
+            if (!section || !st) return false;
+
+            var ball = section.querySelector('.gd-lf-ball');
+            var gained = section.querySelector('.gd-lf-gained');
+            var toGain = section.querySelector('.gd-lf-togain');
+            var field = section.querySelector('.gd-lf');
+            if (!ball || !gained || !toGain || !field) return false;
+
+            // A change of possession flips which way the field points, so the
+            // ball's new position is a mirror image, not a movement. Sliding
+            // across the field would draw a play that never happened — so the
+            // transition is suppressed for exactly that one repaint.
+            var wasOffense = section.getAttribute('data-offense');
+            var flipped = wasOffense !== String(st.offense.id);
+            if (flipped) {
+                section.setAttribute('data-offense', String(st.offense.id));
+                field.classList.add('gd-lf-nosnap');
+                // Read a layout property to force the class to take effect
+                // before the new position is written, or the browser coalesces
+                // both changes and animates anyway.
+                void field.offsetWidth;
+            }
+
+            ball.style.left = st.ball + '%';
+            gained.style.width = st.ball + '%';
+            toGain.hidden = st.toGain == null;
+            if (st.toGain != null) toGain.style.left = st.toGain + '%';
+            field.setAttribute('aria-label', st.label);
+
+            var head = section.querySelector('.gd-lf-head');
+            if (head) {
+                var img = head.querySelector('img.gd-lf-logo');
+                if (img && st.offense.logo && img.getAttribute('src') !== st.offense.logo) {
+                    img.setAttribute('src', st.offense.logo);
+                }
+                var team = head.querySelector('.gd-lf-team');
+                if (team) team.textContent = st.offense.name;
+                var sit = head.querySelector('.gd-lf-sit');
+                if (sit) {
+                    sit.textContent = st.situationText;
+                    sit.hidden = !st.situationText;
+                }
+                var spot = head.querySelector('.gd-lf-spot');
+                if (spot) spot.textContent = st.spotText;
+            }
+            var lastWrap = section.querySelector('.gd-lf-last');
+            if (lastWrap) {
+                lastWrap.hidden = !st.lastText;
+                lastWrap.className = 'gd-lf-last gd-lf-last-' + st.lastOutcome;
+                var badge = lastWrap.querySelector('.gd-lf-badge');
+                if (badge) {
+                    badge.textContent = st.lastLabel || '';
+                    badge.hidden = !st.lastLabel;
+                }
+                var lastText = lastWrap.querySelector('.gd-lf-last-text');
+                if (lastText) lastText.textContent = st.lastText;
+            }
+
+            var ownEz = section.querySelector('.gd-lf-ez-own span');
+            if (ownEz) ownEz.textContent = st.offense.abbr;
+            var targetEz = section.querySelector('.gd-lf-ez-target span');
+            if (targetEz) targetEz.textContent = st.defense ? st.defense.abbr : '';
+
+            if (flipped) {
+                // Next frame, so the snap has been painted before movement is
+                // allowed again.
+                requestAnimationFrame(function () { field.classList.remove('gd-lf-nosnap'); });
+            }
+            return true;
+        }
+
+        // ---- drive chart -------------------------------------------------
+        //
+        // One row per drive: who had it, when it started, how far it got as a
+        // bar across the field, and how it ended. The data was already being
+        // fetched and persisted with the plays and thrown away.
+        //
+        // Newest drive first while the game is live, for the same reason the
+        // play feed flips: the drive you care about is the one happening.
+        function gdDriveRows(teamCtx) {
+            if (!gdDrives.length) return '';
+            var rows = gdPlaysLive ? gdDrives.slice().reverse() : gdDrives;
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var d = rows[i];
+                var side = d.side === 'home' ? teamCtx.home
+                         : (d.side === 'away' ? teamCtx.away : null);
+                var logo = side && side.logo
+                    ? '<img class="gd-dr-logo" src="' + side.logo + '" alt="" />'
+                    : '<span class="gd-dr-logo gd-dr-logo-none"></span>';
+
+                var start = d.fieldStart != null ? d.fieldStart : 0;
+                var end = d.fieldEnd != null ? d.fieldEnd : start;
+                // A drive that lost yards runs right to left, so the bar is
+                // drawn from whichever end is smaller.
+                var left = Math.min(start, end);
+                var width = Math.max(Math.abs(end - start), 1.2);
+
+                var when = (d.startClock ? d.startClock : '')
+                    + (d.startPeriod != null ? (d.startClock ? ' · ' : '') + gdOrdinal(d.startPeriod) : '');
+
+                html += '<div class="gd-dr gd-dr-' + d.outcome + (d.scoredAgainst ? ' gd-dr-against' : '') + '">'
+                    + '<div class="gd-dr-top">' + logo
+                    + '<span class="gd-dr-when">' + esc(when) + '</span>'
+                    + '<span class="gd-dr-result">' + esc(d.label || d.result || '—') + '</span>'
+                    + '</div>'
+                    + '<div class="gd-dr-track">'
+                    + '<div class="gd-dr-bar" style="left:' + left + '%;width:' + width + '%"></div>'
+                    + '</div>'
+                    + '<div class="gd-dr-foot">' + esc(d.summary || '') + '</div>'
+                    + '</div>';
+            }
+            return html;
+        }
+
+        function renderDrivesSection(teamCtx) {
+            if (!gdDrives.length) return '';
+            return '<div class="gd-section gd-dr-section">'
+                + '<h3 class="gd-section-title">Drives</h3>'
+                + '<div class="gd-dr-list">' + gdDriveRows(teamCtx) + '</div>'
+                + '</div>';
         }
 
         function renderPlaysSection(teamCtx) {
