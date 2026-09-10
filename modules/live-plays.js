@@ -15,11 +15,11 @@
 //      viewed, not with viewers — six managers watching one game cost one call
 //      per window, the same as one manager.
 //   2. Persistence on final. A completed game's payload is terminal: it comes
-//      back with the full drive list and every advanced metric, and will never
-//      change again. So the first view after a game ends stores the drive-level
-//      summary on the Game doc, and every view after that is served from Mongo
-//      for zero calls, forever. A finished game therefore costs at most ONE
-//      call for its entire life.
+//      back with the full drive list, every play, and every advanced metric,
+//      and will never change again. So the first view after a game ends stores
+//      a trimmed copy on the Game doc, and every view after that is served from
+//      Mongo for zero calls, forever. A finished game therefore costs at most
+//      ONE call for its entire life.
 //   3. A negative cache. A game that hasn't kicked off answers 400 "No plays
 //      found for game." — that is a normal state, not an error, and it must not
 //      turn into a request on every page refresh.
@@ -83,15 +83,39 @@ function normalizeTeam(t) {
     return out;
 }
 
-// One drive, without its plays.
+// One play, trimmed to what the play-by-play view reads.
 //
-// The plays array is ~90% of the payload (64KB of 79KB on a measured game) and
-// a drive chart doesn't read it — it wants where a drive started, where it
-// ended, and how it ended. Persisting drive-level only is 8KB per game, ~7MB
-// for a season, against 65MB for the raw payload. Live viewers still get the
-// plays, because the cache holds the untrimmed response; only what goes to
-// Mongo is trimmed. If a play-by-play log is ever wanted for finished games it
-// costs one call per game to backfill.
+// `homeScore`/`awayScore` are the score AFTER the play, which is what makes
+// scoring detection possible without parsing playText — see isScoringPlay.
+// Dropped: wallClock, playTypeId, and the per-play advanced fields (epa,
+// success, garbageTime, rushPass, downType). None are rendered, and the
+// advanced numbers that matter are already stored per team. 239 bytes a play.
+function normalizePlay(p) {
+    if (!p) return null;
+    return {
+        period: num(p.period),
+        clock: p.clock || null,
+        teamId: num(p.teamId),
+        team: p.team || null,
+        down: num(p.down),
+        distance: num(p.distance),
+        yardsToGoal: num(p.yardsToGoal),
+        yardsGained: num(p.yardsGained),
+        playType: p.playType || null,
+        playText: p.playText || null,
+        homeScore: num(p.homeScore),
+        awayScore: num(p.awayScore)
+    };
+}
+
+// One drive, with its plays trimmed.
+//
+// The plays ARE persisted, unlike the first cut of this module: the
+// play-by-play view needs them, and a finished game that had only drive-level
+// data stored would have shown an empty log forever, because the stored summary
+// short-circuits every later fetch. Trimmed it is ~50KB per game (~41MB for a
+// full season of every FBS game, and only games someone actually opens are ever
+// stored) against 79KB raw.
 function normalizeDrive(d) {
     if (!d) return null;
     return {
@@ -111,15 +135,18 @@ function normalizeDrive(d) {
         duration: d.duration || null,
         scoringOpportunity: d.scoringOpportunity === true,
         result: d.result || null,
-        pointsGained: num(d.pointsGained)
+        pointsGained: num(d.pointsGained),
+        plays: (d.plays || []).map(normalizePlay).filter(Boolean)
     };
 }
 
-// The drive-level summary persisted on a completed game. Deliberately just the
-// two halves that are terminal and unavailable elsewhere: the advanced team
-// metrics and the drive list. Live-only fields (clock, possession, down) are
-// dropped — they are empty on a final anyway, and the Game doc already carries
-// its own copies from the scoreboard.
+// What gets persisted for a completed game: the advanced team metrics and the
+// drives with their plays. Both are terminal on a final and unavailable from any
+// other endpoint we call.
+//
+// Live-only top-level fields (status, clock, possession, down) are dropped —
+// they are empty on a final anyway, and the Game doc already carries its own
+// copies from the scoreboard.
 function summarizeForStorage(payload) {
     if (!payload) return null;
     return {
@@ -257,7 +284,7 @@ module.exports = {
     getLivePlays, fetchLivePlays, NoPlaysError,
     summarizeForStorage, isFinalPayload,
     // exported for tests
-    normalizeTeam, normalizeDrive, isFresh, prune,
+    normalizeTeam, normalizeDrive, normalizePlay, isFresh, prune,
     TTL_MS, MISS_TTL_MS, MAX_ENTRIES, TEAM_FIELDS,
     _cacheSize: () => cache.size,
     _reset: () => { cache = new Map(); }

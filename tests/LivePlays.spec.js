@@ -1,7 +1,7 @@
 const livePlays = require('../modules/live-plays');
 const {
     getLivePlays, summarizeForStorage, isFinalPayload,
-    normalizeTeam, normalizeDrive, TTL_MS, MISS_TTL_MS
+    normalizeTeam, normalizeDrive, normalizePlay, TTL_MS, MISS_TTL_MS
 } = livePlays;
 
 // /live/plays is the one live endpoint that costs money, so the tests here are
@@ -36,8 +36,15 @@ function fixture({ status = 'Final', drives = 2, plays = 3 } = {}) {
             duration: '2:36', scoringOpportunity: true,
             result: 'Fumble', pointsGained: 0,
             plays: Array.from({ length: plays }, (_, j) => ({
-                id: `p${i}${j}`, playType: 'Rush', playText: 'a run', yardsGained: 4,
-                down: 1, distance: 10, yardsToGoal: 65, epa: 0.1, success: true
+                id: `40185821210184990${i}${j}`,
+                homeScore: 0, awayScore: 0, period: 1, clock: '15:00',
+                wallClock: '2026-09-08T01:16:43.000Z',
+                teamId: 52, team: 'Florida State',
+                down: 1, distance: 10, yardsToGoal: 65, yardsGained: 4,
+                playTypeId: 5, playType: 'Rush',
+                epa: 0.1, garbageTime: false, success: true,
+                rushPass: 'rush', downType: 'standard',
+                playText: 'a run'
             }))
         }))
     };
@@ -75,11 +82,28 @@ describe('normalizers', () => {
         expect(t.successRate).toBeNull();
     });
 
-    it('strips the per-play arrays from a drive', () => {
-        // 90% of the payload, and a drive chart doesn't read it.
+    it('keeps a drive\'s plays, trimmed to what the log renders', () => {
+        // The plays are kept — the play-by-play view needs them, and a stored
+        // game short-circuits every later fetch, so anything dropped here is
+        // dropped forever.
         const d = normalizeDrive(fixture().drives[0]);
-        expect(d.plays).toBeUndefined();
+        expect(d.plays).toHaveLength(3);
         expect(d).toMatchObject({ result: 'Fumble', startYardsToGoal: 75, endYardsToGoal: 35, pointsGained: 0 });
+    });
+
+    it('trims a play to the rendered fields and keeps the running score', () => {
+        const play = normalizeDrive(fixture().drives[0]).plays[0];
+        // homeScore/awayScore are load-bearing: scoring detection is a score
+        // comparison, not a playType match.
+        expect(play).toHaveProperty('homeScore');
+        expect(play).toHaveProperty('awayScore');
+        expect(play).toMatchObject({ playType: 'Rush', playText: 'a run', yardsGained: 4, down: 1, distance: 10 });
+        // Dropped: nothing renders these and the advanced numbers that matter
+        // are stored per team.
+        expect(play.epa).toBeUndefined();
+        expect(play.success).toBeUndefined();
+        expect(play.wallClock).toBeUndefined();
+        expect(play.playTypeId).toBeUndefined();
     });
 
     it('coerces a drive id to a string', () => {
@@ -96,12 +120,13 @@ describe('normalizers', () => {
         expect(s.teams).toHaveLength(2);
     });
 
-    it('shrinks the stored payload by roughly an order of magnitude', () => {
-        // The reason storing every finished game is affordable. If this ratio
-        // ever collapses, the season's storage projection was wrong.
+    it('stores meaningfully less than the raw payload', () => {
+        // Measured on a real game: ~50KB stored against 79KB raw, so ~41MB for
+        // a full season of every FBS game — and only games someone opens are
+        // ever stored. If this ratio collapses, the storage projection was wrong.
         const raw = JSON.stringify(fixture({ drives: 12, plays: 7 })).length;
         const stored = JSON.stringify(summarizeForStorage(fixture({ drives: 12, plays: 7 }))).length;
-        expect(stored).toBeLessThan(raw / 3);
+        expect(stored).toBeLessThan(raw * 0.8);
     });
 });
 
@@ -231,10 +256,37 @@ describe('defensive edges', () => {
     beforeEach(() => livePlays._reset());
     afterEach(() => { delete global.fetch; });
 
-    it('returns null for a missing team or drive rather than an empty shell', () => {
+    it('returns null for a missing team, drive or play rather than an empty shell', () => {
         expect(normalizeTeam(null)).toBeNull();
         expect(normalizeDrive(null)).toBeNull();
+        expect(normalizePlay(null)).toBeNull();
         expect(summarizeForStorage(null)).toBeNull();
+    });
+
+    it('nulls a play\'s absent fields instead of dropping them', () => {
+        // The keys have to exist even when empty: play-by-play reads
+        // homeScore/awayScore on every play to decide what scored, and an
+        // undefined would compare as "no change" for a different reason than
+        // an explicit null does.
+        const p = normalizePlay({ playText: 'a run' });
+        expect(p.homeScore).toBeNull();
+        expect(p.awayScore).toBeNull();
+        expect(p.period).toBeNull();
+        expect(p.clock).toBeNull();
+        expect(p.playText).toBe('a run');
+    });
+
+    it('evicts expired entries on write', () => {
+        // prune runs on write rather than on a timer, so an idle process holds
+        // nothing open. Without it a season of game ids accumulates in a dyno.
+        livePlays._reset();
+        stubFetch();
+        return getLivePlays(1, { nowMs: 1000 })
+            .then(() => getLivePlays(2, { nowMs: 1000 + MISS_TTL_MS * 2 }))
+            .then(() => {
+                // Game 1's entry aged out and was dropped when game 2 was written.
+                expect(livePlays._cacheSize()).toBe(1);
+            });
     });
 
     it('survives a payload with no teams or drives', () => {

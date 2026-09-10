@@ -251,8 +251,11 @@ const gameSchema = new mongoose.Schema({
     // at ever again. Its presence is the cache key: a game doc that has this
     // never asks CFBD for plays.
     //
-    // Drive-level only — the per-play arrays are ~90% of the payload and a
-    // drive chart doesn't read them (8KB per game stored, against 79KB raw).
+    // Trimmed, not raw: ~50KB per game against 79KB, by dropping each play's
+    // wallClock, playTypeId and per-play advanced fields. The plays themselves
+    // ARE kept — the play-by-play view reads them, and a game stored without
+    // them would show an empty log forever, since a stored summary
+    // short-circuits every later fetch.
     livePlays: new mongoose.Schema({
         fetchedAt: Date,
         teams: [new mongoose.Schema({
@@ -278,7 +281,17 @@ const gameSchema = new mongoose.Schema({
             startPeriod: Number, startClock: String, startYardsToGoal: Number,
             endPeriod: Number, endClock: String, endYardsToGoal: Number,
             duration: String, scoringOpportunity: Boolean,
-            result: String, pointsGained: Number
+            result: String, pointsGained: Number,
+            // homeScore/awayScore are the score AFTER the play, which is how
+            // modules/play-by-play.js identifies a scoring play.
+            plays: [new mongoose.Schema({
+                period: Number, clock: String,
+                teamId: Number, team: String,
+                down: Number, distance: Number,
+                yardsToGoal: Number, yardsGained: Number,
+                playType: String, playText: String,
+                homeScore: Number, awayScore: Number
+            }, { _id: false })]
         }, { _id: false })]
     }, { _id: false }),
     lastUpdated: {

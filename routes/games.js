@@ -11,6 +11,7 @@ const Team = require('../models/team');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
+const { buildPlayByPlay } = require('../modules/play-by-play');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
@@ -762,7 +763,13 @@ router.get('/plays/:gameId', async (req, res) => {
         const game = await Game.findOne({ id: gameId }, { livePlays: 1, completed: 1 }).lean();
         if (!game) return res.status(404).json({ message: 'Game not found' });
         if (game.livePlays && (game.livePlays.drives || []).length) {
-            return res.json({ source: 'db', status: 'final', ...game.livePlays });
+            return res.json({
+                source: 'db',
+                status: 'final',
+                teams: game.livePlays.teams || [],
+                drives: game.livePlays.drives,
+                plays: buildPlayByPlay(game.livePlays)
+            });
         }
 
         const result = await getLivePlays(gameId);
@@ -771,7 +778,7 @@ router.get('/plays/:gameId', async (req, res) => {
             // Pre-kickoff. A 200 with an explicit empty answer, because this is
             // the normal state of every game before it starts and the client
             // should render "no plays yet", not an error.
-            return res.json({ source: result.cached ? 'cache' : 'cfbd', status: 'none', teams: [], drives: [] });
+            return res.json({ source: result.cached ? 'cache' : 'cfbd', status: 'none', teams: [], drives: [], plays: [] });
         }
 
         const payload = result.payload;
@@ -792,10 +799,11 @@ router.get('/plays/:gameId', async (req, res) => {
         res.json({
             source: result.cached ? 'cache' : 'cfbd',
             status: result.status === 'stale' ? 'stale' : (final ? 'final' : 'live'),
-            // Live viewers get the untrimmed drives, per-play arrays included —
-            // only what is persisted is trimmed to drive level.
             teams: payload && payload.teams ? payload.teams : [],
             drives: payload && payload.drives ? payload.drives : [],
+            // Shaped server-side so a live game and a stored one render
+            // identically — see modules/play-by-play.js.
+            plays: buildPlayByPlay(payload),
             period: payload ? payload.period : null,
             clock: payload ? payload.clock : null,
             possession: payload ? payload.possession : null,

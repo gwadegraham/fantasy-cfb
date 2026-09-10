@@ -44,7 +44,13 @@ function payload({ status = 'Final' } = {}) {
             startPeriod: 1, startClock: '15:00', startYardsToGoal: 75,
             endPeriod: 1, endClock: '12:24', endYardsToGoal: 35,
             duration: '2:36', scoringOpportunity: true, result: 'Fumble', pointsGained: 0,
-            plays: [{ id: 'p1', playType: 'Rush', playText: 'a run', yardsGained: 4 }]
+            plays: [{
+                id: 'p1', period: status === 'Final' ? 4 : 3, clock: '07:14',
+                teamId: 2567, team: 'SMU', down: 1, distance: 10,
+                yardsToGoal: 65, yardsGained: 4,
+                playType: 'Rush', playText: 'a run',
+                homeScore: 0, awayScore: 0
+            }]
         }]
     };
 }
@@ -105,10 +111,12 @@ describe('GET /games/plays/:gameId', () => {
         const stored = await Game.findOne({ id: GAME_ID }).lean();
         expect(stored.livePlays.drives).toHaveLength(1);
         expect(stored.livePlays.teams).toHaveLength(2);
-        // Drive-level only — the per-play array is what makes the payload big.
-        expect(stored.livePlays.drives[0].plays).toBeUndefined();
         expect(stored.livePlays.drives[0].result).toBe('Fumble');
         expect(stored.livePlays.fetchedAt).toBeTruthy();
+        // The plays have to be stored too: this doc short-circuits every later
+        // fetch, so a game saved without them would show an empty log forever.
+        expect(stored.livePlays.drives[0].plays).toHaveLength(1);
+        expect(stored.livePlays.drives[0].plays[0].playText).toBe('a run');
     });
 
     it('serves a stored game from Mongo forever, for zero calls', async () => {
@@ -134,9 +142,12 @@ describe('GET /games/plays/:gameId', () => {
         const res = await request(app).get(`/games/plays/${GAME_ID}`);
 
         expect(res.body.status).toBe('live');
-        // Per-play detail is available while the game is on...
         expect(res.body.drives[0].plays).toHaveLength(1);
         expect(res.body.clock).toBe('07:14');
+        // The shaped log comes back on the live path too, so the page renders
+        // the same way mid-game as it does after the final.
+        expect(res.body.plays).toHaveLength(1);
+        expect(res.body.plays[0].periodLabel).toBe('3RD QUARTER');
 
         // ...but a live payload must never be persisted, or the stored-final
         // short-circuit would freeze the game mid-third-quarter forever.
