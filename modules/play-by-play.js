@@ -230,6 +230,79 @@ function buildPlayByPlay(payload) {
     return out;
 }
 
+// ---- drive chart -----------------------------------------------------------
+//
+// The drives are already in the payload, already persisted, and were being
+// thrown away. Shaped here for the same reason the plays are: one tested
+// function has to serve a live payload and a stored one identically.
+//
+// Field position: startYardsToGoal is measured from the OFFENSE's perspective,
+// so 75 means their own 25. Converted to "yards from the offense's own goal"
+// (0-100) because that is what a bar has to be drawn in, and clamped because a
+// drive that ends in a defensive score reports an end position behind where it
+// started.
+function driveFieldSpan(drive) {
+    const start = drive.startYardsToGoal != null ? 100 - drive.startYardsToGoal : null;
+    if (start == null) return { start: null, end: null };
+    const gained = drive.yards != null ? drive.yards : 0;
+    const clamp = (n) => Math.max(0, Math.min(100, n));
+    return { start: clamp(start), end: clamp(start + gained) };
+}
+
+// How a drive ended, as one of four buckets the page can colour.
+//
+// Matched on a lowercased substring, and defaulting to 'other', so a result
+// CFBD words differently — or capitalizes differently, and it does: both
+// 'End Of Half' and 'End of Half' appear in one game — lands somewhere sane
+// instead of nowhere. Turnovers are checked BEFORE touchdowns because
+// 'Interception Touchdown' is a defensive score: a disaster for the offense
+// whose drive it was, not a touchdown for them.
+function driveOutcome(result) {
+    const r = String(result || '').toLowerCase();
+    if (!r) return 'other';
+    if (r.includes('interception') || r.includes('fumble')) return 'turnover';
+    if (r.includes('safety')) return 'turnover';
+    if (r.includes('touchdown')) return 'touchdown';
+    if (r.includes('missed') || r.includes('blocked') || r.includes('failed')) return 'other';
+    if (r.includes('field goal') || r.includes('fg')) return 'field-goal';
+    if (r.includes('punt')) return 'punt';
+    if (r.includes('downs')) return 'turnover';
+    return 'other';
+}
+
+function buildDriveChart(payload) {
+    const sides = sideTeamIds(payload);
+    return ((payload && payload.drives) || []).map((drive, driveIndex) => {
+        const span = driveFieldSpan(drive);
+        // pointsGained is from the offense's point of view, so it goes negative
+        // on a drive the defense scored on. The sign is the cleanest signal
+        // there is that a drive ended badly rather than well.
+        const points = drive.pointsGained != null ? drive.pointsGained : null;
+        return {
+            driveIndex,
+            offense: drive.offense || null,
+            offenseId: drive.offenseId != null ? drive.offenseId : null,
+            side: drive.offenseId != null && drive.offenseId === sides.home ? 'home'
+                : (drive.offenseId != null && drive.offenseId === sides.away ? 'away' : null),
+            startPeriod: drive.startPeriod != null ? drive.startPeriod : null,
+            startClock: drive.startClock || null,
+            endPeriod: drive.endPeriod != null ? drive.endPeriod : null,
+            endClock: drive.endClock || null,
+            periodLabel: periodLabel(drive.startPeriod),
+            playCount: drive.playCount != null ? drive.playCount : null,
+            yards: drive.yards != null ? drive.yards : null,
+            duration: drive.duration || null,
+            summary: driveSummary(drive),
+            result: drive.result || null,
+            outcome: driveOutcome(drive.result),
+            points,
+            scoredAgainst: points != null && points < 0,
+            fieldStart: span.start,
+            fieldEnd: span.end
+        };
+    });
+}
+
 // Group an ordered play list into quarters for rendering. Groups in encounter
 // order rather than by sorting on period, so a feed that revisits a period
 // (it happens around period boundaries) doesn't scatter plays into two headings.
@@ -253,7 +326,8 @@ function scoringPlays(plays) {
 }
 
 module.exports = {
-    buildPlayByPlay, groupByPeriod, scoringPlays,
+    buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText, MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
+    cleanPlayText, driveOutcome, driveFieldSpan,
+    MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
 };

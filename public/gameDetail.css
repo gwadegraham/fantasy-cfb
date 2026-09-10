@@ -1076,3 +1076,169 @@ html.gd-page, .gd-page body {
     .gd-pbp-score { gap: 10px; }
     .gd-pbp-score-col { min-width: 30px; }
 }
+
+/* ====================================================================
+   On the Field — live only
+   ====================================================================
+   The possessing team always drives left to right, so the geometry never
+   depends on who is home; see gdFieldGraphic in views/gameDetail.ejs. */
+.gd-lf-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.gd-lf-logo { width: 24px; height: 24px; object-fit: contain; }
+.gd-lf-team { font-weight: 700; font-size: 0.9rem; color: var(--cc-text); }
+.gd-lf-sit {
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: var(--cc-text);
+    background: var(--cc-surface-3);
+    border-radius: var(--cc-r-pill);
+    padding: 2px 10px;
+}
+.gd-lf-spot { font-size: 0.78rem; color: var(--cc-muted); margin-left: auto; }
+
+.gd-lf {
+    display: flex;
+    align-items: stretch;
+    height: 46px;
+    border-radius: var(--cc-r-sm);
+    overflow: hidden;
+    border: 1px solid var(--cc-border);
+}
+.gd-lf-ez {
+    flex: 0 0 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cc-surface-3);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-bright);
+}
+/* The end zone being driven at is the one that matters, so it is the one that
+   gets colour. The offense's own end zone behind them stays quiet. */
+.gd-lf-ez-target { background: color-mix(in srgb, var(--cc-success) 26%, var(--cc-surface-3)); }
+.gd-lf-ez span { transform: rotate(180deg); writing-mode: vertical-rl; }
+
+.gd-lf-turf {
+    position: relative;
+    flex: 1 1 auto;
+    /* Five-yard stripes, drawn rather than imaged so they cost nothing and
+       scale with the container at any width. */
+    background:
+        repeating-linear-gradient(to right,
+            var(--cc-border) 0 1px,
+            transparent 1px 10%),
+        var(--cc-surface-2);
+}
+.gd-lf-gained {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: color-mix(in srgb, var(--cc-success) 16%, transparent);
+}
+/* The line to gain. Hidden when it would fall in the end zone, because inside
+   the distance to go there isn't one — it's first and goal. */
+.gd-lf-togain {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--cc-amber);
+}
+.gd-lf-ball {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--cc-text);
+    font-size: 0.9rem;
+    /* A ring behind the ball so it stays readable on top of a stripe. */
+    text-shadow: 0 0 6px var(--cc-bg), 0 0 3px var(--cc-bg);
+    transition: left 400ms ease;
+}
+
+/* ====================================================================
+   Drives
+   ==================================================================== */
+.gd-dr-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.gd-dr {
+    /* The right padding clears the list's own scrollbar, which otherwise sits
+       on top of the result label. */
+    padding: 9px 10px 10px 2px;
+    border-bottom: 1px solid var(--cc-border);
+}
+.gd-dr:last-child { border-bottom: 0; }
+.gd-dr-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+}
+.gd-dr-logo { width: 20px; height: 20px; object-fit: contain; flex: 0 0 20px; }
+.gd-dr-logo-none { display: inline-block; }
+.gd-dr-when {
+    font-size: 0.72rem;
+    color: var(--cc-muted-2);
+    white-space: nowrap;
+}
+.gd-dr-result {
+    margin-left: auto;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cc-muted-bright);
+    text-align: right;
+}
+.gd-dr-foot { font-size: 0.72rem; color: var(--cc-muted); }
+
+/* The bar spans the field the drive covered: 0% is the offense's own goal
+   line, 100% the one they were driving at. */
+.gd-dr-track {
+    position: relative;
+    height: 6px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-surface-2);
+    margin-bottom: 6px;
+    overflow: hidden;
+}
+.gd-dr-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-muted-2);
+}
+
+/* Outcome colours. Every bucket is styled, including 'other', so an unmatched
+   CFBD result reads as deliberate rather than broken — see driveOutcome. */
+.gd-dr-touchdown .gd-dr-bar,
+.gd-dr-field-goal .gd-dr-bar { background: var(--cc-success); }
+.gd-dr-touchdown .gd-dr-result,
+.gd-dr-field-goal .gd-dr-result { color: var(--cc-success); }
+.gd-dr-turnover .gd-dr-bar { background: var(--cc-danger); }
+.gd-dr-turnover .gd-dr-result { color: var(--cc-danger-text); }
+.gd-dr-punt .gd-dr-bar,
+.gd-dr-other .gd-dr-bar { background: var(--cc-muted-2); }
+
+/* A drive the DEFENCE scored on — pointsGained went negative. Worse than a
+   turnover and worth reading as such. */
+.gd-dr-against .gd-dr-result::after {
+    content: ' · DEF TD';
+    color: var(--cc-danger-text);
+}
+
+@media (max-width: 480px) {
+    .gd-lf { height: 40px; }
+    .gd-lf-ez { flex-basis: 26px; }
+    .gd-lf-spot { margin-left: 0; width: 100%; }
+}

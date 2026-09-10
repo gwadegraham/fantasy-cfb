@@ -135,19 +135,27 @@ describe('GET /games/plays/:gameId', () => {
         expect(f).not.toHaveBeenCalled();
     });
 
-    it('gives live viewers the untrimmed drives but stores nothing', async () => {
+    it('serves a live game the same shapes as a stored one, and stores nothing', async () => {
         await seedGame();
         stubFetch({ body: payload({ status: 'In Progress' }) });
 
         const res = await request(app).get(`/games/plays/${GAME_ID}`);
 
         expect(res.body.status).toBe('live');
-        expect(res.body.drives[0].plays).toHaveLength(1);
         expect(res.body.clock).toBe('07:14');
+
         // The shaped log comes back on the live path too, so the page renders
         // the same way mid-game as it does after the final.
         expect(res.body.plays).toHaveLength(1);
         expect(res.body.plays[0].periodLabel).toBe('3RD QUARTER');
+
+        // Drives are the CHART shape, not the raw payload: no per-play arrays,
+        // because `plays` above already carries every play once. Sending them
+        // inside the drives as well duplicated the whole log — 187 plays twice
+        // on a real game.
+        expect(res.body.drives).toHaveLength(1);
+        expect(res.body.drives[0].plays).toBeUndefined();
+        expect(res.body.drives[0]).toMatchObject({ driveIndex: 0, outcome: expect.any(String) });
 
         // ...but a live payload must never be persisted, or the stored-final
         // short-circuit would freeze the game mid-third-quarter forever.

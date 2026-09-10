@@ -11,7 +11,7 @@ const Team = require('../models/team');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
-const { buildPlayByPlay } = require('../modules/play-by-play');
+const { buildPlayByPlay, buildDriveChart } = require('../modules/play-by-play');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
@@ -771,7 +771,7 @@ router.get('/plays/:gameId', async (req, res) => {
                 source: 'db',
                 status: 'final',
                 teams: game.livePlays.teams || [],
-                drives: game.livePlays.drives,
+                drives: buildDriveChart(game.livePlays),
                 plays: buildPlayByPlay(game.livePlays)
             });
         }
@@ -814,7 +814,9 @@ router.get('/plays/:gameId', async (req, res) => {
             source: result.cached ? 'cache' : 'cfbd',
             status: result.status === 'stale' ? 'stale' : (final ? 'final' : 'live'),
             teams: payload && payload.teams ? payload.teams : [],
-            drives: payload && payload.drives ? payload.drives : [],
+            // Shaped, not raw: the page needs field spans and an outcome
+            // bucket, and a live game has to match a stored one exactly.
+            drives: buildDriveChart(payload),
             // Shaped server-side so a live game and a stored one render
             // identically — see modules/play-by-play.js.
             plays: buildPlayByPlay(payload),

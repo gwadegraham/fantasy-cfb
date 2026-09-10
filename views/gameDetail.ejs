@@ -198,7 +198,14 @@
                 var data = await res.json();
 
                 gdPlays = Array.isArray(data.plays) ? data.plays : [];
+                gdDrives = Array.isArray(data.drives) ? data.drives : [];
                 gdPlaysStatus = data.status || null;
+                gdPlaysLive = data.status === 'live';
+                gdSituation = {
+                    period: data.period, clock: data.clock,
+                    possession: data.possession, down: data.down,
+                    distance: data.distance, yardsToGoal: data.yardsToGoal
+                };
 
                 // Stop asking once the answer can no longer change. 'db' means
                 // the server already has it stored; 'final' means this response
@@ -230,11 +237,24 @@
             var container = document.getElementById('game-detail');
             if (!container) return;
             var existing = container.querySelector('#gd-pbp');
-            if (existing) {
-                // Section is already on the page: swap the list in place so a
-                // reader keeps their scroll position and their chosen tab.
+            var drives = container.querySelector('.gd-dr-list');
+            var field = container.querySelector('.gd-lf-section');
+            // Every section this fetch feeds has to already be on the page for
+            // an in-place swap to be enough. If the field or the drive chart is
+            // missing — first arrival, or a game that just went live — fall
+            // through to the full re-render that places them.
+            var needsField = gdPlaysLive && !field;
+            if (existing && drives && !needsField) {
+                // Swap the lists in place so a reader keeps their scroll
+                // position, their chosen tab, and their open quarters.
                 var list = existing.querySelector('.gd-pbp-list');
                 if (list) list.innerHTML = gdPlayList(gdTeamCtx);
+                drives.innerHTML = gdDriveRows(gdTeamCtx);
+                if (field) {
+                    var fresh = gdFieldGraphic(gdTeamCtx);
+                    if (fresh) field.outerHTML = fresh;
+                    else field.remove();
+                }
                 return;
             }
             // First arrival — the section didn't exist at last paint, so the
@@ -756,7 +776,9 @@
             // modules/live-plays.js. So it renders from whatever gdPlays holds
             // and is filled in asynchronously; on first paint it shows nothing
             // rather than blocking the page on a network round trip.
+            html += gdFieldGraphic(teamCtx);
             html += renderPlaysSection(teamCtx);
+            html += renderDrivesSection(teamCtx);
 
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
@@ -929,6 +951,9 @@
         var gdPlaysDone = false;     // a final's plays never change: fetch once
         var gdPlayTab = 'scoring';   // survives the 30s re-render, unlike the DOM
         var gdPlayOpen = {};         // periodLabel -> expanded; reader choices only
+        var gdDrives = [];           // shaped drive chart, from the same fetch
+        var gdPlaysLive = false;     // is the game in progress? decides feed order
+        var gdSituation = null;      // down/distance/possession, for the field
         var gdTeamCtx = null;        // last render's per-side context, for repaints
 
         function gdPlayTabs() {
@@ -1046,6 +1071,23 @@
 
             var groups = gdPlayGroups(rows);
             var collapsible = gdPlayTab === 'all';
+
+            // While the game is on, the play you want is the one that just
+            // happened, so the feed runs newest first — quarters reversed, and
+            // the plays inside each quarter reversed with them. On a final it
+            // stays chronological, because then you are reading the game rather
+            // than following it.
+            //
+            // 'newest' is worked out BEFORE the reverse, so the collapse
+            // default still opens the current quarter whichever way the list
+            // is facing.
+            var newestLabel = groups.length ? groups[groups.length - 1].label : null;
+            if (gdPlaysLive) {
+                groups = groups.slice().reverse().map(function (grp) {
+                    return { label: grp.label, plays: grp.plays.slice().reverse() };
+                });
+            }
+
             var html = '';
             for (var g = 0; g < groups.length; g++) {
                 var group = groups[g];
@@ -1062,7 +1104,7 @@
                     continue;
                 }
 
-                var open = gdPeriodOpen(group.label, g === groups.length - 1);
+                var open = gdPeriodOpen(group.label, group.label === newestLabel);
                 var count = group.plays.length + (group.plays.length === 1 ? ' play' : ' plays');
                 html += '<div class="gd-pbp-group' + (open ? ' gd-pbp-group-on' : '') + '">'
                      + '<button type="button" class="gd-pbp-period gd-pbp-period-btn"'
@@ -1076,6 +1118,123 @@
                      + '</div>';
             }
             return html;
+        }
+
+        // ---- the field ---------------------------------------------------
+        //
+        // Where the ball is, which way the drive is going, and where the line
+        // to gain is. Drawn only for a live game: on a final it would be a
+        // picture of the last snap, which is noise.
+        //
+        // The possessing team ALWAYS drives left to right, with the defending
+        // team's end zone on the right. CFBD's yardsToGoal is measured from the
+        // offense's perspective, so this orientation makes the arithmetic one
+        // subtraction and never depends on who is home — the alternative, a
+        // fixed home/away orientation, has to flip the field every change of
+        // possession and gets it wrong the moment `possession` is missing.
+        function gdFieldGraphic(teamCtx) {
+            var sit = gdSituation;
+            if (!gdPlaysLive || !sit || sit.yardsToGoal == null) return '';
+
+            var possSide = String(sit.possession || '').toLowerCase();
+            var offense = possSide === 'home' ? teamCtx.home
+                        : (possSide === 'away' ? teamCtx.away : null);
+            var defense = possSide === 'home' ? teamCtx.away
+                        : (possSide === 'away' ? teamCtx.home : null);
+            if (!offense) return '';
+
+            // 0 = offense's own goal line, 100 = the line they are driving at.
+            var ball = Math.max(0, Math.min(100, 100 - sit.yardsToGoal));
+            // The line to gain. Capped at the goal line, because inside the
+            // distance-to-go it does not exist — it is first-and-goal.
+            var toGain = sit.distance != null ? Math.min(100, ball + sit.distance) : null;
+            var goalToGo = toGain != null && ball + sit.distance >= 100;
+
+            var situationText = '';
+            if (sit.down != null && sit.distance != null) {
+                situationText = gdOrdinal(sit.down) + ' & ' + (goalToGo ? 'Goal' : sit.distance);
+            }
+            var spotText = sit.yardsToGoal <= 50
+                ? (defense ? defense.abbr + ' ' + sit.yardsToGoal : sit.yardsToGoal + ' to go')
+                : (offense.abbr + ' ' + (100 - sit.yardsToGoal));
+
+            var logo = offense.logo
+                ? '<img class="gd-lf-logo" src="' + offense.logo + '" alt="" />'
+                : '';
+
+            return '<div class="gd-section gd-lf-section">'
+                + '<h3 class="gd-section-title">On the Field</h3>'
+                + '<div class="gd-lf-head">' + logo
+                + '<span class="gd-lf-team">' + esc(offense.name) + '</span>'
+                + (situationText ? '<span class="gd-lf-sit">' + esc(situationText) + '</span>' : '')
+                + '<span class="gd-lf-spot">' + esc(spotText) + '</span>'
+                + '</div>'
+                + '<div class="gd-lf" role="img" aria-label="'
+                + esc(offense.name + ' ' + situationText + ' at the ' + spotText) + '">'
+                + '<div class="gd-lf-ez gd-lf-ez-own"><span>' + esc(offense.abbr) + '</span></div>'
+                + '<div class="gd-lf-turf">'
+                + '<div class="gd-lf-gained" style="width:' + ball + '%"></div>'
+                + (toGain != null && !goalToGo
+                    ? '<div class="gd-lf-togain" style="left:' + toGain + '%"></div>' : '')
+                + '<div class="gd-lf-ball" style="left:' + ball + '%">'
+                + '<i class="fa-solid fa-football" aria-hidden="true"></i></div>'
+                + '</div>'
+                + '<div class="gd-lf-ez gd-lf-ez-target"><span>'
+                + esc(defense ? defense.abbr : '') + '</span></div>'
+                + '</div>'
+                + '</div>';
+        }
+
+        // ---- drive chart -------------------------------------------------
+        //
+        // One row per drive: who had it, when it started, how far it got as a
+        // bar across the field, and how it ended. The data was already being
+        // fetched and persisted with the plays and thrown away.
+        //
+        // Newest drive first while the game is live, for the same reason the
+        // play feed flips: the drive you care about is the one happening.
+        function gdDriveRows(teamCtx) {
+            if (!gdDrives.length) return '';
+            var rows = gdPlaysLive ? gdDrives.slice().reverse() : gdDrives;
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var d = rows[i];
+                var side = d.side === 'home' ? teamCtx.home
+                         : (d.side === 'away' ? teamCtx.away : null);
+                var logo = side && side.logo
+                    ? '<img class="gd-dr-logo" src="' + side.logo + '" alt="" />'
+                    : '<span class="gd-dr-logo gd-dr-logo-none"></span>';
+
+                var start = d.fieldStart != null ? d.fieldStart : 0;
+                var end = d.fieldEnd != null ? d.fieldEnd : start;
+                // A drive that lost yards runs right to left, so the bar is
+                // drawn from whichever end is smaller.
+                var left = Math.min(start, end);
+                var width = Math.max(Math.abs(end - start), 1.2);
+
+                var when = (d.startClock ? d.startClock : '')
+                    + (d.startPeriod != null ? (d.startClock ? ' · ' : '') + gdOrdinal(d.startPeriod) : '');
+
+                html += '<div class="gd-dr gd-dr-' + d.outcome + (d.scoredAgainst ? ' gd-dr-against' : '') + '">'
+                    + '<div class="gd-dr-top">' + logo
+                    + '<span class="gd-dr-when">' + esc(when) + '</span>'
+                    + '<span class="gd-dr-result">' + esc(d.result || '—') + '</span>'
+                    + '</div>'
+                    + '<div class="gd-dr-track">'
+                    + '<div class="gd-dr-bar" style="left:' + left + '%;width:' + width + '%"></div>'
+                    + '</div>'
+                    + '<div class="gd-dr-foot">' + esc(d.summary || '') + '</div>'
+                    + '</div>';
+            }
+            return html;
+        }
+
+        function renderDrivesSection(teamCtx) {
+            if (!gdDrives.length) return '';
+            return '<div class="gd-section gd-dr-section">'
+                + '<h3 class="gd-section-title">Drives</h3>'
+                + '<div class="gd-dr-list">' + gdDriveRows(teamCtx) + '</div>'
+                + '</div>';
         }
 
         function renderPlaysSection(teamCtx) {
