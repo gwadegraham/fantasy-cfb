@@ -1,6 +1,6 @@
 const {
     buildPlayByPlay, groupByPeriod, scoringPlays,
-    isScoringPlay, periodLabel, driveSummary
+    isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary
 } = require('../modules/play-by-play');
 
 // Shaping for the play-by-play log. The load-bearing decision here is that a
@@ -57,6 +57,138 @@ describe('isScoringPlay', () => {
         expect(isScoringPlay(play({ homeScore: null }), play({ homeScore: 7 }))).toBe(false);
         expect(isScoringPlay(play({ homeScore: 7 }), play({ homeScore: null }))).toBe(false);
         expect(isScoringPlay(null, play())).toBe(false);
+    });
+});
+
+// Both of these are measured bugs from LSU–Clemson (game 401856660), not
+// hypotheticals. The feed is the source of truth for order and for scores, and
+// it is occasionally wrong about the second one.
+describe('corrupt score rows', () => {
+    it('rejects a row where both teams gained points', () => {
+        // Play 156 of 401856660: an ordinary 4th-quarter rush stamped with the
+        // game's FINAL 51-10 while the score was 44-3. A single play cannot
+        // score for both teams, so the row is corrupt rather than a 14-point
+        // play, and rendering it put a score from the future in the log.
+        const bad = play({ playType: 'Rush', homeScore: 51, awayScore: 10 });
+        expect(isScoringPlay(bad, play({ homeScore: 44, awayScore: 3 }))).toBe(false);
+        expect(classifyScore(bad, play({ homeScore: 44, awayScore: 3 }))).toBe('invalid');
+    });
+
+    it('rejects a row where the score went backwards', () => {
+        const backwards = play({ playType: 'Punt', homeScore: 44, awayScore: 3 });
+        expect(classifyScore(backwards, play({ homeScore: 51, awayScore: 10 }))).toBe('invalid');
+    });
+
+    it('rejects a feed that opens mid-game rather than reading it as one score', () => {
+        // CFBD opens at 0-0, so a first row already showing 44-3 is a truncated
+        // or corrupt payload — not a 47-point play. This is the one case the
+        // arithmetic reads differently from the old "did it change" test, which
+        // would have flagged it.
+        expect(classifyScore(play({ homeScore: 44, awayScore: 3 }), null)).toBe('invalid');
+        expect(classifyScore(play({ homeScore: 7 }), null)).toEqual({ side: 'home', points: 7 });
+    });
+
+    it('rejects a change too large for one play', () => {
+        // A touchdown plus a two-point try is 8. Nothing scores 9.
+        expect(classifyScore(play({ homeScore: 8 }), play())).toEqual({ side: 'home', points: 8 });
+        expect(classifyScore(play({ homeScore: 9 }), play())).toBe('invalid');
+    });
+
+    it('does not let a corrupt row become the baseline for the next one', () => {
+        // This is the half that made ONE bad row produce TWO phantom scoring
+        // plays: the punt after it looked like a change only because the
+        // corrupt score had been adopted as the running total.
+        const payload = {
+            drives: [drive([
+                play({ clock: '13:00' }),                                               // 0-0
+                play({ clock: '11:30', playType: 'Rushing Touchdown', homeScore: 7 }),  // real
+                play({ clock: '11:19', playType: 'Rush', homeScore: 51, awayScore: 10 }),  // corrupt
+                play({ clock: '10:43', playType: 'Punt', homeScore: 7 }),               // reverts
+                play({ clock: '6:43', playType: 'Passing Touchdown', homeScore: 14 })   // real
+            ])]
+        };
+        const out = buildPlayByPlay(payload);
+        expect(out.map(p => p.scoring)).toEqual([false, true, false, false, true]);
+        expect(out[4].points).toBe(7);
+    });
+
+    it('keeps the real scoring plays of 401856660 and drops the two phantoms', () => {
+        // The whole sequence, in feed order, with the deltas measured from the
+        // stored payload: ten real changes, two corrupt rows.
+        const scores = [
+            [0, 3], [3, 3], [10, 3], [17, 3], [24, 3], [31, 3], [38, 3], [44, 3],
+            [51, 10],  // corrupt: the final score, mid-game
+            [44, 3],   // corrupt: reverts
+            [51, 3], [51, 10]
+        ];
+        const payload = {
+            drives: [drive(scores.map(([h, a], i) => play({ clock: `${i}:00`, homeScore: h, awayScore: a })))]
+        };
+        const flagged = scoringPlays(buildPlayByPlay(payload));
+        expect(flagged).toHaveLength(10);
+        expect(flagged.map(p => p.points)).toEqual([3, 3, 7, 7, 7, 7, 7, 6, 7, 7]);
+    });
+});
+
+describe('scoring attribution', () => {
+    const teams = [
+        { teamId: 99, team: 'LSU', homeAway: 'home' },
+        { teamId: 228, team: 'Clemson', homeAway: 'away' }
+    ];
+
+    it('credits a pick-six to the defense, not to the team that threw it', () => {
+        // Play 40 of 401856660. CFBD's teamId on the play is the OFFENSE —
+        // Clemson, who threw the interception — while the points went to LSU.
+        // Attributing by teamId put the Clemson logo on an LSU touchdown.
+        const payload = {
+            teams,
+            drives: [drive([
+                play({ teamId: 228, team: 'Clemson' }),
+                play({
+                    teamId: 228, team: 'Clemson',
+                    playType: 'Interception Return Touchdown',
+                    homeScore: 7, awayScore: 0
+                })
+            ])]
+        };
+        const out = buildPlayByPlay(payload);
+        expect(out[1].scoring).toBe(true);
+        expect(out[1].teamId).toBe(228);          // the offense, unchanged
+        expect(out[1].scoringSide).toBe('home');
+        expect(out[1].scoringTeamId).toBe(99);    // LSU, who scored
+    });
+
+    it('agrees with teamId on an ordinary offensive score', () => {
+        const payload = {
+            teams,
+            drives: [drive([play({
+                teamId: 228, team: 'Clemson', playType: 'Rushing Touchdown',
+                homeScore: 0, awayScore: 7
+            })])]
+        };
+        expect(buildPlayByPlay(payload)[0].scoringTeamId).toBe(228);
+    });
+
+    it('leaves attribution null on a non-scoring play, so the client falls back', () => {
+        const out = buildPlayByPlay({ teams, drives: [drive([play()])] });
+        expect(out[0].scoringTeamId).toBeNull();
+        expect(out[0].scoringSide).toBeNull();
+        expect(out[0].points).toBeNull();
+    });
+
+    it('survives a payload with no teams block', () => {
+        // A stored summary predating this, or a feed that omits teams: the
+        // score is still identified, there is just no id to draw a logo from.
+        const out = buildPlayByPlay({ drives: [drive([play({ homeScore: 7 })])] });
+        expect(out[0].scoring).toBe(true);
+        expect(out[0].scoringSide).toBe('home');
+        expect(out[0].scoringTeamId).toBeNull();
+    });
+
+    it('maps sides from the teams block and ignores a malformed entry', () => {
+        expect(sideTeamIds({ teams })).toEqual({ home: 99, away: 228 });
+        expect(sideTeamIds({ teams: [{ team: 'no id', homeAway: 'home' }] })).toEqual({ home: null, away: null });
+        expect(sideTeamIds(null)).toEqual({ home: null, away: null });
     });
 });
 
