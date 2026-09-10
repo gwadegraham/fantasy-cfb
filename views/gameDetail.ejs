@@ -995,12 +995,28 @@
                 if (play.down != null && play.distance != null && gdHasDownAndDistance(play.playType)) {
                     situation = gdOrdinal(play.down) + ' & ' + play.distance;
                 }
+                // Pass outcomes and turnovers get a badge; a rush does not,
+                // because its result is already in its own text ("for 7
+                // yards") whereas complete-vs-incomplete is the thing that is
+                // hard to scan for. Scores never reach here — they render as
+                // cards — so 'score' is deliberately absent.
+                var badge = '';
+                if (play.outcome === 'complete' || play.outcome === 'incomplete'
+                    || play.outcome === 'sack' || play.outcome === 'turnover') {
+                    badge = '<span class="gd-pbp-badge gd-pbp-badge-' + play.outcome + '">'
+                          + esc(play.outcomeLabel || '') + '</span>';
+                }
                 return '<div class="gd-pbp-row">'
                     + '<div class="gd-pbp-row-meta">' + logo
                     + '<span class="gd-pbp-clock">' + esc(clockStr) + '</span>'
                     + (situation ? '<span class="gd-pbp-situation">' + esc(situation) + '</span>' : '')
                     + '</div>'
-                    + '<div class="gd-pbp-row-text">' + esc(play.playText || play.playType || '') + '</div>'
+                    // The badge leads the text rather than sitting in the meta
+                    // column: that column is a fixed 148px so every play's text
+                    // starts on the same edge, and a badge in it overflowed
+                    // straight into the text.
+                    + '<div class="gd-pbp-row-text">' + badge
+                    + esc(play.playText || play.playType || '') + '</div>'
                     + '</div>';
             }
 
@@ -1159,10 +1175,18 @@
                 ? (defense ? defense.abbr + ' ' + sit.yardsToGoal : sit.yardsToGoal + ' to go')
                 : (offense.abbr + ' ' + (100 - sit.yardsToGoal));
 
+            // The last play, in feed order. Without it a stationary ball is
+            // ambiguous — an incomplete pass and a page that stopped updating
+            // look identical.
+            var last = gdPlays.length ? gdPlays[gdPlays.length - 1] : null;
+
             return {
                 offense: offense, defense: defense,
                 ball: ball, toGain: toGain, goalToGo: goalToGo,
                 situationText: situationText, spotText: spotText,
+                lastText: last ? (last.playText || last.playType || '') : '',
+                lastOutcome: last ? (last.outcome || 'other') : 'other',
+                lastLabel: last ? last.outcomeLabel : null,
                 label: offense.name + ' ' + situationText + ' at the ' + spotText
             };
         }
@@ -1197,6 +1221,12 @@
                 + '</div>'
                 + '<div class="gd-lf-ez gd-lf-ez-target"><span>'
                 + esc(st.defense ? st.defense.abbr : '') + '</span></div>'
+                + '</div>'
+                + '<div class="gd-lf-last gd-lf-last-' + esc(st.lastOutcome) + '"'
+                + (st.lastText ? '' : ' hidden') + '>'
+                + '<span class="gd-lf-badge"' + (st.lastLabel ? '' : ' hidden') + '>'
+                + esc(st.lastLabel || '') + '</span>'
+                + '<span class="gd-lf-last-text">' + esc(st.lastText) + '</span>'
                 + '</div>'
                 + '</div>';
         }
@@ -1255,6 +1285,19 @@
                 var spot = head.querySelector('.gd-lf-spot');
                 if (spot) spot.textContent = st.spotText;
             }
+            var lastWrap = section.querySelector('.gd-lf-last');
+            if (lastWrap) {
+                lastWrap.hidden = !st.lastText;
+                lastWrap.className = 'gd-lf-last gd-lf-last-' + st.lastOutcome;
+                var badge = lastWrap.querySelector('.gd-lf-badge');
+                if (badge) {
+                    badge.textContent = st.lastLabel || '';
+                    badge.hidden = !st.lastLabel;
+                }
+                var lastText = lastWrap.querySelector('.gd-lf-last-text');
+                if (lastText) lastText.textContent = st.lastText;
+            }
+
             var ownEz = section.querySelector('.gd-lf-ez-own span');
             if (ownEz) ownEz.textContent = st.offense.abbr;
             var targetEz = section.querySelector('.gd-lf-ez-target span');

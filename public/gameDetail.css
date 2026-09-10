@@ -1175,6 +1175,78 @@ html.gd-page, .gd-page body {
     .gd-lf-ball, .gd-lf-gained, .gd-lf-togain { transition: none; }
 }
 
+/* The last play, under the field. An incomplete pass leaves the ball where it
+   was, so this line is what distinguishes "nothing happened" from "the page
+   stopped updating". */
+.gd-lf-last {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--cc-muted);
+}
+.gd-lf-last-text { flex: 1 1 auto; }
+.gd-lf-badge {
+    flex: 0 0 auto;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: var(--cc-r-pill);
+    background: var(--cc-surface-3);
+    color: var(--cc-muted-bright);
+    white-space: nowrap;
+}
+.gd-lf-last-complete .gd-lf-badge {
+    background: color-mix(in srgb, var(--cc-success) 22%, var(--cc-surface-3));
+    color: var(--cc-success);
+}
+.gd-lf-last-incomplete .gd-lf-badge {
+    background: color-mix(in srgb, var(--cc-amber) 20%, var(--cc-surface-3));
+    color: var(--cc-amber);
+}
+.gd-lf-last-sack .gd-lf-badge,
+.gd-lf-last-turnover .gd-lf-badge {
+    background: color-mix(in srgb, var(--cc-danger) 26%, var(--cc-surface-3));
+    color: var(--cc-danger-text);
+}
+.gd-lf-last-score .gd-lf-badge {
+    background: color-mix(in srgb, var(--cc-success) 30%, var(--cc-surface-3));
+    color: var(--cc-success);
+}
+
+/* The same distinction in the log, on passes only — a rush already says
+   "for 7 yards" in its own text. */
+.gd-pbp-badge {
+    /* Leads the play text, so it needs its own right gap rather than the
+       meta column's flex gap. */
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: 1px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: var(--cc-r-pill);
+    white-space: nowrap;
+}
+.gd-pbp-badge-complete {
+    background: color-mix(in srgb, var(--cc-success) 20%, transparent);
+    color: var(--cc-success);
+}
+.gd-pbp-badge-incomplete {
+    background: color-mix(in srgb, var(--cc-amber) 18%, transparent);
+    color: var(--cc-amber);
+}
+.gd-pbp-badge-sack,
+.gd-pbp-badge-turnover {
+    background: color-mix(in srgb, var(--cc-danger) 24%, transparent);
+    color: var(--cc-danger-text);
+}
+
 /* ====================================================================
    Drives
    ==================================================================== */

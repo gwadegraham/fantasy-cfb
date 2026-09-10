@@ -78,6 +78,44 @@ function isScoringPlay(play, prev) {
     return c !== 'unknown' && c !== 'same' && c !== 'invalid';
 }
 
+// What kind of outcome a play had, for the badge on the field and on a pass in
+// the log. Matched on CFBD's playType vocabulary, which is small and stable
+// (measured across two games: Rush, Pass Reception, Pass Incompletion, Sack,
+// Kickoff, Punt, Timeout, Penalty, and the scoring variants).
+//
+// Unlike the scoring detection, a vocabulary match is the right tool here: this
+// only decides whether to draw a badge, so a playType CFBD adds tomorrow gets
+// 'other' and no badge — the display degrades, nothing is reported wrongly.
+// Scoring is read off the score precisely because a miss there would be a lie.
+//
+// 'incomplete' is the one that earns this whole feature: an incomplete pass
+// does not move the ball, so without a badge a live viewer cannot tell a
+// stationary field from a stale page.
+function playResult(playType) {
+    const t = String(playType || '').toLowerCase();
+    if (!t) return 'other';
+    if (t.includes('interception') || t.includes('fumble')) return 'turnover';
+    if (t.includes('sack')) return 'sack';
+    if (t.includes('incompletion') || t.includes('incomplete')) return 'incomplete';
+    if (t.includes('touchdown')) return 'score';
+    if (t.includes('field goal good')) return 'score';
+    if (t.includes('reception') || t.includes('pass completion')) return 'complete';
+    return 'other';
+}
+
+// Short label for the badge. Null means "no badge" — most plays don't need one,
+// and a badge on every row is noise rather than signal.
+const RESULT_LABELS = {
+    complete: 'Complete',
+    incomplete: 'Incomplete',
+    sack: 'Sack',
+    turnover: 'Turnover',
+    score: 'Score'
+};
+function playResultLabel(result) {
+    return RESULT_LABELS[result] || null;
+}
+
 // Quarter heading. Periods past 4 are overtime — CFBD keeps counting (5, 6, …)
 // so the label counts OT periods rather than showing "5TH QUARTER".
 function periodLabel(period) {
@@ -201,6 +239,10 @@ function buildPlayByPlay(payload) {
                 yardsGained: play.yardsGained != null ? play.yardsGained : null,
                 homeScore: play.homeScore != null ? play.homeScore : null,
                 awayScore: play.awayScore != null ? play.awayScore : null,
+                // Named to mirror a drive's `outcome`: a bucket, with a label
+                // that is null when the play does not warrant a badge.
+                outcome: playResult(play.playType),
+                outcomeLabel: playResultLabel(playResult(play.playType)),
                 scoring,
                 // Who the points went to, and how many. NOT play.teamId, which
                 // is the team on offense: on a pick-six or a fumble return the
@@ -342,5 +384,6 @@ module.exports = {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
     cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
+    playResult, playResultLabel,
     MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
 };

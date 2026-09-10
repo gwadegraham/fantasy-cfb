@@ -1,7 +1,8 @@
 const {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel
+    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
+    playResult, playResultLabel
 } = require('../modules/play-by-play');
 
 // Shaping for the play-by-play log. The load-bearing decision here is that a
@@ -412,6 +413,50 @@ describe('buildPlayByPlay', () => {
 });
 
 // The drive chart. All fixtures are real rows from LSU-Clemson (401856660).
+describe('playResult', () => {
+    it('separates a complete pass from an incomplete one', () => {
+        // The distinction the badge exists for: an incomplete pass leaves the
+        // ball where it was, so a stationary field needs explaining.
+        expect(playResult('Pass Reception')).toBe('complete');
+        expect(playResult('Pass Incompletion')).toBe('incomplete');
+    });
+
+    it('buckets the rest of the vocabulary a real game produced', () => {
+        expect(playResult('Sack')).toBe('sack');
+        expect(playResult('Pass Interception Return')).toBe('turnover');
+        expect(playResult('Passing Touchdown')).toBe('score');
+        expect(playResult('Field Goal Good')).toBe('score');
+        // A rush's result is already in its own text, so no badge.
+        expect(playResult('Rush')).toBe('other');
+        expect(playResult('Kickoff')).toBe('other');
+        expect(playResult('Punt')).toBe('other');
+        expect(playResult('Penalty')).toBe('other');
+        expect(playResult('Field Goal Missed')).toBe('other');
+    });
+
+    it('reads an interception as a turnover, not as the touchdown it became', () => {
+        expect(playResult('Interception Return Touchdown')).toBe('turnover');
+    });
+
+    it('gives an unknown play type no badge rather than a wrong one', () => {
+        // Safe direction to fail: this only decides whether to draw a badge.
+        expect(playResult('Some New CFBD Play')).toBe('other');
+        expect(playResult(null)).toBe('other');
+        expect(playResultLabel('other')).toBeNull();
+        expect(playResultLabel(playResult('Rush'))).toBeNull();
+    });
+
+    it('is attached to every shaped play', () => {
+        const payload = { drives: [drive([
+            play({ playType: 'Pass Incompletion' }),
+            play({ playType: 'Rush' })
+        ])] };
+        const out = buildPlayByPlay(payload);
+        expect(out[0]).toMatchObject({ outcome: 'incomplete', outcomeLabel: 'Incomplete' });
+        expect(out[1]).toMatchObject({ outcome: 'other', outcomeLabel: null });
+    });
+});
+
 describe('driveOutcome', () => {
     it('buckets the results a real game produced', () => {
         expect(driveOutcome('Touchdown')).toBe('touchdown');
