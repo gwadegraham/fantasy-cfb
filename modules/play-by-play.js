@@ -104,6 +104,58 @@ function sideTeamIds(payload) {
     return out;
 }
 
+// ---- play text -------------------------------------------------------------
+//
+// CFBD's playText is written for a box score, not for reading: a median play is
+// ~110 characters and the worst are over 300, most of it repeated on every row.
+// This trims it.
+//
+// Every rule here is SUBTRACTIVE and ANCHORED, which is what makes the whole
+// thing safe. Nothing is reworded, reordered, or parsed into fields — a rule
+// either matches a fixed shape and removes it, or does not match and the text
+// survives verbatim. So the worst case of a CFBD wording change is the raw text
+// we were already showing, never a wrong one. (Contrast the scoring-play
+// detection above, where guessing at CFBD's vocabulary would fail silently and
+// get the answer wrong. That is why that one reads the score instead.)
+//
+// Applied at shape time rather than at ingest, so the raw text stays in Mongo
+// and a stored game picks up any later improvement without being refetched.
+
+// Formations CFBD prefixes to the text. A list is a vocabulary guess, but it is
+// a safe one: an unrecognized formation is simply left in place.
+const FORMATION_PREFIXES = ['No Huddle-Shotgun', 'No Huddle', 'Shotgun', 'Pistol', 'Wildcat'];
+
+const TEXT_RULES = [
+    // The clock at the snap, always the first thing in the text. The card
+    // already shows a clock — CFBD's play.clock, which is the clock AFTER the
+    // play — so leaving this in put two different times on one row.
+    [/^\(\d{1,2}:\d{2}\)\s*/, ''],
+
+    // Formation, once the clock is out of the way.
+    [new RegExp('^(?:' + FORMATION_PREFIXES.join('|') + ')\\s+'), ''],
+
+    // A second copy of the clock, mid-sentence.
+    [/,?\s*clock \d{1,2}:\d{2}/g, ''],
+
+    // Holder and long snapper on a kick. Nobody reading a fantasy league's
+    // play log needs the long snapper.
+    [/\s*\((?:H|HOLD|LS):[^)]*\)/g, ''],
+
+    // "for 32 yards to the CLEM00 TOUCHDOWN" — the goal line is where a
+    // touchdown is, by definition. Matched only on `00` so a yard line that
+    // somehow isn't the goal line is left alone.
+    [/\s+to the [A-Z]{2,10}00 TOUCHDOWN/g, ' TOUCHDOWN']
+];
+
+function cleanPlayText(text) {
+    if (!text || typeof text !== 'string') return text || null;
+    let out = text;
+    for (const [re, to] of TEXT_RULES) out = out.replace(re, to);
+    // Tidy up after the cuts: doubled spaces, a space before punctuation, and a
+    // dangling comma at the end.
+    return out.replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').replace(/[,\s]+$/, '').trim() || null;
+}
+
 // The drive summary shown under a scoring play ("4 plays, 77 yards, 1:40").
 // Assembled from whichever parts are present so a drive missing its duration
 // still reads correctly instead of rendering "4 plays, 77 yards, null".
@@ -142,7 +194,7 @@ function buildPlayByPlay(payload) {
                 team: play.team || null,
                 teamId: play.teamId != null ? play.teamId : null,
                 playType: play.playType || null,
-                playText: play.playText || null,
+                playText: cleanPlayText(play.playText),
                 down: play.down != null ? play.down : null,
                 distance: play.distance != null ? play.distance : null,
                 yardsToGoal: play.yardsToGoal != null ? play.yardsToGoal : null,
@@ -203,5 +255,5 @@ function scoringPlays(plays) {
 module.exports = {
     buildPlayByPlay, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    MAX_POINTS_ON_ONE_PLAY
+    cleanPlayText, MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
 };

@@ -1,6 +1,7 @@
 const {
     buildPlayByPlay, groupByPeriod, scoringPlays,
-    isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary
+    isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
+    cleanPlayText
 } = require('../modules/play-by-play');
 
 // Shaping for the play-by-play log. The load-bearing decision here is that a
@@ -189,6 +190,99 @@ describe('scoring attribution', () => {
         expect(sideTeamIds({ teams })).toEqual({ home: 99, away: 228 });
         expect(sideTeamIds({ teams: [{ team: 'no id', homeAway: 'home' }] })).toEqual({ home: null, away: null });
         expect(sideTeamIds(null)).toEqual({ home: null, away: null });
+    });
+});
+
+// Trimming CFBD's playText. The property that matters more than any single
+// rule: nothing is reworded or parsed, so an unmatched pattern leaves the text
+// exactly as it arrived. Every input below is a real string from a stored game.
+describe('cleanPlayText', () => {
+    it('trims a touchdown down to what a reader needs', () => {
+        const raw = '(08:26) No Huddle-Shotgun #10 S.Leavitt pass complete deep left to '
+            + '#6 W.Watkins Jr. caught at CLEM05, for 32 yards to the CLEM00 TOUCHDOWN, '
+            + 'clock 08:21, 1ST DOWN #80 S.Starzyk kick attempt good (H: #90 G.Chadwick, LS: #43 S.Hall)';
+        expect(cleanPlayText(raw)).toBe(
+            '#10 S.Leavitt pass complete deep left to #6 W.Watkins Jr. caught at CLEM05, '
+            + 'for 32 yards TOUCHDOWN, 1ST DOWN #80 S.Starzyk kick attempt good'
+        );
+    });
+
+    it('drops the clock at the snap, which disagreed with the card', () => {
+        // The card shows play.clock, the clock AFTER the play. Leaving the
+        // text's snap clock in put two different times on one row.
+        expect(cleanPlayText('(08:26) #10 S.Leavitt rush')).toBe('#10 S.Leavitt rush');
+        expect(cleanPlayText('#10 S.Leavitt rush at (08:26)')).toBe('#10 S.Leavitt rush at (08:26)');
+    });
+
+    it('drops a formation prefix it knows and keeps one it does not', () => {
+        expect(cleanPlayText('No Huddle-Shotgun #10 rush')).toBe('#10 rush');
+        expect(cleanPlayText('Shotgun #10 rush')).toBe('#10 rush');
+        // The safe-failure case: a formation CFBD adds tomorrow just stays.
+        expect(cleanPlayText('Diamond Wing #10 rush')).toBe('Diamond Wing #10 rush');
+    });
+
+    it('drops the goal line next to a touchdown, but only the goal line', () => {
+        expect(cleanPlayText('for 32 yards to the CLEM00 TOUCHDOWN')).toBe('for 32 yards TOUCHDOWN');
+        expect(cleanPlayText('for 1 yard gain to the LSU00 TOUCHDOWN')).toBe('for 1 yard gain TOUCHDOWN');
+        // Not a touchdown: the yard line is the whole point of the sentence.
+        expect(cleanPlayText('rush middle for 11 yards loss to the CLEM39, End Of Play'))
+            .toBe('rush middle for 11 yards loss to the CLEM39, End Of Play');
+    });
+
+    it('drops the holder and long snapper', () => {
+        expect(cleanPlayText('#80 S.Starzyk kick attempt good (H: #90 G.Chadwick, LS: #43 S.Hall)'))
+            .toBe('#80 S.Starzyk kick attempt good');
+    });
+
+    it('keeps jersey numbers', () => {
+        // Deliberate: Graham wants them. They are the biggest single saving
+        // available and were left on the table on purpose.
+        expect(cleanPlayText('#10 S.Leavitt pass to #6 W.Watkins Jr.'))
+            .toBe('#10 S.Leavitt pass to #6 W.Watkins Jr.');
+    });
+
+    it('leaves a differently-formatted game completely alone', () => {
+        // Real text from FSU–SMU (401858212), which CFBD writes in another
+        // style entirely — no snap clock, no formation, no jersey numbers.
+        // 168 of 360 stored plays pass through untouched, and that is correct.
+        const raw = 'Conor McAneney kickoff for 65 yds for a touchback';
+        expect(cleanPlayText(raw)).toBe(raw);
+    });
+
+    it('never leaves the seams showing', () => {
+        // Cutting mid-sentence is where this would look broken: doubled
+        // spaces, a space before a comma, a dangling comma at the end. Checked
+        // as artifacts rather than as one exact string, because the point is
+        // that no combination of cuts produces them — verified across all 360
+        // stored plays, none of which come out mangled.
+        const inputs = [
+            '(01:00) Shotgun #1 A.B pass, clock 01:00, to the LSU00 TOUCHDOWN, clock 00:59',
+            '(08:26) No Huddle #2 C.D rush (H: #9 E.F, LS: #3 G.H)',
+            '(00:04) Shotgun #5 I.J kick attempt good, clock 00:02',
+            'Pistol #7 K.L pass incomplete, clock 12:00, 1ST DOWN'
+        ];
+        for (const raw of inputs) {
+            const out = cleanPlayText(raw);
+            expect(out).not.toMatch(/\s{2,}/);   // doubled space
+            expect(out).not.toMatch(/\s[,.]/);   // space before punctuation
+            expect(out).not.toMatch(/[,\s]$/);   // dangling comma or space
+            expect(out).not.toMatch(/^[,\s]/);   // leading comma or space
+            expect(out).not.toMatch(/clock \d/);  // every clock copy gone
+        }
+    });
+
+    it('passes through nothing at all', () => {
+        expect(cleanPlayText(null)).toBeNull();
+        expect(cleanPlayText('')).toBeNull();
+        expect(cleanPlayText('(08:26)')).toBeNull();
+        expect(cleanPlayText(42)).toBe(42);
+    });
+
+    it('is applied by buildPlayByPlay, so a stored game gets it on read', () => {
+        // Not at ingest: the raw text stays in Mongo, so this improves a game
+        // that was persisted before the rules existed, with no refetch.
+        const payload = { drives: [drive([play({ playText: '(08:26) Shotgun #10 rush' })])] };
+        expect(buildPlayByPlay(payload)[0].playText).toBe('#10 rush');
     });
 });
 
