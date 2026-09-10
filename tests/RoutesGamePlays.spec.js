@@ -179,6 +179,37 @@ describe('GET /games/plays/:gameId', () => {
         expect(res.body.drives).toEqual([]);
     });
 
+    it('answers 200 with status budget at the call floor, and never fetches', async () => {
+        await seedGame();
+        const f = stubFetch();
+        livePlays._setRemaining(livePlays.CALL_BUFFER);
+
+        const res = await request(app).get(`/games/plays/${GAME_ID}`);
+
+        // Not an error: the game page is fine and only the play log is paused,
+        // so the client can say so instead of retrying into the guard.
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('budget');
+        expect(res.body.plays).toEqual([]);
+        expect(res.body.message).toMatch(/budget/i);
+        expect(f).not.toHaveBeenCalled();
+    });
+
+    it('serves a stored final at the call floor — the floor stops spend, not reading', async () => {
+        await seedGame({
+            completed: true,
+            livePlays: { fetchedAt: new Date('2026-09-08'), teams: [], drives: [{ id: 'd1', result: 'TD', plays: [] }] }
+        });
+        const f = stubFetch();
+        livePlays._setRemaining(0);
+
+        const res = await request(app).get(`/games/plays/${GAME_ID}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.source).toBe('db');
+        expect(f).not.toHaveBeenCalled();
+    });
+
     it('502s an upstream failure with nothing cached', async () => {
         await seedGame();
         stubFetch({ status: 503, body: { message: 'down' } });

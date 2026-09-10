@@ -750,6 +750,10 @@ router.post('/:season/player-stats', async (req, res) => {
 //   - `source: 'cache'`  another viewer fetched it within the TTL. Free.
 //   - `source: 'cfbd'`   a real call. Persisted immediately if the game is final,
 //                        so it is the last one this game will ever need.
+//
+// A fourth answer costs nothing and is not a success: `status: 'budget'` means
+// the module is at its remaining-calls floor and declined to fetch. 200, not an
+// error — the game page is fine and only the play log is paused.
 router.get('/plays/:gameId', async (req, res) => {
     try {
         const gameId = Number(req.params.gameId);
@@ -773,6 +777,16 @@ router.get('/plays/:gameId', async (req, res) => {
         }
 
         const result = await getLivePlays(gameId);
+
+        if (result.status === 'budget') {
+            // At the remaining-calls floor with nothing cached. The client
+            // stops asking for the rest of the session rather than retrying
+            // every tick into a guard that will keep saying no.
+            return res.json({
+                source: 'none', status: 'budget', teams: [], drives: [], plays: [],
+                message: 'Play-by-play is paused to preserve the scoring budget'
+            });
+        }
 
         if (result.status === 'none') {
             // Pre-kickoff. A 200 with an explicit empty answer, because this is

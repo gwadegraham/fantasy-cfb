@@ -31,6 +31,17 @@
 //
 // Note that errors are free: neither the 400 nor a 500 moved the counter when
 // measured. Only successful fetches are billed.
+//
+// Because those bounds are all client-cooperative, there is also a hard floor
+// here: at or below CALL_BUFFER remaining calls, this module stops fetching and
+// serves whatever it already holds. This is the one guard in the app that can
+// actually work on its own activity, and the reason is the asymmetry above —
+// /live/plays decrements the counter, so it teaches itself where it stands with
+// every fetch. (The live poller used to carry a guard like this; it was deleted
+// because /scoreboard is quota-exempt, so nothing the poller did could ever move
+// the counter toward the ceiling it was watching, while tripping it would have
+// stopped finals from being detected. Here both halves hold: the endpoint is
+// billed, and pausing it only makes a play log stale.)
 
 const { envNum } = require('./env-num');
 
@@ -51,6 +62,13 @@ const MISS_TTL_MS = envNum('LIVE_PLAYS_MISS_TTL_MS', 300000);
 // each live entry is ~80KB, so the ceiling exists to stop a season's worth of
 // game ids accumulating in a long-lived dyno rather than to ration a slate.
 const MAX_ENTRIES = envNum('LIVE_PLAYS_MAX_ENTRIES', 200);
+
+// Remaining-calls floor. Below this, viewing plays stops costing calls and the
+// headroom is left for the scoring path — the weekly jobs and the two whole-week
+// fetches a completion flush makes, which together run ~585 calls a month and
+// are the only CFBD spend the league's standings actually depend on. Set to 0 to
+// disable the floor.
+const CALL_BUFFER = envNum('LIVE_PLAYS_CALL_BUFFER', 500);
 
 // ---- pure normalizers ------------------------------------------------------
 
@@ -210,6 +228,20 @@ async function fetchLivePlays(gameId) {
 // the next viewer pays for one fetch.
 let cache = new Map();
 
+// Learned from x-calllimit-remaining on every successful fetch, and null until
+// the first one of a process. Null means "proceed": never block blind, and one
+// call is all it takes to stop being blind. Only this module's own fetches
+// update it, so spend on other endpoints shows up here late — acceptable,
+// because a live game is fetching often enough for the number to be current
+// exactly when the floor matters.
+let lastKnownRemaining = null;
+
+// Is there budget left to spend on a play log?
+function underBudget() {
+    if (CALL_BUFFER <= 0) return true;
+    return lastKnownRemaining == null || lastKnownRemaining > CALL_BUFFER;
+}
+
 function cacheTtl(entry) {
     return entry && entry.noPlays ? MISS_TTL_MS : TTL_MS;
 }
@@ -247,7 +279,9 @@ function cacheSet(gameId, entry, nowMs) {
 // Returns { payload, status, remainingCalls, cached }, where status is:
 //   'ok'      — a payload, live or final
 //   'none'    — the game has no plays yet (pre-kickoff)
-//   'stale'   — the fetch failed but a previous payload was still held
+//   'stale'   — no fetch was made but a previous payload was still held, either
+//               because the fetch failed or because the budget floor was hit
+//   'budget'  — at the floor with nothing held, so there is nothing to serve
 // A failure with nothing cached throws, so the route can answer honestly
 // rather than pretending a game has no plays.
 async function getLivePlays(gameId, { nowMs = Date.now() } = {}) {
@@ -258,8 +292,20 @@ async function getLivePlays(gameId, { nowMs = Date.now() } = {}) {
             : { payload: hit.payload, status: 'ok', cached: true, remainingCalls: null };
     }
 
+    // Budget floor. Checked after the cache, so a game already in hand keeps
+    // being served for free — the floor stops new spend, not reading.
+    if (!underBudget()) {
+        const held = cache.get(gameId);
+        if (held && held.payload) {
+            return { payload: held.payload, status: 'stale', cached: true, remainingCalls: lastKnownRemaining };
+        }
+        console.log(`live-plays: ${lastKnownRemaining} CFBD calls left — at the budget floor (${CALL_BUFFER}), not fetching ${gameId}`);
+        return { payload: null, status: 'budget', cached: false, remainingCalls: lastKnownRemaining };
+    }
+
     try {
         const { data, remainingCalls } = await fetchLivePlays(gameId);
+        if (remainingCalls != null) lastKnownRemaining = remainingCalls;
         cacheSet(gameId, { payload: data }, nowMs);
         return { payload: data, status: 'ok', cached: false, remainingCalls };
     } catch (err) {
@@ -285,7 +331,10 @@ module.exports = {
     summarizeForStorage, isFinalPayload,
     // exported for tests
     normalizeTeam, normalizeDrive, normalizePlay, isFresh, prune,
-    TTL_MS, MISS_TTL_MS, MAX_ENTRIES, TEAM_FIELDS,
+    TTL_MS, MISS_TTL_MS, MAX_ENTRIES, CALL_BUFFER, TEAM_FIELDS,
+    underBudget,
     _cacheSize: () => cache.size,
-    _reset: () => { cache = new Map(); }
+    _remaining: () => lastKnownRemaining,
+    _setRemaining: (n) => { lastKnownRemaining = n; },
+    _reset: () => { cache = new Map(); lastKnownRemaining = null; }
 };

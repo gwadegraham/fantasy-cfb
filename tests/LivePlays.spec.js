@@ -1,7 +1,7 @@
 const livePlays = require('../modules/live-plays');
 const {
     getLivePlays, summarizeForStorage, isFinalPayload,
-    normalizeTeam, normalizeDrive, normalizePlay, TTL_MS, MISS_TTL_MS
+    normalizeTeam, normalizeDrive, normalizePlay, TTL_MS, MISS_TTL_MS, CALL_BUFFER
 } = livePlays;
 
 // /live/plays is the one live endpoint that costs money, so the tests here are
@@ -249,6 +249,88 @@ describe('getLivePlays cache', () => {
             await getLivePlays(i, { nowMs: 1000 + i });
         }
         expect(livePlays._cacheSize()).toBeLessThanOrEqual(livePlays.MAX_ENTRIES);
+    });
+});
+
+// The budget floor. This is the guard that was deleted from the live poller and
+// rebuilt here, and the tests are written around why it works here and not
+// there: /live/plays decrements the counter, so the module learns its own
+// position from its own spend, and pausing it costs a play log rather than a
+// final.
+describe('budget floor', () => {
+    beforeEach(() => livePlays._reset());
+    afterEach(() => { delete global.fetch; });
+
+    it('does not fetch when the remaining calls are at or below the floor', async () => {
+        const f = stubFetch();
+        livePlays._setRemaining(CALL_BUFFER);
+
+        const r = await getLivePlays(1, { nowMs: 1000 });
+
+        expect(f).not.toHaveBeenCalled();
+        expect(r.status).toBe('budget');
+        expect(r.payload).toBeNull();
+        expect(r.remainingCalls).toBe(CALL_BUFFER);
+    });
+
+    it('still fetches one call above the floor', async () => {
+        const f = stubFetch();
+        livePlays._setRemaining(CALL_BUFFER + 1);
+
+        const r = await getLivePlays(1, { nowMs: 1000 });
+
+        expect(f).toHaveBeenCalledTimes(1);
+        expect(r.status).toBe('ok');
+    });
+
+    it('learns its position from its own fetch, so the floor arms itself', async () => {
+        stubFetch({ remaining: CALL_BUFFER });
+        expect(livePlays.underBudget()).toBe(true);   // null means proceed
+
+        await getLivePlays(1, { nowMs: 1000 });       // the call that teaches it
+
+        expect(livePlays._remaining()).toBe(CALL_BUFFER);
+        expect(livePlays.underBudget()).toBe(false);
+    });
+
+    it('never blocks blind on a cold process', async () => {
+        const f = stubFetch();
+        expect(livePlays._remaining()).toBeNull();
+
+        await getLivePlays(1, { nowMs: 1000 });
+
+        // One call is the whole price of finding out where we stand — the guard
+        // must not refuse before it has a number.
+        expect(f).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps serving a cached payload at the floor — it stops spend, not reading', async () => {
+        const f = stubFetch({ remaining: CALL_BUFFER + 10 });
+        const first = await getLivePlays(1, { nowMs: 1000 });
+        livePlays._setRemaining(CALL_BUFFER);
+
+        // Inside the TTL: a plain cache hit, unaffected by the floor.
+        const hit = await getLivePlays(1, { nowMs: 1000 + TTL_MS - 1 });
+        expect(hit.status).toBe('ok');
+        expect(hit.payload).toBe(first.payload);
+
+        // Past the TTL, the entry is stale rather than gone: serve it instead of
+        // paying to refresh it, the same trade a CFBD outage gets.
+        const stale = await getLivePlays(1, { nowMs: 1000 + TTL_MS });
+        expect(stale.status).toBe('stale');
+        expect(stale.payload).toBe(first.payload);
+        expect(f).toHaveBeenCalledTimes(1);
+    });
+
+    it('is disabled by a zero buffer', async () => {
+        const f = stubFetch();
+        livePlays._setRemaining(0);
+
+        // LIVE_PLAYS_CALL_BUFFER=0 is the documented escape hatch; CALL_BUFFER
+        // is read at require time, so this asserts the predicate directly.
+        expect(livePlays.underBudget()).toBe(CALL_BUFFER <= 0);
+        if (CALL_BUFFER > 0) expect((await getLivePlays(1, { nowMs: 1000 })).status).toBe('budget');
+        expect(f).not.toHaveBeenCalled();
     });
 });
 

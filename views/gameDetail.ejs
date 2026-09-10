@@ -205,6 +205,12 @@
                 // is the terminal one and the server has just stored it.
                 if (data.source === 'db' || data.status === 'final') gdPlaysDone = true;
 
+                // 'budget' means the server is at its remaining-calls floor.
+                // Retrying every tick would just hammer a guard that will keep
+                // saying no, so this tab stops asking; a reload after the month
+                // rolls over (or after the floor is lowered) starts again.
+                if (data.status === 'budget') gdPlaysDone = true;
+
                 gdRepaintPlays();
             } catch (err) {
                 // A drive chart that didn't load is not a broken page. The live
@@ -1022,9 +1028,14 @@
                 : gdPlays;
 
             if (!rows.length) {
-                var empty = gdPlaysStatus === 'none'
-                    ? 'No plays yet.'
-                    : (gdPlayTab === 'scoring' ? 'No scoring plays yet.' : 'No plays yet.');
+                var empty;
+                if (gdPlaysStatus === 'budget') {
+                    empty = 'Play-by-play is paused to preserve the scoring budget.';
+                } else if (gdPlaysStatus === 'none') {
+                    empty = 'No plays yet.';
+                } else {
+                    empty = gdPlayTab === 'scoring' ? 'No scoring plays yet.' : 'No plays yet.';
+                }
                 return '<div class="gd-pbp-empty">' + empty + '</div>';
             }
 

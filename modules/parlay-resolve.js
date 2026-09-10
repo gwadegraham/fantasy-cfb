@@ -171,8 +171,11 @@ async function retryPendingStatLegs(season) {
         ingested += bs.ingested;
         if (bs.remainingCalls != null) remainingCalls = bs.remainingCalls;
         // Stop before the budget floor rather than after — the remaining weeks
-        // retry on the next run, and the calls left are worth more to the live
-        // poller than to a backfill.
+        // retry on the next run, and the calls left are worth more to live
+        // scoring than to a backfill. (Not to the live poller: /scoreboard is
+        // quota-exempt, so the poller spends nothing. What this headroom
+        // protects is the completion flush's two whole-week fetches and the
+        // weekly jobs.)
         if (remainingCalls != null && remainingCalls <= CALL_BUFFER) {
             console.log(`retryPendingStatLegs: ${remainingCalls} CFBD calls left — at budget ceiling, stopping`);
             break;
