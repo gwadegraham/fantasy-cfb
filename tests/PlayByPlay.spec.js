@@ -1,7 +1,7 @@
 const {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText, driveOutcome, driveFieldSpan
+    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel
 } = require('../modules/play-by-play');
 
 // Shaping for the play-by-play log. The load-bearing decision here is that a
@@ -522,6 +522,32 @@ describe('buildDriveChart', () => {
         expect(buildDriveChart({ teams, drives: [] })).toEqual([]);
         expect(buildDriveChart({})).toEqual([]);
         expect(buildDriveChart(null)).toEqual([]);
+    });
+});
+
+describe('driveLabel', () => {
+    it('renames only the last drive of a finished game', () => {
+        expect(driveLabel('End of Half', true)).toBe('End of Game');
+        expect(driveLabel('End Of Half', true)).toBe('End of Game');
+        // Halftime, and any drive mid-game, keeps CFBD's wording.
+        expect(driveLabel('End of Half', false)).toBe('End of Half');
+    });
+
+    it('leaves every other result alone', () => {
+        expect(driveLabel('Touchdown', true)).toBe('Touchdown');
+        expect(driveLabel('Punt', true)).toBe('Punt');
+        expect(driveLabel(null, true)).toBeNull();
+    });
+
+    it('is applied by buildDriveChart only when the payload is final', () => {
+        const drives = [{ result: 'End Of Half', startPeriod: 2 }, { result: 'End of Half', startPeriod: 4 }];
+        const fin = buildDriveChart({ status: 'Final', drives });
+        expect(fin.map(d => d.label)).toEqual(['End Of Half', 'End of Game']);
+        // Mid-game the last drive is not the end of anything.
+        const live = buildDriveChart({ status: 'In Progress', drives });
+        expect(live.map(d => d.label)).toEqual(['End Of Half', 'End of Half']);
+        // result stays raw either way.
+        expect(fin[1].result).toBe('End of Half');
     });
 });
 

@@ -1140,6 +1140,7 @@ html.gd-page, .gd-page body {
     position: absolute;
     inset: 0 auto 0 0;
     background: color-mix(in srgb, var(--cc-success) 16%, transparent);
+    transition: width 400ms ease;
 }
 /* The line to gain. Hidden when it would fall in the end zone, because inside
    the distance to go there isn't one — it's first and goal. */
@@ -1150,6 +1151,7 @@ html.gd-page, .gd-page body {
     width: 2px;
     margin-left: -1px;
     background: var(--cc-amber);
+    transition: left 400ms ease;
 }
 .gd-lf-ball {
     position: absolute;
@@ -1160,6 +1162,17 @@ html.gd-page, .gd-page body {
     /* A ring behind the ball so it stays readable on top of a stripe. */
     text-shadow: 0 0 6px var(--cc-bg), 0 0 3px var(--cc-bg);
     transition: left 400ms ease;
+}
+
+/* A change of possession mirrors the field, so the ball's new position is not
+   a movement and must not be drawn as one. gdFieldUpdate adds this for exactly
+   that repaint. */
+.gd-lf-nosnap .gd-lf-ball,
+.gd-lf-nosnap .gd-lf-gained,
+.gd-lf-nosnap .gd-lf-togain { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .gd-lf-ball, .gd-lf-gained, .gd-lf-togain { transition: none; }
 }
 
 /* ====================================================================

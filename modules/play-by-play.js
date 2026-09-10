@@ -270,9 +270,21 @@ function driveOutcome(result) {
     return 'other';
 }
 
+// CFBD labels the drive that ends the game 'End of Half' — correct for the
+// second quarter, wrong at the end of the fourth. Relabelled only for the LAST
+// drive of a payload that is already final, which is the one case where "the
+// half ended" definitely means the game did. Anything mid-game, and any earlier
+// half, keeps CFBD's own wording. `result` stays raw; this is display only.
+function driveLabel(result, isLastOfFinal) {
+    if (!isLastOfFinal) return result || null;
+    return /end\s+of\s+half/i.test(String(result || '')) ? 'End of Game' : (result || null);
+}
+
 function buildDriveChart(payload) {
     const sides = sideTeamIds(payload);
-    return ((payload && payload.drives) || []).map((drive, driveIndex) => {
+    const drives = (payload && payload.drives) || [];
+    const isFinal = /final/i.test(String((payload && payload.status) || ''));
+    return drives.map((drive, driveIndex) => {
         const span = driveFieldSpan(drive);
         // pointsGained is from the offense's point of view, so it goes negative
         // on a drive the defense scored on. The sign is the cleanest signal
@@ -294,6 +306,7 @@ function buildDriveChart(payload) {
             duration: drive.duration || null,
             summary: driveSummary(drive),
             result: drive.result || null,
+            label: driveLabel(drive.result, isFinal && driveIndex === drives.length - 1),
             outcome: driveOutcome(drive.result),
             points,
             scoredAgainst: points != null && points < 0,
@@ -328,6 +341,6 @@ function scoringPlays(plays) {
 module.exports = {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
     isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
-    cleanPlayText, driveOutcome, driveFieldSpan,
+    cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
     MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
 };

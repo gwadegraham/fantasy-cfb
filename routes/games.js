@@ -771,7 +771,11 @@ router.get('/plays/:gameId', async (req, res) => {
                 source: 'db',
                 status: 'final',
                 teams: game.livePlays.teams || [],
-                drives: buildDriveChart(game.livePlays),
+                // A stored summary is only ever written for a completed
+                // game, so tell the shaper so: livePlays carries no status of
+                // its own, and without it the last drive keeps CFBD's
+                // 'End of Half' at the end of the fourth quarter.
+                drives: buildDriveChart({ ...game.livePlays, status: 'Final' }),
                 plays: buildPlayByPlay(game.livePlays)
             });
         }

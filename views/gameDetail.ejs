@@ -250,10 +250,9 @@
                 var list = existing.querySelector('.gd-pbp-list');
                 if (list) list.innerHTML = gdPlayList(gdTeamCtx);
                 drives.innerHTML = gdDriveRows(gdTeamCtx);
-                if (field) {
-                    var fresh = gdFieldGraphic(gdTeamCtx);
-                    if (fresh) field.outerHTML = fresh;
-                    else field.remove();
+                if (field && !gdFieldUpdate(field, gdTeamCtx)) {
+                    // Nothing left to show — the game just went final.
+                    field.remove();
                 }
                 return;
             }
@@ -1132,23 +1131,25 @@
         // subtraction and never depends on who is home — the alternative, a
         // fixed home/away orientation, has to flip the field every change of
         // possession and gets it wrong the moment `possession` is missing.
-        function gdFieldGraphic(teamCtx) {
+        // The geometry, worked out once and shared by the first paint and the
+        // in-place update, so the two can never drift apart.
+        function gdFieldState(teamCtx) {
             var sit = gdSituation;
-            if (!gdPlaysLive || !sit || sit.yardsToGoal == null) return '';
+            if (!gdPlaysLive || !sit || sit.yardsToGoal == null) return null;
 
             var possSide = String(sit.possession || '').toLowerCase();
             var offense = possSide === 'home' ? teamCtx.home
                         : (possSide === 'away' ? teamCtx.away : null);
             var defense = possSide === 'home' ? teamCtx.away
                         : (possSide === 'away' ? teamCtx.home : null);
-            if (!offense) return '';
+            if (!offense) return null;
 
             // 0 = offense's own goal line, 100 = the line they are driving at.
             var ball = Math.max(0, Math.min(100, 100 - sit.yardsToGoal));
-            // The line to gain. Capped at the goal line, because inside the
-            // distance-to-go it does not exist — it is first-and-goal.
-            var toGain = sit.distance != null ? Math.min(100, ball + sit.distance) : null;
-            var goalToGo = toGain != null && ball + sit.distance >= 100;
+            // The line to gain, capped at the goal line — inside the distance
+            // to go it does not exist, it is first-and-goal.
+            var goalToGo = sit.distance != null && ball + sit.distance >= 100;
+            var toGain = sit.distance != null && !goalToGo ? ball + sit.distance : null;
 
             var situationText = '';
             if (sit.down != null && sit.distance != null) {
@@ -1158,31 +1159,113 @@
                 ? (defense ? defense.abbr + ' ' + sit.yardsToGoal : sit.yardsToGoal + ' to go')
                 : (offense.abbr + ' ' + (100 - sit.yardsToGoal));
 
-            var logo = offense.logo
-                ? '<img class="gd-lf-logo" src="' + offense.logo + '" alt="" />'
-                : '';
+            return {
+                offense: offense, defense: defense,
+                ball: ball, toGain: toGain, goalToGo: goalToGo,
+                situationText: situationText, spotText: spotText,
+                label: offense.name + ' ' + situationText + ' at the ' + spotText
+            };
+        }
 
-            return '<div class="gd-section gd-lf-section">'
+        function gdFieldGraphic(teamCtx) {
+            var st = gdFieldState(teamCtx);
+            if (!st) return '';
+
+            var logo = st.offense.logo
+                ? '<img class="gd-lf-logo" src="' + st.offense.logo + '" alt="" />'
+                : '<span class="gd-lf-logo"></span>';
+
+            // The line to gain is always in the DOM and toggled with `hidden`,
+            // not added and removed. An element that comes and goes cannot
+            // transition, and first-and-goal is exactly when it would vanish.
+            return '<div class="gd-section gd-lf-section" data-offense="' + esc(String(st.offense.id)) + '">'
                 + '<h3 class="gd-section-title">On the Field</h3>'
                 + '<div class="gd-lf-head">' + logo
-                + '<span class="gd-lf-team">' + esc(offense.name) + '</span>'
-                + (situationText ? '<span class="gd-lf-sit">' + esc(situationText) + '</span>' : '')
-                + '<span class="gd-lf-spot">' + esc(spotText) + '</span>'
+                + '<span class="gd-lf-team">' + esc(st.offense.name) + '</span>'
+                + '<span class="gd-lf-sit"' + (st.situationText ? '' : ' hidden') + '>'
+                + esc(st.situationText) + '</span>'
+                + '<span class="gd-lf-spot">' + esc(st.spotText) + '</span>'
                 + '</div>'
-                + '<div class="gd-lf" role="img" aria-label="'
-                + esc(offense.name + ' ' + situationText + ' at the ' + spotText) + '">'
-                + '<div class="gd-lf-ez gd-lf-ez-own"><span>' + esc(offense.abbr) + '</span></div>'
+                + '<div class="gd-lf" role="img" aria-label="' + esc(st.label) + '">'
+                + '<div class="gd-lf-ez gd-lf-ez-own"><span>' + esc(st.offense.abbr) + '</span></div>'
                 + '<div class="gd-lf-turf">'
-                + '<div class="gd-lf-gained" style="width:' + ball + '%"></div>'
-                + (toGain != null && !goalToGo
-                    ? '<div class="gd-lf-togain" style="left:' + toGain + '%"></div>' : '')
-                + '<div class="gd-lf-ball" style="left:' + ball + '%">'
+                + '<div class="gd-lf-gained" style="width:' + st.ball + '%"></div>'
+                + '<div class="gd-lf-togain" style="left:' + (st.toGain != null ? st.toGain : 0) + '%"'
+                + (st.toGain != null ? '' : ' hidden') + '></div>'
+                + '<div class="gd-lf-ball" style="left:' + st.ball + '%">'
                 + '<i class="fa-solid fa-football" aria-hidden="true"></i></div>'
                 + '</div>'
                 + '<div class="gd-lf-ez gd-lf-ez-target"><span>'
-                + esc(defense ? defense.abbr : '') + '</span></div>'
+                + esc(st.defense ? st.defense.abbr : '') + '</span></div>'
                 + '</div>'
                 + '</div>';
+        }
+
+        // Move the existing field rather than rebuilding it. Replacing the node
+        // is what killed the ball's CSS transition: a brand-new element has no
+        // previous position to animate from, so every refresh was a jump.
+        //
+        // Returns false when it cannot do the job in place — no field on the
+        // page, or nothing to show any more — and the caller falls back to a
+        // full render or removes the section.
+        function gdFieldUpdate(section, teamCtx) {
+            var st = gdFieldState(teamCtx);
+            if (!section || !st) return false;
+
+            var ball = section.querySelector('.gd-lf-ball');
+            var gained = section.querySelector('.gd-lf-gained');
+            var toGain = section.querySelector('.gd-lf-togain');
+            var field = section.querySelector('.gd-lf');
+            if (!ball || !gained || !toGain || !field) return false;
+
+            // A change of possession flips which way the field points, so the
+            // ball's new position is a mirror image, not a movement. Sliding
+            // across the field would draw a play that never happened — so the
+            // transition is suppressed for exactly that one repaint.
+            var wasOffense = section.getAttribute('data-offense');
+            var flipped = wasOffense !== String(st.offense.id);
+            if (flipped) {
+                section.setAttribute('data-offense', String(st.offense.id));
+                field.classList.add('gd-lf-nosnap');
+                // Read a layout property to force the class to take effect
+                // before the new position is written, or the browser coalesces
+                // both changes and animates anyway.
+                void field.offsetWidth;
+            }
+
+            ball.style.left = st.ball + '%';
+            gained.style.width = st.ball + '%';
+            toGain.hidden = st.toGain == null;
+            if (st.toGain != null) toGain.style.left = st.toGain + '%';
+            field.setAttribute('aria-label', st.label);
+
+            var head = section.querySelector('.gd-lf-head');
+            if (head) {
+                var img = head.querySelector('img.gd-lf-logo');
+                if (img && st.offense.logo && img.getAttribute('src') !== st.offense.logo) {
+                    img.setAttribute('src', st.offense.logo);
+                }
+                var team = head.querySelector('.gd-lf-team');
+                if (team) team.textContent = st.offense.name;
+                var sit = head.querySelector('.gd-lf-sit');
+                if (sit) {
+                    sit.textContent = st.situationText;
+                    sit.hidden = !st.situationText;
+                }
+                var spot = head.querySelector('.gd-lf-spot');
+                if (spot) spot.textContent = st.spotText;
+            }
+            var ownEz = section.querySelector('.gd-lf-ez-own span');
+            if (ownEz) ownEz.textContent = st.offense.abbr;
+            var targetEz = section.querySelector('.gd-lf-ez-target span');
+            if (targetEz) targetEz.textContent = st.defense ? st.defense.abbr : '';
+
+            if (flipped) {
+                // Next frame, so the snap has been painted before movement is
+                // allowed again.
+                requestAnimationFrame(function () { field.classList.remove('gd-lf-nosnap'); });
+            }
+            return true;
         }
 
         // ---- drive chart -------------------------------------------------
@@ -1218,7 +1301,7 @@
                 html += '<div class="gd-dr gd-dr-' + d.outcome + (d.scoredAgainst ? ' gd-dr-against' : '') + '">'
                     + '<div class="gd-dr-top">' + logo
                     + '<span class="gd-dr-when">' + esc(when) + '</span>'
-                    + '<span class="gd-dr-result">' + esc(d.result || '—') + '</span>'
+                    + '<span class="gd-dr-result">' + esc(d.label || d.result || '—') + '</span>'
                     + '</div>'
                     + '<div class="gd-dr-track">'
                     + '<div class="gd-dr-bar" style="left:' + left + '%;width:' + width + '%"></div>'
