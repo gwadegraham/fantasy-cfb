@@ -131,6 +131,16 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Debounce timing for the live poller's post-completion work. The
+        // rules decide how much billable CFBD work a fast poll cadence costs,
+        // and getting them wrong is invisible in the UI (finals just settle
+        // late, or never), so the pure module is held to the pure-module bar.
+        "./modules/completion-flush.js": {
+            statements: 100,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         "./modules/job-runs-util.js": {
             statements: 100,
             branches: 100,

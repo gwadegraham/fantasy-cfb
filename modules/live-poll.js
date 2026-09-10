@@ -11,17 +11,29 @@
 //      and the 6h tail stops a stuck `completed` flag from polling forever.
 //   2. hard ceiling — skip if CFBD's own remainingCalls has fallen to the
 //      reserved buffer (default 300), so headroom for manual admin work is
-//      never touched. remainingCalls is authoritative (counts ALL usage).
+//      never touched. NOTE: this guard cannot trip on the poll itself, because
+//      /scoreboard does not decrement the counter — it only bounds the billable
+//      completion work that a poll can trigger.
 //
-// Each actual poll fetches the CFBD /scoreboard (Tier 1, 1 call) which returns
-// in-progress scores, period, clock, and possession — then re-scores the current
-// week so standings and H2H win probability reflect live game state. When a game
-// newly completes, the full scoring pipeline (H2H bonuses, cumulative, parlays)
-// runs. Records a JobRun (no email) so the standings "last updated" badge
-// advances during live play.
+// Each actual poll fetches the CFBD /scoreboard (1 call, and a free one — CFBD
+// does not bill /scoreboard or /info) which returns in-progress scores, period,
+// clock, and possession — then re-scores the current week so standings and H2H
+// win probability reflect live game state.
+//
+// Newly completed games are NOT settled inline. They queue in
+// modules/completion-flush.js and the heavy pass (box scores, H2H bonuses,
+// cumulative, records, parlays) runs once the cluster goes quiet, so this
+// cadence can be tightened without multiplying that work. The one case the
+// gate above cannot cover is the last final of a slate — after it, no game is
+// live and this job stops running — so run() drains explicitly when it finds
+// pending work and nothing live.
+//
+// Records a JobRun (no email) so the standings "last updated" badge advances
+// during live play.
 
 const Game = require('../models/game');
-const { runLiveUpdate } = require('./score-update');
+const { runLiveUpdate, drainCompletions } = require('./score-update');
+const completionFlush = require('./completion-flush');
 const { startRun, finishRun } = require('./job-logger');
 const { internalFetch } = require('./internal-api');
 
@@ -98,7 +110,26 @@ async function run() {
     const postLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'postseason'), nowMs, MAX_GAME_HOURS);
     const regLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'regular'), nowMs, MAX_GAME_HOURS);
     const phase = postLive ? 'postseason' : (regLive ? 'regular' : null);
-    if (!phase) return { skipped: 'no game in progress' };
+
+    // No live game — but the last final of a slate leaves its completion work
+    // pending in modules/completion-flush.js, and this gate is exactly what
+    // stops firing at that moment. So drain before returning, or that cluster
+    // would wait in memory until the next slate (or a restart) discarded it.
+    if (!phase) {
+        if (!completionFlush.pendingCount()) return { skipped: 'no game in progress' };
+
+        const drainId = await startRun(JOB_NAME, { season: process.env.YEAR });
+        try {
+            const drained = await drainCompletions();
+            await finishRun(drainId, 'success', `Slate over — settled ${drained.flushed} completed game(s)`);
+            return { drained: drained.flushed };
+        } catch (err) {
+            const msg = (err && err.message) ? err.message : String(err);
+            await finishRun(drainId, 'error', msg);
+            console.error('❌ live-poll drain failed:', err);
+            return { error: msg };
+        }
+    }
 
     // Hard ceiling (authoritative CFBD remainingCalls).
     const remaining = await currentRemaining();
@@ -118,9 +149,11 @@ async function run() {
             await finishRun(id, 'success', `Nothing to score — ${r.skipped}`);
             return { skipped: r.skipped };
         }
-        const detail = r.newlyCompleted
-            ? `${r.updated} updated, ${r.newlyCompleted} completed`
-            : `${r.updated} updated`;
+        const bits = [`${r.updated} updated`];
+        if (r.newlyCompleted) bits.push(`${r.newlyCompleted} completed`);
+        if (r.flushed) bits.push(`${r.flushed} settled`);
+        if (r.pendingCompletions) bits.push(`${r.pendingCompletions} pending`);
+        const detail = bits.join(', ');
         await finishRun(id, 'success',
             `Live update ${r.seasonType || phase} wk ${r.week || '?'} · ${detail}`,
             { week: r.week, seasonType: r.seasonType });
