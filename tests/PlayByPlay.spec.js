@@ -480,6 +480,15 @@ describe('driveOutcome', () => {
         expect(driveOutcome('END OF HALF')).toBe('other');
     });
 
+    it('buckets the two results neither stored game happened to contain', () => {
+        // Not in either LSU-Clemson or FSU-SMU, but both are ordinary football:
+        // a safety and a turnover on downs are losses of possession, so they
+        // read as turnovers rather than as a punt or a nothing.
+        expect(driveOutcome('Safety')).toBe('turnover');
+        expect(driveOutcome('Turnover on Downs')).toBe('turnover');
+        expect(driveOutcome('Downs')).toBe('turnover');
+    });
+
     it('puts an unknown result somewhere sane', () => {
         expect(driveOutcome('Some New CFBD Result')).toBe('other');
         expect(driveOutcome(null)).toBe('other');
