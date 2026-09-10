@@ -243,6 +243,57 @@ const gameSchema = new mongoose.Schema({
         condition: String,
         emoji:     String
     },
+    // Drive chart + advanced box score from CFBD /live/plays, written ONCE when
+    // a completed game is first viewed (see modules/live-plays.js).
+    //
+    // That endpoint is billable and its payload is terminal on a final, so
+    // persisting it here is what makes a finished game cost zero calls to look
+    // at ever again. Its presence is the cache key: a game doc that has this
+    // never asks CFBD for plays.
+    //
+    // Trimmed, not raw: ~50KB per game against 79KB, by dropping each play's
+    // wallClock, playTypeId and per-play advanced fields. The plays themselves
+    // ARE kept — the play-by-play view reads them, and a game stored without
+    // them would show an empty log forever, since a stored summary
+    // short-circuits every later fetch.
+    livePlays: new mongoose.Schema({
+        fetchedAt: Date,
+        teams: [new mongoose.Schema({
+            teamId: Number, team: String, homeAway: String, lineScores: [Number],
+            points: Number, drives: Number, plays: Number,
+            scoringOpportunities: Number, pointsPerOpportunity: Number,
+            averageStartYardLine: Number,
+            lineYards: Number, lineYardsPerRush: Number,
+            secondLevelYards: Number, secondLevelYardsPerRush: Number,
+            openFieldYards: Number, openFieldYardsPerRush: Number,
+            totalEpa: Number, epaPerPlay: Number,
+            passingEpa: Number, epaPerPass: Number,
+            rushingEpa: Number, epaPerRush: Number,
+            successRate: Number, standardDownSuccessRate: Number,
+            passingDownSuccessRate: Number,
+            explosiveness: Number, deserveToWin: Number
+        }, { _id: false })],
+        drives: [new mongoose.Schema({
+            id: String,
+            offense: String, offenseId: Number,
+            defense: String, defenseId: Number,
+            playCount: Number, yards: Number,
+            startPeriod: Number, startClock: String, startYardsToGoal: Number,
+            endPeriod: Number, endClock: String, endYardsToGoal: Number,
+            duration: String, scoringOpportunity: Boolean,
+            result: String, pointsGained: Number,
+            // homeScore/awayScore are the score AFTER the play, which is how
+            // modules/play-by-play.js identifies a scoring play.
+            plays: [new mongoose.Schema({
+                period: Number, clock: String,
+                teamId: Number, team: String,
+                down: Number, distance: Number,
+                yardsToGoal: Number, yardsGained: Number,
+                playType: String, playText: String,
+                homeScore: Number, awayScore: Number
+            }, { _id: false })]
+        }, { _id: false })]
+    }, { _id: false }),
     lastUpdated: {
         type: String
     },

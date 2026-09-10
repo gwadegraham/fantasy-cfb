@@ -10,6 +10,8 @@ const User = require('../models/user');
 const Team = require('../models/team');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
+const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
+const { buildPlayByPlay } = require('../modules/play-by-play');
 const {
     ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
@@ -731,6 +733,104 @@ router.post('/:season/player-stats', async (req, res) => {
     } catch (err) {
         console.log('Error ingesting player stats:', err.message);
         res.status(400).json({ message: err.message });
+    }
+});
+
+// Drive chart + advanced box score for one game, from CFBD /live/plays.
+//
+// Split out from /detail/:gameId rather than folded into it on purpose: the
+// detail payload is served on every 30s live tick and reads only local data,
+// while this one can cost a billable CFBD call. Keeping them separate means the
+// client asks for plays on its own terms — and stops asking the moment a game
+// is final and persisted — instead of every detail refresh dragging a
+// potentially billable fetch along with it.
+//
+// Three ways this answers, in increasing cost:
+//   - `source: 'db'`     the game is final and was stored on a previous view. Free.
+//   - `source: 'cache'`  another viewer fetched it within the TTL. Free.
+//   - `source: 'cfbd'`   a real call. Persisted immediately if the game is final,
+//                        so it is the last one this game will ever need.
+//
+// A fourth answer costs nothing and is not a success: `status: 'budget'` means
+// the module is at its remaining-calls floor and declined to fetch. 200, not an
+// error — the game page is fine and only the play log is paused.
+router.get('/plays/:gameId', async (req, res) => {
+    try {
+        const gameId = Number(req.params.gameId);
+        if (!Number.isInteger(gameId)) {
+            return res.status(400).json({ message: 'A numeric game id is required' });
+        }
+
+        // The stored summary is checked first and short-circuits everything
+        // else. A finished game's plays never change, so this is the branch
+        // that makes looking at last week's games free.
+        const game = await Game.findOne({ id: gameId }, { livePlays: 1, completed: 1 }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+        if (game.livePlays && (game.livePlays.drives || []).length) {
+            return res.json({
+                source: 'db',
+                status: 'final',
+                teams: game.livePlays.teams || [],
+                drives: game.livePlays.drives,
+                plays: buildPlayByPlay(game.livePlays)
+            });
+        }
+
+        const result = await getLivePlays(gameId);
+
+        if (result.status === 'budget') {
+            // At the remaining-calls floor with nothing cached. The client
+            // stops asking for the rest of the session rather than retrying
+            // every tick into a guard that will keep saying no.
+            return res.json({
+                source: 'none', status: 'budget', teams: [], drives: [], plays: [],
+                message: 'Play-by-play is paused to preserve the scoring budget'
+            });
+        }
+
+        if (result.status === 'none') {
+            // Pre-kickoff. A 200 with an explicit empty answer, because this is
+            // the normal state of every game before it starts and the client
+            // should render "no plays yet", not an error.
+            return res.json({ source: result.cached ? 'cache' : 'cfbd', status: 'none', teams: [], drives: [], plays: [] });
+        }
+
+        const payload = result.payload;
+        const final = isFinalPayload(payload);
+
+        // Persist on the first view after a game ends. Fire-and-forget would be
+        // tempting, but a failed write means paying for this call again on the
+        // next view, so it is awaited and its failure is logged rather than
+        // swallowed silently.
+        if (final && !result.cached) {
+            try {
+                await Game.updateOne({ id: gameId }, { $set: { livePlays: summarizeForStorage(payload) } });
+            } catch (err) {
+                console.log(`live-plays: storing summary for ${gameId} failed: ${err.message}`);
+            }
+        }
+
+        res.json({
+            source: result.cached ? 'cache' : 'cfbd',
+            status: result.status === 'stale' ? 'stale' : (final ? 'final' : 'live'),
+            teams: payload && payload.teams ? payload.teams : [],
+            drives: payload && payload.drives ? payload.drives : [],
+            // Shaped server-side so a live game and a stored one render
+            // identically — see modules/play-by-play.js.
+            plays: buildPlayByPlay(payload),
+            period: payload ? payload.period : null,
+            clock: payload ? payload.clock : null,
+            possession: payload ? payload.possession : null,
+            down: payload ? payload.down : null,
+            distance: payload ? payload.distance : null,
+            yardsToGoal: payload ? payload.yardsToGoal : null
+        });
+    } catch (err) {
+        // A CFBD failure with nothing cached. 502 rather than 500: the game
+        // page itself is fine, the upstream isn't, and the client treats it as
+        // "try again next tick" rather than as a broken game.
+        console.log(`live-plays: ${req.params.gameId} failed: ${err.message}`);
+        res.status(502).json({ message: 'Play data is temporarily unavailable' });
     }
 });
 

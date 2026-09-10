@@ -18,10 +18,6 @@ jest.mock('../modules/job-logger', () => ({
     startRun: jest.fn(async () => 'run-1'),
     finishRun: jest.fn(async () => {})
 }));
-jest.mock('../modules/internal-api', () => ({
-    internalFetch: jest.fn(async () => ({ ok: true, json: async () => ({ remainingCalls: 20000 }) }))
-}));
-
 const livePoll = require('../modules/live-poll');
 const Game = require('../models/game');
 const { runLiveUpdate, drainCompletions } = require('../modules/score-update');

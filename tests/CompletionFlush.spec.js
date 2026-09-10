@@ -1,5 +1,5 @@
 const flush = require('../modules/completion-flush');
-const { decideFlush, groupPending, envMs } = flush;
+const { decideFlush, groupPending } = flush;
 
 // The timing rules for deferring the heavy post-completion pass. These are the
 // property worth pinning: the whole point of the debounce is that a cluster of
@@ -155,31 +155,5 @@ describe('pending set', () => {
         flush.addPending([2], { week: 4, seasonType: 'regular' }, 1000);
         expect(flush.shouldFlush({ nowMs: 2000 }).flush).toBe(false);
         expect(flush.shouldFlush({ nowMs: 1000 + QUIET }).flush).toBe(true);
-    });
-});
-
-describe('envMs', () => {
-    afterEach(() => { delete process.env.TEST_FLUSH_MS; });
-
-    it('falls back when unset or blank', () => {
-        expect(envMs('TEST_FLUSH_MS', 120000)).toBe(120000);
-        process.env.TEST_FLUSH_MS = '';
-        expect(envMs('TEST_FLUSH_MS', 120000)).toBe(120000);
-    });
-
-    it('accepts an override, including 0 as the kill switch', () => {
-        process.env.TEST_FLUSH_MS = '30000';
-        expect(envMs('TEST_FLUSH_MS', 120000)).toBe(30000);
-        process.env.TEST_FLUSH_MS = '0';
-        expect(envMs('TEST_FLUSH_MS', 120000)).toBe(0);
-    });
-
-    it('falls back rather than trusting garbage', () => {
-        // A typo'd config var must not turn the debounce into NaN, which would
-        // make every comparison false and defer the pass forever.
-        for (const bad of ['abc', '-1', 'NaN']) {
-            process.env.TEST_FLUSH_MS = bad;
-            expect(envMs('TEST_FLUSH_MS', 120000)).toBe(120000);
-        }
     });
 });

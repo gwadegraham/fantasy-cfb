@@ -37,27 +37,27 @@ describe('anyGameInProgress', () => {
 });
 
 describe('decide', () => {
-    const base = { phase: 'regular', remainingCalls: 4500, buffer: 300 };
+    const base = { phase: 'regular' };
 
-    it('polls when a regular game is in progress and under the ceiling', () => {
+    it('polls when a regular game is in progress', () => {
         expect(decide(base)).toMatchObject({ poll: true });
     });
 
     it('polls when a postseason game is in progress', () => {
-        expect(decide({ ...base, phase: 'postseason' })).toMatchObject({ poll: true });
+        expect(decide({ phase: 'postseason' })).toMatchObject({ poll: true });
     });
 
     it('skips when no game is in progress', () => {
-        expect(decide({ ...base, phase: null })).toMatchObject({ poll: false, reason: 'no game in progress' });
+        expect(decide({ phase: null })).toMatchObject({ poll: false, reason: 'no game in progress' });
     });
 
-    it('skips at or below the call buffer (protects admin headroom)', () => {
-        expect(decide({ ...base, remainingCalls: 300 }).poll).toBe(false);
-        expect(decide({ ...base, remainingCalls: 299 }).poll).toBe(false);
-        expect(decide({ ...base, remainingCalls: 301 }).poll).toBe(true);
-    });
-
-    it('does not block scoring when remaining calls are unknown', () => {
-        expect(decide({ ...base, remainingCalls: null }).poll).toBe(true);
+    // The deleted call-ceiling guard: a low remaining-calls count must no longer
+    // stop the poll. It never protected the poll's own spend (CFBD does not bill
+    // /scoreboard) and blocking the poll blocked completion detection with it,
+    // leaving finals unsettled. Asserted so a reinstated guard fails loudly.
+    it('polls regardless of how few CFBD calls remain', () => {
+        expect(decide({ phase: 'regular', remainingCalls: 0, buffer: 300 }).poll).toBe(true);
+        expect(decide({ phase: 'regular', remainingCalls: 1 }).poll).toBe(true);
+        expect(decide({ phase: 'regular', remainingCalls: null }).poll).toBe(true);
     });
 });

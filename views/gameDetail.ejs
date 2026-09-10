@@ -157,6 +157,91 @@
             if (gdArt && gdIsLive(gdGame)) gdRefresh();
         });
 
+        // ---- play-by-play fetch -------------------------------------------
+        //
+        // The only request on this page that can spend a billable CFBD call
+        // (/live/plays is not covered by the /scoreboard quota exemption), so
+        // the guards here are the budget, not politeness:
+        //
+        //   - a final is fetched ONCE. The server stores it on first fetch and
+        //     serves every later view from Mongo, so re-asking is pure waste.
+        //   - a game that hasn't kicked off is fetched once and left alone; the
+        //     server also negative-caches that answer for five minutes.
+        //   - nothing is fetched while the tab is hidden, and the live loop
+        //     that drives repeats stops on its own at the final.
+        //
+        // Without those, a forgotten open tab is a real budget event: fifteen
+        // games left up for an afternoon is thousands of calls.
+        var gdPlaysInFlight = false;
+
+        async function gdFetchPlays(game) {
+            if (gdPlaysInFlight || document.hidden) return;
+
+            // A finished game's plays are terminal — one fetch, ever.
+            if (gdPlaysDone) return;
+
+            // A game that hasn't kicked off is asked once — that first answer
+            // is what tells us there are no plays yet. After it, nothing
+            // changes until kickoff, at which point gdIsLive goes true and
+            // fetching resumes on its own.
+            if (!gdIsLive(game) && !game.completed && gdPlaysStatus != null) return;
+
+            // Also the recursion guard. On the tick where plays first arrive,
+            // gdRepaintPlays has to re-render the whole page to place the new
+            // section, and render() ends by calling this function again — this
+            // flag is still set at that point, so the nested call returns here
+            // instead of looping.
+            gdPlaysInFlight = true;
+            try {
+                var res = await fetch('/games/plays/' + GAME_ID);
+                if (!res.ok) throw new Error('plays fetch failed: ' + res.status);
+                var data = await res.json();
+
+                gdPlays = Array.isArray(data.plays) ? data.plays : [];
+                gdPlaysStatus = data.status || null;
+
+                // Stop asking once the answer can no longer change. 'db' means
+                // the server already has it stored; 'final' means this response
+                // is the terminal one and the server has just stored it.
+                if (data.source === 'db' || data.status === 'final') gdPlaysDone = true;
+
+                // 'budget' means the server is at its remaining-calls floor.
+                // Retrying every tick would just hammer a guard that will keep
+                // saying no, so this tab stops asking; a reload after the month
+                // rolls over (or after the floor is lowered) starts again.
+                if (data.status === 'budget') gdPlaysDone = true;
+
+                gdRepaintPlays();
+            } catch (err) {
+                // A drive chart that didn't load is not a broken page. The live
+                // loop will try again on its next tick; a final game won't,
+                // which is the right trade — it'll load on the next visit.
+                console.error('Play-by-play fetch failed:', err);
+            } finally {
+                gdPlaysInFlight = false;
+            }
+        }
+
+        // Repaint just the play-by-play section. A full re-render would be
+        // simpler but would fight the 30s refresh for scroll position, and the
+        // plays arrive on their own schedule rather than with the score.
+        function gdRepaintPlays() {
+            if (!gdArt || !gdTeamCtx) return;
+            var container = document.getElementById('game-detail');
+            if (!container) return;
+            var existing = container.querySelector('#gd-pbp');
+            if (existing) {
+                // Section is already on the page: swap the list in place so a
+                // reader keeps their scroll position and their chosen tab.
+                var list = existing.querySelector('.gd-pbp-list');
+                if (list) list.innerHTML = gdPlayList(gdTeamCtx);
+                return;
+            }
+            // First arrival — the section didn't exist at last paint, so the
+            // page has to be rebuilt to place it.
+            render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+        }
+
         // Ensure a hex color is bright enough for bar fills on a dark background.
         // Returns the color lightened to at least minLum relative luminance.
         function ensureBarContrast(hex) {
@@ -181,6 +266,16 @@
             var awayColor = (colors[game.awayId] && colors[game.awayId].primary) || 'var(--cc-interactive)';
             var homeAbbr = abbrs[game.homeId] || game.homeTeam;
             var awayAbbr = abbrs[game.awayId] || game.awayTeam;
+
+            // Per-side render context, shared by the play-by-play cards and the
+            // player stat tables further down. Defined here rather than beside
+            // its first use because both consumers need it and the play-by-play
+            // section renders earlier in the page.
+            var teamCtx = {
+                away: { id: game.awayId, name: game.awayTeam, abbr: awayAbbr, logo: awayLogo, color: awayColor },
+                home: { id: game.homeId, name: game.homeTeam, abbr: homeAbbr, logo: homeLogo, color: homeColor }
+            };
+            gdTeamCtx = teamCtx;
             var homeWon = game.homePoints > game.awayPoints;
             var awayWon = game.awayPoints > game.homePoints;
             var isFinal = game.completed;
@@ -653,6 +748,16 @@
             }
 
 
+            // ---- Play-by-play ----
+            // Sits right after the linescore, which is where it reads best:
+            // score, then how the score happened. Its data comes from a
+            // SEPARATE endpoint (/games/plays/:id) to the rest of this page,
+            // because that one can cost a billable CFBD call — see
+            // modules/live-plays.js. So it renders from whatever gdPlays holds
+            // and is filled in asynchronously; on first paint it shows nothing
+            // rather than blocking the page on a network round trip.
+            html += renderPlaysSection(teamCtx);
+
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
             var as = (game.teamStats && game.teamStats.away) || {};
@@ -711,11 +816,6 @@
             // ---- Player stats ----
             var hp = (game.playerStats && game.playerStats.home) || {};
             var ap = (game.playerStats && game.playerStats.away) || {};
-            var teamCtx = {
-                away: { name: game.awayTeam, logo: awayLogo, color: awayColor },
-                home: { name: game.homeTeam, logo: homeLogo, color: homeColor }
-            };
-
             if (Object.keys(hp).length || Object.keys(ap).length) {
                 html += renderPlayerSection('Passing', ap.passing, hp.passing,
                     ['C/ATT', 'YDS', 'TD', 'INT', 'QBR'],
@@ -774,6 +874,239 @@
             // the 30s live refresh replaces this container wholesale — every
             // repaint needs the handlers back on the new nodes.
             if (window.ccWpChart) ccWpChart.attach(container);
+
+            // Same reason for the play-by-play tabs. Switching tabs repaints
+            // only the list, so it costs no request and doesn't move the page.
+            var pbp = container.querySelector('#gd-pbp');
+            if (pbp) {
+                pbp.addEventListener('click', function (e) {
+                    // Collapsing a quarter is done in place rather than by
+                    // repainting the list, so the reader keeps their scroll
+                    // position on the quarter they were just reading.
+                    var period = e.target.closest('[data-pbp-period]');
+                    if (period) {
+                        var open = period.getAttribute('aria-expanded') !== 'true';
+                        gdPlayOpen[period.getAttribute('data-pbp-period')] = open;
+                        period.setAttribute('aria-expanded', open ? 'true' : 'false');
+                        var group = period.parentNode;
+                        group.classList.toggle('gd-pbp-group-on', open);
+                        var body = group.querySelector('.gd-pbp-period-body');
+                        if (body) body.hidden = !open;
+                        return;
+                    }
+
+                    var btn = e.target.closest('[data-pbp-tab]');
+                    if (!btn) return;
+                    var tab = btn.getAttribute('data-pbp-tab');
+                    if (tab === gdPlayTab) return;
+                    gdPlayTab = tab;
+
+                    var buttons = pbp.querySelectorAll('[data-pbp-tab]');
+                    for (var i = 0; i < buttons.length; i++) {
+                        var on = buttons[i].getAttribute('data-pbp-tab') === gdPlayTab;
+                        buttons[i].classList.toggle('gd-pbp-tab-on', on);
+                        buttons[i].setAttribute('aria-selected', on ? 'true' : 'false');
+                    }
+                    var list = pbp.querySelector('.gd-pbp-list');
+                    if (list) list.innerHTML = gdPlayList(teamCtx);
+                });
+            }
+
+            // Fetched after the paint, not before it: the page is useful
+            // without plays, and this request can cost a billable CFBD call.
+            gdFetchPlays(game);
+        }
+
+        // ---- play-by-play ------------------------------------------------
+        //
+        // Two tabs over one play list: scoring plays (nine rows for a whole
+        // game) and every play (~175). Both come from the same server-shaped
+        // array — modules/play-by-play.js decides what counts as a scoring
+        // play, so a live game and a finished one render identically.
+
+        var gdPlays = [];            // the shaped play list, newest fetch wins
+        var gdPlaysStatus = null;    // 'live' | 'final' | 'none' | 'stale' | null
+        var gdPlaysDone = false;     // a final's plays never change: fetch once
+        var gdPlayTab = 'scoring';   // survives the 30s re-render, unlike the DOM
+        var gdPlayOpen = {};         // periodLabel -> expanded; reader choices only
+        var gdTeamCtx = null;        // last render's per-side context, for repaints
+
+        function gdPlayTabs() {
+            var tabs = [['scoring', 'Scoring Plays'], ['all', 'All Plays']];
+            var html = '<div class="gd-pbp-tabs" role="tablist">';
+            for (var i = 0; i < tabs.length; i++) {
+                var on = gdPlayTab === tabs[i][0];
+                html += '<button type="button" class="gd-pbp-tab' + (on ? ' gd-pbp-tab-on' : '') + '"'
+                     + ' role="tab" aria-selected="' + (on ? 'true' : 'false') + '"'
+                     + ' data-pbp-tab="' + tabs[i][0] + '">' + tabs[i][1] + '</button>';
+            }
+            return html + '</div>';
+        }
+
+        // One play card. A scoring play gets the full treatment from the
+        // mockup — result heading, running score, drive line; an ordinary play
+        // is a compact row, because 175 full-size cards is a wall.
+        function gdPlayCard(play, teamCtx) {
+            var side = play.teamId === teamCtx.home.id ? teamCtx.home
+                     : (play.teamId === teamCtx.away.id ? teamCtx.away : null);
+            var logo = side && side.logo
+                ? '<img class="gd-pbp-logo" src="' + side.logo + '" alt="" />'
+                : '<span class="gd-pbp-logo gd-pbp-logo-none"></span>';
+
+            var clockStr = (play.clock ? play.clock : '')
+                + (play.period != null ? (play.clock ? ' - ' : '') + gdOrdinal(play.period) : '');
+
+            if (!play.scoring) {
+                // CFBD sends down 1 / distance 10 on kickoffs and on the clock
+                // rows (End Period, End of Half, timeouts), where there is no
+                // such thing as down-and-distance. Rendering it anyway puts a
+                // confident "1st & 10" next to a kickoff, so those play types
+                // are suppressed rather than trusted.
+                var situation = '';
+                if (play.down != null && play.distance != null && gdHasDownAndDistance(play.playType)) {
+                    situation = gdOrdinal(play.down) + ' & ' + play.distance;
+                }
+                return '<div class="gd-pbp-row">'
+                    + '<div class="gd-pbp-row-meta">' + logo
+                    + '<span class="gd-pbp-clock">' + esc(clockStr) + '</span>'
+                    + (situation ? '<span class="gd-pbp-situation">' + esc(situation) + '</span>' : '')
+                    + '</div>'
+                    + '<div class="gd-pbp-row-text">' + esc(play.playText || play.playType || '') + '</div>'
+                    + '</div>';
+            }
+
+            return '<div class="gd-pbp-card">'
+                + '<div class="gd-pbp-card-top">'
+                + logo
+                + '<div class="gd-pbp-card-head">'
+                + '<div class="gd-pbp-result">' + esc(play.playType || 'Score') + '</div>'
+                + '<div class="gd-pbp-clock">' + esc(clockStr) + '</div>'
+                + '</div>'
+                + '<div class="gd-pbp-score">'
+                + '<div class="gd-pbp-score-col"><span class="gd-pbp-pts">' + (play.awayScore != null ? play.awayScore : '-') + '</span>'
+                + '<span class="gd-pbp-abbr">' + esc(teamCtx.away.abbr) + '</span></div>'
+                + '<div class="gd-pbp-score-col"><span class="gd-pbp-pts">' + (play.homeScore != null ? play.homeScore : '-') + '</span>'
+                + '<span class="gd-pbp-abbr">' + esc(teamCtx.home.abbr) + '</span></div>'
+                + '</div>'
+                + '</div>'
+                + (play.playText ? '<div class="gd-pbp-text">' + esc(play.playText) + '</div>' : '')
+                + (play.driveSummary ? '<div class="gd-pbp-drive">' + esc(play.driveSummary) + '</div>' : '')
+                + '</div>';
+        }
+
+        // Plays by quarter, in the order the feed introduced each period. Not
+        // "insert a heading whenever the label changes": a feed that revisits a
+        // period would then scatter its plays across two headings, and a
+        // collapsible group has to own every play in its quarter.
+        function gdPlayGroups(rows) {
+            var groups = [];
+            var byLabel = {};
+            for (var i = 0; i < rows.length; i++) {
+                var label = rows[i].periodLabel;
+                if (!byLabel[label]) {
+                    byLabel[label] = { label: label, plays: [] };
+                    groups.push(byLabel[label]);
+                }
+                byLabel[label].plays.push(rows[i]);
+            }
+            return groups;
+        }
+
+        // Is this quarter expanded? gdPlayOpen holds only the reader's explicit
+        // choices, so a quarter they've never touched follows the default —
+        // newest open, everything before it closed. That also means a live game
+        // reaching Q3 opens Q3 and folds Q2 away on its own, with no bookkeeping.
+        function gdPeriodOpen(label, isNewest) {
+            return label in gdPlayOpen ? gdPlayOpen[label] : isNewest;
+        }
+
+        // The list body. Scoring plays are nine rows for a whole game, so they
+        // stay a flat list; All Plays is ~175 and collapses by quarter.
+        function gdPlayList(teamCtx) {
+            var rows = gdPlayTab === 'scoring'
+                ? gdPlays.filter(function (p) { return p.scoring; })
+                : gdPlays;
+
+            if (!rows.length) {
+                var empty;
+                if (gdPlaysStatus === 'budget') {
+                    empty = 'Play-by-play is paused to preserve the scoring budget.';
+                } else if (gdPlaysStatus === 'none') {
+                    empty = 'No plays yet.';
+                } else {
+                    empty = gdPlayTab === 'scoring' ? 'No scoring plays yet.' : 'No plays yet.';
+                }
+                return '<div class="gd-pbp-empty">' + empty + '</div>';
+            }
+
+            var groups = gdPlayGroups(rows);
+            var collapsible = gdPlayTab === 'all';
+            var html = '';
+            for (var g = 0; g < groups.length; g++) {
+                var group = groups[g];
+                var body = '';
+                for (var i = 0; i < group.plays.length; i++) {
+                    body += gdPlayCard(group.plays[i], teamCtx);
+                }
+
+                if (!collapsible) {
+                    html += '<div class="gd-pbp-group">'
+                         + '<h4 class="gd-pbp-period">' + esc(group.label) + '</h4>'
+                         + '<div class="gd-pbp-period-body">' + body + '</div>'
+                         + '</div>';
+                    continue;
+                }
+
+                var open = gdPeriodOpen(group.label, g === groups.length - 1);
+                var count = group.plays.length + (group.plays.length === 1 ? ' play' : ' plays');
+                html += '<div class="gd-pbp-group' + (open ? ' gd-pbp-group-on' : '') + '">'
+                     + '<button type="button" class="gd-pbp-period gd-pbp-period-btn"'
+                     + ' data-pbp-period="' + esc(group.label) + '"'
+                     + ' aria-expanded="' + (open ? 'true' : 'false') + '">'
+                     + '<span class="gd-pbp-caret" aria-hidden="true"></span>'
+                     + '<span class="gd-pbp-period-label">' + esc(group.label) + '</span>'
+                     + '<span class="gd-pbp-period-count">' + count + '</span>'
+                     + '</button>'
+                     + '<div class="gd-pbp-period-body"' + (open ? '' : ' hidden') + '>' + body + '</div>'
+                     + '</div>';
+            }
+            return html;
+        }
+
+        function renderPlaysSection(teamCtx) {
+            // Nothing fetched yet, and nothing to say — the section appears on
+            // the tick after the plays arrive rather than flashing an empty
+            // shell on first paint.
+            if (!gdPlays.length && gdPlaysStatus == null) return '';
+
+            return '<div class="gd-section gd-pbp" id="gd-pbp">'
+                + '<h3 class="gd-section-title">Play-by-Play</h3>'
+                + gdPlayTabs()
+                + '<div class="gd-pbp-list">' + gdPlayList(teamCtx) + '</div>'
+                + '</div>';
+        }
+
+        // Is this a scrimmage play, i.e. one where down-and-distance means
+        // something? Matched on prefix so 'Kickoff Return (Offense)' is caught
+        // alongside 'Kickoff'.
+        var GD_NO_DOWN_TYPES = ['Kickoff', 'End ', 'Timeout'];
+        function gdHasDownAndDistance(playType) {
+            if (!playType) return false;
+            for (var i = 0; i < GD_NO_DOWN_TYPES.length; i++) {
+                if (playType.indexOf(GD_NO_DOWN_TYPES[i]) === 0) return false;
+            }
+            return true;
+        }
+
+        // 1st / 2nd / 3rd / 4th, and OT past regulation.
+        function gdOrdinal(n) {
+            if (n == null) return '';
+            if (n === 1) return '1st';
+            if (n === 2) return '2nd';
+            if (n === 3) return '3rd';
+            if (n === 4) return '4th';
+            if (n > 4) return n === 5 ? 'OT' : (n - 4) + 'OT';
+            return String(n);
         }
 
         function renderPlayerSection(title, awayPlayers, homePlayers, cols, extractFn, teamCtx) {

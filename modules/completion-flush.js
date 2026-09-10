@@ -7,12 +7,13 @@
 // cannot be narrowed to a gameId) plus H2H bonuses, cumulative totals, team
 // scores, records and parlay resolution across the league.
 //
-// That work fires per *tick containing a final*, not per game, so its cost is
-// set by the poll cadence rather than by the schedule: at a 2-minute cadence
-// ~3.3 games final per triggering tick, at 30 seconds ~1.4. Dropping the
-// cadence to make scores feel live would therefore multiply the heavy work
+// That work used to fire per *tick containing a final*, not per game, so its
+// cost was set by the poll cadence rather than by the schedule: at a 2-minute
+// cadence ~3.3 games final per triggering tick, at 30 seconds ~1.4. Tightening
+// the cadence to make scores feel live would have multiplied the heavy work
 // roughly 4x for no added freshness — the same games, just discovered in
-// smaller batches.
+// smaller batches. Separating the two clocks here is what let the poller move
+// to 30s (modules/scheduler.js).
 //
 // So the two clocks are separated. Finals accumulate here; the heavy pass runs
 // once the set goes quiet (no new final for QUIET_MS) or has been held for
@@ -29,20 +30,15 @@
 // scoring passes are all idempotent re-runs. The MAX_WAIT_MS cap also bounds
 // how much can ever be in flight.
 
+const { envNum } = require('./env-num');
+
 // Hold a cluster until it has been this quiet. Set QUIET_MS to 0 to restore the
 // old flush-on-every-tick behavior (a kill switch that needs no code change).
-const QUIET_MS = envMs('LIVE_COMPLETION_QUIET_MS', 120000);
+const QUIET_MS = envNum('LIVE_COMPLETION_QUIET_MS', 120000);
 // Never hold longer than this, even if finals keep trickling in. A busy
 // Saturday evening can produce a new final every minute for a while; without
 // the cap a continuous trickle would defer the pass indefinitely.
-const MAX_WAIT_MS = envMs('LIVE_COMPLETION_MAX_WAIT_MS', 300000);
-
-function envMs(name, fallback) {
-    const raw = process.env[name];
-    if (raw == null || raw === '') return fallback;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
+const MAX_WAIT_MS = envNum('LIVE_COMPLETION_MAX_WAIT_MS', 300000);
 
 // ---- pure decision ---------------------------------------------------------
 
@@ -141,6 +137,6 @@ function takePending() {
 module.exports = {
     addPending, pendingCount, shouldFlush, takePending,
     // exported for tests
-    decideFlush, groupPending, envMs, QUIET_MS, MAX_WAIT_MS,
+    decideFlush, groupPending, QUIET_MS, MAX_WAIT_MS,
     _reset: () => { pending = new Map(); firstAddedMs = null; lastAddedMs = null; }
 };

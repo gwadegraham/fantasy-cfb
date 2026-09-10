@@ -1,19 +1,22 @@
 // Game-day live scoring poller.
 //
-// Refreshes scores every 2 minutes during games so standings feel near-live.
-// The scheduler fires this every 2 min, every day, but it only spends a CFBD
-// call when a game is genuinely in progress. Two independent guards:
+// Refreshes scores every 30 seconds during games so standings feel near-live.
+// The scheduler fires this every 30s, every day; the games-live gate is what
+// makes that affordable — read the local Game collection (0 CFBD calls, the
+// schedule is ingested ahead of time) for any active-season game that kicked
+// off within the last MAX_GAME_HOURS and isn't completed. That is what makes
+// August, empty days, and finished slates spend nothing, and the 6h tail stops
+// a stuck `completed` flag from polling forever.
 //
-//   1. games-live gate — read the local Game collection (0 CFBD calls, the
-//      schedule is ingested ahead of time) for any active-season game that
-//      kicked off within the last MAX_GAME_HOURS and isn't completed. This
-//      is what makes August, empty days, and finished slates spend nothing,
-//      and the 6h tail stops a stuck `completed` flag from polling forever.
-//   2. hard ceiling — skip if CFBD's own remainingCalls has fallen to the
-//      reserved buffer (default 300), so headroom for manual admin work is
-//      never touched. NOTE: this guard cannot trip on the poll itself, because
-//      /scoreboard does not decrement the counter — it only bounds the billable
-//      completion work that a poll can trigger.
+// There is deliberately no remaining-calls ceiling here. One used to skip the
+// poll when CFBD's counter fell to a reserved buffer, which protected nothing
+// the poll spends — CFBD does not bill /scoreboard — while the condition that
+// tripped it stopped finals from being detected at all, so a near-ceiling
+// account would have left games unsettled rather than merely un-refreshed.
+// Real billable usage is ~585 calls a month against a 30,000 limit, and the
+// endpoints that do cost money are bounded where they are spent:
+// modules/live-plays.js caches and persists, completion work is debounced in
+// modules/completion-flush.js.
 //
 // Each actual poll fetches the CFBD /scoreboard (1 call, and a free one — CFBD
 // does not bill /scoreboard or /info) which returns in-progress scores, period,
@@ -22,11 +25,13 @@
 //
 // Newly completed games are NOT settled inline. They queue in
 // modules/completion-flush.js and the heavy pass (box scores, H2H bonuses,
-// cumulative, records, parlays) runs once the cluster goes quiet, so this
-// cadence can be tightened without multiplying that work. The one case the
-// gate above cannot cover is the last final of a slate — after it, no game is
-// live and this job stops running — so run() drains explicitly when it finds
-// pending work and nothing live.
+// cumulative, records, parlays) runs once the cluster goes quiet, which is what
+// makes a 30s cadence affordable in work as well as in calls — that pass used
+// to run once per tick containing a final, so its cost tracked the interval
+// rather than the number of games. The one case the gate above cannot cover is
+// the last final of a slate — after it, no game is live and this job stops
+// running — so run() drains explicitly when it finds pending work and nothing
+// live.
 //
 // Records a JobRun (no email) so the standings "last updated" badge advances
 // during live play.
@@ -35,14 +40,12 @@ const Game = require('../models/game');
 const { runLiveUpdate, drainCompletions } = require('./score-update');
 const completionFlush = require('./completion-flush');
 const { startRun, finishRun } = require('./job-logger');
-const { internalFetch } = require('./internal-api');
 
 const JOB_NAME = 'live-scores';
 
 // Tunables (env-overridable). MAX_GAME_HOURS lives in modules/game-window.js
 // because the scoreboard's live/final cutoff has to be the same number.
 const { MAX_GAME_HOURS } = require('./game-window');
-const CALL_BUFFER = Number(process.env.LIVE_POLL_CALL_BUFFER) || 300;
 
 // ---- pure decision helpers (unit-tested) ------------------------------------
 
@@ -58,36 +61,22 @@ function anyGameInProgress(games, nowMs, maxHours) {
     });
 }
 
-// Final poll/skip verdict. `phase` is the live phase ('regular' | 'postseason'
-// | null). remainingCalls === null means "unknown" (info check failed) — we
-// don't block scoring on that; the games-live gate still bounds the spend.
-function decide({ phase, remainingCalls, buffer }) {
+// Final poll/skip verdict. The live phase is the only input now that no call
+// ceiling gates a free poll. Kept as its own function because the reason string
+// is what lands in the log, and because the games-live gate is worth testing
+// separately from the DB query that feeds it.
+function decide({ phase }) {
     if (!phase) return { poll: false, reason: 'no game in progress' };
-    if (remainingCalls != null && remainingCalls <= buffer) {
-        return { poll: false, reason: `ceiling reached: ${remainingCalls} CFBD calls left (buffer ${buffer})` };
-    }
     return { poll: true, reason: `${phase} game in progress` };
 }
 
 // ---- CFBD remaining-calls, learned for free from the poll response ----------
 // CFBD returns the remaining monthly call count in the `x-calllimit-remaining`
-// header on every response; runFullUpdate surfaces it from the games pull. So
-// after the first poll this stays fresh with zero extra calls. On a cold start
-// (process just booted, nothing polled yet) we seed it once from /games/info so
-// we never poll blind near the ceiling.
+// header, and runLiveUpdate surfaces it from the games pull. Logged rather than
+// acted on: it is the cheapest visibility there is into billable usage drifting
+// upward, and carrying it costs nothing. Unset until the first poll of a
+// process — deliberately not seeded, since a seed only fed the deleted guard.
 let lastKnownRemaining = null;
-
-async function currentRemaining() {
-    if (lastKnownRemaining != null) return lastKnownRemaining;
-    try {
-        const res = await internalFetch(`${process.env.URL}/games/info`, { headers: { Accept: 'application/json' } });
-        const data = await res.json();
-        if (res.ok && data && typeof data.remainingCalls === 'number') lastKnownRemaining = data.remainingCalls;
-    } catch (e) {
-        console.log('live-poll: seed remainingCalls failed:', e.message);
-    }
-    return lastKnownRemaining;
-}
 
 // ---- orchestration ----------------------------------------------------------
 
@@ -131,16 +120,9 @@ async function run() {
         }
     }
 
-    // Hard ceiling (authoritative CFBD remainingCalls).
-    const remaining = await currentRemaining();
-    const decision = decide({ phase, remainingCalls: remaining, buffer: CALL_BUFFER });
-    if (!decision.poll) {
-        console.log(`live-poll skip — ${decision.reason}`);
-        return { skipped: decision.reason };
-    }
-
-    // Poll: lightweight scoreboard update (1 CFBD call) + re-score current week.
-    console.log(`live-poll: ${phase} game in progress, refreshing scores (${remaining == null ? 'calls left unknown' : remaining + ' calls left'})`);
+    // Poll: lightweight scoreboard update (1 free CFBD call) + re-score the
+    // current week.
+    console.log(`live-poll: ${phase} game in progress, refreshing scores (${lastKnownRemaining == null ? 'calls left unknown' : lastKnownRemaining + ' calls left'})`);
     const id = await startRun(JOB_NAME, { season: process.env.YEAR });
     try {
         const r = await runLiveUpdate();
