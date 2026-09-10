@@ -1,6 +1,6 @@
 // CFBD /scoreboard integration — lightweight live-score updates.
 //
-// The live poller calls updateFromScoreboard() every 2 min during games.
+// The live poller calls updateFromScoreboard() every 30s during games.
 // It writes in-progress scores (homePoints/awayPoints) and live state
 // (period, clock, possession, status) to existing Game docs, then returns
 // which games newly completed so the caller can trigger scoring + parlays.

@@ -7,12 +7,13 @@
 // cannot be narrowed to a gameId) plus H2H bonuses, cumulative totals, team
 // scores, records and parlay resolution across the league.
 //
-// That work fires per *tick containing a final*, not per game, so its cost is
-// set by the poll cadence rather than by the schedule: at a 2-minute cadence
-// ~3.3 games final per triggering tick, at 30 seconds ~1.4. Dropping the
-// cadence to make scores feel live would therefore multiply the heavy work
+// That work used to fire per *tick containing a final*, not per game, so its
+// cost was set by the poll cadence rather than by the schedule: at a 2-minute
+// cadence ~3.3 games final per triggering tick, at 30 seconds ~1.4. Tightening
+// the cadence to make scores feel live would have multiplied the heavy work
 // roughly 4x for no added freshness — the same games, just discovered in
-// smaller batches.
+// smaller batches. Separating the two clocks here is what let the poller move
+// to 30s (modules/scheduler.js).
 //
 // So the two clocks are separated. Finals accumulate here; the heavy pass runs
 // once the set goes quiet (no new final for QUIET_MS) or has been held for

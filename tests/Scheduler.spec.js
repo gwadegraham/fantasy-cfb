@@ -11,12 +11,12 @@ describe('scheduler config', () => {
         expect(JOB_SCHEDULES.find(s => s.job === 'live-scores')).toBeUndefined();
     });
 
-    it('live poller fires every 2 min, every day (games-live gate decides), gated by env', () => {
+    it('live poller fires every 30s, every day (games-live gate decides), gated by env', () => {
         expect(LIVE_POLL_SCHEDULE.job).toBe('live-scores');
-        expect(LIVE_POLL_SCHEDULE.rule.minute).toHaveLength(30);
-        expect(LIVE_POLL_SCHEDULE.rule.minute[0]).toBe(0);
-        expect(LIVE_POLL_SCHEDULE.rule.minute[1]).toBe(2);
-        expect(LIVE_POLL_SCHEDULE.rule.minute[29]).toBe(58);
+        expect(LIVE_POLL_SCHEDULE.rule).toEqual({ second: [0, 30] });
+        // Minute and hour stay unset on purpose: a minute list would pin the
+        // poller to those minutes instead of running all the time.
+        expect(LIVE_POLL_SCHEDULE.rule.minute == null).toBe(true);
 
         const prev = process.env.LIVE_POLL_ENABLED;
         process.env.LIVE_POLL_ENABLED = 'true';
@@ -46,10 +46,29 @@ describe('scheduler config', () => {
         expect(rule.dayOfWeek).toBe(6);
     });
 
-    it('leaves hour and dayOfWeek unset for the every-day live poller', () => {
+    it('leaves minute, hour and dayOfWeek unset for the every-30s live poller', () => {
         const rule = toRule(LIVE_POLL_SCHEDULE.rule);
-        expect(rule.minute).toHaveLength(30);
+        expect(rule.second).toEqual([0, 30]);
+        expect(rule.minute == null).toBe(true);
         expect(rule.hour == null).toBe(true);
         expect(rule.dayOfWeek == null).toBe(true);
+    });
+
+    // node-schedule's RecurrenceRule defaults second to 0, so a spec that omits
+    // it fires once a minute rather than 60 times. Asserted because the poller's
+    // 30s cadence relies on the inverse of it.
+    it('does not set second for a job that omits it', () => {
+        expect(toRule({ hour: 23, minute: 0 }).second).toBe(0);
+    });
+
+    // The scheduler has to honor an actual firing, not just carry the field:
+    // second is the one recurrence unit nothing else in the app uses.
+    it('produces a rule that really fires 30s apart', () => {
+        const rule = toRule(LIVE_POLL_SCHEDULE.rule);
+        const from = new Date('2026-09-12T18:00:05.000Z');
+        const first = rule.nextInvocationDate(from);
+        const second = rule.nextInvocationDate(first);
+        expect(first.getUTCSeconds()).toBe(30);
+        expect(second.getTime() - first.getTime()).toBe(30000);
     });
 });

@@ -17,14 +17,20 @@ const JOB_SCHEDULES = [
     { job: 'player-season-leaders', modulePath: '../update-player-season-leaders-job', rule: { dayOfWeek: 2, hour: 6, minute: 30 } }
 ];
 
-// Opt-in game-day live poller (modules/live-poll.js). Fires every 2 min; the
-// module's own games-live gate (a local DB check, 0 CFBD calls) skips
+// Opt-in game-day live poller (modules/live-poll.js). Fires every 30 seconds;
+// the module's own games-live gate (a local DB check, 0 CFBD calls) skips
 // immediately when no game is in progress, so non-game times cost nothing.
 // Kept OUT of the always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true
 // so it can be switched on/off independently of the core scoring jobs.
+//
+// The cadence is a product choice, not a budget one. CFBD does not bill
+// /scoreboard, so a poll is free however often it runs, and the debounce in
+// modules/completion-flush.js means a tighter cadence no longer multiplies the
+// heavy per-final pass — that used to run once per tick containing a final, so
+// halving the interval bought the same finals at twice the cost.
 const LIVE_POLL_SCHEDULE = {
     job: 'live-scores', modulePath: '../modules/live-poll',
-    rule: { minute: new Array(30).fill(0).map((_, i) => i * 2) }
+    rule: { second: [0, 30] }
 };
 
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }
@@ -36,6 +42,10 @@ function toRule(spec) {
     // unset field means "any" in node-schedule.
     if (spec.hour != null) r.hour = spec.hour;
     if (spec.minute != null) r.minute = spec.minute;
+    // Left unset, node-schedule's own default is second 0 — which is what every
+    // job but the live poller wants, and why an unset second doesn't fire 60
+    // times a minute.
+    if (spec.second != null) r.second = spec.second;
     r.tz = TZ;
     return r;
 }
