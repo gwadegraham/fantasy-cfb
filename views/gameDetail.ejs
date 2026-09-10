@@ -947,8 +947,13 @@
         // mockup — result heading, running score, drive line; an ordinary play
         // is a compact row, because 175 full-size cards is a wall.
         function gdPlayCard(play, teamCtx) {
-            var side = play.teamId === teamCtx.home.id ? teamCtx.home
-                     : (play.teamId === teamCtx.away.id ? teamCtx.away : null);
+            // A scoring play is attributed to whoever the points went to, which
+            // is not always the team on offense — a pick-six belongs to the
+            // defense, and play.teamId is the team that threw it. The server
+            // works that out from the score itself; see modules/play-by-play.js.
+            var attributedTo = play.scoringTeamId != null ? play.scoringTeamId : play.teamId;
+            var side = attributedTo === teamCtx.home.id ? teamCtx.home
+                     : (attributedTo === teamCtx.away.id ? teamCtx.away : null);
             var logo = side && side.logo
                 ? '<img class="gd-pbp-logo" src="' + side.logo + '" alt="" />'
                 : '<span class="gd-pbp-logo gd-pbp-logo-none"></span>';
