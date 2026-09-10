@@ -17,6 +17,7 @@ const bettingModule = require('./betting.js');
 const { updateFromScoreboard } = require('./scoreboard');
 const { ingestBoxScores } = require('./box-scores');
 const { ingestPlayerStats } = require('./player-box-scores');
+const completionFlush = require('./completion-flush');
 
 // Distinct postseason weeks present in a mass-pull result, ascending. The
 // 12-team CFP spreads across several postseason weeks and scoring keys entries
@@ -384,33 +385,123 @@ async function doFullUpdate({ withBetting = false } = {}) {
     return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
 }
 
-// Lightweight live-update pipeline: fetch the CFBD /scoreboard (1 call),
-// write in-progress scores + game state to Game docs, then re-score the
-// current week so standings and H2H reflect the live state. Skips the
-// full runFullUpdate overhead (calendar resolution, rankings, full game
-// pull) since the poller only needs fresh scores.
+// The heavy post-completion pass, run over batches of newly completed games.
+// Each batch is one (week, seasonType) pair and costs 2 CFBD calls, because
+// both endpoints are fetched a week at a time and filtered to the game ids —
+// which is exactly why batching a cluster of finals into one pass is cheaper
+// than handling each tick's finals separately.
 //
-// When a game newly completes, the full scoring pipeline runs for that
-// week so final fantasy points, H2H bonuses, and parlays are settled.
-// On ticks where nothing completed, we still re-score so in-progress
-// fantasy points feed the live H2H win-probability bar.
+// Then the league-wide passes: H2H bonuses, cumulative totals, team scores,
+// records and parlays. Those are global rather than per-game, so they run once
+// per flush no matter how many games are in it.
+async function runCompletionWork(season, groups) {
+    let remainingCalls = null;
+    let games = 0;
+
+    for (const g of groups) {
+        games += g.gameIds.length;
+
+        // Team box scores (1 CFBD call per group) so stat-based parlay legs can
+        // resolve in the same pass as score-based ones.
+        try {
+            const bs = await ingestBoxScores(season, g.week, g.seasonType, g.gameIds);
+            if (typeof bs.remainingCalls === 'number') remainingCalls = bs.remainingCalls;
+        } catch (err) {
+            console.log('Box score ingestion failed (non-fatal):', err.message);
+        }
+
+        // Player-level box scores for the game detail view (1 CFBD call per
+        // group). Fetches the whole week and filters to the batch's game ids.
+        try {
+            const ps = await ingestPlayerStats(season, g.week, g.seasonType, g.gameIds);
+            if (typeof ps.remainingCalls === 'number') remainingCalls = ps.remainingCalls;
+        } catch (err) {
+            console.log('Player box score ingestion failed (non-fatal):', err.message);
+        }
+    }
+
+    await scoringModule.applyH2HBonuses();
+    await scoringModule.updateCumulativeScores();
+    await teamScoringModule.updateAllTeamScores();
+    await recordsModule.updateAllTeamRecords();
+
+    try {
+        const { resolveParlays } = require('./parlay-resolve');
+        await resolveParlays();
+    } catch (err) {
+        console.log('Parlay resolution failed (non-fatal):', err.message);
+    }
+
+    return { games, groups: groups.length, remainingCalls };
+}
+
+// Flush the pending completions if the debounce says it is time. Returns what
+// happened so callers can report it; `{ flushed: 0 }` is the common case.
+async function maybeFlushCompletions(season, { force = false } = {}) {
+    const decision = completionFlush.shouldFlush({ force });
+    if (!decision.flush) {
+        if (completionFlush.pendingCount()) console.log(`Completion flush deferred — ${decision.reason}`);
+        return { flushed: 0, pending: completionFlush.pendingCount() };
+    }
+
+    console.log(`Completion flush — ${decision.reason}`);
+    const groups = completionFlush.takePending();
+    const done = await runCompletionWork(season, groups);
+    return { flushed: done.games, groups: done.groups, remainingCalls: done.remainingCalls };
+}
+
+// Lightweight live-update pipeline: fetch the CFBD /scoreboard (1 call, and a
+// free one — CFBD does not bill /scoreboard), write in-progress scores + game
+// state to Game docs, then re-score the current week so standings and H2H
+// reflect the live state. Skips the full runFullUpdate overhead (calendar
+// resolution, rankings, full game pull) since the poller only needs fresh
+// scores.
+//
+// Newly completed games do NOT settle inline. They go into the pending set in
+// modules/completion-flush.js and the heavy pass runs once the cluster goes
+// quiet, so the poll cadence can be as fast as we like without multiplying the
+// expensive work. On ticks where nothing completed we still re-score, so
+// in-progress fantasy points feed the live H2H win-probability bar.
 async function doLiveUpdate() {
     const season = Number(process.env.YEAR);
     const result = await updateFromScoreboard();
 
+    // A tick that changed nothing is still a tick: it may be the one where the
+    // pending cluster finally goes quiet, so the flush check has to run before
+    // any early return, not after the scoring work.
     if (!result.updated) {
-        return { updated: 0, remainingCalls: result.remainingCalls };
+        const flush = await maybeFlushCompletions(season);
+        return {
+            updated: 0,
+            newlyCompleted: 0,
+            flushed: flush.flushed,
+            pendingCompletions: completionFlush.pendingCount(),
+            remainingCalls: flush.remainingCalls != null ? flush.remainingCalls : result.remainingCalls
+        };
     }
 
     // Determine what week/seasonType to re-score from the calendar.
     const calendar = await getCalendar(season);
     const resolved = resolveCurrentWeek(calendar, new Date());
     if (resolved.skip) {
-        return { updated: result.updated, skipped: resolved.skip, remainingCalls: result.remainingCalls };
+        const flush = await maybeFlushCompletions(season);
+        return {
+            updated: result.updated,
+            skipped: resolved.skip,
+            flushed: flush.flushed,
+            pendingCompletions: completionFlush.pendingCount(),
+            remainingCalls: flush.remainingCalls != null ? flush.remainingCalls : result.remainingCalls
+        };
     }
 
     const { week, seasonType } = resolved;
     const isPostseason = seasonType === 'postseason';
+
+    // Queue this tick's finals before scoring, so the quiet timer starts from
+    // when the game actually finished rather than from when the pass ends.
+    if (result.newlyCompleted.length) {
+        completionFlush.addPending(result.newlyCompleted, { week, seasonType });
+    }
 
     if (isPostseason) {
         // Postseason can span multiple weeks; score all that have games.
@@ -423,50 +514,26 @@ async function doLiveUpdate() {
         await scoringModule.updateScores('regular', week);
     }
 
-    // H2H bonuses + cumulative only when a game completed (they're heavier
-    // and only matter once a result is locked in).
-    if (result.newlyCompleted.length) {
-        // Fetch box scores for newly completed games (1 CFBD call) so stat-based
-        // parlay legs can resolve in the same pass as score-based ones.
-        try {
-            const bs = await ingestBoxScores(season, week, seasonType, result.newlyCompleted);
-            if (typeof bs.remainingCalls === 'number') {
-                result.remainingCalls = bs.remainingCalls;
-            }
-        } catch (err) {
-            console.log('Box score ingestion failed (non-fatal):', err.message);
-        }
-
-        // Player-level box scores for the game detail view (1 CFBD call).
-        // Fetches the whole week and filters to newly completed game IDs.
-        try {
-            const ps = await ingestPlayerStats(season, week, seasonType, result.newlyCompleted);
-            if (typeof ps.remainingCalls === 'number') {
-                result.remainingCalls = ps.remainingCalls;
-            }
-        } catch (err) {
-            console.log('Player box score ingestion failed (non-fatal):', err.message);
-        }
-
-        await scoringModule.applyH2HBonuses();
-        await scoringModule.updateCumulativeScores();
-        await teamScoringModule.updateAllTeamScores();
-        await recordsModule.updateAllTeamRecords();
-
-        try {
-            const { resolveParlays } = require('./parlay-resolve');
-            await resolveParlays();
-        } catch (err) {
-            console.log('Parlay resolution failed (non-fatal):', err.message);
-        }
-    }
+    const flush = await maybeFlushCompletions(season);
 
     return {
         updated: result.updated,
         newlyCompleted: result.newlyCompleted.length,
+        flushed: flush.flushed,
+        pendingCompletions: completionFlush.pendingCount(),
         week, seasonType,
-        remainingCalls: result.remainingCalls
+        remainingCalls: flush.remainingCalls != null ? flush.remainingCalls : result.remainingCalls
     };
+}
+
+// Drain whatever is still pending, regardless of the quiet timer. The poller's
+// games-live gate stops firing once the last game of a slate finals, so the
+// cluster that final produced would otherwise sit in memory with no further
+// tick to release it. modules/live-poll.js calls this when it sees pending work
+// and no live game.
+async function drainCompletions() {
+    const season = Number(process.env.YEAR);
+    return maybeFlushCompletions(season, { force: true });
 }
 
 let liveInFlight = null;
@@ -487,6 +554,7 @@ function runLiveUpdate() {
 module.exports = {
     runFullUpdate, runLiveUpdate, postseasonWeeksToScore, resolveCurrentWeek,
     refreshCfpBracket, bracketWindowOpen, resetBracketThrottle,
+    drainCompletions, runCompletionWork,
     BRACKET_MAX_AGE_HOURS, BRACKET_LOOKAHEAD_DAYS,
     _clearInFlight: () => { inFlight = null; liveInFlight = null; }
 };
