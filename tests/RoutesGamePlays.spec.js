@@ -135,6 +135,32 @@ describe('GET /games/plays/:gameId', () => {
         expect(f).not.toHaveBeenCalled();
     });
 
+    it('re-fetches a game that is persisted but not complete, and overwrites it', async () => {
+        // CFBD reports Final at halftime and on transient glitches, so a game
+        // can get a summary written mid-game. Serving that snapshot would
+        // freeze the log at halftime for the rest of the game and after it,
+        // permanently. Observed in prod on Florida A&M at Miami.
+        await seedGame({
+            completed: false,
+            livePlays: {
+                fetchedAt: new Date('2026-09-10'),
+                teams: [],
+                drives: [{ id: 'stale', result: 'End Of Half', plays: [] }]
+            }
+        });
+        const f = stubFetch();
+
+        const res = await request(app).get(`/games/plays/${GAME_ID}`);
+
+        expect(f).toHaveBeenCalledTimes(1);
+        expect(res.body.source).toBe('cfbd');
+
+        // ...and the premature snapshot is replaced, so the corruption heals
+        // rather than persisting once the game really does end.
+        const stored = await Game.findOne({ id: GAME_ID }).lean();
+        expect(stored.livePlays.drives.some(d => d.id === 'stale')).toBe(false);
+    });
+
     it('serves a live game the same shapes as a stored one, and stores nothing', async () => {
         await seedGame();
         stubFetch({ body: payload({ status: 'In Progress' }) });

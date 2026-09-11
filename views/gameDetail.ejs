@@ -177,6 +177,19 @@
         async function gdFetchPlays(game) {
             if (gdPlaysInFlight || document.hidden) return;
 
+            // Release the latch for a game that is still running. CFBD's
+            // /live/plays reports Final at halftime and on transient glitches,
+            // and the latch below is otherwise one-way for the life of the
+            // page: one premature Final froze the field and the log for the
+            // rest of the game while the score above them kept updating.
+            // Observed in prod on Florida A&M at Miami — the page showed a
+            // third-quarter clock over a first-half field.
+            //
+            // `completed` is the flag our own ingest agrees on, so it decides,
+            // not CFBD's per-payload status. A genuinely final game still
+            // latches and still costs exactly one fetch.
+            if (gdPlaysDone && gdIsLive(game)) gdPlaysDone = false;
+
             // A finished game's plays are terminal — one fetch, ever.
             if (gdPlaysDone) return;
 
@@ -209,7 +222,10 @@
 
                 // Stop asking once the answer can no longer change. 'db' means
                 // the server already has it stored; 'final' means this response
-                // is the terminal one and the server has just stored it.
+                // is the terminal one and the server has just stored it. Both
+                // are re-checked against `completed` on the next tick by the
+                // release above, so a premature Final costs one wasted tick
+                // rather than the rest of the game.
                 if (data.source === 'db' || data.status === 'final') gdPlaysDone = true;
 
                 // 'budget' means the server is at its remaining-calls floor.
