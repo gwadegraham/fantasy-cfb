@@ -1160,26 +1160,35 @@ html.gd-page, .gd-page body {
     background: var(--cc-amber);
     transition: left 400ms ease;
 }
-.gd-lf-ball {
+/* X lives on the wrapper, Y and rotation on the ball. Two axes with two
+   easings is what makes an arc — one element moved diagonally cannot. Both are
+   driven by gdAnimateBall, so neither carries a CSS transition. */
+.gd-lf-ballx {
     position: absolute;
     top: 50%;
+    width: 0;
+    height: 0;
+}
+.gd-lf-ball {
+    position: absolute;
     transform: translate(-50%, -50%);
     color: var(--cc-text);
     font-size: 0.9rem;
+    line-height: 1;
     /* A ring behind the ball so it stays readable on top of a stripe. */
     text-shadow: 0 0 6px var(--cc-bg), 0 0 3px var(--cc-bg);
-    transition: left 400ms ease;
 }
 
 /* A change of possession mirrors the field, so the ball's new position is not
    a movement and must not be drawn as one. gdFieldUpdate adds this for exactly
    that repaint. */
-.gd-lf-nosnap .gd-lf-ball,
 .gd-lf-nosnap .gd-lf-gained,
 .gd-lf-nosnap .gd-lf-togain { transition: none; }
 
+/* gdAnimateBall is skipped outright under reduced motion — see
+   gdReducedMotion — so only the bars need muting here. */
 @media (prefers-reduced-motion: reduce) {
-    .gd-lf-ball, .gd-lf-gained, .gd-lf-togain { transition: none; }
+    .gd-lf-gained, .gd-lf-togain { transition: none; }
 }
 
 /* The last play, under the field. An incomplete pass leaves the ball where it
