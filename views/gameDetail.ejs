@@ -1174,6 +1174,87 @@
         // subtraction and never depends on who is home — the alternative, a
         // fixed home/away orientation, has to flip the field every change of
         // possession and gets it wrong the moment `possession` is missing.
+        // ---- how the ball moves ------------------------------------------
+        //
+        // A play's shape is drawn, not just its endpoint. The four cases behave
+        // differently on purpose, and the differences carry meaning rather than
+        // polish:
+        //
+        //   complete   arcs, and flies DEAD STEADY. A real spiral turns about
+        //              the ball's long axis, which from the side barely changes
+        //              the silhouette — so any rotation reads as a wobbler
+        //              instead of a pass. Nothing is the accurate thing to draw.
+        //   incomplete the same arc but WOBBLING, then it drops and the spot
+        //              snaps back. Steady means catchable, wobbling means it
+        //              will not be — visible before the ball lands.
+        //   rush       never leaves the ground, decelerates (the carrier is
+        //              being tackled) and jostles rather than spinning.
+        //   sack/loss  backward, and faster than it went forward. A loss should
+        //              feel abrupt.
+        //
+        // X is animated on a wrapper and Y on the ball: two axes with two
+        // easings is what makes an arc. One element moved diagonally cannot.
+        var GD_BALL_MS = 900;         // broadcast pace
+        var GD_ARC_PX = 58;           // apex height
+        var GD_WOBBLE_DEG = 28;       // heavy, and only on an incompletion
+        var GD_CHURN_DEG = 10;
+
+        function gdReducedMotion() {
+            return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        }
+
+        // Arc height is capped by the turf so a short field never throws the
+        // ball out of its own box.
+        function gdArcHeight(field) {
+            var h = field ? field.getBoundingClientRect().height : 0;
+            return -Math.min(GD_ARC_PX, h > 0 ? h * 0.62 : GD_ARC_PX);
+        }
+
+        function gdAnimateBall(wrap, ball, field, fromPct, toPct, outcome, onDone) {
+            var forward = toPct >= fromPct;
+            var isPass = outcome === 'complete' || outcome === 'incomplete';
+            var back = !forward || outcome === 'sack';
+            var dur = back ? GD_BALL_MS * 0.55 : GD_BALL_MS;
+
+            wrap.animate(
+                [{ left: fromPct + '%' }, { left: toPct + '%' }],
+                { duration: dur, fill: 'forwards',
+                  easing: isPass ? 'linear'                        // a thrown ball does not decelerate
+                        : back ? 'cubic-bezier(.6,0,.9,.5)'        // a loss snaps
+                        : 'cubic-bezier(.15,.7,.25,1)' }           // a run is tackled
+            );
+
+            var up = gdArcHeight(field);
+            var frames;
+            if (outcome === 'incomplete') {
+                var a = GD_WOBBLE_DEG;
+                frames = [
+                    { transform: 'translate(-50%,-50%) translateY(0) rotate(0deg)' },
+                    { transform: 'translate(-50%,-50%) translateY(' + (up * 0.55) + 'px) rotate(' + a + 'deg)', offset: 0.22 },
+                    { transform: 'translate(-50%,-50%) translateY(' + up + 'px) rotate(' + (-a * 0.8) + 'deg)', offset: 0.5 },
+                    { transform: 'translate(-50%,-50%) translateY(' + (up * 0.55) + 'px) rotate(' + (a * 1.15) + 'deg)', offset: 0.78 },
+                    { transform: 'translate(-50%,-50%) translateY(0) rotate(' + (-a * 0.6) + 'deg)' }
+                ];
+            } else if (outcome === 'complete') {
+                frames = [
+                    { transform: 'translate(-50%,-50%) translateY(0)' },
+                    { transform: 'translate(-50%,-50%) translateY(' + up + 'px)', offset: 0.5 },
+                    { transform: 'translate(-50%,-50%) translateY(0)' }
+                ];
+            } else {
+                var c = GD_CHURN_DEG;
+                frames = [
+                    { transform: 'translate(-50%,-50%) rotate(0deg)' },
+                    { transform: 'translate(-50%,-50%) rotate(' + c + 'deg)', offset: 0.25 },
+                    { transform: 'translate(-50%,-50%) rotate(-' + c + 'deg)', offset: 0.6 },
+                    { transform: 'translate(-50%,-50%) rotate(0deg)' }
+                ];
+            }
+            var anim = ball.animate(frames, { duration: dur, fill: 'forwards', easing: 'ease-in-out' });
+            if (onDone) anim.addEventListener('finish', onDone);
+            return dur;
+        }
+
         // Which side has the ball, from either convention CFBD uses: the side
         // itself, or the team's name. Returns null when neither matches, so a
         // caller can decline to draw rather than pick a team at random.
@@ -1257,7 +1338,9 @@
             // The line to gain is always in the DOM and toggled with `hidden`,
             // not added and removed. An element that comes and goes cannot
             // transition, and first-and-goal is exactly when it would vanish.
-            return '<div class="gd-section gd-lf-section" data-offense="' + esc(String(st.offense.id)) + '">'
+            return '<div class="gd-section gd-lf-section" data-offense="' + esc(String(st.offense.id)) + '"'
+                + ' data-ball="' + st.ball + '"'
+                + ' data-play="' + esc(st.lastText || '') + '">'
                 + '<h3 class="gd-section-title">On the Field</h3>'
                 + '<div class="gd-lf-head">' + logo
                 + '<span class="gd-lf-team">' + esc(st.offense.name) + '</span>'
@@ -1271,8 +1354,9 @@
                 + '<div class="gd-lf-gained" style="width:' + st.ball + '%"></div>'
                 + '<div class="gd-lf-togain" style="left:' + (st.toGain != null ? st.toGain : 0) + '%"'
                 + (st.toGain != null ? '' : ' hidden') + '></div>'
-                + '<div class="gd-lf-ball" style="left:' + st.ball + '%">'
-                + '<i class="fa-solid fa-football" aria-hidden="true"></i></div>'
+                + '<div class="gd-lf-ballx" style="left:' + st.ball + '%">'
+                + '<span class="gd-lf-ball">'
+                + '<i class="fa-solid fa-football" aria-hidden="true"></i></span></div>'
                 + '</div>'
                 + '<div class="gd-lf-ez gd-lf-ez-target"><span>'
                 + esc(st.defense ? st.defense.abbr : '') + '</span></div>'
@@ -1318,7 +1402,64 @@
                 void field.offsetWidth;
             }
 
-            ball.style.left = st.ball + '%';
+            // Animate only when the last play actually changed. A repaint that
+            // brings no new play must not re-throw the previous one, and the
+            // 30s tick repaints whether or not anything happened.
+            var playKey = st.lastText || '';
+            var newPlay = !flipped && playKey && section.getAttribute('data-play') !== playKey;
+            var wrap = ball.parentNode;
+            var fromPct = parseFloat(section.getAttribute('data-ball'));
+            if (!isFinite(fromPct)) fromPct = st.ball;
+            section.setAttribute('data-play', playKey);
+            section.setAttribute('data-ball', st.ball);
+
+            if (newPlay && !gdReducedMotion()) {
+                // An incompletion ends where it started, and the payload does
+                // not say where the ball was thrown. So it arcs to the line to
+                // gain — a marker already on the field, from real data — and
+                // comes back. No yard line is claimed as the outcome.
+                var target = st.ball;
+                if (st.lastOutcome === 'incomplete') {
+                    target = st.toGain != null ? st.toGain : Math.min(100, st.ball + 10);
+                }
+
+                var dur = gdAnimateBall(wrap, ball, field, fromPct, target, st.lastOutcome, null);
+
+                if (st.lastOutcome === 'incomplete') {
+                    // Drop it at the target, then put it back at the spot.
+                    setTimeout(function () {
+                        ball.animate(
+                            [{ opacity: 1, transform: 'translate(-50%,-50%) translateY(0)' },
+                             { opacity: 0, transform: 'translate(-50%,-50%) translateY(9px)' }],
+                            { duration: 180, fill: 'forwards', easing: 'ease-in' }
+                        ).addEventListener('finish', function () {
+                            wrap.getAnimations().forEach(function (a) { a.cancel(); });
+                            wrap.style.left = st.ball + '%';
+                            ball.getAnimations().forEach(function (a) { a.cancel(); });
+                            ball.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, fill: 'forwards' });
+                        });
+                    }, dur);
+                }
+
+                // The gain is credited on the catch, not in the air, so the bar
+                // waits out most of the flight before it grows.
+                gained.style.transitionDelay = st.lastOutcome === 'complete' ? Math.round(dur * 0.8) + 'ms' : '0ms';
+            } else {
+                // A repaint that brings no new play must not re-throw the last
+                // one — but it must not truncate a throw already in the air
+                // either. The first arrival renders twice in quick succession
+                // (render calls gdFetchPlays, which repaints), so cancelling
+                // unconditionally here cut every animation off mid-flight.
+                var flying = wrap.getAnimations().concat(ball.getAnimations())
+                    .some(function (a) { return a.playState === 'running'; });
+                if (!flying) {
+                    wrap.getAnimations().forEach(function (a) { a.cancel(); });
+                    ball.getAnimations().forEach(function (a) { a.cancel(); });
+                    wrap.style.left = st.ball + '%';
+                    gained.style.transitionDelay = '0ms';
+                }
+            }
+
             gained.style.width = st.ball + '%';
             toGain.hidden = st.toGain == null;
             if (st.toGain != null) toGain.style.left = st.toGain + '%';
