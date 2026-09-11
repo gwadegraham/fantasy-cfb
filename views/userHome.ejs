@@ -40,7 +40,7 @@
     <% } %>
     <script>
         var CLOUDINARY = <%- JSON.stringify(cloudinary || { cloudName: '', uploadPreset: '' }) %>;
-        // Authoritative active season from the server (process.env.YEAR) so every
+        // Authoritative active season from the server (the sport's season) so every
         // My Team tile keys off the season the league is actually playing — not
         // the wall-clock year or "latest season with data".
         window.APP_YEAR = "<%= year %>";

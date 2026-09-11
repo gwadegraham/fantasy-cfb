@@ -1,4 +1,5 @@
 const { internalFetch, failureMessage } = require('./internal-api');
+const { activeSeason } = require('./active-season');
 module.exports = {
     // Records are a non-critical tail step of the scoring pipeline, so a failure
     // is logged and swallowed rather than failing the run — the same contract
@@ -10,14 +11,14 @@ module.exports = {
     // exits Node partway through the pipeline. See internal-api failureMessage().
     updateAllTeamRecords: async function() {
         try {
-            const response = await internalFetch(`${process.env.URL}/records/new/${process.env.YEAR}`, {
+            const response = await internalFetch(`${process.env.URL}/records/new/${activeSeason('football')}`, {
                 method: 'POST',
                 headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
                 },
                 body: `{
-                "season": "${process.env.YEAR}"
+                "season": "${activeSeason('football')}"
                 }`,
             });
 

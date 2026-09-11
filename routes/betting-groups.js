@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
@@ -9,7 +10,7 @@ router.get('/', async (req, res) => {
         const group = await BettingGroup.findOne({ active: true }).lean();
         if (!group) return res.json(null);
 
-        const season = Number(process.env.YEAR);
+        const season = activeSeason('football');
         const members = await User.find(
             { _id: { $in: group.members } },
             { firstName: 1, league: 1, seasons: 1, avatarUrl: 1 }
@@ -44,7 +45,7 @@ router.post('/', async (req, res) => {
         const group = new BettingGroup({
             name: name || 'Betting Group',
             members,
-            season: Number(process.env.YEAR),
+            season: activeSeason('football'),
             active: true
         });
         await group.save();

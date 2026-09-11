@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const User = require('../models/user');
 const Draft = require('../models/draft');
@@ -23,7 +24,7 @@ router.get('/:league', async (req, res) => {
         // A season-year with a scored postseason entry has wrapped. Combined with
         // "any past season", this crowns a season as soon as it truly finishes
         // (even before the YEAR flip) and never before.
-        const activeYear = Number(process.env.YEAR);
+        const activeYear = activeSeason('football');
         const postseasonScored = {};
         users.forEach(u => (u.seasons || []).forEach(s => {
             if ((s.weeklyScore || []).some(w => w && w.season === 'postseason' && w.score != null)) {

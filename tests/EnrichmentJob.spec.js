@@ -80,8 +80,11 @@ describe('update-enrichment-job run()', () => {
         });
     }
 
-    // The data calls only — job-run bookkeeping is asserted separately.
-    const dataCalls = () => global.fetch.mock.calls.filter(c => !c[0].includes('/job-runs'));
+    // The data calls only. Job-run bookkeeping is asserted separately, and so is
+    // the season lookup — a standalone job has no DB connection, so it asks the
+    // server which season is active (modules/remote-season.js).
+    const dataCalls = () => global.fetch.mock.calls
+        .filter(c => !c[0].includes('/job-runs') && !c[0].includes('/seasons/'));
 
     test('posts enrich + media to the season endpoints with the internal token', async () => {
         stubFetch();

@@ -2,8 +2,16 @@
 
 Steps to open a new season. **Order matters:** the data loads, engagement, and
 draft config all take an explicit season and can be staged anytime; but the
-**Season Roster** action writes to the *active* season (`process.env.YEAR`), so
-it must come **after** you flip `YEAR`. Substitute the new year for `2026` below.
+**Season Roster** action writes to the *active* season, so it must come
+**after** you flip the season. Substitute the new year for `2026` below.
+
+> **Changed in #312.** The active season is no longer the `YEAR` config var — it
+> lives in Mongo (`sportseasons`), one row per sport, so football and basketball
+> can be in different seasons at once. Setting `YEAR` now does **nothing**: the
+> boot seed only fills a gap and never overwrites a stored season. Flip it with
+> `npm run season:set` or `PUT /seasons/:sport` (step 7). Keep `YEAR` set to the
+> same season anyway — it still covers the boot window and the standalone jobs.
+> While the two disagree, every boot logs an error saying so.
 
 ## TL;DR checklist
 
@@ -16,7 +24,9 @@ Stage anytime (explicit season — safe to do before the flip):
 - [ ] **Configure the 2026 Draft** per league
 
 The pivot:
-- [ ] **Set `YEAR=2026`** in the prod (Heroku) config vars and restart
+- [ ] **Roll the season over:** `heroku run npm run season:set -- football 2026`
+      (no restart needed — running dynos pick it up within a minute)
+- [ ] **Set `YEAR=2026`** to match (covers the boot window; not the source of truth)
 
 After the flip (writes to the active season):
 - [ ] **Populate the 2026 Season Roster** — add each returning manager
@@ -93,14 +103,38 @@ Admin → **Configure Draft** (defaults to the active season). Sets pick order
 (reverse-2025-standings default, reorderable) and creates the `Draft` doc the
 draft room needs. Nothing carries over from 2025; a fresh draft starts clean.
 
-### 7. Flip `YEAR=2026` (the pivot)
-Set the `YEAR` config var to `2026` in prod and restart. This switches the
-scoring jobs, standings, records, team-enrichment reads, roster queries, and the
-season lock to 2026. There is no admin UI for this — it's an env var.
+### 7. Flip the season to 2026 (the pivot)
+
+```
+heroku run npm run season:set -- football 2026
+```
+
+This switches the scoring jobs, standings, records, team-enrichment reads,
+roster queries, and the season lock to 2026. No restart: each dyno re-reads the
+stored season about once a minute (`modules/active-season.js`).
+
+Equivalently, as an Admin: `PUT /seasons/football` with `{ "season": 2026 }`.
+Both refuse to move a season **backwards** unless you pass `force` — going back
+makes the nightly job overwrite a finished season's scores.
+
+Add `preseason` as a third argument if you want the season staged before play
+starts (`npm run season:set -- football 2026 preseason`).
+
+*If skipped:* everything keeps scoring 2025 and nothing errors — the symptom is
+"the flip didn't take" with no failure anywhere. Check `GET /seasons`.
+
+**Also set the `YEAR` config var to the new season — don't clear it.** It no
+longer drives anything *once a dyno is primed*, but it is still the answer
+during the seconds between a dyno accepting traffic and its first read of the
+database, and it is the fallback for a standalone job that can't reach the API.
+Cleared, that window answers "no season": the scoring PATCH 404s, and a manager
+added right then would be stored against a null season. Stale, the same window
+scores into the previous year. Matching it to the new season makes the window
+harmless. Boot also logs an error for as long as the two disagree.
 
 ### 8. Populate the 2026 Season Roster (after the flip)
-Admin → **Season Roster**, toggle each returning manager in. This writes to
-`process.env.YEAR`, so it only targets 2026 **after** step 7. *If skipped:*
+Admin → **Season Roster**, toggle each returning manager in. This writes to the
+active season, so it only targets 2026 **after** step 7. *If skipped:*
 Standings and My Team are empty (no 2026 members).
 
 ### 9. Draft, then grades
@@ -126,5 +160,7 @@ profile chip.
 - **Draft completion** merges teams into the season and preserves `franchiseName`
   (fixed in PR #240) — but re-running a *completed* draft after a reset leaves the
   old teams on rosters until the next completion overwrites them.
-- **Confirm `YEAR`** is actually `2026` in prod before drafting — the draft writes
-  rosters to the active season, and a mismatch lands them in the wrong year.
+- **Confirm the active season** is actually `2026` in prod before drafting —
+  `GET /seasons/football`, or the boot log's `Season cache primed:` line. The
+  draft writes rosters to the active season, and a mismatch lands them in the
+  wrong year. Don't check the `YEAR` config var; it isn't the source of truth.

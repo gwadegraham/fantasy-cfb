@@ -42,6 +42,15 @@ module.exports = {
         "/tests/"
     ],
     coverageThreshold: {
+        // What 94 call sites now route through for "what season is it?", and it
+        // fails soft by design (an unprimed cache answers from process.env.YEAR),
+        // so the fallback paths have to stay covered or a regression is silent.
+        "./modules/active-season.js": {
+            statements: 90,
+            branches: 85,
+            functions: 100,
+            lines: 90
+        },
         // Pure lookup module, and the thing 35 call sites now route through —
         // the uncovered line is the UMD browser branch, unreachable under CJS.
         "./public/season-of.js": {

@@ -1,4 +1,5 @@
 const express = require('express');
+const { seasonForLeague } = require('../modules/active-season');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const Game = require('../models/game');
@@ -67,10 +68,10 @@ router.get('/:league', async (req, res) => {
         if (requestedModel === 'claunts' || requestedModel === 'graham') {
             overrides = Object.assign({}, overrides, { model: requestedModel, combineMode: undefined });
         }
-        // `engagement` is resolved for the requested season (default: the active
-        // YEAR) so callers get the right game-mode state without knowing the
+        // `engagement` is resolved for the requested season (default: this
+        // league's season) so callers get the right game-mode state without knowing the
         // per-season storage. `engagementBySeason` is the full map for the admin.
-        const season = req.query.season || process.env.YEAR;
+        const season = req.query.season || seasonForLeague(req.params.league);
         const cfg = configResponse(req.params.league, doc, season, overrides);
         // Whether this caller may still edit scoring. Admins always can (they can
         // trigger a rescore). League Managers are locked out once the season has a
@@ -112,7 +113,7 @@ router.get('/:league/explain', async (req, res) => {
 
         const season = req.query.season;
         let cfg;
-        if (season && String(season) !== String(process.env.YEAR)) {
+        if (season && String(season) !== String(seasonForLeague(req.params.league))) {
             const doc = await ScoringConfig.findOne({ league: req.params.league }).lean();
             const frozen = doc && doc.configBySeason && doc.configBySeason[String(season)];
             cfg = frozen
@@ -148,7 +149,7 @@ router.post('/', async (req, res) => {
         // League Managers can't change scoring once the season is underway — a
         // change would need a full-season rescore, which only an admin can run.
         // Admins are exempt (they can rescore).
-        if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(league, process.env.YEAR)) {
+        if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(league, seasonForLeague(league))) {
             return res.status(423).json({ message: 'Scoring is locked once the season is underway. Ask an admin to change it — the change needs a re-score.' });
         }
         const resolved = resolveConfig(league, { model, values, disabled, enabled, powerConferences });
@@ -174,7 +175,7 @@ router.post('/', async (req, res) => {
         // Scoring changes how every past game counts, so the trail records the
         // shape that was chosen, not just that something changed.
         await audit.record(req, {
-            action: 'scoring.config', league, season: String(process.env.YEAR),
+            action: 'scoring.config', league, season: String(seasonForLeague(league)),
             summary: `Scoring rules updated (${resolved.model === 'graham' ? 'stacking' : 'fixed'} win values)`,
             meta: { model: resolved.model, combineMode: resolved.combineMode, disabled: resolved.disabled, enabled: resolved.enabled, powerConferences: resolved.powerConferences || null }
         });
@@ -182,7 +183,7 @@ router.post('/', async (req, res) => {
         // config than a reload would. `isAdmin` decides which "Saved" message the
         // admin shows (only an admin can run the rescore it tells them to run),
         // and was absent here — so every save read as a non-admin save.
-        const saved = configResponse(league, doc, process.env.YEAR);
+        const saved = configResponse(league, doc, seasonForLeague(league));
         saved.isAdmin = effectiveRoles(req).includes('Admin');
         res.json(saved);
     } catch (err) {
@@ -201,7 +202,7 @@ router.patch('/:league/engagement', async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
         const b = req.body || {};
-        const season = String(b.season || process.env.YEAR);
+        const season = String(b.season || seasonForLeague(league));
         if (!/^\d{4}$/.test(season)) {
             return res.status(400).json({ message: 'A four-digit season is required.' });
         }

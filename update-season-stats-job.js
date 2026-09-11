@@ -3,6 +3,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const { internalFetch } = require('./modules/internal-api');
+const { remoteSeason } = require('./modules/remote-season');
 const { startRun, finishRun } = require('./modules/job-logger');
 const { sendJobEmail, emailOnSuccess } = require('./modules/job-mailer');
 
@@ -18,7 +19,11 @@ const LABEL = 'Season Stats';
 async function run() {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
-    const season = parseInt(process.env.YEAR, 10);
+    const season = await remoteSeason('football');
+    if (season == null || !Number.isFinite(Number(season))) {
+        console.error(`season-stats: no active season could be resolved — refusing to run rather than ingesting against "${season}"`);
+        return { skipped: 'no active season' };
+    }
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
         const res = await internalFetch(`${process.env.URL}/team-season-stats/ingest/${season}`, {

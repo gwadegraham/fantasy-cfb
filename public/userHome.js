@@ -1,7 +1,7 @@
 var weekCode;
 var userData;
 var isMobile;
-// The one active season (process.env.YEAR via window.APP_YEAR), set by
+// The one active season (the server's active season via window.APP_YEAR), set by
 // renderBento. Reused renderers (displayTeams/renderProfileChart/
 // displaySchedule/ensureWeekSelected) read it instead of guessing with
 // seasons.at(-1), so every part of the page keys off the same season.
@@ -109,7 +109,7 @@ async function getUser() {
 }
 
 // The active season for the whole page: the user's entry matching the server's
-// current season (window.APP_YEAR = process.env.YEAR), else the latest season on
+// current season (window.APP_YEAR, the server's active season), else the latest season on
 // the doc. Every tile keys off this ONE value so they never show different
 // seasons at a flip.
 function uhSeasonFor(user, year) {

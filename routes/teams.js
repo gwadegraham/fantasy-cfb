@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
@@ -112,7 +113,7 @@ router.get('/conference/:conference', async (req, res) => {
     try {
         const teamName = await Team.find({seasons: {
             $elemMatch: {
-                season: process.env.YEAR,
+                season: activeSeason('football'),
                 conference: req.params.conference
             }
         }});
@@ -131,11 +132,11 @@ router.get('/conference/:conference', async (req, res) => {
 //Updating One
 router.patch('/:id', getTeam, async (req, res) => {
 
-    var index = res.team.seasons.findIndex(x => x.season == process.env.YEAR);
+    var index = res.team.seasons.findIndex(x => x.season == activeSeason('football'));
 
     if (index == -1) {
         var newSeasonObject = {
-            season: process.env.YEAR,
+            season: activeSeason('football'),
             conference: res.team.conference,
             weeklyScore: req.body.weeklyScore,
             cumulativeScoreV1: req.body.cumulativeScoreV1,

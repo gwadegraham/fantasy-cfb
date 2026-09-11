@@ -1,4 +1,5 @@
 const express = require('express');
+const { seasonForLeague } = require('../modules/active-season');
 const router = express.Router();
 const User = require('../models/user');
 const Team = require('../models/team');
@@ -228,7 +229,7 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         const userId = req.params.userId;
 
         // `latest` (used by the weekly popup) resolves to the ACTIVE season only
-        // (process.env.YEAR) — never a fallback to the most recent scored season,
+        // (the league's season) — never a fallback to the most recent scored season,
         // which used to surface last year's finish during the new preseason.
         //
         // Whether that season has anything to recap is buildWeeklyRecaps' call: it
@@ -238,7 +239,7 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         // fired too early — the nightly job seeds a zero-point entry for every
         // manager as soon as a week's games exist.
         let season = req.params.season;
-        if (season === 'latest') season = String(process.env.YEAR);
+        if (season === 'latest') season = String(seasonForLeague(league));
         const seasonNum = Number(season);
 
         // Whole league for the target season (need nested teams + weeklyScore

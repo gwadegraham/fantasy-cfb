@@ -24,6 +24,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
+const seasons = require('./modules/active-season');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
@@ -220,6 +221,34 @@ mongoose.connect(process.env.DATABASE_URL);
 const db = mongoose.connection;
 db.on('error', (error) => console.error(error));
 db.on('open', () => console.log('Connected to Database'));
+
+// Prime the season cache as soon as the DB is up. modules/active-season.js
+// serves sync getters off this — until it runs, those getters fall back to
+// process.env.YEAR and say so, which is what keeps a cold start from answering
+// "what season is it?" with a null.
+//
+// Note this fires on 'open', not on a reconnect (mongoose emits 'reconnected'
+// for that). The refresh interval started below is what actually covers a
+// reconnect, and a rollover applied on another dyno.
+db.on('open', async () => {
+    // Separate try blocks on purpose. These used to share one, so a seed that
+    // threw — two dynos racing the upsert, say — skipped prime() entirely and
+    // stranded that dyno on process.env.YEAR for its whole life, with nothing
+    // to retry it. The seed is best-effort; priming is not.
+    try {
+        await seasons.ensureDefaultSport();
+    } catch (err) {
+        console.error('Season seed failed (continuing to prime):', err.message);
+    }
+    try {
+        const cached = await seasons.prime();
+        console.log('Season cache primed:', JSON.stringify((cached || {}).sports || {}));
+    } catch (err) {
+        console.error('Season cache prime FAILED — running on process.env.YEAR:', err.message);
+    }
+    // Pick up a rollover written by another dyno without waiting for a restart.
+    seasons.startRefresh();
+});
 
 
 
@@ -511,7 +540,7 @@ app.get('/rules', async (req, res) => {
         const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
         // Game-mode (H2H/Captain) settings for the active season, so the rules
         // page can spell out the win/tie bonuses when the league runs H2H.
-        const engagement = engagementForSeason(cfg.engagementBySeason, Number(process.env.YEAR));
+        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.activeSeason('football'));
 
         res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement });
     } else {
@@ -525,7 +554,7 @@ app.get('/draft-room', (req, res) => {
         user.isDraft = false;
         const userState = safeJson(req.effUser);
 
-        res.render('draftRoom', {user, userState, year: process.env.YEAR});
+        res.render('draftRoom', {user, userState, year: seasons.activeSeason('football')});
     } else {
         res.redirect("/login");
     }
@@ -540,7 +569,7 @@ app.get('/draft-board', (req, res) => {
     const user = buildUserContext(req.effUser);
     res.render('draftBoard', {
         user, userState: safeJson(req.effUser),
-        year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser)
+        year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser)
     });
 });
 
@@ -550,7 +579,7 @@ app.get('/betting', async (req, res) => {
     if (!res.locals.isBettingGroupMember) return res.redirect('/');
     const userState = safeJson(req.effUser);
     const isAdmin = devRole.effectiveRoles(req).includes('Admin');
-    res.render('betting', { user, userState, year: process.env.YEAR, isAdmin });
+    res.render('betting', { user, userState, year: seasons.activeSeason('football'), isAdmin });
 });
 
 // Game-day scoreboard — every FBS game for the week, with the league's drafted
@@ -564,7 +593,7 @@ app.get('/scoreboard', (req, res) => {
     res.render('scoreboard', {
         user,
         userState: safeJson(req.effUser),
-        year: process.env.YEAR,
+        year: seasons.activeSeason('football'),
         leagueCode: leagueCodeFor(req.effUser)
     });
 });
@@ -581,7 +610,7 @@ app.get('/admin', (req, res) => {
         const userState = safeJson(req.effUser);
         const isAdmin = roles.includes('Admin');
 
-        res.render('admin', {user, userState, year: process.env.YEAR, isAdmin});
+        res.render('admin', {user, userState, year: seasons.activeSeason('football'), isAdmin});
     } else {
         res.redirect("/login");
     }
@@ -603,7 +632,7 @@ app.get('/userHome', async function(req, res) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
 
-        res.render('userHome', {user, userState, year: process.env.YEAR, cloudinary: cloudinaryConfig()});
+        res.render('userHome', {user, userState, year: seasons.activeSeason('football'), cloudinary: cloudinaryConfig()});
     } else {
         res.redirect("/login");
     }
@@ -635,7 +664,7 @@ app.get('/game/:id', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
-        res.render('gameDetail', { user, userState, gameId: req.params.id, year: process.env.YEAR });
+        res.render('gameDetail', { user, userState, gameId: req.params.id, year: seasons.activeSeason('football') });
     } else {
         res.redirect("/login");
     }
@@ -645,7 +674,7 @@ app.get('/cfp-bracket', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
-        res.render('cfpBracket', { user, userState, year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser) });
+        res.render('cfpBracket', { user, userState, year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser) });
     } else {
         res.redirect("/login");
     }
@@ -726,7 +755,12 @@ const scoringConfigRouter = require('./routes/scoringConfig');
 app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
 const leaguesRouter = require('./routes/leagues');
+const seasonsRouter = require('./routes/seasons');
 app.use('/leagues', requireAuthOrToken, leaguesRouter);
+
+// Which season each sport is in, and the admin-only rollover. The pivot that
+// used to be a YEAR config var + restart (docs/season-flip-runbook.md step 7).
+app.use('/seasons', requireAuthOrToken, seasonsRouter);
 
 // Dev-only role spoofing: a real Admin (non-production only) can view the app
 // as a League Manager or a regular member to test permissions. Sets/clears the

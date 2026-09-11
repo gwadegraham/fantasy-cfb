@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const Game = require('../models/game');
 const BettingLine = require('../models/bettingLine');
@@ -41,7 +42,7 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     var week = req.params.weekNum;
     var teamId = req.params.team;
     var seasonType = req.params.seasonType;
-    var year = req.query.season || process.env.YEAR;
+    var year = req.query.season || activeSeason('football');
     try {
         const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]});
 
@@ -417,7 +418,7 @@ router.post('/week/mass-create', async (req, res) => {
 
     var allNewGames = [];
     var allExistingGames = [];
-    var year = process.env.YEAR;
+    var year = activeSeason('football');
 
     // Reject a missing week/seasonType before hitting CFBD: an empty week makes
     // CFBD return a 400 JSON object instead of an array, and iterating that

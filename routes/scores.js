@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const scoringModule = require('../modules/scoring.js');
 const User = require('../models/user');
@@ -256,7 +257,7 @@ async function applyH2HBonuses(season) {
 // how every other scoring step reaches the DB (see modules/scoring.js).
 router.post('/h2h-bonus', async (req, res) => {
     try {
-        const season = (req.body && req.body.season) || process.env.YEAR;
+        const season = (req.body && req.body.season) || activeSeason('football');
         const leagues = await applyH2HBonuses(season);
         res.status(200).json({ season: String(season), leagues });
     } catch (err) {
@@ -273,7 +274,7 @@ router.post('/update', async (req, res) => {
         await scoringModule.updateScores(seasonType, weekNumber);
         // Before cumulative totals: the bonus is folded into the weekly scores
         // that updateCumulativeScores then sums.
-        await applyH2HBonuses(process.env.YEAR);
+        await applyH2HBonuses(activeSeason('football'));
         await scoringModule.updateCumulativeScores();
 
         try { const { resolveParlays } = require('../modules/parlay-resolve'); await resolveParlays(); } catch (_) {}

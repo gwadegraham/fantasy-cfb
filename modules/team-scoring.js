@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { activeSeason } = require('./active-season');
 module.exports = {
     updateAllTeamScores: async function() {
         const teamsResponse = await internalFetch(`${process.env.URL}/teams`, {
@@ -16,7 +17,7 @@ module.exports = {
         // before scores were actually written, and rejections went unhandled.
         for (const team of teams) {
             try {
-                const response = await internalFetch(`${process.env.URL}/calculate-team-score/${process.env.YEAR}/${team.id}/${team.school}`, {
+                const response = await internalFetch(`${process.env.URL}/calculate-team-score/${activeSeason('football')}/${team.id}/${team.school}`, {
                     method: 'GET',
                     headers: {
                     'Accept': 'application/json'

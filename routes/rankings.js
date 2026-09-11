@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const Ranking = require('../models/ranking');
 
@@ -127,7 +128,7 @@ router.post('/retrieveRankings', async (req, res) => {
 // Getting One By Week & Season Type & Poll
 router.get('/:week/:seasonType/poll/:pollName', async (req, res) => {
     try {
-        const ranking = await Ranking.find({ $and: [ {season: process.env.YEAR}, { seasonType: "regular"}, { week: req.params.week}, {polls: {$elemMatch: {"poll": req.params.pollName}}}]}, {"polls.ranks.$":1});
+        const ranking = await Ranking.find({ $and: [ {season: activeSeason('football')}, { seasonType: "regular"}, { week: req.params.week}, {polls: {$elemMatch: {"poll": req.params.pollName}}}]}, {"polls.ranks.$":1});
 
         if (JSON.stringify(ranking) === '[]') {
             res.status(400).json({message: `No rankings found for week ${req.params.week} & seasonType ${req.params.seasonType}`});
