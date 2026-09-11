@@ -3,6 +3,7 @@ const { resolveConfig, MODELS, engagementForSeason, ruleEnabled, overridesFromDo
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { factsForGame } = require('./cfp-bracket');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
+const { seasonOrEmpty } = require('../public/season-of.js');
 const ScoringConfig = require('../models/scoringConfig');
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -69,7 +70,7 @@ module.exports= {
             // Seed reduce with 0 so users with no weekly scores yet (new users
             // / start of season) return 0 instead of throwing "Reduce of empty
             // array with no initial value" and aborting the whole loop.
-            var weeklyScore = user.seasons[0].weeklyScore || [];
+            var weeklyScore = seasonOrEmpty(user, process.env.YEAR).weeklyScore || [];
             var totalScore = weeklyScore.map(score).reduce(sum, 0);
             // Awaited: un-awaited, this whole step resolved before a single
             // cumulativeScore had actually been written, so the job moved on to
@@ -124,13 +125,18 @@ module.exports= {
         for (const user of userData) {
             var score = 0;
             var teamScores = new Array();
+            // The season this pass is scoring — the same one the fetch above
+            // asked for. Named rather than indexed: the route $elemMatch's it
+            // into a one-element array, and reading index 0 quietly depended on
+            // that projection staying exactly as it is.
+            var userSeason = seasonOrEmpty(user, process.env.YEAR);
 
             if (!configByLeague[user.league]) {
                 configByLeague[user.league] = await getScoringConfig(user.league);
             }
             var cfg = configByLeague[user.league];
 
-            for (const team of user.seasons[0].teams) {
+            for (const team of userSeason.teams || []) {
                 var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
                     method: 'GET',
                     headers: {
@@ -183,9 +189,9 @@ module.exports= {
             var seasonEng = engagementForSeason(cfg.engagementBySeason, process.env.YEAR);
             var captainTeamId = null, captainBonus = 0;
             if (seasonEng.captainEnabled && season !== "postseason") {
-                var priorWeekly = (user.seasons[0].weeklyScore || [])
+                var priorWeekly = (userSeason.weeklyScore || [])
                     .filter(e => e.season !== "postseason" && parseInt(e.week) < parseInt(week));
-                captainTeamId = resolveCaptain(user.seasons[0].captains, week, user.seasons[0].teams, priorWeekly);
+                captainTeamId = resolveCaptain(userSeason.captains, week, userSeason.teams, priorWeekly);
                 captainBonus = captainWeeklyBonus(teamScores, captainTeamId, seasonEng.captainMultiplier);
                 score += captainBonus;
             }
@@ -210,28 +216,28 @@ module.exports= {
                 // ever creates one entry — it's a safeguard against a future
                 // multi-week postseason.)
                 var postWeek = parseInt(scoreObject.week);
-                if (await user.seasons[0].weeklyScore.some(e => e.season === "postseason" && e.week === postWeek)) {
-                    var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season === "postseason" && x.week === postWeek);
-                    user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
-                    await updateUser(user._id, user.seasons[0].weeklyScore);
+                if (await userSeason.weeklyScore.some(e => e.season === "postseason" && e.week === postWeek)) {
+                    var spliceIndex = userSeason.weeklyScore.findIndex(x => x.season === "postseason" && x.week === postWeek);
+                    userSeason.weeklyScore.splice(spliceIndex, 1, scoreObject);
+                    await updateUser(user._id, userSeason.weeklyScore);
                 } else {
-                    user.seasons[0].weeklyScore.push(scoreObject);
-                    await updateUser(user._id, user.seasons[0].weeklyScore);
+                    userSeason.weeklyScore.push(scoreObject);
+                    await updateUser(user._id, userSeason.weeklyScore);
                 }
-            } else if (await user.seasons[0].weeklyScore.some(e => e.season !== "postseason" && e.week === parseInt(scoreObject.week))) {
+            } else if (await userSeason.weeklyScore.some(e => e.season !== "postseason" && e.week === parseInt(scoreObject.week))) {
                 // Match regular weeks only (exclude postseason entries), so a
                 // regular week N never clobbers a postseason entry that shares
                 // the same week number.
-                var spliceIndex = user.seasons[0].weeklyScore.findIndex(x => x.season !== "postseason" && x.week === parseInt(scoreObject.week));
-                user.seasons[0].weeklyScore.splice(spliceIndex, 1, scoreObject);
-                await updateUser(user._id, user.seasons[0].weeklyScore);
-            } else if (user.seasons[0].weeklyScore.length == 0){
+                var spliceIndex = userSeason.weeklyScore.findIndex(x => x.season !== "postseason" && x.week === parseInt(scoreObject.week));
+                userSeason.weeklyScore.splice(spliceIndex, 1, scoreObject);
+                await updateUser(user._id, userSeason.weeklyScore);
+            } else if (userSeason.weeklyScore.length == 0){
                 // First score of the season: weeklyScore is an array field, so
                 // wrap the object rather than storing a bare object.
                 await updateUser(user._id, [scoreObject]);
             } else {
-                user.seasons[0].weeklyScore.push(scoreObject);
-                await updateUser(user._id, user.seasons[0].weeklyScore);
+                userSeason.weeklyScore.push(scoreObject);
+                await updateUser(user._id, userSeason.weeklyScore);
             }
 
             

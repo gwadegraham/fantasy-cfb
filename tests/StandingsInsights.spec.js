@@ -12,6 +12,11 @@ global.ccLogo = (logos) => (logos && logos[0]) || '';
 // exactly what the row assertions below are about. LeagueRank.spec.js covers it
 // directly.
 global.ccLeagueRank = require('../public/league-rank.js');
+// ccSeasonOf resolves a manager's entry for an explicit season. Also the real
+// one — it is what decides WHICH season these builders compute against, and the
+// fixtures below carry a one-element seasons array exactly as the route projects
+// it. SeasonOf.spec.js covers the lookup itself.
+global.ccSeasonOf = require('../public/season-of.js');
 
 const {
     rankedRows,

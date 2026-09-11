@@ -20,7 +20,7 @@ var userMetadata;
 // Latest regular-season week that has scored data (for defaulting the schedule).
 function latestWeek(users) {
     let max = 0;
-    users.forEach(u => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || []).forEach(w => {
+    users.forEach(u => (ccSeasonOf.payloadSeasonEntry(u).weeklyScore || []).forEach(w => {
         if (w.season !== 'postseason' && typeof w.week === 'number' && w.week > max) max = w.week;
     }));
     return max;
@@ -145,7 +145,15 @@ async function getUsers() {
             // pinned this picker for the season. Only a real pick sets weekPinned
             // (see public/current-week.js); latestWeek is the fallback for when
             // the calendar can't be reached.
-            const activeSeason = data[0]?.seasons?.[0]?.season || window.APP_YEAR;
+            // Which season this payload is about. /users/league/:code honours
+            // ?season=, so read it back off the payload rather than assuming the
+            // active year — that is what keeps a past-season view pointed at the
+            // season it is showing. No APP_YEAR fallback: standings.ejs never
+            // defines it (unlike userHome/admin/scoreboard), so the `|| APP_YEAR`
+            // this replaces was dead code that read as live. This branch only
+            // runs when data is non-empty and the route only returns managers
+            // who have the season, so the payload always names it.
+            const activeSeason = ccSeasonOf.payloadSeason(data);
             let cwCode = window.ccCurrentWeek ? await window.ccCurrentWeek.sync(activeSeason) : null;
             // Fallback only: with no calendar to consult, seed a week when
             // nothing is stored and otherwise leave the stored one be.
@@ -162,7 +170,7 @@ async function getUsers() {
             // league doesn't flash the classic table then swap (see below). It
             // owns the schedule render too — an H2H league hides that section,
             // and its ~60 game fetches are pure waste until we know the mode.
-            renderStandingsSection(data, leagueCode, data[0]?.seasons?.[0]?.season);
+            renderStandingsSection(data, leagueCode, activeSeason);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
@@ -170,8 +178,8 @@ async function getUsers() {
             // Server "advanced" highlights append to the same panel — skip them
             // too until there's real scoring, or they'd re-populate the panel
             // displayHighlights just hid.
-            if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, data[0]?.seasons?.[0]?.season);
-            loadProjections(leagueCode, data[0]?.seasons?.[0]?.season);
+            if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, activeSeason);
+            loadProjections(leagueCode, activeSeason);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too — but only once
             // the season has real scoring. A zero-point week the nightly job seeds
@@ -620,7 +628,7 @@ function maybeCelebrateWeeklyWin(users) {
             || window.localStorage.getItem('userId');
         if (!myId || !Array.isArray(users) || !users.length) return;
 
-        const weekOf = (u) => ((u.seasons && u.seasons[0] && u.seasons[0].weeklyScore) || []);
+        const weekOf = (u) => (ccSeasonOf.payloadSeasonEntry(u).weeklyScore || []);
         const weeks = weekOf(users[0]).length;
         if (!weeks) return;
         const lastIdx = weeks - 1;
@@ -636,7 +644,7 @@ function maybeCelebrateWeeklyWin(users) {
         if (!mine || mine.score !== max) return;   // you didn't (co-)win the week
 
         // Once per week: key by season + week so it fires the first time only.
-        const season = (users[0].seasons[0].season) || '';
+        const season = ccSeasonOf.payloadSeason(users) || '';
         const wkLabel = (mine.wk && mine.wk.season === 'postseason') ? 'post' : (mine.wk && mine.wk.week);
         const key = `weekWin-${season}-${wkLabel}`;
         if (window.localStorage.getItem(key)) return;
@@ -910,7 +918,7 @@ async function displaySchedule(data) {
     for(var i = 0; i < data.length; i++) {
 
         var user = data[i];
-        var userTeams = user.seasons[0].teams;
+        var userTeams = ccSeasonOf.payloadSeasonEntry(user).teams;
         var userTeamObject = {
             userName: user.firstName, 
             teams: userTeams
@@ -926,7 +934,7 @@ async function displaySchedule(data) {
     // for only one of its two teams.
     const weeklyByTeamId = {};
     data.forEach(u => {
-        const season = u.seasons.at(-1);
+        const season = ccSeasonOf.payloadSeasonEntry(u);
         (season.teams || []).forEach(t => { weeklyByTeamId[t.id] = season.weeklyScore; });
     });
     const pointsFor = (teamId, gameId) => teamGameScoreById(weeklyByTeamId[teamId], teamId, gameId);
@@ -941,9 +949,8 @@ async function displaySchedule(data) {
     var seasonType = "regular";
     var rankingsInfo;
 
-    // Resolve the year from the season being viewed (the users' latest season),
-    // never the wall-clock year.
-    var seasonYear = data[0]?.seasons?.at(-1)?.season;
+    // Resolve the year from the season being viewed, never the wall-clock year.
+    var seasonYear = ccSeasonOf.payloadSeason(data);
 
     if (week == "17") {
         rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
@@ -963,11 +970,13 @@ async function displaySchedule(data) {
 
         var userData = data[iterUsers];
 
-        for (var iterNum = 0; iterNum < userData.seasons.at(-1).teams.length; iterNum++) {
+        var userTeamsForWeek = ccSeasonOf.payloadSeasonEntry(userData).teams || [];
+
+        for (var iterNum = 0; iterNum < userTeamsForWeek.length; iterNum++) {
 
             var otherUsers = usersAndTeams.toSpliced(iterUsers, 1);
 
-            var gamesInfo = await getGame(seasonType, week, userData.seasons.at(-1).teams[iterNum]);
+            var gamesInfo = await getGame(seasonType, week, userTeamsForWeek[iterNum]);
 
             for (const [i, game] of gamesInfo.entries()) {
 
@@ -1037,7 +1046,7 @@ async function displaySchedule(data) {
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
 
-                    if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
+                    if (game.awayId == userTeamsForWeek[iterNum].id) {
                         var existObject = exists(otherUsers, game.homeId);
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;

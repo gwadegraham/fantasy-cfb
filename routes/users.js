@@ -1,4 +1,5 @@
 const express = require('express');
+const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 const router = express.Router();
 const User = require('../models/user');
 const Game = require('../models/game');
@@ -561,11 +562,30 @@ router.patch('/:id', getUser, async (req, res) => {
     // scalar and replaces an array wholesale under such a projection ("for your
     // own good…") — so a body carrying both would throw and write NOTHING. Either
     // one alone saves cleanly. Don't merge these into two independent ifs; the
-    // ScoringWrites spec pins the behavior.
+    // RosterCorrection spec pins the behavior (all four combinations of the two
+    // fields, against real Mongo). It does NOT live in ScoringWrites.spec.js,
+    // which this comment used to name.
+    // getUser $elemMatch'd this season in, so there is exactly one entry — but
+    // say which season rather than trusting the index, since the projection and
+    // this write live 230 lines apart.
+    //
+    // Unreachable as written — getUser filters on the same season it projects,
+    // so a document that came back has a matching entry. Kept because the
+    // assignments below sit OUTSIDE the try/catch: if that invariant ever slips,
+    // a TypeError here leaves the request hanging with nothing written and
+    // nothing logged, and this is the endpoint the scoring pass writes every
+    // score through. A 500 is the difference between a visible failure and a
+    // silent scoring outage.
+    const patchSeason = seasonOf(res.user, process.env.YEAR);
+    if (!patchSeason) {
+        return res.status(500).json({
+            message: `User ${req.params.id} has no ${process.env.YEAR} season entry to write to`
+        });
+    }
     if (req.body.cumulativeScore != null) {
-        res.user.seasons[0].cumulativeScore = req.body.cumulativeScore;
+        patchSeason.cumulativeScore = req.body.cumulativeScore;
     } else if (req.body.weeklyScore != null) {
-        res.user.seasons[0].weeklyScore = req.body.weeklyScore;
+        patchSeason.weeklyScore = req.body.weeklyScore;
     }
     if (req.body.isUpdated != null) {
         res.user.isUpdated = req.body.isUpdated;
@@ -666,7 +686,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
 
         const taken = new Set();
         const managers = users.map(u => {
-            const s = (u.seasons && u.seasons[0]) || {};
+            const s = seasonOrEmpty(u, season);
             const teams = (s.teams || []).map(t => {
                 taken.add(Number(t.id));
                 return { id: t.id, school: t.school, logo: pickLogo(t.logos) || null };

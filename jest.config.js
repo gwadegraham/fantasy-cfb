@@ -31,6 +31,7 @@ module.exports = {
         "modules/**/*.js",
         "routes/**/*.js",
         "*-job.js",
+        "public/season-of.js",
         "public/standings-insights.js",
         "public/standings.js",
         "public/weekByWeek.js",
@@ -41,6 +42,14 @@ module.exports = {
         "/tests/"
     ],
     coverageThreshold: {
+        // Pure lookup module, and the thing 35 call sites now route through —
+        // the uncovered line is the UMD browser branch, unreachable under CJS.
+        "./public/season-of.js": {
+            statements: 95,
+            branches: 90,
+            functions: 100,
+            lines: 94
+        },
         "./modules/scoring-detectors.js": {
             statements: 95,
             branches: 90,

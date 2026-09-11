@@ -175,7 +175,7 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
 
         const scoped = leagueCode ? users.filter(u => u.league === leagueCode) : users;
         for (const user of scoped) {
-            const season = user.seasons?.[0];
+            const season = ccSeasonOf.seasonOf(user, seasonYear);
             const owns = season?.teams?.some(t => String(t.id) === String(teamId));
             if (owns) {
                 return {
@@ -204,7 +204,7 @@ async function getTeamFantasyRank(teamId, seasonYear, leagueCode) {
 
         // Claunts league scores on V1, Graham on V2 (matches the header score).
         const key = (leagueCode === 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-        const scored = teams.map(t => ({ id: t.id, score: Number(t.seasons?.[0]?.[key]) || 0 }));
+        const scored = teams.map(t => ({ id: t.id, score: Number(ccSeasonOf.seasonOrEmpty(t, seasonYear)[key]) || 0 }));
 
         const me = scored.find(t => String(t.id) === String(teamId));
         if (!me) return null;

@@ -177,12 +177,12 @@ function displayUsers(data) {
     var str = '';
 
     data.forEach( user => {
-        var userSeason = user.seasons[0];
+        var userSeason = ccSeasonOf.payloadSeasonEntry(user);
         str += '<tr>';
         str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName.substring(0,1) + '.</a></th>';
         str += '<td class="team-item">';
         
-        for (var i = 0; i < user.seasons[0].teams.length; i++) {
+        for (var i = 0; i < (userSeason.teams || []).length; i++) {
             var team = userSeason.teams[i];
             var refLink = `/team?team=${team.id}`;
 
@@ -1672,7 +1672,7 @@ function loadCaptainOverride() {
     userSel.onchange = function () {
         var user = userListSelect.find(function (u) { return u._id === userSel.value; });
         if (!user) return;
-        var season = (user.seasons || [])[0];
+        var season = ccSeasonOf.payloadSeasonEntry(user);
         var teams = (season && season.teams) || [];
         var s = '<option value="" disabled selected>Select A Team</option>';
         teams.forEach(function (t) {
