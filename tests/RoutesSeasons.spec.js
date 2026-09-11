@@ -118,6 +118,17 @@ describe('PUT /seasons/:sport — the rollover', () => {
         expect(res.body).toMatchObject({ season: 2026, status: 'in-season' });
     });
 
+    test('404s on a status-only change for a sport with no season yet', async () => {
+        // This is the call that stages a new sport, and it used to dereference
+        // a null `before` and answer 500.
+        const res = await request(app).put('/seasons/basketball').send({ status: 'preseason' });
+        expect(res.status).toBe(404);
+        expect(res.body.message).toMatch(/send a season to create one/);
+        // And crucially it stores nothing — a row with a status and no season
+        // reads back out of the cache as NaN.
+        expect(await SportSeason.countDocuments({ sport: 'basketball' })).toBe(0);
+    });
+
     test('admin only — this decides which season scoring writes into', async () => {
         await SportSeason.create({ sport: 'football', season: 2026 });
         roles = ['League Manager'];

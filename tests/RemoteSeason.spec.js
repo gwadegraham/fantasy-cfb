@@ -73,6 +73,16 @@ describe('when the server cannot answer', () => {
         await expect(remoteSeason('football')).resolves.toBe(2026);
     });
 
+    test('refuses to hand a non-football sport the football YEAR', async () => {
+        // process.env.YEAR only ever described football. Falling back to it for
+        // basketball would ingest 2026 instead of 2027 — silently, and into the
+        // wrong season's collection.
+        global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+        await expect(remoteSeason('basketball')).resolves.toBeNull();
+        const lines = console.error.mock.calls.map(c => c.map(String).join(' '));
+        expect(lines.some(l => l.includes('refusing to guess'))).toBe(true);
+    });
+
     test('is null — not NaN — when there is no YEAR either', async () => {
         delete process.env.YEAR;
         global.fetch = jest.fn().mockRejectedValue(new Error('down'));

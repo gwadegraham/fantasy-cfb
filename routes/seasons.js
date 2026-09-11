@@ -98,6 +98,15 @@ router.put('/:sport', async (req, res) => {
             });
         }
 
+        // A status-only change needs an existing season to keep. Without this
+        // the next line dereferenced a null `before` and 500'd — and this is
+        // exactly the call that stages a new sport (#313 creating basketball).
+        if (!hasSeason && !before) {
+            return res.status(404).json({
+                message: `No season stored for ${sport} yet — send a season to create one.`
+            });
+        }
+
         await activeSeason.setActiveSeason(sport, hasSeason ? season : before.season, body.status);
         const after = await SportSeason.findOne({ sport }, { sport: 1, season: 1, status: 1, _id: 0 }).lean();
 

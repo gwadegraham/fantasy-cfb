@@ -9,8 +9,9 @@ draft config all take an explicit season and can be staged anytime; but the
 > lives in Mongo (`sportseasons`), one row per sport, so football and basketball
 > can be in different seasons at once. Setting `YEAR` now does **nothing**: the
 > boot seed only fills a gap and never overwrites a stored season. Flip it with
-> `npm run season:set` or `PUT /seasons/:sport` (step 7). While `YEAR` and the
-> stored season disagree, every boot logs an error saying so.
+> `npm run season:set` or `PUT /seasons/:sport` (step 7). Keep `YEAR` set to the
+> same season anyway — it still covers the boot window and the standalone jobs.
+> While the two disagree, every boot logs an error saying so.
 
 ## TL;DR checklist
 
@@ -25,6 +26,7 @@ Stage anytime (explicit season — safe to do before the flip):
 The pivot:
 - [ ] **Roll the season over:** `heroku run npm run season:set -- football 2026`
       (no restart needed — running dynos pick it up within a minute)
+- [ ] **Set `YEAR=2026`** to match (covers the boot window; not the source of truth)
 
 After the flip (writes to the active season):
 - [ ] **Populate the 2026 Season Roster** — add each returning manager
@@ -121,9 +123,14 @@ starts (`npm run season:set -- football 2026 preseason`).
 *If skipped:* everything keeps scoring 2025 and nothing errors — the symptom is
 "the flip didn't take" with no failure anywhere. Check `GET /seasons`.
 
-**Also clear or update the old `YEAR` config var.** It no longer drives
-anything, but it is still the fallback for a process with no database
-connection, and boot logs an error while it disagrees with the stored season.
+**Also set the `YEAR` config var to the new season — don't clear it.** It no
+longer drives anything *once a dyno is primed*, but it is still the answer
+during the seconds between a dyno accepting traffic and its first read of the
+database, and it is the fallback for a standalone job that can't reach the API.
+Cleared, that window answers "no season": the scoring PATCH 404s, and a manager
+added right then would be stored against a null season. Stale, the same window
+scores into the previous year. Matching it to the new season makes the window
+harmless. Boot also logs an error for as long as the two disagree.
 
 ### 8. Populate the 2026 Season Roster (after the flip)
 Admin → **Season Roster**, toggle each returning manager in. This writes to the

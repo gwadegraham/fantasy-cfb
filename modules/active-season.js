@@ -58,18 +58,30 @@ function envSeason(why) {
 async function prime() {
     const [sports, leagues] = await Promise.all([
         SportSeason.find({}, { sport: 1, season: 1, status: 1, _id: 0 }).lean(),
-        League.find({}, { code: 1, sport: 1, season: 1, status: 1, _id: 0 }).lean()
+        League.find({}, { code: 1, sport: 1, season: 1, _id: 0 }).lean()
     ]);
 
     const next = { sports: {}, leagues: {}, sportStatus: {}, leagueSport: {} };
     sports.forEach(s => {
-        next.sports[s.sport] = Number(s.season);
+        // Finiteness, not just presence. A row written by updateOne skips schema
+        // validation, so one can exist with no `season` at all — Number(undefined)
+        // is NaN, NaN passes the `!= null` test in activeSeason(), and it comes
+        // back out typed as a number. It then reaches Mongo as a Number path and
+        // throws CastError, so every route for that sport 500s instead of getting
+        // the documented null.
+        const season = Number(s.season);
+        if (Number.isFinite(season)) {
+            next.sports[s.sport] = season;
+        } else {
+            console.error(`active-season: ignoring ${s.sport} row with unusable season ${JSON.stringify(s.season)}`);
+        }
         next.sportStatus[s.sport] = s.status;
     });
     leagues.forEach(l => {
         next.leagueSport[l.code] = l.sport || DEFAULT_SPORT;
         // A league with no season of its own follows its sport.
-        if (l.season != null) next.leagues[l.code] = Number(l.season);
+        const own = Number(l.season);
+        if (l.season != null && Number.isFinite(own)) next.leagues[l.code] = own;
     });
 
     cache = next;

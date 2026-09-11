@@ -86,6 +86,18 @@ async function main() {
             return;
         }
 
+        // A status-only change needs a season already stored. updateOne skips
+        // schema validation, so without this an upsert would insert a row with
+        // NO season field at all — which the cache then reads back as NaN.
+        if (season == null && !before) {
+            console.error(
+                `\n${sport} has no stored season yet, so there is nothing to set a status on.\n` +
+                `Give it a season first:  npm run season:set -- ${sport} <year> ${status}\n`
+            );
+            process.exitCode = 1;
+            return;
+        }
+
         const update = {};
         if (season != null) update.season = season;
         if (status != null) update.status = status;

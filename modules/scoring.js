@@ -18,11 +18,19 @@ var rankingsApi = new cfb.RankingsApi();
 // On the first scoring run of a new season, freeze the previous season's config
 // so past-season "Why these points?" breakdowns stay accurate even if the
 // commissioner later changes point values. Idempotent: skips if already frozen.
-// Runs once per process to avoid repeated DB reads on every scoring pass.
-var _frozenCheck = false;
+//
+// Latched PER SEASON, not per process. It used to be a bare boolean, which was
+// fine while a season rollover was also a dyno restart — the restart cleared
+// it. Since #312 a rollover is a database write that every dyno picks up within
+// a minute WITHOUT restarting, so a long-lived dyno would carry a latch set in
+// the old season straight through the flip and never freeze the season it just
+// left. Heroku's daily dyno cycling would usually hide that, which is worse
+// than it failing outright.
+var _frozenFor = null;
 async function freezePriorSeasonConfig(currentYear) {
-    if (_frozenCheck) return;
-    _frozenCheck = true;
+    const key = String(currentYear);
+    if (_frozenFor === key) return;
+    _frozenFor = key;
     try {
         const priorYear = String(Number(currentYear) - 1);
         const docs = await ScoringConfig.find({});
@@ -719,3 +727,10 @@ module.exports.explainGame = explainGame;
 module.exports.getScoringConfig = getScoringConfig;
 module.exports.getRankingsForGame = getRankingsForGame;
 module.exports.getBracketForGame = getBracketForGame;
+
+// Exposed for tests: the prior-season config freeze and its per-season latch.
+// The latch is the interesting part — it used to be a bare boolean cleared only
+// by a process restart, and since #312 a season rollover no longer restarts
+// anything.
+module.exports.freezePriorSeasonConfig = freezePriorSeasonConfig;
+module.exports._resetFreezeLatch = () => { _frozenFor = null; };

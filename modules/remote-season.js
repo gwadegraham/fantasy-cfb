@@ -40,8 +40,18 @@ async function remoteSeason(sport) {
         console.error(`remote-season: GET /seasons/${sport} failed:`, err.message);
     }
 
-    // Last resort. Loud, because after a rollover this is the stale answer and
-    // the job is about to ingest the wrong season.
+    // Last resort — and only for football. process.env.YEAR only ever described
+    // the football season, so handing it to a basketball job would ingest 2026
+    // instead of 2027. A sport with no stored season gets null and the job
+    // refuses, which is the right answer for "nobody has told me when this
+    // season is".
+    if (sport !== 'football') {
+        console.error(`remote-season: no season available for ${sport} and no sport-specific fallback — refusing to guess`);
+        return null;
+    }
+
+    // Loud, because after a rollover this is the stale answer and the job is
+    // about to ingest the wrong season.
     const year = Number(process.env.YEAR);
     if (Number.isFinite(year)) {
         console.error(`remote-season: falling back to process.env.YEAR=${year} for ${sport} — verify this is the current season`);

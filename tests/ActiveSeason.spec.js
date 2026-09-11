@@ -114,6 +114,41 @@ describe('once primed, Mongo wins over the env var', () => {
     });
 });
 
+describe('a stored row with an unusable season', () => {
+    test('is ignored rather than cached as NaN', async () => {
+        // updateOne skips schema validation, so a row CAN exist with no season
+        // field. Number(undefined) is NaN, NaN passes a `!= null` test, and it
+        // used to come back out of activeSeason() typed as a number — then
+        // reach Mongo as a Number path and throw CastError, 500ing every route
+        // for that sport instead of returning the documented null.
+        await SportSeason.collection.insertOne({ sport: 'basketball', status: 'preseason' });
+        await SportSeason.create({ sport: 'football', season: 2026 });
+        await activeSeason.prime();
+
+        expect(activeSeason.activeSeason('basketball')).toBeNull();
+        expect(Number.isNaN(activeSeason.activeSeason('basketball'))).toBe(false);
+        // The status is still readable — only the unusable season is dropped.
+        expect(activeSeason.sportStatus('basketball')).toBe('preseason');
+        const lines = console.error.mock.calls.map(c => c.map(String).join(' '));
+        expect(lines.some(l => l.includes('ignoring basketball row with unusable season'))).toBe(true);
+    });
+
+    test('does not poison the sports that are fine', async () => {
+        await SportSeason.collection.insertOne({ sport: 'basketball' });
+        await SportSeason.create({ sport: 'football', season: 2026 });
+        await activeSeason.prime();
+        expect(activeSeason.activeSeason('football')).toBe(2026);
+    });
+
+    test('the same guard applies to a league season', async () => {
+        await SportSeason.create({ sport: 'football', season: 2026 });
+        await League.collection.insertOne({ code: 'odd-league', name: 'Odd', season: 'soon' });
+        await activeSeason.prime();
+        // Falls through to the sport rather than answering NaN.
+        expect(activeSeason.seasonForLeague('odd-league')).toBe(2026);
+    });
+});
+
 describe('seasonForLeague', () => {
     test('follows the sport when the league has no season of its own', async () => {
         await SportSeason.create({ sport: 'football', season: 2026 });

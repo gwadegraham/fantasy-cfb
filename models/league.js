@@ -24,10 +24,9 @@ const leagueSchema = new mongoose.Schema({
     // 'active'   — playing now
     // 'archived' — kept for history, not offered for play
     //
-    // Stored and cached but NOT yet enforced anywhere: the league switcher is
-    // still built from the hardcoded scoring-defaults LEAGUES list, so nothing
-    // reads this. #313 is where it starts meaning something. Don't document a
-    // behaviour it doesn't have.
+    // Stored but INERT: nothing reads it. The league switcher is still built
+    // from the hardcoded scoring-defaults LEAGUES list, and the season cache
+    // does not load it either. #313 is where it starts meaning something.
     status: { type: String, enum: ['active', 'archived'], default: 'active' }
 }, { timestamps: true });
 
