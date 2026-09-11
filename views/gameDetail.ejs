@@ -251,8 +251,12 @@
                 if (list) list.innerHTML = gdPlayList(gdTeamCtx);
                 drives.innerHTML = gdDriveRows(gdTeamCtx);
                 if (field && !gdFieldUpdate(field, gdTeamCtx)) {
-                    // Nothing left to show — the game just went final.
-                    field.remove();
+                    // The field can no longer be drawn — the game went final,
+                    // or /live/plays stopped answering. Rebuild the page rather
+                    // than removing it in place, so the live strip can take its
+                    // slot instead of the page silently losing the situation.
+                    render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+                    return;
                 }
                 return;
             }
@@ -392,20 +396,20 @@
             }
             html += '</div>'; // .gd-header
 
-            // ---- Live strip: down & distance, possession, last play ----
-            // This page has the most room of any surface that shows a live game,
-            // so it gets the fullest treatment: the situation and who has the
-            // ball on one line, the last play spelled out underneath.
+
+            // ---- Live strip: the field's stand-in -------------------------
             //
-            // Both fields come free with the scoreboard poll and are nulled when
-            // a game finals — in modules/scoreboard.js and again in the
-            // /games/week/mass-create upsert. `completed` is still checked here
-            // rather than trusting the fields to be empty: it is the one flag
-            // every ingest path agrees on, and a stale "3rd & 7" sitting under a
-            // final score is a worse failure than showing nothing.
+            // Not a section in its own right any more — the field below the box
+            // score says all of this, better. It is held in reserve for the
+            // case the field cannot be drawn at all: the field reads the
+            // billable /live/plays, which the remaining-calls floor can pause,
+            // a CFBD blip can fail, and which has nothing to say before
+            // kickoff. `situation` and `lastPlay` come from the free
+            // /scoreboard and are there whenever a game is live.
             //
-            // While the game is in progress the strip is held back and placed
-            // under the box score instead — see the live assembly below.
+            // Gated on `completed` rather than on the fields being empty: it is
+            // the one flag every ingest path agrees on, and a stale "3rd & 7"
+            // under a final score is a worse failure than showing nothing.
             var liveStripHtml = '';
             if (!isFinal && (game.situation || game.lastPlay)) {
                 liveStripHtml += '<div class="gd-section gd-livestrip">';
@@ -413,7 +417,6 @@
                 if (game.lastPlay) liveStripHtml += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
                 liveStripHtml += '</div>';
             }
-            if (!isLive) html += liveStripHtml;
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
             // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.
@@ -751,33 +754,41 @@
                 lineScoreHtml += '</tbody></table></div>';
                 lineScoreHtml += '</div>';
             }
-            // Live games get the mobile-first running order: hero, venue/weather,
-            // box score, last play, win probability, odds — then the pre-game
-            // season context, which matters least once the game is under way.
-            // Everything above deferred its markup into a variable to make this
-            // one ordering decision, rather than scattering it through the page.
+            // ---- The gamecast ----
+            // Box score, then the field, then how the score happened. This is
+            // the whole reason the page exists during a game, so it sits
+            // directly under the linescore and ahead of win probability, odds
+            // and pre-game season context — all of which matter less once the
+            // ball is in play.
+            //
+            // Its data comes from a SEPARATE endpoint (/games/plays/:id) to the
+            // rest of the page, because that one can cost a billable CFBD call
+            // — see modules/live-plays.js. So it renders from whatever gdPlays
+            // holds and is filled in asynchronously; on first paint it shows
+            // nothing rather than blocking the page on a network round trip.
+            // The strip takes the field's slot when there is no field, so the
+            // page never loses the situation entirely — see the comment on
+            // liveStripHtml above.
+            var gamecastHtml = (gdFieldGraphic(teamCtx) || liveStripHtml)
+                + renderPlaysSection(teamCtx)
+                + renderDrivesSection(teamCtx);
+
+            // Live games get the mobile-first running order: hero,
+            // venue/weather, box score, the gamecast, then win probability and
+            // odds — and finally the pre-game season context, which matters
+            // least once the game is under way. Everything above deferred its
+            // markup into a variable to make this one ordering decision,
+            // rather than scattering it through the page.
             if (isLive) {
                 html += lineScoreHtml;
-                html += liveStripHtml;
+                html += gamecastHtml;
                 html += wpSectionHtml;
                 html += oddsHtml;
                 html += preGameStatsHtml;
             } else {
                 html += lineScoreHtml;
+                html += gamecastHtml;
             }
-
-
-            // ---- Play-by-play ----
-            // Sits right after the linescore, which is where it reads best:
-            // score, then how the score happened. Its data comes from a
-            // SEPARATE endpoint (/games/plays/:id) to the rest of this page,
-            // because that one can cost a billable CFBD call — see
-            // modules/live-plays.js. So it renders from whatever gdPlays holds
-            // and is filled in asynchronously; on first paint it shows nothing
-            // rather than blocking the page on a network round trip.
-            html += gdFieldGraphic(teamCtx);
-            html += renderPlaysSection(teamCtx);
-            html += renderDrivesSection(teamCtx);
 
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
