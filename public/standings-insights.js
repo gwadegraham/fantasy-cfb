@@ -8,7 +8,19 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const season = (u) => (u && u.seasons && u.seasons[0]) || {};
+// The manager's entry for the season this payload is about. /users/league/:league
+// $elemMatch's in whichever season was asked for, so the season is read back out
+// of the payload rather than assumed to be the active one — that is what lets a
+// past-season standings view compute against that season.
+//
+// ccSeasonOf comes from the navbar partial in the browser and from the test
+// harnesses, the same way ccSeasonScoring and ccLeagueRank do. Throwing beats
+// defaulting: a missing helper would otherwise read as "every manager scored 0".
+const season = (u) => {
+    const lib = globalThis.ccSeasonOf;
+    if (!lib) throw new Error('ccSeasonOf is not loaded (expected from views/partials/navbar.ejs)');
+    return lib.payloadSeasonEntry(u);
+};
 const weekly = (u) => season(u).weeklyScore || [];
 const cum = (u) => season(u).cumulativeScore || 0;
 const initialName = (u) => `${u.firstName} ${u.lastName ? u.lastName[0] : ''}.`;

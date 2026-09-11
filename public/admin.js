@@ -177,12 +177,12 @@ function displayUsers(data) {
     var str = '';
 
     data.forEach( user => {
-        var userSeason = user.seasons[0];
+        var userSeason = ccSeasonOf.payloadSeasonEntry(user);
         str += '<tr>';
         str += `<th class="sticky-header"><a href="/userHome?user=${user._id}">` + user.firstName + ' ' + user.lastName.substring(0,1) + '.</a></th>';
         str += '<td class="team-item">';
         
-        for (var i = 0; i < user.seasons[0].teams.length; i++) {
+        for (var i = 0; i < (userSeason.teams || []).length; i++) {
             var team = userSeason.teams[i];
             var refLink = `/team?team=${team.id}`;
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 const router = express.Router();
 const User = require('../models/user');
 const Game = require('../models/game');
@@ -562,10 +563,14 @@ router.patch('/:id', getUser, async (req, res) => {
     // own good…") — so a body carrying both would throw and write NOTHING. Either
     // one alone saves cleanly. Don't merge these into two independent ifs; the
     // ScoringWrites spec pins the behavior.
+    // getUser $elemMatch'd this season in, so there is exactly one entry — but
+    // say which season rather than trusting the index, since the projection and
+    // this write live 230 lines apart.
+    const patchSeason = seasonOf(res.user, process.env.YEAR);
     if (req.body.cumulativeScore != null) {
-        res.user.seasons[0].cumulativeScore = req.body.cumulativeScore;
+        patchSeason.cumulativeScore = req.body.cumulativeScore;
     } else if (req.body.weeklyScore != null) {
-        res.user.seasons[0].weeklyScore = req.body.weeklyScore;
+        patchSeason.weeklyScore = req.body.weeklyScore;
     }
     if (req.body.isUpdated != null) {
         res.user.isUpdated = req.body.isUpdated;
@@ -666,7 +671,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
 
         const taken = new Set();
         const managers = users.map(u => {
-            const s = (u.seasons && u.seasons[0]) || {};
+            const s = seasonOrEmpty(u, season);
             const teams = (s.teams || []).map(t => {
                 taken.add(Number(t.id));
                 return { id: t.id, school: t.school, logo: pickLogo(t.logos) || null };

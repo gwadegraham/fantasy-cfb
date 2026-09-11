@@ -31,6 +31,7 @@ module.exports = {
         "modules/**/*.js",
         "routes/**/*.js",
         "*-job.js",
+        "public/season-of.js",
         "public/standings-insights.js",
         "public/standings.js",
         "public/weekByWeek.js",

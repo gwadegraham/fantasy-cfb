@@ -595,7 +595,7 @@ function hydrateTrajectory(user, activeYear) {
             const res = await fetch(`/users/league/${encodeURIComponent(user.league)}?season=${encodeURIComponent(activeYear)}`, { headers: { Accept: 'application/json' } });
             if (res.ok) {
                 const ranked = (await res.json())
-                    .map(u => ({ id: u._id, score: (u.seasons && u.seasons[0] && u.seasons[0].cumulativeScore) || 0 }))
+                    .map(u => ({ id: u._id, score: ccSeasonOf.seasonOrEmpty(u, activeYear).cumulativeScore || 0 }))
                     .sort((a, b) => b.score - a.score);
                 const idx = ranked.findIndex(r => r.id === user._id);
                 if (idx >= 0) {

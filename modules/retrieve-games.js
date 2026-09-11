@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { seasonOrEmpty } = require('../public/season-of.js');
 
 // Dedupes games by id. Two teams in the same league can play each other, so the
 // same game gets collected twice; [...new Set(objects)] does NOT dedupe those
@@ -86,7 +87,7 @@ module.exports = {
         var userData = await response.json();
 
         for (const user of userData) {
-            for (const team of user.seasons[0].teams) {
+            for (const team of seasonOrEmpty(user, process.env.YEAR).teams || []) {
                 allTeams.push(team.school);
             }
         }

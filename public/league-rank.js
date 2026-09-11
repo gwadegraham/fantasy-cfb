@@ -15,15 +15,14 @@
 // unstarted-season case with ccSeasonScoring (public/season-scoring.js) — a rank
 // is meaningless before anyone has played, tie-aware or not.
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.ccLeagueRank = factory();
-}(typeof self !== 'undefined' ? self : this, function () {
-    // The season total to rank on. Reads seasons[0] — the payload shape of
-    // /users/league/:league, where routes/users.js $elemMatch's the active season
-    // so it's the only one present.
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./season-of.js'));
+    else root.ccLeagueRank = factory(root.ccSeasonOf);
+}(typeof self !== 'undefined' ? self : this, function (ccSeasonOf) {
+    // The season total to rank on. /users/league/:league $elemMatch's in whichever
+    // season was asked for, so this reads that one entry rather than assuming the
+    // active year — a past-season standings view ranks on the season it shows.
     function seasonTotal(user) {
-        var seasons = (user && user.seasons) || [];
-        return (seasons[0] && seasons[0].cumulativeScore) || 0;
+        return ccSeasonOf.payloadSeasonEntry(user).cumulativeScore || 0;
     }
 
     // Competition ranks for `items`, highest scoreOf(item) first. Returns a

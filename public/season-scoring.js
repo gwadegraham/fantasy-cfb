@@ -14,9 +14,9 @@
 // content routes through here so the app can't disagree with itself about when
 // the season starts.
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.ccSeasonScoring = factory();
-}(typeof self !== 'undefined' ? self : this, function () {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./season-of.js'));
+    else root.ccSeasonScoring = factory(root.ccSeasonOf);
+}(typeof self !== 'undefined' ? self : this, function (ccSeasonOf) {
     // One weeklyScore entry that got scored. `score` is the BANKED number (it
     // carries the H2H win bonus — see modules/h2h.js); any non-zero value means
     // the week was played, which is all this asks.
@@ -25,13 +25,13 @@
     }
 
     // The weeklyScore array for `season`. Omit `season` for the standings /
-    // profile payloads, where routes/users.js $elemMatch's the active season and
-    // seasons[0] is the only one present.
+    // profile payloads, where routes/users.js $elemMatch's in whichever season
+    // was asked for — reading that single entry works for a past season as well
+    // as the active one. Pass `season` explicitly whenever the caller knows it.
     function weeklyScoreFor(user, season) {
-        var seasons = (user && user.seasons) || [];
         var entry = season == null
-            ? seasons[0]
-            : seasons.filter(function (s) { return String(s.season) === String(season); })[0];
+            ? ccSeasonOf.payloadSeasonEntry(user)
+            : ccSeasonOf.seasonOf(user, season);
         return (entry && entry.weeklyScore) || [];
     }
 
