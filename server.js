@@ -227,13 +227,23 @@ db.on('open', () => console.log('Connected to Database'));
 // runs, those getters fall back to process.env.YEAR and say so, which is what
 // keeps a cold start from answering "what season is it?" with a null.
 db.on('open', async () => {
+    // Separate try blocks on purpose. These used to share one, so a seed that
+    // threw — two dynos racing the upsert, say — skipped prime() entirely and
+    // stranded that dyno on process.env.YEAR for its whole life, with nothing
+    // to retry it. The seed is best-effort; priming is not.
     try {
         await seasons.ensureDefaultSport();
+    } catch (err) {
+        console.error('Season seed failed (continuing to prime):', err.message);
+    }
+    try {
         const cached = await seasons.prime();
         console.log('Season cache primed:', JSON.stringify(cached.sports));
     } catch (err) {
-        console.error('Season cache prime failed (falling back to YEAR):', err.message);
+        console.error('Season cache prime FAILED — running on process.env.YEAR:', err.message);
     }
+    // Pick up a rollover written by another dyno without waiting for a restart.
+    seasons.startRefresh();
 });
 
 
@@ -741,7 +751,12 @@ const scoringConfigRouter = require('./routes/scoringConfig');
 app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
 const leaguesRouter = require('./routes/leagues');
+const seasonsRouter = require('./routes/seasons');
 app.use('/leagues', requireAuthOrToken, leaguesRouter);
+
+// Which season each sport is in, and the admin-only rollover. The pivot that
+// used to be a YEAR config var + restart (docs/season-flip-runbook.md step 7).
+app.use('/seasons', requireAuthOrToken, seasonsRouter);
 
 // Dev-only role spoofing: a real Admin (non-production only) can view the app
 // as a League Manager or a regular member to test permissions. Sets/clears the

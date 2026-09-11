@@ -42,10 +42,12 @@ const DEFAULT_SPORT = 'football';
 let cache = null;
 let warned = false;
 
-function envSeason() {
+function envSeason(why) {
     if (!warned) {
         warned = true;
-        console.log('active-season: cache not primed, falling back to process.env.YEAR');
+        // console.error, not log: every failure mode that strands a dyno on the
+        // env var shows up here and nowhere else.
+        console.error(`active-season: falling back to process.env.YEAR (${why})`);
     }
     const n = Number(process.env.YEAR);
     return Number.isFinite(n) ? n : null;
@@ -81,13 +83,13 @@ function primed() {
 // The season a sport is currently in.
 function activeSeason(sport) {
     const key = sport || DEFAULT_SPORT;
-    if (!cache) return envSeason();
+    if (!cache) return envSeason('cache not primed');
     const found = cache.sports[key];
     // A sport with no row yet (basketball, before its first season is created)
     // is not an error — the caller gets null and decides. Only the default
     // sport falls back to env, since that is the one the env var described.
     if (found != null) return found;
-    return key === DEFAULT_SPORT ? envSeason() : null;
+    return key === DEFAULT_SPORT ? envSeason(`no ${DEFAULT_SPORT} row stored`) : null;
 }
 
 // Where a sport is in its year — 'preseason' | 'in-season' | 'complete' | null.
@@ -98,7 +100,7 @@ function sportStatus(sport) {
 
 // The season one league is playing: its own if set, else its sport's.
 function seasonForLeague(code) {
-    if (!cache) return envSeason();
+    if (!cache) return envSeason('cache not primed');
     const own = cache.leagues[code];
     if (own != null) return own;
     return activeSeason(cache.leagueSport[code] || DEFAULT_SPORT);
@@ -126,24 +128,78 @@ async function setActiveSeason(sport, season, status) {
 // existing row is never overwritten, so once the season lives in Mongo the env
 // var stops mattering even if it goes stale.
 async function ensureDefaultSport() {
-    const existing = await SportSeason.findOne({ sport: DEFAULT_SPORT }).lean();
-    if (existing) return null;
     const year = Number(process.env.YEAR);
-    if (!Number.isFinite(year)) return null;
-    await SportSeason.create({ sport: DEFAULT_SPORT, season: year, status: 'in-season' });
-    console.log(`active-season: seeded ${DEFAULT_SPORT} season ${year} from process.env.YEAR`);
-    return year;
+
+    // $setOnInsert, not findOne-then-create: `sport` is uniquely indexed, and
+    // two web dynos booting together on an empty collection would both pass a
+    // findOne and then one would take an E11000. Which used to skip prime()
+    // entirely on that dyno — see the separate try/catch in server.js.
+    if (Number.isFinite(year)) {
+        const res = await SportSeason.updateOne(
+            { sport: DEFAULT_SPORT },
+            { $setOnInsert: { sport: DEFAULT_SPORT, season: year, status: 'in-season' } },
+            { upsert: true }
+        );
+        if (res.upsertedCount) {
+            console.log(`active-season: seeded ${DEFAULT_SPORT} season ${year} from process.env.YEAR`);
+            return year;
+        }
+    }
+
+    // The row already existed. If YEAR still names a DIFFERENT season, say so
+    // loudly every boot: it means someone tried to roll the season over the old
+    // way (docs/season-flip-runbook.md used to be an env var + restart) and the
+    // app is deliberately ignoring them. Silence here is how a flip that did
+    // not take costs a week to diagnose.
+    const stored = await SportSeason.findOne({ sport: DEFAULT_SPORT }).lean();
+    if (stored && Number.isFinite(year) && Number(stored.season) !== year) {
+        console.error(
+            `active-season: process.env.YEAR=${year} but ${DEFAULT_SPORT} is stored as ` +
+            `${stored.season}. The stored season wins. To roll the season over use ` +
+            `PUT /seasons/${DEFAULT_SPORT} (or npm run season:set) — the env var no longer does it.`
+        );
+    }
+    return null;
+}
+
+// Re-prime on a timer.
+//
+// The getters are sync, so a cache can only be refreshed out of band. Without
+// this a dyno's answer is fixed from boot until restart — and the scoring
+// pipeline writes over HTTP to the public hostname, so a job running on the
+// dyno that knows about a rollover can land its writes on one that does not.
+// A minute of staleness is acceptable for a value that changes once a year;
+// never re-reading is not.
+const REFRESH_MS = Number(process.env.SEASON_REFRESH_MS) || 60 * 1000;
+let refreshTimer = null;
+
+function startRefresh(intervalMs) {
+    if (refreshTimer) return refreshTimer;
+    refreshTimer = setInterval(() => {
+        prime().catch(err => console.error('active-season: re-prime failed:', err.message));
+    }, intervalMs || REFRESH_MS);
+    // Don't hold the process open — a CLI script that happens to require this
+    // module should still be able to exit.
+    if (refreshTimer.unref) refreshTimer.unref();
+    return refreshTimer;
+}
+
+function stopRefresh() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
 }
 
 // Test seam: drop the cache so the next read re-primes (or falls back).
 function _reset() {
     cache = null;
     warned = false;
+    stopRefresh();
 }
 
 module.exports = {
     DEFAULT_SPORT,
     prime, primed, ensureDefaultSport,
+    startRefresh, stopRefresh,
     activeSeason, sportStatus,
     seasonForLeague, sportForLeague,
     setActiveSeason,

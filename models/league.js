@@ -21,8 +21,13 @@ const leagueSchema = new mongoose.Schema({
     // deciding that for it. Unset means "whatever the sport is in".
     season: { type: Number },
 
-    // 'active'   — playing now, appears in the league switcher
+    // 'active'   — playing now
     // 'archived' — kept for history, not offered for play
+    //
+    // Stored and cached but NOT yet enforced anywhere: the league switcher is
+    // still built from the hardcoded scoring-defaults LEAGUES list, so nothing
+    // reads this. #313 is where it starts meaning something. Don't document a
+    // behaviour it doesn't have.
     status: { type: String, enum: ['active', 'archived'], default: 'active' }
 }, { timestamps: true });
 

@@ -3,7 +3,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const { internalFetch } = require('./modules/internal-api');
-const { activeSeason } = require('./modules/active-season');
+const { remoteSeason } = require('./modules/remote-season');
 const { startRun, finishRun } = require('./modules/job-logger');
 const { sendJobEmail, emailOnSuccess } = require('./modules/job-mailer');
 
@@ -19,7 +19,7 @@ const LABEL = 'Season Stats';
 async function run() {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
-    const season = activeSeason('football');
+    const season = await remoteSeason('football');
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
         const res = await internalFetch(`${process.env.URL}/team-season-stats/ingest/${season}`, {

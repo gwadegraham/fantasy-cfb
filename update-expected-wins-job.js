@@ -1,5 +1,5 @@
 const { internalFetch } = require('./modules/internal-api');
-const { activeSeason } = require('./modules/active-season');
+const { remoteSeason } = require('./modules/remote-season');
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config()
 }
@@ -7,7 +7,7 @@ if (process.env.NODE_ENV !== 'production') {
 async function updateExpectedWins() {
   // Season from CLI arg (e.g. `node update-expected-wins-job.js 2026`),
   // falling back to YEAR. Loads json/expectedWins{season}.json.
-  const season = parseInt(process.argv[2], 10) || activeSeason('football');
+  const season = parseInt(process.argv[2], 10) || await remoteSeason('football');
   var jsonData = require(`./json/expectedWins${season}.json`);
   var updatedTeams = [];
 

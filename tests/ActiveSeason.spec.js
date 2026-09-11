@@ -18,6 +18,7 @@ beforeEach(() => {
     activeSeason._reset();
     process.env.YEAR = ORIGINAL_YEAR;
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -33,13 +34,35 @@ describe('the env fallback, before the cache is primed', () => {
         expect(activeSeason.seasonForLeague('graham-league')).toBe(2026);
     });
 
-    test('says so out loud, once, rather than falling back silently', async () => {
+    test('says so out loud, once, on console.error rather than log', async () => {
         process.env.YEAR = '2026';
         activeSeason.activeSeason();
         activeSeason.activeSeason();
         activeSeason.seasonForLeague('graham-league');
-        const lines = console.log.mock.calls.map(c => String(c[0]));
-        expect(lines.filter(l => l.includes('not primed'))).toHaveLength(1);
+        // console.error, not log: this is the only signal that a dyno is
+        // stranded on the env var, and it has to survive a log-level filter.
+        const lines = console.error.mock.calls.map(c => String(c[0]));
+        expect(lines.filter(l => l.includes('falling back to process.env.YEAR'))).toHaveLength(1);
+        expect(lines.filter(l => l.includes('cache not primed'))).toHaveLength(1);
+    });
+
+    test('names the real reason when the cache IS primed but the sport has no row', async () => {
+        // The old message always said "cache not primed", which was a lie in
+        // this case and would have sent a diagnosis down the wrong path.
+        process.env.YEAR = '2026';
+        await activeSeason.prime();
+        expect(activeSeason.activeSeason('football')).toBe(2026);
+        const lines = console.error.mock.calls.map(c => String(c[0]));
+        expect(lines.some(l => l.includes('no football row stored'))).toBe(true);
+    });
+
+    test('sportStatus and sportForLeague answer safely with no cache', () => {
+        process.env.YEAR = '2026';
+        // No status is knowable without the DB, so null — never a guess.
+        expect(activeSeason.sportStatus('football')).toBeNull();
+        // But a league's sport defaults to football, so callers that only need
+        // the sport keep working through a cold start.
+        expect(activeSeason.sportForLeague('graham-league')).toBe('football');
     });
 
     test('is null rather than NaN when YEAR is unset or junk', () => {
@@ -166,6 +189,87 @@ describe('ensureDefaultSport', () => {
         delete process.env.YEAR;
         expect(await activeSeason.ensureDefaultSport()).toBeNull();
         expect(await SportSeason.countDocuments({})).toBe(0);
+    });
+});
+
+describe('ensureDefaultSport under concurrency', () => {
+    test('two dynos booting together produce one row, and neither throws', async () => {
+        // sport is uniquely indexed, and this used to be findOne-then-create:
+        // both callers passed the findOne, then one took an E11000 — which in
+        // server.js skipped prime() and stranded that dyno on the env var for
+        // its whole life.
+        process.env.YEAR = '2026';
+        await SportSeason.init();   // ensure the unique index exists first
+        const results = await Promise.all([
+            activeSeason.ensureDefaultSport(),
+            activeSeason.ensureDefaultSport(),
+            activeSeason.ensureDefaultSport()
+        ]);
+        expect(await SportSeason.countDocuments({ sport: 'football' })).toBe(1);
+        // Exactly one caller reports having done the insert.
+        expect(results.filter(r => r === 2026)).toHaveLength(1);
+    });
+
+    test('shouts every boot while YEAR disagrees with the stored season', async () => {
+        // This is the diagnosis for "the season flip didn't take": someone set
+        // the config var the old way and the app is ignoring them.
+        await SportSeason.create({ sport: 'football', season: 2026, status: 'in-season' });
+        process.env.YEAR = '2027';
+        await activeSeason.ensureDefaultSport();
+        const lines = console.error.mock.calls.map(c => String(c[0]));
+        expect(lines.some(l => /YEAR=2027 but football is stored as 2026/.test(l))).toBe(true);
+        expect(lines.some(l => l.includes('season:set'))).toBe(true);
+    });
+
+    test('stays quiet when they agree', async () => {
+        await SportSeason.create({ sport: 'football', season: 2026 });
+        process.env.YEAR = '2026';
+        await activeSeason.ensureDefaultSport();
+        const lines = console.error.mock.calls.map(c => String(c[0]));
+        expect(lines.some(l => l.includes('but football is stored as'))).toBe(false);
+    });
+});
+
+describe('startRefresh', () => {
+    test('picks up a rollover written elsewhere, without a restart', async () => {
+        // A dyno's cache was otherwise fixed from boot until restart, so a
+        // rollover applied on one dyno never reached the others — and the
+        // scoring pipeline writes over HTTP, so its writes land anywhere.
+        await SportSeason.create({ sport: 'football', season: 2026, status: 'in-season' });
+        await activeSeason.prime();
+        expect(activeSeason.activeSeason('football')).toBe(2026);
+
+        // Another process rolls the season over, straight in the database.
+        await SportSeason.updateOne({ sport: 'football' }, { $set: { season: 2027 } });
+        expect(activeSeason.activeSeason('football')).toBe(2026);   // still stale
+
+        activeSeason.startRefresh(20);
+        await new Promise(r => setTimeout(r, 120));
+        expect(activeSeason.activeSeason('football')).toBe(2027);
+        activeSeason.stopRefresh();
+    });
+
+    test('a failed re-prime logs and leaves the good cache in place', async () => {
+        // prime() assigns the cache only after both queries resolve, so a blip
+        // must not degrade a working dyno to the env fallback.
+        await SportSeason.create({ sport: 'football', season: 2026 });
+        await activeSeason.prime();
+        process.env.YEAR = '1999';
+
+        jest.spyOn(SportSeason, 'find').mockImplementation(() => { throw new Error('mongo blip'); });
+        activeSeason.startRefresh(20);
+        await new Promise(r => setTimeout(r, 120));
+        activeSeason.stopRefresh();
+
+        expect(activeSeason.activeSeason('football')).toBe(2026);
+        const lines = console.error.mock.calls.map(c => c.map(String).join(' '));
+        expect(lines.some(l => l.includes('re-prime failed') && l.includes('mongo blip'))).toBe(true);
+    });
+
+    test('is idempotent — repeated calls do not stack intervals', async () => {
+        const first = activeSeason.startRefresh(1000);
+        expect(activeSeason.startRefresh(1000)).toBe(first);
+        activeSeason.stopRefresh();
     });
 });
 
