@@ -392,28 +392,6 @@
             }
             html += '</div>'; // .gd-header
 
-            // ---- Live strip: down & distance, possession, last play ----
-            // This page has the most room of any surface that shows a live game,
-            // so it gets the fullest treatment: the situation and who has the
-            // ball on one line, the last play spelled out underneath.
-            //
-            // Both fields come free with the scoreboard poll and are nulled when
-            // a game finals — in modules/scoreboard.js and again in the
-            // /games/week/mass-create upsert. `completed` is still checked here
-            // rather than trusting the fields to be empty: it is the one flag
-            // every ingest path agrees on, and a stale "3rd & 7" sitting under a
-            // final score is a worse failure than showing nothing.
-            //
-            // While the game is in progress the strip is held back and placed
-            // under the box score instead — see the live assembly below.
-            var liveStripHtml = '';
-            if (!isFinal && (game.situation || game.lastPlay)) {
-                liveStripHtml += '<div class="gd-section gd-livestrip">';
-                if (game.situation) liveStripHtml += '<div class="gd-ls-head"><span class="gd-ls-situation">' + esc(game.situation) + '</span></div>';
-                if (game.lastPlay) liveStripHtml += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
-                liveStripHtml += '</div>';
-            }
-            if (!isLive) html += liveStripHtml;
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
             // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.
@@ -768,15 +746,14 @@
                 + renderDrivesSection(teamCtx);
 
             // Live games get the mobile-first running order: hero,
-            // venue/weather, box score, the gamecast, then last play, win
-            // probability and odds — and finally the pre-game season context,
-            // which matters least once the game is under way. Everything above
-            // deferred its markup into a variable to make this one ordering
-            // decision, rather than scattering it through the page.
+            // venue/weather, box score, the gamecast, then win probability and
+            // odds — and finally the pre-game season context, which matters
+            // least once the game is under way. Everything above deferred its
+            // markup into a variable to make this one ordering decision,
+            // rather than scattering it through the page.
             if (isLive) {
                 html += lineScoreHtml;
                 html += gamecastHtml;
-                html += liveStripHtml;
                 html += wpSectionHtml;
                 html += oddsHtml;
                 html += preGameStatsHtml;
