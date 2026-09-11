@@ -3,11 +3,11 @@
 //
 // The fixture that matters most here is `fullDoc`: a real manager document with
 // four seasons in ascending order, where index 0 is 2023. Every assertion that
-// uses it is guarding the bug this module exists to prevent — 33 call sites used
+// uses it is guarding the bug this module exists to prevent — 35 call sites used
 // to read index 0 and were correct only because a route had already narrowed the
 // array with $elemMatch.
 
-const { seasonOf, seasonOrEmpty, payloadSeasonEntry, payloadSeason } = require('../public/season-of');
+const { sameSeason, seasonOf, seasonOrEmpty, payloadSeasonEntry, payloadSeason } = require('../public/season-of');
 
 // As stored: ascending, so seasons[0] is the OLDEST. This is the real shape in
 // Mongo for every manager who has played since 2023.
@@ -24,6 +24,50 @@ const fullDoc = {
 // As a route returns it: seasons: { $elemMatch: { season } } leaves one entry.
 const projected = { _id: 'u1', seasons: [{ season: 2026, cumulativeScore: 40 }] };
 
+describe('sameSeason', () => {
+    // This has to match how MONGO matched, not just look reasonable. Every
+    // feeding query passes process.env.YEAR (a string) into `season: Number`,
+    // and Mongoose casts it — so the document was selected numerically. A
+    // String()-only comparison here would be narrower than the query that
+    // fetched the doc, and the entry would come back null on a padded YEAR.
+    test('matches numerically, the way the casting query did', () => {
+        expect(sameSeason(2026, '2026')).toBe(true);
+        expect(sameSeason('2026', 2026)).toBe(true);
+        expect(sameSeason(2026, 2026)).toBe(true);
+    });
+
+    test('tolerates a padded or oddly formatted YEAR, which Mongo also matched', () => {
+        // Not theoretical: this repo already ships `CFBD_API_KEY= Bearer …`
+        // with a leading space, so a padded config var is a live possibility.
+        expect(sameSeason(2026, '2026 ')).toBe(true);
+        expect(sameSeason(2026, ' 2026')).toBe(true);
+        expect(sameSeason(2026, '2026.0')).toBe(true);
+        expect(sameSeason(2026, '+2026')).toBe(true);
+    });
+
+    test('still says no to a different season', () => {
+        expect(sameSeason(2026, 2025)).toBe(false);
+        expect(sameSeason(2026, '2025')).toBe(false);
+    });
+
+    test('never treats an empty string as the number zero', () => {
+        expect(sameSeason('', 0)).toBe(false);
+        expect(sameSeason(0, '')).toBe(false);
+        expect(sameSeason('   ', 0)).toBe(false);
+    });
+
+    test('falls back to exact string equality for non-numeric values', () => {
+        expect(sameSeason('postseason', 'postseason')).toBe(true);
+        expect(sameSeason('postseason', 'regular')).toBe(false);
+        // Identical strings name the same thing, which is why NaN/NaN matches
+        // on the string shortcut. Harmless — a NaN never matches a real season,
+        // which is the property that actually protects a lookup.
+        expect(sameSeason(NaN, 2026)).toBe(false);
+        expect(sameSeason(2026, NaN)).toBe(false);
+        expect(sameSeason(undefined, 2026)).toBe(false);
+    });
+});
+
 describe('seasonOf', () => {
     test('picks the requested season out of a full document, not index 0', () => {
         expect(seasonOf(fullDoc, 2026).cumulativeScore).toBe(40);
@@ -35,6 +79,13 @@ describe('seasonOf', () => {
     test('compares across types, since `season` is a Number but YEAR is a string', () => {
         expect(seasonOf(fullDoc, '2026').cumulativeScore).toBe(40);
         expect(seasonOf({ seasons: [{ season: '2026', cumulativeScore: 7 }] }, 2026).cumulativeScore).toBe(7);
+    });
+
+    test('finds the entry even when YEAR carries stray whitespace', () => {
+        // The doc was selected by a query that cast '2026 ' to 2026, so the
+        // lookup must not be stricter than the query — returning null here is
+        // what would leave the scoring PATCH with nothing to write to.
+        expect(seasonOf(fullDoc, '2026 ').cumulativeScore).toBe(40);
     });
 
     test('works the same on a projected one-element payload', () => {

@@ -566,7 +566,18 @@ router.patch('/:id', getUser, async (req, res) => {
     // getUser $elemMatch'd this season in, so there is exactly one entry — but
     // say which season rather than trusting the index, since the projection and
     // this write live 230 lines apart.
+    //
+    // Answered, not thrown, if it somehow isn't there: this is the endpoint the
+    // scoring pass writes every score through, and the assignments below sit
+    // outside the try/catch. A TypeError here would leave the request hanging
+    // with nothing written and nothing logged — the silent scoring outage this
+    // refactor exists to prevent, reintroduced one line lower.
     const patchSeason = seasonOf(res.user, process.env.YEAR);
+    if (!patchSeason) {
+        return res.status(500).json({
+            message: `User ${req.params.id} has no ${process.env.YEAR} season entry to write to`
+        });
+    }
     if (req.body.cumulativeScore != null) {
         patchSeason.cumulativeScore = req.body.cumulativeScore;
     } else if (req.body.weeklyScore != null) {

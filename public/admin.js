@@ -1672,7 +1672,7 @@ function loadCaptainOverride() {
     userSel.onchange = function () {
         var user = userListSelect.find(function (u) { return u._id === userSel.value; });
         if (!user) return;
-        var season = (user.seasons || [])[0];
+        var season = ccSeasonOf.payloadSeasonEntry(user);
         var teams = (season && season.teams) || [];
         var s = '<option value="" disabled selected>Select A Team</option>';
         teams.forEach(function (t) {

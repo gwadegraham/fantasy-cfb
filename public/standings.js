@@ -146,10 +146,14 @@ async function getUsers() {
             // (see public/current-week.js); latestWeek is the fallback for when
             // the calendar can't be reached.
             // Which season this payload is about. /users/league/:code honours
-            // ?season=, so read it back off the payload rather than assuming
-            // APP_YEAR — that is what keeps a past-season view pointed at the
-            // season it is showing. APP_YEAR is the fallback for an empty one.
-            const activeSeason = ccSeasonOf.payloadSeason(data) || window.APP_YEAR;
+            // ?season=, so read it back off the payload rather than assuming the
+            // active year — that is what keeps a past-season view pointed at the
+            // season it is showing. No APP_YEAR fallback: standings.ejs never
+            // defines it (unlike userHome/admin/scoreboard), so the `|| APP_YEAR`
+            // this replaces was dead code that read as live. This branch only
+            // runs when data is non-empty and the route only returns managers
+            // who have the season, so the payload always names it.
+            const activeSeason = ccSeasonOf.payloadSeason(data);
             let cwCode = window.ccCurrentWeek ? await window.ccCurrentWeek.sync(activeSeason) : null;
             // Fallback only: with no calendar to consult, seed a week when
             // nothing is stored and otherwise leave the stored one be.
@@ -930,7 +934,7 @@ async function displaySchedule(data) {
     // for only one of its two teams.
     const weeklyByTeamId = {};
     data.forEach(u => {
-        const season = u.seasons.at(-1);
+        const season = ccSeasonOf.payloadSeasonEntry(u);
         (season.teams || []).forEach(t => { weeklyByTeamId[t.id] = season.weeklyScore; });
     });
     const pointsFor = (teamId, gameId) => teamGameScoreById(weeklyByTeamId[teamId], teamId, gameId);
@@ -945,9 +949,8 @@ async function displaySchedule(data) {
     var seasonType = "regular";
     var rankingsInfo;
 
-    // Resolve the year from the season being viewed (the users' latest season),
-    // never the wall-clock year.
-    var seasonYear = data[0]?.seasons?.at(-1)?.season;
+    // Resolve the year from the season being viewed, never the wall-clock year.
+    var seasonYear = ccSeasonOf.payloadSeason(data);
 
     if (week == "17") {
         rankingsInfo = await getRankings((week - 1), seasonType, seasonYear);
@@ -967,11 +970,13 @@ async function displaySchedule(data) {
 
         var userData = data[iterUsers];
 
-        for (var iterNum = 0; iterNum < userData.seasons.at(-1).teams.length; iterNum++) {
+        var userTeamsForWeek = ccSeasonOf.payloadSeasonEntry(userData).teams || [];
+
+        for (var iterNum = 0; iterNum < userTeamsForWeek.length; iterNum++) {
 
             var otherUsers = usersAndTeams.toSpliced(iterUsers, 1);
 
-            var gamesInfo = await getGame(seasonType, week, userData.seasons.at(-1).teams[iterNum]);
+            var gamesInfo = await getGame(seasonType, week, userTeamsForWeek[iterNum]);
 
             for (const [i, game] of gamesInfo.entries()) {
 
@@ -1041,7 +1046,7 @@ async function displaySchedule(data) {
                     var awayImg = teamLogos.awayTeamLogo;
                     var homeImg = teamLogos.homeTeamLogo;
 
-                    if (game.awayId == userData.seasons.at(-1).teams[iterNum].id) {
+                    if (game.awayId == userTeamsForWeek[iterNum].id) {
                         var existObject = exists(otherUsers, game.homeId);
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;
