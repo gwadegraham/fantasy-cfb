@@ -21,6 +21,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 const mongoose = require('mongoose');
 const SportSeason = require('../models/sportSeason');
+const AuditLog = require('../models/auditLog');
 
 const SPORTS = ['football', 'basketball'];
 const STATUSES = ['preseason', 'in-season', 'complete'];
@@ -59,12 +60,32 @@ async function main() {
     let status = null;
     for (let i = 1; i < rest.length; i++) {
         const a = rest[i];
-        if (a === '--status') { status = rest[++i]; continue; }
-        if (/^\d{4}$/.test(a)) { season = Number(a); continue; }
-        if (STATUSES.includes(a)) { status = a; continue; }
+        if (a === '--status') {
+            // A dangling --status used to read undefined and then skip the
+            // validation below (undefined is falsy), so the run "succeeded"
+            // having quietly ignored the thing you asked for.
+            if (i + 1 >= rest.length) usage('--status needs a value.');
+            if (status != null) usage('--status given more than once.');
+            status = rest[++i];
+            continue;
+        }
+        if (/^\d{4}$/.test(a)) {
+            // Two years, last-wins, was silent. Refuse instead.
+            if (season != null) usage(`Two seasons given ("${season}" and "${a}") — pick one.`);
+            season = Number(a);
+            continue;
+        }
+        if (STATUSES.includes(a)) {
+            if (status != null) usage(`Two statuses given ("${status}" and "${a}") — pick one.`);
+            status = a;
+            continue;
+        }
         usage(`Don't know what to do with "${a}".`);
     }
-    if (status && !STATUSES.includes(status)) usage(`status must be one of ${STATUSES.join(', ')}.`);
+    if (status != null && !STATUSES.includes(status)) usage(`status must be one of ${STATUSES.join(', ')}.`);
+    // Same range the route enforces (routes/seasons.js) — two write paths must
+    // not have two validation contracts.
+    if (season != null && (season < 2000 || season > 2100)) usage(`season must be between 2000 and 2100, got ${season}.`);
     if (season == null && status == null) usage('Nothing to change: give a season and/or a status.');
 
     if (!process.env.DATABASE_URL) usage('DATABASE_URL is not set.');
@@ -109,6 +130,28 @@ async function main() {
 
         const after = await SportSeason.findOne({ sport }).lean();
         console.log(`after:  ${sport} season ${after.season} (${after.status})`);
+
+        // The route records an audit entry; this path did not — and this is the
+        // path the runbook tells you to use, so the most consequential switch in
+        // the app had a trail only where nobody goes. Written directly rather
+        // than through modules/audit-log, which needs a request to name an actor.
+        try {
+            await AuditLog.create({
+                action: 'season.set',
+                season: String(after.season),
+                actorName: `cli (${process.env.USER || 'unknown'})`,
+                actorRole: 'cli',
+                summary: `${sport} season set to ${after.season} (${after.status}) via npm run season:set`,
+                meta: {
+                    sport,
+                    from: before ? { season: before.season, status: before.status } : null,
+                    to: { season: after.season, status: after.status },
+                    forced: !!force
+                }
+            });
+        } catch (err) {
+            console.error(`(audit entry not written: ${err.message})`);
+        }
         console.log('\nRunning dynos pick this up within a minute — no restart needed.');
         if (process.env.YEAR && season != null && Number(process.env.YEAR) !== season) {
             console.log(

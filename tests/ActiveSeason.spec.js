@@ -301,6 +301,31 @@ describe('startRefresh', () => {
         expect(lines.some(l => l.includes('re-prime failed') && l.includes('mongo blip'))).toBe(true);
     });
 
+    test('a stale prime cannot clobber a fresher one', async () => {
+        // The interval and setActiveSeason run unsynchronised. A prime that
+        // began before a rollover could resolve after it and revert the dyno
+        // that just served that rollover — while its own response said the
+        // change had taken.
+        await SportSeason.create({ sport: 'football', season: 2026 });
+
+        let release;
+        const held = new Promise(r => { release = r; });
+        const realFind = SportSeason.find.bind(SportSeason);
+        jest.spyOn(SportSeason, 'find').mockImplementationOnce(() => ({
+            lean: async () => { await held; return [{ sport: 'football', season: 2026 }]; }
+        }));
+
+        const stale = activeSeason.prime();          // starts, reads 2026, blocks
+        await SportSeason.updateOne({ sport: 'football' }, { $set: { season: 2027 } });
+        SportSeason.find.mockImplementation(realFind);
+        await activeSeason.prime();                  // newer prime wins
+        expect(activeSeason.activeSeason('football')).toBe(2027);
+
+        release();
+        await stale;                                 // resolves last, with 2026
+        expect(activeSeason.activeSeason('football')).toBe(2027);
+    });
+
     test('is idempotent — repeated calls do not stack intervals', async () => {
         const first = activeSeason.startRefresh(1000);
         expect(activeSeason.startRefresh(1000)).toBe(first);

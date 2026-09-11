@@ -27,12 +27,42 @@ var rankingsApi = new cfb.RankingsApi();
 // left. Heroku's daily dyno cycling would usually hide that, which is worse
 // than it failing outright.
 var _frozenFor = null;
+var _freezeInFlight = null;
+// After a failure, wait before trying again. Latching only on success is right —
+// a blip must not disable the freeze for the life of the dyno — but retrying on
+// EVERY scoring pass makes each one pay the full Mongo buffering timeout while
+// the database is unreachable, which is exactly when scoring can least afford
+// it. Retry, just not hot.
+var _freezeFailedAt = 0;
+// Read per call, not captured at require time, so it can be tuned without a
+// restart (and asserted in tests).
+function freezeRetryMs() {
+    return Number(process.env.FREEZE_RETRY_MS) || 5 * 60 * 1000;
+}
 async function freezePriorSeasonConfig(currentYear) {
-    const key = String(currentYear);
+    const year = Number(currentYear);
+    // A null/NaN season would stamp a junk configBySeason key into EVERY
+    // league's config, permanently — reachable now that activeSeason() can
+    // legitimately return null. Note Number(null) is 0, which IS finite and
+    // slipped a finiteness-only check straight through to a priorYear of "-1";
+    // so this checks a plausible YEAR, the same range routes/seasons.js and
+    // scripts/set-season.js enforce.
+    if (currentYear == null || !Number.isFinite(year) || year < 2000 || year > 2100) {
+        console.error(`freezePriorSeasonConfig: refusing to freeze against season ${JSON.stringify(currentYear)}`);
+        return;
+    }
+    const key = String(year);
     if (_frozenFor === key) return;
-    _frozenFor = key;
-    try {
-        const priorYear = String(Number(currentYear) - 1);
+    if (_freezeFailedAt && (Date.now() - _freezeFailedAt) < freezeRetryMs()) return;
+
+    // Share one in-flight run rather than latching optimistically. The nightly
+    // job and the 30s live poller can both be scoring at once, so two callers
+    // arrive here concurrently; the latch used to be set BEFORE the await,
+    // which let the second proceed against a half-written freeze.
+    if (_freezeInFlight && _freezeInFlight.key === key) return _freezeInFlight.promise;
+
+    const promise = (async () => {
+        const priorYear = String(year - 1);
         const docs = await ScoringConfig.find({});
         for (const doc of docs) {
             if (doc.configBySeason && doc.configBySeason[priorYear]) continue;
@@ -49,15 +79,35 @@ async function freezePriorSeasonConfig(currentYear) {
             await doc.save();
             console.log(`Froze ${doc.league} scoring config for ${priorYear}`);
         }
+    })();
+
+    _freezeInFlight = { key, promise };
+    try {
+        await promise;
+        // Latched only on SUCCESS. Armed up front, a single connection blip —
+        // or a validation error partway through the loop, leaving later leagues
+        // unfrozen — disabled the freeze for the life of the dyno, and the next
+        // point-value change would silently rewrite how the prior season
+        // rescores. That is the exact outcome this function exists to prevent.
+        _frozenFor = key;
+        _freezeFailedAt = 0;
     } catch (err) {
-        console.error('freezePriorSeasonConfig failed (non-fatal):', err.message);
+        _freezeFailedAt = Date.now();
+        console.error(`freezePriorSeasonConfig failed (non-fatal, retrying in ${Math.round(freezeRetryMs() / 1000)}s):`, err.message);
+    } finally {
+        _freezeInFlight = null;
     }
 }
 
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await internalFetch(`${process.env.URL}/users/season/${activeSeason('football')}`, {
+        // Resolved ONCE per pass. The cache re-primes every 60s, and this
+        // function awaits an HTTP fetch and a PATCH per manager — so re-reading
+        // it per use lets a season rollover land mid-pass and tear the pass in
+        // half (fetch 2026's managers, then look them up under 2027).
+        const year = activeSeason('football');
+        var response = await internalFetch(`${process.env.URL}/users/season/${year}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -79,7 +129,7 @@ module.exports= {
             // Seed reduce with 0 so users with no weekly scores yet (new users
             // / start of season) return 0 instead of throwing "Reduce of empty
             // array with no initial value" and aborting the whole loop.
-            var weeklyScore = seasonOrEmpty(user, activeSeason('football')).weeklyScore || [];
+            var weeklyScore = seasonOrEmpty(user, year).weeklyScore || [];
             var totalScore = weeklyScore.map(score).reduce(sum, 0);
             // Awaited: un-awaited, this whole step resolved before a single
             // cumulativeScore had actually been written, so the job moved on to
@@ -114,13 +164,22 @@ module.exports= {
         return data;
     },
 
+    // `season` here is the seasonType ('regular' | 'postseason'), NOT the year.
+    // The year is `scoringYear` below.
     updateScores: async function(season, week) {
-        await freezePriorSeasonConfig(activeSeason('football'));
+        // Resolved ONCE per pass, and threaded from here down. This pass runs
+        // for minutes (an HTTP fetch per team, a PATCH per manager) while the
+        // season cache re-primes every 60s, so re-reading it per use let a
+        // rollover tear a single pass across two seasons: managers fetched for
+        // 2026, then looked up under 2027 — which resolves to {} for everyone,
+        // scores every manager 0, and 404s every write.
+        const scoringYear = activeSeason('football');
+        await freezePriorSeasonConfig(scoringYear);
 
         // One ranking cache per call: every game in the week shares its poll doc
         // instead of re-reading it from Mongo per game.
         var rankingCache = new Map();
-        var response = await internalFetch(`${process.env.URL}/users/season/${activeSeason('football')}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${scoringYear}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -138,7 +197,7 @@ module.exports= {
             // asked for. Named rather than indexed: the route $elemMatch's it
             // into a one-element array, and reading index 0 quietly depended on
             // that projection staying exactly as it is.
-            var userSeason = seasonOrEmpty(user, activeSeason('football'));
+            var userSeason = seasonOrEmpty(user, scoringYear);
 
             if (!configByLeague[user.league]) {
                 configByLeague[user.league] = await getScoringConfig(user.league);
@@ -164,9 +223,9 @@ module.exports= {
                         // values + disabled) so commissioner structure changes
                         // are honored, not just point values.
                         if (cfg.model == "claunts") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, activeSeason('football'), cfg, rankingCache);
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, scoringYear, cfg, rankingCache);
                         } else if (cfg.model == "graham") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, activeSeason('football'), cfg, rankingCache);
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, scoringYear, cfg, rankingCache);
                         }
 
                         score += teamScore;
@@ -195,7 +254,7 @@ module.exports= {
             // season the mode was never enabled for adds nothing (and enabling
             // it for one season never touches another). Existing classic leagues
             // are likewise unchanged.
-            var seasonEng = engagementForSeason(cfg.engagementBySeason, activeSeason('football'));
+            var seasonEng = engagementForSeason(cfg.engagementBySeason, scoringYear);
             var captainTeamId = null, captainBonus = 0;
             if (seasonEng.captainEnabled && season !== "postseason") {
                 var priorWeekly = (userSeason.weeklyScore || [])
@@ -733,4 +792,4 @@ module.exports.getBracketForGame = getBracketForGame;
 // by a process restart, and since #312 a season rollover no longer restarts
 // anything.
 module.exports.freezePriorSeasonConfig = freezePriorSeasonConfig;
-module.exports._resetFreezeLatch = () => { _frozenFor = null; };
+module.exports._resetFreezeLatch = () => { _frozenFor = null; _freezeInFlight = null; _freezeFailedAt = 0; };

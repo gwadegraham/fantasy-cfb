@@ -61,6 +61,43 @@ test('treats the season as a string or a number alike', async () => {
     expect(await frozenSeasons()).toEqual(['2025']);
 });
 
+test('a failure does NOT latch — the next pass retries', async () => {
+    // Armed before the work, one connection blip disabled the freeze for the
+    // life of the dyno, and the next point-value change would silently rewrite
+    // how the prior season rescores.
+    jest.spyOn(ScoringConfig, 'find').mockImplementationOnce(() => { throw new Error('mongo blip'); });
+    await scoring.freezePriorSeasonConfig(2026);
+    expect(await frozenSeasons()).toEqual([]);
+
+    // A later pass, past the failure backoff (FREEZE_RETRY_MS) — the point is
+    // that the latch did not stick, not how long the wait is.
+    process.env.FREEZE_RETRY_MS = '1';
+    await new Promise(r => setTimeout(r, 5));
+    await scoring.freezePriorSeasonConfig(2026);
+    delete process.env.FREEZE_RETRY_MS;
+    expect(await frozenSeasons()).toEqual(['2025']);
+});
+
+test('two concurrent passes share one run rather than racing', async () => {
+    // The nightly job and the 30s live poller can both be scoring at once.
+    const spy = jest.spyOn(ScoringConfig, 'find');
+    await Promise.all([
+        scoring.freezePriorSeasonConfig(2026),
+        scoring.freezePriorSeasonConfig(2026)
+    ]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(await frozenSeasons()).toEqual(['2025']);
+});
+
+test('refuses to freeze against a null or unusable season', async () => {
+    // activeSeason() can legitimately return null now. Unguarded, this stamped
+    // a configBySeason["-1"] snapshot into every league's config, permanently.
+    await scoring.freezePriorSeasonConfig(null);
+    await scoring.freezePriorSeasonConfig(undefined);
+    await scoring.freezePriorSeasonConfig('soon');
+    expect(await frozenSeasons()).toEqual([]);
+});
+
 test('never overwrites a season already frozen', async () => {
     await scoring.freezePriorSeasonConfig(2026);
     await ScoringConfig.updateOne(

@@ -55,7 +55,16 @@ function envSeason(why) {
 
 // Load both tables into memory. Call once at boot (server.js), and again after
 // anything writes a season.
+// Bumped on every prime() start. A prime that finishes after a NEWER one
+// started is stale and must not install its result: the interval and
+// setActiveSeason run unsynchronised, so a re-prime that began before a
+// rollover could resolve after it and revert the dyno that just served the
+// rollover — for up to a full refresh interval, while its own response said the
+// change had taken.
+let generation = 0;
+
 async function prime() {
+    const mine = ++generation;
     const [sports, leagues] = await Promise.all([
         SportSeason.find({}, { sport: 1, season: 1, status: 1, _id: 0 }).lean(),
         League.find({}, { code: 1, sport: 1, season: 1, _id: 0 }).lean()
@@ -84,6 +93,11 @@ async function prime() {
         if (l.season != null && Number.isFinite(own)) next.leagues[l.code] = own;
     });
 
+    if (mine !== generation) {
+        // A newer prime started while this one was reading. Its result is
+        // fresher by definition, so drop ours rather than overwrite it.
+        return cache;
+    }
     cache = next;
     return cache;
 }
