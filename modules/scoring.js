@@ -136,7 +136,7 @@ module.exports= {
             }
             var cfg = configByLeague[user.league];
 
-            for (const team of userSeason.teams) {
+            for (const team of userSeason.teams || []) {
                 var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
                     method: 'GET',
                     headers: {

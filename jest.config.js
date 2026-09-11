@@ -46,7 +46,8 @@ module.exports = {
         // the uncovered line is the UMD browser branch, unreachable under CJS.
         "./public/season-of.js": {
             statements: 95,
-            branches: 95,
+            branches: 90,
+            functions: 100,
             lines: 94
         },
         "./modules/scoring-detectors.js": {

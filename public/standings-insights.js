@@ -14,8 +14,10 @@ function escapeHtml(value) {
 // past-season standings view compute against that season.
 //
 // ccSeasonOf comes from the navbar partial in the browser and from the test
-// harnesses, the same way ccSeasonScoring and ccLeagueRank do. Throwing beats
-// defaulting: a missing helper would otherwise read as "every manager scored 0".
+// harnesses, the same way ccSeasonScoring and ccLeagueRank do. That dependency
+// is new here — the previous inline read needed no helper — so it throws rather
+// than defaulting: a silently missing helper would render as "every manager
+// scored 0", which is worse than a failure that names itself.
 const season = (u) => {
     const lib = globalThis.ccSeasonOf;
     if (!lib) throw new Error('ccSeasonOf is not loaded (expected from views/partials/navbar.ejs)');

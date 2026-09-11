@@ -50,9 +50,15 @@ describe('sameSeason', () => {
         expect(sameSeason(2026, '2025')).toBe(false);
     });
 
-    test('never treats an empty string as the number zero', () => {
+    test('never treats an empty or blank string as the number zero', () => {
         expect(sameSeason('', 0)).toBe(false);
         expect(sameSeason(0, '')).toBe(false);
+        // A deliberate, unreachable divergence from Mongoose, which casts ''
+        // to null and whitespace-only to 0. Being NARROWER than the cast is the
+        // bug this module was fixed for — but only for values that can actually
+        // reach it, and no call site passes a blank season (they pass YEAR, a
+        // route param, Number(...), or a team doc's numeric season). Matching
+        // "   " to season 0 would be the more surprising answer here.
         expect(sameSeason('   ', 0)).toBe(false);
     });
 
