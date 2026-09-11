@@ -1147,18 +1147,43 @@
         // subtraction and never depends on who is home — the alternative, a
         // fixed home/away orientation, has to flip the field every change of
         // possession and gets it wrong the moment `possession` is missing.
+        // Which side has the ball, from either convention CFBD uses: the side
+        // itself, or the team's name. Returns null when neither matches, so a
+        // caller can decline to draw rather than pick a team at random.
+        function gdPossessionSide(possession, teamCtx) {
+            var p = String(possession || '').trim().toLowerCase();
+            if (!p) return null;
+            if (p === 'home' || p === 'away') return p;
+            var home = String(teamCtx.home.name || '').toLowerCase();
+            var away = String(teamCtx.away.name || '').toLowerCase();
+            if (p === home) return 'home';
+            if (p === away) return 'away';
+            // Abbreviations are the last resort — CFBD has not been seen to use
+            // them here, but they cost nothing to accept.
+            if (p === String(teamCtx.home.abbr || '').toLowerCase()) return 'home';
+            if (p === String(teamCtx.away.abbr || '').toLowerCase()) return 'away';
+            return null;
+        }
+
         // The geometry, worked out once and shared by the first paint and the
         // in-place update, so the two can never drift apart.
         function gdFieldState(teamCtx) {
             var sit = gdSituation;
             if (!gdPlaysLive || !sit || sit.yardsToGoal == null) return null;
 
-            var possSide = String(sit.possession || '').toLowerCase();
-            var offense = possSide === 'home' ? teamCtx.home
-                        : (possSide === 'away' ? teamCtx.away : null);
-            var defense = possSide === 'home' ? teamCtx.away
-                        : (possSide === 'away' ? teamCtx.home : null);
-            if (!offense) return null;
+            // Two CFBD endpoints, two conventions for the same field, and the
+            // field graphic was written against the wrong one. /scoreboard
+            // reports possession as the SIDE ('home' / 'away') — which is what
+            // the live strip above reads — while /live/plays reports the team
+            // NAME ('Miami'). Measured in prod on a live game: the side test
+            // alone matched nothing and the field silently never rendered.
+            //
+            // So both are accepted, the same way the live strip has always done
+            // it. Anything unrecognized means no field rather than a guess.
+            var possSide = gdPossessionSide(sit.possession, teamCtx);
+            if (!possSide) return null;
+            var offense = possSide === 'home' ? teamCtx.home : teamCtx.away;
+            var defense = possSide === 'home' ? teamCtx.away : teamCtx.home;
 
             // 0 = offense's own goal line, 100 = the line they are driving at.
             var ball = Math.max(0, Math.min(100, 100 - sit.yardsToGoal));
@@ -1167,8 +1192,11 @@
             var goalToGo = sit.distance != null && ball + sit.distance >= 100;
             var toGain = sit.distance != null && !goalToGo ? ball + sit.distance : null;
 
+            // CFBD sends down 0 on rows where there is no down — a timeout, a
+            // clock stoppage — alongside a distance of 10. Rendering it gave
+            // "0th & 10". Same trap as the kickoff rows in the play log.
             var situationText = '';
-            if (sit.down != null && sit.distance != null) {
+            if (sit.down != null && sit.down >= 1 && sit.distance != null) {
                 situationText = gdOrdinal(sit.down) + ' & ' + (goalToGo ? 'Goal' : sit.distance);
             }
             var spotText = sit.yardsToGoal <= 50
