@@ -24,6 +24,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
+const activeSeason = require('./modules/active-season');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
@@ -220,6 +221,20 @@ mongoose.connect(process.env.DATABASE_URL);
 const db = mongoose.connection;
 db.on('error', (error) => console.error(error));
 db.on('open', () => console.log('Connected to Database'));
+
+// Prime the season cache as soon as the DB is up, and re-prime on every
+// reconnect. modules/active-season.js serves sync getters off this — until it
+// runs, those getters fall back to process.env.YEAR and say so, which is what
+// keeps a cold start from answering "what season is it?" with a null.
+db.on('open', async () => {
+    try {
+        await activeSeason.ensureDefaultSport();
+        const cached = await activeSeason.prime();
+        console.log('Season cache primed:', JSON.stringify(cached.sports));
+    } catch (err) {
+        console.error('Season cache prime failed (falling back to YEAR):', err.message);
+    }
+});
 
 
 

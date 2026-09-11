@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { activeSeason } = require('./active-season');
 const { seasonOrEmpty } = require('../public/season-of.js');
 
 // Dedupes games by id. Two teams in the same league can play each other, so the
@@ -74,7 +75,7 @@ function stripAbsentScores(game) {
 module.exports = {
 
     retrieveTeams: async () => {
-        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${activeSeason('football')}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -87,7 +88,7 @@ module.exports = {
         var userData = await response.json();
 
         for (const user of userData) {
-            for (const team of seasonOrEmpty(user, process.env.YEAR).teams || []) {
+            for (const team of seasonOrEmpty(user, activeSeason('football')).teams || []) {
                 allTeams.push(team.school);
             }
         }

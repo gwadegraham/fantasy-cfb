@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
 
@@ -154,7 +155,7 @@ router.post('/ingest/:year', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try {
-        const season = req.query.season || process.env.YEAR;
+        const season = req.query.season || activeSeason('football');
         const teams = req.query.teams ? req.query.teams.split(',') : [];
         if (!teams.length) return res.json([]);
 
