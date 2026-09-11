@@ -40,7 +40,14 @@ const accountSchema = new mongoose.Schema({
 
     // Chart/avatar colour. On the person, not the franchise: someone playing
     // two sports should be the same colour on both charts.
-    color: { type: String }
+    color: { type: String },
+
+    // Provenance: set only by modules/account-migration.js. Rollback scopes its
+    // delete to documents carrying it, so anything created directly — a
+    // basketball-only manager with no User behind them (#310) — survives. Those
+    // cannot be reconstructed from the users collection, so an unscoped delete
+    // would lose them permanently.
+    migratedFrom: { type: mongoose.Schema.Types.ObjectId }
 }, { timestamps: true });
 
 // Identity lookups go through this both ways.

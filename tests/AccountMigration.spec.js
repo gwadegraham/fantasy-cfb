@@ -213,16 +213,59 @@ describe('verify', () => {
         expect(v.mismatches.find(m => m.field === 'seasons').reason).toMatch(/season count 2 -> 1/);
     });
 
-    test('catches a franchise nothing accounts for', async () => {
+    test('catches a MIGRATED franchise that no user accounts for', async () => {
         const user = await seedUser();
         await migration.migrate({ apply: true });
-        await Franchise.create({ accountId: user._id, league: 'claunts-league', seasons: [] });
+        // Carries the provenance stamp, so it claims to have come from a user.
+        await Franchise.create({
+            accountId: user._id, league: 'claunts-league', seasons: [], migratedFrom: user._id
+        });
 
         const v = await migration.verify();
         expect(v.ok).toBe(false);
         expect(v.mismatches).toContainEqual(
             expect.objectContaining({ field: 'franchiseCount', expected: 1, actual: 2 })
         );
+    });
+
+    test('treats a franchise created OUTSIDE the migration as a warning, not a fault', async () => {
+        // After phase 2 this is the normal case: a basketball-only manager with
+        // no User behind them. Counting it as a failure would make verify red
+        // forever — which is precisely the end state this epic is driving at.
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        await Franchise.create({ accountId: user._id, league: 'claunts-league', seasons: [] });
+
+        const v = await migration.verify();
+        expect(v.ok).toBe(true);
+        expect(v.warnings.join(' ')).toMatch(/not created by this migration/);
+    });
+
+    test('a field on User in neither list fails verification instead of vanishing', async () => {
+        // The silent failure: the migration copies only fields it knows, and
+        // every comparison also only looks at fields it knows — so a field added
+        // to models/user.js later would be dropped AND pass.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        expect((await migration.verify()).ok).toBe(true);
+
+        User.schema.add({ timezone: String });
+        try {
+            expect(migration.uncoveredUserFields()).toContain('timezone');
+            const v = await migration.verify();
+            expect(v.ok).toBe(false);
+            expect(v.mismatches).toContainEqual(
+                expect.objectContaining({ field: 'schema-coverage', reason: expect.stringContaining('timezone') })
+            );
+        } finally {
+            delete User.schema.paths.timezone;
+        }
+    });
+
+    test('the two field lists currently cover the whole User schema', async () => {
+        // Guards the real thing rather than the mechanism: if this fails, some
+        // field of a manager is about to be thrown away at cutover.
+        expect(migration.uncoveredUserFields()).toEqual([]);
     });
 
     test('is insensitive to subdocument ids either way', async () => {
@@ -243,6 +286,61 @@ describe('verify', () => {
     });
 });
 
+describe('schema-cast differences are not treated as mismatches', () => {
+    test('a user with no isUpdated is not a false positive', async () => {
+        // Mongoose applies `default: false` on the franchise, so a raw-document
+        // comparison called a correct migration a failure.
+        const user = await seedUser();
+        await User.collection.updateOne({ _id: user._id }, { $unset: { isUpdated: '' } });
+        await migration.migrate({ apply: true });
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('a season row with no teams key is not a false positive', async () => {
+        // The preseason / pre-draft shape: casting injects `teams: []`.
+        const user = await seedUser();
+        await User.collection.updateOne(
+            { _id: user._id },
+            { $set: { seasons: [{ season: 2026, cumulativeScore: 0, weeklyScore: [] }] } }
+        );
+        await migration.migrate({ apply: true });
+        expect((await migration.verify()).ok).toBe(true);
+    });
+});
+
+describe('stripIds', () => {
+    test('distinguishes Dates and ObjectIds instead of collapsing them to {}', async () => {
+        // Both are objects with no own enumerable keys, so the generic rebuild
+        // turned every one into {} — silently comparing every Date equal to
+        // every other Date. There is no Date in seasonSchema today; the day
+        // someone adds a draft timestamp, this has to already be right.
+        const mongoose = require('mongoose');
+        expect(migration.stripIds(new Date('2026-01-01'))).not.toEqual(migration.stripIds(new Date('2000-01-01')));
+        const a = new mongoose.Types.ObjectId();
+        const b = new mongoose.Types.ObjectId();
+        expect(migration.stripIds(a)).not.toEqual(migration.stripIds(b));
+        expect(migration.stripIds(a)).toEqual(migration.stripIds(a));
+    });
+
+    test('still handles nulls, nested arrays and plain values', async () => {
+        expect(migration.stripIds(null)).toBeNull();
+        expect(migration.stripIds([[{ a: 1, _id: 'x' }]])).toEqual([[{ a: 1 }]]);
+        expect(migration.stripIds(7)).toBe(7);
+    });
+});
+
+describe('the unique (accountId, league) index', () => {
+    test('actually rejects a duplicate — this is what makes re-running safe', async () => {
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        await Franchise.init();   // ensure the index exists before relying on it
+
+        await expect(
+            Franchise.create({ accountId: user._id, league: 'graham-league', seasons: [] })
+        ).rejects.toThrow(/duplicate key|E11000/);
+    });
+});
+
 describe('rollback', () => {
     test('dry run reports without deleting', async () => {
         await seedUser();
@@ -251,6 +349,19 @@ describe('rollback', () => {
         const r = await migration.rollback();
         expect(r).toMatchObject({ applied: false, wouldDelete: { accounts: 1, franchises: 1 } });
         expect(await Account.countDocuments({})).toBe(1);
+    });
+
+    test('leaves documents it did not create', async () => {
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        const outsider = await Franchise.create({ accountId: user._id, league: 'claunts-league', seasons: [] });
+
+        const r = await migration.rollback({ apply: true });
+        expect(r.deleted).toMatchObject({ accounts: 1, franchises: 1 });
+        expect(r.kept).toMatchObject({ franchises: 1 });
+        // A basketball-only manager cannot be reconstructed from `users`, so an
+        // unscoped delete would lose them for good.
+        expect(await Franchise.findById(outsider._id).lean()).not.toBeNull();
     });
 
     test('removes what it created and leaves users untouched', async () => {
