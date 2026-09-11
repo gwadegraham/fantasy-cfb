@@ -251,8 +251,12 @@
                 if (list) list.innerHTML = gdPlayList(gdTeamCtx);
                 drives.innerHTML = gdDriveRows(gdTeamCtx);
                 if (field && !gdFieldUpdate(field, gdTeamCtx)) {
-                    // Nothing left to show — the game just went final.
-                    field.remove();
+                    // The field can no longer be drawn — the game went final,
+                    // or /live/plays stopped answering. Rebuild the page rather
+                    // than removing it in place, so the live strip can take its
+                    // slot instead of the page silently losing the situation.
+                    render(gdGame, gdArt.logoMap, gdArt.colorMap, gdArt.abbrMap, gdArt.mascotMap);
+                    return;
                 }
                 return;
             }
@@ -392,6 +396,27 @@
             }
             html += '</div>'; // .gd-header
 
+
+            // ---- Live strip: the field's stand-in -------------------------
+            //
+            // Not a section in its own right any more — the field below the box
+            // score says all of this, better. It is held in reserve for the
+            // case the field cannot be drawn at all: the field reads the
+            // billable /live/plays, which the remaining-calls floor can pause,
+            // a CFBD blip can fail, and which has nothing to say before
+            // kickoff. `situation` and `lastPlay` come from the free
+            // /scoreboard and are there whenever a game is live.
+            //
+            // Gated on `completed` rather than on the fields being empty: it is
+            // the one flag every ingest path agrees on, and a stale "3rd & 7"
+            // under a final score is a worse failure than showing nothing.
+            var liveStripHtml = '';
+            if (!isFinal && (game.situation || game.lastPlay)) {
+                liveStripHtml += '<div class="gd-section gd-livestrip">';
+                if (game.situation) liveStripHtml += '<div class="gd-ls-head"><span class="gd-ls-situation">' + esc(game.situation) + '</span></div>';
+                if (game.lastPlay) liveStripHtml += '<div class="gd-ls-play">' + esc(game.lastPlay) + '</div>';
+                liveStripHtml += '</div>';
+            }
 
             // ---- Meta row: venue, weather, broadcast, attendance ----
             // Each part is wrapped so it forms a SINGLE flex item in .gd-meta.
@@ -741,7 +766,10 @@
             // — see modules/live-plays.js. So it renders from whatever gdPlays
             // holds and is filled in asynchronously; on first paint it shows
             // nothing rather than blocking the page on a network round trip.
-            var gamecastHtml = gdFieldGraphic(teamCtx)
+            // The strip takes the field's slot when there is no field, so the
+            // page never loses the situation entirely — see the comment on
+            // liveStripHtml above.
+            var gamecastHtml = (gdFieldGraphic(teamCtx) || liveStripHtml)
                 + renderPlaysSection(teamCtx)
                 + renderDrivesSection(teamCtx);
 
