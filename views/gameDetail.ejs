@@ -751,33 +751,39 @@
                 lineScoreHtml += '</tbody></table></div>';
                 lineScoreHtml += '</div>';
             }
-            // Live games get the mobile-first running order: hero, venue/weather,
-            // box score, last play, win probability, odds — then the pre-game
-            // season context, which matters least once the game is under way.
-            // Everything above deferred its markup into a variable to make this
-            // one ordering decision, rather than scattering it through the page.
+            // ---- The gamecast ----
+            // Box score, then the field, then how the score happened. This is
+            // the whole reason the page exists during a game, so it sits
+            // directly under the linescore and ahead of win probability, odds
+            // and pre-game season context — all of which matter less once the
+            // ball is in play.
+            //
+            // Its data comes from a SEPARATE endpoint (/games/plays/:id) to the
+            // rest of the page, because that one can cost a billable CFBD call
+            // — see modules/live-plays.js. So it renders from whatever gdPlays
+            // holds and is filled in asynchronously; on first paint it shows
+            // nothing rather than blocking the page on a network round trip.
+            var gamecastHtml = gdFieldGraphic(teamCtx)
+                + renderPlaysSection(teamCtx)
+                + renderDrivesSection(teamCtx);
+
+            // Live games get the mobile-first running order: hero,
+            // venue/weather, box score, the gamecast, then last play, win
+            // probability and odds — and finally the pre-game season context,
+            // which matters least once the game is under way. Everything above
+            // deferred its markup into a variable to make this one ordering
+            // decision, rather than scattering it through the page.
             if (isLive) {
                 html += lineScoreHtml;
+                html += gamecastHtml;
                 html += liveStripHtml;
                 html += wpSectionHtml;
                 html += oddsHtml;
                 html += preGameStatsHtml;
             } else {
                 html += lineScoreHtml;
+                html += gamecastHtml;
             }
-
-
-            // ---- Play-by-play ----
-            // Sits right after the linescore, which is where it reads best:
-            // score, then how the score happened. Its data comes from a
-            // SEPARATE endpoint (/games/plays/:id) to the rest of this page,
-            // because that one can cost a billable CFBD call — see
-            // modules/live-plays.js. So it renders from whatever gdPlays holds
-            // and is filled in asynchronously; on first paint it shows nothing
-            // rather than blocking the page on a network round trip.
-            html += gdFieldGraphic(teamCtx);
-            html += renderPlaysSection(teamCtx);
-            html += renderDrivesSection(teamCtx);
 
             // ---- Team stats comparison ----
             var hs = (game.teamStats && game.teamStats.home) || {};
