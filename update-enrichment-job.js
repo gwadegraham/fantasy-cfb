@@ -30,6 +30,10 @@ async function run(opts = {}) {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
     const season = parseInt(process.argv[2], 10) || await remoteSeason('football');
+    if (season == null || !Number.isFinite(Number(season))) {
+        console.error(`enrichment: no active season could be resolved — refusing to run rather than ingesting against "${season}"`);
+        return { skipped: 'no active season' };
+    }
     const preseason = opts.preseason || process.argv[3] === 'preseason';
     const label = `Enrichment${preseason ? ' (preseason)' : ''}`;
     const results = {};

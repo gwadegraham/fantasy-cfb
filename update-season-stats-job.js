@@ -20,6 +20,10 @@ async function run() {
     const startMs = Date.now();
     const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
     const season = await remoteSeason('football');
+    if (season == null || !Number.isFinite(Number(season))) {
+        console.error(`season-stats: no active season could be resolved — refusing to run rather than ingesting against "${season}"`);
+        return { skipped: 'no active season' };
+    }
     const id = await startRun(JOB_NAME, { season: String(season) });
     try {
         const res = await internalFetch(`${process.env.URL}/team-season-stats/ingest/${season}`, {

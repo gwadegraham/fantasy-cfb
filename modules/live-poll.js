@@ -93,6 +93,12 @@ async function run() {
     // polling forever. Regular and postseason never overlap in time, so at most
     // one phase is live; postseason wins if somehow both look live.
     const season = activeSeason('football');
+    // A null season makes the gate below match no games, so the poller would
+    // report "no game in progress" for a full slate — silently, every 30s.
+    if (season == null) {
+        console.error('live-poll: no active season resolved — skipping (this is not "no games")');
+        return { skipped: 'no active season' };
+    }
     const candidates = await Game.find(
         { season, completed: { $ne: true }, startDate: { $lte: now.toISOString() } },
         { startDate: 1, completed: 1, seasonType: 1 }

@@ -27,13 +27,13 @@ var rankingsApi = new cfb.RankingsApi();
 // left. Heroku's daily dyno cycling would usually hide that, which is worse
 // than it failing outright.
 var _frozenFor = null;
-var _freezeInFlight = null;
+var _freezeInFlight = new Map();
 // After a failure, wait before trying again. Latching only on success is right —
 // a blip must not disable the freeze for the life of the dyno — but retrying on
 // EVERY scoring pass makes each one pay the full Mongo buffering timeout while
 // the database is unreachable, which is exactly when scoring can least afford
 // it. Retry, just not hot.
-var _freezeFailedAt = 0;
+var _freezeFailedAt = new Map();
 // Read per call, not captured at require time, so it can be tuned without a
 // restart (and asserted in tests).
 function freezeRetryMs() {
@@ -53,13 +53,19 @@ async function freezePriorSeasonConfig(currentYear) {
     }
     const key = String(year);
     if (_frozenFor === key) return;
-    if (_freezeFailedAt && (Date.now() - _freezeFailedAt) < freezeRetryMs()) return;
+    // Keyed by season: a failure freezing 2026 must not defer the FIRST attempt
+    // at 2027, which is exactly the rollover window this guard exists to cover.
+    const failedAt = _freezeFailedAt.get(key);
+    if (failedAt && (Date.now() - failedAt) < freezeRetryMs()) return;
 
     // Share one in-flight run rather than latching optimistically. The nightly
     // job and the 30s live poller can both be scoring at once, so two callers
     // arrive here concurrently; the latch used to be set BEFORE the await,
     // which let the second proceed against a half-written freeze.
-    if (_freezeInFlight && _freezeInFlight.key === key) return _freezeInFlight.promise;
+    // Also keyed by season. One shared slot let two callers on DIFFERENT seasons
+    // (nightly job on the old, poller on the new) both proceed, then whichever
+    // settled first discarded the other's guard.
+    if (_freezeInFlight.has(key)) return _freezeInFlight.get(key);
 
     const promise = (async () => {
         const priorYear = String(year - 1);
@@ -81,7 +87,7 @@ async function freezePriorSeasonConfig(currentYear) {
         }
     })();
 
-    _freezeInFlight = { key, promise };
+    _freezeInFlight.set(key, promise);
     try {
         await promise;
         // Latched only on SUCCESS. Armed up front, a single connection blip —
@@ -90,12 +96,12 @@ async function freezePriorSeasonConfig(currentYear) {
         // point-value change would silently rewrite how the prior season
         // rescores. That is the exact outcome this function exists to prevent.
         _frozenFor = key;
-        _freezeFailedAt = 0;
+        _freezeFailedAt.delete(key);
     } catch (err) {
-        _freezeFailedAt = Date.now();
+        _freezeFailedAt.set(key, Date.now());
         console.error(`freezePriorSeasonConfig failed (non-fatal, retrying in ${Math.round(freezeRetryMs() / 1000)}s):`, err.message);
     } finally {
-        _freezeInFlight = null;
+        _freezeInFlight.delete(key);
     }
 }
 
@@ -135,7 +141,7 @@ module.exports= {
             // cumulativeScore had actually been written, so the job moved on to
             // team scores (and reported success) with the writes still in flight —
             // and a rejected one had nowhere to go but the process.
-            await updateUserCumulativeScore(user._id, totalScore);
+            await updateUserCumulativeScore(user._id, totalScore, year);
         }
     },
 
@@ -287,10 +293,10 @@ module.exports= {
                 if (await userSeason.weeklyScore.some(e => e.season === "postseason" && e.week === postWeek)) {
                     var spliceIndex = userSeason.weeklyScore.findIndex(x => x.season === "postseason" && x.week === postWeek);
                     userSeason.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                    await updateUser(user._id, userSeason.weeklyScore);
+                    await updateUser(user._id, userSeason.weeklyScore, scoringYear);
                 } else {
                     userSeason.weeklyScore.push(scoreObject);
-                    await updateUser(user._id, userSeason.weeklyScore);
+                    await updateUser(user._id, userSeason.weeklyScore, scoringYear);
                 }
             } else if (await userSeason.weeklyScore.some(e => e.season !== "postseason" && e.week === parseInt(scoreObject.week))) {
                 // Match regular weeks only (exclude postseason entries), so a
@@ -298,14 +304,14 @@ module.exports= {
                 // the same week number.
                 var spliceIndex = userSeason.weeklyScore.findIndex(x => x.season !== "postseason" && x.week === parseInt(scoreObject.week));
                 userSeason.weeklyScore.splice(spliceIndex, 1, scoreObject);
-                await updateUser(user._id, userSeason.weeklyScore);
+                await updateUser(user._id, userSeason.weeklyScore, scoringYear);
             } else if (userSeason.weeklyScore.length == 0){
                 // First score of the season: weeklyScore is an array field, so
                 // wrap the object rather than storing a bare object.
-                await updateUser(user._id, [scoreObject]);
+                await updateUser(user._id, [scoreObject], scoringYear);
             } else {
                 userSeason.weeklyScore.push(scoreObject);
-                await updateUser(user._id, userSeason.weeklyScore);
+                await updateUser(user._id, userSeason.weeklyScore, scoringYear);
             }
 
             
@@ -460,12 +466,19 @@ async function readTeamWrite(response, teamId) {
 // error level instead of quietly at log level. Returning a boolean so a caller
 // can tell a landed write from a lost one.
 
-async function updateUser(userId, scoreUpdate) {
+// `season` is the year the calling pass resolved. It MUST be sent: this write
+// goes over HTTP to the public hostname, so it lands on whichever dyno the
+// router picks, and each dyno re-primes its season cache on its own 60s phase.
+// Without it the receiving dyno re-derives the season independently, and a
+// rollover mid-pass lands 2026-derived scores in the 2027 entry (or 404s every
+// write). Resolving once per pass fixes only the sending half.
+async function updateUser(userId, scoreUpdate, season) {
 
-    var requestBody = `{
-        "weeklyScore": ${JSON.stringify(scoreUpdate)},
-        "isUpdated": true
-        }`;
+    var requestBody = JSON.stringify({
+        weeklyScore: scoreUpdate,
+        isUpdated: true,
+        season: season
+    });
 
     const response = await internalFetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
@@ -484,17 +497,19 @@ async function updateUser(userId, scoreUpdate) {
     return false;
 }
 
-async function updateUserCumulativeScore(userId, cumulativeScore) {
+// See updateUser: the season travels with the write.
+async function updateUserCumulativeScore(userId, cumulativeScore, season) {
     const response = await internalFetch(`${process.env.URL}/users/` + userId, {
             method: 'PATCH',
             headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
             },
-            body: `{
-            "cumulativeScore": ${JSON.stringify(cumulativeScore)},
-            "isUpdated": true
-            }`,
+            body: JSON.stringify({
+                cumulativeScore: cumulativeScore,
+                isUpdated: true,
+                season: season
+            }),
         });
 
     if (response.status == 200) {
@@ -792,4 +807,4 @@ module.exports.getBracketForGame = getBracketForGame;
 // by a process restart, and since #312 a season rollover no longer restarts
 // anything.
 module.exports.freezePriorSeasonConfig = freezePriorSeasonConfig;
-module.exports._resetFreezeLatch = () => { _frozenFor = null; _freezeInFlight = null; _freezeFailedAt = 0; };
+module.exports._resetFreezeLatch = () => { _frozenFor = null; _freezeInFlight.clear(); _freezeFailedAt.clear(); };

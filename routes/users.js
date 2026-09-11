@@ -577,10 +577,10 @@ router.patch('/:id', getUser, async (req, res) => {
     // nothing logged, and this is the endpoint the scoring pass writes every
     // score through. A 500 is the difference between a visible failure and a
     // silent scoring outage.
-    const patchSeason = seasonOf(res.user, activeSeason('football'));
+    const patchSeason = seasonOf(res.user, res.userSeason);
     if (!patchSeason) {
         return res.status(500).json({
-            message: `User ${req.params.id} has no ${activeSeason('football')} season entry to write to`
+            message: `User ${req.params.id} has no ${res.userSeason} season entry to write to`
         });
     }
     if (req.body.cumulativeScore != null) {
@@ -812,18 +812,39 @@ router.patch('/:id/roster-team', async (req, res) => {
     }
 });
 
+// The season this request is about.
+//
+// A scoring write carries the season its pass resolved (modules/scoring.js
+// updateUser). Honour it rather than re-deriving: the write arrives over HTTP on
+// whichever dyno the router picks, each dyno re-primes on its own 60s phase, and
+// a rollover mid-pass would otherwise file 2026-derived scores under 2027 — or
+// 404 every write. Falls back to this dyno's own view for callers that send
+// nothing (the admin UI, and every pre-existing client).
+function requestedSeason(req) {
+    const sent = req.body && req.body.season;
+    if (sent != null && sent !== '') {
+        const n = Number(sent);
+        if (Number.isFinite(n)) return n;
+    }
+    return activeSeason('football');
+}
+
 async function getUser(req, res, next) {
     let user;
+    const season = requestedSeason(req);
     try {
-        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": activeSeason('football')}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": activeSeason('football')}}}});
+        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": season}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": season}}}});
         if (user == null) {
-            return res.status(404).json({message: 'Cannot find user'});
+            return res.status(404).json({message: `Cannot find user ${req.params.id} for season ${season}`});
         }
     } catch (err) {
         return res.status(500).json({message: err.message});
     }
     res.user = user;
+    // Stash it so the handler writes into the SAME entry getUser projected,
+    // rather than resolving the season a second time and possibly differing.
+    res.userSeason = season;
     next();
 }
 

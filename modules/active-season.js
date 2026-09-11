@@ -141,7 +141,14 @@ function sportForLeague(code) {
 // Point a sport at a season, then refresh the cache. Upserts, so this is also
 // how a sport gets its first row.
 async function setActiveSeason(sport, season, status) {
-    const update = { season: Number(season) };
+    // Validated here too, not only in the route and the CLI. This is the single
+    // exported write path, and the branch argues elsewhere that two write paths
+    // must not carry two contracts — so the contract lives at the seam.
+    const year = Number(season);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+        throw new Error(`setActiveSeason: season must be a year between 2000 and 2100, got ${JSON.stringify(season)}`);
+    }
+    const update = { season: year };
     if (status) update.status = status;
     await SportSeason.updateOne({ sport }, { $set: update }, { upsert: true });
     return prime();
@@ -219,6 +226,7 @@ function stopRefresh() {
 function _reset() {
     cache = null;
     warned = false;
+    generation = 0;
     stopRefresh();
 }
 

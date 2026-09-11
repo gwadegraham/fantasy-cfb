@@ -89,3 +89,37 @@ describe('when the server cannot answer', () => {
         await expect(remoteSeason('football')).resolves.toBeNull();
     });
 });
+
+// The resolver returning null is only half the contract — the jobs have to act
+// on it. A commit message once claimed "the job refuses"; nothing did, and
+// `POST /team-season-stats/ingest/null` went out instead.
+//
+// Covered here for the two jobs that export run() and return before any
+// JobRun/email bookkeeping. update-expected-wins-job.js has no exports (its
+// guard sits ahead of a require() of expectedWins<season>.json, which would
+// otherwise throw MODULE_NOT_FOUND before a JobRun row exists) and
+// update-enrichment-job.js does work before its guard is reachable here.
+describe('the ingest jobs refuse a null season', () => {
+    // Scoped here: resetting modules globally would detach the top-level
+    // activeSeason import from the models the earlier tests re-require.
+    afterEach(() => jest.resetModules());
+
+    test.each([
+        ['season-stats', '../update-season-stats-job'],
+        ['player-season-leaders', '../update-player-season-leaders-job']
+    ])('%s skips rather than ingesting against "null"', async (_label, modPath) => {
+        // Mock the resolver rather than unsetting YEAR: each job re-runs
+        // `require('dotenv').config()` at module scope, so a resetModules()
+        // reload puts YEAR straight back from .env and the null never happens.
+        global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+        jest.resetModules();
+        jest.doMock('../modules/remote-season', () => ({ remoteSeason: async () => null }));
+        const { run } = require(modPath);
+
+        await expect(run()).resolves.toMatchObject({ skipped: 'no active season' });
+        // Nothing was posted anywhere — in particular no `.../ingest/null`.
+        const urls = global.fetch.mock.calls.map(c => String(c[0]));
+        expect(urls.every(u => !u.includes('null'))).toBe(true);
+        expect(urls.every(u => !u.includes('/job-runs'))).toBe(true);
+    });
+});
