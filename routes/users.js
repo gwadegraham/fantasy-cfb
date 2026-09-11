@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 const router = express.Router();
 const User = require('../models/user');
@@ -78,13 +79,13 @@ router.patch('/me/profile', async (req, res) => {
             // Only name the active season — never fall back to a prior season.
             // Before the league drafts the active year there's no entry to name,
             // so the update is ignored (the client locks the field to match).
-            const year = Number(process.env.YEAR);
+            const year = activeSeason('football');
             const season = (user.seasons || []).find(s => Number(s.season) === year);
             if (season) season.franchiseName = clean.franchiseName;
         }
 
         await user.save();
-        const current = (user.seasons || []).find(s => Number(s.season) === Number(process.env.YEAR))
+        const current = (user.seasons || []).find(s => Number(s.season) === activeSeason('football'))
             || (user.seasons && user.seasons[user.seasons.length - 1]);
         res.json({
             avatarUrl: user.avatarUrl || null,
@@ -106,7 +107,7 @@ router.get('/me/captain', async (req, res) => {
     const userId = meta && meta.userId;
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
-    const seasonYear = Number(req.query.season) || Number(process.env.YEAR);
+    const seasonYear = Number(req.query.season) || activeSeason('football');
     const none = { season: seasonYear, week: null, lockAt: null, teamId: null, locked: true };
     try {
         const user = await User.findById(userId);
@@ -187,7 +188,7 @@ router.patch('/me/captain', async (req, res) => {
 
     const week = parseInt(req.body.week, 10);
     const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
-    const seasonYear = Number(req.body.season) || Number(process.env.YEAR);
+    const seasonYear = Number(req.body.season) || activeSeason('football');
     if (!Number.isInteger(week) || week < 1 || week > 16) {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
@@ -231,7 +232,7 @@ router.patch('/:id/captain', async (req, res) => {
     }
     const week = parseInt(req.body.week, 10);
     const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
-    const seasonYear = Number(req.body.season) || Number(process.env.YEAR);
+    const seasonYear = Number(req.body.season) || activeSeason('football');
     if (!Number.isInteger(week) || week < 1 || week > 16) {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
@@ -299,7 +300,7 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
         return res.status(403).json({ message: 'Forbidden: not your league' });
     }
     try {
-        const year = Number(process.env.YEAR);
+        const year = activeSeason('football');
         const users = await User.find({ league: leagueCode },
             { firstName: 1, lastName: 1, color: 1, email: 1, authSub: 1,
               'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
@@ -340,7 +341,7 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
-    const year = req.query.season || process.env.YEAR;
+    const year = req.query.season || activeSeason('football');
     try {
         console.log("finding all users in league", leagueCode, "season", year);
         const users = await User.find({"seasons.season": {"$eq": year}, "league": leagueCode},
@@ -356,8 +357,8 @@ router.get('/league/:leagueCodeReq/previous', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
     try {
         console.log("finding user in league", leagueCode);
-        const users = await User.find({"seasons.season": {"$eq": (process.env.YEAR - 1)}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": (process.env.YEAR - 1)}}}});
+        const users = await User.find({"seasons.season": {"$eq": (activeSeason('football') - 1)}, "league": leagueCode},
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": (activeSeason('football') - 1)}}}});
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -379,7 +380,7 @@ router.get('/:id', async (req, res) => {
 //Getting One By Season
 router.get('/:id/season', async (req, res) => {
     var userId = req.params.id;
-    var year = process.env.YEAR;
+    var year = activeSeason('football');
 
     try {
         const user = await User.find({_id: userId, "seasons.season": {"$eq": year}},
@@ -413,7 +414,7 @@ router.post('/', async (req, res) => {
     // season roster and scoring config — League Managers can't, Admins can, since
     // they're the ones who can rescore afterwards.
     if (!effectiveRoles(req).includes('Admin')
-        && await hasScoredGames(req.body.league, Number(process.env.YEAR))) {
+        && await hasScoredGames(req.body.league, activeSeason('football'))) {
         return res.status(423).json({
             message: 'Adding a player is locked once the season is underway (they would start with an empty roster). Ask an admin.'
         });
@@ -437,13 +438,13 @@ router.post('/', async (req, res) => {
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
 
-    // A new player joins the ACTIVE season (process.env.YEAR) with an empty
+    // A new player joins the ACTIVE season (the sport's season) with an empty
     // roster — the draft fills it. Server-owned so it can't drift to the wall-
     // clock calendar year. `color` is auto-assigned from the palette when the
     // caller doesn't supply one (the admin form no longer does).
     const seasons = (Array.isArray(req.body.seasons) && req.body.seasons.length)
         ? req.body.seasons
-        : [{ season: Number(process.env.YEAR) }];
+        : [{ season: activeSeason('football') }];
     const color = req.body.color || await pickUnusedColor(req.body.league);
 
     const user = new User({
@@ -460,7 +461,7 @@ router.post('/', async (req, res) => {
         const newUser = await user.save();
         await audit.record(req, {
             action: 'user.create',
-            league: newUser.league, season: String(process.env.YEAR),
+            league: newUser.league, season: String(activeSeason('football')),
             summary: `Added ${newUser.firstName} ${newUser.lastName}`,
             meta: { userId: String(newUser._id) }
         });
@@ -501,7 +502,7 @@ router.post('/:id/invite-link', async (req, res) => {
 
         await audit.record(req, {
             action: 'user.invite',
-            league: user.league, season: String(process.env.YEAR),
+            league: user.league, season: String(activeSeason('football')),
             summary: `Created an invite link for ${user.firstName} ${user.lastName}`,
             meta: { userId: String(user._id), reissued: !!user.authSub }
         });
@@ -532,7 +533,7 @@ router.delete('/:id/invite-link', async (req, res) => {
         await User.updateOne({ _id: user._id }, { $unset: { authSub: '' } });
         await audit.record(req, {
             action: 'user.invite',
-            league: user.league, season: String(process.env.YEAR),
+            league: user.league, season: String(activeSeason('football')),
             summary: `Reset the login link for ${user.firstName} ${user.lastName}`,
             meta: { userId: String(user._id), reset: true }
         });
@@ -576,10 +577,10 @@ router.patch('/:id', getUser, async (req, res) => {
     // nothing logged, and this is the endpoint the scoring pass writes every
     // score through. A 500 is the difference between a visible failure and a
     // silent scoring outage.
-    const patchSeason = seasonOf(res.user, process.env.YEAR);
+    const patchSeason = seasonOf(res.user, activeSeason('football'));
     if (!patchSeason) {
         return res.status(500).json({
-            message: `User ${req.params.id} has no ${process.env.YEAR} season entry to write to`
+            message: `User ${req.params.id} has no ${activeSeason('football')} season entry to write to`
         });
     }
     if (req.body.cumulativeScore != null) {
@@ -639,7 +640,7 @@ router.post('/:id/season-membership', async (req, res) => {
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
-        const year = Number(process.env.YEAR);
+        const year = activeSeason('football');
         // Locked once the season is underway (would drop scored data); admins
         // only, since applying it needs a rescore.
         if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(user.league, year)) {
@@ -677,7 +678,7 @@ router.post('/:id/season-membership', async (req, res) => {
 router.get('/league/:league/roster-teams', async (req, res) => {
     try {
         const league = req.params.league;
-        const season = Number(req.query.season || process.env.YEAR);
+        const season = Number(req.query.season || activeSeason('football'));
 
         const users = await User.find(
             { league, 'seasons.season': season },
@@ -732,7 +733,7 @@ router.patch('/:id/roster-team', async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
 
-        const season = Number((req.body && req.body.season) || process.env.YEAR);
+        const season = Number((req.body && req.body.season) || activeSeason('football'));
         const fromTeamId = req.body && req.body.fromTeamId;
         const toTeamId = req.body && req.body.toTeamId;
 
@@ -814,8 +815,8 @@ router.patch('/:id/roster-team', async (req, res) => {
 async function getUser(req, res, next) {
     let user;
     try {
-        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": process.env.YEAR}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": process.env.YEAR}}}});
+        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": activeSeason('football')}},
+                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": activeSeason('football')}}}});
         if (user == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }

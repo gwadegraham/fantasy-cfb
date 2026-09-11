@@ -1,4 +1,5 @@
 const { internalFetch, failureMessage } = require('./internal-api');
+const { activeSeason } = require('./active-season');
 const { resolveConfig, MODELS, engagementForSeason, ruleEnabled, overridesFromDoc } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
 const { factsForGame } = require('./cfp-bracket');
@@ -48,7 +49,7 @@ async function freezePriorSeasonConfig(currentYear) {
 module.exports= {
 
     updateCumulativeScores: async function() {
-        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${activeSeason('football')}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -70,7 +71,7 @@ module.exports= {
             // Seed reduce with 0 so users with no weekly scores yet (new users
             // / start of season) return 0 instead of throwing "Reduce of empty
             // array with no initial value" and aborting the whole loop.
-            var weeklyScore = seasonOrEmpty(user, process.env.YEAR).weeklyScore || [];
+            var weeklyScore = seasonOrEmpty(user, activeSeason('football')).weeklyScore || [];
             var totalScore = weeklyScore.map(score).reduce(sum, 0);
             // Awaited: un-awaited, this whole step resolved before a single
             // cumulativeScore had actually been written, so the job moved on to
@@ -93,7 +94,7 @@ module.exports= {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ season: process.env.YEAR }),
+            body: JSON.stringify({ season: activeSeason('football') }),
         });
 
         const data = await response.json();
@@ -106,12 +107,12 @@ module.exports= {
     },
 
     updateScores: async function(season, week) {
-        await freezePriorSeasonConfig(process.env.YEAR);
+        await freezePriorSeasonConfig(activeSeason('football'));
 
         // One ranking cache per call: every game in the week shares its poll doc
         // instead of re-reading it from Mongo per game.
         var rankingCache = new Map();
-        var response = await internalFetch(`${process.env.URL}/users/season/${process.env.YEAR}`, {
+        var response = await internalFetch(`${process.env.URL}/users/season/${activeSeason('football')}`, {
             method: 'GET',
             headers: {
             'Accept': 'application/json',
@@ -129,7 +130,7 @@ module.exports= {
             // asked for. Named rather than indexed: the route $elemMatch's it
             // into a one-element array, and reading index 0 quietly depended on
             // that projection staying exactly as it is.
-            var userSeason = seasonOrEmpty(user, process.env.YEAR);
+            var userSeason = seasonOrEmpty(user, activeSeason('football'));
 
             if (!configByLeague[user.league]) {
                 configByLeague[user.league] = await getScoringConfig(user.league);
@@ -155,9 +156,9 @@ module.exports= {
                         // values + disabled) so commissioner structure changes
                         // are honored, not just point values.
                         if (cfg.model == "claunts") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, process.env.YEAR, cfg, rankingCache);
+                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, activeSeason('football'), cfg, rankingCache);
                         } else if (cfg.model == "graham") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, process.env.YEAR, cfg, rankingCache);
+                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, activeSeason('football'), cfg, rankingCache);
                         }
 
                         score += teamScore;
@@ -186,7 +187,7 @@ module.exports= {
             // season the mode was never enabled for adds nothing (and enabling
             // it for one season never touches another). Existing classic leagues
             // are likewise unchanged.
-            var seasonEng = engagementForSeason(cfg.engagementBySeason, process.env.YEAR);
+            var seasonEng = engagementForSeason(cfg.engagementBySeason, activeSeason('football'));
             var captainTeamId = null, captainBonus = 0;
             if (seasonEng.captainEnabled && season !== "postseason") {
                 var priorWeekly = (userSeason.weeklyScore || [])
@@ -315,14 +316,14 @@ module.exports= {
     // Scoring for the Claunts league (claunts model). `cfg` may be a flat point-
     // values object (back-compat with callers/tests that only tune values) or a
     // fully-resolved config { model, combineMode, values, disabled }.
-    calculateScoreV1: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.claunts.defaults, cache) {
+    calculateScoreV1: async function (team, data, week, season = activeSeason('football'), cfg = MODELS.claunts.defaults, cache) {
         var rankings = await getRankingsForGame(data, week, season, cache);
         var bracket = await getBracketForGame(data, season, cache);
         return evaluate('claunts', team, data, rankings, normalizeCfg('claunts', cfg), bracket);
     },
 
     // Scoring for the Graham league (graham model). See calculateScoreV1 re: cfg.
-    calculateScoreV2: async function (team, data, week, season = process.env.YEAR, cfg = MODELS.graham.defaults, cache) {
+    calculateScoreV2: async function (team, data, week, season = activeSeason('football'), cfg = MODELS.graham.defaults, cache) {
         var rankings = await getRankingsForGame(data, week, season, cache);
         var bracket = await getBracketForGame(data, season, cache);
         return evaluate('graham', team, data, rankings, normalizeCfg('graham', cfg), bracket);

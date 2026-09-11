@@ -24,7 +24,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
-const activeSeason = require('./modules/active-season');
+const seasons = require('./modules/active-season');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
@@ -228,8 +228,8 @@ db.on('open', () => console.log('Connected to Database'));
 // keeps a cold start from answering "what season is it?" with a null.
 db.on('open', async () => {
     try {
-        await activeSeason.ensureDefaultSport();
-        const cached = await activeSeason.prime();
+        await seasons.ensureDefaultSport();
+        const cached = await seasons.prime();
         console.log('Season cache primed:', JSON.stringify(cached.sports));
     } catch (err) {
         console.error('Season cache prime failed (falling back to YEAR):', err.message);
@@ -526,7 +526,7 @@ app.get('/rules', async (req, res) => {
         const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
         // Game-mode (H2H/Captain) settings for the active season, so the rules
         // page can spell out the win/tie bonuses when the league runs H2H.
-        const engagement = engagementForSeason(cfg.engagementBySeason, Number(process.env.YEAR));
+        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.activeSeason('football'));
 
         res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement });
     } else {
@@ -540,7 +540,7 @@ app.get('/draft-room', (req, res) => {
         user.isDraft = false;
         const userState = safeJson(req.effUser);
 
-        res.render('draftRoom', {user, userState, year: process.env.YEAR});
+        res.render('draftRoom', {user, userState, year: seasons.activeSeason('football')});
     } else {
         res.redirect("/login");
     }
@@ -555,7 +555,7 @@ app.get('/draft-board', (req, res) => {
     const user = buildUserContext(req.effUser);
     res.render('draftBoard', {
         user, userState: safeJson(req.effUser),
-        year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser)
+        year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser)
     });
 });
 
@@ -565,7 +565,7 @@ app.get('/betting', async (req, res) => {
     if (!res.locals.isBettingGroupMember) return res.redirect('/');
     const userState = safeJson(req.effUser);
     const isAdmin = devRole.effectiveRoles(req).includes('Admin');
-    res.render('betting', { user, userState, year: process.env.YEAR, isAdmin });
+    res.render('betting', { user, userState, year: seasons.activeSeason('football'), isAdmin });
 });
 
 // Game-day scoreboard — every FBS game for the week, with the league's drafted
@@ -579,7 +579,7 @@ app.get('/scoreboard', (req, res) => {
     res.render('scoreboard', {
         user,
         userState: safeJson(req.effUser),
-        year: process.env.YEAR,
+        year: seasons.activeSeason('football'),
         leagueCode: leagueCodeFor(req.effUser)
     });
 });
@@ -596,7 +596,7 @@ app.get('/admin', (req, res) => {
         const userState = safeJson(req.effUser);
         const isAdmin = roles.includes('Admin');
 
-        res.render('admin', {user, userState, year: process.env.YEAR, isAdmin});
+        res.render('admin', {user, userState, year: seasons.activeSeason('football'), isAdmin});
     } else {
         res.redirect("/login");
     }
@@ -618,7 +618,7 @@ app.get('/userHome', async function(req, res) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
 
-        res.render('userHome', {user, userState, year: process.env.YEAR, cloudinary: cloudinaryConfig()});
+        res.render('userHome', {user, userState, year: seasons.activeSeason('football'), cloudinary: cloudinaryConfig()});
     } else {
         res.redirect("/login");
     }
@@ -650,7 +650,7 @@ app.get('/game/:id', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
-        res.render('gameDetail', { user, userState, gameId: req.params.id, year: process.env.YEAR });
+        res.render('gameDetail', { user, userState, gameId: req.params.id, year: seasons.activeSeason('football') });
     } else {
         res.redirect("/login");
     }
@@ -660,7 +660,7 @@ app.get('/cfp-bracket', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
-        res.render('cfpBracket', { user, userState, year: process.env.YEAR, leagueCode: leagueCodeFor(req.effUser) });
+        res.render('cfpBracket', { user, userState, year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser) });
     } else {
         res.redirect("/login");
     }

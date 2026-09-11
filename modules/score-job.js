@@ -1,4 +1,5 @@
 const { runFullUpdate } = require('./score-update');
+const { activeSeason } = require('./active-season');
 const { startRun, finishRun } = require('./job-logger');
 // emailOnSuccess (the failure-only default) lives in job-mailer so jobs that
 // don't need the scoring pipeline can share it; re-exported here unchanged.
@@ -13,7 +14,7 @@ function makeJob({ jobName, label, withBetting }) {
         const startMs = Date.now();
         const when = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
         console.log(`${label} starting`, when);
-        const id = await startRun(jobName, { season: process.env.YEAR });
+        const id = await startRun(jobName, { season: activeSeason('football') });
         try {
             const r = await runFullUpdate({ withBetting: !!withBetting });
             const secs = Math.round((Date.now() - startMs) / 1000);
@@ -34,7 +35,7 @@ function makeJob({ jobName, label, withBetting }) {
                     when: when,
                     ok: true,
                     rows: [
-                        ['Season', `${r.seasonType} ${process.env.YEAR}`],
+                        ['Season', `${r.seasonType} ${activeSeason('football')}`],
                         ['Week', String(r.week)],
                         ['Games', `${r.gamesNew} new · ${r.gamesUpdated} updated`],
                         ['Teams', String(r.teams)],

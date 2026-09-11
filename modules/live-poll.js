@@ -37,6 +37,7 @@
 // during live play.
 
 const Game = require('../models/game');
+const { activeSeason } = require('./active-season');
 const { runLiveUpdate, drainCompletions } = require('./score-update');
 const completionFlush = require('./completion-flush');
 const { startRun, finishRun } = require('./job-logger');
@@ -91,7 +92,7 @@ async function run() {
     // games. The 6h tail (applied in JS) stops a stuck `completed` flag from
     // polling forever. Regular and postseason never overlap in time, so at most
     // one phase is live; postseason wins if somehow both look live.
-    const season = Number(process.env.YEAR);
+    const season = activeSeason('football');
     const candidates = await Game.find(
         { season, completed: { $ne: true }, startDate: { $lte: now.toISOString() } },
         { startDate: 1, completed: 1, seasonType: 1 }
@@ -107,7 +108,7 @@ async function run() {
     if (!phase) {
         if (!completionFlush.pendingCount()) return { skipped: 'no game in progress' };
 
-        const drainId = await startRun(JOB_NAME, { season: process.env.YEAR });
+        const drainId = await startRun(JOB_NAME, { season: activeSeason('football') });
         try {
             const drained = await drainCompletions();
             await finishRun(drainId, 'success', `Slate over — settled ${drained.flushed} completed game(s)`);
@@ -123,7 +124,7 @@ async function run() {
     // Poll: lightweight scoreboard update (1 free CFBD call) + re-score the
     // current week.
     console.log(`live-poll: ${phase} game in progress, refreshing scores (${lastKnownRemaining == null ? 'calls left unknown' : lastKnownRemaining + ' calls left'})`);
-    const id = await startRun(JOB_NAME, { season: process.env.YEAR });
+    const id = await startRun(JOB_NAME, { season: activeSeason('football') });
     try {
         const r = await runLiveUpdate();
         if (typeof r.remainingCalls === 'number') lastKnownRemaining = r.remainingCalls;

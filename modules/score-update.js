@@ -1,4 +1,5 @@
 const { internalFetch } = require('./internal-api');
+const { activeSeason } = require('./active-season');
 
 // Configure CFB Data
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
@@ -229,7 +230,7 @@ async function doFullUpdate({ withBetting = false } = {}) {
     // Cached per-season (modules/cfbd-calendar.js): the week windows are static
     // intra-day, so frequent polls reuse one fetch instead of spending a CFBD
     // call each time just to compute the current week.
-    var calendar = await getCalendar(process.env.YEAR);
+    var calendar = await getCalendar(activeSeason('football'));
     var resolved = resolveCurrentWeek(calendar, new Date());
 
     if (resolved.skip) {
@@ -243,7 +244,7 @@ async function doFullUpdate({ withBetting = false } = {}) {
     console.log("It is currently Week", weekNumber);
     console.log("Is it the postseason yet? ", isPostseason);
 
-    const season = process.env.YEAR;
+    const season = activeSeason('football');
     var seasonType = resolved.seasonType;
     var week = isPostseason ? 1 : weekNumber;
 
@@ -463,7 +464,7 @@ async function maybeFlushCompletions(season, { force = false } = {}) {
 // expensive work. On ticks where nothing completed we still re-score, so
 // in-progress fantasy points feed the live H2H win-probability bar.
 async function doLiveUpdate() {
-    const season = Number(process.env.YEAR);
+    const season = activeSeason('football');
     const result = await updateFromScoreboard();
 
     // A tick that changed nothing is still a tick: it may be the one where the
@@ -532,7 +533,7 @@ async function doLiveUpdate() {
 // tick to release it. modules/live-poll.js calls this when it sees pending work
 // and no live game.
 async function drainCompletions() {
-    const season = Number(process.env.YEAR);
+    const season = activeSeason('football');
     return maybeFlushCompletions(season, { force: true });
 }
 

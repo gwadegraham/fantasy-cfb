@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
@@ -45,7 +46,7 @@ function teamAliases(t) {
 router.get('/index', async (req, res) => {
     try {
         const league = leagueCodeFor(req.effUser);
-        const season = Number(process.env.YEAR);
+        const season = activeSeason('football');
 
         const [teamDocs, userDocs] = await Promise.all([
             Team.find(FBS_ONLY, 'id school mascot abbreviation conference color logos alt_name1 alt_name2 alt_name3 alternateNames').lean(),

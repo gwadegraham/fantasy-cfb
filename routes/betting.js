@@ -1,4 +1,5 @@
 const express = require('express');
+const { activeSeason } = require('../modules/active-season');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Parlay = require('../models/parlay');
@@ -27,7 +28,7 @@ const { deriveParlayStatus } = require('../modules/parlay-resolve');
 // still reported success.
 router.post('/retry-stat-legs', requireAdmin, async (req, res) => {
     try {
-        const season = Number(req.body.season || process.env.YEAR);
+        const season = Number(req.body.season || activeSeason('football'));
         const { retryPendingStatLegs } = require('../modules/parlay-resolve');
         const result = await retryPendingStatLegs(season);
         res.json(result);
@@ -50,7 +51,7 @@ function isAdmin(req) {
 
 router.get('/list', async (req, res) => {
     try {
-        const season = req.query.season || process.env.YEAR;
+        const season = req.query.season || activeSeason('football');
         const parlays = await Parlay.find({
             group: req.bettingGroup._id,
             season: Number(season)
@@ -197,7 +198,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { season, seasonType, week, wager } = req.body;
-        const s = Number(season || process.env.YEAR);
+        const s = Number(season || activeSeason('football'));
         const w = Number(week);
         const st = seasonType || 'regular';
 
