@@ -48,7 +48,14 @@ const franchiseSchema = new mongoose.Schema({
     // Scoring bookkeeping, per franchise rather than per person: it tracks when
     // THIS league's scores were last written.
     isUpdated: { type: Boolean, default: false },
-    lastUpdated: { type: String }
+    lastUpdated: { type: String },
+
+    // Provenance: set only by modules/account-migration.js. Rollback scopes its
+    // delete to documents carrying it, so anything created directly — a
+    // basketball-only manager with no User behind them (#310) — survives. Those
+    // cannot be reconstructed from the users collection, so an unscoped delete
+    // would lose them permanently.
+    migratedFrom: { type: mongoose.Schema.Types.ObjectId }
 }, { timestamps: true });
 
 // The membership query.
