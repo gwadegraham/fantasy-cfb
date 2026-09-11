@@ -764,9 +764,19 @@ router.get('/plays/:gameId', async (req, res) => {
         // The stored summary is checked first and short-circuits everything
         // else. A finished game's plays never change, so this is the branch
         // that makes looking at last week's games free.
+        //
+        // Gated on `completed` as well as on the summary existing. A summary is
+        // written whenever CFBD's payload says Final, and CFBD says Final at
+        // halftime and on transient glitches — so a game can be persisted
+        // mid-game. Without this gate that stored snapshot is served for the
+        // rest of the game AND after it, permanently freezing the log at
+        // halftime with no way to correct it. With it, a game our own ingest
+        // has not marked complete is re-fetched and the summary overwritten,
+        // which self-heals a premature write. A genuinely completed game still
+        // short-circuits, so it still costs at most one call for its life.
         const game = await Game.findOne({ id: gameId }, { livePlays: 1, completed: 1 }).lean();
         if (!game) return res.status(404).json({ message: 'Game not found' });
-        if (game.livePlays && (game.livePlays.drives || []).length) {
+        if (game.completed && game.livePlays && (game.livePlays.drives || []).length) {
             return res.json({
                 source: 'db',
                 status: 'final',
