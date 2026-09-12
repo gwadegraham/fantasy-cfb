@@ -92,13 +92,22 @@ function boostMath(parlay, legs) {
     var wager = Number(parlay.wager) || 0;
     var all = legs || [];
     var active = all.filter(function (l) { return l.result !== 'push'; });
-    var allPriced = active.length && active.every(function (l) { return isRealOdds(l.odds); });
-    // Every leg pushed means a refund, not the slip price for legs that no
-    // longer count. Mirrors ticketDecimalOdds in modules/parlay-calc.js.
-    var allPushed = all.length && !active.length;
-    var rawDec = allPriced
-        ? active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1)
-        : ((!allPushed && isRealOdds(parlay.parlayOdds)) ? americanToDecimal(parlay.parlayOdds) : 0);
+    var priced = active.length && active.every(function (l) { return isRealOdds(l.odds); });
+    var legDec = priced ? active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1) : 0;
+
+    var rawDec;
+    if (all.length !== active.length) {
+        // A push re-prices the ticket without that leg, so parlayOdds is out.
+        rawDec = legDec;
+    } else if (isRealOdds(parlay.parlayOdds)) {
+        // The book's number is the price that pays; the leg product is only
+        // trusted to sharpen it, and only when the two agree.
+        rawDec = (legDec && decimalToAmerican(legDec) === Math.round(Number(parlay.parlayOdds)))
+            ? legDec
+            : americanToDecimal(parlay.parlayOdds);
+    } else {
+        rawDec = legDec;
+    }
     if (!wager || rawDec <= 1) return null;
 
     var cap = Number(parlay.boostCap);
@@ -354,7 +363,7 @@ function renderCurrentParlay() {
         // ticket pays, so lead with the blended odds and show the cap.
         var badge = (parlay.boostPct ? '+' + parlay.boostPct + '%' : 'boost')
             + (boost.capped ? ' &middot; $' + boost.boostedStake + ' cap' : '');
-        oddsHtml = '<span class="odds-original">' + formatOdds(parlay.parlayOdds || boost.rawOdds) + '</span>'
+        oddsHtml = '<span class="odds-original">' + formatOdds(boost.rawOdds) + '</span>'
             + ' <span class="boost-badge">' + badge + '</span> '
             + '<span class="odds-boosted">' + formatOdds(boost.effectiveOdds) + '</span>';
     } else if (parlay.parlayOdds) {

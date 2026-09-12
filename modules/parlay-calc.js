@@ -83,12 +83,6 @@ function effectiveAmericanOdds(wager, decimal, boostPct, boostCap, boostedDecima
     return decimalToAmerican(total / wager);
 }
 
-// The ticket's true decimal odds. The legs win over the hand-typed parlayOdds,
-// because the number on the slip is ROUNDED to whole American odds while the
-// legs are quoted whole and multiply out exactly: a real $20 ticket at
-// -345/-205/-200/-172 is 4.552264, which FanDuel displays as "+355" (4.55).
-// Computing off the display loses 11 cents on the payout. parlayOdds is the
-// fallback for a ticket whose legs aren't all filled in yet.
 // No board quotes American odds between -100 and +100, and americanToDecimal
 // returns a flat 1 for them — which would price a WINNING ticket at stake-back
 // and write that to parlay.payout. Treat anything in that gap as not a price.
@@ -96,16 +90,41 @@ function isRealAmericanOdds(odds) {
     return typeof odds === 'number' && !isNaN(odds) && Math.abs(odds) >= 100;
 }
 
+// The ticket's true decimal odds, from whichever source can be trusted.
+//
+// The book's own number is the price the bet actually pays, so a typed
+// parlayOdds wins. The leg product is used only to recover the precision that
+// number loses: American odds are displayed whole, so a FanDuel ticket priced
+// at 4.552171 shows as "+355" (4.55), and computing off the display cost 11
+// cents on $20.
+//
+// The catch is that the product is not always the same bet. A real DraftKings
+// slip has legs of -160/-163/-140/-250 — the prices locked at placement —
+// multiplying to +529 against a ticket the book priced at +355. Whatever the
+// book is doing there, +355 is what pays, and a 174-point "correction" is not
+// a rounding fix.
+//
+// So the two must agree before the product is trusted: round it back to
+// American odds and compare. Equal means the legs really are the ticket, and
+// the exact product is the better number. Unequal means the legs don't price
+// this bet, and the book's number stands.
 function ticketDecimalOdds(parlay) {
     const all = parlay.legs || [];
-    const legs = all.filter(l => l.result !== 'push');
-    if (legs.length && legs.every(l => isRealAmericanOdds(l.odds))) return parlayDecimalOdds(legs);
-    // Every leg pushed: the book refunds the stake, and the slip price — which
-    // priced legs that no longer count — is not the answer. Same trap as a
-    // single push, which is why it's refused here rather than fallen through.
-    if (all.length && !legs.length) return 0;
-    if (isRealAmericanOdds(parlay.parlayOdds)) return americanToDecimal(parlay.parlayOdds);
-    return 0;
+    const active = all.filter(l => l.result !== 'push');
+    const priced = active.length > 0 && active.every(l => isRealAmericanOdds(l.odds));
+    const legDecimal = priced ? parlayDecimalOdds(active) : 0;
+
+    // A push re-prices the ticket without that leg, so parlayOdds — which
+    // priced it — is out of the question no matter what the legs say.
+    if (all.length !== active.length) return legDecimal;
+
+    if (isRealAmericanOdds(parlay.parlayOdds)) {
+        if (legDecimal && decimalToAmerican(legDecimal) === Math.round(Number(parlay.parlayOdds))) {
+            return legDecimal;
+        }
+        return americanToDecimal(parlay.parlayOdds);
+    }
+    return legDecimal;
 }
 
 // The one place that decides what a settled parlay paid. A hand-typed

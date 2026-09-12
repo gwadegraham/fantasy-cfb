@@ -134,7 +134,7 @@ describe('parlay boost math', () => {
         // ROUNDED display of 4.552171; computing off it paid $108.70 where
         // FanDuel paid $108.81. The legs are quoted whole, so their product is
         // the exact price.
-        it('prices off the legs, not the rounded number on the slip', () => {
+        it('prices off the legs when they confirm the slip, not the rounded display', () => {
             const real = [{ odds: -345 }, { odds: -205 }, { odds: -200 }, { odds: -172 }];
             const paid = settledPayout({
                 wager: 20, parlayOdds: 355, boostPct: 50, boostedOdds: 532, boostCap: 10, legs: real
@@ -143,6 +143,31 @@ describe('parlay boost math', () => {
             expect(paid).toBe(108.81);
             // what pricing off the rounded +355 / +532 used to produce
             expect(paid).not.toBe(108.7);
+        });
+
+        // Regression, against a real DraftKings slip. Its legs were the prices
+        // locked at placement and still multiply to +529 against a ticket the
+        // book priced at +355. Whatever the book is doing, +355 is what pays —
+        // a 174-point "correction" is not a rounding fix. The legs are trusted
+        // only when rounding them back lands on the number that was typed.
+        it('keeps the book price when the legs do not agree with it', () => {
+            const drifted = [{ odds: -250 }, { odds: -163 }, { odds: -160 }, { odds: -140 }];
+
+            const paid = settledPayout({
+                wager: 20, parlayOdds: 355, boostPct: 50, boostCap: 10, legs: drifted
+            });
+
+            expect(paid).toBe(108.75);
+            // priced off the legs' +529 instead, this was $152.32
+            expect(paid).not.toBe(152.32);
+        });
+
+        it('still uses the legs when they round back to the typed number', () => {
+            const agreeing = [{ odds: -345 }, { odds: -205 }, { odds: -200 }, { odds: -172 }];
+
+            // exact product 4.552171 rather than the displayed 4.55
+            expect(settledPayout({ wager: 20, parlayOdds: 355, boostPct: 50, boostCap: 10, legs: agreeing }))
+                .toBe(108.81);
         });
 
         it('derives the boosted slice from the percentage, not the rounded boosted odds', () => {
