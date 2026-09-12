@@ -409,7 +409,10 @@ async function sendTest(userId) {
     if (!user) return { sent: 0, reason: 'User not found' };
     const res = await sendToUser(user, {
         type: 'test',
-        title: '🏈 Campus Clash alerts are on',
+        // No app name here: iOS already stamps every notification with "from
+        // Campus Clash", so putting it in the title too just says it twice. The
+        // real alerts never had this problem — they lead with a team.
+        title: '🏈 Alerts are on',
         body: "Real ones look like this — when your teams score, take the lead, or finish.",
         url: '/standings',
         tag: 'test'
