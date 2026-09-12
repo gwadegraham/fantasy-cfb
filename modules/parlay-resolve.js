@@ -113,6 +113,8 @@ async function resolveParlays() {
                 parlay.payout = 0;
             } else if (newStatus === 'push') {
                 parlay.payout = parlay.wager || 0;
+            } else if (newStatus === 'won') {
+                parlay.payout = null;
             }
 
             parlay.updatedAt = new Date();

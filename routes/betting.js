@@ -258,12 +258,27 @@ router.patch('/:id/legs', async (req, res) => {
         if (betType != null) leg.betType = betType;
         if (selection != null) leg.selection = selection;
         if (line !== undefined) leg.line = line;
-        if (odds != null) leg.odds = odds;
+        if (odds != null) {
+            const n = Number(odds);
+            // No board quotes American odds between -100 and +100.
+            if (isNaN(n) || Math.abs(n) < 100) {
+                return res.status(400).json({ message: 'Odds must be +100 or higher, or -100 or lower' });
+            }
+            leg.odds = n;
+        }
         if (teamSide !== undefined) leg.teamSide = teamSide;
         if (statCategory !== undefined) leg.statCategory = statCategory;
         if (statTeamSide !== undefined) leg.statTeamSide = statTeamSide;
-        leg.result = 'pending';
-        leg.resolvedAt = null;
+
+        // Only the pick decides how a leg grades. Correcting the odds to the
+        // price actually filled is now a one-tap edit, and blanket-resetting
+        // the result on it un-graded a settled leg — after which nothing
+        // recomputed parlay.status, so the ticket sat pending forever.
+        const regradingFields = ['gameId', 'betType', 'selection', 'line', 'teamSide', 'statCategory', 'statTeamSide'];
+        if (regradingFields.some(f => req.body[f] !== undefined)) {
+            leg.result = 'pending';
+            leg.resolvedAt = null;
+        }
 
         // Spread legs are graded arithmetically off `line` and `teamSide`, so a
         // leg missing either — or carrying a quarter-point the board can't have
@@ -306,7 +321,18 @@ router.patch('/:id', async (req, res) => {
         for (const field of numericFields) {
             if (req.body[field] === undefined) continue;
             const raw = req.body[field];
-            parlay[field] = (raw === null || raw === '') ? null : Number(raw);
+            if (raw === null || raw === '') {
+                parlay[field] = null;
+                continue;
+            }
+            const n = Number(raw);
+            // Booleans and arrays coerce to numbers without complaint, and a
+            // negative wager or boost is not a thing — refuse rather than
+            // quietly storing a figure that lands in the season's net.
+            if (typeof raw === 'boolean' || Array.isArray(raw) || isNaN(n) || n < 0) {
+                return res.status(400).json({ message: field + ' must be a number of 0 or more' });
+            }
+            parlay[field] = n;
         }
         if (req.body.seasonType != null) parlay.seasonType = req.body.seasonType;
         if (req.body.placedBy != null) parlay.placedBy = req.body.placedBy || null;
@@ -345,6 +371,10 @@ router.patch('/:id/legs/:contributor/resolve', async (req, res) => {
             parlay.payout = 0;
         } else if (parlay.status === 'push') {
             parlay.payout = parlay.wager || 0;
+        } else if (parlay.status === 'won') {
+            // Won but no wager recorded — there is no payout to claim, and a
+            // stale one would count as winnings against $0 staked.
+            parlay.payout = null;
         }
 
         parlay.updatedAt = new Date();

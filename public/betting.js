@@ -90,11 +90,15 @@ function isRealOdds(odds) {
 
 function boostMath(parlay, legs) {
     var wager = Number(parlay.wager) || 0;
-    var active = (legs || []).filter(function (l) { return l.result !== 'push'; });
+    var all = legs || [];
+    var active = all.filter(function (l) { return l.result !== 'push'; });
     var allPriced = active.length && active.every(function (l) { return isRealOdds(l.odds); });
+    // Every leg pushed means a refund, not the slip price for legs that no
+    // longer count. Mirrors ticketDecimalOdds in modules/parlay-calc.js.
+    var allPushed = all.length && !active.length;
     var rawDec = allPriced
         ? active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1)
-        : (isRealOdds(parlay.parlayOdds) ? americanToDecimal(parlay.parlayOdds) : 0);
+        : ((!allPushed && isRealOdds(parlay.parlayOdds)) ? americanToDecimal(parlay.parlayOdds) : 0);
     if (!wager || rawDec <= 1) return null;
 
     var cap = Number(parlay.boostCap);
@@ -109,8 +113,16 @@ function boostMath(parlay, legs) {
         effectiveOdds: decimalToAmerican(total / wager),
         capped: plainStake > 0,
         boostedStake: boostedStake,
-        payout: toCents(total).toFixed(2)
+        payout: toCents(total)
     };
+}
+
+// Stored payouts are Mongo Numbers, so a trailing-zero cent renders bare —
+// "$99.6". Every dollar figure on the page goes through here.
+function money(amount) {
+    var n = Number(amount);
+    if (isNaN(n)) return '—';
+    return '$' + n.toFixed(2);
 }
 
 function formatOdds(odds) {
@@ -131,7 +143,7 @@ function calcPayout(wager, legs) {
     if (!wager) return 0;
     var active = legs.filter(function (l) { return l.odds && l.result !== 'push'; });
     var dec = active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1);
-    return toCents(wager * dec).toFixed(2);
+    return toCents(wager * dec);
 }
 
 function formatGameTime(dateStr) {
@@ -214,12 +226,12 @@ function renderHistory() {
         var statusColor = p.status === 'won' ? 'var(--cc-success)' : (p.status === 'lost' ? 'var(--cc-danger-text)' : 'var(--cc-info)');
         var statusLabel = p.status === 'won' ? 'Won' : (p.status === 'lost' ? 'Lost' : (p.status === 'push' ? 'Push' : 'Pend'));
         var payoutColor = p.status === 'won' ? 'var(--cc-success)' : (p.status === 'lost' ? 'var(--cc-danger-text)' : 'var(--cc-muted)');
-        var payoutText = p.payout != null ? '$' + p.payout : '—';
+        var payoutText = p.payout != null ? money(p.payout) : '—';
 
         return '<tr>'
             + '<td>Wk ' + p.week + '</td>'
             + '<td style="color:var(--cc-muted-2);">' + filled + '/' + total + '</td>'
-            + '<td>$' + (p.wager || 0) + '</td>'
+            + '<td>' + money(p.wager || 0) + '</td>'
             + '<td><span style="font-weight:600;color:' + statusColor + ';">' + statusLabel + '</span></td>'
             + '<td class="text-right" style="color:' + payoutColor + ';">' + payoutText + '</td>'
             + '</tr>';
@@ -299,7 +311,9 @@ function renderCurrentParlay() {
 
         var isEditing = editingLeg
             && editingLeg.parlayId === parlay._id
-            && editingLeg.contributor === leg.contributor;
+            && editingLeg.contributor === leg.contributor
+            && parlay.status === 'pending'
+            && (leg.contributor === myUserId || (window.IS_ADMIN && adminEditing));
 
         // Correcting the odds to the filled price is the everyday edit, so it's
         // the one the row opens with. Re-picking the game is still a tap away.
@@ -330,7 +344,7 @@ function renderCurrentParlay() {
 
     var filledLegs = parlay.legs.filter(function (l) { return l.odds; });
     var calcOdds = filledLegs.length ? combinedOdds(filledLegs) : '—';
-    var calcPay = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
+    var calcPay = parlay.wager && filledLegs.length ? money(calcPayout(parlay.wager, filledLegs)) : '—';
 
     var boost = (parlay.boostPct || parlay.boostedOdds) ? boostMath(parlay, parlay.legs) : null;
 
@@ -351,11 +365,11 @@ function renderCurrentParlay() {
 
     var payoutDisplay;
     if (parlay.payout != null) {
-        payoutDisplay = '$' + parlay.payout;
+        payoutDisplay = money(parlay.payout);
     } else if (parlay.totalPayout) {
-        payoutDisplay = '$' + parlay.totalPayout;
+        payoutDisplay = money(parlay.totalPayout);
     } else if (boost) {
-        payoutDisplay = '$' + boost.payout;
+        payoutDisplay = money(boost.payout);
     } else {
         payoutDisplay = calcPay;
     }
@@ -544,9 +558,11 @@ function scrollLegIntoView(contributor, position) {
     // You just tapped a button on this row, so it is usually already in front
     // of you — scrolling it to the top of the viewport reads as the page
     // lurching for no reason. Only move when the row can't actually be seen.
-    var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    var vv = window.visualViewport;
+    var top = vv ? vv.offsetTop : 0;
+    var bottom = top + (vv ? vv.height : window.innerHeight);
     var r = el.getBoundingClientRect();
-    if (r.top >= 0 && r.bottom <= vh) return;
+    if (r.top >= top && r.bottom <= bottom) return;
 
     var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     el.scrollIntoView({ block: position || 'nearest', behavior: reduced ? 'auto' : 'smooth' });
@@ -657,6 +673,7 @@ function closeGamePicker(e) {
 function selectGame(gameId) {
     var backdrop = document.getElementById('game-picker-backdrop');
     if (backdrop) backdrop.remove();
+    untrackKeyboard();
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
     if (!activePick) return;

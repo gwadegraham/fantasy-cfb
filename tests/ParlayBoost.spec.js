@@ -184,12 +184,46 @@ describe('parlay boost math', () => {
         });
 
         it('pays nothing rather than a made-up number when there is no usable price', () => {
+            // legs carrying no odds must reach the price check, not short-circuit
+            // out of parlayPayout on an empty array
+            expect(settledPayout({ wager: 20, parlayOdds: 45, boostPct: 50, legs: [{ odds: null }] })).toBe(0);
+            expect(settledPayout({ wager: 20, parlayOdds: 45, legs: [{ odds: null }] })).toBe(0);
             expect(settledPayout({ wager: 20, parlayOdds: 45, boostPct: 50, legs: [] })).toBe(0);
+        });
+
+        // Regression. The unboosted branch recomputed from the legs alone and
+        // threw away the price it had just resolved — and an unpriced leg
+        // multiplies by 1.0. A $20 ticket at a typed +398 paid $32.50 instead
+        // of $99.60 the moment one member hadn't entered their odds. Adding a
+        // boost to the same parlay produced the RIGHT number, which is the tell.
+        it('uses the slip price when the legs are not all priced, boost or not', () => {
+            const partial = [{ odds: -160 }, { odds: null }];
+
+            expect(settledPayout({ wager: 20, parlayOdds: 398, legs: partial })).toBe(99.6);
+            expect(settledPayout({ wager: 20, parlayOdds: 398, legs: [] })).toBe(99.6);
+            // the boosted path was already correct; the two now agree on 4.98
+            expect(settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, legs: partial }))
+                .toBe(107.56);
+        });
+
+        it('refuses to price a ticket off a leg no board could have quoted', () => {
+            expect(settledPayout({ wager: 20, legs: [{ odds: -160 }, { odds: 45 }] })).toBe(0);
+        });
+
+        // Latent, but the same trap a single push already sprang: parlayOdds
+        // priced legs that no longer count.
+        it('does not fall back to the slip price when every leg pushed', () => {
+            const allPush = [
+                { odds: 150, result: 'push' },
+                { odds: 120, result: 'push' }
+            ];
+            expect(settledPayout({ wager: 20, parlayOdds: 1342, boostPct: 20, boostCap: 10, legs: allPush }))
+                .toBe(0);
         });
 
         it('falls back to the plain leg product when no boost was recorded', () => {
             // -160 x -163 = 1.625 x 1.6135 = 2.6219 decimal
-            expect(settledPayout({ wager: 20, legs })).toBeCloseTo(52.44, 1);
+            expect(settledPayout({ wager: 20, legs })).toBe(52.44);
         });
 
         it('pays nothing without a wager', () => {

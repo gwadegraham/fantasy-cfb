@@ -97,8 +97,13 @@ function isRealAmericanOdds(odds) {
 }
 
 function ticketDecimalOdds(parlay) {
-    const legs = (parlay.legs || []).filter(l => l.result !== 'push');
+    const all = parlay.legs || [];
+    const legs = all.filter(l => l.result !== 'push');
     if (legs.length && legs.every(l => isRealAmericanOdds(l.odds))) return parlayDecimalOdds(legs);
+    // Every leg pushed: the book refunds the stake, and the slip price — which
+    // priced legs that no longer count — is not the answer. Same trap as a
+    // single push, which is why it's refused here rather than fallen through.
+    if (all.length && !legs.length) return 0;
     if (isRealAmericanOdds(parlay.parlayOdds)) return americanToDecimal(parlay.parlayOdds);
     return 0;
 }
@@ -109,8 +114,14 @@ function ticketDecimalOdds(parlay) {
 function settledPayout(parlay) {
     if (!parlay || !parlay.wager) return 0;
     if (parlay.totalPayout) return parlay.totalPayout;
+    // ticketDecimalOdds has already decided what this ticket is worth per $1 —
+    // leg product, else the slip price. Falling back to parlayPayout() here
+    // would silently re-price off the legs alone, and an unpriced leg
+    // multiplies by 1.0: a $20 ticket at a typed +398 paid $32.50 instead of
+    // $99.60 when one member hadn't filled their odds in. Nothing usable means
+    // nothing to pay, not the stake back.
     const decimal = ticketDecimalOdds(parlay);
-    if (decimal <= 1) return parlayPayout(parlay.wager, parlay.legs || []);
+    if (decimal <= 1) return 0;
     if (parlay.boostPct || parlay.boostedOdds) {
         // boostPct reproduces the book's own arithmetic; the stored boostedOdds
         // is only the rounded display, so it's the fallback, not the source.
@@ -119,7 +130,7 @@ function settledPayout(parlay) {
             : null;
         return boostedReturn(parlay.wager, decimal, parlay.boostPct, parlay.boostCap, boostedDec);
     }
-    return parlayPayout(parlay.wager, parlay.legs || []);
+    return toCents(parlay.wager * decimal);
 }
 
 module.exports = {

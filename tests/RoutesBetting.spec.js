@@ -110,9 +110,60 @@ describe('PATCH /betting/:id — wager and boost', () => {
         expect(res.body.boostPct).toBe(20);
     });
 
+    // Regression. Booleans and arrays coerce to numbers silently, and a
+    // negative wager or boost would land in the season's net.
+    test('refuses a value that is not a non-negative number', async () => {
+        for (const body of [{ wager: -5 }, { boostPct: -150 }, { boostCap: true }, { parlayOdds: [] }]) {
+            const res = await patch(body);
+            expect(res.status).toBe(400);
+        }
+        const still = await request(adminApp).get(`/betting/${parlay._id}`);
+        expect(still.body.wager).toBe(20);
+    });
+
     test('refuses a non-admin', async () => {
         const res = await request(app).patch(`/betting/${parlay._id}`).send({ boostCap: 5 });
         expect(res.status).toBe(403);
+    });
+});
+
+describe('PATCH /betting/:id/legs — correcting the odds', () => {
+    let parlay;
+    beforeEach(async () => {
+        parlay = await Parlay.create({
+            group: group._id, season: 2026, week: 3,
+            legs: [{ contributor: MEMBER, gameId: 1, betType: 'moneyline', selection: 'LSU ML', teamSide: 'home', odds: -410, result: 'win' }]
+        });
+    });
+
+    const patchLeg = body => request(adminApp)
+        .patch(`/betting/${parlay._id}/legs`)
+        .send(Object.assign({ contributor: MEMBER.toString() }, body));
+
+    // Regression. The route blanket-reset result/resolvedAt on every leg patch.
+    // That was tolerable when editing forced a full re-pick, but correcting the
+    // odds is now one tap — and un-grading a settled leg left the parlay unable
+    // to settle, with nothing in the UI to say why.
+    test('keeps a graded result when only the odds change', async () => {
+        const res = await patchLeg({ odds: -400 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].odds).toBe(-400);
+        expect(res.body.legs[0].result).toBe('win');
+    });
+
+    test('re-grades when the pick itself changes', async () => {
+        const res = await patchLeg({ selection: 'Bama ML', teamSide: 'away' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].result).toBe('pending');
+    });
+
+    test('refuses odds no board could have quoted', async () => {
+        const res = await patchLeg({ odds: 45 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/\+100/);
     });
 });
 
