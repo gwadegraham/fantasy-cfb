@@ -36,6 +36,17 @@ const CLOSE_PERIOD = 4;
 const CLOSE_CLOCK_SECONDS = Number(process.env.PUSH_CLOSE_CLOCK_SECONDS || 120);
 const CLOSE_MARGIN = Number(process.env.PUSH_CLOSE_MARGIN || 8);
 
+// A one-point jump is an extra point and nothing else — a safety is 2, and even
+// a defensive conversion return is 2. CFBD sometimes reports the PAT as its own
+// tick a beat after the touchdown, which would otherwise buzz a manager twice
+// for one scoring drive, the second time for the least interesting kick in the
+// sport. Suppressed at DETECTION rather than when building the notification, so
+// nothing downstream has to remember the rule.
+//
+// Note this suppresses the `score` event only. The extra point still moves the
+// stored score, so lead changes and the crunch-time margin continue to see it.
+const EXTRA_POINT_DELTA = 1;
+
 // "12:34" -> 754. CFBD sends the clock as a display string, and withholds it
 // entirely between periods, so null is normal and must not read as 0:00 —
 // that would fire crunch-time on every halftime.
@@ -96,11 +107,13 @@ function detectEvents(prev, next) {
     // --- score ---------------------------------------------------------------
     // Only increases. CFBD does occasionally revise a score downward (a TD comes
     // off the board on review), and announcing that as a score would be wrong.
-    if (nextHome > prevHome) {
-        events.push({ type: 'score', side: 'home', delta: nextHome - prevHome, homePoints: nextHome, awayPoints: nextAway, period: next.period, clock: next.clock });
+    const homeDelta = nextHome - prevHome;
+    const awayDelta = nextAway - prevAway;
+    if (homeDelta > 0 && homeDelta !== EXTRA_POINT_DELTA) {
+        events.push({ type: 'score', side: 'home', delta: homeDelta, homePoints: nextHome, awayPoints: nextAway, period: next.period, clock: next.clock });
     }
-    if (nextAway > prevAway) {
-        events.push({ type: 'score', side: 'away', delta: nextAway - prevAway, homePoints: nextHome, awayPoints: nextAway, period: next.period, clock: next.clock });
+    if (awayDelta > 0 && awayDelta !== EXTRA_POINT_DELTA) {
+        events.push({ type: 'score', side: 'away', delta: awayDelta, homePoints: nextHome, awayPoints: nextAway, period: next.period, clock: next.clock });
     }
 
     // --- leadChange ----------------------------------------------------------
@@ -129,5 +142,5 @@ module.exports = {
     detectEvents,
     // exported for reuse/tests:
     parseClockSeconds, leaderOf, inCloseWindow,
-    CLOSE_PERIOD, CLOSE_CLOCK_SECONDS, CLOSE_MARGIN
+    CLOSE_PERIOD, CLOSE_CLOCK_SECONDS, CLOSE_MARGIN, EXTRA_POINT_DELTA
 };

@@ -115,6 +115,10 @@ function scoreLabel(delta) {
     if (delta === 6 || delta === 7 || delta === 8) return { emoji: '🏈', verb: 'touchdown' };
     if (delta === 3) return { emoji: '🎯', verb: 'field goal' };
     if (delta === 2) return { emoji: '🛡️', verb: 'safety' };
+    // Unreachable from the live path — modules/score-events.js suppresses a
+    // one-point delta before it ever becomes an event. Kept so this function is
+    // correct on its own terms for any caller, rather than silently mislabelling
+    // a PAT as a generic score if that rule is ever relaxed.
     if (delta === 1) return { emoji: '➕', verb: 'extra point' };
     return { emoji: '🏈', verb: 'scored' };
 }
