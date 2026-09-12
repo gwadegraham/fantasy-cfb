@@ -46,6 +46,15 @@ module.exports = {
         "/tests/"
     ],
     coverageThreshold: {
+        // The cutover for #313. It runs once, against a live season, and its
+        // failure modes are quiet — a dropped field passes verification unless
+        // the guard that catches it is itself covered.
+        "./modules/account-migration.js": {
+            statements: 90,
+            branches: 80,
+            functions: 100,
+            lines: 90
+        },
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.

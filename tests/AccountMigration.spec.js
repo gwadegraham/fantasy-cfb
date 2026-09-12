@@ -262,6 +262,53 @@ describe('verify', () => {
         }
     });
 
+    test('a NESTED field in neither list also fails verification', async () => {
+        // The coverage guard used to reject any dotted path, which was only
+        // right for `seasons` — `prefs: { timezone }` dropped out of the check
+        // entirely, so it would be lost with a green verify. Same class of
+        // silent failure as the flat case, one level down.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        expect((await migration.verify()).ok).toBe(true);
+
+        User.schema.add({ prefs: { timezone: String } });
+        try {
+            expect(migration.uncoveredUserFields()).toContain('prefs');
+            const v = await migration.verify();
+            expect(v.ok).toBe(false);
+            expect(v.mismatches).toContainEqual(
+                expect.objectContaining({ field: 'schema-coverage', reason: expect.stringContaining('prefs') })
+            );
+        } finally {
+            Object.keys(User.schema.paths)
+                .filter(k => k.startsWith('prefs'))
+                .forEach(k => { delete User.schema.paths[k]; });
+        }
+    });
+
+    test('does not mistake `seasons` subpaths for uncovered fields', async () => {
+        // seasons.* is covered structurally; the root-segment comparison must
+        // not start reporting every subdocument path as missing.
+        expect(migration.uncoveredUserFields()).toEqual([]);
+    });
+
+    test('catches an account that claims a user but has a different _id', async () => {
+        // The rule that breaks every login. A findById(user._id) can only ever
+        // return a matching _id, so the old check was unreachable — this is the
+        // shape that actually catches a minted one.
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        await Account.create({
+            firstName: 'Stray', lastName: 'Account', migratedFrom: user._id
+        });
+
+        const v = await migration.verify();
+        expect(v.ok).toBe(false);
+        expect(v.mismatches).toContainEqual(
+            expect.objectContaining({ field: '_id', reason: expect.stringContaining('would find nothing') })
+        );
+    });
+
     test('the two field lists currently cover the whole User schema', async () => {
         // Guards the real thing rather than the mechanism: if this fails, some
         // field of a manager is about to be thrown away at cutover.
@@ -341,6 +388,35 @@ describe('the unique (accountId, league) index', () => {
     });
 });
 
+describe('a league that changed between runs', () => {
+    test('re-running clears the franchise in the old league', async () => {
+        // Real scenario: the 2026 Cole -> James roster change. Without this a
+        // re-run left one manager holding two leagues, which verify() caught
+        // but no amount of re-running fixed — contradicting the stated property
+        // that a half-finished run is safe to repeat.
+        const user = await seedUser({ league: 'graham-league' });
+        await migration.migrate({ apply: true });
+        await User.updateOne({ _id: user._id }, { $set: { league: 'claunts-league' } });
+
+        await migration.migrate({ apply: true });
+
+        const franchises = await Franchise.find({ accountId: user._id }).lean();
+        expect(franchises).toHaveLength(1);
+        expect(franchises[0].league).toBe('claunts-league');
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('does not remove a franchise the migration did not create', async () => {
+        // A basketball entry (#310) is a legitimate second franchise.
+        const user = await seedUser({ league: 'graham-league' });
+        await migration.migrate({ apply: true });
+        const other = await Franchise.create({ accountId: user._id, league: 'hardwood-league', seasons: [] });
+
+        await migration.migrate({ apply: true });
+        expect(await Franchise.findById(other._id).lean()).not.toBeNull();
+    });
+});
+
 describe('rollback', () => {
     test('dry run reports without deleting', async () => {
         await seedUser();
@@ -374,6 +450,29 @@ describe('rollback', () => {
         expect(await Franchise.countDocuments({})).toBe(0);
         // The property that makes this reversible at all.
         expect(await User.find({}).lean()).toEqual(before);
+    });
+
+    test('reports documents the app has written to since the migration', async () => {
+        // "A full return to the pre-migration state" stops being true the
+        // moment phase 2 ships: the app writes here, `users` does not have
+        // those edits, and deleting is data loss rather than a rollback.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        expect((await migration.rollback()).touchedSinceMigration).toBe(0);
+
+        await Account.updateOne({}, { $set: { avatarUrl: 'https://example.com/new.jpg' } });
+        expect((await migration.rollback()).touchedSinceMigration).toBe(1);
+    });
+
+    test('a plain re-apply is NOT counted as an app write', async () => {
+        // Detecting this by `updatedAt > createdAt` counted the migration's own
+        // re-run as divergence, so the warning fired on every document after a
+        // second --apply — which would have taught an operator to ignore it.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        await migration.migrate({ apply: true });
+        await migration.migrate({ apply: true });
+        expect((await migration.rollback()).touchedSinceMigration).toBe(0);
     });
 
     test('a migrate after a rollback is clean', async () => {
