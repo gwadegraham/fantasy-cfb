@@ -75,21 +75,43 @@ function effectiveAmericanOdds(wager, decimal, boostPct, boostCap, boostedDecima
     return decimalToAmerican(total / wager);
 }
 
+// The ticket's true decimal odds. The legs win over the hand-typed parlayOdds,
+// because the number on the slip is ROUNDED to whole American odds while the
+// legs are quoted whole and multiply out exactly: a real $20 ticket at
+// -345/-205/-200/-172 is 4.552264, which FanDuel displays as "+355" (4.55).
+// Computing off the display loses 11 cents on the payout. parlayOdds is the
+// fallback for a ticket whose legs aren't all filled in yet.
+// No board quotes American odds between -100 and +100, and americanToDecimal
+// returns a flat 1 for them — which would price a WINNING ticket at stake-back
+// and write that to parlay.payout. Treat anything in that gap as not a price.
+function isRealAmericanOdds(odds) {
+    return typeof odds === 'number' && !isNaN(odds) && Math.abs(odds) >= 100;
+}
+
+function ticketDecimalOdds(parlay) {
+    const legs = (parlay.legs || []).filter(l => l.result !== 'push');
+    if (legs.length && legs.every(l => isRealAmericanOdds(l.odds))) return parlayDecimalOdds(legs);
+    if (isRealAmericanOdds(parlay.parlayOdds)) return americanToDecimal(parlay.parlayOdds);
+    return 0;
+}
+
 // The one place that decides what a settled parlay paid. A hand-typed
 // totalPayout always wins — it's the admin copying the real number off the
 // book — then the boost math, then the plain leg product.
 function settledPayout(parlay) {
     if (!parlay || !parlay.wager) return 0;
     if (parlay.totalPayout) return parlay.totalPayout;
-    const legs = parlay.legs || [];
-    const decimal = parlay.parlayOdds
-        ? americanToDecimal(parlay.parlayOdds)
-        : parlayDecimalOdds(legs);
+    const decimal = ticketDecimalOdds(parlay);
+    if (decimal <= 1) return parlayPayout(parlay.wager, parlay.legs || []);
     if (parlay.boostPct || parlay.boostedOdds) {
-        const boostedDec = parlay.boostedOdds ? americanToDecimal(parlay.boostedOdds) : null;
+        // boostPct reproduces the book's own arithmetic; the stored boostedOdds
+        // is only the rounded display, so it's the fallback, not the source.
+        const boostedDec = (!parlay.boostPct && isRealAmericanOdds(parlay.boostedOdds))
+            ? americanToDecimal(parlay.boostedOdds)
+            : null;
         return boostedReturn(parlay.wager, decimal, parlay.boostPct, parlay.boostCap, boostedDec);
     }
-    return parlayPayout(parlay.wager, legs);
+    return parlayPayout(parlay.wager, parlay.legs || []);
 }
 
 module.exports = {
@@ -98,6 +120,8 @@ module.exports = {
     parlayPayout,
     decimalToAmerican,
     combinedAmericanOdds,
+    isRealAmericanOdds,
+    ticketDecimalOdds,
     boostDecimalOdds,
     boostedAmericanOdds,
     boostedStake,

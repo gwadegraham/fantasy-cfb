@@ -63,19 +63,31 @@ function boostDecimal(dec, pct) {
     return 1 + ((dec - 1) * (1 + (pct / 100)));
 }
 
-// Decimal odds for the boosted slice: the admin's hand-typed boosted number if
-// they copied one off the slip, otherwise derived from the boost percentage.
+// Decimal odds for the boosted slice. The percentage reproduces the book's own
+// arithmetic; the stored boostedOdds is only its rounded display, so that's the
+// fallback for a ticket where someone typed a boosted number and no percentage.
 function boostedSliceDecimal(parlay, rawDec) {
-    if (parlay.boostedOdds) return americanToDecimal(parlay.boostedOdds);
-    return boostDecimal(rawDec, parlay.boostPct);
+    if (parlay.boostPct) return boostDecimal(rawDec, parlay.boostPct);
+    if (isRealOdds(parlay.boostedOdds)) return americanToDecimal(parlay.boostedOdds);
+    return rawDec;
+}
+
+// The legs win over the hand-typed parlayOdds: the slip's number is ROUNDED to
+// whole American odds, while the legs are quoted whole and multiply out exactly.
+// A real $20 ticket at -345/-205/-200/-172 is 4.552171, which FanDuel displays
+// as "+355" (4.55) — computing off the display loses 11 cents. Mirrors
+// ticketDecimalOdds in modules/parlay-calc.js; keep the two in step.
+function isRealOdds(odds) {
+    return typeof odds === 'number' && !isNaN(odds) && Math.abs(odds) >= 100;
 }
 
 function boostMath(parlay, legs) {
     var wager = Number(parlay.wager) || 0;
-    var rawDec = parlay.parlayOdds
-        ? americanToDecimal(parlay.parlayOdds)
-        : legs.filter(function (l) { return l.odds && l.result !== 'push'; })
-            .reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1);
+    var active = (legs || []).filter(function (l) { return l.result !== 'push'; });
+    var allPriced = active.length && active.every(function (l) { return isRealOdds(l.odds); });
+    var rawDec = allPriced
+        ? active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1)
+        : (isRealOdds(parlay.parlayOdds) ? americanToDecimal(parlay.parlayOdds) : 0);
     if (!wager || rawDec <= 1) return null;
 
     var cap = Number(parlay.boostCap);
@@ -1131,11 +1143,14 @@ async function updateBoost(parlayId, field, value) {
         var body = {};
         body[field] = num;
 
-        // Re-derive the boosted number from the raw odds + percentage, unless
-        // the admin is typing that number themselves off the slip.
+        // Keep the boosted readout in step with the raw odds + percentage it's
+        // derived from. Crucially it has to be CLEARED when the derivation no
+        // longer holds: leaving a stale number behind kept a parlay boosted
+        // after the admin emptied the Boost % box, which is the undo this panel
+        // exists to provide.
         if (field !== 'boostedOdds') {
-            var boosted = computeBoostedOdds(parlay);
-            if (boosted != null) body.boostedOdds = boosted;
+            body.boostedOdds = computeBoostedOdds(parlay);
+            parlay.boostedOdds = body.boostedOdds;
         }
 
         var res = await fetch('/betting/' + parlayId, {

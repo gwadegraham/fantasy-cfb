@@ -103,21 +103,72 @@ describe('parlay boost math', () => {
         });
 
         it('applies the boost and its cap when one is set', () => {
-            const paid = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, legs });
+            // No legs priced yet, so this prices off the typed slip odds
+            const paid = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10 });
             expect(paid).toBe(107.56);
         });
 
-        it('pays the boosted number off the slip rather than re-deriving it', () => {
-            // The book rounds its own display: +398 boosted 20% is really
-            // +477.6, and FanDuel shows +478. Pay what the slip says.
-            const paid = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, boostedOdds: 478, legs });
-            expect(paid).toBe(107.6);
+        it('applies the cap to the leg price once the legs are filled in', () => {
+            // -160 x -163 = 2.621933; $10 boosted 20% + $10 plain
+            const paid = settledPayout({ wager: 20, boostPct: 20, boostCap: 10, legs });
+            expect(paid).toBe(55.68);
         });
 
-        it('prefers the odds off the slip over the product of the legs', () => {
-            const fromLegs = settledPayout({ wager: 20, boostPct: 20, boostCap: 10, legs });
-            const fromSlip = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, legs });
-            expect(fromLegs).not.toBe(fromSlip);
+        // Regression, against a real FanDuel ticket. The slip's "+355" is the
+        // ROUNDED display of 4.552171; computing off it paid $108.70 where
+        // FanDuel paid $108.81. The legs are quoted whole, so their product is
+        // the exact price.
+        it('prices off the legs, not the rounded number on the slip', () => {
+            const real = [{ odds: -345 }, { odds: -205 }, { odds: -200 }, { odds: -172 }];
+            const paid = settledPayout({
+                wager: 20, parlayOdds: 355, boostPct: 50, boostedOdds: 532, boostCap: 10, legs: real
+            });
+
+            expect(paid).toBe(108.8);
+            // what pricing off the rounded +355 / +532 used to produce
+            expect(paid).not.toBe(108.7);
+        });
+
+        it('derives the boosted slice from the percentage, not the rounded boosted odds', () => {
+            const withStored = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, boostedOdds: 478 });
+            const without = settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10 });
+            expect(withStored).toBe(without);
+        });
+
+        it('falls back to the typed odds when the legs are not all priced yet', () => {
+            const half = [{ odds: -160 }, { odds: null }];
+            expect(settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, legs: half }))
+                .toBe(settledPayout({ wager: 20, parlayOdds: 398, boostPct: 20, boostCap: 10, legs: [] }));
+        });
+
+        // Regression. parlayOdds is the price of the WHOLE slip; when a leg
+        // pushes the book re-prices without it. Pricing a boosted ticket off
+        // the stored slip number paid $315.24 where $124.90 was owed.
+        it('drops a pushed leg instead of paying the whole-slip price', () => {
+            const withPush = [
+                { odds: -160, result: 'win' },
+                { odds: -163, result: 'win' },
+                { odds: 150, result: 'push' },
+                { odds: 120, result: 'win' }
+            ];
+            const paid = settledPayout({
+                wager: 20, parlayOdds: 1342, boostPct: 20, boostCap: 10, legs: withPush
+            });
+
+            expect(paid).toBe(124.9);
+        });
+
+        // Regression. americanToDecimal returns a flat 1 between -100 and +100,
+        // so a fat-fingered "45" priced a winning ticket at stake-back.
+        it('ignores a parlayOdds no board could have quoted', () => {
+            const paid = settledPayout({ wager: 20, parlayOdds: 45, boostPct: 50, boostCap: 10, legs });
+
+            expect(paid).not.toBe(20);
+            expect(paid).toBe(settledPayout({ wager: 20, boostPct: 50, boostCap: 10, legs }));
+        });
+
+        it('pays nothing rather than a made-up number when there is no usable price', () => {
+            expect(settledPayout({ wager: 20, parlayOdds: 45, boostPct: 50, legs: [] })).toBe(0);
         });
 
         it('falls back to the plain leg product when no boost was recorded', () => {
