@@ -36,7 +36,10 @@ const accountSchema = new mongoose.Schema({
     authSub: { type: String },
 
     avatarUrl: { type: String },
-    profilePrompted: { type: Boolean },
+    // `default: false` matches models/user.js. Both consumers treat it as a
+    // falsy check so behaviour is identical either way, but this is the one
+    // place the two shapes would have diverged without a reason.
+    profilePrompted: { type: Boolean, default: false },
 
     // Chart/avatar colour. On the person, not the franchise: someone playing
     // two sports should be the same colour on both charts.

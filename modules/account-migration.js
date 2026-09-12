@@ -37,10 +37,13 @@ const STRUCTURAL_FIELDS = ['_id', '__v', 'league', 'seasons'];
 // Checked at call time against the live schema, so it cannot drift.
 function uncoveredUserFields() {
     const known = new Set([...ACCOUNT_FIELDS, ...FRANCHISE_FIELDS, ...STRUCTURAL_FIELDS]);
-    return Object.keys(User.schema.paths)
-        // Only top-level paths; nested ones ride along inside `seasons`.
-        .filter(p => !p.includes('.'))
-        .filter(p => !known.has(p));
+    // Compared on the ROOT segment, not the full path. Filtering out anything
+    // dotted was only correct for `seasons` — every other nested shape
+    // (`prefs: { timezone }`, `notifications: { weeklyRecap }`) dropped out of
+    // this check entirely, so the migration would lose it AND verify would stay
+    // green. That is the exact failure this function exists to prevent.
+    const roots = new Set(Object.keys(User.schema.paths).map(path => path.split('.')[0]));
+    return [...roots].filter(root => !known.has(root)).sort();
 }
 
 function accountFrom(user) {
@@ -111,6 +114,21 @@ async function migrate({ apply = false } = {}) {
             { upsert: true }
         );
         franchises++;
+
+        // A user whose league changed between runs would otherwise keep a
+        // franchise in the old one — two leagues for one manager. verify()
+        // caught it, but re-running never fixed it, which contradicts "a
+        // half-finished run is safe to repeat". This has happened for real
+        // (the 2026 Cole -> James roster change). Scoped to migrated documents
+        // so a genuine second franchise (a basketball entry, #310) survives.
+        const stale = await Franchise.deleteMany({
+            accountId: f.accountId,
+            league: { $ne: f.league },
+            migratedFrom: { $exists: true }
+        });
+        if (stale.deletedCount) {
+            console.log(`removed ${stale.deletedCount} stale franchise(s) for ${user.firstName} ${user.lastName}`);
+        }
     }
 
     return { applied: true, accounts, franchises, ...planned };
@@ -162,11 +180,20 @@ async function verify() {
         if (!account) {
             mismatches.push({ userId: id, field: 'account', reason: 'missing' });
         } else {
-            // The _id rule, checked rather than assumed: this is the one that
-            // breaks every login if it is wrong.
-            if (String(account._id) !== id) {
-                mismatches.push({ userId: id, field: '_id', expected: id, actual: String(account._id) });
-            }
+            // The _id rule. Deliberately NOT `if (account._id !== id)` after a
+            // findById(id): that can only ever return a document with that id,
+            // so the check reads as the important one while being unreachable.
+            // What actually catches a minted _id is asking whether anything
+            // claims to have come from this user and landed elsewhere.
+            const strays = await Account.find(
+                { migratedFrom: user._id, _id: { $ne: user._id } },
+                { _id: 1 }
+            ).lean();
+            strays.forEach(stray => mismatches.push({
+                userId: id, field: '_id',
+                reason: `account ${stray._id} claims to come from this user but has a different _id — ` +
+                        `an Auth0 login resolving through metadata.userId would find nothing`
+            }));
             ACCOUNT_FIELDS.forEach(f => {
                 const before = stripIds(expectedAccount[f] === undefined ? null : expectedAccount[f]);
                 const after = stripIds(account[f] === undefined ? null : account[f]);
@@ -284,8 +311,8 @@ function seasonDiffSummary(before, after) {
 // so this returns the database to exactly its pre-migration state.
 async function rollback({ apply = false } = {}) {
     // Scoped by `migratedFrom`, NOT deleteMany({}). Once phase 2 ships, a
-    // basketball-only manager exists as an Account with no User behind it — and
-    // unlike everyone else, they cannot be reconstructed from the users
+    // basketball-only manager exists as an Account with no User behind them —
+    // and unlike everyone else, they cannot be reconstructed from the users
     // collection. An unscoped delete would take them with it.
     const owned = { migratedFrom: { $exists: true } };
     const accounts = await Account.countDocuments(owned);
@@ -293,12 +320,38 @@ async function rollback({ apply = false } = {}) {
     const keptAccounts = await Account.countDocuments({ migratedFrom: { $exists: false } });
     const keptFranchises = await Franchise.countDocuments({ migratedFrom: { $exists: false } });
 
+    // "A full return to the pre-migration state" holds only while these
+    // documents still say what their source user says. After the cutover the app
+    // writes here — a changed avatar, a renamed franchise, a week of scores —
+    // and none of that is in `users`, which still holds only what it held
+    // before. Deleting then is data loss, not a rollback.
+    //
+    // Detected by CONTENT, not timestamps: `updatedAt > createdAt` counts the
+    // migration's own re-apply as an app write, which made this fire on every
+    // document after a second --apply. A document that still matches what the
+    // migration would produce carries nothing that `users` cannot rebuild,
+    // however many times it has been rewritten.
+    const divergent = (await verify()).mismatches
+        .filter(m => m.userId)
+        .map(m => m.userId);
+    const touchedSinceMigration = new Set(divergent).size;
+
     if (!apply) {
-        return { applied: false, wouldDelete: { accounts, franchises }, wouldKeep: { accounts: keptAccounts, franchises: keptFranchises } };
+        return {
+            applied: false,
+            wouldDelete: { accounts, franchises },
+            wouldKeep: { accounts: keptAccounts, franchises: keptFranchises },
+            touchedSinceMigration
+        };
     }
     await Account.deleteMany(owned);
     await Franchise.deleteMany(owned);
-    return { applied: true, deleted: { accounts, franchises }, kept: { accounts: keptAccounts, franchises: keptFranchises } };
+    return {
+        applied: true,
+        deleted: { accounts, franchises },
+        kept: { accounts: keptAccounts, franchises: keptFranchises },
+        touchedSinceMigration
+    };
 }
 
 module.exports = {

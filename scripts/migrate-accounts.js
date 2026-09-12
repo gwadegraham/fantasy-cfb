@@ -19,6 +19,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 const mongoose = require('mongoose');
 const migration = require('../modules/account-migration');
+const Account = require('../models/account');
+const Franchise = require('../models/franchise');
 
 // Which database is this actually pointed at?
 //
@@ -32,7 +34,12 @@ const ALLOWED_DEV_DBS = ['test', 'dev'];
 function dbNameFrom(url) {
     // mongodb+srv://user:pass@host/dbname?opts
     const match = String(url).match(/^mongodb(?:\+srv)?:\/\/[^/]*\/([^?]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+    const name = match ? decodeURIComponent(match[1]) : '';
+    // A URI with no database in the path connects to one literally called
+    // "test" — which is on the dev allowlist. Reporting null instead made the
+    // banner say "NOT a known dev database" while the connection was in fact
+    // going somewhere allowed, and left the confirm prompt unanswerable.
+    return name || 'test';
 }
 
 function userFrom(url) {
@@ -113,7 +120,23 @@ async function main() {
         }
     }
 
-    await mongoose.connect(process.env.DATABASE_URL);
+    // autoIndex AND autoCreate off unless we are actually writing.
+    //
+    // autoIndex alone is not enough — autoCreate is a separate option, also on
+    // by default, and it is the one that calls createCollection() on first use.
+    //
+    // "Dry run changes nothing" was not true: Mongoose creates a collection and
+    // builds its indexes on first use, so merely connecting with these models
+    // loaded left `accounts` and `franchises` behind — on whatever database you
+    // were pointed at. And the confirmation prompt only guards --apply, so the
+    // unguarded paths (plain dry run, --verify) were exactly the ones an
+    // operator would aim at prod first.
+    await mongoose.connect(process.env.DATABASE_URL, { autoIndex: writing, autoCreate: writing });
+    if (writing) {
+        // Build them deliberately, before relying on the unique
+        // (accountId, league) index for idempotency.
+        await Promise.all([Account.init(), Franchise.init()]);
+    }
 
     try {
         if (wantRollback) {
@@ -121,7 +144,16 @@ async function main() {
             console.log(apply
                 ? `rolled back: deleted ${r.deleted.accounts} accounts, ${r.deleted.franchises} franchises`
                 : `DRY RUN — would delete ${r.wouldDelete.accounts} accounts, ${r.wouldDelete.franchises} franchises`);
-            console.log('\nusers were never modified, so this is a full return to the pre-migration state.');
+            if (r.touchedSinceMigration) {
+                console.error(
+                    `\n⚠️  ${r.touchedSinceMigration} of the deleted document(s) had been WRITTEN TO since the\n` +
+                    `   migration created them. Those edits are gone and are NOT in the users\n` +
+                    `   collection — users only has what it had before the cutover.`
+                );
+            } else {
+                console.log('\nusers were never modified, and nothing had written to these documents since');
+                console.log('the migration created them, so this is a full return to the pre-migration state.');
+            }
             return;
         }
 
