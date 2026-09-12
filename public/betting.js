@@ -58,6 +58,13 @@ function americanToDecimal(odds) {
 // ("Max $10.00 wager"). The group plays a $20 ticket, so the cap usually bites
 // and the ticket's real odds are a blend of boosted and unboosted. Mirrors
 // modules/parlay-calc.js — keep the two in step.
+// Books round a payout UP to the cent. Snap float noise off first, or an exact
+// $57.76 (57.760000000000005) would ceiling to $57.77. Mirrors toCents in
+// modules/parlay-calc.js.
+function toCents(amount) {
+    return Math.ceil(Number((amount * 100).toFixed(6))) / 100;
+}
+
 function boostDecimal(dec, pct) {
     if (!pct) return dec;
     return 1 + ((dec - 1) * (1 + (pct / 100)));
@@ -102,7 +109,7 @@ function boostMath(parlay, legs) {
         effectiveOdds: decimalToAmerican(total / wager),
         capped: plainStake > 0,
         boostedStake: boostedStake,
-        payout: (Math.round(total * 100) / 100).toFixed(2)
+        payout: toCents(total).toFixed(2)
     };
 }
 
@@ -124,7 +131,7 @@ function calcPayout(wager, legs) {
     if (!wager) return 0;
     var active = legs.filter(function (l) { return l.odds && l.result !== 'push'; });
     var dec = active.reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1);
-    return Math.round(wager * dec * 100) / 100;
+    return toCents(wager * dec).toFixed(2);
 }
 
 function formatGameTime(dateStr) {
@@ -290,11 +297,34 @@ function renderCurrentParlay() {
                 + '</div>';
         }
 
-        return '<div class="leg" data-contributor="' + leg.contributor + '">'
+        var isEditing = editingLeg
+            && editingLeg.parlayId === parlay._id
+            && editingLeg.contributor === leg.contributor;
+
+        // Correcting the odds to the filled price is the everyday edit, so it's
+        // the one the row opens with. Re-picking the game is still a tap away.
+        var editorHtml = '';
+        if (isEditing) {
+            editorHtml = '<div class="leg-editor">'
+                + '<label class="leg-editor-field">'
+                + '<span class="admin-field-label">Odds</span>'
+                + '<input type="number" inputmode="numbersAndPunctuation" id="leg-odds-' + leg.contributor + '"'
+                + ' class="admin-field-input" value="' + (leg.odds || '') + '" placeholder="—">'
+                + '</label>'
+                + '<div class="leg-editor-actions">'
+                + '<button type="button" class="leg-editor-save" onclick="saveLegOdds(\'' + parlay._id + '\',\'' + leg.contributor + '\')">Save</button>'
+                + '<button type="button" class="leg-editor-cancel" onclick="cancelLegEdit()">Cancel</button>'
+                + '</div>'
+                + '<button type="button" class="leg-editor-repick" onclick="changeLegPick(\'' + parlay._id + '\',\'' + leg.contributor + '\')">Change pick &rarr;</button>'
+                + '</div>';
+        }
+
+        return '<div class="leg' + (isEditing ? ' leg--editing' : '') + '" data-contributor="' + leg.contributor + '">'
             + '<div class="leg-contributor">' + avatarHtml(leg.contributor, color, init) + displayName(leg.contributor) + '</div>'
             + '<div class="leg-detail"><div class="leg-pick">' + (leg.selection || '—') + '</div><div class="leg-game">' + matchup + '</div></div>'
             + '<div class="leg-odds">' + formatOdds(leg.odds) + '</div>'
             + '<div class="leg-actions">' + resultHtml + editBtn + resolveHtml + '</div>'
+            + editorHtml
             + '</div>';
     }).join('');
 
@@ -346,23 +376,46 @@ function renderCurrentParlay() {
             placedByOptions += '<option value="' + id + '"' + sel + '>' + memberNames[id] + '</option>';
         });
 
-        wagerHtml = '<div class="wager-section">'
-            + '<label>Wager $</label>'
-            + '<input type="number" class="wager-input" value="' + (parlay.wager || '') + '" onchange="updateWager(\'' + parlay._id + '\', this.value)">'
-            + '<label>Placed by</label>'
-            + '<select class="wager-input" onchange="updatePlacedBy(\'' + parlay._id + '\', this.value)">' + placedByOptions + '</select>'
+        // Four numbers are all that's actually entered. The boosted odds are
+        // always derived from Odds + Boost %, so they're a readout, not a box —
+        // and Payout $ is a rare override for when the book disagrees with the
+        // arithmetic, so it stays folded away until asked for.
+        function field(label, key, value, placeholder, handler) {
+            return '<label class="admin-field">'
+                + '<span class="admin-field-label">' + label + '</span>'
+                + '<input type="number" inputmode="decimal" class="admin-field-input" value="' + (value || '') + '"'
+                + ' placeholder="' + placeholder + '"'
+                + ' onchange="' + handler + '(\'' + parlay._id + '\'' + (key ? ', \'' + key + '\'' : '') + ', this.value)">'
+                + '</label>';
+        }
+
+        var derived = boost
+            ? formatOdds(boost.rawOdds) + ' &rarr; <strong>' + formatOdds(boost.effectiveOdds) + '</strong> &middot; $' + boost.payout
+            : 'Enter odds and a boost % to see the boosted price.';
+
+        var overrideOpen = parlay.totalPayout ? ' open' : '';
+
+        wagerHtml = '<div class="admin-panel">'
+            + '<div class="admin-grid">'
+            + field('Wager $', null, parlay.wager, '—', 'updateWager')
+            + field('Odds', 'parlayOdds', parlay.parlayOdds, '—', 'updateBoost')
+            + field('Boost %', 'boostPct', parlay.boostPct, 'none', 'updateBoost')
+            + field('Boost cap $', 'boostCap', parlay.boostCap, 'all', 'updateBoost')
             + '</div>'
-            + '<div class="boost-section">'
-            + '<label>Odds</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
-            + '<label>Boost %</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
-            + '<label>Boost cap $</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostCap || '') + '" placeholder="all" onchange="updateBoost(\'' + parlay._id + '\', \'boostCap\', this.value)">'
-            + '<label>Boosted</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="' + (boost ? formatOdds(boost.boostedOdds) : '—') + '" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
-            + '<label>Payout $</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
+            + '<div class="admin-derived">' + derived + '</div>'
+            + '<label class="admin-field admin-field--wide">'
+            + '<span class="admin-field-label">Placed by</span>'
+            + '<select class="admin-field-input" onchange="updatePlacedBy(\'' + parlay._id + '\', this.value)">' + placedByOptions + '</select>'
+            + '</label>'
+            + '<details class="admin-override"' + overrideOpen + '>'
+            + '<summary>Override payout</summary>'
+            + '<label class="admin-field admin-field--wide">'
+            + '<span class="admin-field-label">Payout $</span>'
+            + '<input type="number" inputmode="decimal" step="0.01" class="admin-field-input" value="' + (parlay.totalPayout || '') + '"'
+            + ' placeholder="' + (boost ? boost.payout : '—') + '"'
+            + ' onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)">'
+            + '</label>'
+            + '</details>'
             + '</div>';
     }
 
@@ -512,8 +565,37 @@ function openGamePicker(parlayId, contributor, index) {
     document.body.insertAdjacentHTML('beforeend', html);
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    trackKeyboard();
     var searchInput = document.getElementById('game-search');
     if (searchInput) searchInput.focus();
+}
+
+// The picker is a bottom sheet. Opening the keyboard shrinks the VISUAL
+// viewport but not the layout viewport, so a sheet sized in vh stays anchored
+// to a bottom edge that is now behind the keyboard — you type "Texas" and the
+// results are underneath it. visualViewport reports the space actually left, so
+// pin the backdrop to that rectangle instead.
+var keyboardHandler = null;
+
+function trackKeyboard() {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    keyboardHandler = function () {
+        var backdrop = document.getElementById('game-picker-backdrop');
+        if (!backdrop) return;
+        backdrop.style.height = vv.height + 'px';
+        backdrop.style.top = vv.offsetTop + 'px';
+    };
+    keyboardHandler();
+    vv.addEventListener('resize', keyboardHandler);
+    vv.addEventListener('scroll', keyboardHandler);
+}
+
+function untrackKeyboard() {
+    if (!keyboardHandler || !window.visualViewport) return;
+    window.visualViewport.removeEventListener('resize', keyboardHandler);
+    window.visualViewport.removeEventListener('scroll', keyboardHandler);
+    keyboardHandler = null;
 }
 
 function teamLogo(logos) {
@@ -550,12 +632,16 @@ function filterGames(query) {
         return (a.startDate || '').localeCompare(b.startDate || '');
     });
     list.innerHTML = renderGameList(filtered);
+    // A narrowed list must start at its first result, not wherever the previous
+    // list happened to be scrolled to.
+    list.scrollTop = 0;
 }
 
 function closeGamePicker(e) {
     if (e && e.target !== document.getElementById('game-picker-backdrop')) return;
     var backdrop = document.getElementById('game-picker-backdrop');
     if (backdrop) backdrop.remove();
+    untrackKeyboard();
     document.documentElement.style.overflow = '';
     document.body.style.overflow = '';
 }
@@ -1052,15 +1138,61 @@ async function submitLegNew(index) {
 
 var editingLeg = null;
 
+// Editing used to null the leg's gameId, which threw the whole pick away and
+// dropped you back at game selection. The common edit is far smaller than that:
+// correcting the odds to the price actually filled when the bet was placed. So
+// the pencil opens the leg in place, with re-picking the game as the deliberate
+// choice rather than the only one.
 function editLeg(parlayId, contributor) {
     editingLeg = { parlayId: parlayId, contributor: contributor };
+    renderCurrentParlay();
+    scrollLegIntoView(contributor, 'center');
+    var input = document.getElementById('leg-odds-' + contributor);
+    if (input) { input.focus(); input.select(); }
+}
+
+function cancelLegEdit() {
+    editingLeg = null;
+    renderCurrentParlay();
+}
+
+// The old behavior, now reachable on purpose.
+function changeLegPick(parlayId, contributor) {
     var parlay = parlays.find(function (p) { return p._id === parlayId; });
     if (!parlay) return;
     var leg = parlay.legs.find(function (l) { return l.contributor === contributor; });
     if (!leg) return;
+    editingLeg = null;
     leg.gameId = null;
     renderCurrentParlay();
     scrollLegIntoView(contributor, 'start');
+}
+
+async function saveLegOdds(parlayId, contributor) {
+    var input = document.getElementById('leg-odds-' + contributor);
+    if (!input) return;
+    var odds = Number(input.value);
+    if (!isRealOdds(odds)) {
+        if (window.ccToast) ccToast.error('Odds must be +100 or more, or -100 or less');
+        return;
+    }
+    try {
+        var res = await fetch('/betting/' + parlayId + '/legs', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contributor: contributor, odds: odds })
+        });
+        var data = await res.json();
+        if (res.ok) {
+            editingLeg = null;
+            if (window.ccToast) ccToast.success('Odds updated');
+            await refresh();
+        } else if (window.ccToast) {
+            ccToast.error(data.message || 'Failed to update odds');
+        }
+    } catch (e) {
+        if (window.ccToast) ccToast.error('Failed to update odds');
+    }
 }
 
 async function createParlay() {

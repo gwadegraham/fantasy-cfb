@@ -11,9 +11,17 @@ function parlayDecimalOdds(legs) {
     }, 1);
 }
 
+// Books round a payout UP to the cent: today's real ticket worked out to
+// $108.8043 and FanDuel paid $108.81. Ceiling raw floats would be a bug of its
+// own — an exact $57.76 arrives as 57.760000000000005 and would round to
+// $57.77 — so snap off the float noise before taking the ceiling.
+function toCents(amount) {
+    return Math.ceil(Number((amount * 100).toFixed(6))) / 100;
+}
+
 function parlayPayout(wager, legs) {
     if (!wager || !legs || !legs.length) return 0;
-    return Math.round(wager * parlayDecimalOdds(legs) * 100) / 100;
+    return toCents(wager * parlayDecimalOdds(legs));
 }
 
 function decimalToAmerican(decimal) {
@@ -64,7 +72,7 @@ function boostedReturn(wager, decimal, boostPct, boostCap, boostedDecimal) {
     const plain = wager - boosted;
     const boostedDec = boostedDecimal || boostDecimalOdds(decimal, boostPct);
     const total = (boosted * boostedDec) + (plain * decimal);
-    return Math.round(total * 100) / 100;
+    return toCents(total);
 }
 
 // The blended American odds a capped boost actually pays. With no cap (or a cap
@@ -115,6 +123,7 @@ function settledPayout(parlay) {
 }
 
 module.exports = {
+    toCents,
     americanToDecimal,
     parlayDecimalOdds,
     parlayPayout,

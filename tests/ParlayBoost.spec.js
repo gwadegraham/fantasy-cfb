@@ -1,4 +1,5 @@
 const {
+    toCents,
     americanToDecimal,
     boostDecimalOdds,
     boostedAmericanOdds,
@@ -57,6 +58,21 @@ describe('parlay boost math', () => {
         });
     });
 
+    describe('toCents', () => {
+        it('rounds a payout up to the next cent, the way the books do', () => {
+            expect(toCents(108.8043)).toBe(108.81);
+            expect(toCents(45.521713)).toBe(45.53);
+        });
+
+        // Guard. 10 * 5.776 is 57.760000000000005 in floating point; a naive
+        // ceiling turns an exact $57.76 into $57.77.
+        it('does not invent a cent out of float noise', () => {
+            expect(toCents(10 * 5.776)).toBe(57.76);
+            expect(toCents(63.25)).toBe(63.25);
+            expect(toCents(20)).toBe(20);
+        });
+    });
+
     describe('boostedReturn', () => {
         it('matches the DraftKings slip: $10 at +355 with a 50% boost returns $63.25', () => {
             expect(boostedReturn(10, americanToDecimal(355), 50, null)).toBe(63.25);
@@ -111,7 +127,7 @@ describe('parlay boost math', () => {
         it('applies the cap to the leg price once the legs are filled in', () => {
             // -160 x -163 = 2.621933; $10 boosted 20% + $10 plain
             const paid = settledPayout({ wager: 20, boostPct: 20, boostCap: 10, legs });
-            expect(paid).toBe(55.68);
+            expect(paid).toBe(55.69);
         });
 
         // Regression, against a real FanDuel ticket. The slip's "+355" is the
@@ -124,7 +140,7 @@ describe('parlay boost math', () => {
                 wager: 20, parlayOdds: 355, boostPct: 50, boostedOdds: 532, boostCap: 10, legs: real
             });
 
-            expect(paid).toBe(108.8);
+            expect(paid).toBe(108.81);
             // what pricing off the rounded +355 / +532 used to produce
             expect(paid).not.toBe(108.7);
         });
@@ -155,7 +171,7 @@ describe('parlay boost math', () => {
                 wager: 20, parlayOdds: 1342, boostPct: 20, boostCap: 10, legs: withPush
             });
 
-            expect(paid).toBe(124.9);
+            expect(paid).toBe(124.91);
         });
 
         // Regression. americanToDecimal returns a flat 1 between -100 and +100,
