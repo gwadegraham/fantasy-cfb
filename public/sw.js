@@ -30,13 +30,17 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'Campus Clash';
     const options = {
         body: data.body || '',
-        // Per-notification icon (a team logo) when the payload carries one,
-        // falling back to the Campus Clash football. iOS is expected to ignore
-        // this and substitute the home-screen app icon; the "Send a test"
-        // probe in modules/push-notify.js exists to settle that on a real phone.
+        // Per-notification icon and big picture, when a payload carries them.
+        //
+        // MEASURED ON A REAL IPHONE (12 Sep 2026): iOS renders NEITHER. It
+        // substitutes the home-screen app icon and ignores both fields, so team
+        // logos cannot appear in these notifications on the platform this league
+        // actually uses — don't spend time trying again. Emoji in the title are
+        // the only visual that works; see buildPayload in modules/push-notify.js.
+        //
+        // Kept because both are correct on Android and desktop, and because
+        // leaving them means a future change of Apple's mind needs no code.
         icon: data.icon || '/images/icon-192.png',
-        // The big-picture slot, shown when the banner is pulled down. Only set
-        // when a payload asks for it — an unused `image` still costs a fetch.
         image: data.image || undefined,
         badge: '/images/icon-192.png',
         // Same tag = same game, so a busy game replaces its own banner instead

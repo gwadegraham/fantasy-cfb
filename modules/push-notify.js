@@ -385,84 +385,36 @@ async function notifyFinals(gameIds) {
 
 // One-off delivery used by the "send me a test" button, so a manager can prove
 // the whole chain works without waiting for a Saturday.
-// Pick a rostered team's logo for the probe below, so the test is dressed like
-// a real alert rather than an abstraction. CFBD ships every team at several
-// sizes; 128 is the icon slot's natural size and 500 is what a big-picture
-// `image` wants. The dark variants are interleaved in the array, hence the
-// filter — a -dark logo on a dark lock screen is invisible.
-async function probeLogos(userId, season) {
-    const user = await User.findById(userId, { seasons: 1 }).lean();
-    const entry = ((user && user.seasons) || []).find(x => Number(x.season) === Number(season));
-    const teams = (entry && entry.teams) || [];
-    for (const t of teams) {
-        const logos = (t.logos || []).filter(u => typeof u === 'string' && !u.includes('/logos-dark/'));
-        const icon = logos.find(u => u.includes('/128/')) || logos[0];
-        const image = logos.find(u => u.includes('/500/')) || icon;
-        if (icon) return { school: t.school, icon, image };
-    }
-    return null;
-}
-
-// Delivery probe for the "Send a test" button.
+// One-off delivery used by the "Send a test" button, so a manager can prove the
+// whole chain works without waiting for a Saturday. Dressed exactly like a real
+// alert, because a test that looks different from the thing it is testing is
+// only half a test.
 //
-// Sends THREE notifications with DISTINCT tags (same tag would collapse them
-// into one banner) so a single tap answers three separate questions that only a
-// real device can settle:
+// It used to send three probe notifications comparing a team logo in the `icon`
+// slot, the same logo as a big-picture `image`, and emoji. VERDICT, measured on
+// a real iPhone (12 Sep 2026): iOS rendered NEITHER the icon nor the image —
+// it substitutes the home-screen app icon and ignores both fields. Do not spend
+// time re-adding team logos to these notifications; on iOS they cannot show.
+// Emoji are the only visual that works, which is why buildPayload leads every
+// alert with one. Notification body text is plain text besides — no markup, no
+// inline images — so there is no third option.
 //
-//   1. does iOS render a per-notification `icon`, or does it substitute the
-//      home-screen app icon? Every source says the latter, but iOS web push
-//      behaviour has moved between releases and this is cheaper than arguing.
-//   2. does the big-picture `image` slot render, on a platform that may ignore
-//      `icon`?
-//   3. do emoji render in title and body? These need no image fetch at all, so
-//      they are the fallback if 1 and 2 both come back blank.
-//
-// Deliberately NOT how the real alerts are dressed — this is an experiment, and
-// whichever of the three works gets wired into buildPayload afterwards.
+// sw.js still forwards `icon`/`image` when a payload sets them: it costs two
+// lines, it is correct behaviour on Android and desktop, and it means the
+// finding above is the only thing that needs revisiting if Apple ever changes.
 async function sendTest(userId) {
     if (!applyVapid()) return { sent: 0, reason: 'VAPID keys not configured' };
     if (!isAllowedRecipient(userId)) return { sent: 0, reason: 'Not on the alert allowlist yet' };
     const user = await User.findById(userId, { pushSubscriptions: 1, firstName: 1 }).lean();
     if (!user) return { sent: 0, reason: 'User not found' };
-
-    const logos = await probeLogos(userId, activeSeason('football'));
-    const team = (logos && logos.school) || 'your team';
-
-    const probes = [
-        {
-            type: 'test',
-            title: '1 of 3 · team logo as icon',
-            body: `If the small picture is the ${team} logo, per-notification icons work. If it is the Campus Clash football, iOS substituted the app icon.`,
-            icon: logos && logos.icon,
-            url: '/standings',
-            tag: 'test-icon'
-        },
-        {
-            type: 'test',
-            title: '2 of 3 · team logo as big picture',
-            body: `Pull this one down. A large ${team} logo below the text means the image slot works.`,
-            icon: logos && logos.icon,
-            image: logos && logos.image,
-            url: '/standings',
-            tag: 'test-image'
-        },
-        {
-            type: 'test',
-            title: '3 of 3 · 🏈 emoji, no images',
-            body: '🏈 Texas 24 – 🐘 Alabama 21 · Q4 · 1:42 — emoji need no image fetch and render everywhere.',
-            url: '/standings',
-            tag: 'test-emoji'
-        }
-    ];
-
-    let sent = 0;
-    let pruned = 0;
-    for (const payload of probes) {
-        const res = await sendToUser(user, payload);
-        sent += res.sent;
-        pruned += res.pruned;
-    }
-    return { sent, pruned, probes: probes.length, team };
+    const res = await sendToUser(user, {
+        type: 'test',
+        title: '🏈 Campus Clash alerts are on',
+        body: "Real ones look like this — when your teams score, take the lead, or finish.",
+        url: '/standings',
+        tag: 'test'
+    });
+    return { sent: res.sent, pruned: res.pruned };
 }
 
 module.exports = {
