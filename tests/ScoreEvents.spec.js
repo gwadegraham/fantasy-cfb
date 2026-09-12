@@ -81,6 +81,34 @@ describe('detectEvents — scoring', () => {
         expect(detectEvents(live(14, 7, 2, '8:00'), live(7, 7, 2, '7:00'))).toEqual([]);
     });
 
+    // CFBD often reports the PAT as its own tick a beat after the touchdown.
+    // Without this, one scoring drive buzzes a manager twice — the second time
+    // for the least interesting kick in the sport.
+    it('suppresses an extra point, so a touchdown drive alerts once', () => {
+        const touchdown = detectEvents(live(14, 7, 2, '8:00'), live(20, 7, 2, '7:50'));
+        expect(touchdown.map(e => e.delta)).toEqual([6]);
+
+        const extraPoint = detectEvents(live(20, 7, 2, '7:50'), live(21, 7, 2, '7:48'));
+        expect(extraPoint).toEqual([]);
+    });
+
+    it('suppresses an extra point on either side', () => {
+        expect(detectEvents(live(7, 20, 2, '7:50'), live(7, 21, 2, '7:48'))).toEqual([]);
+    });
+
+    it('still reports a touchdown that arrives with its extra point already counted', () => {
+        const events = detectEvents(live(14, 7, 2, '8:00'), live(21, 7, 2, '7:48'));
+        expect(events.map(e => e.delta)).toEqual([7]);
+    });
+
+    // The suppression is scoped to the `score` event. An extra point still moves
+    // the stored score, so it must keep feeding the crunch-time margin — a PAT
+    // that pulls a game to within one score is exactly the moment to notify.
+    it('lets a suppressed extra point still trigger crunch time', () => {
+        const events = detectEvents(live(20, 21, 4, '2:30'), live(21, 21, 4, '1:50'));
+        expect(events.map(e => e.type)).toEqual(['closeGame']);
+    });
+
     it('says nothing when nothing changed', () => {
         expect(detectEvents(live(14, 7, 2, '8:00'), live(14, 7, 2, '7:41'))).toEqual([]);
     });

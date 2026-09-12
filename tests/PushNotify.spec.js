@@ -27,8 +27,8 @@ const withAllowlist = async (value, fn) => {
 describe('buildPayload — live events', () => {
     it('names the team that scored and shows the scoreline away-at-home', () => {
         const p = push.buildPayload(
-            { type: 'score', side: 'home', homePoints: 14, awayPoints: 7, period: 2, clock: '8:31' }, GAME);
-        expect(p.title).toBe('Georgia scored');
+            { type: 'score', side: 'home', delta: 7, homePoints: 14, awayPoints: 7, period: 2, clock: '8:31' }, GAME);
+        expect(p.title).toBe('🏈 Georgia touchdown');
         expect(p.body).toBe('Alabama 7 – Georgia 14 · Q2 · 8:31');
         expect(p.url).toBe('/game/401628319');
     });
@@ -36,13 +36,13 @@ describe('buildPayload — live events', () => {
     it('names the team that took the lead', () => {
         const p = push.buildPayload(
             { type: 'leadChange', side: 'away', homePoints: 14, awayPoints: 17, period: 3, clock: '4:12' }, GAME);
-        expect(p.title).toBe('Alabama takes the lead');
+        expect(p.title).toBe('⚡ Alabama takes the lead');
     });
 
     it('labels crunch time without naming a side', () => {
         const p = push.buildPayload(
             { type: 'closeGame', homePoints: 24, awayPoints: 21, period: 4, clock: '1:42' }, GAME);
-        expect(p.title).toBe('Crunch time');
+        expect(p.title).toBe('⏰ Crunch time');
         expect(p.body).toContain('Q4 · 1:42');
     });
 
@@ -55,8 +55,51 @@ describe('buildPayload — live events', () => {
         expect(close.tag).toBe(score.tag);
     });
 
+    // Emoji are the only visual these notifications can rely on: body text is
+    // plain text, and iOS substitutes its own app icon for the `icon` slot.
+    it('leads every alert type with an emoji', () => {
+        const titles = [
+            push.buildPayload({ type: 'score', side: 'home', delta: 7, homePoints: 7, awayPoints: 0 }, GAME).title,
+            push.buildPayload({ type: 'leadChange', side: 'home', homePoints: 7, awayPoints: 0 }, GAME).title,
+            push.buildPayload({ type: 'closeGame', homePoints: 7, awayPoints: 0 }, GAME).title,
+            push.buildFinalPayload(Object.assign({}, GAME, { homePoints: 24, awayPoints: 21 }), 'Georgia', null).title,
+            push.buildFinalPayload(Object.assign({}, GAME, { homePoints: 21, awayPoints: 24 }), 'Georgia', null).title,
+            push.buildFinalPayload(Object.assign({}, GAME, { homePoints: 21, awayPoints: 21 }), 'Georgia', null).title
+        ];
+        titles.forEach(t => expect(t).toMatch(/^[^\w\s]/u));
+    });
+
     it('returns nothing for an event type it does not know', () => {
         expect(push.buildPayload({ type: 'kickoff' }, GAME)).toBeNull();
+    });
+});
+
+describe('scoreLabel — inferring the play from the score delta', () => {
+    // CFBD gives a delta, not a play type. 7 is a touchdown with the PAT already
+    // counted, 6 one whose PAT has not landed yet, 8 a two-point conversion.
+    it('reads 6, 7 and 8 as touchdowns', () => {
+        [6, 7, 8].forEach(d => expect(push.scoreLabel(d)).toEqual({ emoji: '🏈', verb: 'touchdown' }));
+    });
+
+    it('reads 3 as a field goal, 2 as a safety, 1 as an extra point', () => {
+        expect(push.scoreLabel(3).verb).toBe('field goal');
+        expect(push.scoreLabel(2).verb).toBe('safety');
+        expect(push.scoreLabel(1).verb).toBe('extra point');
+    });
+
+    // Two scores inside one 10-second tick produce a delta no play can explain.
+    // Falling back to "scored" keeps the alert honest rather than confidently
+    // announcing a play that never happened.
+    it('falls back to generic wording for a delta no single play explains', () => {
+        expect(push.scoreLabel(14).verb).toBe('scored');
+        expect(push.scoreLabel(undefined).verb).toBe('scored');
+        expect(push.scoreLabel(0).verb).toBe('scored');
+    });
+
+    it('always supplies an emoji, whatever the delta', () => {
+        [undefined, 0, 1, 2, 3, 6, 7, 8, 14, 99].forEach(d => {
+            expect(push.scoreLabel(d).emoji).toBeTruthy();
+        });
     });
 });
 
@@ -83,7 +126,7 @@ describe('buildFinalPayload', () => {
             Object.assign({}, GAME, { homePoints: 24, awayPoints: 21 }),
             'Georgia',
             { matched: [{ label: 'Win' }, { label: 'Ranked Top 25' }], total: 4 });
-        expect(p.title).toBe('Georgia won');
+        expect(p.title).toBe('✅ Georgia won');
         expect(p.body).toContain('+4 pts');
         expect(p.body).toContain('Win + Ranked Top 25');
     });
@@ -93,14 +136,14 @@ describe('buildFinalPayload', () => {
             Object.assign({}, GAME, { homePoints: 21, awayPoints: 24 }),
             'Georgia',
             { matched: [], total: 0 });
-        expect(p.title).toBe('Georgia lost');
+        expect(p.title).toBe('❌ Georgia lost');
         expect(p.body).toContain('No points');
     });
 
     it('reads the result from the rostered team, not from the home side', () => {
         const final = Object.assign({}, GAME, { homePoints: 21, awayPoints: 24 });
-        expect(push.buildFinalPayload(final, 'Alabama', { matched: [], total: 3 }).title).toBe('Alabama won');
-        expect(push.buildFinalPayload(final, 'Georgia', { matched: [], total: 0 }).title).toBe('Georgia lost');
+        expect(push.buildFinalPayload(final, 'Alabama', { matched: [], total: 3 }).title).toBe('✅ Alabama won');
+        expect(push.buildFinalPayload(final, 'Georgia', { matched: [], total: 0 }).title).toBe('❌ Georgia lost');
     });
 
     // A breakdown we could not compute must not become a confident "+0" claim

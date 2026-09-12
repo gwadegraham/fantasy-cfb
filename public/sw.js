@@ -30,7 +30,14 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'Campus Clash';
     const options = {
         body: data.body || '',
-        icon: '/images/icon-192.png',
+        // Per-notification icon (a team logo) when the payload carries one,
+        // falling back to the Campus Clash football. iOS is expected to ignore
+        // this and substitute the home-screen app icon; the "Send a test"
+        // probe in modules/push-notify.js exists to settle that on a real phone.
+        icon: data.icon || '/images/icon-192.png',
+        // The big-picture slot, shown when the banner is pulled down. Only set
+        // when a payload asks for it — an unused `image` still costs a fetch.
+        image: data.image || undefined,
         badge: '/images/icon-192.png',
         // Same tag = same game, so a busy game replaces its own banner instead
         // of stacking one per touchdown.
