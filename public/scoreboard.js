@@ -17,11 +17,14 @@ var sbState = {
     timer: null
 };
 
-// Refresh cadence. The live poller writes new scores every 2 minutes, so
-// polling faster than that only burns requests to re-read the same numbers —
-// 30s is "at most 30s behind the truth we have". With nothing in progress
-// there's nothing to be behind, so we back off hard.
-var LIVE_MS = 30000;
+// Refresh cadence. The live poller writes new scores every 10 seconds
+// (modules/scheduler.js), so 10s here means "at most 10s behind the truth we
+// have" — matching the two stages keeps either one from being the bottleneck.
+// With nothing in progress there's nothing to be behind, so we back off hard.
+//
+// This costs our own dyno, not CFBD: the scoreboard endpoint is served from
+// Mongo and makes no upstream call.
+var LIVE_MS = 10000;
 var IDLE_MS = 300000;
 
 function esc(s) {

@@ -17,7 +17,7 @@ const JOB_SCHEDULES = [
     { job: 'player-season-leaders', modulePath: '../update-player-season-leaders-job', rule: { dayOfWeek: 2, hour: 6, minute: 30 } }
 ];
 
-// Opt-in game-day live poller (modules/live-poll.js). Fires every 30 seconds;
+// Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;
 // the module's own games-live gate (a local DB check, 0 CFBD calls) skips
 // immediately when no game is in progress, so non-game times cost nothing.
 // Kept OUT of the always-on JOB_SCHEDULES and gated behind LIVE_POLL_ENABLED=true
@@ -28,9 +28,20 @@ const JOB_SCHEDULES = [
 // modules/completion-flush.js means a tighter cadence no longer multiplies the
 // heavy per-final pass — that used to run once per tick containing a final, so
 // halving the interval bought the same finals at twice the cost.
+//
+// Why 10s and not 30s. CFBD's /scoreboard only publishes a new clock every
+// ~40s, so a tighter poll does NOT fetch more distinct values — measured on
+// OU/Michigan, 2026 wk 3: the feed held "01:22" from 18:46:39 to 18:47:23,
+// situation string included. What it fixes is PHASE. At 30s we landed up to
+// 30s after each CFBD update regardless of how granular the feed is; the same
+// game showed CFBD flipping to "01:16" at 18:47:32 and our API not serving it
+// until 18:48:01 — 29 seconds of pure waiting. 10s caps that wait at 10s.
+//
+// The remaining lag is CFBD's own: its feed ran ~40s behind the broadcast in
+// that sample. No cadence here touches that.
 const LIVE_POLL_SCHEDULE = {
     job: 'live-scores', modulePath: '../modules/live-poll',
-    rule: { second: [0, 30] }
+    rule: { second: [0, 10, 20, 30, 40, 50] }
 };
 
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }

@@ -11,9 +11,9 @@ describe('scheduler config', () => {
         expect(JOB_SCHEDULES.find(s => s.job === 'live-scores')).toBeUndefined();
     });
 
-    it('live poller fires every 30s, every day (games-live gate decides), gated by env', () => {
+    it('live poller fires every 10s, every day (games-live gate decides), gated by env', () => {
         expect(LIVE_POLL_SCHEDULE.job).toBe('live-scores');
-        expect(LIVE_POLL_SCHEDULE.rule).toEqual({ second: [0, 30] });
+        expect(LIVE_POLL_SCHEDULE.rule).toEqual({ second: [0, 10, 20, 30, 40, 50] });
         // Minute and hour stay unset on purpose: a minute list would pin the
         // poller to those minutes instead of running all the time.
         expect(LIVE_POLL_SCHEDULE.rule.minute == null).toBe(true);
@@ -46,9 +46,9 @@ describe('scheduler config', () => {
         expect(rule.dayOfWeek).toBe(6);
     });
 
-    it('leaves minute, hour and dayOfWeek unset for the every-30s live poller', () => {
+    it('leaves minute, hour and dayOfWeek unset for the every-10s live poller', () => {
         const rule = toRule(LIVE_POLL_SCHEDULE.rule);
-        expect(rule.second).toEqual([0, 30]);
+        expect(rule.second).toEqual([0, 10, 20, 30, 40, 50]);
         expect(rule.minute == null).toBe(true);
         expect(rule.hour == null).toBe(true);
         expect(rule.dayOfWeek == null).toBe(true);
@@ -56,19 +56,30 @@ describe('scheduler config', () => {
 
     // node-schedule's RecurrenceRule defaults second to 0, so a spec that omits
     // it fires once a minute rather than 60 times. Asserted because the poller's
-    // 30s cadence relies on the inverse of it.
+    // 10s cadence relies on the inverse of it.
     it('does not set second for a job that omits it', () => {
         expect(toRule({ hour: 23, minute: 0 }).second).toBe(0);
     });
 
     // The scheduler has to honor an actual firing, not just carry the field:
     // second is the one recurrence unit nothing else in the app uses.
-    it('produces a rule that really fires 30s apart', () => {
+    it('produces a rule that really fires 10s apart', () => {
         const rule = toRule(LIVE_POLL_SCHEDULE.rule);
         const from = new Date('2026-09-12T18:00:05.000Z');
         const first = rule.nextInvocationDate(from);
         const second = rule.nextInvocationDate(first);
-        expect(first.getUTCSeconds()).toBe(30);
-        expect(second.getTime() - first.getTime()).toBe(30000);
+        expect(first.getUTCSeconds()).toBe(10);
+        expect(second.getTime() - first.getTime()).toBe(10000);
+    });
+
+    // The minute rollover is the one place a seconds list can go wrong: :50 has
+    // to hand off to the next minute's :00, not wait a full minute for it.
+    it('rolls over the minute boundary without a gap', () => {
+        const rule = toRule(LIVE_POLL_SCHEDULE.rule);
+        const at50 = rule.nextInvocationDate(new Date('2026-09-12T18:00:45.000Z'));
+        const next = rule.nextInvocationDate(at50);
+        expect(at50.getUTCSeconds()).toBe(50);
+        expect(next.getUTCSeconds()).toBe(0);
+        expect(next.getTime() - at50.getTime()).toBe(10000);
     });
 });
