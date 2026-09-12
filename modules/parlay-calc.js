@@ -11,9 +11,17 @@ function parlayDecimalOdds(legs) {
     }, 1);
 }
 
+// Books round a payout UP to the cent: today's real ticket worked out to
+// $108.8043 and FanDuel paid $108.81. Ceiling raw floats would be a bug of its
+// own — an exact $57.76 arrives as 57.760000000000005 and would round to
+// $57.77 — so snap off the float noise before taking the ceiling.
+function toCents(amount) {
+    return Math.ceil(Number((amount * 100).toFixed(6))) / 100;
+}
+
 function parlayPayout(wager, legs) {
     if (!wager || !legs || !legs.length) return 0;
-    return Math.round(wager * parlayDecimalOdds(legs) * 100) / 100;
+    return toCents(wager * parlayDecimalOdds(legs));
 }
 
 function decimalToAmerican(decimal) {
@@ -28,10 +36,116 @@ function combinedAmericanOdds(legs) {
     return decimalToAmerican(parlayDecimalOdds(activLegs));
 }
 
+// Books boost the PROFIT, not the stake: a 50% boost on +355 pays
+// 1 + 3.55 * 1.5 = 6.325, i.e. +532. Both DraftKings ("Profit Boost") and
+// FanDuel ("Parlay Boost") work this way, so one formula covers the group's
+// two books.
+function boostDecimalOdds(decimal, boostPct) {
+    if (!boostPct) return decimal;
+    return 1 + ((decimal - 1) * (1 + (boostPct / 100)));
+}
+
+function boostedAmericanOdds(parlayOdds, boostPct) {
+    if (!parlayOdds || !boostPct) return null;
+    return decimalToAmerican(boostDecimalOdds(americanToDecimal(parlayOdds), boostPct));
+}
+
+// The promos cap the stake they'll boost ("Max $10.00 wager"), and the group
+// always plays a $20 ticket, so the cap usually bites. Anything over the cap
+// rides at the unboosted number, which makes the ticket's real odds a blend of
+// the two — not the boosted number the slip advertises.
+function boostedStake(wager, boostCap) {
+    if (!wager) return 0;
+    if (boostCap == null || boostCap === '' || !(boostCap > 0)) return wager;
+    return Math.min(Number(boostCap), wager);
+}
+
+// Total returned (stake included) on a winning ticket, honoring the boost and
+// its stake cap. `decimal` is the ticket's true decimal odds — prefer the
+// number off the bet slip over the product of the legs, since the book rounds.
+// `boostedDecimal` overrides the derived boost when the admin typed the boosted
+// number off the slip — the book rounds its own display, and paying what the
+// slip says beats paying what the percentage implies.
+function boostedReturn(wager, decimal, boostPct, boostCap, boostedDecimal) {
+    if (!wager || !decimal) return 0;
+    const boosted = boostedStake(wager, boostCap);
+    const plain = wager - boosted;
+    const boostedDec = boostedDecimal || boostDecimalOdds(decimal, boostPct);
+    const total = (boosted * boostedDec) + (plain * decimal);
+    return toCents(total);
+}
+
+// The blended American odds a capped boost actually pays. With no cap (or a cap
+// at or above the wager) this is just the boosted number.
+function effectiveAmericanOdds(wager, decimal, boostPct, boostCap, boostedDecimal) {
+    const total = boostedReturn(wager, decimal, boostPct, boostCap, boostedDecimal);
+    if (!total || !wager) return 0;
+    return decimalToAmerican(total / wager);
+}
+
+// The ticket's true decimal odds. The legs win over the hand-typed parlayOdds,
+// because the number on the slip is ROUNDED to whole American odds while the
+// legs are quoted whole and multiply out exactly: a real $20 ticket at
+// -345/-205/-200/-172 is 4.552264, which FanDuel displays as "+355" (4.55).
+// Computing off the display loses 11 cents on the payout. parlayOdds is the
+// fallback for a ticket whose legs aren't all filled in yet.
+// No board quotes American odds between -100 and +100, and americanToDecimal
+// returns a flat 1 for them — which would price a WINNING ticket at stake-back
+// and write that to parlay.payout. Treat anything in that gap as not a price.
+function isRealAmericanOdds(odds) {
+    return typeof odds === 'number' && !isNaN(odds) && Math.abs(odds) >= 100;
+}
+
+function ticketDecimalOdds(parlay) {
+    const all = parlay.legs || [];
+    const legs = all.filter(l => l.result !== 'push');
+    if (legs.length && legs.every(l => isRealAmericanOdds(l.odds))) return parlayDecimalOdds(legs);
+    // Every leg pushed: the book refunds the stake, and the slip price — which
+    // priced legs that no longer count — is not the answer. Same trap as a
+    // single push, which is why it's refused here rather than fallen through.
+    if (all.length && !legs.length) return 0;
+    if (isRealAmericanOdds(parlay.parlayOdds)) return americanToDecimal(parlay.parlayOdds);
+    return 0;
+}
+
+// The one place that decides what a settled parlay paid. A hand-typed
+// totalPayout always wins — it's the admin copying the real number off the
+// book — then the boost math, then the plain leg product.
+function settledPayout(parlay) {
+    if (!parlay || !parlay.wager) return 0;
+    if (parlay.totalPayout) return parlay.totalPayout;
+    // ticketDecimalOdds has already decided what this ticket is worth per $1 —
+    // leg product, else the slip price. Falling back to parlayPayout() here
+    // would silently re-price off the legs alone, and an unpriced leg
+    // multiplies by 1.0: a $20 ticket at a typed +398 paid $32.50 instead of
+    // $99.60 when one member hadn't filled their odds in. Nothing usable means
+    // nothing to pay, not the stake back.
+    const decimal = ticketDecimalOdds(parlay);
+    if (decimal <= 1) return 0;
+    if (parlay.boostPct || parlay.boostedOdds) {
+        // boostPct reproduces the book's own arithmetic; the stored boostedOdds
+        // is only the rounded display, so it's the fallback, not the source.
+        const boostedDec = (!parlay.boostPct && isRealAmericanOdds(parlay.boostedOdds))
+            ? americanToDecimal(parlay.boostedOdds)
+            : null;
+        return boostedReturn(parlay.wager, decimal, parlay.boostPct, parlay.boostCap, boostedDec);
+    }
+    return toCents(parlay.wager * decimal);
+}
+
 module.exports = {
+    toCents,
     americanToDecimal,
     parlayDecimalOdds,
     parlayPayout,
     decimalToAmerican,
-    combinedAmericanOdds
+    combinedAmericanOdds,
+    isRealAmericanOdds,
+    ticketDecimalOdds,
+    boostDecimalOdds,
+    boostedAmericanOdds,
+    boostedStake,
+    boostedReturn,
+    effectiveAmericanOdds,
+    settledPayout
 };

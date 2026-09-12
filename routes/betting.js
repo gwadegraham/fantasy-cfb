@@ -10,7 +10,7 @@ const Ranking = require('../models/ranking');
 const requireBettingGroupMember = require('../modules/require-betting-group');
 const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
-const { parlayPayout, combinedAmericanOdds } = require('../modules/parlay-calc');
+const { combinedAmericanOdds, settledPayout } = require('../modules/parlay-calc');
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
@@ -258,12 +258,27 @@ router.patch('/:id/legs', async (req, res) => {
         if (betType != null) leg.betType = betType;
         if (selection != null) leg.selection = selection;
         if (line !== undefined) leg.line = line;
-        if (odds != null) leg.odds = odds;
+        if (odds != null) {
+            const n = Number(odds);
+            // No board quotes American odds between -100 and +100.
+            if (isNaN(n) || Math.abs(n) < 100) {
+                return res.status(400).json({ message: 'Odds must be +100 or higher, or -100 or lower' });
+            }
+            leg.odds = n;
+        }
         if (teamSide !== undefined) leg.teamSide = teamSide;
         if (statCategory !== undefined) leg.statCategory = statCategory;
         if (statTeamSide !== undefined) leg.statTeamSide = statTeamSide;
-        leg.result = 'pending';
-        leg.resolvedAt = null;
+
+        // Only the pick decides how a leg grades. Correcting the odds to the
+        // price actually filled is now a one-tap edit, and blanket-resetting
+        // the result on it un-graded a settled leg — after which nothing
+        // recomputed parlay.status, so the ticket sat pending forever.
+        const regradingFields = ['gameId', 'betType', 'selection', 'line', 'teamSide', 'statCategory', 'statTeamSide'];
+        if (regradingFields.some(f => req.body[f] !== undefined)) {
+            leg.result = 'pending';
+            leg.resolvedAt = null;
+        }
 
         // Spread legs are graded arithmetically off `line` and `teamSide`, so a
         // leg missing either — or carrying a quarter-point the board can't have
@@ -298,12 +313,28 @@ router.patch('/:id', async (req, res) => {
         const parlay = await Parlay.findById(req.params.id);
         if (!parlay) return res.status(404).json({ message: 'Parlay not found' });
 
-        if (req.body.wager != null) parlay.wager = req.body.wager;
+        // Every one of these used to be gated on `!= null`, which made them
+        // write-once from the UI: emptying a box sent null and the route
+        // quietly kept the old number, so a mistyped boost couldn't be undone.
+        // Presence in the body is the signal now; empty means unset.
+        const numericFields = ['wager', 'parlayOdds', 'boostPct', 'boostedOdds', 'boostCap', 'totalPayout'];
+        for (const field of numericFields) {
+            if (req.body[field] === undefined) continue;
+            const raw = req.body[field];
+            if (raw === null || raw === '') {
+                parlay[field] = null;
+                continue;
+            }
+            const n = Number(raw);
+            // Booleans and arrays coerce to numbers without complaint, and a
+            // negative wager or boost is not a thing — refuse rather than
+            // quietly storing a figure that lands in the season's net.
+            if (typeof raw === 'boolean' || Array.isArray(raw) || isNaN(n) || n < 0) {
+                return res.status(400).json({ message: field + ' must be a number of 0 or more' });
+            }
+            parlay[field] = n;
+        }
         if (req.body.seasonType != null) parlay.seasonType = req.body.seasonType;
-        if (req.body.parlayOdds != null) parlay.parlayOdds = req.body.parlayOdds;
-        if (req.body.boostPct != null) parlay.boostPct = req.body.boostPct;
-        if (req.body.boostedOdds != null) parlay.boostedOdds = req.body.boostedOdds;
-        if (req.body.totalPayout != null) parlay.totalPayout = req.body.totalPayout;
         if (req.body.placedBy != null) parlay.placedBy = req.body.placedBy || null;
         parlay.updatedAt = new Date();
         await parlay.save();
@@ -335,11 +366,15 @@ router.patch('/:id/legs/:contributor/resolve', async (req, res) => {
 
         parlay.status = deriveParlayStatus(parlay.legs);
         if (parlay.status === 'won' && parlay.wager) {
-            parlay.payout = parlay.totalPayout || parlayPayout(parlay.wager, parlay.legs);
+            parlay.payout = settledPayout(parlay);
         } else if (parlay.status === 'lost') {
             parlay.payout = 0;
         } else if (parlay.status === 'push') {
             parlay.payout = parlay.wager || 0;
+        } else if (parlay.status === 'won') {
+            // Won but no wager recorded — there is no payout to claim, and a
+            // stale one would count as winnings against $0 staked.
+            parlay.payout = null;
         }
 
         parlay.updatedAt = new Date();

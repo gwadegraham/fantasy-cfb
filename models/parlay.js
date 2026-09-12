@@ -79,6 +79,11 @@ const parlaySchema = new mongoose.Schema({
     boostedOdds: {
         type: Number
     },
+    // Promos cap the stake they'll boost ("Max $10.00 wager"). Null means the
+    // whole wager was boosted; anything above the cap pays at parlayOdds.
+    boostCap: {
+        type: Number
+    },
     totalPayout: {
         type: Number
     },

@@ -106,6 +106,65 @@
     border-radius: var(--cc-r-sm);
     font-size: 13px;
 }
+/* The inline editor is a full-width block under the row it belongs to, so the
+   row has to be allowed to wrap. Only .leg-editor ever takes the second line. */
+.leg { flex-wrap: wrap; }
+.leg--editing {
+    background: var(--cc-surface);
+    outline: 1px solid var(--cc-interactive);
+}
+.leg-editor {
+    flex: 1 0 100%;
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--cc-border);
+}
+.leg-editor-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 110px;
+    min-width: 0;
+}
+.leg-editor-actions {
+    display: flex;
+    gap: 8px;
+}
+.leg-editor-save,
+.leg-editor-cancel,
+.leg-editor-repick {
+    /* 44px so these stay real targets on a phone. */
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: var(--cc-r-sm);
+    font-family: 'Poppins', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.leg-editor-save {
+    background: var(--cc-interactive);
+    border: 1px solid var(--cc-interactive);
+    color: #fff;
+}
+.leg-editor-cancel {
+    background: none;
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted);
+}
+.leg-editor-repick {
+    flex: 1 0 100%;
+    background: none;
+    border: 1px dashed var(--cc-border);
+    color: var(--cc-muted-2);
+    font-weight: 500;
+}
+.leg-editor-repick:hover { color: var(--cc-interactive); border-color: var(--cc-interactive); }
+
 .leg-contributor {
     display: flex;
     align-items: center;
@@ -215,6 +274,7 @@
     width: 100%;
     max-width: 500px;
     max-height: 80vh;
+    max-height: 80dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -251,7 +311,10 @@
     overflow-x: hidden;
     padding: 8px 0;
     flex: 1;
-    min-height: 200px;
+    /* No min-height: with the keyboard up there may be less than 200px left,
+       and pinning it open is what pushed the results off-screen. */
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
 }
 .game-picker-item {
     display: grid;
@@ -600,6 +663,81 @@
     border-color: var(--cc-interactive);
 }
 
+/* Admin panel. A two-column grid rather than a wrapping flex row: the old row
+   broke at a different point on every line, so no two inputs shared an edge. */
+.admin-panel {
+    margin: 10px 24px 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--cc-border);
+}
+.admin-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+}
+.admin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.admin-field--wide {
+    margin-top: 10px;
+}
+.admin-field-label {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.admin-field-input {
+    width: 100%;
+    box-sizing: border-box;
+    /* 16px keeps iOS from zooming the page when the field takes focus. */
+    padding: 10px 12px;
+    background: var(--cc-bg);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm);
+    color: var(--cc-text);
+    font-size: 16px;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
+}
+.admin-field-input:focus {
+    border-color: var(--cc-interactive);
+    outline: none;
+}
+.admin-field-input::placeholder {
+    color: var(--cc-muted-2);
+    opacity: 0.5;
+    font-weight: 400;
+}
+.admin-derived {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: var(--cc-surface);
+    border-radius: var(--cc-r-sm);
+    font-size: 13px;
+    color: var(--cc-muted);
+    text-align: center;
+}
+.admin-derived strong {
+    color: var(--cc-success);
+    font-weight: 600;
+}
+.admin-override {
+    margin-top: 10px;
+}
+.admin-override summary {
+    font-size: 11px;
+    color: var(--cc-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    padding: 4px 0;
+}
+.admin-override summary:hover { color: var(--cc-interactive); }
+
 /* Boost section (admin-editable) */
 .boost-section {
     display: flex;
@@ -923,5 +1061,5 @@
     .alt-slider { margin: 14px 0 8px; }
     .alt-use-btn { min-height: 44px; }
     .alt-team-btn { min-height: 44px; }
-    .game-picker { max-height: 90vh; border-radius: var(--cc-r-md) var(--cc-r-md) 0 0; }
+    .game-picker { max-height: 90vh; max-height: 90dvh; border-radius: var(--cc-r-md) var(--cc-r-md) 0 0; }
 }
