@@ -1,7 +1,7 @@
 // Game-day live scoring poller.
 //
-// Refreshes scores every 30 seconds during games so standings feel near-live.
-// The scheduler fires this every 30s, every day; the games-live gate is what
+// Refreshes scores every 10 seconds during games so standings feel near-live.
+// The scheduler fires this every 10s, every day; the games-live gate is what
 // makes that affordable — read the local Game collection (0 CFBD calls, the
 // schedule is ingested ahead of time) for any active-season game that kicked
 // off within the last MAX_GAME_HOURS and isn't completed. That is what makes
@@ -26,7 +26,7 @@
 // Newly completed games are NOT settled inline. They queue in
 // modules/completion-flush.js and the heavy pass (box scores, H2H bonuses,
 // cumulative, records, parlays) runs once the cluster goes quiet, which is what
-// makes a 30s cadence affordable in work as well as in calls — that pass used
+// makes a 10s cadence affordable in work as well as in calls — that pass used
 // to run once per tick containing a final, so its cost tracked the interval
 // rather than the number of games. The one case the gate above cannot cover is
 // the last final of a slate — after it, no game is live and this job stops
@@ -94,7 +94,7 @@ async function run() {
     // one phase is live; postseason wins if somehow both look live.
     const season = activeSeason('football');
     // A null season makes the gate below match no games, so the poller would
-    // report "no game in progress" for a full slate — silently, every 30s.
+    // report "no game in progress" for a full slate — silently, every 10s.
     if (season == null) {
         console.error('live-poll: no active season resolved — skipping (this is not "no games")');
         return { skipped: 'no active season' };
