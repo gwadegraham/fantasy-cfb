@@ -539,14 +539,21 @@ async function drainCompletions() {
 
 let liveInFlight = null;
 
+// `concurrent: true` marks the two skips that did NO work, as opposed to the
+// calendar skip inside doLiveUpdate — which still refreshed the scoreboard and
+// ran a flush before deciding there was no week to score. The caller needs the
+// difference: modules/live-poll.js records a JobRun per tick, and
+// routes/standings.js reads the newest SUCCESSFUL one as the standings' "data
+// as of" time. Logging a did-nothing tick as a success moved that badge
+// forward without refreshing anything behind it.
 function runLiveUpdate() {
     if (liveInFlight) {
         console.log('A live update is already running — skipping');
-        return Promise.resolve({ skipped: 'a live update was already running' });
+        return Promise.resolve({ skipped: 'a live update was already running', concurrent: true });
     }
     if (inFlight) {
         console.log('A full update is running — skipping live update');
-        return Promise.resolve({ skipped: 'a full update is running' });
+        return Promise.resolve({ skipped: 'a full update is running', concurrent: true });
     }
     liveInFlight = doLiveUpdate().finally(() => { liveInFlight = null; });
     return liveInFlight;

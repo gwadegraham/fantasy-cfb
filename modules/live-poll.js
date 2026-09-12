@@ -135,7 +135,15 @@ async function run() {
         const r = await runLiveUpdate();
         if (typeof r.remainingCalls === 'number') lastKnownRemaining = r.remainingCalls;
         if (r.skipped) {
-            await finishRun(id, 'success', `Nothing to score — ${r.skipped}`);
+            // A concurrency skip did no work at all, so it is logged 'skipped'
+            // rather than 'success' — routes/standings.js reads the newest
+            // SUCCESSFUL scoring run as the standings' "data as of" time, and a
+            // did-nothing tick recorded as a success moved that badge forward
+            // over data nothing had refreshed. The other skip (the calendar has
+            // no week to score) still refreshed the scoreboard and ran a flush
+            // on its way there, so it stays a success.
+            const status = r.concurrent ? 'skipped' : 'success';
+            await finishRun(id, status, `Nothing to score — ${r.skipped}`);
             return { skipped: r.skipped };
         }
         const bits = [`${r.updated} updated`];

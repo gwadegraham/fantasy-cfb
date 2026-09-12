@@ -234,6 +234,29 @@ describe('runFullUpdate overlap guard', () => {
         const next = await scoreUpdate.runFullUpdate({ withBetting: false });
         expect(next.skipped).toBeUndefined();
     });
+
+    // modules/live-poll.js branches on this flag to decide whether a tick is
+    // logged 'skipped' or 'success', and routes/standings.js reads the newest
+    // success as the standings' "data as of" time. A skip that forgot to set it
+    // would silently go back to advancing that badge over untouched data, so
+    // the flag is asserted on the producer, not just on the consumer.
+    it('marks a live update skipped by another live update as concurrent', async () => {
+        // The guard is claimed synchronously, so the second call sees it without
+        // the first having to finish — which it can't here, since this spec
+        // doesn't stub the CFBD scoreboard fetch. Its rejection is swallowed
+        // deliberately: what's under test is the skip, not the fetch.
+        const first = scoreUpdate.runLiveUpdate();
+        const second = await scoreUpdate.runLiveUpdate();
+        expect(second).toMatchObject({ concurrent: true, skipped: expect.stringMatching(/already running/) });
+        await first.catch(() => {});
+    });
+
+    it('marks a live update skipped by a full update as concurrent', async () => {
+        const full = scoreUpdate.runFullUpdate({ withBetting: false });
+        const live = await scoreUpdate.runLiveUpdate();
+        await full;
+        expect(live).toMatchObject({ concurrent: true, skipped: expect.stringMatching(/full update/) });
+    });
 });
 
 describe('resolveCurrentWeek', () => {
