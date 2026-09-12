@@ -59,6 +59,63 @@ describe('GET /betting/:id', () => {
     });
 });
 
+// Admin-gated routes read roles off req.oidc.user, not req.effUser, so this
+// app stubs both: the group middleware needs the member id, the admin check
+// needs the role.
+const adminApp = express();
+adminApp.use(express.json());
+adminApp.use((req, res, next) => {
+    req.effUser = { user_metadata: { metadata: { userId: MEMBER.toString() } } };
+    req.oidc = {
+        isAuthenticated: () => true,
+        user: { user_metadata: { roles: ['Admin'], metadata: { userId: MEMBER.toString() } } }
+    };
+    next();
+});
+adminApp.use('/betting', bettingRouter);
+
+describe('PATCH /betting/:id — wager and boost', () => {
+    let parlay;
+    beforeEach(async () => {
+        parlay = await Parlay.create({
+            group: group._id, season: 2026, week: 2,
+            wager: 20, parlayOdds: 398, boostPct: 20, boostedOdds: 478, boostCap: 10
+        });
+    });
+
+    const patch = body => request(adminApp).patch(`/betting/${parlay._id}`).send(body);
+
+    test('records a boost cap', async () => {
+        const res = await patch({ boostCap: 5 });
+        expect(res.status).toBe(200);
+        expect(res.body.boostCap).toBe(5);
+    });
+
+    // Regression. These fields were gated on `!= null`, so emptying a box in
+    // the admin panel sent null and the route silently kept the old number —
+    // a fat-fingered boost was permanent until someone edited Mongo by hand.
+    test('clears a boost field when the admin empties the box', async () => {
+        const res = await patch({ boostPct: null, boostedOdds: null, boostCap: null });
+
+        expect(res.status).toBe(200);
+        expect(res.body.boostPct == null).toBe(true);
+        expect(res.body.boostedOdds == null).toBe(true);
+        expect(res.body.boostCap == null).toBe(true);
+    });
+
+    test('leaves fields the request never mentioned alone', async () => {
+        const res = await patch({ boostCap: 5 });
+        expect(res.body.wager).toBe(20);
+        expect(res.body.parlayOdds).toBe(398);
+        expect(res.body.boostPct).toBe(20);
+    });
+
+    test('refuses a non-admin', async () => {
+        const res = await request(app).patch(`/betting/${parlay._id}`).send({ boostCap: 5 });
+        expect(res.status).toBe(403);
+    });
+});
+
 describe('PATCH /betting/:id/legs — alternate spreads', () => {
     let parlay;
     beforeEach(async () => {

@@ -54,6 +54,46 @@ function americanToDecimal(odds) {
     return 1;
 }
 
+// Books boost the PROFIT, not the stake, and cap the stake they'll boost
+// ("Max $10.00 wager"). The group plays a $20 ticket, so the cap usually bites
+// and the ticket's real odds are a blend of boosted and unboosted. Mirrors
+// modules/parlay-calc.js — keep the two in step.
+function boostDecimal(dec, pct) {
+    if (!pct) return dec;
+    return 1 + ((dec - 1) * (1 + (pct / 100)));
+}
+
+// Decimal odds for the boosted slice: the admin's hand-typed boosted number if
+// they copied one off the slip, otherwise derived from the boost percentage.
+function boostedSliceDecimal(parlay, rawDec) {
+    if (parlay.boostedOdds) return americanToDecimal(parlay.boostedOdds);
+    return boostDecimal(rawDec, parlay.boostPct);
+}
+
+function boostMath(parlay, legs) {
+    var wager = Number(parlay.wager) || 0;
+    var rawDec = parlay.parlayOdds
+        ? americanToDecimal(parlay.parlayOdds)
+        : legs.filter(function (l) { return l.odds && l.result !== 'push'; })
+            .reduce(function (acc, l) { return acc * americanToDecimal(l.odds); }, 1);
+    if (!wager || rawDec <= 1) return null;
+
+    var cap = Number(parlay.boostCap);
+    var boostedStake = (cap > 0) ? Math.min(cap, wager) : wager;
+    var plainStake = wager - boostedStake;
+    var boostedDec = boostedSliceDecimal(parlay, rawDec);
+    var total = (boostedStake * boostedDec) + (plainStake * rawDec);
+
+    return {
+        rawOdds: decimalToAmerican(rawDec),
+        boostedOdds: decimalToAmerican(boostedDec),
+        effectiveOdds: decimalToAmerican(total / wager),
+        capped: plainStake > 0,
+        boostedStake: boostedStake,
+        payout: (Math.round(total * 100) / 100).toFixed(2)
+    };
+}
+
 function formatOdds(odds) {
     if (odds == null) return '';
     return odds >= 0 ? '+' + odds : String(odds);
@@ -250,11 +290,17 @@ function renderCurrentParlay() {
     var calcOdds = filledLegs.length ? combinedOdds(filledLegs) : '—';
     var calcPay = parlay.wager && filledLegs.length ? '$' + calcPayout(parlay.wager, filledLegs) : '—';
 
+    var boost = (parlay.boostPct || parlay.boostedOdds) ? boostMath(parlay, parlay.legs) : null;
+
     var oddsHtml = '';
-    if (parlay.boostedOdds && parlay.parlayOdds) {
-        oddsHtml = '<span class="odds-original">' + formatOdds(parlay.parlayOdds) + '</span>'
-            + ' <span class="boost-badge">+' + (parlay.boostPct || '?') + '%</span> '
-            + '<span class="odds-boosted">' + formatOdds(parlay.boostedOdds) + '</span>';
+    if (boost) {
+        // With a cap in play the advertised boosted number isn't what the
+        // ticket pays, so lead with the blended odds and show the cap.
+        var badge = (parlay.boostPct ? '+' + parlay.boostPct + '%' : 'boost')
+            + (boost.capped ? ' &middot; $' + boost.boostedStake + ' cap' : '');
+        oddsHtml = '<span class="odds-original">' + formatOdds(parlay.parlayOdds || boost.rawOdds) + '</span>'
+            + ' <span class="boost-badge">' + badge + '</span> '
+            + '<span class="odds-boosted">' + formatOdds(boost.effectiveOdds) + '</span>';
     } else if (parlay.parlayOdds) {
         oddsHtml = formatOdds(parlay.parlayOdds);
     } else {
@@ -266,6 +312,8 @@ function renderCurrentParlay() {
         payoutDisplay = '$' + parlay.payout;
     } else if (parlay.totalPayout) {
         payoutDisplay = '$' + parlay.totalPayout;
+    } else if (boost) {
+        payoutDisplay = '$' + boost.payout;
     } else {
         payoutDisplay = calcPay;
     }
@@ -297,8 +345,10 @@ function renderCurrentParlay() {
             + '<input type="number" class="boost-input" value="' + (parlay.parlayOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'parlayOdds\', this.value)">'
             + '<label>Boost %</label>'
             + '<input type="number" class="boost-input" value="' + (parlay.boostPct || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostPct\', this.value)">'
+            + '<label>Boost cap $</label>'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostCap || '') + '" placeholder="all" onchange="updateBoost(\'' + parlay._id + '\', \'boostCap\', this.value)">'
             + '<label>Boosted</label>'
-            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
+            + '<input type="number" class="boost-input" value="' + (parlay.boostedOdds || '') + '" placeholder="' + (boost ? formatOdds(boost.boostedOdds) : '—') + '" onchange="updateBoost(\'' + parlay._id + '\', \'boostedOdds\', this.value)">'
             + '<label>Payout $</label>'
             + '<input type="number" class="boost-input" value="' + (parlay.totalPayout || '') + '" placeholder="—" onchange="updateBoost(\'' + parlay._id + '\', \'totalPayout\', this.value)" step="0.01">'
             + '</div>';
@@ -1035,7 +1085,7 @@ async function updateWager(parlayId, value) {
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wager: Number(value) })
+            body: JSON.stringify({ wager: (value === '' || value == null) ? null : Number(value) })
         });
         if (res.ok) {
             if (window.ccToast) ccToast.success('Wager updated');
@@ -1066,9 +1116,7 @@ function decimalToAmerican(dec) {
 
 function computeBoostedOdds(parlay) {
     if (!parlay.parlayOdds || !parlay.boostPct) return null;
-    var dec = americanToDecimal(parlay.parlayOdds);
-    var boostedDec = 1 + (dec - 1) * (1 + parlay.boostPct / 100);
-    return decimalToAmerican(boostedDec);
+    return decimalToAmerican(boostDecimal(americanToDecimal(parlay.parlayOdds), parlay.boostPct));
 }
 
 async function updateBoost(parlayId, field, value) {
@@ -1076,12 +1124,19 @@ async function updateBoost(parlayId, field, value) {
         var parlay = parlays.find(function (p) { return p._id === parlayId; });
         if (!parlay) return;
 
-        parlay[field] = Number(value);
+        // An emptied box means "unset", not zero — Number('') is 0, and a 0
+        // boost cap would read as a real cap that boosts nothing.
+        var num = (value === '' || value == null) ? null : Number(value);
+        parlay[field] = num;
         var body = {};
-        body[field] = Number(value);
+        body[field] = num;
 
-        var boosted = computeBoostedOdds(parlay);
-        if (boosted != null) body.boostedOdds = boosted;
+        // Re-derive the boosted number from the raw odds + percentage, unless
+        // the admin is typing that number themselves off the slip.
+        if (field !== 'boostedOdds') {
+            var boosted = computeBoostedOdds(parlay);
+            if (boosted != null) body.boostedOdds = boosted;
+        }
 
         var res = await fetch('/betting/' + parlayId, {
             method: 'PATCH',

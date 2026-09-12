@@ -10,7 +10,7 @@ const Ranking = require('../models/ranking');
 const requireBettingGroupMember = require('../modules/require-betting-group');
 const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
-const { parlayPayout, combinedAmericanOdds } = require('../modules/parlay-calc');
+const { combinedAmericanOdds, settledPayout } = require('../modules/parlay-calc');
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
@@ -298,12 +298,17 @@ router.patch('/:id', async (req, res) => {
         const parlay = await Parlay.findById(req.params.id);
         if (!parlay) return res.status(404).json({ message: 'Parlay not found' });
 
-        if (req.body.wager != null) parlay.wager = req.body.wager;
+        // Every one of these used to be gated on `!= null`, which made them
+        // write-once from the UI: emptying a box sent null and the route
+        // quietly kept the old number, so a mistyped boost couldn't be undone.
+        // Presence in the body is the signal now; empty means unset.
+        const numericFields = ['wager', 'parlayOdds', 'boostPct', 'boostedOdds', 'boostCap', 'totalPayout'];
+        for (const field of numericFields) {
+            if (req.body[field] === undefined) continue;
+            const raw = req.body[field];
+            parlay[field] = (raw === null || raw === '') ? null : Number(raw);
+        }
         if (req.body.seasonType != null) parlay.seasonType = req.body.seasonType;
-        if (req.body.parlayOdds != null) parlay.parlayOdds = req.body.parlayOdds;
-        if (req.body.boostPct != null) parlay.boostPct = req.body.boostPct;
-        if (req.body.boostedOdds != null) parlay.boostedOdds = req.body.boostedOdds;
-        if (req.body.totalPayout != null) parlay.totalPayout = req.body.totalPayout;
         if (req.body.placedBy != null) parlay.placedBy = req.body.placedBy || null;
         parlay.updatedAt = new Date();
         await parlay.save();
@@ -335,7 +340,7 @@ router.patch('/:id/legs/:contributor/resolve', async (req, res) => {
 
         parlay.status = deriveParlayStatus(parlay.legs);
         if (parlay.status === 'won' && parlay.wager) {
-            parlay.payout = parlay.totalPayout || parlayPayout(parlay.wager, parlay.legs);
+            parlay.payout = settledPayout(parlay);
         } else if (parlay.status === 'lost') {
             parlay.payout = 0;
         } else if (parlay.status === 'push') {

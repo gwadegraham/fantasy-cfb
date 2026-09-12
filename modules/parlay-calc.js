@@ -28,10 +28,80 @@ function combinedAmericanOdds(legs) {
     return decimalToAmerican(parlayDecimalOdds(activLegs));
 }
 
+// Books boost the PROFIT, not the stake: a 50% boost on +355 pays
+// 1 + 3.55 * 1.5 = 6.325, i.e. +532. Both DraftKings ("Profit Boost") and
+// FanDuel ("Parlay Boost") work this way, so one formula covers the group's
+// two books.
+function boostDecimalOdds(decimal, boostPct) {
+    if (!boostPct) return decimal;
+    return 1 + ((decimal - 1) * (1 + (boostPct / 100)));
+}
+
+function boostedAmericanOdds(parlayOdds, boostPct) {
+    if (!parlayOdds || !boostPct) return null;
+    return decimalToAmerican(boostDecimalOdds(americanToDecimal(parlayOdds), boostPct));
+}
+
+// The promos cap the stake they'll boost ("Max $10.00 wager"), and the group
+// always plays a $20 ticket, so the cap usually bites. Anything over the cap
+// rides at the unboosted number, which makes the ticket's real odds a blend of
+// the two — not the boosted number the slip advertises.
+function boostedStake(wager, boostCap) {
+    if (!wager) return 0;
+    if (boostCap == null || boostCap === '' || !(boostCap > 0)) return wager;
+    return Math.min(Number(boostCap), wager);
+}
+
+// Total returned (stake included) on a winning ticket, honoring the boost and
+// its stake cap. `decimal` is the ticket's true decimal odds — prefer the
+// number off the bet slip over the product of the legs, since the book rounds.
+// `boostedDecimal` overrides the derived boost when the admin typed the boosted
+// number off the slip — the book rounds its own display, and paying what the
+// slip says beats paying what the percentage implies.
+function boostedReturn(wager, decimal, boostPct, boostCap, boostedDecimal) {
+    if (!wager || !decimal) return 0;
+    const boosted = boostedStake(wager, boostCap);
+    const plain = wager - boosted;
+    const boostedDec = boostedDecimal || boostDecimalOdds(decimal, boostPct);
+    const total = (boosted * boostedDec) + (plain * decimal);
+    return Math.round(total * 100) / 100;
+}
+
+// The blended American odds a capped boost actually pays. With no cap (or a cap
+// at or above the wager) this is just the boosted number.
+function effectiveAmericanOdds(wager, decimal, boostPct, boostCap, boostedDecimal) {
+    const total = boostedReturn(wager, decimal, boostPct, boostCap, boostedDecimal);
+    if (!total || !wager) return 0;
+    return decimalToAmerican(total / wager);
+}
+
+// The one place that decides what a settled parlay paid. A hand-typed
+// totalPayout always wins — it's the admin copying the real number off the
+// book — then the boost math, then the plain leg product.
+function settledPayout(parlay) {
+    if (!parlay || !parlay.wager) return 0;
+    if (parlay.totalPayout) return parlay.totalPayout;
+    const legs = parlay.legs || [];
+    const decimal = parlay.parlayOdds
+        ? americanToDecimal(parlay.parlayOdds)
+        : parlayDecimalOdds(legs);
+    if (parlay.boostPct || parlay.boostedOdds) {
+        const boostedDec = parlay.boostedOdds ? americanToDecimal(parlay.boostedOdds) : null;
+        return boostedReturn(parlay.wager, decimal, parlay.boostPct, parlay.boostCap, boostedDec);
+    }
+    return parlayPayout(parlay.wager, legs);
+}
+
 module.exports = {
     americanToDecimal,
     parlayDecimalOdds,
     parlayPayout,
     decimalToAmerican,
-    combinedAmericanOdds
+    combinedAmericanOdds,
+    boostDecimalOdds,
+    boostedAmericanOdds,
+    boostedStake,
+    boostedReturn,
+    effectiveAmericanOdds,
+    settledPayout
 };

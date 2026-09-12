@@ -1,6 +1,6 @@
 const Parlay = require('../models/parlay');
 const Game = require('../models/game');
-const { parlayPayout } = require('./parlay-calc');
+const { settledPayout } = require('./parlay-calc');
 
 // Which team a spread/moneyline leg backs. Legs written since the alt-spread
 // board carry it outright; older ones only have the selection text ("LSU -3"),
@@ -108,7 +108,7 @@ async function resolveParlays() {
             parlay.status = newStatus;
 
             if (newStatus === 'won' && parlay.wager) {
-                parlay.payout = parlay.totalPayout || parlayPayout(parlay.wager, parlay.legs);
+                parlay.payout = settledPayout(parlay);
             } else if (newStatus === 'lost') {
                 parlay.payout = 0;
             } else if (newStatus === 'push') {
