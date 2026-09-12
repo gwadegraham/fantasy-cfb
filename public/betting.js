@@ -540,8 +540,16 @@ function scrollLegIntoView(contributor, position) {
     if (!contributor) return;
     var el = document.querySelector('#betting-content [data-contributor="' + contributor + '"]');
     if (!el || !el.scrollIntoView) return;
+
+    // You just tapped a button on this row, so it is usually already in front
+    // of you — scrolling it to the top of the viewport reads as the page
+    // lurching for no reason. Only move when the row can't actually be seen.
+    var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    var r = el.getBoundingClientRect();
+    if (r.top >= 0 && r.bottom <= vh) return;
+
     var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: position || 'center', behavior: reduced ? 'auto' : 'smooth' });
+    el.scrollIntoView({ block: position || 'nearest', behavior: reduced ? 'auto' : 'smooth' });
 }
 
 function openGamePicker(parlayId, contributor, index) {
@@ -1165,7 +1173,7 @@ function changeLegPick(parlayId, contributor) {
     editingLeg = null;
     leg.gameId = null;
     renderCurrentParlay();
-    scrollLegIntoView(contributor, 'start');
+    scrollLegIntoView(contributor, 'nearest');
 }
 
 async function saveLegOdds(parlayId, contributor) {
