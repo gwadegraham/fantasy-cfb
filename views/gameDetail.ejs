@@ -104,10 +104,22 @@
 
         // ---- live refresh -------------------------------------------------
         //
-        // Same 30s cadence and hidden-tab rule as the league scoreboard. Only
+        // Same 10s cadence and hidden-tab rule as the league scoreboard. Only
         // this one game is refetched, and only while it is actually in progress
         // — a final or not-yet-kicked-off game arms no timer at all.
-        var GD_LIVE_MS = 30000;
+        //
+        // This tick is NOT free the way the scoreboard's is: render() ends by
+        // calling gdFetchPlays(), and /live/plays is the one billable CFBD call
+        // on this page. What keeps 10s from tripling that spend is the 90s
+        // per-game server cache in modules/live-plays.js (LIVE_PLAYS_TTL_MS) —
+        // at 10s, eight of every nine ticks are cache hits, and CFBD still sees
+        // at most one call per game per 90s.
+        //
+        // So this constant depends on that TTL. Setting LIVE_PLAYS_TTL_MS=0
+        // (the documented kill switch) removes the cache, and then this loop
+        // WOULD hit CFBD every 10s per open gamecast. Raise this back to 30000
+        // if that cache is ever disabled.
+        var GD_LIVE_MS = 10000;
         var gdTimer = null;
         var gdArt = null;
         var gdGame = null;

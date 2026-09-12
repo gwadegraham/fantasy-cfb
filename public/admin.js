@@ -309,10 +309,17 @@ function renderAdminStatus(el, s, api, year, jobs) {
         var sorted = Object.keys(latest).map(function (k) { return latest[k]; })
             .sort(function (a, b) { return order.indexOf(a.jobName) - order.indexOf(b.jobName); });
         var jobItems = sorted.map(function (j) {
-            var dot = j.status === 'success' ? 'g' : (j.status === 'error' ? 'r' : 'a');
+            // 'skipped' is its own outcome, not a quiet success: a live poller
+            // tick that found an update already in flight started and finished
+            // without doing anything. Rendering it as "ran" would claim work
+            // that never happened.
+            var dot = j.status === 'success' ? 'g'
+                : (j.status === 'error' ? 'r' : (j.status === 'skipped' ? 'b' : 'a'));
             var label = JOB_LABELS[j.jobName] || j.jobName;
             var when = timeAgo(j.finishedAt || j.startedAt);
-            var outcome = j.status === 'error' ? 'failed' : (j.status === 'running' ? 'running' : 'ran');
+            var outcome = j.status === 'error' ? 'failed'
+                : (j.status === 'running' ? 'running'
+                : (j.status === 'skipped' ? 'skipped' : 'ran'));
             return '<div class="ss-job"><span class="dot ' + dot + '"></span><b>' + label + '</b>' +
                 '<span class="ss-job-meta">' + outcome + (when ? ' · ' + when : '') + '</span></div>';
         }).join('');
