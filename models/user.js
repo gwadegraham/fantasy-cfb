@@ -186,6 +186,46 @@ const seasonSchema = new mongoose.Schema({
     }
 });
 
+// A browser push subscription (Web Push / VAPID). One per device+browser: a
+// manager on a phone and a laptop holds two. `endpoint` is the push service URL
+// and is the natural unique key, so re-subscribing the same device updates in
+// place rather than accumulating duplicates.
+//
+// Stored on the user rather than in a collection of its own because it is small,
+// always read with the user, and pruned with them — a dead endpoint (410 Gone
+// from the push service) is deleted by modules/push-notify.js on the next send.
+const pushSubscriptionSchema = new mongoose.Schema({
+    endpoint: {
+        type: String,
+        required: true
+    },
+    // p256dh + auth are the client's encryption keys. Web Push payloads are
+    // encrypted end-to-end, so without these a send is impossible.
+    keys: {
+        p256dh: { type: String, required: true },
+        auth: { type: String, required: true }
+    },
+    // Free-text UA string, for telling "my phone" from "my laptop" when
+    // debugging why one device is silent.
+    userAgent: {
+        type: String
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    }
+}, { _id: false });
+
+// Which alert types a manager wants. Its own schema (rather than an inline
+// nested object) purely so `_id: false` applies — without it Mongoose mints a
+// subdocument id and it surfaces in the /users/me/push response body.
+const pushPrefsSchema = new mongoose.Schema({
+    score: { type: Boolean, default: true },
+    leadChange: { type: Boolean, default: true },
+    closeGame: { type: Boolean, default: true },
+    final: { type: Boolean, default: true }
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
     firstName: {
         type: String,
@@ -233,6 +273,19 @@ const userSchema = new mongoose.Schema({
     // hand before the invite flow existed.
     authSub: {
         type: String
+    },
+    // Web Push subscriptions for game-day alerts (see modules/push-notify.js).
+    // Absent for anyone who has never opted in, which is the normal state —
+    // subscribing requires the site to be installed to the home screen on iOS.
+    pushSubscriptions: {
+        type: [pushSubscriptionSchema],
+        default: undefined
+    },
+    // Which alert types this manager wants. Unset means "all four", so a
+    // subscriber gets everything until they narrow it.
+    pushPrefs: {
+        type: pushPrefsSchema,
+        default: undefined
     },
 });
 

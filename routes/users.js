@@ -20,6 +20,8 @@ const inviteToken = require('../modules/invite-token');
 const { LEAGUES } = require('../modules/scoring-defaults');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 const { findPoll } = require('../modules/scoring-detectors');
+const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
+const pushNotify = require('../modules/push-notify');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
 // tile keeps that week in focus for this long after its last kickoff before
@@ -92,6 +94,148 @@ router.patch('/me/profile', async (req, res) => {
             profilePrompted: user.profilePrompted,
             franchiseName: (current && current.franchiseName) || null
         });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ---- Game-day push alerts (Web Push) ---------------------------------------
+//
+// All four routes are self-scoped: the identity comes from the Auth0 session,
+// never from the client, so a manager can only ever read or change their own
+// subscriptions. They're exempted from the commissioner gate in server.js for
+// that reason (same rationale as /me/profile).
+//
+// Note what `allowed` does and does NOT do. During the initial rollout only the
+// ids in PUSH_RECIPIENT_IDS actually receive sends (modules/push-notify.js
+// enforces that at send time). This flag lets the UI say so honestly instead of
+// letting someone subscribe and then wonder why their phone is silent — but it
+// is a LABEL, not the gate. The gate is server-side and applies regardless.
+function sessionUserId(req) {
+    const oidcUser = req.oidc && req.oidc.user;
+    const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
+    return (meta && meta.userId) || null;
+}
+
+// What the client needs to decide which state to render: the VAPID public key
+// (public by definition — it ships to every browser), whether this manager is in
+// the rollout, and what they're already subscribed to.
+router.get('/me/push', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    try {
+        const user = await User.findById(userId, { pushSubscriptions: 1, pushPrefs: 1 }).lean();
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+        const subs = user.pushSubscriptions || [];
+        res.json({
+            configured: pushNotify.isConfigured(),
+            allowed: pushNotify.isAllowedRecipient(userId),
+            deviceCount: subs.length,
+            endpoints: subs.map(s => s.endpoint),
+            prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },
+            vapidPublicKey: pushNotify.vapidConfig().publicKey
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Register this device. Idempotent by endpoint: re-subscribing the same browser
+// replaces its record rather than adding a duplicate, which matters because the
+// push service reissues an endpoint whenever it feels like it.
+router.post('/me/push', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    let clean;
+    try {
+        clean = sanitizeSubscription(req.body, req.get('User-Agent'));
+    } catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+
+        const subs = (user.pushSubscriptions || []).filter(s => s.endpoint !== clean.endpoint);
+        if (subs.length >= MAX_SUBSCRIPTIONS) {
+            // Drop the oldest rather than refusing: a manager hitting the cap is
+            // someone whose browser keeps reissuing endpoints, and failing their
+            // newest device is the wrong end to cut.
+            subs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            subs.splice(0, subs.length - MAX_SUBSCRIPTIONS + 1);
+        }
+        subs.push(clean);
+        user.pushSubscriptions = subs;
+        await user.save();
+
+        res.json({
+            deviceCount: subs.length,
+            allowed: pushNotify.isAllowedRecipient(userId)
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Unregister. With an endpoint in the body it removes that one device; without
+// one it removes every device, which is what "turn alerts off" means.
+router.delete('/me/push', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    const endpoint = req.body && req.body.endpoint;
+    try {
+        const update = endpoint
+            ? { $pull: { pushSubscriptions: { endpoint } } }
+            : { $set: { pushSubscriptions: [] } };
+        await User.updateOne({ _id: userId }, update);
+        const user = await User.findById(userId, { pushSubscriptions: 1 }).lean();
+        res.json({ deviceCount: ((user && user.pushSubscriptions) || []).length });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Mute or unmute individual alert types. Partial: only the keys sent are changed.
+router.patch('/me/push/prefs', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+
+    let clean;
+    try {
+        clean = sanitizePrefs(req.body);
+    } catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: 'User not found.' });
+        const prefs = Object.assign(
+            { score: true, leadChange: true, closeGame: true, final: true },
+            user.pushPrefs ? user.pushPrefs.toObject ? user.pushPrefs.toObject() : user.pushPrefs : {},
+            clean
+        );
+        user.pushPrefs = prefs;
+        await user.save();
+        res.json({ prefs });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Prove the chain works without waiting for a Saturday. Subject to the same
+// allowlist as a real alert, so a test that stays silent is telling the truth
+// about what a real game day would do.
+router.post('/me/push/test', async (req, res) => {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: 'No profile in session.' });
+    try {
+        const out = await pushNotify.sendTest(userId);
+        res.json(out);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

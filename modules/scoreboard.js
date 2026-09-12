@@ -16,6 +16,7 @@
 //   - Same 1 CFBD call per tick
 
 const Game = require('../models/game');
+const { detectEvents } = require('./score-events');
 
 const CFBD_BASE = 'https://api.collegefootballdata.com';
 
@@ -135,32 +136,45 @@ function isDuplicateSnapshot(last, snap) {
 }
 
 // Update Game docs from scoreboard data. Only updates games that already exist
-// in the DB (the schedule is pre-loaded). Returns { updated, newlyCompleted, remainingCalls }.
+// in the DB (the schedule is pre-loaded). Returns { updated, newlyCompleted, remainingCalls, events }.
 async function updateFromScoreboard() {
     const { games: sbGames, remainingCalls } = await fetchScoreboard();
 
     if (!sbGames.length) {
-        return { updated: 0, newlyCompleted: [], remainingCalls };
+        return { updated: 0, newlyCompleted: [], remainingCalls, events: {} };
     }
 
     // Batch-read existing games to know which ones are newly completing
     const sbIds = sbGames.map(g => g.id).filter(Boolean);
     // $slice: -1 pulls only the trailing snapshot, not the whole accumulated
     // series — by late season a game doc holds ~100 of them.
+    // homePoints/awayPoints/period/clock ride along for modules/score-events.js:
+    // the prior score is what makes "this team just scored" detectable, and it
+    // costs nothing here because the document is already being read.
     const existing = await Game.find(
         { id: { $in: sbIds } },
-        { id: 1, completed: 1, wpSnapshots: { $slice: -1 } }
+        { id: 1, completed: 1, homePoints: 1, awayPoints: 1, period: 1, clock: 1, wpSnapshots: { $slice: -1 } }
     ).lean();
     const wasCompleted = new Set(existing.filter(g => g.completed).map(g => g.id));
     const lastSnapshot = new Map(existing.map(g => [g.id, (g.wpSnapshots || [])[0] || null]));
+    const priorState = new Map(existing.map(g => [g.id, g]));
 
     let updated = 0;
     const newlyCompleted = [];
+    // Push-notification events for this tick, keyed by game id. Collected here
+    // rather than derived later because this is the only place that holds both
+    // the prior and the incoming state for every game at once.
+    const events = {};
 
     for (const sb of sbGames) {
         if (!sb.id) continue;
 
         const norm = normalizeScoreboardGame(sb);
+
+        // Detect before the write, while priorState still reflects the DB.
+        const detected = detectEvents(priorState.get(sb.id), norm);
+        if (detected.length) events[sb.id] = detected;
+
         const $set = { lastUpdated: new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }) };
 
         if (norm.homePoints !== undefined) $set.homePoints = norm.homePoints;
@@ -221,7 +235,7 @@ async function updateFromScoreboard() {
     }
 
     if (updated) console.log(`Scoreboard: updated ${updated} game(s), ${newlyCompleted.length} newly completed`);
-    return { updated, newlyCompleted, remainingCalls };
+    return { updated, newlyCompleted, remainingCalls, events };
 }
 
 module.exports = {

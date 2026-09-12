@@ -186,6 +186,26 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Decides whether a manager's phone buzzes. Every rule in it fails
+        // SILENTLY in production — a bad edge either spams a lock screen for a
+        // whole Saturday or says nothing at all, and neither shows up in a log
+        // or in the UI. Held to the pure-module bar. Not 100 branches: the two
+        // uncovered are defensive `|| []` guards on fields the schema requires.
+        "./modules/score-events.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        // Validates a client-supplied push endpoint that the dyno will later
+        // make outbound requests to on every scoring tick, so the https check
+        // and the length caps are security properties rather than formatting.
+        "./modules/push-subscription.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         "./modules/job-runs-util.js": {
             statements: 100,
             branches: 100,
