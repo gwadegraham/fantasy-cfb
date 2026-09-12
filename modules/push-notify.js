@@ -98,6 +98,27 @@ function teamNameFor(game, side) {
     return side === 'home' ? game.homeTeam : game.awayTeam;
 }
 
+// What a score of this size almost certainly was, as an emoji plus a word.
+//
+// Worth doing because the scoreboard delta already carries it and a lock screen
+// has room for about four words: "🏈 Texas touchdown" tells a manager more than
+// "Texas scored" in the same space. Emoji are the only visual we can rely on —
+// notification body text is plain text (no markup, no inline images), and iOS
+// substitutes its own app icon for the `icon` slot.
+//
+// Inference, not fact: CFBD gives us a score delta, not a play type. A delta of
+// 7 is a touchdown with the extra point already counted, 6 is one whose PAT has
+// not landed yet, 8 is a two-point conversion. Anything unrecognised — most
+// often two scores landing inside one 10-second tick — falls back to the
+// generic wording rather than guessing wrong out loud.
+function scoreLabel(delta) {
+    if (delta === 6 || delta === 7 || delta === 8) return { emoji: '🏈', verb: 'touchdown' };
+    if (delta === 3) return { emoji: '🎯', verb: 'field goal' };
+    if (delta === 2) return { emoji: '🛡️', verb: 'safety' };
+    if (delta === 1) return { emoji: '➕', verb: 'extra point' };
+    return { emoji: '🏈', verb: 'scored' };
+}
+
 // Turn a detected event into notification text. `tag` collapses same-game
 // notifications on the device so a busy game replaces its own banner instead of
 // stacking six of them.
@@ -109,9 +130,10 @@ function buildPayload(event, game) {
 
     if (event.type === 'score') {
         const team = teamNameFor(game, event.side);
+        const { emoji, verb } = scoreLabel(event.delta);
         return {
             type: 'score',
-            title: `${team} scored`,
+            title: `${emoji} ${team} ${verb}`,
             body: `${line}${suffix}`,
             url,
             tag: `game-${game.id}`
@@ -121,7 +143,7 @@ function buildPayload(event, game) {
         const team = teamNameFor(game, event.side);
         return {
             type: 'leadChange',
-            title: `${team} takes the lead`,
+            title: `⚡ ${team} takes the lead`,
             body: `${line}${suffix}`,
             url,
             tag: `game-${game.id}`
@@ -130,7 +152,7 @@ function buildPayload(event, game) {
     if (event.type === 'closeGame') {
         return {
             type: 'closeGame',
-            title: 'Crunch time',
+            title: '⏰ Crunch time',
             body: `${line}${suffix}`,
             url,
             tag: `game-${game.id}`
@@ -151,9 +173,11 @@ function buildFinalPayload(game, teamName, explain) {
     const total = (explain && explain.total) || 0;
     const labels = (explain && explain.matched || []).map(m => m.label).join(' + ');
 
+    // ✅ / ❌ carry the only thing that matters at a final in these leagues —
+    // both score on WINS — so the result is legible before a word is read.
     let title;
-    if (tied) title = `${game.awayTeam} ${game.awayPoints} – ${game.homeTeam} ${game.homePoints}`;
-    else title = won ? `${teamName} won` : `${teamName} lost`;
+    if (tied) title = `🤝 ${game.awayTeam} ${game.awayPoints} – ${game.homeTeam} ${game.homePoints}`;
+    else title = won ? `✅ ${teamName} won` : `❌ ${teamName} lost`;
 
     const body = total > 0
         ? `+${total} pts${labels ? ` — ${labels}` : ''} · ${scoreline(game, game.homePoints, game.awayPoints)}`
@@ -445,5 +469,5 @@ module.exports = {
     vapidConfig,
     isAllowedRecipient,
     // exported for reuse/tests:
-    buildPayload, buildFinalPayload, scoreline, clockLabel, wantsType, allowlist, recipientsFor
+    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, recipientsFor
 };
