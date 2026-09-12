@@ -1504,6 +1504,10 @@ function setupEditModal(data, season, franchiseEditable) {
         uploadBtn.disabled = !cloudinaryReady;
         status.textContent = cloudinaryReady ? '' : 'Photo upload unavailable';
         modal.hidden = false;
+        // Mounted on first open rather than at load: it costs a fetch and a
+        // service-worker registration, and most page views never open this modal.
+        // mount() is idempotent, so re-opening is free.
+        if (window.PushAlerts) window.PushAlerts.mount(document.querySelector('[push-alerts]'));
     }
     function close() { modal.hidden = true; }
 

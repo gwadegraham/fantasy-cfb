@@ -19,6 +19,7 @@ const { updateFromScoreboard } = require('./scoreboard');
 const { ingestBoxScores } = require('./box-scores');
 const { ingestPlayerStats } = require('./player-box-scores');
 const completionFlush = require('./completion-flush');
+const pushNotify = require('./push-notify');
 
 // Distinct postseason weeks present in a mass-pull result, ascending. The
 // 12-team CFP spreads across several postseason weeks and scoring keys entries
@@ -466,6 +467,33 @@ async function maybeFlushCompletions(season, { force = false } = {}) {
 async function doLiveUpdate() {
     const season = activeSeason('football');
     const result = await updateFromScoreboard();
+
+    // Game-day push alerts. DELIBERATELY NOT AWAITED.
+    //
+    // This function is serialized by the liveInFlight guard in runLiveUpdate, so
+    // anything awaited here extends the window in which the NEXT 10-second tick
+    // is skipped outright — no scoreboard refresh at all. Sending is exactly the
+    // kind of work that would do that: one Mongo query per game to resolve
+    // recipients, one HTTPS round-trip to Apple/Google per event per device,
+    // and for finals a scoring-config + rankings + bracket fetch per manager.
+    // A slate of 8 live games can add seconds. That is the lag #423 just cut,
+    // so alerts run alongside the tick rather than inside it.
+    //
+    // Detaching is safe here in a way it usually is not: notifyEvents and
+    // notifyFinals each wrap their whole body in try/catch and return a result
+    // rather than throwing, so there is no rejection to leak. The .catch() is a
+    // belt-and-braces guard against that contract changing. Nothing downstream
+    // reads their result, and the events they carry were computed from deltas
+    // already written to the DB — so a send that outlives this tick cannot
+    // double-fire or observe torn state.
+    //
+    // Both are no-ops unless VAPID keys are set AND PUSH_RECIPIENT_IDS is
+    // non-empty, and both check that before doing any DB work.
+    const alertFailed = (e) => console.log(`Push: alert dispatch failed: ${e && e.message}`);
+    pushNotify.notifyEvents(result.events || {}).catch(alertFailed);
+    if (result.newlyCompleted && result.newlyCompleted.length) {
+        pushNotify.notifyFinals(result.newlyCompleted).catch(alertFailed);
+    }
 
     // A tick that changed nothing is still a tick: it may be the one where the
     // pending cluster finally goes quiet, so the flush check has to run before

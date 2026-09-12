@@ -19,6 +19,7 @@
     <script defer src="draftGrades.js"></script>
     <script src="win-reveal.js"></script>
     <script src="pull-to-refresh.js"></script>
+    <script defer src="push-alerts.js"></script>
     <script defer src="userHome.js"></script>
     <title data-league-title="My Team">My Team · Campus Clash</title>
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
@@ -67,6 +68,18 @@
                     <span class="upload-status" profile-upload-status></span>
                 </div>
             </div>
+            <!-- Game-day push alerts. Lives in the profile modal rather than a
+                 bento tile because it is a setting, not a stat — and because the
+                 bento is the one surface on this page with real visual risk.
+                 Rendered entirely by public/push-alerts.js, which owns the
+                 three-state logic (install first / turn on / on). -->
+            <section class="push-alerts" push-alerts>
+                <h3>Game-day alerts</h3>
+                <p class="push-status" push-status></p>
+                <div class="push-prefs" push-prefs hidden></div>
+                <div class="push-actions" push-actions></div>
+            </section>
+
             <p class="modal-error" profile-modal-error hidden></p>
             <div class="modal-actions">
                 <button type="button" class="btn-ghost" profile-cancel-btn>Cancel</button>

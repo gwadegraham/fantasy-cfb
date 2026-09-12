@@ -706,6 +706,14 @@ app.use(['/users', '/draft', '/scoring-config', '/leagues'], (req, res, next) =>
     // Self-service profile edit is scoped to the caller's own record (identity
     // comes from the session in the handler), so it doesn't need commissioner.
     if (req.method === 'PATCH' && (req.path === '/me/profile' || req.path === '/me/captain')) return next();
+    // Game-day push alerts are self-scoped the same way: the handler resolves
+    // the subscriber from the session, so a manager can only register, mute or
+    // remove their OWN devices. Note POST/DELETE here are registrations, not
+    // privileged writes — the rollout gate that decides who actually receives a
+    // notification lives at send time in modules/push-notify.js.
+    if (req.path === '/me/push' && (req.method === 'POST' || req.method === 'DELETE')) return next();
+    if (req.path === '/me/push/prefs' && req.method === 'PATCH') return next();
+    if (req.path === '/me/push/test' && req.method === 'POST') return next();
     return requireCommissioner(req, res, next);
 });
 
