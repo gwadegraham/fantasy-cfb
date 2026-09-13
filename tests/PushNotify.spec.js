@@ -7,6 +7,7 @@
 // by a feature that has not been watched through a live Saturday yet.
 
 const push = require('../modules/push-notify');
+const { resolveConfig } = require('../modules/scoring-defaults');
 
 const GAME = {
     id: 401628319,
@@ -162,6 +163,44 @@ describe('buildFinalPayload', () => {
         const final = push.buildFinalPayload(Object.assign({}, GAME, { homePoints: 24, awayPoints: 21 }), 'Georgia', null);
         const live = push.buildPayload({ type: 'score', side: 'home', homePoints: 24, awayPoints: 21 }, GAME);
         expect(final.tag).not.toBe(live.tag);
+    });
+});
+
+describe('explainForTeam — the argument that shipped broken', () => {
+    // Florida 52, Campbell 3: a non-conference regular-season win, worth the
+    // base win point in the Graham model.
+    const BLOWOUT = {
+        id: 401628400, seasonType: 'regular', week: 3,
+        homeId: 57, homeTeam: 'Florida', homeConference: 'SEC', homePoints: 52,
+        awayId: 2000, awayTeam: 'Campbell', awayConference: 'Big South', awayPoints: 3
+    };
+    const cfg = resolveConfig('graham-league', null);
+
+    // THE REGRESSION. explainGame's `team` parameter is a TEAM ID; its context
+    // builder compares `game.homeId == team`. Passing a team OBJECT matched
+    // neither side, so `won` was false, every rule scored 0, and this 52-3 win
+    // went out to a real phone as "No points". Nothing errored, nothing logged,
+    // and the standings disagreed silently — they are scored by another path.
+    it('scores a win for a team passed by id', () => {
+        const explain = push.explainForTeam(cfg, 57, BLOWOUT, [], null);
+        expect(explain.total).toBeGreaterThan(0);
+        expect(explain.matched.map(m => m.key)).toContain('baseWin');
+    });
+
+    it('builds a final notification that reports the points, not "No points"', () => {
+        const explain = push.explainForTeam(cfg, 57, BLOWOUT, [], null);
+        const payload = push.buildFinalPayload(BLOWOUT, 'Florida', explain);
+        expect(payload.title).toBe('✅ Florida won');
+        expect(payload.body).toContain('+1 pts');
+        expect(payload.body).not.toContain('No points');
+    });
+
+    it('scores zero for the team that actually lost', () => {
+        expect(push.explainForTeam(cfg, 2000, BLOWOUT, [], null).total).toBe(0);
+    });
+
+    it('returns null rather than throwing when the breakdown cannot be computed', () => {
+        expect(push.explainForTeam(cfg, 57, null, [], null)).toBeNull();
     });
 });
 
