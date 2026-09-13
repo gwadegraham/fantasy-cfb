@@ -266,6 +266,31 @@ async function sendToUser(user, payload) {
     return { sent, pruned: dead.length };
 }
 
+// The banked points for ONE rostered team in a finished game, as
+// modules/scoring.js explainGame returns them: { matched: [{label, points}],
+// total }.
+//
+// Exists as its own function purely to pin the argument that broke in prod:
+// explainGame's `team` parameter is a TEAM ID, not a team object. Its context
+// builder compares `game.homeId == team` (modules/scoring-detectors.js), so an
+// object matches neither side, `won` comes out false, every rule scores 0, and
+// a 52-3 blowout is announced as "No points" — silently, with no error to log
+// and nothing in the UI disagreeing, because the standings are scored by a
+// different code path that got this right.
+//
+// Returns null when the breakdown can't be computed, which buildFinalPayload
+// reads as zero — the honest fallback for a genuine failure, but NOT something
+// to reach for casually, since "No points" is a factual claim about a manager's
+// score.
+function explainForTeam(cfg, teamId, game, rankings, bracket) {
+    try {
+        return scoringModule.explainGame(cfg.model, teamId, game, rankings, cfg, bracket);
+    } catch (e) {
+        console.log(`Push: could not explain game ${game && game.id} for team ${teamId}: ${e && e.message}`);
+        return null;
+    }
+}
+
 // ---- entry points -----------------------------------------------------------
 
 // Live in-game events. Called from modules/score-update.js with the events a
@@ -362,14 +387,7 @@ async function notifyFinals(gameIds) {
 
                 for (const teamId of teamIds) {
                     const teamName = teamId === game.homeId ? game.homeTeam : game.awayTeam;
-                    let explain = null;
-                    try {
-                        explain = scoringModule.explainGame(cfg.model, { id: teamId, school: teamName }, game, rankings, cfg, bracket);
-                    } catch (e) {
-                        // A breakdown we couldn't compute still deserves the
-                        // result — buildFinalPayload reads a null explain as
-                        // zero, which is the honest fallback.
-                    }
+                    const explain = explainForTeam(cfg, teamId, game, rankings, bracket);
                     const payload = buildFinalPayload(game, teamName, explain);
                     const res = await sendToUser(user, payload);
                     sent += res.sent;
@@ -428,5 +446,5 @@ module.exports = {
     vapidConfig,
     isAllowedRecipient,
     // exported for reuse/tests:
-    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, recipientsFor
+    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, recipientsFor, explainForTeam
 };
