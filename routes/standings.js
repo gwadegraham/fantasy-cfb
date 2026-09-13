@@ -532,6 +532,26 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // A projection entry with the captain's multiplier applied to its points.
         const capped = (id, w, teamId, e) => (e && isCaptain(id, w, teamId))
             ? { winProb: e.winProb, pointsIfWin: e.pointsIfWin * capMult } : e;
+        // A team's DISPLAYED points for the matchup card, with the captain's
+        // multiplier applied.
+        //
+        // scoring.js never folds the captain bonus into the per-team scores — it
+        // banks it as a separate `captainBonus` on the week — so scoreByTeam
+        // holds raw, un-doubled values. The card meanwhile stamps a "★2×" badge
+        // on the captain (public/h2h-card.js), which asserts the number beside
+        // it is doubled. It wasn't, so the badge was telling a small lie and the
+        // team rows summed short of the matchup total above them.
+        //
+        // Doubling here reconciles the card exactly: the headline is
+        // baseWeekScore, which INCLUDES captainBonus and excludes the H2H win
+        // bonus, so rows + captain multiplier == headline. Measured across every
+        // scored week in the league. Note that means no H2H bonus line belongs
+        // on this card — that bonus is not in the number it totals to.
+        //
+        // Applied before the sort below, so a doubled captain ranks where its
+        // displayed score says it should.
+        const displayScore = (id, w, teamId, raw) => (raw != null && isCaptain(id, w, teamId))
+            ? raw * capMult : raw;
         // A team's scored points for ONE game. The legacy per-team fallback is
         // only safe when that team played once that week — otherwise it would
         // report the same two-game total against each of the two rows.
@@ -603,7 +623,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                         gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
                     }
                 }
-                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(t.score), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null };
+                return { teamId: t.teamId, school: t.school, abbr: t.abbr, logo: t.logo, score: round(displayScore(id, w, t.teamId, t.score)), status: 'final', captain: isCaptain(id, w, t.teamId), opp, ha, oppRank, gameScore, gameId: g ? g.id : null };
             })
             .sort((a, b) => b.score - a.score);
         // The kickoff INSTANT, not a rendered string. This used to format here
@@ -627,7 +647,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.homePoints != null && g.awayPoints != null) {
                 gameScore = `${isHome ? g.homePoints : g.awayPoints}–${isHome ? g.awayPoints : g.homePoints}`;
             }
-            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(scored.score) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id) };
+            return { teamId: t.id, school: t.school, abbr: t.abbr, logo: t.logo, score: scored ? round(displayScore(id, w, t.id, scored.score)) : null, status: st, kickoff: st === 'scheduled' ? kickAt(g) : null, opp, ha: isHome ? 'vs' : '@', oppRank: rankByName[oppName] || null, gameScore, gameId: g.id, captain: isCaptain(id, w, t.id) };
         })).sort((a, b) => (statusOrder[a.status] - statusOrder[b.status]) || ((b.score || 0) - (a.score || 0)));
 
         // Projected pre-game odds for a matchup: each manager's teams that play
