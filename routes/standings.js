@@ -88,12 +88,27 @@ router.get('/h2h/:league/:season/enabled', async (req, res) => {
 router.get('/highlights/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
-        const season = req.params.season;          // users store season as a string
+        // `season` is the raw path param (a string); `seasonNum` is the Number.
+        // seasons.season is stored as an int — Mongoose casts the string when it
+        // is a FILTER value, but a projection is not cast, so $elemMatch below
+        // must use seasonNum. (An older comment here claimed users stored the
+        // season as a string. They never did.)
+        const season = req.params.season;
         const seasonNum = Number(season);
         const scoreKey = league === 'graham-league' ? 'cumulativeScoreV2' : 'cumulativeScoreV1';
 
         // Drafted teams across the league's rosters.
-        const users = await User.find({ league: league, 'seasons.season': season });
+        //
+        // $elemMatch the ONE season we render. A user doc is ~103KB across four
+        // seasons and this route reads exactly one of them, so without the
+        // projection 86% of what crosses the wire is discarded on arrival — and
+        // the Atlas M0 tier meters this route in bytes, not queries. Safe because
+        // every consumer resolves the season the same way (see the `.find` on
+        // seasons below, and modules/h2h.js / weekly-recap.js): none of them
+        // looks at a prior season.
+        const users = await User.find(
+            { league: league, 'seasons.season': season },
+            { firstName: 1, lastName: 1, seasons: { $elemMatch: { season: seasonNum } } });
         const draftedIds = new Set();
         const draftedNames = new Set();
         const metaById = {};
@@ -125,7 +140,13 @@ router.get('/highlights/:league/:season', async (req, res) => {
         if (!idList.length) return res.json([]);
 
         // Per-team season score in this league's model (for Draft Steal).
-        const teams = await Team.find({ id: { $in: idList } }, { id: 1, seasons: 1 });
+        //
+        // Subfield projection, NOT $elemMatch: a team's `seasons` entry carries
+        // the full per-season scoring record (~6KB of the 9KB doc) and we want
+        // two numbers out of it. Projecting the paths keeps every season element
+        // present but strips them to what is read here.
+        const teams = await Team.find({ id: { $in: idList } },
+            { id: 1, 'seasons.season': 1, 'seasons.cumulativeScoreV1': 1, 'seasons.cumulativeScoreV2': 1 });
         const scoreById = {};
         teams.forEach(t => {
             const s = (t.seasons || []).find(x => Number(x.season) === seasonNum);
@@ -133,11 +154,21 @@ router.get('/highlights/:league/:season', async (req, res) => {
         });
 
         // Records (actual wins + expected wins) for drafted teams.
-        const records = (await Record.find({ year: seasonNum, teamId: { $in: idList } }))
+        const records = (await Record.find({ year: seasonNum, teamId: { $in: idList } },
+            { teamId: 1, team: 1, expectedWins: 1, total: 1, _id: 0 }).lean())
             .map(r => ({ teamId: r.teamId, team: r.team, expectedWins: r.expectedWins, total: r.total }));
 
         // Draft pick order (for Draft Steal).
-        const draft = await Draft.findOne({ league: league, season: seasonNum });
+        //
+        // Every pick embeds the WHOLE team document it was made on — including
+        // that team's `seasons` (5.8KB) and `weeklyScore` (1.2KB) — so a 60-pick
+        // draft doc is 495KB and this route reads four fields off it. See
+        // draftStealCard in modules/standings-highlights.js: `p.overall` and
+        // `p.team`, and `p.team` is only ever handed to logoImg (logos) and
+        // teamLabel (mascot, school).
+        const draft = await Draft.findOne({ league: league, season: seasonNum },
+            { 'picks.overall': 1, 'picks.team.id': 1, 'picks.team.school': 1,
+              'picks.team.mascot': 1, 'picks.team.logos': 1 });
         const picks = (draft && draft.picks) || [];
 
         // Regular-season games involving drafted teams + betting spreads by game
@@ -146,7 +177,11 @@ router.get('/highlights/:league/:season', async (req, res) => {
             { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
             { id: 1, week: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, _id: 0 }
         );
-        const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
+        const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' },
+                // `lines` carries every provider's complete line (moneylines,
+                // over/under, opening numbers). Both readers want one number:
+                // the DraftKings spread, or the first provider's as a fallback.
+                { id: 1, 'lines.provider': 1, 'lines.spread': 1, _id: 0 }).lean();
         const spreadByGameId = {};
         betting.forEach(b => {
             const lines = b.lines || [];
@@ -174,7 +209,15 @@ router.get('/projections/:league/:season', async (req, res) => {
         ).lean();
         if (!users.length) return res.json({ league, season, managers: [] });
 
-        const teams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+        // Subfield projection rather than $elemMatch: seasonVal() in
+        // modules/draft-projection.js falls back to `season - 1` when the current
+        // season has no value yet, so the prior season's elements have to survive
+        // the projection. These are every seasons.* path that file reads.
+        const teams = await Team.find({}, {
+            id: 1, school: 1, alternateNames: 1, conference: 1,
+            'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
+            'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+        }).lean();
         const teamsById = {};
         teams.forEach(t => { teamsById[String(t.id)] = t; });
 
@@ -242,9 +285,14 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         if (season === 'latest') season = String(seasonForLeague(league));
         const seasonNum = Number(season);
 
-        // Whole league for the target season (need nested teams + weeklyScore
-        // for rank/average, so no projection).
-        const users = await User.find({ league: league, 'seasons.season': season });
+        // Whole league for the target season: the nested teams + weeklyScore are
+        // needed for rank/average, but only for THIS season — buildWeeklyRecaps
+        // resolves one season entry and never looks back (modules/weekly-recap.js).
+        // Dropping the other three seasons takes the read from ~620KB to ~100KB.
+        const users = await User.find(
+            { league: league, 'seasons.season': season },
+            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
+              seasons: { $elemMatch: { season: seasonNum } } });
         const user = users.find(u => String(u._id) === String(userId));
         if (!user) return res.json({ league, season: seasonNum, userId, recaps: [] });
 
@@ -282,7 +330,11 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
             for (const w in weekLastStart) {
                 if (now >= weekLastStart[w]) completeWeeks.add(Number(w));
             }
-            const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' }, { id: 1, lines: 1, _id: 0 });
+            const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' },
+                // `lines` carries every provider's complete line (moneylines,
+                // over/under, opening numbers). Both readers want one number:
+                // the DraftKings spread, or the first provider's as a fallback.
+                { id: 1, 'lines.provider': 1, 'lines.spread': 1, _id: 0 }).lean();
             const spreadByGameId = {};
             betting.forEach(b => {
                 const lines = b.lines || [];
@@ -343,8 +395,14 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const tieBonus = eng.h2hTieBonus;
 
         // .lean(): the handler only reads plain fields (no doc methods/virtuals),
-        // so skip Mongoose hydration of these heavy weeklyScore docs.
-        const users = await User.find({ league, 'seasons.season': season }).lean();
+        // so skip Mongoose hydration of these heavy weeklyScore docs. And
+        // $elemMatch the rendered season — h2hRoster/persistedBonus and
+        // modules/h2h.js all resolve exactly one season entry, so the other three
+        // were pure transfer cost against a tier that meters bytes.
+        const users = await User.find(
+            { league, 'seasons.season': season },
+            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
+              seasons: { $elemMatch: { season: seasonNum } } }).lean();
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         // Deterministic manager ordering — the pairing schedule is positional, so
@@ -444,7 +502,15 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // teams load so opponents' SP+ is available for the pool context.
         const projByWeek = {};
         if (!standingsOnly && draftedIds.length) {
-            const allTeams = await Team.find({}, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+            // Same projection as /projections, and for the same reason: this feeds
+            // the same projectTeamPoints / buildPoolContext, whose seasonVal()
+            // falls back to `season - 1` — so keep every season element, stripped
+            // to the paths that file actually reads.
+            const allTeams = await Team.find({}, {
+                id: 1, school: 1, alternateNames: 1, conference: 1,
+                'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
+                'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+            }).lean();
             const teamsById = {};
             allTeams.forEach(t => { teamsById[String(t.id)] = t; });
             // Only drafted teams' games feed the projections (gamesByTeam below
