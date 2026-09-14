@@ -255,6 +255,32 @@ describe('POST /games/week/mass-create', () => {
         expect(await Game.countDocuments({ id: 502 })).toBe(1);
     });
 
+    // The Heroku H12 that killed two nights of scoring in Sep 2026. The route
+    // used to do `Game.find({ id })` and then `findOneAndUpdate` per game — 172
+    // sequential Atlas round trips for an 86-game week, which ran 75s against a
+    // 30s router ceiling. The router answered its HTML error page, the calling
+    // job JSON.parsed it, and doFullUpdate died before it ever reached scoring.
+    // Guard the shape of the fix, not the wall-clock: round trips must not grow
+    // with the size of the slate.
+    test('issues a constant number of DB round trips no matter how big the slate', async () => {
+        const slate = Array.from({ length: 60 }, (_, i) =>
+            cfbdGame({ id: 600 + i, homeTeam: `Home ${i}`, awayTeam: `Away ${i}` }));
+        global.fetch = jest.fn(() => fetchOk(slate));
+
+        const find = jest.spyOn(Game, 'find');
+        const bulkWrite = jest.spyOn(Game, 'bulkWrite');
+
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+
+        expect(res.status).toBe(201);
+        expect(await Game.countDocuments()).toBe(60);
+        // One $in lookup for what already exists, one read-back for the response.
+        expect(find).toHaveBeenCalledTimes(2);
+        // One write for the whole slate.
+        expect(bulkWrite).toHaveBeenCalledTimes(1);
+        expect(bulkWrite.mock.calls[0][0]).toHaveLength(60);
+    });
+
     test('one unsaveable game does not take the rest of the slate down', async () => {
         // homeTeam is required, so this row can't save — the other one still must.
         global.fetch = jest.fn(() => fetchOk([

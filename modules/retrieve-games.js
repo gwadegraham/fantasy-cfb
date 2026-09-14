@@ -1,4 +1,4 @@
-const { internalFetch } = require('./internal-api');
+const { internalFetch, failureMessage } = require('./internal-api');
 const { activeSeason } = require('./active-season');
 const { seasonOrEmpty } = require('../public/season-of.js');
 
@@ -115,17 +115,20 @@ module.exports = {
             body: JSON.stringify(payload)
         });
 
-        var dataToReturn;
+        // Never JSON.parse a body we haven't confirmed is ours. What sits in
+        // front of this API is not always this API: Heroku answers an H12 (30s
+        // request timeout) or a 503 with an HTML error page, and parsing that
+        // threw "Unexpected token '<'" straight out of massRetrieveGames —
+        // killing doFullUpdate before scoring on 12-13 Sep 2026. The route is
+        // batched now so it finishes well inside the ceiling, but the caller
+        // should degrade rather than explode if it ever creeps back.
+        if (response.status != 201) {
+            console.log("Failed to save new games:", await failureMessage(response));
+            return undefined;
+        }
 
-        await response.json().then(data => {
-            if (response.status == 201) {
-                console.log("New Games Successfully Saved");
-                dataToReturn = data;
-            } else {
-                console.log("Failed to save new games");
-            }
-        });
-
+        const dataToReturn = await response.json().catch(() => undefined);
+        if (dataToReturn) console.log("New Games Successfully Saved");
         return dataToReturn;
     },
 

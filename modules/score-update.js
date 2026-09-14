@@ -300,6 +300,10 @@ async function doFullUpdate({ withBetting = false } = {}) {
     var gamesNew = 0;
     var gamesUpdated = 0;
     var remainingCalls;
+    // Which slate failed to ingest, if any. Scoring still runs on what is already
+    // stored; this is what makes the degraded run visible in the job report
+    // instead of looking like a clean one.
+    var ingestFailed = null;
 
     // Before any scoring, and NOT gated on isPostseason: the bracket publishes
     // while the calendar still says regular season, and it's worth having from
@@ -333,9 +337,22 @@ async function doFullUpdate({ withBetting = false } = {}) {
 
         // One CFBD call pulls the whole postseason slate (all CFP rounds).
         var games = await retrieveGamesModule.massRetrieveGames(null, "postseason");
-        gamesNew += games.newGames.length;
-        gamesUpdated += games.existingGames.length;
-        remainingCalls = games.remainingCalls;
+        // massRetrieveGames answers undefined when the ingest call failed (a
+        // non-201, including an HTML error page from in front of the API).
+        // DEGRADE, never abort: the whole point of the 12-13 Sep 2026 outage was
+        // that an exception here skipped updateScores / applyH2HBonuses /
+        // updateCumulativeScores / team scores / records entirely, freezing
+        // standings for two days. The games already in Mongo are still fully
+        // scoreable, so score them and report the ingest failure separately —
+        // the same way the trailing-week block above carries on.
+        if (!games) {
+            ingestFailed = 'postseason';
+            console.log('Postseason game ingest failed — scoring the games already stored');
+        } else {
+            gamesNew += games.newGames.length;
+            gamesUpdated += games.existingGames.length;
+            remainingCalls = games.remainingCalls;
+        }
         console.log("number of returned new games", gamesNew);
         console.log("number of returned existing games", gamesUpdated);
 
@@ -361,9 +378,22 @@ async function doFullUpdate({ withBetting = false } = {}) {
         console.log("number of returned teams", teamCount);
 
         var games = await retrieveGamesModule.massRetrieveGames(weekNumber, "regular");
-        gamesNew = games.newGames.length;
-        gamesUpdated = games.existingGames.length;
-        remainingCalls = games.remainingCalls;
+        // massRetrieveGames answers undefined when the ingest call failed (a
+        // non-201, including an HTML error page from in front of the API).
+        // DEGRADE, never abort: the whole point of the 12-13 Sep 2026 outage was
+        // that an exception here skipped updateScores / applyH2HBonuses /
+        // updateCumulativeScores / team scores / records entirely, freezing
+        // standings for two days. The games already in Mongo are still fully
+        // scoreable, so score them and report the ingest failure separately —
+        // the same way the trailing-week block above carries on.
+        if (!games) {
+            ingestFailed = `regular week ${weekNumber}`;
+            console.log(`Week ${weekNumber} game ingest failed — scoring the games already stored`);
+        } else {
+            gamesNew = games.newGames.length;
+            gamesUpdated = games.existingGames.length;
+            remainingCalls = games.remainingCalls;
+        }
         console.log("number of returned new games", gamesNew);
         console.log("number of returned existing games", gamesUpdated);
 
@@ -384,7 +414,7 @@ async function doFullUpdate({ withBetting = false } = {}) {
         console.log('Parlay resolution failed (non-fatal):', err.message);
     }
 
-    return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls };
+    return { week, seasonType, teams: teamCount, gamesNew, gamesUpdated, remainingCalls, ingestFailed };
 }
 
 // The heavy post-completion pass, run over batches of newly completed games.
