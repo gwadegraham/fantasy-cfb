@@ -105,6 +105,68 @@ describe('POST /scores/h2h-bonus', () => {
         expect(await sumCumulative(b._id)).toBe(14);
     });
 
+    // The 14 Sep 2026 bug, as a test.
+    //
+    // A scoring pass rewrote week-2 weekly rows and died before re-running
+    // applyH2HBonuses + updateCumulativeScores, leaving cumulativeScore holding
+    // a win bonus the weekly row no longer carried. The standings read model was
+    // `cumulative + liveBonus - persistedBonus`: with persistedBonus back at 0 it
+    // added the same win a SECOND time and rendered three managers 3 points high,
+    // while the weekly recap — which sums the rows — rendered them 3 low. Two
+    // screens, two different wrong answers, no error anywhere.
+    test('a stale cumulativeScore does not double-count a win in the standings', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+        expect(await sumCumulative(a._id)).toBe(23);       // 20 base + 3 bonus, banked
+
+        // Now reproduce the drift: strip the bonus off the weekly row (what a
+        // rescore does) but leave cumulativeScore at the post-bonus value (what
+        // the aborted pass left behind).
+        await User.updateOne(
+            { _id: a._id },
+            { $set: { 'seasons.0.weeklyScore.0.score': 20, 'seasons.0.cumulativeScore': 23 },
+              $unset: { 'seasons.0.weeklyScore.0.h2hBonus': '' } });
+
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        expect(res.status).toBe(200);
+
+        const ann = res.body.managers.find(m => m.name.startsWith('Ann'));
+        const bob = res.body.managers.find(m => m.name.startsWith('Bob'));
+        // 20 base + one 3-point win = 23. Not 26.
+        expect(ann.adjustedTotal).toBe(23);
+        expect(bob.adjustedTotal).toBe(14);
+        expect(ann.rank).toBe(1);
+
+        // And the drift itself is reported, because the database is still wrong
+        // even though the page now renders correctly.
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('cumulativeScore drift'));
+    });
+
+    test('a healthy season renders the same total it always did', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        const ann = res.body.managers.find(m => m.name.startsWith('Ann'));
+
+        expect(ann.adjustedTotal).toBe(23);
+        expect(await sumCumulative(a._id)).toBe(23);
+        // cumulativeScore still reads 20 here — /scores/h2h-bonus raises the
+        // weekly rows and updateCumulativeScores re-sums them afterwards. That
+        // direction is ordinary and self-correcting, so it must NOT warn;
+        // only a stored total ABOVE the rows means damage.
+        expect(console.warn).not.toHaveBeenCalled();
+    });
+
     test('a week is not awarded until every drafted team has played', async () => {
         await enableH2H();
         const a = await manager('Ann', [team(1, 'Oregon'), team(3, 'Iowa')], [[1, 20]]);
