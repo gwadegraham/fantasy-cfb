@@ -18,7 +18,7 @@ const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 // Shared with the classic standings table and My Team, so a tied placement reads
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
-const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore, persistedBonus,
+const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
         h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
@@ -396,7 +396,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
 
         // .lean(): the handler only reads plain fields (no doc methods/virtuals),
         // so skip Mongoose hydration of these heavy weeklyScore docs. And
-        // $elemMatch the rendered season — h2hRoster/persistedBonus and
+        // $elemMatch the rendered season — h2hRoster and
         // modules/h2h.js all resolve exactly one season entry, so the other three
         // were pure transfer cost against a tier that meters bytes.
         const users = await User.find(
@@ -413,7 +413,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const pinnedIds = pinnedH2HIds(cfgDoc, season);
         const ids = h2hRoster(users, season, pinnedIds);
         const idSet = new Set(ids);
-        const meta = {}, totals = {}, teamDetail = {}, caps = {}, banked = {}, seasonById = {};
+        const meta = {}, totals = {}, teamDetail = {}, caps = {}, baseAll = {}, seasonById = {};
         // teamDetail is keyed per (team, game) so a doubleheader keeps both
         // results apart. scoreByTeam only started carrying gameId in 2024, so
         // older entries key on the team alone — one row per team, as before.
@@ -424,12 +424,44 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (!s || !(s.weeklyScore || []).length) return;
             const id = String(u._id);
             if (!idSet.has(id)) return;
-            // How much H2H bonus is ALREADY folded into cumulativeScore. Subtracted
-            // from the bonus computed below so the total reads the same whether or
-            // not the scoring job has persisted the current values yet — which also
-            // keeps this route honest when previewing H2H on a historical season
-            // that was never scored with it.
-            banked[id] = persistedBonus(s);
+            // The season's points with EVERY H2H bonus stripped back out (baseWeekScore
+            // removes h2hBonus but keeps captainBonus, and this runs over every
+            // stored week — including 15+/postseason, which the H2H pass itself
+            // never touches).
+            //
+            // baseAll is what the total is built from, not cumulativeScore. The
+            // two agree whenever cumulativeScore === the sum of the weekly rows,
+            // which is the invariant updateCumulativeScores maintains — but a
+            // scoring pass that rewrites weekly rows and dies before re-running
+            // the bonus + cumulative steps breaks it, and then
+            // `cumulative + bonus - banked` counts the same win TWICE. That is
+            // not hypothetical: on 14 Sep 2026 three managers in graham-league
+            // carried a week-2 win inside cumulativeScore that was no longer on
+            // the weekly row, and the standings showed them 3 points high while
+            // the weekly recap — which reads the rows — showed them 3 low.
+            // Building from the rows makes this total self-consistent: every
+            // term now comes from the same place.
+            baseAll[id] = (s.weeklyScore || []).reduce((sum, e) => sum + baseWeekScore(e), 0);
+
+            // Report the drift, in the one direction that means damage.
+            //
+            // cumulativeScore BELOW the rows is ordinary and self-correcting:
+            // applyH2HBonuses raises the weekly rows and updateCumulativeScores
+            // re-sums them a moment later, so any read in between sees it.
+            //
+            // ABOVE the rows is the broken state — cumulativeScore is holding
+            // points the weekly rows no longer justify, which is what a pass that
+            // rewrote the rows and then died leaves behind. The render no longer
+            // depends on cumulativeScore, so this is diagnostic rather than
+            // load-bearing: the page is right, the database still isn't.
+            const storedSum = (s.weeklyScore || []).reduce((sum, e) => sum + (e.score || 0), 0);
+            if ((s.cumulativeScore || 0) - storedSum > 0.05) {
+                console.warn(`[standings] cumulativeScore drift for ${league}/${season} user ${id}: `
+                    + `stored ${s.cumulativeScore} exceeds the weekly rows (${round(storedSum)}) `
+                    + `by ${round((s.cumulativeScore || 0) - storedSum)}. A scoring pass rewrote the `
+                    + `weekly rows without re-running applyH2HBonuses + updateCumulativeScores. `
+                    + `Standings render from the rows and are correct; run a full scoring pass to repair the stored total.`);
+            }
             const logoBy = {}, abbrBy = {};
             const roster = (s.teams || []).map(t => { const logo = pickLogo(t.logos) || null; logoBy[t.id] = logo; abbrBy[t.id] = t.abbreviation || null; draftedSet.add(t.id); return { id: t.id, school: t.school, abbr: t.abbreviation || null, logo }; });
             meta[id] = {
@@ -653,9 +685,12 @@ router.get('/h2h/:league/:season', async (req, res) => {
             record: `${rec[id].wins}-${rec[id].losses}-${rec[id].ties}`,
             h2hBonus: rec[id].bonus,
             pointsFor: round(rec[id].pointsFor), pointsAgainst: round(rec[id].pointsAgainst),
-            // cumulative already includes weeks 15+/postseason AND whatever bonus
-            // the scoring job has banked so far; add only the not-yet-banked part.
-            adjustedTotal: round(meta[id].cumulative + rec[id].bonus - (banked[id] || 0))
+            // Base points for every stored week (15+/postseason included) plus the
+            // bonus computed live above. Built from the weekly rows rather than
+            // cumulativeScore so a stale cumulative cannot double-count a win —
+            // see the note where baseAll is filled. Identical arithmetic to the
+            // old `cumulative + bonus - banked` whenever the two agree.
+            adjustedTotal: round((baseAll[id] || 0) + rec[id].bonus)
         })).sort((a, b) => b.adjustedTotal - a.adjustedTotal);
         // Competition ranking, so managers level on points share a placement (and
         // the client can render "T-2") instead of being split by array position —
