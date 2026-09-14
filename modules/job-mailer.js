@@ -45,7 +45,18 @@ function buildJobEmailHtml({ label, when, ok, rows, error }) {
 }
 
 // Sends the run-report email. Best-effort — a mail failure is logged, never thrown.
+//
+// Refuses to send under Jest. A spec that requires a job module and calls its
+// real run() reaches this function with the real Gmail credentials .env just
+// loaded (dotenv runs for anything that isn't NODE_ENV=production), so an
+// iteration on tests/RemoteSeason.spec.js on 11 Sep 2026 mailed a run of real
+// "FAILED" reports to the inbox from a laptop. Specs that care about the mailer
+// jest.mock() the whole module; this guard covers the ones that don't.
 async function sendJobEmail(opts) {
+    if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined) {
+        console.log(`Email suppressed under test: ${opts && opts.label}`);
+        return;
+    }
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }

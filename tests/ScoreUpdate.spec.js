@@ -67,6 +67,41 @@ describe('runFullUpdate scoring order', () => {
         expect(scoringModule._calls).toEqual(['updateScores', 'applyH2HBonuses', 'updateCumulativeScores']);
     });
 
+    // The Sep 2026 outage, as a test. mass-create crossed Heroku's 30s ceiling,
+    // the router answered an HTML error page, and the exception out of
+    // massRetrieveGames skipped updateScores / applyH2HBonuses /
+    // updateCumulativeScores / team scores / records — two nights of standings
+    // frozen because the GAME PULL failed, not the scoring. The games already in
+    // Mongo were scoreable the whole time.
+    it('still scores when the game ingest fails, rather than skipping the pass', async () => {
+        retrieveGames.massRetrieveGames.mockResolvedValueOnce(undefined);
+
+        const r = await runFullUpdate({ withBetting: false });
+
+        expect(scoringModule._calls).toEqual(['updateScores', 'applyH2HBonuses', 'updateCumulativeScores']);
+        // ...and the degraded run says so, so it cannot read as a clean one.
+        expect(r.ingestFailed).toBe('regular week 7');
+    });
+
+    it('reports a clean run with no ingestFailed flag', async () => {
+        const r = await runFullUpdate({ withBetting: false });
+        expect(r.ingestFailed).toBeNull();
+    });
+
+    it('also scores the postseason when its ingest fails', async () => {
+        retrieveGames.massRetrieveGames.mockResolvedValueOnce(undefined);
+        require('../modules/cfbd-calendar').getCalendar.mockResolvedValueOnce([
+            { week: 1, seasonType: 'postseason', firstGameStart: '2000-01-01', lastGameStart: '2100-01-01' }
+        ]);
+
+        const r = await runFullUpdate({ withBetting: false });
+
+        // postseasonWeeksToScore falls back to [1] with no slate to read weeks
+        // from, so the CFP rounds already stored still get scored.
+        expect(scoringModule._calls).toEqual(['updateScores', 'applyH2HBonuses', 'updateCumulativeScores']);
+        expect(r.ingestFailed).toBe('postseason');
+    });
+
     it('also applies them on a postseason run, before cumulative totals', async () => {
         retrieveGames.massRetrieveGames.mockResolvedValueOnce({
             newGames: [{ week: 1 }], existingGames: [], remainingCalls: 900

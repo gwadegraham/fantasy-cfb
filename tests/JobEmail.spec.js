@@ -1,4 +1,5 @@
-const { buildJobEmailHtml } = require('../modules/job-mailer');
+const nodemailer = require('nodemailer');
+const { buildJobEmailHtml, sendJobEmail } = require('../modules/job-mailer');
 const { emailOnSuccess } = require('../modules/score-job');
 
 describe('emailOnSuccess (scoring jobs are failure-only by default)', () => {
@@ -58,5 +59,22 @@ describe('buildJobEmailHtml', () => {
         });
         expect(html).toContain('&lt;script&gt;');
         expect(html).not.toContain('<script>alert(1)</script>');
+    });
+});
+
+// A spec that requires a job module and calls its real run() reaches the mailer
+// with the real Gmail credentials .env just loaded (dotenv runs for anything
+// that isn't NODE_ENV=production). Iterating on tests/RemoteSeason.spec.js on
+// 11 Sep 2026 mailed a run of real "FAILED" reports to the inbox from a laptop.
+describe('sendJobEmail under test', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('never opens a transport', async () => {
+        const createTransport = jest.spyOn(nodemailer, 'createTransport');
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        await sendJobEmail({ label: 'Player Season Leaders', ok: false, error: 'boom' });
+
+        expect(createTransport).not.toHaveBeenCalled();
     });
 });

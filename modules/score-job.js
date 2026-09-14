@@ -28,6 +28,32 @@ function makeJob({ jobName, label, withBetting }) {
             }
 
             const summary = `Updated ${r.seasonType} week ${r.week} · ${r.gamesNew} new / ${r.gamesUpdated} updated games · ${r.teams} teams (${secs}s)`;
+
+            // A run whose game ingest failed still scored — on the games already
+            // in Mongo — so it is not an error, but it must not read as a clean
+            // run either. runFullUpdate used to throw here instead, which is how
+            // two nights of scoring were skipped in Sep 2026; degrading without
+            // saying so would just trade a loud failure for a silent one.
+            if (r.ingestFailed) {
+                const degraded = `Scored on stored games only — ${r.ingestFailed} ingest failed · ${summary}`;
+                await finishRun(id, 'success', degraded, { week: r.week, seasonType: r.seasonType });
+                await sendJobEmail({
+                    label: label,
+                    when: when,
+                    ok: false,
+                    rows: [
+                        ['Season', `${r.seasonType} ${activeSeason('football')}`],
+                        ['Week', String(r.week)],
+                        ['Scored', 'yes — on games already stored'],
+                        ['Duration', `${secs}s`]
+                    ],
+                    error: `Game ingest failed for ${r.ingestFailed}. Scoring ran against the games already in the database, `
+                        + `so standings are current as of the last successful ingest — but any result that landed since is missing. `
+                        + `See the mass-create log line for the status it answered.`
+                });
+                return r;
+            }
+
             await finishRun(id, 'success', summary, { week: r.week, seasonType: r.seasonType });
             if (emailOnSuccess()) {
                 await sendJobEmail({

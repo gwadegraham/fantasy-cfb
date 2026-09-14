@@ -454,21 +454,33 @@ router.post('/week/mass-create', async (req, res) => {
     const remHeader = response.headers.get('x-calllimit-remaining');
     const remainingCalls = remHeader != null ? Number(remHeader) : undefined;
 
-    // UPSERT, one game at a time, rather than find-then-insertMany.
+    // UPSERT the whole slate in ONE bulkWrite, rather than a round trip (or two)
+    // per game.
     //
-    // Two runs of this route can overlap by construction: the Saturday job fires
-    // at 15:00/18:00/22:00 on the minute and the live poller fires on every :00
-    // mark, so they collide three times a Saturday. Under find-then-insert both
+    // This route used to do `Game.find({ id })` and then `findOneAndUpdate` for
+    // every game in the loop — 172 sequential Atlas round trips for an 86-game
+    // week. That crossed Heroku's 30s request ceiling in Sep 2026: the router
+    // returned its H12 error PAGE, the calling job tried to JSON.parse the HTML,
+    // and doFullUpdate died before it ever reached scoring. The games were
+    // saved (the handler ran on to completion at 75s) but standings sat stale
+    // for two days. Three round trips now: one $in lookup, one bulkWrite, one
+    // read-back.
+    //
+    // Still an upsert, not find-then-insertMany, and for the same reason: two
+    // runs of this route overlap by construction (the Saturday job fires at
+    // 15:00/18:00/22:00 on the minute and the live poller fires on every :00
+    // mark, so they collide three times a Saturday). Under find-then-insert both
     // runs could decide the same game was new and insert it twice — and a second
     // doc with the same CFBD id makes the per-team week lookup return the game
     // twice, which modules/scoring.js scores twice, DOUBLING that team's points
     // for the week. The unique index on Game.id backs this up.
-    //
-    // Per-game try/catch also means one unsaveable game no longer takes the whole
-    // slate down with it, which the batch insertMany did.
-    for (const game of gameData) {
-        var alreadyExists = await Game.find({ id: game.id });
+    const ids = gameData.map(g => g.id);
+    const preExisting = new Set(
+        (await Game.find({ id: { $in: ids } }, { id: 1 }).lean()).map(g => g.id)
+    );
 
+    const ops = [];
+    for (const game of gameData) {
         game.seasonType = game.seasonType;
         game.startDate = game.startDate;
         game.startTimeTbd = game.startTimeTBD;
@@ -519,11 +531,11 @@ router.post('/week/mass-create', async (req, res) => {
             game.lastPlay = null;
         }
 
-        // findOneAndUpdate does not run validators, and the `required` validator
-        // doesn't fire for a merely-absent path on upsert — so validate the
-        // candidate up front. insertMany used to do this for new games; doing it
-        // for updates too means a malformed CFBD row is skipped rather than
-        // written over a good doc.
+        // bulkWrite's updateOne does not run validators, and the `required`
+        // validator doesn't fire for a merely-absent path on upsert — so
+        // validate the candidate up front. insertMany used to do this for new
+        // games; doing it for updates too means a malformed CFBD row is skipped
+        // rather than written over a good doc.
         var invalid = new Game(game).validateSync();
         if (invalid) {
             console.log("Skipping invalid game with id:", game.id, "|", invalid.message);
@@ -531,21 +543,65 @@ router.post('/week/mass-create', async (req, res) => {
         }
 
         // `id` stays in the $set (same value the filter matches on), so an insert
-        // seeds it and the error log below can still name the game.
-        try {
-            var savedGame = await Game.findOneAndUpdate(
-                { id: game.id },
-                { $set: game },
-                { new: true, upsert: true, setDefaultsOnInsert: true }
-            );
-            if (alreadyExists.length == 0) {
-                allNewGames.push(savedGame);
-            } else {
-                allExistingGames.push(savedGame);
+        // seeds it and the read-back below can still name the game.
+        ops.push({
+            updateOne: {
+                filter: { id: game.id },
+                update: { $set: game },
+                upsert: true
             }
+        });
+    }
+
+    if (ops.length) {
+        try {
+            // Unordered so one bad row doesn't abandon the rest of the slate,
+            // the way the per-game try/catch used to guarantee.
+            await Game.bulkWrite(ops, { ordered: false });
         } catch (err) {
-            console.log("Error saving game with id:", game.id);
-            console.log("Save error:", err.message);
+            // A concurrent run of this route can win the upsert race and leave
+            // us an E11000 against the unique index on Game.id. That game is
+            // written — by the other run — so it is not worth failing the slate
+            // over. It IS worth saying out loud: if the poller and the Saturday
+            // job collide (three times a Saturday by construction) the loser can
+            // drop every write it meant to make, and without this line a run that
+            // wrote nothing looks exactly like a clean one in the job report.
+            const writeErrors = (err && err.writeErrors) || [];
+            const duplicates = writeErrors.filter(e => (e.err ? e.err.code : e.code) === 11000);
+            const unexpected = writeErrors.filter(e => (e.err ? e.err.code : e.code) !== 11000);
+            const applied = (err && err.result)
+                ? (err.result.upsertedCount || 0) + (err.result.modifiedCount || 0)
+                : 0;
+            if (duplicates.length) {
+                console.log(`Lost ${duplicates.length} of ${ops.length} upserts to a concurrent run `
+                    + `(duplicate key); ${applied} written by this one`);
+            }
+            if (!writeErrors.length || unexpected.length) {
+                console.log("Bulk save error:", err.message);
+            }
+        }
+    }
+
+    // One read-back to answer with the saved games, split the way the callers
+    // expect: anything that wasn't in the DB before this run is new.
+    //
+    // Projected and lean deliberately. A hydrated Game carries livePlays (~50KB
+    // of drives and plays once the gamecast has run) and wpSnapshots (one entry
+    // per poller tick), so answering with whole docs would put ~4MB through
+    // res.json() and back through JSON.parse in massRetrieveGames — on the wrong
+    // side of the 30s ceiling this whole change exists to stay under. Every
+    // consumer reads `week` or `.length` and nothing else: see
+    // postseasonWeeksToScore and the count lines in modules/score-update.js.
+    const savedIds = ops.map(o => o.updateOne.filter.id);
+    const saved = savedIds.length
+        ? await Game.find({ id: { $in: savedIds } },
+            { id: 1, season: 1, seasonType: 1, week: 1, _id: 0 }).lean()
+        : [];
+    for (const doc of saved) {
+        if (preExisting.has(doc.id)) {
+            allExistingGames.push(doc);
+        } else {
+            allNewGames.push(doc);
         }
     }
 
