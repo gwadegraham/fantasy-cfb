@@ -462,23 +462,44 @@ async function loadH2H(league, season, fallbackData) {
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
     renderStandingsTable(h2hRows(data), { h2h: true });
 
-    // 2) Matchups: the heavier win-prob payload, loaded after the table into its
-    //    own module below.
-    loadH2HMatchups(league, season, sim);
+    // 2a) The current week's cards ride along in that same fast response, so the
+    //     matchups paint WITH the table instead of ~6s later. They carry no
+    //     win-probability bar (the projection model needs the whole season's
+    //     games, which is what makes the full payload heavy), so they render a
+    //     skeleton bar until 2b replaces them.
+    if ((data.schedule || []).length) renderH2HMatchups(data);
+
+    // 2b) The heavier win-prob payload: every week, with real odds. Hand it the
+    //     fast payload so it can fall back to those cards if it fails.
+    loadH2HMatchups(league, season, sim, data);
 }
 
 // Fetches the full H2H payload (schedule + win-prob) and renders the weekly
 // matchup cards. Kept separate from the standings render so the table isn't
 // blocked on the projection compute. Best-effort: if it fails, the standings
 // table is already up and only the matchups module is missing.
-async function loadH2HMatchups(league, season, sim) {
+async function loadH2HMatchups(league, season, sim, fastData) {
     try {
         const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
         const d = await res.json();
         if (d && d.scheduleComplete) revealRivalryGames();
         if (d && (d.schedule || []).length) renderH2HMatchups(d);
-    } catch (e) { /* matchups are best-effort */ }
+    } catch (e) {
+        // Don't strand the panel. The fast render left skeleton bars and every
+        // other week reading "Loading week N…"; if the real odds are never
+        // coming, re-render without `partial` so the bars simply aren't there
+        // and an unloaded week says so plainly, rather than spinning forever.
+        if (fastData && (fastData.schedule || []).length) {
+            try {
+                // Narrow the picker to the week we actually hold, too — with
+                // `partial` cleared, an unloaded week would otherwise claim
+                // "No matchups this week", which is a lie rather than a gap.
+                renderH2HMatchups({ ...fastData, partial: false,
+                    weeks: (fastData.schedule || []).map(x => x.week) });
+            } catch (_) { /* best-effort */ }
+        }
+    }
 }
 
 // Maps the H2H payload's managers (already ranked by adjusted total, server-side)
@@ -588,7 +609,22 @@ function renderH2HMatchups(d) {
     if (!el) return;
     const byId = {};
     (d.managers || []).forEach(m => { byId[m.userId] = m; });
-    const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
+    // Week options come from d.weeks, not d.schedule: the fast payload carries
+    // only the featured week's cards but the whole week LIST, so the picker is
+    // complete from the first paint and doesn't grow when the full payload lands.
+    const allWeeks = (d.weeks && d.weeks.length) ? d.weeks : (d.schedule || []).map(s => s.week);
+    // Keep the reader's choice across the re-render. Without this, changing the
+    // week and then having the full payload arrive would yank them back to the
+    // featured week mid-read.
+    const prevSel = (() => {
+        const cur = el.querySelector('[h2h-week]');
+        return cur && cur.value ? Number(cur.value) : null;
+    })();
+    // Same reason, same moment: read the DOM before it is thrown away.
+    const openKeys = new Set();
+    el.querySelectorAll('.h2h-mcard.open[data-pair]').forEach(c => openKeys.add(c.dataset.pair));
+    const selectedWeek = (prevSel != null && allWeeks.includes(prevSel)) ? prevSel : d.featuredWeek;
+    const weekOpts = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     // Once the schedule is exhausted the panel would otherwise sit on the last
@@ -607,16 +643,28 @@ function renderH2HMatchups(d) {
     el.hidden = false;
 
     const matchesEl = el.querySelector('[h2h-matches]');
+    // Which cards the reader had expanded, keyed by the pairing rather than by
+    // position, so re-rendering when the full payload lands doesn't snap them
+    // shut under someone mid-read. Captured before the innerHTML above replaced
+    // the old panel (see openKeys, read at the top of this function).
     const paintWeek = (w) => {
         const s = (d.schedule || []).find(x => x.week === Number(w));
+        // A week the fast payload didn't carry: say it's coming rather than
+        // claiming there are no matchups. The full payload re-renders shortly.
+        if (!s && d.partial) {
+            matchesEl.innerHTML = '<p class="h2h-empty">Loading week ' + Number(w) + '…</p>';
+            return;
+        }
         matchesEl.innerHTML = (s && s.games.length)
-            ? s.games.map(g => window.ccH2H.matchupCard(g, { byId })).join('')
+            ? s.games.map(g => window.ccH2H.matchupCard(
+                d.partial ? { ...g, pending: true } : g,
+                { byId, open: openKeys.has(g.aId + '|' + g.bId) })).join('')
             : '<p class="h2h-empty">No matchups this week.</p>';
         window.ccH2H.wire(matchesEl);
     };
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));
-    paintWeek(d.featuredWeek);
+    paintWeek(selectedWeek);
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the

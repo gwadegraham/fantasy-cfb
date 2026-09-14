@@ -65,6 +65,25 @@
 .h2h-mbfill.even { background: #5A6080; }
 .h2h-mbfill:not(.r) { border-radius: 999px 0 0 999px; }
 .h2h-mbfill.r { border-radius: 0 999px 999px 0; }
+/* Odds still loading. Same box as a real bar — same height, same gaps, same
+   label widths — so when the numbers arrive they replace the placeholder in
+   place instead of growing the card and shoving the page around. The Standings
+   panel paints cards from the fast payload and re-renders when the projection
+   payload lands a few seconds later. */
+.h2h-mbskel {
+    flex: 1; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #2A3050 0%, #3A4270 50%, #2A3050 100%);
+    background-size: 200% 100%;
+    animation: h2h-mbskel-slide 1.4s ease-in-out infinite;
+}
+@keyframes h2h-mbskel-slide {
+    0% { background-position: 150% 0; }
+    100% { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .h2h-mbskel { animation: none; background: #2A3050; }
+}
+
 /* Both percentages share one size + weight — favorite distinguished by color. */
 .h2h-mbpct { font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 2.1rem; flex-shrink: 0; color: var(--cc-muted); }
 .h2h-mbpct:last-child { text-align: right; }
