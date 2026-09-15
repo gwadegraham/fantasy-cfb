@@ -117,6 +117,50 @@ describe('GET /games/info (CFBD passthrough)', () => {
     });
 });
 
+// public/current-week.js is the app's single source for "what week is it". It
+// used to read the number off the FULL scoreboard payload — 4.3s against the M0
+// tier — for one integer. The betting page pays that BEFORE it can fetch
+// anything, because the week decides which games to ask for.
+describe('GET /games/current-week/:season', () => {
+    test('answers the week without the rest of the scoreboard payload', async () => {
+        await Game.create([
+            gameDoc({ id: 701, week: 1, startDate: '2025-08-30T00:00:00.000Z' }),
+            gameDoc({ id: 702, week: 2, startDate: '2025-09-06T00:00:00.000Z' })
+        ]);
+        const res = await request(app).get('/games/current-week/2025');
+        expect(res.status).toBe(200);
+        expect(typeof res.body.week === 'number' || res.body.week === null).toBe(true);
+        // The point of the endpoint: it carries the week and nothing heavy.
+        expect(Object.keys(res.body).sort()).toEqual(['season', 'seasonType', 'week']);
+        expect(res.body.games).toBeUndefined();
+        expect(res.body.conferences).toBeUndefined();
+    });
+
+    // Must not drift from the week /scoreboard lands on — they share
+    // weekWindows/defaultWeek precisely so this holds.
+    test('agrees with the scoreboard route', async () => {
+        await Game.create([
+            gameDoc({ id: 703, week: 1, startDate: '2025-08-30T00:00:00.000Z' }),
+            gameDoc({ id: 704, week: 2, startDate: '2025-09-06T00:00:00.000Z' })
+        ]);
+        const cheap = await request(app).get('/games/current-week/2025');
+        const full = await request(app).get('/games/scoreboard/graham-league/2025');
+        expect(cheap.body.week).toBe(full.body.week);
+    });
+
+    test('rejects a non-numeric season', async () => {
+        const res = await request(app).get('/games/current-week/notayear');
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/Invalid season/);
+    });
+
+    test('answers null rather than erroring when the season has no games', async () => {
+        const res = await request(app).get('/games/current-week/1999');
+        expect(res.status).toBe(200);
+        expect(res.body.week).toBeNull();
+    });
+});
+
 describe('POST /games/week/mass-create', () => {
     test('validates missing week for a regular-season request before any fetch', async () => {
         global.fetch = jest.fn();
