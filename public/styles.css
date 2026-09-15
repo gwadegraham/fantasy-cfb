@@ -125,7 +125,14 @@ button {
 body {
     background-color: var(--cc-bg) !important;
     display: flex;
-    justify-content: center;
+    /* flex-start, NOT center. align-items keeps the page centred HORIZONTALLY,
+       which is what was wanted; justify-content: center centred it VERTICALLY
+       too, and on a column flex container that means: while the content is
+       shorter than the viewport, the whole page floats in the middle of the
+       screen. Every page did this during load — the navbar rendered around
+       y=198 on a 812px phone viewport and walked up to y=6 as content arrived
+       (198 -> 74 -> 6, traced). A document starts at the top. */
+    justify-content: flex-start;
     align-items: center;
     min-height: 100vh;
     margin: 0;
