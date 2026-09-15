@@ -121,12 +121,18 @@ const seasonSchema = new mongoose.Schema({
         type: String
     },
     // --- market CFP futures (American odds), entered by the commissioner in the
-    // admin "CFP Odds" action. Used by the draft-grade CFP component. ---
+    // admin "CFP Odds" action. Used by the draft-grade CFP component AND by the
+    // standings projection's postseason term, which is why staleness matters:
+    // nothing refreshes these on a schedule, so an August board keeps pricing a
+    // team's playoff odds in November until someone re-pastes it. ---
     cfpMakeOdds: {       // odds to make the 12-team CFP (e.g. -800, +450)
         type: Number
     },
     cfpChampOdds: {      // odds to win the national championship
         type: Number
+    },
+    cfpOddsUpdatedAt: {  // when the board above was last committed
+        type: Date
     }
 });
 

@@ -930,6 +930,13 @@
 #cfp-odds-commit:disabled { opacity: 0.45; cursor: not-allowed; }
 .cfp-odds-results { width: 100%; text-align: left; margin-top: 0.75em; }
 .cfp-odds-summary { color: var(--cc-text); font-weight: 600; margin-bottom: 0.5em; }
+/* "Last pasted" line above the paste box — informational, so it reads quieter
+   than the summary of a preview the commissioner just ran. */
+.cfp-odds-freshness:not(:empty) {
+    color: var(--cc-muted-2);
+    font-size: 0.85em;
+    margin: 0 0 0.75em;
+}
 .cfp-unmatched {
     color: var(--cc-amber);
     font-size: 0.8rem;

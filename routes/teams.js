@@ -404,6 +404,32 @@ router.post('/:season/enrich', async (req, res) => {
     }
 });
 
+// How fresh the stored CFP futures are, so the admin screen can say whether the
+// board on file is a live price or August's. Read-only.
+router.get('/:season/cfp-odds/status', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    try {
+        const teams = await Team.find(
+            { seasons: { $elemMatch: { season } } },
+            { seasons: { $elemMatch: { season } } }
+        ).lean();
+        let makeCount = 0, champCount = 0, updatedAt = null;
+        teams.forEach(t => {
+            const s = (t.seasons || [])[0];
+            if (!s) return;
+            if (s.cfpMakeOdds != null) makeCount++;
+            if (s.cfpChampOdds != null) champCount++;
+            if (s.cfpOddsUpdatedAt && (!updatedAt || s.cfpOddsUpdatedAt > updatedAt)) updatedAt = s.cfpOddsUpdatedAt;
+        });
+        res.json({ season, makeCount, champCount, updatedAt });
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
 // Ingest market CFP futures pasted from a sportsbook (make-CFP or championship
 // odds). Dry-run by default (returns matched/unmatched preview so the paste can
 // be verified); writes to team.seasons only when commit === true.
@@ -434,18 +460,25 @@ router.post('/:season/cfp-odds', async (req, res) => {
             matched.push({ team: t, name: e.name, odds: e.odds, prob: Math.round(americanToProb(e.odds) * 1000) / 10 });
         }
 
+        // Stamp the commit time alongside the odds. Nothing refreshes these on a
+        // schedule, and they feed both the draft grade and the standings
+        // projection's postseason term, so "when was this board pasted" is the
+        // only way to tell a live price from an August one.
+        const committedAt = new Date();
         if (commit) {
             for (const m of matched) {
                 const team = m.team;
                 let idx = team.seasons.findIndex(x => x.season == season);
                 if (idx === -1) { team.seasons.push({ season, conference: team.conference }); idx = team.seasons.length - 1; }
                 team.seasons[idx][field] = m.odds;
+                team.seasons[idx].cfpOddsUpdatedAt = committedAt;
                 await team.save();
             }
         }
 
         res.status(200).json({
             season, market, field, dryRun: !commit,
+            updatedAt: commit ? committedAt : null,
             matchedCount: matched.length, unmatchedCount: unmatched.length,
             matched: matched.map(m => ({ school: m.team.school, id: m.team.id, name: m.name, odds: m.odds, prob: m.prob })),
             unmatched

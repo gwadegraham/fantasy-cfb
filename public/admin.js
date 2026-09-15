@@ -1292,7 +1292,30 @@ if (enrichmentForm) {
 }
 
 // --- CFP odds ingestion (Market odds) ---------------------------------------
-function displayCfpOddsContainer() { toggleSub('cfp-odds-container'); }
+function displayCfpOddsContainer() { toggleSub('cfp-odds-container'); refreshCfpOddsFreshness(); }
+
+// "Last pasted" for the selected season. These odds have no job behind them, so
+// the only staleness signal is when someone last committed a board.
+async function refreshCfpOddsFreshness() {
+    var out = document.getElementById('cfp-odds-freshness');
+    var seasonEl = document.querySelector('[cfp-odds-season]');
+    if (!out || !seasonEl) return;
+    try {
+        var res = await fetch('/teams/' + encodeURIComponent(seasonEl.value) + '/cfp-odds/status', { headers: { 'Accept': 'application/json' } });
+        if (!res.ok) { out.textContent = ''; return; }
+        var d = await res.json();
+        if (!d.makeCount && !d.champCount) {
+            out.textContent = 'No odds on file for ' + d.season + '.';
+            return;
+        }
+        var when = d.updatedAt
+            ? 'last pasted ' + new Date(d.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'pasted before this was tracked';
+        out.textContent = d.season + ': ' + d.makeCount + ' make-CFP, ' + d.champCount + ' championship — ' + when + '.';
+    } catch (err) {
+        out.textContent = '';
+    }
+}
 
 (function () {
     var form = document.getElementById('cfp-odds-form');
@@ -1334,6 +1357,7 @@ function displayCfpOddsContainer() { toggleSub('cfp-odds-container'); }
                 successToast.showToast();
                 commitBtn.disabled = true;
                 previewed = false;
+                refreshCfpOddsFreshness();
             }
         } catch (err) {
             unblock_screen();
