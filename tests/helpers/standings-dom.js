@@ -247,7 +247,11 @@ async function loadStandingsPage(opts = {}) {
     const defaultRoutes = [
         ['/profile', profile],
         [/^\/users\/league\//, users],
-        [/\/standings\/h2h\/[^/]+\/[^/]+\/enabled/, { enabled: h2hEnabled }],
+        // A function lets a test observe the DOM at the moment the probe fires —
+        // which is how the "table placeholder paints BEFORE this answers" rule
+        // is pinned.
+        [/\/standings\/h2h\/[^/]+\/[^/]+\/enabled/,
+            typeof h2hEnabled === 'function' ? h2hEnabled : { enabled: h2hEnabled }],
         [/\/standings\/h2h\/[^/?]+\/[^/?]+\?.*standingsOnly=1/, h2hStandings || { enabled: h2hEnabled, managers: [] }],
         [/\/standings\/h2h\//, h2hMatchups || { enabled: h2hEnabled, managers: [], schedule: [] }],
         ['/standings/last-updated', lastUpdated === undefined ? respond(404, undefined) : lastUpdated],

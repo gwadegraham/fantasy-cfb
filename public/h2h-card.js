@@ -145,7 +145,17 @@
     }
     function winBar(g) {
         var v = barVals(g);
-        if (!v) return '';
+        // `pending` means the odds are still in flight — the Standings panel
+        // paints cards from the fast payload (no projections) and re-renders
+        // when the heavy one lands. Draw the bar at its final HEIGHT with a
+        // placeholder track, so the real numbers replace it in place instead of
+        // pushing every card below them down the page.
+        if (!v) return g.pending
+            ? '<div class="h2h-mbar pending" role="img" aria-label="Win probability loading">'
+                + '<span class="h2h-mbpct">&nbsp;</span>'
+                + '<div class="h2h-mbtrack"><span class="h2h-mbskel"></span></div>'
+                + '<span class="h2h-mbpct">&nbsp;</span></div>'
+            : '';
         var tone = function (mine, other) { return mine > other ? 'fav' : mine < other ? 'dog' : 'even'; };
         return '<div class="h2h-mbar" role="img" aria-label="Win probability ' + v.a + '% versus ' + v.b + '%">'
             + '<span class="h2h-mbpct ' + tone(v.a, v.b) + '">' + v.a + '%</span>'
@@ -171,6 +181,7 @@
             aTeams: g.bTeams, bTeams: g.aTeams,
             winner: g.winner === 'a' ? 'b' : g.winner === 'b' ? 'a' : g.winner,
             winP: g.winP ? { a: g.winP.b, b: g.winP.a } : g.winP,
+            pending: g.pending,
             final: g.final, upcoming: g.upcoming
         };
     }
@@ -198,7 +209,11 @@
         var remaining = both.filter(function (t) { return t.status && t.status !== 'final'; }).length;
         var sep = live ? '<span class="h2h-mlive">LIVE</span>' : (g.winner === 'tie' ? 'T' : 'vs');
         var wk = opts.week != null ? '<span class="h2h-mwk">Wk ' + opts.week + '</span>' : '';
-        return '<div class="h2h-mcard' + (live ? ' live' : '') + (upcoming ? ' upcoming' : '') + (opts.open ? ' open' : '') + '">'
+        // data-pair identifies the matchup independently of its position, so a
+        // re-render (Standings swaps skeleton cards for real ones) can restore
+        // exactly the cards the reader had expanded.
+        return '<div class="h2h-mcard' + (live ? ' live' : '') + (upcoming ? ' upcoming' : '') + (opts.open ? ' open' : '')
+            + '" data-pair="' + esc(g.aId) + '|' + esc(g.bId) + '">'
             + '<div class="h2h-msum" role="button" tabindex="0" aria-expanded="' + (opts.open ? 'true' : 'false') + '">'
             + wk
             + '<div class="h2h-mside' + (g.winner === 'a' ? ' win' : '') + '">' + manLink(g.aId, avatar(A) + '<span class="h2h-mnm">' + aName + '</span>') + '<span class="h2h-msc">' + score(g.aScore) + '</span></div>'

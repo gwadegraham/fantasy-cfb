@@ -206,6 +206,19 @@ async function renderStandingsSection(data, league, season) {
     const params = new URLSearchParams(location.search);
     const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
 
+    // Paint the table placeholder BEFORE the /enabled probe, not after.
+    //
+    // displayHighlights renders synchronously off the users payload, so League
+    // Highlights appear the moment that fetch lands — while this function is
+    // still awaiting /enabled, leaving a blank block where the table goes with a
+    // fully drawn section beneath it. The rows are right for either outcome: an
+    // H2H league keeps them until its payload arrives, and a classic league has
+    // displayUsers overwrite them a moment later. Either way it beats nothing.
+    //
+    // The MATCHUPS placeholder deliberately stays below the probe — it is H2H
+    // chrome, and a classic league should never see it flash.
+    showStandingsLoading();
+
     let enabled = false;
     if (league && season != null) {
         try {
@@ -222,7 +235,7 @@ async function renderStandingsSection(data, league, season) {
 
     if (!enabled && !preview) { displayUsers(data); displaySchedule(data); return; }
     hideLegacyH2HSchedule();   // hide the Rivalry Games section ASAP (before it paints)
-    showStandingsLoading();
+    showMatchupsLoading(data);
     // The schedule render is deferred to revealRivalryGames(): while matchups
     // are live the section stays hidden, so building it would cost a game fetch
     // per team per week for markup nobody sees.
@@ -239,6 +252,57 @@ function showStandingsLoading() {
     let rows = '';
     for (let i = 0; i < 6; i++) rows += '<tr class="std-skel-row"><td colspan="6"><span class="std-skel"></span></td></tr>';
     body.innerHTML = rows;
+}
+
+// Reserve the matchups panel before anything is fetched.
+//
+// The section is `hidden` in the markup, so until the payload lands it occupies
+// ZERO height and League Highlights sits where the matchups will go — then the
+// cards arrive and shove Highlights and Projected Finish down the page. Painting
+// a placeholder holds the space, so the panel fills in rather than pops in.
+//
+// Built from the real card classes (.h2h-mcard / .h2h-msum / .h2h-mbar.pending)
+// rather than bespoke boxes, so the placeholder inherits the actual card
+// geometry and can't drift from it when the card changes.
+//
+// Card count comes from the league roster — one per pair — because that is
+// exactly how many will arrive. No heading text: at season's end the real title
+// reads "Final Matchups" rather than "This Week's Matchups", and a placeholder
+// bar can't be wrong the way guessed copy can.
+function showMatchupsLoading(data) {
+    const el = document.getElementById('h2h-panel');
+    if (!el) return;
+    const managers = (data || []).length;
+    const cards = Math.min(6, Math.max(1, Math.floor(managers / 2) || 3));
+    let out = '<div class="h2h-skel-head"></div><div class="h2h-skel-note"></div>'
+        + '<div class="h2h-week-bar"><span class="h2h-skel-week"></span></div>'
+        + '<div class="h2h-matches">';
+    for (let i = 0; i < cards; i++) {
+        out += '<div class="h2h-mcard h2h-skel-card" aria-hidden="true">'
+            + '<div class="h2h-msum">'
+            + '<span class="h2h-av h2h-skel-blob"></span><span class="h2h-skel-nm"></span>'
+            + '<span class="h2h-msep h2h-skel-sep"></span>'
+            + '<span class="h2h-skel-nm"></span><span class="h2h-av h2h-skel-blob"></span>'
+            + '</div>'
+            + '<div class="h2h-mbar pending"><span class="h2h-mbpct">&nbsp;</span>'
+            + '<div class="h2h-mbtrack"><span class="h2h-mbskel"></span></div>'
+            + '<span class="h2h-mbpct">&nbsp;</span></div>'
+            + '</div>';
+    }
+    out += '</div>';
+    el.innerHTML = out;
+    el.hidden = false;
+}
+
+// Take the placeholder back down. Reached when there are no matchups to show
+// after all — an H2H league with no derived schedule, or a fall back to the
+// classic table — so the reserved space is released instead of shimmering
+// forever over nothing.
+function hideMatchupsPanel() {
+    const el = document.getElementById('h2h-panel');
+    if (!el) return;
+    el.innerHTML = '';
+    el.hidden = true;
 }
 
 // Paints the standings table (header + rows) for a given mode and wires the
@@ -445,7 +509,9 @@ function renderProjPanel(managers) {
 async function loadH2H(league, season, fallbackData) {
     // If H2H can't render (bad params, fetch error, or not actually enabled),
     // fall back to the classic table so a skeleton shown by the caller resolves.
-    const renderClassic = () => { if (fallbackData) displayUsers(fallbackData); };
+    // Falling back to the classic table means no matchups are coming — drop the
+    // placeholder with it, or it shimmers above a table that will never have one.
+    const renderClassic = () => { hideMatchupsPanel(); if (fallbackData) displayUsers(fallbackData); };
     if (!league || season == null) return renderClassic();
     const params = new URLSearchParams(location.search);
     const sim = params.get('h2hSim');   // dev-only in-progress preview (non-prod route honors it)
@@ -462,23 +528,46 @@ async function loadH2H(league, season, fallbackData) {
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
     renderStandingsTable(h2hRows(data), { h2h: true });
 
-    // 2) Matchups: the heavier win-prob payload, loaded after the table into its
-    //    own module below.
-    loadH2HMatchups(league, season, sim);
+    // 2a) The current week's cards ride along in that same fast response, so the
+    //     matchups paint WITH the table instead of ~6s later. They carry no
+    //     win-probability bar (the projection model needs the whole season's
+    //     games, which is what makes the full payload heavy), so they render a
+    //     skeleton bar until 2b replaces them.
+    if ((data.schedule || []).length) renderH2HMatchups(data);
+
+    // 2b) The heavier win-prob payload: every week, with real odds. Hand it the
+    //     fast payload so it can fall back to those cards if it fails.
+    loadH2HMatchups(league, season, sim, data);
 }
 
 // Fetches the full H2H payload (schedule + win-prob) and renders the weekly
 // matchup cards. Kept separate from the standings render so the table isn't
 // blocked on the projection compute. Best-effort: if it fails, the standings
 // table is already up and only the matchups module is missing.
-async function loadH2HMatchups(league, season, sim) {
+async function loadH2HMatchups(league, season, sim, fastData) {
     try {
         const url = `/standings/h2h/${league}/${season}` + (sim ? `?h2hSim=${encodeURIComponent(sim)}` : '');
         const res = await fetch(url, { headers: { Accept: 'application/json' } });
         const d = await res.json();
         if (d && d.scheduleComplete) revealRivalryGames();
         if (d && (d.schedule || []).length) renderH2HMatchups(d);
-    } catch (e) { /* matchups are best-effort */ }
+        else hideMatchupsPanel();
+    } catch (e) {
+        // Don't strand the panel. The fast render left skeleton bars and every
+        // other week reading "Loading week N…"; if the real odds are never
+        // coming, re-render without `partial` so the bars simply aren't there
+        // and an unloaded week says so plainly, rather than spinning forever.
+        if (!fastData || !(fastData.schedule || []).length) hideMatchupsPanel();
+        else if (fastData && (fastData.schedule || []).length) {
+            try {
+                // Narrow the picker to the week we actually hold, too — with
+                // `partial` cleared, an unloaded week would otherwise claim
+                // "No matchups this week", which is a lie rather than a gap.
+                renderH2HMatchups({ ...fastData, partial: false,
+                    weeks: (fastData.schedule || []).map(x => x.week) });
+            } catch (_) { /* best-effort */ }
+        }
+    }
 }
 
 // Maps the H2H payload's managers (already ranked by adjusted total, server-side)
@@ -588,7 +677,22 @@ function renderH2HMatchups(d) {
     if (!el) return;
     const byId = {};
     (d.managers || []).forEach(m => { byId[m.userId] = m; });
-    const weekOpts = (d.schedule || []).map(s => `<option value="${s.week}"${s.week === d.featuredWeek ? ' selected' : ''}>Week ${s.week}</option>`).join('');
+    // Week options come from d.weeks, not d.schedule: the fast payload carries
+    // only the featured week's cards but the whole week LIST, so the picker is
+    // complete from the first paint and doesn't grow when the full payload lands.
+    const allWeeks = (d.weeks && d.weeks.length) ? d.weeks : (d.schedule || []).map(s => s.week);
+    // Keep the reader's choice across the re-render. Without this, changing the
+    // week and then having the full payload arrive would yank them back to the
+    // featured week mid-read.
+    const prevSel = (() => {
+        const cur = el.querySelector('[h2h-week]');
+        return cur && cur.value ? Number(cur.value) : null;
+    })();
+    // Same reason, same moment: read the DOM before it is thrown away.
+    const openKeys = new Set();
+    el.querySelectorAll('.h2h-mcard.open[data-pair]').forEach(c => openKeys.add(c.dataset.pair));
+    const selectedWeek = (prevSel != null && allWeeks.includes(prevSel)) ? prevSel : d.featuredWeek;
+    const weekOpts = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     // Once the schedule is exhausted the panel would otherwise sit on the last
@@ -607,16 +711,28 @@ function renderH2HMatchups(d) {
     el.hidden = false;
 
     const matchesEl = el.querySelector('[h2h-matches]');
+    // Which cards the reader had expanded, keyed by the pairing rather than by
+    // position, so re-rendering when the full payload lands doesn't snap them
+    // shut under someone mid-read. Captured before the innerHTML above replaced
+    // the old panel (see openKeys, read at the top of this function).
     const paintWeek = (w) => {
         const s = (d.schedule || []).find(x => x.week === Number(w));
+        // A week the fast payload didn't carry: say it's coming rather than
+        // claiming there are no matchups. The full payload re-renders shortly.
+        if (!s && d.partial) {
+            matchesEl.innerHTML = '<p class="h2h-empty">Loading week ' + Number(w) + '…</p>';
+            return;
+        }
         matchesEl.innerHTML = (s && s.games.length)
-            ? s.games.map(g => window.ccH2H.matchupCard(g, { byId })).join('')
+            ? s.games.map(g => window.ccH2H.matchupCard(
+                d.partial ? { ...g, pending: true } : g,
+                { byId, open: openKeys.has(g.aId + '|' + g.bId) })).join('')
             : '<p class="h2h-empty">No matchups this week.</p>';
         window.ccH2H.wire(matchesEl);
     };
     const sel = el.querySelector('[h2h-week]');
     sel.addEventListener('change', () => paintWeek(sel.value));
-    paintWeek(d.featuredWeek);
+    paintWeek(selectedWeek);
 }
 
 // Reserved celebration: if the logged-in manager posted the top score in the

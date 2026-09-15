@@ -506,24 +506,49 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // are computed over the FIXED regular-season range so a week's matchup is
         // stable whether or not it's been scored yet.
         const draftedIds = [...draftedSet];
-        const games = draftedIds.length ? await Game.find(
-            { season: seasonNum, seasonType: 'regular', week: { $lte: H2H_MAX_WEEK }, $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
-            { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1, homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1, liveHomeWinProb: 1, weather: 1, _id: 0 }
+
+        // ONE games read, not two. The card data (H2H weeks) and the projection
+        // input (whole season) were separate queries over the same $or filter —
+        // 575 and 576 documents, 128KB + 191KB, 3.5s of the 6.6s this route
+        // spent. Against an M0 tier that meters bytes, fetching the same games
+        // twice with different field sets is the single most expensive thing
+        // here, and the projection model itself is 11ms.
+        //
+        // The fast path still reads the narrow set: standingsOnly renders cards
+        // with no win-probability bar, so it needs neither the projection fields
+        // nor the weeks past the H2H range.
+        const CARD_FIELDS = { id: 1, week: 1, startDate: 1, startTimeTbd: 1, completed: 1,
+            homeId: 1, homeTeam: 1, homePoints: 1, awayId: 1, awayTeam: 1, awayPoints: 1,
+            liveHomeWinProb: 1, weather: 1, _id: 0 };
+        const PROJECTION_FIELDS = { season: 1, seasonType: 1, neutralSite: 1, conferenceGame: 1,
+            notes: 1, homeConference: 1, awayConference: 1, pregameWinProb: 1 };
+        const gameFilter = { season: seasonNum, seasonType: 'regular',
+            $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] };
+        const allGames = draftedIds.length ? await Game.find(
+            standingsOnly ? { ...gameFilter, week: { $lte: H2H_MAX_WEEK } } : gameFilter,
+            standingsOnly ? CARD_FIELDS : { ...CARD_FIELDS, ...PROJECTION_FIELDS }
         ).lean() : [];
+        // Cards only ever show H2H weeks; the projections want the whole season
+        // (see the calibration note at the projection block below).
+        const games = allGames.filter(g => g.week != null && g.week <= H2H_MAX_WEEK);
         // Opponent rankings, read from the SAME poll the scorer reads (the
         // Playoff Committee's, else AP — see scoring-detectors findPoll). So a
         // rank on a card means that win pays the ranked bonus, and a week with
         // only a Coaches Poll stored shows no ranks at all rather than numbers
         // that won't match what the week actually scores. Keyed by team NAME,
         // the same join rankValue makes.
-        const pollDoc = standingsOnly ? null : await projectionPoll(seasonNum);
+        // Loaded on BOTH paths now. These two reads are ~370ms combined, and
+        // without them a fast-path card would label an opponent 'Oklahoma' and
+        // then swap it to 'OU' when the full payload arrived — a worse flicker
+        // than the skeleton bar this staging is designed around.
+        const pollDoc = await projectionPoll(seasonNum);
         const rankByName = {};
         ((pollDoc && pollDoc.ranks) || []).forEach(r => { if (r && r.school) rankByName[r.school] = r.rank; });
         // Opponent abbreviations (opponents aren't always rostered, so look them
         // up from the Team collection).
         const oppAbbrById = {};
         const gameTeamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]).filter(x => x != null))];
-        if (!standingsOnly && gameTeamIds.length) {
+        if (gameTeamIds.length) {
             const tdocs = await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
             tdocs.forEach(td => { oppAbbrById[td.id] = td.abbreviation || null; });
         }
@@ -545,15 +570,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
             }).lean();
             const teamsById = {};
             allTeams.forEach(t => { teamsById[String(t.id)] = t; });
-            // Only drafted teams' games feed the projections (gamesByTeam below
-            // keeps just those), so filter in the query instead of loading the
-            // whole season and discarding most of it — same resulting set.
-            const regGames = await Game.find(
-                { season: seasonNum, seasonType: 'regular', $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] },
-                { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
-                  completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
-                  pregameWinProb: 1 }).lean();
+            // Already read above — the same $or over the same season, which is
+            // why the two queries were merged. Whole-season, NOT the current
+            // week: calibrateToExpectedWins inside projectTeamPoints scales a
+            // team's SP+ fallback probabilities so they sum to its season
+            // expected-wins target, so handing it one week's games would
+            // calibrate a single game against a full season and return nonsense.
+            const regGames = allGames;
             const gamesByTeam = {};
             regGames.forEach(g => {
                 [g.homeId, g.awayId].forEach(tid => {
@@ -701,7 +724,6 @@ router.get('/h2h/:league/:season', async (req, res) => {
 
         // Standings-only: the ranked table is ready; return before the matchup
         // win-prob build (which needs the projections skipped above).
-        if (standingsOnly) return res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, managers });
 
         // Schedule payload: final weeks + the current in-progress week. Final
         // weeks show scored contributing teams; the current week shows each
@@ -800,7 +822,18 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 aId: a, aScore: sa, aTeams: unplayed ? teamsLive(a, w) : teamsFinal(a, w),
                 bId: b, bScore: sb, bTeams: unplayed ? teamsLive(b, w) : teamsFinal(b, w),
                 winner: unplayed ? null : (sa > sb ? 'a' : (sb > sa ? 'b' : 'tie')),
-                winP: unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w),
+                // The fast path has no projections, so it must not answer odds
+                // AT ALL. It is not enough that projByWeek is empty: for an
+                // unplayed week liveOddsFor goes through liveEntriesFor, which
+                // builds entries straight from the scored results — a FINAL game
+                // contributes { winProb: 1, pointsIfWin: <points scored> } and
+                // never consults a projection. So on a Saturday where one
+                // manager's teams have finished and the other's have not yet
+                // kicked off, the fast payload would answer a real, confident,
+                // WRONG bar (100% / 0%) and then flip to the true number seconds
+                // later. A wrong bar is worse than no bar, which is the whole
+                // premise of the skeleton.
+                winP: standingsOnly ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
                 final: !unplayed,
                 upcoming: !!upcoming
             };
@@ -827,12 +860,22 @@ router.get('/h2h/:league/:season', async (req, res) => {
             if (g.week == null) return;
             if (gameStatus(g, now) !== 'scheduled') startedByWeek[g.week] = true;
         });
-        const schedule = schedWeeks.map(w => {
+        let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
+        // The fast path builds ONE week — the one actually on screen. Every other
+        // week is a card behind the week picker, and the picker's own list still
+        // ships (schedWeeks), so the client can render the current matchups at
+        // ~2.5s and swap in the full set when the heavy payload lands.
+        //
+        // winP is forced null on this path (see gameFor) — that null is the
+        // client's cue to draw a skeleton bar.
+        const weeksToBuild = standingsOnly
+            ? schedWeeks.filter(w => w === featuredWeek)
+            : schedWeeks;
+        const schedule = weeksToBuild.map(w => {
             const live = (w === currentWeek) && !weekFinal[w] && !!startedByWeek[w];
             const upcoming = !weekFinal[w] && !live;
             return { week: w, final: !!weekFinal[w], upcoming, games: (scheduleAll[w] || []).filter(([a, b]) => meta[a] && meta[b]).map(([a, b]) => gameFor(a, b, w, live || upcoming, upcoming)) };
         });
-        let featuredWeek = currentWeek || (finalWeeks.length ? finalWeeks[finalWeeks.length - 1] : (schedWeeks[schedWeeks.length - 1] || null));
         let currentWeekOut = currentWeek;
 
         // Dev-only preview of the in-progress states (non-production). Doctors the
@@ -870,7 +913,10 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // week) still reads as mid-season.
         const scheduleComplete = !!(schedWeeks.length && !currentWeekOut);
 
-        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule });
+        // `partial` says the win-probability bars are not in this payload and a
+        // fuller one is worth waiting for — the client draws skeleton bars and
+        // re-renders when it arrives. Absent/false means these cards are final.
+        res.json({ league, season: seasonNum, enabled: eng.h2hEnabled, winBonus, tieBonus, weeks: schedWeeks, featuredWeek, currentWeek: currentWeekOut, scheduleComplete, managers, schedule, partial: standingsOnly || undefined });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

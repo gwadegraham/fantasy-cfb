@@ -879,6 +879,35 @@
     100% { background-position: 0 0; }
 }
 
+/* ---------- Matchups panel placeholder --------------------------------------
+   The panel is `hidden` in the markup, so without this it has zero height until
+   the payload lands and then shoves League Highlights / Projected Finish down
+   the page. These blocks reserve the space instead.
+
+   The card placeholder reuses the REAL card classes (.h2h-mcard / .h2h-msum /
+   .h2h-mbar.pending) so its geometry tracks the real card automatically; only
+   the inner content is replaced with shimmer blocks. Same shimmer as the
+   standings-table skeleton above, so the page loads as one thing. */
+.h2h-skel-head, .h2h-skel-note, .h2h-skel-week, .h2h-skel-nm, .h2h-skel-sep, .h2h-skel-blob {
+    display: block;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #141a30 25%, #222a48 37%, #141a30 63%);
+    background-size: 400% 100%;
+    opacity: 0.85;
+}
+.h2h-skel-head { height: 1.5rem; width: 230px; max-width: 70%; margin: 0 0 0.35rem; }
+.h2h-skel-note { height: 0.85rem; width: 420px; max-width: 90%; margin: 0 0 0.9rem; }
+.h2h-skel-week { height: 30px; width: 132px; border-radius: 8px; }
+.h2h-skel-card .h2h-msum { cursor: default; }
+.h2h-skel-blob { border-radius: 50%; }          /* sits inside .h2h-av (26px) */
+.h2h-skel-nm { height: 0.85rem; flex: 1; min-width: 0; max-width: 8rem; }
+.h2h-skel-sep { height: 0.85rem; width: 1.1rem; flex-shrink: 0; }
+@media (prefers-reduced-motion: no-preference) {
+    .h2h-skel-head, .h2h-skel-note, .h2h-skel-week, .h2h-skel-nm, .h2h-skel-sep, .h2h-skel-blob {
+        animation: std-skel-shimmer 1.3s ease-in-out infinite;
+    }
+}
+
 /* ---------- H2H: inline roster on desktop, caret drawer on mobile ------------ */
 /* The Teams column and the caret column both live in the H2H markup; CSS toggles
    which one shows at the 64em breakpoint. Mobile has no room for logos next to

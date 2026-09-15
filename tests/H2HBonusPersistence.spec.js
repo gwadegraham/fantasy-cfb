@@ -167,6 +167,62 @@ describe('POST /scores/h2h-bonus', () => {
         expect(console.warn).not.toHaveBeenCalled();
     });
 
+    // The Standings page paints matchup cards from the fast (standingsOnly)
+    // response so they arrive with the table instead of ~6s later, then swaps in
+    // real odds when the projection payload lands. The fast payload must answer
+    // NO odds — not merely "whatever falls out with no projections loaded".
+    //
+    // liveEntriesFor builds entries straight from scored results: a FINAL game
+    // contributes { winProb: 1, pointsIfWin: <points> } without consulting a
+    // projection at all. So on a Saturday where one manager's teams have
+    // finished and the other's have not kicked off, the fast payload would
+    // answer a confident, wrong 100%/0% bar and flip to the truth seconds later.
+    test('the fast payload answers no odds for a half-played week', async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 0]]);
+        // Ann's game is over; Bob's hasn't kicked off. The exact split that used
+        // to produce 100/0 with no projections in the payload.
+        await Game.create([
+            game(101, 1, 1, 99, true),
+            Object.assign(game(102, 1, 2, 98, false), { startDate: '2099-01-01T00:00:00.000Z' })
+        ]);
+
+        const fast = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}?standingsOnly=1`);
+        expect(fast.status).toBe(200);
+        expect(fast.body.partial).toBe(true);
+
+        const cards = (fast.body.schedule || []).flatMap(w => w.games || []);
+        expect(cards.length).toBeGreaterThan(0);
+        // Every card: no odds at all, so the client draws a skeleton.
+        cards.forEach(g => expect(g.winP).toBeNull());
+
+        // ...while the full payload still answers real odds for the same week.
+        const full = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        expect(full.status).toBe(200);
+        const fullCards = (full.body.schedule || []).flatMap(w => w.games || []);
+        expect(fullCards.length).toBeGreaterThan(0);
+    });
+
+    test('the fast payload carries only the featured week, and the whole week list', async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        const fast = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}?standingsOnly=1`);
+        const full = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+
+        // One week of cards on the fast path...
+        expect((fast.body.schedule || []).length).toBe(1);
+        expect(fast.body.schedule[0].week).toBe(fast.body.featuredWeek);
+        // ...but the complete week list, so the picker is whole from first paint.
+        expect(fast.body.weeks).toEqual(full.body.weeks);
+        expect(fast.body.featuredWeek).toBe(full.body.featuredWeek);
+        // The full payload is not marked partial, so it never renders skeletons.
+        expect(full.body.partial).toBeUndefined();
+    });
+
     test('a week is not awarded until every drafted team has played', async () => {
         await enableH2H();
         const a = await manager('Ann', [team(1, 'Oregon'), team(3, 'Iowa')], [[1, 20]]);
