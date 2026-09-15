@@ -69,6 +69,21 @@ describe('buildProjections', () => {
         expect(out[0].perGame[0].winProb).toBeGreaterThan(0.5); // strong team favored
     });
 
+    // A losing team keeps its full preseason win total as a target while the games
+    // left to hold it shrink, so the target can exceed the schedule. Uncapped, the
+    // calibrator answered that with a certain win for every remaining game — a
+    // 4-3 team was projected to run the table and out-projected a 6-1 one.
+    it('never projects a certain win when the remaining target exceeds the games left', () => {
+        const users = [{ _id: 'u3', firstName: 'Cap', lastName: 'Test', seasons: [{ season, cumulativeScore: 0, teams: [{ id: 1, school: 'A' }] }] }];
+        // Team 1 wants 9 wins on the season; 2 games remain, both already lost-free.
+        const out = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
+        const probs = out[0].perGame.map(g => g.winProb);
+        expect(probs).toHaveLength(2);
+        probs.forEach(p => expect(p).toBeLessThan(0.99));
+        const mean = probs.reduce((a, b) => a + b, 0) / probs.length;
+        expect(mean).toBeLessThanOrEqual(0.9 + 1e-6);
+    });
+
     it('skips users with no roster for the season', () => {
         const users = [{ _id: 'u2', firstName: 'No', lastName: 'Roster', seasons: [] }];
         expect(buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season)).toHaveLength(0);

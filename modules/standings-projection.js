@@ -6,6 +6,18 @@
 
 const { projectTeamPoints, spFor, winsFor } = require('./draft-projection');
 
+// Ceiling on the mean win probability a remaining schedule may be calibrated to.
+//
+// remExpWins is a PREseason season-long win total minus the wins already banked,
+// so a loss leaves the target untouched while the games left to hold it shrink.
+// Once the target exceeds the games remaining, calibrateToExpectedWins clamps at
+// the game count and every remaining game comes back a certain win — a 4-3 team
+// was projected to run the table, and out-projected a 6-1 team on the same
+// schedule. 0.90 leaves genuine mismatches near-certain without ever reaching
+// 1.00. Applies only to the SP+ fallback games; a real CFBD pre-game number is
+// used as-is.
+const MAX_MEAN_WIN_PROB = 0.90;
+
 const nameOf = (u) => `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim();
 const initialsOf = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
 
@@ -40,7 +52,7 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
             const expWins = winsFor(team, season);
             const remExpWins = expWins == null ? null : Math.max(0.1, expWins - winsSoFar(rosterTeam.id, all));
             const proj = projectTeamPoints(team, remaining, poolCtx, rankings, cfg, season,
-                { expectedWins: remExpWins, perGame: true });
+                { expectedWins: remExpWins, perGame: true, maxMeanWinProb: MAX_MEAN_WIN_PROB });
             expReg += proj.regular;
             expPost += proj.cfp + proj.confChamp + proj.bowl;
             (proj.perGame || []).forEach(pg => perGame.push(pg));
