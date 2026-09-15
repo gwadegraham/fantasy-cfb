@@ -154,23 +154,26 @@ async function getUsers() {
             // runs when data is non-empty and the route only returns managers
             // who have the season, so the payload always names it.
             const activeSeason = ccSeasonOf.payloadSeason(data);
-            let cwCode = window.ccCurrentWeek ? await window.ccCurrentWeek.sync(activeSeason) : null;
-            // Fallback only: with no calendar to consult, seed a week when
-            // nothing is stored and otherwise leave the stored one be.
-            if (!cwCode && !window.localStorage.getItem('week') && latestWeek(data)) {
-                cwCode = 'week-' + latestWeek(data);
-            }
-            if (cwCode) {
-                window.localStorage.setItem('weekCode', cwCode);
-                weekCode = cwCode;
-                var _rwSel = document.querySelector('[rivalry-week]');
-                if (_rwSel) _rwSel.value = cwCode;
-            }
+
+            // Started, NOT awaited. ccCurrentWeek.sync fetches the scoreboard,
+            // which measured 4.3s against the M0 tier — and awaiting it here held
+            // up EVERYTHING downstream: the H2H probe, the table placeholder, the
+            // highlights, the projections. The standings page's first paint does
+            // not depend on knowing the week; only the rivalry-week picker and
+            // the classic schedule render do, and the classic branch awaits this
+            // promise for itself.
+            //
+            // Measured before: /enabled started at 6032ms. It should start at
+            // ~1.8s, as soon as the users payload lands.
+            const cwPromise = (window.ccCurrentWeek
+                ? window.ccCurrentWeek.sync(activeSeason)
+                : Promise.resolve(null)
+            ).then(cw => applyCurrentWeek(cw, data)).catch(() => null);
             // Standings table: decide the layout before painting so an H2H
             // league doesn't flash the classic table then swap (see below). It
             // owns the schedule render too — an H2H league hides that section,
             // and its ~60 game fetches are pure waste until we know the mode.
-            renderStandingsSection(data, leagueCode, activeSeason);
+            renderStandingsSection(data, leagueCode, activeSeason, cwPromise);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
@@ -198,11 +201,29 @@ function displayUsers(data) {
     renderStandingsTable(rankedRows(data), { h2h: false });
 }
 
+// Store the resolved current week and point the rivalry picker at it. Split out
+// of getUsers so the sync can run in the background instead of blocking first
+// paint — this lands whenever it lands, and the classic schedule render awaits
+// the same promise so it never paints the wrong week.
+function applyCurrentWeek(cwCode, data) {
+    // Fallback only: with no calendar to consult, seed a week when nothing is
+    // stored and otherwise leave the stored one be.
+    if (!cwCode && !window.localStorage.getItem('week') && latestWeek(data)) {
+        cwCode = 'week-' + latestWeek(data);
+    }
+    if (!cwCode) return null;
+    window.localStorage.setItem('weekCode', cwCode);
+    weekCode = cwCode;
+    const sel = document.querySelector('[rivalry-week]');
+    if (sel) sel.value = cwCode;
+    return cwCode;
+}
+
 // Picks the standings layout BEFORE the first paint so an H2H league doesn't
 // render the classic table and then flash to the (heavier, ~1s) H2H view. A
 // cheap /enabled check decides: non-H2H leagues render classic immediately;
 // H2H leagues show a loading skeleton, then loadH2H swaps in the real table.
-async function renderStandingsSection(data, league, season) {
+async function renderStandingsSection(data, league, season, cwPromise) {
     const params = new URLSearchParams(location.search);
     const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
 
@@ -233,7 +254,16 @@ async function renderStandingsSection(data, league, season) {
         } catch (e) { /* timeout or error → treat as classic */ }
     }
 
-    if (!enabled && !preview) { displayUsers(data); displaySchedule(data); return; }
+    if (!enabled && !preview) {
+        displayUsers(data);
+        // A classic league DOES show the rivalry section, and its schedule render
+        // reads weekCode out of localStorage — so this is the one caller that
+        // needs the current-week sync to have landed.
+        showRivalryGames();
+        if (cwPromise) await cwPromise;
+        displaySchedule(data);
+        return;
+    }
     hideLegacyH2HSchedule();   // hide the Rivalry Games section ASAP (before it paints)
     showMatchupsLoading(data);
     // The schedule render is deferred to revealRivalryGames(): while matchups
@@ -623,6 +653,14 @@ function rivalryGamesEls() {
 // carry a bonus. revealRivalryGames() undoes this once no matchup is left.
 function hideLegacyH2HSchedule() {
     rivalryGamesEls().forEach(el => { el.style.display = 'none'; });
+}
+
+// The section ships hidden (see views/standings.ejs), so a classic league has to
+// ask for it. Previously it shipped VISIBLE and an H2H league hid it once it
+// knew the mode — which meant the graham league showed a Rivalry Games heading
+// and a "Scouting for games..." loader for six seconds first.
+function showRivalryGames() {
+    rivalryGamesEls().forEach(el => { el.style.display = ''; });
 }
 
 // Every H2H week is final, so there is no live matchup left to confuse this

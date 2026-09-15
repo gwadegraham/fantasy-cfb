@@ -93,19 +93,28 @@
     <h2 class="highlights-header"><span class="hdr-ic" data-icon="star" data-icon-size="24"></span>League Highlights</h2>
     <!-- Cards are rendered from data by standings.js (buildHighlights). -->
     <div class="highlights-container"></div>
-    <hr class="hr-subtle">
     <!-- Real CFB games where two managers' drafted teams meet. Named for what it
          holds, so it never collides with the H2H panel's weekly "matchups" (the
          scheduled fantasy pairing that carries a bonus). standings.js retitles
          this and fills [schedule-note] when an H2H league reaches the
-         postseason. -->
-    <div class="header">
+         postseason.
+
+         STARTS HIDDEN. An H2H league never shows this section while matchups are
+         live, and standings.js can only know which league it is after a fetch —
+         so shipping it visible meant the graham league displayed a "Rivalry
+         Games" heading, a week picker and a spinning "Scouting for games..."
+         loader for SIX SECONDS before hideLegacyH2HSchedule() took it away. The
+         classic path reveals it (showRivalryGames), and an H2H league brings it
+         back when its matchups end (revealRivalryGames). Both clear
+         style.display, so inline display:none is what they undo. -->
+    <hr class="hr-subtle" style="display:none">
+    <div class="header" style="display:none">
         <div class="header-title" poll-name>
             Rivalry Games
         </div>
     </div>
     <p class="section-note" schedule-note hidden></p>
-    <select class="rivalry-week-select" rivalry-week aria-label="Rivalry week">
+    <select class="rivalry-week-select" rivalry-week aria-label="Rivalry week" style="display:none">
         <option value="week-1">Week 1</option>
         <option value="week-2">Week 2</option>
         <option value="week-3">Week 3</option>
@@ -124,7 +133,7 @@
         <option value="week-16">Week 16</option>
         <option value="week-17">Postseason</option>
     </select>
-    <div class="game-content">
+    <div class="game-content" style="display:none">
         <div class="football-loader">
             <div class="football-icon">🏈</div>
             <p class="loading-text">Scouting for games...</p>
