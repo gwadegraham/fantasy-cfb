@@ -34,7 +34,12 @@
         if (!league || !season) return Promise.resolve(null);
         var key = league + '/' + season;
         if (!cache[key]) {
-            cache[key] = fetch('/games/scoreboard/' + encodeURIComponent(league) + '/' + encodeURIComponent(season),
+            // /games/current-week, not /games/scoreboard. This used to read the
+            // number off the full scoreboard payload — measured at 4.3s against
+            // the M0 tier — for one integer. Every caller paid it, and the
+            // betting page pays it BEFORE it can fetch anything, because the
+            // week decides which games to ask for.
+            cache[key] = fetch('/games/current-week/' + encodeURIComponent(season),
                                { headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (d) { return d && typeof d.week === 'number' ? d.week : null; })

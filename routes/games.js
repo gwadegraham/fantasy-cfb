@@ -258,6 +258,43 @@ async function latestRanking(season, seasonType, week) {
 // Week is optional: omitted, it resolves to the week you'd want on a Saturday
 // (see defaultWeek). The league is a path param to match the other league-
 // scoped reads (/standings/:league/..., /users/league/:league/...).
+// Just the current week number, and nothing else.
+//
+// public/current-week.js is the app's single source for "what week is it", and
+// it was reading the number off the FULL scoreboard payload — a 4.3s response
+// against the M0 tier — to take one integer from it. Every page that asks the
+// question paid that: the betting page awaits it before it can fetch anything
+// (it decides WHICH week's games to load), and the standings page awaited it
+// ahead of its entire first paint until PR #436.
+//
+// The week itself is cheap. It comes from a projected week+startDate scan and
+// the same weekWindows/defaultWeek pair the scoreboard route uses — deliberately
+// the same two functions, so this can never drift from the week the scoreboard
+// lands on.
+//
+// No :league param: weekWindows keys off season + seasonType only. The scoreboard
+// route takes a league for the rest of its payload, not for this.
+router.get('/current-week/:season', async (req, res) => {
+    try {
+        const season = Number(req.params.season);
+        if (!Number.isFinite(season)) {
+            return res.status(400).json({ message: 'Invalid season' });
+        }
+        const seasonType = req.query.seasonType === 'postseason' ? 'postseason' : 'regular';
+        const weekRows = await Game.find(
+            { season, seasonType },
+            { week: 1, startDate: 1, _id: 0 }
+        ).lean();
+        const windows = weekWindows(weekRows);
+        const week = defaultWeek(windows, Date.now());
+        // Same shape the scoreboard answers with for these two fields, so a
+        // caller can read `week` off either.
+        res.json({ season, seasonType, week: Number.isFinite(week) ? week : null });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
     try {
         const league = req.params.league;

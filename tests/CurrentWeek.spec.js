@@ -29,10 +29,17 @@ function load({ week = 2, ok = true, league = 'graham-league' } = {}) {
 afterEach(() => { delete window.ccLeague; delete window.ccCurrentWeek; });
 
 describe('get', () => {
-    it('reads the week off the league scoreboard calendar', async () => {
+    // The dedicated week endpoint, NOT /games/scoreboard. This used to read the
+    // number off the full scoreboard payload — 4.3s measured against the M0
+    // tier — to take one integer from it, and every page that asks the question
+    // paid it. The betting page pays it before it can fetch anything at all,
+    // because the week decides which games to request. Both routes share
+    // weekWindows/defaultWeek, so the answer is identical (pinned in
+    // tests/RoutesGames.spec.js).
+    it('reads the week off the dedicated current-week endpoint', async () => {
         const { cw, calls } = load({ week: 2 });
         await expect(cw.get(SEASON)).resolves.toBe(2);
-        expect(calls[0]).toBe('/games/scoreboard/graham-league/2026');
+        expect(calls[0]).toBe('/games/current-week/2026');
     });
 
     // Several tiles on one page ask at once; they must not each fire a request.
