@@ -422,6 +422,53 @@ describe('head-to-head matchups panel', () => {
         expect(rowsAtProbe).toBe(6);
     });
 
+    // The fast payload's shape: the featured week's cards, no odds, the whole
+    // week list, and `partial` so the client knows more is coming.
+    const fastPayload = Object.assign({}, H2H_PAYLOAD, {
+        partial: true, featuredWeek: 2, weeks: [1, 2, 3],
+        schedule: [{ week: 2, games: [{ id: 'g2' }, { id: 'g3' }] }]
+    });
+
+    it('says a week is loading, rather than empty, before its cards arrive', async () => {
+        let loadingHtml = null;
+        await loadStandingsPage(Object.assign(opts(), {
+            h2hStandings: fastPayload,
+            // Fired at the moment the FULL payload is requested — the partial
+            // panel is on screen, so this observes the state the reader sees in
+            // the gap between the two renders.
+            h2hMatchups: () => {
+                const sel = document.querySelector('#h2h-panel [h2h-week]');
+                sel.value = '3';                       // a week the fast payload didn't carry
+                sel.dispatchEvent(new window.Event('change'));
+                loadingHtml = document.querySelector('#h2h-panel [h2h-matches]').innerHTML;
+                return matchups;
+            }
+        }));
+        expect(loadingHtml).toContain('Loading week 3');
+        expect(loadingHtml).not.toContain('No matchups this week');
+    });
+
+    it('drops the skeletons instead of spinning when the full payload fails', async () => {
+        const page = await loadStandingsPage(Object.assign(opts(), {
+            h2hStandings: fastPayload,
+            h2hMatchups: () => { throw new Error('network'); }
+        }));
+        const panel = page.h2hPanel();
+        // The fast cards stay — they are real — but the panel no longer claims
+        // more weeks are coming.
+        expect(panel.hidden).toBe(false);
+        expect(panel.querySelectorAll('.h2h-card')).toHaveLength(2);
+        expect(panel.querySelectorAll('[h2h-week] option')).toHaveLength(1);
+        expect(panel.innerHTML).not.toContain('Loading week');
+    });
+
+    it('hides the panel when the full payload fails and there were no fast cards', async () => {
+        const page = await loadStandingsPage(Object.assign(opts(), {
+            h2hMatchups: () => { throw new Error('network'); }
+        }));
+        expect(page.h2hPanel().hidden).toBe(true);
+    });
+
     it('takes the placeholder back down when the league falls back to classic', async () => {
         const page = await loadStandingsPage(Object.assign(opts(), {
             h2hStandings: { enabled: true, managers: [] }   // nothing to rank → classic
