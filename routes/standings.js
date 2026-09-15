@@ -221,10 +221,17 @@ router.get('/projections/:league/:season', async (req, res) => {
         const teamsById = {};
         teams.forEach(t => { teamsById[String(t.id)] = t; });
 
+        // pregameWinProb is what makes projectTeamPoints use CFBD's real pre-game
+        // number instead of estimating from the SP+ gap. /standings/h2h has always
+        // projected it; this route did not, so the same game got two different
+        // probabilities on one page. Leaving it out is not a local error either:
+        // the calibrator subtracts CFBD-sourced expected wins from the target
+        // before scaling the rest, so an unfetched field moves games it isn't on.
         const games = await Game.find({ season, seasonType: 'regular' },
             { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
               completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-              awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1 }).lean();
+              awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+              pregameWinProb: 1 }).lean();
         const gamesByTeam = {};
         games.forEach(g => {
             const h = String(g.homeId), a = String(g.awayId);
