@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
+const Game = require('../models/game');
 const bettingRouter = require('../routes/betting');
 
 const MEMBER = new mongoose.Types.ObjectId();
@@ -325,5 +326,58 @@ describe('POST /betting/retry-stat-legs', () => {
         const res = await request(memberApp).post('/betting/retry-stat-legs').send({ season: 2026 });
         expect(res.status).toBe(403);
         expect(retryPendingStatLegs).not.toHaveBeenCalled();
+    });
+});
+
+// GET /games/:season/:week reads the week's games to render a scoreboard row per
+// game. It used to read them UNPROJECTED, which meant every field of every game
+// — including wpSnapshots, one row appended per live-poller tick, and livePlays.
+// Measured against production data:
+//
+//   week 1:  99 games, 1890KB, 21135ms   (wpSnapshots 1333KB)
+//   week 2:  86 games, 3165KB, 33453ms   (wpSnapshots 2338KB)
+//   week 3:  75 games,   52KB,   523ms   (not played yet)
+//
+// Worst for weeks already played, and it grows every game weekend: PR #423 cut
+// the poller to 10s on 12 Sep, so week 2 was the first weekend polled at that
+// cadence. Stepping back one week on the betting page took 22 seconds in prod.
+describe('GET /betting/games/:season/:week', () => {
+    // The assertion is on the QUERY. The route returns a shaped object, so the
+    // response is identical whether it read nine fields or the whole document —
+    // asserting on the body would guard nothing. Verified: this fails when the
+    // projection is removed.
+    it('projects the game read instead of hauling wpSnapshots and livePlays', async () => {
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/betting/games/2026/3');
+
+        const projection = spy.mock.calls[0][1];
+        expect(projection).toBeDefined();
+        ['id', 'homeTeam', 'awayTeam', 'homeId', 'awayId', 'startDate',
+         'completed', 'homePoints', 'awayPoints'].forEach(f => {
+            expect(projection[f]).toBe(1);
+        });
+        // The two that made it slow must not be asked for.
+        expect(projection.wpSnapshots).toBeUndefined();
+        expect(projection.livePlays).toBeUndefined();
+        spy.mockRestore();
+    });
+
+    it('still shapes each game the way the client reads it', async () => {
+        await Game.create({
+            id: 901, season: 2026, week: 3, seasonType: 'regular',
+            startDate: '2026-09-19T00:00:00.000Z', startTimeTbd: false,
+            neutralSite: false, conferenceGame: false,
+            homeId: 1, homeTeam: 'Oregon', awayId: 2, awayTeam: 'Duke',
+            homePoints: 31, awayPoints: 17, completed: true
+        });
+        const res = await request(app).get('/betting/games/2026/3');
+        expect(res.status).toBe(200);
+        const g = res.body.find(x => x.id === 901);
+        expect(g).toMatchObject({
+            id: 901, homeTeam: 'Oregon', awayTeam: 'Duke',
+            homePoints: 31, awayPoints: 17, completed: true
+        });
+        expect(g).toHaveProperty('homeLogos');
+        expect(g).toHaveProperty('dk');
     });
 });
