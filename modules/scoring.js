@@ -27,6 +27,48 @@ var rankingsApi = new cfb.RankingsApi();
 // left. Heroku's daily dyno cycling would usually hide that, which is worse
 // than it failing outright.
 var _frozenFor = null;
+// Caches shared ACROSS requests on this dyno, with a TTL.
+//
+// updateAllTeamScores scores one team per HTTP request — 138 of them — and
+// calculateTeamScores built a fresh ranking cache for each. So the same handful
+// of poll documents were re-read once per team: measured at 16 internal calls to
+// score one team, 12 of them the identical /rankings reads, and 2208 calls for
+// the pass. Over the M0 tier (which meters bytes and throttles around 100 ops/s)
+// that is ~7.6 minutes of sustained self-inflicted load, and it is what put the
+// cluster at ~85 queries/s on a Saturday evening.
+//
+// A TTL rather than a plain Map because these DO change: the rankings job writes
+// a new poll each week, an admin can edit a scoring config, and the postseason
+// 'latest' lookup moves. Bounded staleness is the point — long enough to collapse
+// one pass, short enough that the next pass sees new data.
+//
+// Deliberately NOT inside getRankingsForGame / getBracketForGame: those document
+// that a caller passing no cache always re-reads, and tests/ScoringRankings.spec.js
+// pins it. The sharing happens by handing the hot call site a persistent map
+// instead of a throwaway one, so their contract is untouched.
+const SCORING_CACHE_TTL_MS = Number(process.env.SCORING_CACHE_TTL_MS || 60000);
+
+// Map-like, so it drops straight into the existing `cache` parameter.
+function ttlMap(ttlMs) {
+    const store = new Map();
+    return {
+        has(k) {
+            const hit = store.get(k);
+            if (!hit) return false;
+            if (Date.now() - hit.at > ttlMs) { store.delete(k); return false; }
+            return true;
+        },
+        get(k) { const hit = store.get(k); return hit ? hit.value : undefined; },
+        set(k, v) { store.set(k, { at: Date.now(), value: v }); return this; },
+        clear() { store.clear(); },
+        get size() { return store.size; }
+    };
+}
+
+// One per concern so a config edit can drop configs without discarding polls.
+const _sharedRankingCache = ttlMap(SCORING_CACHE_TTL_MS);
+const _sharedConfigCache = ttlMap(SCORING_CACHE_TTL_MS);
+
 var _freezeInFlight = new Map();
 // After a failure, wait before trying again. Latching only on success is right —
 // a blip must not disable the freeze for the life of the dyno — but retrying on
@@ -319,17 +361,20 @@ module.exports= {
     },
 
     calculateTeamScores: async function (season, teamId, teamName) {
-        // One ranking cache per call: both league models + same-week games share
-        // each poll doc instead of re-reading it from Mongo per game per model.
-        var rankingCache = new Map();
+        // The SHARED cache, not a per-call one. This function runs once per team
+        // per HTTP request, so a throwaway map meant every team re-read the same
+        // polls — see the note on _sharedRankingCache.
+        var rankingCache = _sharedRankingCache;
 
         var cumulativeScoreV1 = 0;
         var cumulativeScoreV2 = 0;
         var weeklyScores = [];
 
-        // Team scores track both leagues, so load each league's config.
-        var clauntsCfg = await getScoringConfig('claunts-league');
-        var grahamCfg = await getScoringConfig('graham-league');
+        // Team scores track both leagues, so load each league's config. Through
+        // the shared cache: two HTTP reads per team is 276 for the pass, for two
+        // documents that change when an admin edits them.
+        var clauntsCfg = await cachedScoringConfig('claunts-league');
+        var grahamCfg = await cachedScoringConfig('graham-league');
 
         var gamesPromise = await internalFetch(process.env.URL + `/games/season/${season}/teamId/${teamId}`, {
             method: 'GET',
@@ -525,6 +570,17 @@ async function updateUserCumulativeScore(userId, cumulativeScore, season) {
 // Fetches the resolved scoring config (model + values) for a league via the
 // API, so it works in the web process and in job processes alike. Falls back
 // to that league's defaults on any error.
+// getScoringConfig through the shared TTL cache. Separate from getScoringConfig
+// itself so every other caller keeps reading straight through — push-notify and
+// updateScores each read it once per pass already.
+async function cachedScoringConfig(league) {
+    const key = `cfg|${league}`;
+    if (_sharedConfigCache.has(key)) return _sharedConfigCache.get(key);
+    const cfg = await getScoringConfig(league);
+    _sharedConfigCache.set(key, cfg);
+    return cfg;
+}
+
 async function getScoringConfig(league) {
     var res, data;
     try {
@@ -799,6 +855,16 @@ module.exports.explainGame = explainGame;
 // Exposed so the per-game breakdown route can reuse the EXACT scoring inputs
 // (resolved config + the game's week rankings) the scoring jobs use.
 module.exports.getScoringConfig = getScoringConfig;
+module.exports.cachedScoringConfig = cachedScoringConfig;
+// Drop the cached configs immediately, so an admin who edits a config and then
+// rescores does not score against the copy from up to a TTL ago. Called by the
+// scoring-config write routes.
+module.exports.invalidateScoringConfigCache = function () { _sharedConfigCache.clear(); };
+// Test seam: let a spec prove the sharing without waiting out a TTL.
+module.exports._clearScoringCaches = function () {
+    _sharedRankingCache.clear();
+    _sharedConfigCache.clear();
+};
 module.exports.getRankingsForGame = getRankingsForGame;
 module.exports.getBracketForGame = getBracketForGame;
 

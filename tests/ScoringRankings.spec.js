@@ -54,6 +54,67 @@ describe('getRankingsForGame', () => {
         expect(urls).toEqual(['http://test.local/rankings/2026/14/regular']);
     });
 
+    // The cross-request cache. updateAllTeamScores scores one team per HTTP
+    // request — 138 of them — and calculateTeamScores used to build a fresh
+    // ranking map each time, so the same 12 poll documents were re-read once per
+    // team: 2208 internal calls and ~7.6 minutes of self-inflicted load against
+    // a tier that throttles around 100 ops/s.
+    describe('the shared cross-request cache', () => {
+        beforeEach(() => scoringModule._clearScoringCaches());
+        afterEach(() => scoringModule._clearScoringCaches());
+
+        it('does NOT cache when a caller passes no cache', async () => {
+            // The documented contract, and what the tests above rely on: a direct
+            // caller with no cache always re-reads. The sharing is achieved by
+            // handing the hot call site a persistent map, not by caching in here.
+            await scoringModule.getRankingsForGame(game('regular', 7), 7, 2026);
+            await scoringModule.getRankingsForGame(game('regular', 7), 7, 2026);
+            expect(urls).toHaveLength(2);
+        });
+
+        it('serves a second scoring config read from cache, and a write drops it', async () => {
+            global.fetch = jest.fn((url) => {
+                urls.push(url);
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({ league: 'graham-league', model: 'graham', values: {} }) });
+            });
+
+            await scoringModule.cachedScoringConfig('graham-league');
+            await scoringModule.cachedScoringConfig('graham-league');
+            expect(urls.filter(u => String(u).includes('/scoring-config/'))).toHaveLength(1);
+
+            // An admin saving a config must not be scored against the copy from
+            // up to a TTL ago — routes/scoringConfig.js calls this on every write.
+            scoringModule.invalidateScoringConfigCache();
+            await scoringModule.cachedScoringConfig('graham-league');
+            expect(urls.filter(u => String(u).includes('/scoring-config/'))).toHaveLength(2);
+        });
+
+        // Bounded staleness is the whole design: the rankings job publishes a new
+        // poll each week, so a cache that never expired would score later weeks
+        // against an older poll.
+        it('expires, so the next pass sees a newly published poll', async () => {
+            jest.resetModules();
+            process.env.SCORING_CACHE_TTL_MS = '20';
+            const fresh = require('../modules/scoring.js');
+            const seen = [];
+            global.fetch = jest.fn((url) => {
+                seen.push(String(url));
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({ league: 'graham-league', model: 'graham', values: {} }) });
+            });
+
+            await fresh.cachedScoringConfig('graham-league');
+            await fresh.cachedScoringConfig('graham-league');
+            expect(seen).toHaveLength(1);                   // inside the TTL
+
+            await new Promise(r => setTimeout(r, 40));      // past it
+            await fresh.cachedScoringConfig('graham-league');
+            expect(seen).toHaveLength(2);
+
+            delete process.env.SCORING_CACHE_TTL_MS;
+            jest.resetModules();
+        });
+    });
+
     describe('caching', () => {
         it('reuses one fetch across every postseason game in a run', async () => {
             const cache = new Map();
