@@ -10,6 +10,7 @@ const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const audit = require('../modules/audit-log');
+const { invalidateScoringConfigCache } = require('../modules/scoring');
 
 // Attaches the ordered field metadata (for the admin form + rules page) and a
 // plain-language combine-mode `example` to a resolved config. `fields` reflect
@@ -185,6 +186,10 @@ router.post('/', async (req, res) => {
         // and was absent here — so every save read as a non-admin save.
         const saved = configResponse(league, doc, seasonForLeague(league));
         saved.isAdmin = effectiveRoles(req).includes('Admin');
+        // Drop the scoring module's cached copy of this config. Without it an
+        // admin could save a change and rescore within the cache TTL, scoring
+        // against the previous values with nothing to show they had.
+        invalidateScoringConfigCache();
         res.json(saved);
     } catch (err) {
         res.status(400).json({ message: err.message });
@@ -234,6 +239,7 @@ router.patch('/:league/engagement', async (req, res) => {
             summary: modes.length ? `Game modes: ${modes.join(' · ')}` : 'Game modes: off (classic)',
             meta: saved
         });
+        invalidateScoringConfigCache();
         res.json(Object.assign({ season }, saved));
     } catch (err) {
         res.status(400).json({ message: err.message });
