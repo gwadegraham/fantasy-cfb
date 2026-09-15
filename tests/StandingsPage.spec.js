@@ -390,6 +390,28 @@ describe('head-to-head matchups panel', () => {
         expect(page.h2hPanel().innerHTML).toContain('h2h-preview-tag');
     });
 
+    // The panel is `hidden` in the markup, so before this placeholder it had zero
+    // height until the payload landed — then the cards appeared and shoved
+    // League Highlights and Projected Finish down the page.
+    it('reserves the matchups panel with a placeholder, then fills it', async () => {
+        const page = await loadStandingsPage(opts());
+        const panel = page.h2hPanel();
+        // By the time the payload has resolved the placeholder is gone, replaced
+        // by real cards in the space it was holding.
+        expect(panel.hidden).toBe(false);
+        expect(panel.querySelectorAll('.h2h-skel-card')).toHaveLength(0);
+        // The harness stubs ccH2H.matchupCard, which emits .h2h-card.
+        expect(panel.querySelectorAll('.h2h-card').length).toBeGreaterThan(0);
+    });
+
+    it('takes the placeholder back down when the league falls back to classic', async () => {
+        const page = await loadStandingsPage(Object.assign(opts(), {
+            h2hStandings: { enabled: true, managers: [] }   // nothing to rank → classic
+        }));
+        expect(page.h2hPanel().hidden).toBe(true);
+        expect(page.h2hPanel().innerHTML).toBe('');
+    });
+
     it('leaves the panel hidden when the schedule is empty', async () => {
         const page = await loadStandingsPage(Object.assign(opts(), {
             h2hMatchups: { enabled: true, managers: [], schedule: [] }
