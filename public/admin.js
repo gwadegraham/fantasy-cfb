@@ -1911,7 +1911,9 @@ async function updateWeek(seasonType, week) {
 // no single request can trip Heroku's 30s router timeout. Returns
 // { total, failed }; a failed team is counted and skipped, never fatal.
 async function calcAllTeams(season) {
-    var teams = await fetch('/teams', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
+    // ?slim=1: this loop needs an id and a name per team and nothing else, and
+    // the full payload is ~1.4MB / ~14s against the M0 tier.
+    var teams = await fetch('/teams?slim=1', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
     var list = Array.isArray(teams) ? teams : [];
     var done = 0, failed = 0;
     var CONCURRENCY = 5;

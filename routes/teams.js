@@ -10,10 +10,38 @@ const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
 const { teamsById, applyTeamFields } = require('../modules/team-refresh');
 
-//Getting All
+// Getting All — FBS only, and that scoping is load-bearing, not tidiness.
+//
+// FCS schools share the `teams` collection as opponent REFERENCE DATA so a
+// matchup row can render "vs EKU" instead of truncating the full name. They are
+// not draftable. public/draftRoom.js builds the draft pool straight from this
+// route, so while it answered the whole collection the board carried 126 FCS
+// teams alongside the 138 FBS ones — Abilene Christian next to Alabama.
+// tests/TeamScope.spec.js was written for exactly this hazard and pinned
+// /draft, /scores, /users and /search; it never pinned the route the draft room
+// actually calls. Latent until the next draft.
+//
+// Halves the payload as a side effect: ~1.4MB and ~14s against the M0 tier's
+// byte cap, because a team document carries its whole per-season history and
+// weeklyScore.
+//
+// The default stays whole ON PURPOSE. The draft room's copy is not just for
+// display: makePick emits the team object it got from here straight to the
+// socket, draft-socket stores it as picks[].team, and persistTeamsToUsers then
+// copies that into user.seasons[].teams[]. So this payload BECOMES the persisted
+// roster, and scoring matches on alternateNames while the cards read mascot /
+// logos / abbreviation. Projecting it by default would quietly change what gets
+// written to the database — a data migration, not a perf tweak.
+//
+// `?slim=1` is for callers that only need to enumerate teams: admin's
+// calcAllTeams loops every team id to score it one at a time and reads nothing
+// else. 1.4MB -> ~15KB for that caller, with nothing persisted from it.
 router.get('/', async (req, res) => {
     try {
-        const teams = await Team.find();
+        const slim = req.query.slim === '1' || req.query.slim === 'true';
+        const teams = slim
+            ? await Team.find(FBS_ONLY, { id: 1, school: 1, _id: 0 }).lean()
+            : await Team.find(FBS_ONLY);
         res.json(teams);
     } catch (err) {
         res.status(500).json({message: err.message});
