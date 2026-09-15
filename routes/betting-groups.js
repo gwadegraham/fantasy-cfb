@@ -11,9 +11,19 @@ router.get('/', async (req, res) => {
         if (!group) return res.json(null);
 
         const season = activeSeason('football');
+        // `seasons: 1` here was 418KB and 4.4s against the M0 tier, to read ONE
+        // field: franchiseName for the active season. A user document is ~103KB
+        // across four seasons, and this fetched every season of every member.
+        // Prod logs showed /betting-groups at 4.16s returning a 304 with zero
+        // bytes — all of it server-side, computing a body it then didn't send.
+        //
+        // Subfield projection rather than $elemMatch: it keeps every season
+        // element (so the .find below is unchanged) while carrying only the two
+        // fields read off one. 418KB -> 1KB, 4.4s -> 75ms.
         const members = await User.find(
             { _id: { $in: group.members } },
-            { firstName: 1, league: 1, seasons: 1, avatarUrl: 1 }
+            { firstName: 1, league: 1, avatarUrl: 1,
+              'seasons.season': 1, 'seasons.franchiseName': 1 }
         ).lean();
 
         const memberDetails = members.map(m => {
