@@ -143,3 +143,53 @@ describe('the refresh drops rows it cannot insert', () => {
         expect(stored).toEqual(['Eastern Kentucky', 'Texas']);
     });
 });
+
+// The route the DRAFT POOL actually reads. public/draftRoom.js calls GET /teams
+// and hands the whole response to buildPool, so an unscoped answer puts every
+// FCS school on the draft board. The other readers were pinned above; this one
+// was not, and it answered all 264 teams (138 FBS + 126 FCS) in production.
+describe('GET /teams', () => {
+    beforeEach(async () => {
+        await Team.create([
+            team(1, 'Texas', 'TEX', 'fbs'),
+            team(2, 'Eastern Kentucky', 'EKU', 'fcs'),
+            team(3, 'Alabama A&M', 'AAMU', 'fcs')
+        ]);
+    });
+
+    const app = () => {
+        const a = express();
+        a.use(express.json());
+        a.use('/teams', require('../routes/teams'));
+        return a;
+    };
+
+    it('leaves FCS opponents out of the draft pool', async () => {
+        const res = await request(app()).get('/teams');
+        expect(res.status).toBe(200);
+        expect(res.body.map(t => t.school)).toEqual(['Texas']);
+    });
+
+    it('scopes the slim listing the same way', async () => {
+        const res = await request(app()).get('/teams?slim=1');
+        expect(res.status).toBe(200);
+        expect(res.body.map(t => t.school)).toEqual(['Texas']);
+    });
+
+    // ?slim=1 exists for callers that only enumerate teams (admin's calcAllTeams
+    // loops every id to score it). It must NOT become the default: the draft
+    // room's copy of a team is emitted on make-pick, stored as picks[].team, and
+    // copied into user.seasons[].teams[] — so the full shape here is what the
+    // persisted roster is made of.
+    it('answers only id and school when slim, and the whole document otherwise', async () => {
+        const slim = await request(app()).get('/teams?slim=1');
+        expect(Object.keys(slim.body[0]).sort()).toEqual(['id', 'school']);
+
+        const full = await request(app()).get('/teams');
+        expect(full.body[0]).toEqual(expect.objectContaining({
+            id: 1, school: 'Texas', mascot: 'Mascot', abbreviation: 'TEX'
+        }));
+        expect(full.body[0].logos).toBeDefined();
+        expect(full.body[0].seasons).toBeDefined();
+    });
+});
