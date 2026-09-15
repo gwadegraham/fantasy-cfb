@@ -206,6 +206,19 @@ async function renderStandingsSection(data, league, season) {
     const params = new URLSearchParams(location.search);
     const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
 
+    // Paint the table placeholder BEFORE the /enabled probe, not after.
+    //
+    // displayHighlights renders synchronously off the users payload, so League
+    // Highlights appear the moment that fetch lands — while this function is
+    // still awaiting /enabled, leaving a blank block where the table goes with a
+    // fully drawn section beneath it. The rows are right for either outcome: an
+    // H2H league keeps them until its payload arrives, and a classic league has
+    // displayUsers overwrite them a moment later. Either way it beats nothing.
+    //
+    // The MATCHUPS placeholder deliberately stays below the probe — it is H2H
+    // chrome, and a classic league should never see it flash.
+    showStandingsLoading();
+
     let enabled = false;
     if (league && season != null) {
         try {
@@ -222,7 +235,6 @@ async function renderStandingsSection(data, league, season) {
 
     if (!enabled && !preview) { displayUsers(data); displaySchedule(data); return; }
     hideLegacyH2HSchedule();   // hide the Rivalry Games section ASAP (before it paints)
-    showStandingsLoading();
     showMatchupsLoading(data);
     // The schedule render is deferred to revealRivalryGames(): while matchups
     // are live the section stays hidden, so building it would cost a game fetch

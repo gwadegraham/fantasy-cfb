@@ -404,6 +404,24 @@ describe('head-to-head matchups panel', () => {
         expect(panel.querySelectorAll('.h2h-card').length).toBeGreaterThan(0);
     });
 
+    // displayHighlights paints synchronously off the users payload, so League
+    // Highlights land while this is still awaiting /enabled. With the table
+    // placeholder behind that probe there was a window showing a fully drawn
+    // Highlights section above an empty table.
+    it('paints the table placeholder before the H2H probe answers', async () => {
+        let rowsAtProbe = null;
+        await loadStandingsPage(Object.assign(opts(), {
+            h2hEnabled: () => {
+                // Observed from inside the /enabled handler: the placeholder is
+                // already on screen, so the table area is never blank beneath a
+                // fully painted League Highlights section.
+                rowsAtProbe = document.querySelectorAll('tr.std-skel-row').length;
+                return { enabled: true };
+            }
+        }));
+        expect(rowsAtProbe).toBe(6);
+    });
+
     it('takes the placeholder back down when the league falls back to classic', async () => {
         const page = await loadStandingsPage(Object.assign(opts(), {
             h2hStandings: { enabled: true, managers: [] }   // nothing to rank → classic
