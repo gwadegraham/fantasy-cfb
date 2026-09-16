@@ -27,6 +27,27 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
+// The field set GET /games/seasonType/:type/week/:week/team/:team answers with.
+//
+// Exported so tests assert against THIS object rather than a retyped copy that
+// can drift. Three consumers read these documents — two pages and, easy to
+// miss, modules/scoring.js, which fetches the route over HTTP and scores off
+// the raw game. A field dropped here goes silently undefined in all three.
+//
+// conferenceGame / homeConference / awayConference exist solely for that third
+// consumer: modules/scoring-detectors.js reads them to decide conference wins
+// and non-P5 upsets. They have no UI.
+const GAME_READ_FIELDS = {
+    id: 1, season: 1, week: 1, seasonType: 1,
+    startDate: 1, startTimeTbd: 1, completed: 1, status: 1,
+    homeId: 1, homeTeam: 1, homePoints: 1,
+    awayId: 1, awayTeam: 1, awayPoints: 1,
+    period: 1, clock: 1, possession: 1, situation: 1,
+    notes: 1, outlet: 1, weather: 1, highlights: 1, lastUpdated: 1,
+    // scoring only — no UI reads these; see the note above
+    conferenceGame: 1, homeConference: 1, awayConference: 1
+};
+
 //Getting All
 router.get('/', async (req, res) => {
     try {
@@ -56,23 +77,30 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
         //
         // Worst for weeks already played, and it grows every game weekend.
         //
-        // The field list is the UNION of what both consumers read off a game —
-        // public/userHome.js (buildGameCard, batchTeamLogos, the live patch at
-        // the 30s refresh) and public/standings.js (displaySchedule). It is
-        // deliberately a little generous: these are all small scalars, and the
-        // cost was never in them. What it leaves behind is the weight —
-        // wpSnapshots, livePlays, teamStats, playerStats, the Elo and line-score
-        // arrays — none of which either page reads.
+        // The field list is the union of what THREE consumers read — and the
+        // third is the one that makes this dangerous:
+        //
+        //   public/userHome.js   buildGameCard, batchTeamLogos, the 30s patch
+        //   public/standings.js  displaySchedule
+        //   modules/scoring.js   updateScores fetches this route over HTTP, once
+        //                        per rostered team per week, and hands the raw
+        //                        document to calculateScoreV1/V2
+        //
+        // That last one has no UI. It feeds evaluate() -> buildContext() in
+        // modules/scoring-detectors.js, which reads conferenceGame,
+        // homeConference and awayConference. Drop those and nothing throws:
+        // isConference() answers undefined, so a conference win banks the
+        // NON-conference rule in the claunts model and silently loses confBonus
+        // in the graham model, and isPowerFiveUpset(undefined, undefined) is
+        // false — which re-opens the non-P5 upset loophole. Wrong weekly totals,
+        // clean job logs. See GAME_FIELDS_NOTE below.
+        //
+        // Everything here is a small scalar; the cost was never in them. What it
+        // leaves behind is the weight — wpSnapshots, livePlays, teamStats,
+        // playerStats, the Elo and line-score arrays — read by none of the three.
         //
         // 410KB -> 5KB, 5325ms -> 675ms.
-        const GAME_FIELDS = {
-            id: 1, season: 1, week: 1, seasonType: 1,
-            startDate: 1, startTimeTbd: 1, completed: 1, status: 1,
-            homeId: 1, homeTeam: 1, homePoints: 1,
-            awayId: 1, awayTeam: 1, awayPoints: 1,
-            period: 1, clock: 1, possession: 1, situation: 1,
-            notes: 1, outlet: 1, weather: 1, highlights: 1, lastUpdated: 1
-        };
+        const GAME_FIELDS = GAME_READ_FIELDS;
         const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]}, GAME_FIELDS);
 
         // "This team had no game that week" is an empty result, not a client
@@ -974,3 +1002,4 @@ router.get('/plays/:gameId', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.GAME_READ_FIELDS = GAME_READ_FIELDS;

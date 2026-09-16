@@ -145,7 +145,34 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
         spy.mockRestore();
     });
 
-    // The union both consumers read: public/userHome.js (buildGameCard,
+    // THREE consumers read these documents, and the third has no UI:
+    // modules/scoring.js fetches this route over HTTP, once per rostered team
+    // per week, and hands the raw game to calculateScoreV1/V2 ->
+    // buildContext(), which reads conferenceGame / homeConference /
+    // awayConference. Dropping those does not throw — it silently banks the
+    // wrong rule (a conference win scores as non-conference) and makes
+    // isPowerFiveUpset(undefined, undefined) false, re-opening the non-P5 upset
+    // loophole. A QA pass caught exactly that before this shipped.
+    it('carries the conference fields the scoring engine reads, which have no UI', async () => {
+        const { GAME_READ_FIELDS } = require('../routes/games');
+        ['conferenceGame', 'homeConference', 'awayConference'].forEach(f => {
+            expect(GAME_READ_FIELDS[f]).toBe(1);
+        });
+    });
+
+    // Asserted against the EXPORTED constant, not a retyped list — the first
+    // version of this test checked 18 fields by hand and silently omitted five
+    // that were in the projection, so removing one of those would have stayed
+    // green.
+    it('answers every field in the exported projection', async () => {
+        const { GAME_READ_FIELDS } = require('../routes/games');
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+        expect(spy.mock.calls[0][1]).toEqual(GAME_READ_FIELDS);
+        spy.mockRestore();
+    });
+
+    // The union both browser consumers read: public/userHome.js (buildGameCard,
     // batchTeamLogos, the 30s live patch) and public/standings.js
     // (displaySchedule). A field dropped here goes silently undefined in the UI
     // rather than throwing, so it is pinned explicitly.
