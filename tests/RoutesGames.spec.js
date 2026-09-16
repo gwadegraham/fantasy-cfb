@@ -160,16 +160,58 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
         });
     });
 
-    // Asserted against the EXPORTED constant, not a retyped list — the first
-    // version of this test checked 18 fields by hand and silently omitted five
-    // that were in the projection, so removing one of those would have stayed
-    // green.
-    it('answers every field in the exported projection', async () => {
+    // Asserts the RESPONSE carries every key of the projection, against a
+    // fixture that sets them all.
+    //
+    // Two weaker versions of this test came before it, and both were green
+    // against a deliberately broken projection. The first listed 18 fields by
+    // hand and silently omitted five that were in the constant. The second
+    // compared the query's second argument to the exported constant — a
+    // tautology: it only proves the route passes its own object, never what is
+    // in it. Deleting `weather: 1` left all 35 tests passing while killing the
+    // weather emoji on both My Team and Standings.
+    //
+    // Driving it off Object.keys means a field added to the projection is
+    // automatically asserted, and a field deleted from it fails here.
+    it('answers every field the projection claims to carry', async () => {
         const { GAME_READ_FIELDS } = require('../routes/games');
-        const spy = jest.spyOn(Game, 'find');
-        await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
-        expect(spy.mock.calls[0][1]).toEqual(GAME_READ_FIELDS);
-        spy.mockRestore();
+        // One value per projected field, so a missing key means the PROJECTION
+        // dropped it rather than the fixture never having set it.
+        await Game.create(gameDoc({
+            id: 802, season: 2025, week: 1, seasonType: 'regular',
+            homeId: 1, awayId: 2, completed: true, status: 'completed',
+            startTimeTbd: false, period: 4, clock: '00:00',
+            possession: 'Oregon', situation: '1st & 10',
+            notes: 'Week 1', outlet: 'ESPN', highlights: 'http://x/clip',
+            lastUpdated: '9/19/2025, 11:00:00 PM',
+            conferenceGame: true, homeConference: 'Big Ten', awayConference: 'ACC',
+            weather: { temp: 68, wind: 5, condition: 'Clear', emoji: '☀️' }
+        }));
+
+        const res = await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+        const g = res.body.find(x => x.id === 802);
+        expect(g).toBeDefined();
+
+        // This list is INDEPENDENT of GAME_READ_FIELDS on purpose, and that is
+        // the whole point. A third version of this test drove the assertion off
+        // Object.keys(GAME_READ_FIELDS) — which deletes the assertion along with
+        // the field, so removing `weather: 1` still passed. The contract lives
+        // here, spelled out, and changing the projection means changing this too.
+        const EXPECTED = [
+            'id', 'season', 'week', 'seasonType',
+            'startDate', 'startTimeTbd', 'completed', 'status',
+            'homeId', 'homeTeam', 'homePoints',
+            'awayId', 'awayTeam', 'awayPoints',
+            'period', 'clock', 'possession', 'situation',
+            'notes', 'outlet', 'weather', 'highlights', 'lastUpdated',
+            // no UI — modules/scoring.js reads these off the raw game
+            'conferenceGame', 'homeConference', 'awayConference'
+        ];
+        EXPECTED.forEach(f => expect(g).toHaveProperty(f));
+
+        // ...and the projection carries nothing this list has forgotten. Sorted
+        // both sides so the assertion is about membership, not declaration order.
+        expect(Object.keys(GAME_READ_FIELDS).sort()).toEqual(EXPECTED.slice().sort());
     });
 
     // The union both browser consumers read: public/userHome.js (buildGameCard,
