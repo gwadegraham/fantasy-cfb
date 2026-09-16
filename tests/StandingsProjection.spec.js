@@ -1,4 +1,4 @@
-const { buildProjections, simulateTitleOdds, winsSoFar } = require('../modules/standings-projection');
+const { buildProjections, simulateTitleOdds, winsSoFar, gamesPlayed, remainingWinsTarget, BLEND_GAMES } = require('../modules/standings-projection');
 const { buildPoolContext, buildRankingProxy } = require('../modules/draft-projection');
 const { resolveConfig } = require('../modules/scoring-defaults');
 
@@ -69,23 +69,83 @@ describe('buildProjections', () => {
         expect(out[0].perGame[0].winProb).toBeGreaterThan(0.5); // strong team favored
     });
 
-    // A losing team keeps its full preseason win total as a target while the games
-    // left to hold it shrink, so the target can exceed the schedule. Uncapped, the
-    // calibrator answered that with a certain win for every remaining game — a
-    // 4-3 team was projected to run the table and out-projected a 6-1 one.
-    it('never projects a certain win when the remaining target exceeds the games left', () => {
-        const users = [{ _id: 'u3', firstName: 'Cap', lastName: 'Test', seasons: [{ season, cumulativeScore: 0, teams: [{ id: 1, school: 'A' }] }] }];
-        // Team 1 wants 9 wins on the season; 2 games remain, both already lost-free.
-        const out = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
-        const probs = out[0].perGame.map(g => g.winProb);
-        expect(probs).toHaveLength(2);
-        probs.forEach(p => expect(p).toBeLessThan(0.99));
-        const mean = probs.reduce((a, b) => a + b, 0) / probs.length;
-        expect(mean).toBeLessThanOrEqual(0.9 + 1e-6);
-    });
-
     it('skips users with no roster for the season', () => {
         const users = [{ _id: 'u2', firstName: 'No', lastName: 'Roster', seasons: [] }];
         expect(buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season)).toHaveLength(0);
+    });
+});
+
+
+// The remaining-wins forecast. The old version subtracted banked wins from the
+// preseason total, so a loss left the target alone while the games left to hold
+// it shrank — a .500 team was projected to win out from week 4 on, and a 4-3
+// team out-projected a 6-1 one on the same schedule. This is a rate instead.
+describe('remainingWinsTarget', () => {
+    const played = (n, wins) => {
+        const out = [];
+        for (let i = 0; i < n; i++) {
+            const won = i < wins;
+            out.push({ seasonType: 'regular', completed: true, homeId: 1, awayId: 2,
+                       homePoints: won ? 28 : 10, awayPoints: won ? 10 : 28 });
+        }
+        return out;
+    };
+
+    it('carries the preseason pace alone before anything is played', () => {
+        // 10.5 wins in 12 games = 0.875/game, across all 12 still to play.
+        expect(remainingWinsTarget(10.5, 1, [], 12)).toBeCloseTo(10.5, 6);
+    });
+
+    it('never asks for more wins than there are games left', () => {
+        // The case that broke the old model: 4-4 with 4 to play.
+        const target = remainingWinsTarget(10.5, 1, played(8, 4), 4);
+        expect(target).toBeLessThan(4);
+        expect(target).toBeCloseTo(2.83, 1);
+    });
+
+    it('drops as a team keeps losing, instead of holding steady', () => {
+        // Same .500 team, later in the season: the forecast per remaining game
+        // has to fall, which is exactly what subtraction refused to do.
+        const perGame = (gp, wins, left) => remainingWinsTarget(10.5, 1, played(gp, wins), left) / left;
+        expect(perGame(4, 2, 8)).toBeGreaterThan(perGame(8, 4, 4));
+        expect(perGame(8, 4, 4)).toBeGreaterThan(perGame(10, 5, 2));
+    });
+
+    it('ranks a winning team above a losing one on the same schedule', () => {
+        const losing = remainingWinsTarget(10.5, 1, played(7, 3), 5);   // 3-4
+        const winning = remainingWinsTarget(10.5, 1, played(7, 6), 5);  // 6-1
+        expect(winning).toBeGreaterThan(losing);
+    });
+
+    it('leans on the preseason number early and on results late', () => {
+        // BLEND_GAMES is the point where actual results earn half the say.
+        const prior = 10.5 / 12;
+        const early = remainingWinsTarget(10.5, 1, played(2, 0), 10) / 10;
+        const late = remainingWinsTarget(10.5, 1, played(10, 0), 2) / 2;
+        expect(prior - early).toBeLessThan(prior - late);   // early stays nearer the prior
+        expect(late).toBeLessThan(early);
+        expect(BLEND_GAMES).toBe(10);
+    });
+
+    it('stays inside [0, games left] at the extremes', () => {
+        expect(remainingWinsTarget(0, 1, played(8, 0), 4)).toBe(0);
+        expect(remainingWinsTarget(12, 1, played(8, 8), 4)).toBeLessThanOrEqual(4);
+        expect(remainingWinsTarget(10.5, 1, played(8, 4), 0)).toBe(0);
+    });
+
+    it('answers null without a preseason number to anchor on', () => {
+        expect(remainingWinsTarget(null, 1, played(4, 2), 8)).toBeNull();
+    });
+});
+
+describe('gamesPlayed', () => {
+    it('counts only this team\'s completed regular games', () => {
+        const games = [
+            { seasonType: 'regular', completed: true, homeId: 1, awayId: 2, homePoints: 1, awayPoints: 0 },
+            { seasonType: 'regular', completed: false, homeId: 1, awayId: 2 },
+            { seasonType: 'postseason', completed: true, homeId: 1, awayId: 2, homePoints: 1, awayPoints: 0 },
+            { seasonType: 'regular', completed: true, homeId: 3, awayId: 4, homePoints: 1, awayPoints: 0 }
+        ];
+        expect(gamesPlayed(1, games)).toBe(1);
     });
 });
