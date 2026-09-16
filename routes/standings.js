@@ -12,7 +12,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const JobRun = require('../models/jobRun');
 const { resolveConfig, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
-const { buildProjections, simulateTitleOdds } = require('../modules/standings-projection');
+const { buildProjections, simulateTitleOdds, applyEngagement } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
 // Shared with the classic standings table and My Team, so a tied placement reads
@@ -251,14 +251,30 @@ router.get('/projections/:league/:season', async (req, res) => {
             return res.json({ league, season, managers: [] });
         }
 
-        const odds = simulateTitleOdds(managers, 5000);
+        // Captain and H2H are part of the score the scoring job actually writes,
+        // so they belong in a projection of the FINAL score. Banked points
+        // already include them; without this the forward half did not, which
+        // understated every graham-league manager by 35-50 points.
+        //
+        // pinnedIds matters: the round robin is positional, so the projection has
+        // to pair managers the same way the scoring job will. Passing the pinned
+        // list keeps the projected matchups and the real ones in step.
+        const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
+        const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: H2H_MAX_WEEK };
+        applyEngagement(managers, engagement, engOpts);
+
+        const odds = simulateTitleOdds(managers, 5000, Object.assign({ engagement }, engOpts));
         const ranked = managers.slice().sort((a, b) => b.projectedFinal - a.projectedFinal);
         const payload = ranked.map((m, i) => ({
             userId: m.userId, name: m.name, franchise: m.franchise,
             avatarUrl: m.avatarUrl, initials: m.initials, color: m.color,
             banked: m.banked, projectedFinal: m.projectedFinal,
             titleOdds: Math.round(odds[m.userId] * 1000) / 10,   // percent, 0.1 precision
-            projectedRank: i + 1
+            projectedRank: i + 1,
+            // Surfaced so the tile can explain where a projection comes from —
+            // and so a league without these modes on reads a plain 0.
+            expCaptain: Math.round((m.expCaptain || 0) * 10) / 10,
+            expH2H: Math.round((m.expH2H || 0) * 10) / 10
         }));
 
         res.json({ league, season, managers: payload });
