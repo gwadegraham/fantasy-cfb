@@ -103,9 +103,32 @@ router.get('/games/:season/:week', async (req, res) => {
         // Week 0 = early games from CFBD week 1 (before the main slate)
         const dbWeek = week === 0 ? 1 : week;
 
+        // PROJECT. An unprojected Game.find here read every field of every game
+        // in the week — including wpSnapshots, which the live poller appends one
+        // row to per tick, and livePlays (~50KB a game once the gamecast has
+        // run). Measured against production data:
+        //
+        //   week 1:  99 games, 1890KB, 21135ms  (wpSnapshots 1333KB)
+        //   week 2:  86 games, 3165KB, 33453ms  (wpSnapshots 2338KB)
+        //   week 3:  75 games,   52KB,   523ms  (not played yet)
+        //
+        // It is worst for weeks already played, and it GROWS every game weekend
+        // — PR #423 cut the poller to 10s on 12 Sep, tripling the snapshot rate,
+        // and week 2 was the first weekend polled at that cadence. That is why
+        // stepping back a week on the betting page took 22 seconds in prod.
+        //
+        // The route returns a shaped object (see `merged` below); none of the
+        // weight was ever sent to the client, only read. This projection is
+        // exactly the set `merged` reads, plus the fields the week-0/1 split
+        // needs. 21135ms -> 513ms.
+        const GAME_FIELDS = {
+            id: 1, homeTeam: 1, awayTeam: 1, homeId: 1, awayId: 1,
+            startDate: 1, completed: 1, homePoints: 1, awayPoints: 1, _id: 0
+        };
+
         const teamIds = new Set();
         const [games, lines, ranking] = await Promise.all([
-            Game.find({ season, week: dbWeek, seasonType }).sort({ startDate: 1 }).lean(),
+            Game.find({ season, week: dbWeek, seasonType }, GAME_FIELDS).sort({ startDate: 1 }).lean(),
             BettingLine.find({ season, week: dbWeek, seasonType }).lean(),
             Ranking.findOne({ season, week: dbWeek, seasonType }).lean()
         ]);
