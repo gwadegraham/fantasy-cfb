@@ -8,6 +8,8 @@ const { FBS_ONLY } = require('../modules/team-scope');
 const User = require('../models/user');
 const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
+const MarketSnapshot = require('../models/marketSnapshot');
+const { buildSnapshotTeams } = require('../modules/market-snapshot');
 const { teamsById, applyTeamFields } = require('../modules/team-refresh');
 
 // Getting All — FBS only, and that scoping is load-bearing, not tidiness.
@@ -430,6 +432,25 @@ router.get('/:season/cfp-odds/status', async (req, res) => {
     }
 });
 
+// Every stored snapshot for a season, newest first. Team rows are omitted — the
+// listing is for picking one, not for reading its contents.
+router.get('/:season/market-snapshots', async (req, res) => {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    try {
+        const rows = await MarketSnapshot.find({ season: Number(req.params.season) },
+            { teams: 0, unmatched: 0 }).sort({ takenAt: -1 }).lean();
+        res.json(rows.map(r => ({
+            id: String(r._id), season: r.season, takenAt: r.takenAt, reason: r.reason,
+            market: r.market || null, note: r.note || null, spWeek: r.spWeek != null ? r.spWeek : null,
+            matchedCount: r.matchedCount != null ? r.matchedCount : null
+        })));
+    } catch (err) {
+        res.status(400).json({ message: err.message });
+    }
+});
+
 // Ingest market CFP futures pasted from a sportsbook (make-CFP or championship
 // odds). Dry-run by default (returns matched/unmatched preview so the paste can
 // be verified); writes to team.seasons only when commit === true.
@@ -476,9 +497,27 @@ router.post('/:season/cfp-odds', async (req, res) => {
             }
         }
 
+        // Record what the board looked like after this paste. The odds are
+        // overwritten in place on the Team docs, so without this there is no way
+        // to answer "what did the market say in September" once October's board
+        // lands on top of it.
+        let snapshotId = null;
+        if (commit) {
+            const all = await Team.find({ seasons: { $elemMatch: { season } } },
+                { id: 1, school: 1, alternateNames: 1, conference: 1, seasons: { $elemMatch: { season } } }).lean();
+            const doc = await MarketSnapshot.create({
+                season, takenAt: committedAt, reason: 'cfp-odds-paste', market,
+                note: `${market === 'champ' ? 'Championship' : 'Make-CFP'} board committed`,
+                matchedCount: matched.length, unmatchedCount: unmatched.length, unmatched,
+                teams: buildSnapshotTeams(all, season)
+            });
+            snapshotId = String(doc._id);
+        }
+
         res.status(200).json({
             season, market, field, dryRun: !commit,
             updatedAt: commit ? committedAt : null,
+            snapshotId,
             matchedCount: matched.length, unmatchedCount: unmatched.length,
             matched: matched.map(m => ({ school: m.team.school, id: m.team.id, name: m.name, odds: m.odds, prob: m.prob })),
             unmatched

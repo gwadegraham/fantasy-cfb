@@ -51,6 +51,17 @@ const draftSchema = new mongoose.Schema({
     picks: { type: [draftPickSchema], default: [] },
     currentOverall: { type: Number, default: 1 },  // next overall pick to be made
 
+    // The MarketSnapshot this league's draft GRADES are computed against.
+    //
+    // A grade is a judgment about a roster as drafted, but the inputs it reads —
+    // spRating above all — are overwritten in place on the Team docs every week
+    // by the enrichment job, so an ungated grade drifts all season for reasons
+    // that have nothing to do with the draft. The week-1 poll was already pinned
+    // for this reason (see routes/draft.js); this pins the ratings and the CFP
+    // futures too. Null means "use the live Team docs", which is the behaviour
+    // every draft had before this field existed.
+    gradeSnapshot: { type: mongoose.Schema.Types.ObjectId, ref: 'MarketSnapshot', default: null },
+
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });

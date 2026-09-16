@@ -1,0 +1,2020 @@
+{
+  "season": 2026,
+  "takenAt": "2026-09-16T14:58:57.327Z",
+  "note": "Pre-paste baseline: CFP futures still the preseason board; SP+ as of the last weekly enrichment.",
+  "teamCount": 264,
+  "withMakeOdds": 138,
+  "withChampOdds": 138,
+  "teams": [
+    {
+      "id": 2000,
+      "school": "Abilene Christian",
+      "conference": "UAC"
+    },
+    {
+      "id": 2005,
+      "school": "Air Force",
+      "conference": "Mountain West",
+      "spRating": 1.1,
+      "spRank": 69,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 4000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2006,
+      "school": "Akron",
+      "conference": "Mid-American",
+      "spRating": -21.4,
+      "spRank": 128,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 333,
+      "school": "Alabama",
+      "conference": "SEC",
+      "spRating": 20,
+      "spRank": 11,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 154,
+      "cfpChampOdds": 2500
+    },
+    {
+      "id": 2010,
+      "school": "Alabama A&M",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2011,
+      "school": "Alabama State",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2016,
+      "school": "Alcorn State",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2026,
+      "school": "App State",
+      "conference": "Sun Belt",
+      "spRating": -7.2,
+      "spRank": 93,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 40000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 12,
+      "school": "Arizona",
+      "conference": "Big 12",
+      "spRating": 12.6,
+      "spRank": 24,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1000,
+      "cfpChampOdds": 25000
+    },
+    {
+      "id": 9,
+      "school": "Arizona State",
+      "conference": "Big 12",
+      "spRating": 8.7,
+      "spRank": 38,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 1200,
+      "cfpChampOdds": 30000
+    },
+    {
+      "id": 8,
+      "school": "Arkansas",
+      "conference": "SEC",
+      "spRating": 3.3,
+      "spRank": 56,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 6500,
+      "cfpChampOdds": 40000
+    },
+    {
+      "id": 2032,
+      "school": "Arkansas State",
+      "conference": "Sun Belt",
+      "spRating": -15.1,
+      "spRank": 120,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 25000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 2029,
+      "school": "Arkansas-Pine Bluff",
+      "conference": "SWAC"
+    },
+    {
+      "id": 349,
+      "school": "Army",
+      "conference": "American Athletic",
+      "spRating": 2.2,
+      "spRank": 63,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2,
+      "school": "Auburn",
+      "conference": "SEC",
+      "spRating": 7,
+      "spRank": 43,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 900,
+      "cfpChampOdds": 8000
+    },
+    {
+      "id": 2046,
+      "school": "Austin Peay",
+      "conference": "UAC"
+    },
+    {
+      "id": 2050,
+      "school": "Ball State",
+      "conference": "Mid-American",
+      "spRating": -25,
+      "spRank": 134,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 239,
+      "school": "Baylor",
+      "conference": "Big 12",
+      "spRating": 4.9,
+      "spRank": 52,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2500,
+      "cfpChampOdds": 25000
+    },
+    {
+      "id": 2065,
+      "school": "Bethune-Cookman",
+      "conference": "SWAC"
+    },
+    {
+      "id": 68,
+      "school": "Boise State",
+      "conference": "Pac-12",
+      "spRating": 5.2,
+      "spRank": 50,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 450,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 103,
+      "school": "Boston College",
+      "conference": "ACC",
+      "spRating": -7.4,
+      "spRank": 95,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 189,
+      "school": "Bowling Green",
+      "conference": "Mid-American",
+      "spRating": -12.8,
+      "spRank": 112,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 225,
+      "school": "Brown",
+      "conference": "Ivy"
+    },
+    {
+      "id": 2803,
+      "school": "Bryant",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2083,
+      "school": "Bucknell",
+      "conference": "Patriot"
+    },
+    {
+      "id": 2084,
+      "school": "Buffalo",
+      "conference": "Mid-American",
+      "spRating": -11.6,
+      "spRank": 109,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 2086,
+      "school": "Butler",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 252,
+      "school": "BYU",
+      "conference": "Big 12",
+      "spRating": 16.8,
+      "spRank": 18,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 330,
+      "cfpChampOdds": 9000
+    },
+    {
+      "id": 13,
+      "school": "Cal Poly",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 25,
+      "school": "California",
+      "conference": "ACC",
+      "spRating": -3.4,
+      "spRank": 77,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2200,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 2097,
+      "school": "Campbell",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2110,
+      "school": "Central Arkansas",
+      "conference": "UAC"
+    },
+    {
+      "id": 2115,
+      "school": "Central Connecticut",
+      "conference": "NEC"
+    },
+    {
+      "id": 2117,
+      "school": "Central Michigan",
+      "conference": "Mid-American",
+      "spRating": -20,
+      "spRank": 126,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2127,
+      "school": "Charleston Southern",
+      "conference": "OVC"
+    },
+    {
+      "id": 2429,
+      "school": "Charlotte",
+      "conference": "American Athletic",
+      "spRating": -26,
+      "spRank": 136,
+      "expectedWins": 2.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 236,
+      "school": "Chattanooga",
+      "conference": "Southern"
+    },
+    {
+      "id": 2132,
+      "school": "Cincinnati",
+      "conference": "Big 12",
+      "spRating": 5.9,
+      "spRank": 47,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 5000,
+      "cfpChampOdds": 30000
+    },
+    {
+      "id": 228,
+      "school": "Clemson",
+      "conference": "ACC",
+      "spRating": 5.2,
+      "spRank": 50,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 600,
+      "cfpChampOdds": 11000
+    },
+    {
+      "id": 324,
+      "school": "Coastal Carolina",
+      "conference": "Sun Belt",
+      "spRating": -12.1,
+      "spRank": 110,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2142,
+      "school": "Colgate",
+      "conference": "Patriot"
+    },
+    {
+      "id": 38,
+      "school": "Colorado",
+      "conference": "Big 12",
+      "spRating": 2.1,
+      "spRank": 64,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 9000,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 36,
+      "school": "Colorado State",
+      "conference": "Pac-12",
+      "spRating": -7.5,
+      "spRank": 98,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 171,
+      "school": "Columbia",
+      "conference": "Ivy"
+    },
+    {
+      "id": 172,
+      "school": "Cornell",
+      "conference": "Ivy"
+    },
+    {
+      "id": 159,
+      "school": "Dartmouth",
+      "conference": "Ivy"
+    },
+    {
+      "id": 2166,
+      "school": "Davidson",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 2168,
+      "school": "Dayton",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 48,
+      "school": "Delaware",
+      "conference": "Conference USA",
+      "spRating": -7.6,
+      "spRank": 99,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2169,
+      "school": "Delaware State",
+      "conference": "MEAC"
+    },
+    {
+      "id": 2181,
+      "school": "Drake",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 150,
+      "school": "Duke",
+      "conference": "ACC",
+      "spRating": 6.6,
+      "spRank": 45,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 3500,
+      "cfpChampOdds": 40000
+    },
+    {
+      "id": 2184,
+      "school": "Duquesne",
+      "conference": "NEC"
+    },
+    {
+      "id": 151,
+      "school": "East Carolina",
+      "conference": "American Athletic",
+      "spRating": -8.1,
+      "spRank": 102,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 2000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2193,
+      "school": "East Tennessee State",
+      "conference": "Southern"
+    },
+    {
+      "id": 2837,
+      "school": "East Texas A&M",
+      "conference": "Southland"
+    },
+    {
+      "id": 2197,
+      "school": "Eastern Illinois",
+      "conference": "OVC"
+    },
+    {
+      "id": 2198,
+      "school": "Eastern Kentucky",
+      "conference": "UAC"
+    },
+    {
+      "id": 2199,
+      "school": "Eastern Michigan",
+      "conference": "Mid-American",
+      "spRating": -15.6,
+      "spRank": 122,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 331,
+      "school": "Eastern Washington",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2210,
+      "school": "Elon",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 57,
+      "school": "Florida",
+      "conference": "SEC",
+      "spRating": 18.6,
+      "spRank": 15,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 400,
+      "cfpChampOdds": 6000
+    },
+    {
+      "id": 50,
+      "school": "Florida A&M",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2226,
+      "school": "Florida Atlantic",
+      "conference": "American Athletic",
+      "spRating": -12.2,
+      "spRank": 111,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2229,
+      "school": "Florida International",
+      "conference": "Conference USA",
+      "spRating": -13.5,
+      "spRank": 116,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 52,
+      "school": "Florida State",
+      "conference": "ACC",
+      "spRating": 6.9,
+      "spRank": 44,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2000,
+      "cfpChampOdds": 18000
+    },
+    {
+      "id": 2230,
+      "school": "Fordham",
+      "conference": "Patriot"
+    },
+    {
+      "id": 278,
+      "school": "Fresno State",
+      "conference": "Pac-12",
+      "spRating": -7.6,
+      "spRank": 99,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 5000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 231,
+      "school": "Furman",
+      "conference": "Southern"
+    },
+    {
+      "id": 2241,
+      "school": "Gardner-Webb",
+      "conference": "OVC"
+    },
+    {
+      "id": 46,
+      "school": "Georgetown",
+      "conference": "Patriot"
+    },
+    {
+      "id": 61,
+      "school": "Georgia",
+      "conference": "SEC",
+      "spRating": 28.7,
+      "spRank": 2,
+      "expectedWins": 9.5,
+      "cfpMakeOdds": -240,
+      "cfpChampOdds": 850
+    },
+    {
+      "id": 290,
+      "school": "Georgia Southern",
+      "conference": "Sun Belt",
+      "spRating": -5.8,
+      "spRank": 86,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2247,
+      "school": "Georgia State",
+      "conference": "Sun Belt",
+      "spRating": -22.7,
+      "spRank": 131,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 59,
+      "school": "Georgia Tech",
+      "conference": "ACC",
+      "spRating": 1.7,
+      "spRank": 66,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2000,
+      "cfpChampOdds": 40000
+    },
+    {
+      "id": 2755,
+      "school": "Grambling",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2261,
+      "school": "Hampton",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 108,
+      "school": "Harvard",
+      "conference": "Ivy"
+    },
+    {
+      "id": 62,
+      "school": "Hawai'i",
+      "conference": "Mountain West",
+      "spRating": -7,
+      "spRank": 91,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 2800,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 107,
+      "school": "Holy Cross",
+      "conference": "Patriot"
+    },
+    {
+      "id": 248,
+      "school": "Houston",
+      "conference": "Big 12",
+      "spRating": 6.5,
+      "spRank": 46,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 850,
+      "cfpChampOdds": 20000
+    },
+    {
+      "id": 2277,
+      "school": "Houston Christian",
+      "conference": "Southland"
+    },
+    {
+      "id": 47,
+      "school": "Howard",
+      "conference": "MEAC"
+    },
+    {
+      "id": 70,
+      "school": "Idaho",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 304,
+      "school": "Idaho State",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 356,
+      "school": "Illinois",
+      "conference": "Big Ten",
+      "spRating": 7.5,
+      "spRank": 41,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1700,
+      "cfpChampOdds": 20000
+    },
+    {
+      "id": 2287,
+      "school": "Illinois State",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2916,
+      "school": "Incarnate Word",
+      "conference": "Southland"
+    },
+    {
+      "id": 84,
+      "school": "Indiana",
+      "conference": "Big Ten",
+      "spRating": 24.1,
+      "spRank": 6,
+      "expectedWins": 10.5,
+      "cfpMakeOdds": -350,
+      "cfpChampOdds": 800
+    },
+    {
+      "id": 282,
+      "school": "Indiana State",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2294,
+      "school": "Iowa",
+      "conference": "Big Ten",
+      "spRating": 18,
+      "spRank": 16,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 900,
+      "cfpChampOdds": 12000
+    },
+    {
+      "id": 66,
+      "school": "Iowa State",
+      "conference": "Big 12",
+      "spRating": 3.1,
+      "spRank": 57,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 7000,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 2296,
+      "school": "Jackson State",
+      "conference": "SWAC"
+    },
+    {
+      "id": 55,
+      "school": "Jacksonville State",
+      "conference": "Conference USA",
+      "spRating": -7,
+      "spRank": 91,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 256,
+      "school": "James Madison",
+      "conference": "Sun Belt",
+      "spRating": -0.3,
+      "spRank": 72,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 1500,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2305,
+      "school": "Kansas",
+      "conference": "Big 12",
+      "spRating": 7.5,
+      "spRank": 41,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 3000,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 2306,
+      "school": "Kansas State",
+      "conference": "Big 12",
+      "spRating": 12.7,
+      "spRank": 23,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 750,
+      "cfpChampOdds": 20000
+    },
+    {
+      "id": 338,
+      "school": "Kennesaw State",
+      "conference": "Conference USA",
+      "spRating": -7.4,
+      "spRank": 95,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2309,
+      "school": "Kent State",
+      "conference": "Mid-American",
+      "spRating": -27.5,
+      "spRank": 137,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 96,
+      "school": "Kentucky",
+      "conference": "SEC",
+      "spRating": 8.5,
+      "spRank": 39,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 3000,
+      "cfpChampOdds": 35000
+    },
+    {
+      "id": 322,
+      "school": "Lafayette",
+      "conference": "Patriot"
+    },
+    {
+      "id": 2320,
+      "school": "Lamar",
+      "conference": "Southland"
+    },
+    {
+      "id": 2329,
+      "school": "Lehigh",
+      "conference": "Patriot"
+    },
+    {
+      "id": 2335,
+      "school": "Liberty",
+      "conference": "Conference USA",
+      "spRating": -7.2,
+      "spRank": 93,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 8400,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2815,
+      "school": "Lindenwood",
+      "conference": "OVC"
+    },
+    {
+      "id": 2341,
+      "school": "Long Island University",
+      "conference": "NEC"
+    },
+    {
+      "id": 309,
+      "school": "Louisiana",
+      "conference": "Sun Belt",
+      "spRating": -5.7,
+      "spRank": 85,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2348,
+      "school": "Louisiana Tech",
+      "conference": "Sun Belt",
+      "spRating": -3.8,
+      "spRank": 80,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 40000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 97,
+      "school": "Louisville",
+      "conference": "ACC",
+      "spRating": 10,
+      "spRank": 33,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 550,
+      "cfpChampOdds": 15000
+    },
+    {
+      "id": 99,
+      "school": "LSU",
+      "conference": "SEC",
+      "spRating": 23.3,
+      "spRank": 9,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 160,
+      "cfpChampOdds": 1800
+    },
+    {
+      "id": 311,
+      "school": "Maine",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2368,
+      "school": "Marist",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 276,
+      "school": "Marshall",
+      "conference": "Sun Belt",
+      "spRating": -14.4,
+      "spRank": 117,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 120,
+      "school": "Maryland",
+      "conference": "Big Ten",
+      "spRating": 9.1,
+      "spRank": 37,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 6000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 113,
+      "school": "Massachusetts",
+      "conference": "Mid-American",
+      "spRating": -25.8,
+      "spRank": 135,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 2377,
+      "school": "McNeese",
+      "conference": "Southland"
+    },
+    {
+      "id": 235,
+      "school": "Memphis",
+      "conference": "American Athletic",
+      "spRating": 2.1,
+      "spRank": 64,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2382,
+      "school": "Mercer",
+      "conference": "Southern"
+    },
+    {
+      "id": 2385,
+      "school": "Mercyhurst",
+      "conference": "NEC"
+    },
+    {
+      "id": 2771,
+      "school": "Merrimack",
+      "conference": "FCS Independents"
+    },
+    {
+      "id": 2390,
+      "school": "Miami",
+      "conference": "ACC",
+      "spRating": 24.7,
+      "spRank": 5,
+      "expectedWins": 10.5,
+      "cfpMakeOdds": -250,
+      "cfpChampOdds": 1100
+    },
+    {
+      "id": 193,
+      "school": "Miami (OH)",
+      "conference": "Mid-American",
+      "spRating": -10,
+      "spRank": 104,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 18000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 130,
+      "school": "Michigan",
+      "conference": "Big Ten",
+      "spRating": 12.2,
+      "spRank": 26,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 250,
+      "cfpChampOdds": 4000
+    },
+    {
+      "id": 127,
+      "school": "Michigan State",
+      "conference": "Big Ten",
+      "spRating": 1,
+      "spRank": 71,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 2393,
+      "school": "Middle Tennessee",
+      "conference": "Conference USA",
+      "spRating": -20.8,
+      "spRank": 127,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 135,
+      "school": "Minnesota",
+      "conference": "Big Ten",
+      "spRating": 9.6,
+      "spRank": 34,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 3500,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 344,
+      "school": "Mississippi State",
+      "conference": "SEC",
+      "spRating": 9.4,
+      "spRank": 35,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 3500,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 2400,
+      "school": "Mississippi Valley State",
+      "conference": "SWAC"
+    },
+    {
+      "id": 142,
+      "school": "Missouri",
+      "conference": "SEC",
+      "spRating": 12.9,
+      "spRank": 22,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 700,
+      "cfpChampOdds": 9000
+    },
+    {
+      "id": 2623,
+      "school": "Missouri State",
+      "conference": "Conference USA",
+      "spRating": -24.3,
+      "spRank": 132,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2405,
+      "school": "Monmouth",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 149,
+      "school": "Montana",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 147,
+      "school": "Montana State",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2413,
+      "school": "Morehead State",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 2415,
+      "school": "Morgan State",
+      "conference": "MEAC"
+    },
+    {
+      "id": 93,
+      "school": "Murray State",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2426,
+      "school": "Navy",
+      "conference": "American Athletic",
+      "spRating": 3.6,
+      "spRank": 55,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 750,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 152,
+      "school": "NC State",
+      "conference": "ACC",
+      "spRating": -0.7,
+      "spRank": 73,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1200,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 158,
+      "school": "Nebraska",
+      "conference": "Big Ten",
+      "spRating": 12.1,
+      "spRank": 27,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2500,
+      "cfpChampOdds": 20000
+    },
+    {
+      "id": 2440,
+      "school": "Nevada",
+      "conference": "Mountain West",
+      "spRating": -6.1,
+      "spRank": 87,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 160,
+      "school": "New Hampshire",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2441,
+      "school": "New Haven",
+      "conference": "NEC"
+    },
+    {
+      "id": 167,
+      "school": "New Mexico",
+      "conference": "Mountain West",
+      "spRating": 4.4,
+      "spRank": 53,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1300,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 166,
+      "school": "New Mexico State",
+      "conference": "Conference USA",
+      "spRating": -15,
+      "spRank": 119,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 2447,
+      "school": "Nicholls",
+      "conference": "Southland"
+    },
+    {
+      "id": 2450,
+      "school": "Norfolk State",
+      "conference": "MEAC"
+    },
+    {
+      "id": 2453,
+      "school": "North Alabama",
+      "conference": "UAC"
+    },
+    {
+      "id": 153,
+      "school": "North Carolina",
+      "conference": "ACC",
+      "spRating": 5.8,
+      "spRank": 49,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 6500,
+      "cfpChampOdds": 40000
+    },
+    {
+      "id": 2448,
+      "school": "North Carolina A&T",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2428,
+      "school": "North Carolina Central",
+      "conference": "MEAC"
+    },
+    {
+      "id": 155,
+      "school": "North Dakota",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2449,
+      "school": "North Dakota State",
+      "conference": "Mountain West",
+      "spRating": 2.6,
+      "spRank": 61,
+      "expectedWins": 9.5,
+      "cfpMakeOdds": 1500,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 249,
+      "school": "North Texas",
+      "conference": "American Athletic",
+      "spRating": -13.2,
+      "spRank": 115,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2464,
+      "school": "Northern Arizona",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2458,
+      "school": "Northern Colorado",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2459,
+      "school": "Northern Illinois",
+      "conference": "Mountain West",
+      "spRating": -22.3,
+      "spRank": 130,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2460,
+      "school": "Northern Iowa",
+      "conference": "MVFC"
+    },
+    {
+      "id": 77,
+      "school": "Northwestern",
+      "conference": "Big Ten",
+      "spRating": 7.8,
+      "spRank": 40,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 6500,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2466,
+      "school": "Northwestern State",
+      "conference": "Southland"
+    },
+    {
+      "id": 87,
+      "school": "Notre Dame",
+      "conference": "FBS Independents",
+      "spRating": 26.8,
+      "spRank": 3,
+      "expectedWins": 11.5,
+      "cfpMakeOdds": -800,
+      "cfpChampOdds": 650
+    },
+    {
+      "id": 195,
+      "school": "Ohio",
+      "conference": "Mid-American",
+      "spRating": -16.4,
+      "spRank": 124,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 20000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 194,
+      "school": "Ohio State",
+      "conference": "Big Ten",
+      "spRating": 30,
+      "spRank": 1,
+      "expectedWins": 9.5,
+      "cfpMakeOdds": -360,
+      "cfpChampOdds": 600
+    },
+    {
+      "id": 201,
+      "school": "Oklahoma",
+      "conference": "SEC",
+      "spRating": 21.7,
+      "spRank": 10,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 210,
+      "cfpChampOdds": 3500
+    },
+    {
+      "id": 197,
+      "school": "Oklahoma State",
+      "conference": "Big 12",
+      "spRating": 1.1,
+      "spRank": 69,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 2000,
+      "cfpChampOdds": 40000
+    },
+    {
+      "id": 295,
+      "school": "Old Dominion",
+      "conference": "Sun Belt",
+      "spRating": -6.2,
+      "spRank": 88,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 3500,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 145,
+      "school": "Ole Miss",
+      "conference": "SEC",
+      "spRating": 13.3,
+      "spRank": 20,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 220,
+      "cfpChampOdds": 3000
+    },
+    {
+      "id": 2483,
+      "school": "Oregon",
+      "conference": "Big Ten",
+      "spRating": 23.9,
+      "spRank": 7,
+      "expectedWins": 10.5,
+      "cfpMakeOdds": -320,
+      "cfpChampOdds": 750
+    },
+    {
+      "id": 204,
+      "school": "Oregon State",
+      "conference": "Pac-12",
+      "spRating": -6.8,
+      "spRank": 90,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 30000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 213,
+      "school": "Penn State",
+      "conference": "Big Ten",
+      "spRating": 19.8,
+      "spRank": 13,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 425,
+      "cfpChampOdds": 6000
+    },
+    {
+      "id": 219,
+      "school": "Pennsylvania",
+      "conference": "Ivy"
+    },
+    {
+      "id": 221,
+      "school": "Pittsburgh",
+      "conference": "ACC",
+      "spRating": 10.1,
+      "spRank": 32,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 850,
+      "cfpChampOdds": 25000
+    },
+    {
+      "id": 2502,
+      "school": "Portland State",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2504,
+      "school": "Prairie View A&M",
+      "conference": "SWAC"
+    },
+    {
+      "id": 2506,
+      "school": "Presbyterian",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 163,
+      "school": "Princeton",
+      "conference": "Ivy"
+    },
+    {
+      "id": 2509,
+      "school": "Purdue",
+      "conference": "Big Ten",
+      "spRating": 1.2,
+      "spRank": 68,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 227,
+      "school": "Rhode Island",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 242,
+      "school": "Rice",
+      "conference": "American Athletic",
+      "spRating": -10.4,
+      "spRank": 105,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 257,
+      "school": "Richmond",
+      "conference": "Patriot"
+    },
+    {
+      "id": 2523,
+      "school": "Robert Morris",
+      "conference": "NEC"
+    },
+    {
+      "id": 164,
+      "school": "Rutgers",
+      "conference": "Big Ten",
+      "spRating": -3.6,
+      "spRank": 78,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 25000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 16,
+      "school": "Sacramento State",
+      "conference": "Mid-American",
+      "spRating": -19.1,
+      "spRank": 125,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2529,
+      "school": "Sacred Heart",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2534,
+      "school": "Sam Houston",
+      "conference": "Conference USA",
+      "spRating": -21.5,
+      "spRank": 129,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 2535,
+      "school": "Samford",
+      "conference": "Southern"
+    },
+    {
+      "id": 301,
+      "school": "San Diego",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 21,
+      "school": "San Diego State",
+      "conference": "Pac-12",
+      "spRating": 3.1,
+      "spRank": 57,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 1500,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 23,
+      "school": "San José State",
+      "conference": "Mountain West",
+      "spRating": -12.8,
+      "spRank": 112,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 40000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 2545,
+      "school": "SE Louisiana",
+      "conference": "Southland"
+    },
+    {
+      "id": 2567,
+      "school": "SMU",
+      "conference": "ACC",
+      "spRating": 11.1,
+      "spRank": 31,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 350,
+      "cfpChampOdds": 10000
+    },
+    {
+      "id": 6,
+      "school": "South Alabama",
+      "conference": "Sun Belt",
+      "spRating": -11.4,
+      "spRank": 106,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 30000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 2579,
+      "school": "South Carolina",
+      "conference": "SEC",
+      "spRating": 16.7,
+      "spRank": 19,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 1100,
+      "cfpChampOdds": 12000
+    },
+    {
+      "id": 2569,
+      "school": "South Carolina State",
+      "conference": "MEAC"
+    },
+    {
+      "id": 233,
+      "school": "South Dakota",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2571,
+      "school": "South Dakota State",
+      "conference": "MVFC"
+    },
+    {
+      "id": 58,
+      "school": "South Florida",
+      "conference": "American Athletic",
+      "spRating": -3.1,
+      "spRank": 76,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 1100,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 2546,
+      "school": "Southeast Missouri State",
+      "conference": "OVC"
+    },
+    {
+      "id": 2582,
+      "school": "Southern",
+      "conference": "SWAC"
+    },
+    {
+      "id": 79,
+      "school": "Southern Illinois",
+      "conference": "MVFC"
+    },
+    {
+      "id": 2572,
+      "school": "Southern Miss",
+      "conference": "Sun Belt",
+      "spRating": -14.9,
+      "spRank": 118,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 253,
+      "school": "Southern Utah",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2900,
+      "school": "St. Thomas (MN)",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 24,
+      "school": "Stanford",
+      "conference": "ACC",
+      "spRating": -4.7,
+      "spRank": 83,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 30000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2617,
+      "school": "Stephen F. Austin",
+      "conference": "Southland"
+    },
+    {
+      "id": 56,
+      "school": "Stetson",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 284,
+      "school": "Stonehill",
+      "conference": "NEC"
+    },
+    {
+      "id": 2619,
+      "school": "Stony Brook",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 183,
+      "school": "Syracuse",
+      "conference": "ACC",
+      "spRating": 2.7,
+      "spRank": 60,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 30000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2627,
+      "school": "Tarleton State",
+      "conference": "UAC"
+    },
+    {
+      "id": 2628,
+      "school": "TCU",
+      "conference": "Big 12",
+      "spRating": 3.9,
+      "spRank": 54,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 1200,
+      "cfpChampOdds": 25000
+    },
+    {
+      "id": 218,
+      "school": "Temple",
+      "conference": "American Athletic",
+      "spRating": -4.9,
+      "spRank": 84,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 40000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 2633,
+      "school": "Tennessee",
+      "conference": "SEC",
+      "spRating": 19.9,
+      "spRank": 12,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 450,
+      "cfpChampOdds": 7000
+    },
+    {
+      "id": 2634,
+      "school": "Tennessee State",
+      "conference": "OVC"
+    },
+    {
+      "id": 2635,
+      "school": "Tennessee Tech",
+      "conference": "Southern"
+    },
+    {
+      "id": 251,
+      "school": "Texas",
+      "conference": "SEC",
+      "spRating": 25.4,
+      "spRank": 4,
+      "expectedWins": 9.5,
+      "cfpMakeOdds": -200,
+      "cfpChampOdds": 750
+    },
+    {
+      "id": 245,
+      "school": "Texas A&M",
+      "conference": "SEC",
+      "spRating": 23.9,
+      "spRank": 7,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 154,
+      "cfpChampOdds": 2000
+    },
+    {
+      "id": 2640,
+      "school": "Texas Southern",
+      "conference": "SWAC"
+    },
+    {
+      "id": 326,
+      "school": "Texas State",
+      "conference": "Pac-12",
+      "spRating": -7.8,
+      "spRank": 101,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 2100,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2641,
+      "school": "Texas Tech",
+      "conference": "Big 12",
+      "spRating": 18.9,
+      "spRank": 14,
+      "expectedWins": 10.5,
+      "cfpMakeOdds": -200,
+      "cfpChampOdds": 2200
+    },
+    {
+      "id": 2643,
+      "school": "The Citadel",
+      "conference": "Southern"
+    },
+    {
+      "id": 2649,
+      "school": "Toledo",
+      "conference": "Mid-American",
+      "spRating": -9.4,
+      "spRank": 103,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 119,
+      "school": "Towson",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 2653,
+      "school": "Troy",
+      "conference": "Sun Belt",
+      "spRating": -11.4,
+      "spRank": 106,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2655,
+      "school": "Tulane",
+      "conference": "American Athletic",
+      "spRating": -7.4,
+      "spRank": 95,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1200,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 202,
+      "school": "Tulsa",
+      "conference": "American Athletic",
+      "spRating": -2.3,
+      "spRank": 75,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 30000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 5,
+      "school": "UAB",
+      "conference": "American Athletic",
+      "spRating": -16,
+      "spRank": 123,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 399,
+      "school": "UAlbany",
+      "conference": "Coastal Athletic"
+    },
+    {
+      "id": 302,
+      "school": "UC Davis",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2116,
+      "school": "UCF",
+      "conference": "Big 12",
+      "spRating": 5.9,
+      "spRank": 47,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 3000,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 26,
+      "school": "UCLA",
+      "conference": "Big Ten",
+      "spRating": 9.2,
+      "spRank": 36,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 3000,
+      "cfpChampOdds": 60000
+    },
+    {
+      "id": 41,
+      "school": "UConn",
+      "conference": "FBS Independents",
+      "spRating": -6.3,
+      "spRank": 89,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 10000,
+      "cfpChampOdds": 300000
+    },
+    {
+      "id": 2433,
+      "school": "UL Monroe",
+      "conference": "Sun Belt",
+      "spRating": -33.2,
+      "spRank": 138,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 2439,
+      "school": "UNLV",
+      "conference": "Mountain West",
+      "spRating": 2.3,
+      "spRank": 62,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1000,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 30,
+      "school": "USC",
+      "conference": "Big Ten",
+      "spRating": 17.7,
+      "spRank": 17,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 240,
+      "cfpChampOdds": 3500
+    },
+    {
+      "id": 2630,
+      "school": "UT Martin",
+      "conference": "OVC"
+    },
+    {
+      "id": 292,
+      "school": "UT Rio Grande Valley",
+      "conference": "Southland"
+    },
+    {
+      "id": 254,
+      "school": "Utah",
+      "conference": "Big 12",
+      "spRating": 13,
+      "spRank": 21,
+      "expectedWins": 8.5,
+      "cfpMakeOdds": 350,
+      "cfpChampOdds": 10000
+    },
+    {
+      "id": 328,
+      "school": "Utah State",
+      "conference": "Pac-12",
+      "spRating": -11.5,
+      "spRank": 108,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 10000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 3101,
+      "school": "Utah Tech",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2638,
+      "school": "UTEP",
+      "conference": "Mountain West",
+      "spRating": -24.3,
+      "spRank": 132,
+      "expectedWins": 3.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 1000000
+    },
+    {
+      "id": 2636,
+      "school": "UTSA",
+      "conference": "American Athletic",
+      "spRating": 2.9,
+      "spRank": 59,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 1000,
+      "cfpChampOdds": 200000
+    },
+    {
+      "id": 2674,
+      "school": "Valparaiso",
+      "conference": "Pioneer"
+    },
+    {
+      "id": 238,
+      "school": "Vanderbilt",
+      "conference": "SEC",
+      "spRating": 12.1,
+      "spRank": 27,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 1800,
+      "cfpChampOdds": 15000
+    },
+    {
+      "id": 222,
+      "school": "Villanova",
+      "conference": "Patriot"
+    },
+    {
+      "id": 258,
+      "school": "Virginia",
+      "conference": "ACC",
+      "spRating": 11.5,
+      "spRank": 30,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 950,
+      "cfpChampOdds": 20000
+    },
+    {
+      "id": 259,
+      "school": "Virginia Tech",
+      "conference": "ACC",
+      "spRating": 12.4,
+      "spRank": 25,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 1600,
+      "cfpChampOdds": 18000
+    },
+    {
+      "id": 2678,
+      "school": "VMI",
+      "conference": "Southern"
+    },
+    {
+      "id": 2681,
+      "school": "Wagner",
+      "conference": "NEC"
+    },
+    {
+      "id": 154,
+      "school": "Wake Forest",
+      "conference": "ACC",
+      "spRating": 1.6,
+      "spRank": 67,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 4000,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 264,
+      "school": "Washington",
+      "conference": "Big Ten",
+      "spRating": 12,
+      "spRank": 29,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 400,
+      "cfpChampOdds": 12000
+    },
+    {
+      "id": 265,
+      "school": "Washington State",
+      "conference": "Pac-12",
+      "spRating": -3.7,
+      "spRank": 79,
+      "expectedWins": 4.5,
+      "cfpMakeOdds": 5000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2692,
+      "school": "Weber State",
+      "conference": "Big Sky"
+    },
+    {
+      "id": 2698,
+      "school": "West Georgia",
+      "conference": "UAC"
+    },
+    {
+      "id": 277,
+      "school": "West Virginia",
+      "conference": "Big 12",
+      "spRating": -4.4,
+      "spRank": 82,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 4000,
+      "cfpChampOdds": 80000
+    },
+    {
+      "id": 2717,
+      "school": "Western Carolina",
+      "conference": "Southern"
+    },
+    {
+      "id": 2710,
+      "school": "Western Illinois",
+      "conference": "OVC"
+    },
+    {
+      "id": 98,
+      "school": "Western Kentucky",
+      "conference": "Conference USA",
+      "spRating": -13.1,
+      "spRank": 114,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 15000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2711,
+      "school": "Western Michigan",
+      "conference": "Mid-American",
+      "spRating": -4.2,
+      "spRank": 81,
+      "expectedWins": 7.5,
+      "cfpMakeOdds": 5000,
+      "cfpChampOdds": 100000
+    },
+    {
+      "id": 2729,
+      "school": "William & Mary",
+      "conference": "Patriot"
+    },
+    {
+      "id": 275,
+      "school": "Wisconsin",
+      "conference": "Big Ten",
+      "spRating": -1.5,
+      "spRank": 74,
+      "expectedWins": 6.5,
+      "cfpMakeOdds": 3000,
+      "cfpChampOdds": 50000
+    },
+    {
+      "id": 2747,
+      "school": "Wofford",
+      "conference": "Southern"
+    },
+    {
+      "id": 2751,
+      "school": "Wyoming",
+      "conference": "Mountain West",
+      "spRating": -15.2,
+      "spRank": 121,
+      "expectedWins": 5.5,
+      "cfpMakeOdds": 50000,
+      "cfpChampOdds": 500000
+    },
+    {
+      "id": 43,
+      "school": "Yale",
+      "conference": "Ivy"
+    },
+    {
+      "id": 2754,
+      "school": "Youngstown State",
+      "conference": "MVFC"
+    }
+  ]
+}
