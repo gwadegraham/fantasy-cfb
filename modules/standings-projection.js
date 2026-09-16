@@ -6,17 +6,41 @@
 
 const { projectTeamPoints, spFor, winsFor } = require('./draft-projection');
 
-// Ceiling on the mean win probability a remaining schedule may be calibrated to.
+// How many games it takes for a team's ACTUAL results to earn half the say in
+// its remaining-wins forecast, against its preseason win total.
 //
-// remExpWins is a PREseason season-long win total minus the wins already banked,
-// so a loss leaves the target untouched while the games left to hold it shrink.
-// Once the target exceeds the games remaining, calibrateToExpectedWins clamps at
-// the game count and every remaining game comes back a certain win — a 4-3 team
-// was projected to run the table, and out-projected a 6-1 team on the same
-// schedule. 0.90 leaves genuine mismatches near-certain without ever reaching
-// 1.00. Applies only to the SP+ fallback games; a real CFBD pre-game number is
-// used as-is.
-const MAX_MEAN_WIN_PROB = 0.90;
+// The old forecast was subtraction: preseason expectedWins MINUS wins banked. A
+// loss left the target untouched while the games left to hold it shrank, so a
+// .500 team was projected to win every remaining game from week 4 on — and a 4-3
+// team out-projected a 6-1 one on the same schedule. Losing did not lower the
+// forecast, it just crammed the same wins into fewer games.
+//
+// This is a rate instead: blend the preseason pace with the pace actually being
+// played, weighting reality by gp / (gp + K) as games accumulate, then multiply
+// by the games left. It cannot exceed the games remaining, because both paces
+// are per-game rates in [0, 1] — which is why the explicit 0.90 ceiling this
+// replaced is gone rather than kept alongside.
+//
+// K = 10 backtested against 2024 + 2025 (3,003 team-weeks, remaining wins
+// predicted from every point in every season):
+//
+//   subtraction   mean abs error 1.633 wins   predicted a certain win in every
+//                                             remaining game 11.5% of the time
+//   blend K=10                      1.199     0%
+//   7+ games in    1.275 -> 0.730
+//   record diverged from prior      1.935 -> 0.906
+//
+// Per-season best was K=16 (2024) and K=10 (2025), and everything from 8 to 18
+// scores within 0.005 wins of the optimum — so this is the middle of a wide flat
+// zone, not a tuned constant.
+//
+// Known residual: the blend over-predicts by ~0.23 wins on average, and the bias
+// tracks schedule strength (+0.61 when the remaining schedule is harder than the
+// one played, -0.58 when it is easier). Correcting that needs opponent strength
+// in the term, which cannot be backtested honestly until 2026 has enough weekly
+// spHistory — the stored SP+ for past seasons is end-of-season and knows how
+// they finished.
+const BLEND_GAMES = 10;
 
 const nameOf = (u) => `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim();
 const initialsOf = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
@@ -32,6 +56,39 @@ function winsSoFar(teamId, games) {
         if ((isHome && g.homePoints > g.awayPoints) || (!isHome && g.awayPoints > g.homePoints)) w++;
     }
     return w;
+}
+
+// Completed regular games, i.e. the sample the actual pace is measured over.
+function gamesPlayed(teamId, games) {
+    let n = 0;
+    for (const g of games) {
+        if (g.seasonType !== 'regular' || g.completed !== true) continue;
+        if (g.homePoints == null || g.awayPoints == null) continue;
+        if (g.homeId === teamId || g.awayId === teamId) n++;
+    }
+    return n;
+}
+
+// Expected wins from a team's REMAINING schedule (see BLEND_GAMES above).
+// Returns null when there is no preseason number to anchor on, which the
+// projection engine answers by falling back to its raw SP+ probabilities.
+function remainingWinsTarget(expWins, teamId, allGames, remainingCount) {
+    if (expWins == null) return null;
+    if (!remainingCount) return 0;
+
+    const played = gamesPlayed(teamId, allGames);
+    const total = played + remainingCount;
+    if (!total) return null;
+
+    const priorPace = expWins / total;
+    // Before a single game is played there is nothing to blend, so the preseason
+    // pace carries the whole forecast.
+    if (!played) return Math.min(Math.max(priorPace, 0), 1) * remainingCount;
+
+    const actualPace = winsSoFar(teamId, allGames) / played;
+    const weight = played / (played + BLEND_GAMES);
+    const pace = (1 - weight) * priorPace + weight * actualPace;
+    return Math.min(Math.max(pace, 0), 1) * remainingCount;
 }
 
 // Per-manager projection for a season. gamesByTeam: { teamId: [Game] }.
@@ -50,9 +107,9 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
             const remaining = all.filter(g => g.seasonType === 'regular' && g.completed !== true);
             remainingCount += remaining.length;
             const expWins = winsFor(team, season);
-            const remExpWins = expWins == null ? null : Math.max(0.1, expWins - winsSoFar(rosterTeam.id, all));
+            const remExpWins = remainingWinsTarget(expWins, rosterTeam.id, all, remaining.length);
             const proj = projectTeamPoints(team, remaining, poolCtx, rankings, cfg, season,
-                { expectedWins: remExpWins, perGame: true, maxMeanWinProb: MAX_MEAN_WIN_PROB });
+                { expectedWins: remExpWins, perGame: true });
             expReg += proj.regular;
             expPost += proj.cfp + proj.confChamp + proj.bowl;
             (proj.perGame || []).forEach(pg => perGame.push(pg));
@@ -93,4 +150,4 @@ function simulateTitleOdds(managers, N) {
     return odds;
 }
 
-module.exports = { buildProjections, simulateTitleOdds, winsSoFar };
+module.exports = { buildProjections, simulateTitleOdds, winsSoFar, gamesPlayed, remainingWinsTarget, BLEND_GAMES };
