@@ -37,7 +37,19 @@ ApiKeyAuth.apiKey = CFBD_API_KEY;
 // undefined in all of them:
 //   public/userHome.js         buildGameCard, batchTeamLogos, the 30s live patch
 //   public/standings.js        displaySchedule
-//   modules/scoring.js         updateScores — no UI, scores off the raw game
+//   modules/scoring.js         updateScores — no UI. It fetches this route over
+//                              HTTP, once per rostered team per week, and hands
+//                              the raw document to calculateScoreV1/V2, which
+//                              feeds evaluate() -> buildContext() in
+//                              modules/scoring-detectors.js. That reads
+//                              conferenceGame / homeConference / awayConference.
+//                              Drop them and nothing throws: isConference()
+//                              answers undefined, so a conference win banks the
+//                              NON-conference rule in the claunts model and
+//                              silently loses confBonus in the graham model, and
+//                              isPowerFiveUpset(undefined, undefined) is false —
+//                              re-opening the non-P5 upset loophole. Wrong weekly
+//                              totals, clean job logs.
 //   modules/retrieve-games.js  retrieveGameBySeasonWeekTeam — no callers today,
 //                              but exported, and it returns the array verbatim
 //
@@ -84,27 +96,10 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
         //
         // Worst for weeks already played, and it grows every game weekend.
         //
-        // The field list is the union of what THREE consumers read — and the
-        // third is the one that makes this dangerous:
-        //
-        //   public/userHome.js   buildGameCard, batchTeamLogos, the 30s patch
-        //   public/standings.js  displaySchedule
-        //   modules/scoring.js   updateScores fetches this route over HTTP, once
-        //                        per rostered team per week, and hands the raw
-        //                        document to calculateScoreV1/V2
-        //
-        // That last one has no UI. It feeds evaluate() -> buildContext() in
-        // modules/scoring-detectors.js, which reads conferenceGame,
-        // homeConference and awayConference. Drop those and nothing throws:
-        // isConference() answers undefined, so a conference win banks the
-        // NON-conference rule in the claunts model and silently loses confBonus
-        // in the graham model, and isPowerFiveUpset(undefined, undefined) is
-        // false — which re-opens the non-P5 upset loophole. Wrong weekly totals,
-        // clean job logs. The field set is GAME_READ_FIELDS, declared at the top of this file.
-        //
-        // Everything here is a small scalar; the cost was never in them. What it
-        // leaves behind is the weight — wpSnapshots, livePlays, teamStats,
-        // playerStats, the Elo and line-score arrays — read by none of the three.
+        // Which fields, and why each one is there, lives with the constant —
+        // see GAME_READ_FIELDS at the top of this file. It is stated once on
+        // purpose: this block and that one drifted apart the first time they
+        // both described the callers, and the one here was the stale copy.
         //
         // 410KB -> 5KB, 5325ms -> 675ms.
         const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]}, GAME_READ_FIELDS);
