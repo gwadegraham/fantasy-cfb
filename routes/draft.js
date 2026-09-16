@@ -12,6 +12,8 @@ const { resolveConfig, overridesFromDoc, engagementForSeason } = require('../mod
 const draftBoard = require('../modules/draft-board');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { computeGrades } = require('../modules/draft-grades');
+const MarketSnapshot = require('../models/marketSnapshot');
+const { buildSnapshotTeams, teamsByIdFromSnapshot } = require('../modules/market-snapshot');
 const { canManageLeague } = require('../modules/league-access');
 const { sanitizeCallUrl } = require('../modules/draft-call-link');
 const { pickLogo } = require('../public/logo.js');
@@ -33,10 +35,23 @@ router.get('/grades/:league/:season', async (req, res) => {
         const usersById = {};
         users.forEach(u => { usersById[String(u._id)] = u; });
 
-        // SP+ / expected wins / CFP odds / conference live on the Team docs.
-        const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
-        const teamsById = {};
-        teams.forEach(t => { teamsById[String(t.id)] = t; });
+        // SP+ / expected wins / CFP odds / conference live on the Team docs — and
+        // are overwritten in place, SP+ weekly by the enrichment job. A grade
+        // read off them drifts all season: Oregon was SP+ 29.2 (rank 2) in week 1
+        // and 23.9 (rank 7) by week 3, and re-pasting a CFP board moves them
+        // again. When the draft pins a MarketSnapshot, grade against that frozen
+        // copy instead. No snapshot pinned = the original live behaviour.
+        let teamsById = {}, frozenAt = null;
+        const snapshot = draft.gradeSnapshot
+            ? await MarketSnapshot.findById(draft.gradeSnapshot).lean()
+            : null;
+        if (snapshot) {
+            teamsById = teamsByIdFromSnapshot(snapshot, season);
+            frozenAt = snapshot.takenAt;
+        } else {
+            const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, seasons: 1 }).lean();
+            teams.forEach(t => { teamsById[String(t.id)] = t; });
+        }
 
         // Inputs the projection needs: the season's regular schedule, the
         // league's resolved scoring config, and a preseason AP poll if ingested
@@ -60,9 +75,60 @@ router.get('/grades/:league/:season', async (req, res) => {
             ? apDoc.polls.find(p => p.poll === 'AP Top 25') : null;
 
         const managers = computeGrades(draft, usersById, teamsById, { games, config, apPoll });
-        res.json({ league, season, managers });
+        res.json({ league, season, managers, frozenAt });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// Freeze this league's draft grades: capture the team inputs as a MarketSnapshot
+// and pin it on the draft. Commissioner-gated — it changes a number the whole
+// league sees.
+//
+// body: { spWeek?: number, note?: string }
+//   spWeek reconstructs SP+ from each team's spHistory instead of copying the
+//   current live rating, which is the only way to get a truthful baseline once
+//   the season is under way. Week 1 is the preseason rating, so that is the
+//   default; pass null explicitly to freeze today's values instead.
+router.post('/grades/:league/:season/freeze', async (req, res) => {
+    const league = req.params.league;
+    const season = Number(req.params.season);
+    if (!canManageLeague(req, league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+    try {
+        const draft = await Draft.findOne({ league, season });
+        if (!draft) return res.status(404).json({ message: 'No draft for that league and season' });
+
+        const spWeek = Object.prototype.hasOwnProperty.call(req.body || {}, 'spWeek')
+            ? req.body.spWeek : 1;
+        const teams = await Team.find({ seasons: { $elemMatch: { season } } },
+            { id: 1, school: 1, alternateNames: 1, conference: 1, seasons: { $elemMatch: { season } } }).lean();
+        const rows = buildSnapshotTeams(teams, season, { spWeek });
+        if (!rows.length) {
+            return res.status(400).json({ message: `No ${season} team data to snapshot` });
+        }
+        // How much of the baseline actually came from the requested week, rather
+        // than falling back to the live rating because that team has no history.
+        const fromHistory = spWeek == null ? 0 : teams.filter(t => {
+            const ss = (t.seasons || [])[0] || {};
+            return (ss.spHistory || []).some(h => Number(h.week) === Number(spWeek));
+        }).length;
+
+        const snap = await MarketSnapshot.create({
+            season, reason: 'draft-baseline', spWeek: spWeek == null ? undefined : spWeek,
+            note: (req.body && req.body.note) || `Draft-grade baseline for ${league}`,
+            matchedCount: rows.length, teams: rows
+        });
+        draft.gradeSnapshot = snap._id;
+        draft.updatedAt = new Date();
+        await draft.save();
+
+        res.json({ league, season, snapshotId: String(snap._id), takenAt: snap.takenAt,
+                   spWeek: spWeek == null ? null : spWeek, teamCount: rows.length,
+                   spFromHistory: fromHistory });
+    } catch (err) {
+        res.status(400).json({ message: err.message });
     }
 });
 

@@ -182,6 +182,11 @@ function expectedCfpPoints(teamId, m, beta, q, rankings, cfg) {
 // opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin }] for
 //   Monte-Carlo. Carrying the game id matters because a team can play twice in
 //   one API week — callers keying these by team alone lose one of the two.
+// opts.maxMeanWinProb: optional ceiling on the MEAN win probability the SP+
+//   fallback games may be calibrated to. Off by default so a full-season
+//   preseason projection (draft grades) is unchanged; the standings projection
+//   passes it because a mid-season remaining-schedule target can exceed the
+//   games left to hold it. See modules/standings-projection.js.
 function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts = {}) {
     const teamId = team.id;
     const sp = spFor(team, season);
@@ -220,7 +225,13 @@ function projectTeamPoints(team, teamGames, poolCtx, rankings, cfg, season, opts
     // Calibrate only the fallback games: subtract CFBD-sourced expected wins
     // from the target so the sportsbook anchor covers only the SP+ portion.
     const cfbdExpWins = cfbdProbs.reduce((a, b) => a + b, 0);
-    const fbTarget = target == null ? null : Math.max(0.1, target - cfbdExpWins);
+    let fbTarget = target == null ? null : Math.max(0.1, target - cfbdExpWins);
+    // Without a ceiling, a target larger than the number of fallback games makes
+    // calibrateToExpectedWins clamp at the game count and hand back a certain win
+    // for every one of them.
+    if (fbTarget != null && opts.maxMeanWinProb != null) {
+        fbTarget = Math.min(fbTarget, withoutWP.length * opts.maxMeanWinProb);
+    }
     const { probs: fallbackProbs } = calibrateToExpectedWins(fallbackMargins, fbTarget);
 
     // Merge both sets back in original reg order.
