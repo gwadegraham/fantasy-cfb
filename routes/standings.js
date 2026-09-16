@@ -203,21 +203,68 @@ router.get('/projections/:league/:season', async (req, res) => {
         const league = req.params.league;
         const season = Number(req.params.season);
 
-        const users = await User.find(
-            { league, 'seasons.season': season },
-            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons: { $elemMatch: { season } } }
-        ).lean();
+        // Aggregate rather than $elemMatch, to reshape the roster on the server.
+        //
+        // seasons.teams stores the FULL team object per pick (that is how the
+        // draft persists them), so six managers came to 106KB — 90KB of it
+        // logos, venues, alt names and colours the projection never reads. It
+        // needs the team id; everything else it looks up in teamsById. On an M0
+        // tier, where latency tracks bytes, that one query cost 1.67 SECONDS for
+        // six documents. $elemMatch cannot slim a subdocument, only select it.
+        const users = await User.aggregate([
+            { $match: { league, 'seasons.season': season } },
+            { $project: {
+                firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
+                seasons: { $map: {
+                    input: { $filter: { input: { $ifNull: ['$seasons', []] }, as: 's',
+                                        cond: { $in: ['$$s.season', [season, String(season)]] } } },
+                    as: 's',
+                    in: {
+                        season: '$$s.season',
+                        franchiseName: '$$s.franchiseName',
+                        cumulativeScore: '$$s.cumulativeScore',
+                        // school is kept only for the teamsById miss path in
+                        // buildProjections, which falls back to this object.
+                        teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
+                                         in: { id: '$$t.id', school: '$$t.school' } } }
+                    }
+                } }
+            } }
+        ]);
         if (!users.length) return res.json({ league, season, managers: [] });
 
-        // Subfield projection rather than $elemMatch: seasonVal() in
+        // All four reads at once. Against an M0 tier these are seconds rather
+        // than milliseconds — latency tracks bytes — so awaiting them in a line
+        // paid for each in turn. `games` needs the rostered ids, which is why
+        // `users` is fetched first; now that it is 3KB instead of 106KB, that
+        // first hop costs ~100ms rather than 1.7s.
+        //
+        // Team subfield projection rather than $elemMatch: seasonVal() in
         // modules/draft-projection.js falls back to `season - 1` when the current
         // season has no value yet, so the prior season's elements have to survive
         // the projection. These are every seasons.* path that file reads.
-        const teams = await Team.find({}, {
-            id: 1, school: 1, alternateNames: 1, conference: 1,
-            'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
-            'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
-        }).lean();
+        // Scoped to rostered teams: the projection only ever walks a manager's own
+        // teams, so the rest of the slate was 300 documents read and thrown away.
+        const rosteredIds = [...new Set(users.flatMap(u =>
+            ((u.seasons || [])[0] || {}).teams ? u.seasons[0].teams.map(t => t.id) : []))]
+            .filter(id => id != null);
+
+        const [teams, cfgDoc, pollDoc, games] = await Promise.all([
+            Team.find({}, {
+                id: 1, school: 1, alternateNames: 1, conference: 1,
+                'seasons.season': 1, 'seasons.spRating': 1, 'seasons.expectedWins': 1,
+                'seasons.conference': 1, 'seasons.cfpMakeOdds': 1, 'seasons.cfpChampOdds': 1
+            }).lean(),
+            ScoringConfig.findOne({ league }).lean(),
+            Ranking.findOne({ season, seasonType: 'regular' }).sort({ week: -1 }).lean(),
+            rosteredIds.length ? Game.find(
+                { season, seasonType: 'regular',
+                  $or: [{ homeId: { $in: rosteredIds } }, { awayId: { $in: rosteredIds } }] },
+                { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
+                  completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+                  awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+                  pregameWinProb: 1 }).lean() : []
+        ]);
         const teamsById = {};
         teams.forEach(t => { teamsById[String(t.id)] = t; });
 
@@ -227,11 +274,7 @@ router.get('/projections/:league/:season', async (req, res) => {
         // probabilities on one page. Leaving it out is not a local error either:
         // the calibrator subtracts CFBD-sourced expected wins from the target
         // before scaling the rest, so an unfetched field moves games it isn't on.
-        const games = await Game.find({ season, seasonType: 'regular' },
-            { id: 1, season: 1, seasonType: 1, week: 1, neutralSite: 1, conferenceGame: 1, notes: 1,
-              completed: 1, homeId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
-              awayId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
-              pregameWinProb: 1 }).lean();
+        //
         const gamesByTeam = {};
         games.forEach(g => {
             const h = String(g.homeId), a = String(g.awayId);
@@ -239,9 +282,8 @@ router.get('/projections/:league/:season', async (req, res) => {
             if (teamsById[a]) (gamesByTeam[a] = gamesByTeam[a] || []).push(g);
         });
 
-        const cfgDoc = await ScoringConfig.findOne({ league }).lean();
         const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
-        const rankings = buildRankingProxy(season, teamsById, await projectionPoll(season));
+        const rankings = buildRankingProxy(season, teamsById, findPoll(pollDoc));
         const poolCtx = buildPoolContext(teamsById, season);
         const managers = buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx, season);
         // Forward-looking only: if the regular season has no games left (season
