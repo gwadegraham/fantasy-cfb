@@ -117,10 +117,6 @@ describe('GET /games/info (CFBD passthrough)', () => {
     });
 });
 
-// public/current-week.js is the app's single source for "what week is it". It
-// used to read the number off the FULL scoreboard payload — 4.3s against the M0
-// tier — for one integer. The betting page pays that BEFORE it can fetch
-// anything, because the week decides which games to ask for.
 // My Team calls this once per rostered team, from three places, so the set runs
 // 2-3 times a load. Unprojected it returned every field of every game —
 // including wpSnapshots (a row per live-poller tick) and livePlays (~50KB a game
@@ -214,31 +210,6 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
         expect(Object.keys(GAME_READ_FIELDS).sort()).toEqual(EXPECTED.slice().sort());
     });
 
-    // The union both browser consumers read: public/userHome.js (buildGameCard,
-    // batchTeamLogos, the 30s live patch) and public/standings.js
-    // (displaySchedule). A field dropped here goes silently undefined in the UI
-    // rather than throwing, so it is pinned explicitly.
-    it('still carries every field My Team and Standings read', async () => {
-        // Every asserted field is set here on purpose: Mongo omits fields a
-        // document doesn't have, so a fixture that leaves one unset would fail
-        // this for a reason that has nothing to do with the projection.
-        await Game.create(gameDoc({
-            id: 801, season: 2025, week: 1, seasonType: 'regular',
-            homeId: 1, awayId: 2, completed: true, notes: 'Week 1',
-            period: 2, clock: '07:15', possession: 'Oregon',
-            situation: '3rd & 7', outlet: 'ESPN'
-        }));
-        const res = await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
-        expect(res.status).toBe(200);
-        const g = res.body.find(x => x.id === 801);
-        expect(g).toBeDefined();
-        ['id', 'season', 'week', 'seasonType', 'startDate', 'completed',
-         'homeId', 'homeTeam', 'homePoints', 'awayId', 'awayTeam', 'awayPoints',
-         'notes', 'period', 'clock', 'possession', 'situation', 'outlet'].forEach(f => {
-            expect(g).toHaveProperty(f);
-        });
-    });
-
     it('still answers an empty array for a team with no game that week', async () => {
         const res = await request(app).get('/games/seasonType/regular/week/9/team/1?season=2025');
         expect(res.status).toBe(200);
@@ -246,6 +217,10 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
     });
 });
 
+// public/current-week.js is the app's single source for "what week is it". It
+// used to read the number off the FULL scoreboard payload — 4.3s against the M0
+// tier — for one integer. The betting page pays that BEFORE it can fetch
+// anything, because the week decides which games to ask for.
 describe('GET /games/current-week/:season', () => {
     test('answers the week without the rest of the scoreboard payload', async () => {
         await Game.create([
