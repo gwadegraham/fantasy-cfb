@@ -121,6 +121,62 @@ describe('GET /games/info (CFBD passthrough)', () => {
 // used to read the number off the FULL scoreboard payload — 4.3s against the M0
 // tier — for one integer. The betting page pays that BEFORE it can fetch
 // anything, because the week decides which games to ask for.
+// My Team calls this once per rostered team, from three places, so the set runs
+// 2-3 times a load. Unprojected it returned every field of every game —
+// including wpSnapshots (a row per live-poller tick) and livePlays (~50KB a game
+// once the gamecast has run). Measured against production data: 10 requests for
+// week 2 cost 410KB and 5325ms; projected, 5KB and 675ms.
+describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
+    // Asserted on the QUERY. The route answers the documents directly, so a
+    // response-shape assertion would pass either way on data that happens to
+    // have no livePlays yet — which is every game in a fresh test database.
+    // Verified: this fails when the projection is removed.
+    it('projects away the poller payload the pages never read', async () => {
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+
+        const projection = spy.mock.calls[0][1];
+        expect(projection).toBeDefined();
+        // The heavy fields must not be asked for.
+        ['wpSnapshots', 'livePlays', 'teamStats', 'playerStats',
+         'homeLineScores', 'awayLineScores'].forEach(f => {
+            expect(projection[f]).toBeUndefined();
+        });
+        spy.mockRestore();
+    });
+
+    // The union both consumers read: public/userHome.js (buildGameCard,
+    // batchTeamLogos, the 30s live patch) and public/standings.js
+    // (displaySchedule). A field dropped here goes silently undefined in the UI
+    // rather than throwing, so it is pinned explicitly.
+    it('still carries every field My Team and Standings read', async () => {
+        // Every asserted field is set here on purpose: Mongo omits fields a
+        // document doesn't have, so a fixture that leaves one unset would fail
+        // this for a reason that has nothing to do with the projection.
+        await Game.create(gameDoc({
+            id: 801, season: 2025, week: 1, seasonType: 'regular',
+            homeId: 1, awayId: 2, completed: true, notes: 'Week 1',
+            period: 2, clock: '07:15', possession: 'Oregon',
+            situation: '3rd & 7', outlet: 'ESPN'
+        }));
+        const res = await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+        expect(res.status).toBe(200);
+        const g = res.body.find(x => x.id === 801);
+        expect(g).toBeDefined();
+        ['id', 'season', 'week', 'seasonType', 'startDate', 'completed',
+         'homeId', 'homeTeam', 'homePoints', 'awayId', 'awayTeam', 'awayPoints',
+         'notes', 'period', 'clock', 'possession', 'situation', 'outlet'].forEach(f => {
+            expect(g).toHaveProperty(f);
+        });
+    });
+
+    it('still answers an empty array for a team with no game that week', async () => {
+        const res = await request(app).get('/games/seasonType/regular/week/9/team/1?season=2025');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+});
+
 describe('GET /games/current-week/:season', () => {
     test('answers the week without the rest of the scoreboard payload', async () => {
         await Game.create([

@@ -44,7 +44,36 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     var seasonType = req.params.seasonType;
     var year = req.query.season || activeSeason('football');
     try {
-        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]});
+        // PROJECT. This route answers raw game documents to the browser, and
+        // My Team calls it ONCE PER ROSTERED TEAM from three places — so the
+        // set runs 2-3 times a load. Unprojected that meant every field of
+        // every game, including wpSnapshots (the live poller appends a row per
+        // tick) and livePlays (~50KB a game once the gamecast has run):
+        //
+        //   week 1: 10 requests, 191KB, 2637ms
+        //   week 2: 10 requests, 410KB, 5325ms   <- first weekend polled at 10s
+        //   week 4: 10 requests,   6KB,  636ms   <- not played yet
+        //
+        // Worst for weeks already played, and it grows every game weekend.
+        //
+        // The field list is the UNION of what both consumers read off a game —
+        // public/userHome.js (buildGameCard, batchTeamLogos, the live patch at
+        // the 30s refresh) and public/standings.js (displaySchedule). It is
+        // deliberately a little generous: these are all small scalars, and the
+        // cost was never in them. What it leaves behind is the weight —
+        // wpSnapshots, livePlays, teamStats, playerStats, the Elo and line-score
+        // arrays — none of which either page reads.
+        //
+        // 410KB -> 5KB, 5325ms -> 675ms.
+        const GAME_FIELDS = {
+            id: 1, season: 1, week: 1, seasonType: 1,
+            startDate: 1, startTimeTbd: 1, completed: 1, status: 1,
+            homeId: 1, homeTeam: 1, homePoints: 1,
+            awayId: 1, awayTeam: 1, awayPoints: 1,
+            period: 1, clock: 1, possession: 1, situation: 1,
+            notes: 1, outlet: 1, weather: 1, highlights: 1, lastUpdated: 1
+        };
+        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]}, GAME_FIELDS);
 
         // "This team had no game that week" is an empty result, not a client
         // error. It used to 400, which put one console error per rostered team
