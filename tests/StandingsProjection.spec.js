@@ -149,3 +149,106 @@ describe('gamesPlayed', () => {
         expect(gamesPlayed(1, games)).toBe(1);
     });
 });
+
+// Captain and H2H are part of the score the scoring job writes, so a projection
+// of the FINAL score has to include them. Banked points already did; the forward
+// half did not, which understated every graham-league manager by 35-50 points.
+describe('engagement terms', () => {
+    const { expectedCaptainWeek, expectedCaptain, expectedH2H, applyEngagement } =
+        require('../modules/standings-projection');
+
+    const team = (teamId, games) => ({ teamId, games });
+    const g = (week, winProb, pointsIfWin) => ({ week, winProb, pointsIfWin });
+
+    describe('captain', () => {
+        it('doubles the team with the best EXPECTED week, not the luckiest', () => {
+            // B has the higher ceiling but A the higher expectation, and a
+            // manager has to choose before kickoff.
+            const week = [team(1, [g(3, 0.9, 10)]), team(2, [g(3, 0.1, 50)])];
+            expect(expectedCaptainWeek(week, 2)).toBeCloseTo(9, 6);   // 0.9 * 10
+        });
+
+        it('scales with the multiplier', () => {
+            const week = [team(1, [g(3, 0.5, 10)])];
+            expect(expectedCaptainWeek(week, 2)).toBeCloseTo(5, 6);
+            expect(expectedCaptainWeek(week, 3)).toBeCloseTo(10, 6);
+        });
+
+        it('pays nothing for a team that cannot score', () => {
+            expect(expectedCaptainWeek([team(1, [g(3, 0, 20)])], 2)).toBe(0);
+            expect(expectedCaptainWeek([], 2)).toBe(0);
+        });
+
+        it('adds a team up across a double-game week', () => {
+            const week = [team(1, [g(3, 0.5, 10), g(3, 0.5, 10)]), team(2, [g(3, 0.9, 8)])];
+            expect(expectedCaptainWeek(week, 2)).toBeCloseTo(10, 6);   // 5 + 5 beats 7.2
+        });
+
+        it('sums across every remaining week', () => {
+            const byWeek = { 3: [team(1, [g(3, 1, 4)])], 4: [team(1, [g(4, 1, 6)])] };
+            expect(expectedCaptain(byWeek, 2)).toBeCloseTo(10, 6);
+        });
+    });
+
+    describe('H2H', () => {
+        const mgr = (userId, byWeek) => ({ userId, byWeek, projectedFinal: 100, expCaptain: 0, expH2H: 0 });
+
+        it('is zero-sum: a week pays out one win bonus per pairing, however well everyone plays', () => {
+            const a = mgr('a', { 3: [team(1, [g(3, 1, 30)])] });   // certain to score 30
+            const b = mgr('b', { 3: [team(2, [g(3, 1, 30)])] });   // also certain to score 30
+            const out = expectedH2H([a, b], ['a', 'b'], [3], 3, 1);
+            expect(out.a + out.b).toBeCloseTo(3, 6);
+        });
+
+        it('splits the bonus when two managers are evenly matched', () => {
+            const a = mgr('a', { 3: [team(1, [g(3, 0.5, 10)])] });
+            const b = mgr('b', { 3: [team(2, [g(3, 0.5, 10)])] });
+            const out = expectedH2H([a, b], ['a', 'b'], [3], 3, 0);
+            expect(out.a).toBeCloseTo(1.5, 1);
+            expect(out.b).toBeCloseTo(1.5, 1);
+        });
+
+        it('favours the stronger manager without ever paying both in full', () => {
+            const a = mgr('a', { 3: [team(1, [g(3, 0.95, 20)])] });
+            const b = mgr('b', { 3: [team(2, [g(3, 0.05, 20)])] });
+            const out = expectedH2H([a, b], ['a', 'b'], [3], 3, 0);
+            expect(out.a).toBeGreaterThan(out.b);
+            expect(out.a + out.b).toBeCloseTo(3, 6);
+        });
+
+        it('pays nobody with fewer than two managers', () => {
+            const a = mgr('a', { 3: [team(1, [g(3, 1, 10)])] });
+            expect(expectedH2H([a], ['a'], [3], 3, 0)).toEqual({ a: 0 });
+        });
+    });
+
+    describe('applyEngagement', () => {
+        const mk = () => [
+            { userId: 'a', projectedFinal: 100, byWeek: { 3: [team(1, [g(3, 1, 10)])] }, expCaptain: 0, expH2H: 0 },
+            { userId: 'b', projectedFinal: 100, byWeek: { 3: [team(2, [g(3, 1, 4)])] }, expCaptain: 0, expH2H: 0 }
+        ];
+
+        it('leaves a classic league untouched', () => {
+            const m = mk();
+            applyEngagement(m, { captainEnabled: false, h2hEnabled: false });
+            expect(m.map(x => x.projectedFinal)).toEqual([100, 100]);
+            expect(m.map(x => x.expCaptain)).toEqual([0, 0]);
+        });
+
+        it('adds the captain term only when captain is on', () => {
+            const m = mk();
+            applyEngagement(m, { captainEnabled: true, captainMultiplier: 2, h2hEnabled: false });
+            expect(m[0].expCaptain).toBeCloseTo(10, 6);
+            expect(m[0].projectedFinal).toBe(110);
+            expect(m[0].expH2H).toBe(0);
+        });
+
+        it('adds the H2H term only when H2H is on, and a wins it here', () => {
+            const m = mk();
+            applyEngagement(m, { captainEnabled: false, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 });
+            expect(m[0].expCaptain).toBe(0);
+            expect(m[0].expH2H).toBeCloseTo(3, 6);   // a scores 10, b scores 4, certain
+            expect(m[1].expH2H).toBeCloseTo(0, 6);
+        });
+    });
+});
