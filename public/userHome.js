@@ -634,9 +634,9 @@ async function hydrateGames(user, activeYear) {
             let week = (window.localStorage.getItem('weekCode') || 'week-1').substring(5);
             let seasonType = 'regular';
             if (week === '17') { seasonType = 'postseason'; week = 1; }
-            const per = await Promise.all((season.teams || []).map(t =>
-                getGame(seasonType, week, t).then(gs => ({ t, plays: !!(gs && gs.length) })).catch(() => ({ t, plays: false }))));
-            const playing = per.filter(x => x.plays).map(x => x.t);
+            const roster = season.teams || [];
+            const byTeam = await getGamesByTeam(seasonType, week, roster.map(t => t.id));
+            const playing = roster.filter(t => (byTeam.get(String(t.id)) || []).length);
             if (playing.length) {
                 const logos = playing.map(t => `<a href="/team?team=${t.id}" style="color:inherit;text-decoration:none"><img src="${ccLogo(t.logos)}" alt=""></a>`).join('');
                 g.innerHTML = `<span class="uh-games-logos">${logos}</span><span class="uh-glance-sub uh-games-wk">${playing.length} of ${uhPoss(uhOwns(user))} teams · ${escapeHtml(label)}</span>`;
@@ -1712,27 +1712,39 @@ function renderProfileChart(data) {
     });
 }
 
-async function getGame(season, week, team) {
+// Every rostered team's games for one week in ONE request, grouped per team id.
+// See the twin in public/standings.js — asking per team is an N+1, and the
+// requests do not parallelise away because they queue behind the M0 tier's
+// ceiling. A game is mapped to BOTH its rostered sides, matching what the
+// per-team route returned.
+async function getGamesByTeam(season, week, teamIds) {
+    const ids = [...new Set((teamIds || []).filter(id => id != null))];
+    if (!ids.length) return new Map();
 
-    var seasonQ = uhActiveYear ? '?season=' + encodeURIComponent(uhActiveYear) : '';
-    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}${seasonQ}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json'
+    const seasonQ = uhActiveYear ? '&season=' + encodeURIComponent(uhActiveYear) : '';
+    let games = [];
+    try {
+        const res = await fetch(`/games/seasonType/${season}/week/${week}/teams?ids=${encodeURIComponent(ids.join(','))}${seasonQ}`,
+            { headers: { 'Accept': 'application/json' } });
+        if (res.status !== 200) {
+            const body = await res.json().catch(() => ({}));
+            console.error(`Could not load games for week ${week}: ${body.message || res.status}`);
+            return new Map();
         }
-    });
-
-    var game = await gamePromise;
-    var response = await game.json();
-
-    // The route answers "no game this week" with 200 + [], so a non-200 here is
-    // a real failure (500 / network) rather than an empty slate — log it as one.
-    if (game.status == 200) {
-        return response;
+        games = await res.json();
+    } catch (e) {
+        console.error(`Could not load games for week ${week}: ${e.message}`);
+        return new Map();
     }
 
-    console.error(`Could not load games for ${team.school}: ${response.message}`);
-    return [];
+    const byTeam = new Map(ids.map(id => [String(id), []]));
+    games.forEach(g => {
+        [g.homeId, g.awayId].forEach(side => {
+            const k = String(side);
+            if (byTeam.has(k)) byTeam.get(k).push(g);
+        });
+    });
+    return byTeam;
 }
 
 async function getRankings (week, seasonType, seasonYear) {
@@ -2081,11 +2093,11 @@ async function displaySchedule(data) {
     // Fetch each roster team's games in parallel, then all logos in one request.
     const teamsList = uhSeasonFor(data, uhActiveYear).teams || [];
     const rosteredIds = new Set(teamsList.map(t => t.id));
-    const gamesPerTeam = await Promise.all(teamsList.map(t => getGame(seasonType, week, t)));
+    const gamesByTeamId = await getGamesByTeam(seasonType, week, teamsList.map(t => t.id));
 
-    // Dedup by game id (a game between two rostered teams comes back twice).
+    // Dedup by game id (a game between two rostered teams is mapped to both).
     const gamesById = new Map();
-    gamesPerTeam.flat().forEach(g => { if (!gamesById.has(g.id)) gamesById.set(g.id, g); });
+    [...gamesByTeamId.values()].flat().forEach(g => { if (!gamesById.has(g.id)) gamesById.set(g.id, g); });
     const games = [...gamesById.values()];
 
     const logoMap = await batchTeamLogos(games);
@@ -2156,7 +2168,8 @@ async function uhRefreshLive() {
         const teams = c.teamsList.filter(t => wanted.has(t.id));
 
         try {
-            const fresh = (await Promise.all(teams.map(t => getGame(c.seasonType, c.week, t)))).flat();
+            const freshByTeam = await getGamesByTeam(c.seasonType, c.week, teams.map(t => t.id));
+            const fresh = [...freshByTeam.values()].flat();
             fresh.forEach(g => {
                 const i = c.games.findIndex(x => x.id === g.id);
                 if (i > -1) c.games[i] = g;

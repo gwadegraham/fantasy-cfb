@@ -221,6 +221,85 @@ describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
 // used to read the number off the FULL scoreboard payload — 4.3s against the M0
 // tier — for one integer. The betting page pays that BEFORE it can fetch
 // anything, because the week decides which games to ask for.
+// The batched sibling of the per-team route. Standings for a classic league
+// loops EVERY manager's roster — 60 requests, 8918ms in the browser — and the
+// requests do not parallelise away, because they queue behind the M0 tier's
+// ceiling. One query over the same 60 ids is 669ms.
+describe('GET /games/seasonType/:type/week/:week/teams', () => {
+    beforeEach(async () => {
+        await Game.create([
+            gameDoc({ id: 901, week: 1, homeId: 1, awayId: 2, homeTeam: 'Oregon', awayTeam: 'Duke' }),
+            gameDoc({ id: 902, week: 1, homeId: 3, awayId: 9, homeTeam: 'Iowa', awayTeam: 'Rutgers' }),
+            gameDoc({ id: 903, week: 2, homeId: 1, awayId: 4, homeTeam: 'Oregon', awayTeam: 'UCLA' })
+        ]);
+    });
+
+    it('answers every listed team\'s games for that week in one response', async () => {
+        const res = await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,3&season=2025');
+        expect(res.status).toBe(200);
+        expect(res.body.map(g => g.id).sort()).toEqual([901, 902]);
+        // ...and nothing from another week.
+        expect(res.body.some(g => g.id === 903)).toBe(false);
+    });
+
+    // A game between two rostered teams must come back ONCE. The per-team route
+    // returned it separately to each side; the clients regroup it to both, so
+    // the response itself must not duplicate it.
+    it('returns a game between two listed teams only once', async () => {
+        const res = await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,2&season=2025');
+        expect(res.body.filter(g => g.id === 901)).toHaveLength(1);
+    });
+
+    it('answers an empty array when no listed team played that week', async () => {
+        const res = await request(app).get('/games/seasonType/regular/week/9/teams?ids=1,2&season=2025');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+
+    // The guard this route shipped with was broken and failed QUIETLY:
+    // Number('') is 0 and finite, so a missing or blank list produced [0]
+    // rather than [], the 400 was unreachable, and `ids=1,2,` queried for a
+    // team id of 0. Each of these cases would have passed the old filter.
+    describe('id parsing', () => {
+        const bad = [
+            ['missing', ''],
+            ['blank', '?ids='],
+            ['whitespace', '?ids=%20%20'],
+            ['non-numeric', '?ids=abc'],
+            ['negative', '?ids=-3'],
+            ['fractional', '?ids=1.5']
+        ];
+        bad.forEach(([label, qs]) => {
+            it(`rejects ${label} rather than querying for team 0`, async () => {
+                const res = await request(app).get(`/games/seasonType/regular/week/1/teams${qs}`);
+                expect(res.status).toBe(400);
+                expect(res.body.message).toMatch(/ids is required/);
+            });
+        });
+
+        it('ignores a trailing comma instead of injecting team 0', async () => {
+            const res = await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,2,&season=2025');
+            expect(res.status).toBe(200);
+            expect(res.body.map(g => g.id)).toEqual([901]);
+        });
+
+        it('caps the list rather than accepting an unbounded $in', async () => {
+            const many = Array.from({ length: 201 }, (_, i) => i + 1).join(',');
+            const res = await request(app).get(`/games/seasonType/regular/week/1/teams?ids=${many}`);
+            expect(res.status).toBe(400);
+            expect(res.body.message).toMatch(/too many ids/);
+        });
+    });
+
+    it('projects the same fields as the per-team route', async () => {
+        const { GAME_READ_FIELDS } = require('../routes/games');
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/games/seasonType/regular/week/1/teams?ids=1&season=2025');
+        expect(spy.mock.calls[0][1]).toBe(GAME_READ_FIELDS);
+        spy.mockRestore();
+    });
+});
+
 describe('GET /games/current-week/:season', () => {
     test('answers the week without the rest of the scoreboard payload', async () => {
         await Game.create([
