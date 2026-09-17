@@ -196,6 +196,18 @@ router.get('/highlights/:league/:season', async (req, res) => {
 });
 
 // Forward-looking analytics: projected final points + Monte-Carlo title odds
+// Round a title probability to a precision the simulation can actually stand
+// behind. At N=20000 the standard error near the middle of the range is about
+// 0.3 points, so a tenth of a percent there is noise being printed as fact —
+// whole numbers it is. Below 1% the error is far smaller (0.07 points at 0.9%),
+// and that is the range where a tenth is the whole message: a manager who is at
+// 0.9% should not be told they are at 1%, and certainly not rounded back to the
+// flat 0% this change exists to get rid of.
+function displayOdds(p) {
+    const pct = p * 100;
+    return pct >= 1 ? Math.round(pct) : Math.round(pct * 10) / 10;
+}
+
 // per manager for a league + season. Reuses the draft-grade projection engine
 // on each rostered team's REMAINING schedule. Read-only.
 router.get('/projections/:league/:season', async (req, res) => {
@@ -305,13 +317,21 @@ router.get('/projections/:league/:season', async (req, res) => {
         const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: H2H_MAX_WEEK };
         applyEngagement(managers, engagement, engOpts);
 
-        const odds = simulateTitleOdds(managers, 5000, Object.assign({ engagement }, engOpts));
+        // 20000, not 5000. The odds used to cluster at 0 and 90-100, where a
+        // Monte-Carlo estimate is naturally steady; putting real uncertainty on
+        // the postseason moved everyone into the middle, which is exactly where
+        // the sampling error is worst. At p=0.65 and N=5000 the same unchanged
+        // board came back 76.7% one request and 79.0% the next — a visible
+        // flicker on refresh, and enough to swap two adjacent managers. 20000
+        // quarters the variance for ~170ms, against a route that already spends
+        // seconds in Mongo.
+        const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
         const ranked = managers.slice().sort((a, b) => b.projectedFinal - a.projectedFinal);
         const payload = ranked.map((m, i) => ({
             userId: m.userId, name: m.name, franchise: m.franchise,
             avatarUrl: m.avatarUrl, initials: m.initials, color: m.color,
             banked: m.banked, projectedFinal: m.projectedFinal,
-            titleOdds: Math.round(odds[m.userId] * 1000) / 10,   // percent, 0.1 precision
+            titleOdds: displayOdds(odds[m.userId]),
             projectedRank: i + 1,
             // Surfaced so the tile can explain where a projection comes from —
             // and so a league without these modes on reads a plain 0.

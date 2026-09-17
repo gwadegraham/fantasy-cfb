@@ -43,6 +43,61 @@ const { scheduleForWeeks, matchupWinProb, H2H_MAX_WEEK } = require('./h2h');
 // they finished.
 const BLEND_GAMES = 10;
 
+// Standard deviation, in points, of the part of a manager's POSTSEASON haul the
+// projection cannot see coming.
+//
+// simulateTitleOdds carries postseason as a single expected value — one number
+// per manager, identical in all N sims. That is a claim that a ~70-point chunk
+// of the season, a third of the final score, is already settled in September,
+// and it is the reason a 16-point projected gap in week 3 came out as 93% title
+// odds: the only thing left to vary was the regular season, whose 99 remaining
+// games average out to a standard deviation of about 8.
+//
+// Measured against the 30 completed manager-seasons on file (2023-2025, both
+// leagues): postseason points have a pooled WITHIN-league-season standard
+// deviation of 16.4. Of that, the projection already anticipates 6.2 (the spread
+// of its own per-manager postseason forecasts), leaving
+// sqrt(16.4^2 - 6.2^2) = 15.2 that it does not. Rounded to 15.
+//
+// Additive rather than proportional because that is how it was measured — the
+// spread did not track roster strength in a sample this size. It is applied to
+// the FORECAST portion only (postRemaining), never to banked points, which are
+// known; and the forecast is floored at zero, since a postseason cannot pay out
+// negative points.
+//
+// Three caveats for whoever revisits this.
+//
+// 1. 30 manager-seasons is 24 degrees of freedom, and 2024 Claunts is inflated
+//    by a single 117-point postseason. The direction is solid, the magnitude is
+//    worth +/- a few points.
+// 2. The draw is independent of the simulated regular season, but the two are
+//    not: the same teams winning out is what puts a roster in the playoff and
+//    wins it bowls. A title race between two managers therefore still misses
+//    2*[Cov(reg,post)] of spread, which is positive — so these odds remain
+//    somewhat too confident, in the same direction as the bug this fixes. It is
+//    also worth noting that 15.2 was measured against REALISED postseason
+//    points, so it already contains whatever the regular season explains;
+//    injecting all of it independently is a defensible approximation, not the
+//    estimator that was measured.
+// 3. It does not shrink as the postseason actually resolves — every sim treats
+//    the bowls as equally unknown in December as in September.
+//
+// The zero floor also means the draw is not strictly mean-zero: truncation
+// lifts the drawn mean above the forecast. At the ~70-point forecasts this
+// league produces that shift is about 1e-5 points, i.e. nothing, but it grows
+// once a forecast drops under ~25 (+0.3) and would matter for a roster shut out
+// of the postseason entirely.
+const POSTSEASON_SD = 15;
+
+// Box-Muller standard normal. Kept local: the only randomness this module needs
+// beyond Math.random() is this one draw per manager per sim.
+function gaussian() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
 const nameOf = (u) => `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim();
 const initialsOf = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
 
@@ -132,7 +187,10 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
             avatarUrl: u.avatarUrl || null, initials: initialsOf(u), color: u.color || null,
             banked: Math.round(banked),
             projectedFinal: Math.round(banked + expReg + expPost),
-            postExpected: banked + expPost,   // deterministic part carried into each sim
+            postExpected: banked + expPost,   // banked + the postseason forecast
+            // The forecast half of postExpected, split out so the sim can put
+            // POSTSEASON_SD of uncertainty on it without disturbing banked points.
+            postRemaining: expPost,
             perGame, byWeek, remainingCount,
             expCaptain: 0, expH2H: 0
         });
@@ -240,9 +298,15 @@ function applyEngagement(managers, engagement, opts = {}) {
     return managers;
 }
 
-// Light Monte-Carlo: sim the remaining regular games N times (postseason carried
-// as its expected value), count how often each manager finishes 1st. Ties split
-// the championship credit. Returns titleOdds (0..1) keyed by userId.
+// Light Monte-Carlo: sim the remaining regular games N times, draw each
+// manager's postseason haul around its forecast (see POSTSEASON_SD), and count
+// how often each finishes 1st. Ties split the championship credit. Returns
+// titleOdds (0..1) keyed by userId.
+//
+// The postseason draw is what keeps the odds honest early in the year. Without
+// it the only thing that varied was ~99 regular-season games, which average out
+// to a standard deviation of about 8 points, so any projected gap wider than
+// ~15 read as a near-certainty in week 3.
 //
 // Two paths. Without engagement the games are independent draws and order does
 // not matter, so the flat perGame list is simulated directly. With Captain or
@@ -287,9 +351,20 @@ function simulateTitleOdds(managers, N, opts = {}) {
         });
     }
 
+    // Managers built by anything other than buildProjections (unit tests, and any
+    // future caller) carry no postRemaining, so they get no postseason draw and
+    // behave exactly as before.
+    const postSd = opts.postseasonSd == null ? POSTSEASON_SD : opts.postseasonSd;
+
     for (let s = 0; s < N; s++) {
         const total = {};
-        managers.forEach(m => { total[m.userId] = m.postExpected; });
+        managers.forEach(m => {
+            const forecast = m.postRemaining || 0;
+            const drawn = (postSd && forecast)
+                ? Math.max(0, forecast + postSd * gaussian())
+                : forecast;
+            total[m.userId] = m.postExpected - forecast + drawn;
+        });
 
         if (!weekly) {
             managers.forEach(m => {
@@ -336,4 +411,5 @@ function simulateTitleOdds(managers, N, opts = {}) {
 }
 
 module.exports = { buildProjections, simulateTitleOdds, winsSoFar, gamesPlayed, remainingWinsTarget,
-                   expectedCaptainWeek, expectedCaptain, expectedH2H, applyEngagement, BLEND_GAMES };
+                   expectedCaptainWeek, expectedCaptain, expectedH2H, applyEngagement, BLEND_GAMES,
+                   POSTSEASON_SD };
