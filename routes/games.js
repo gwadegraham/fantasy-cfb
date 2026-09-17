@@ -138,12 +138,19 @@ router.get('/seasonType/:seasonType/week/:weekNum/teams', async (req, res) => {
     const seasonType = req.params.seasonType;
     const year = req.query.season || activeSeason('football');
 
-    // Ids arrive as a comma list. Parsed to Numbers and filtered, so a crafted
-    // value cannot reach the $in — the same guard mass-create needed.
+    // Ids arrive as a comma list. Only digit strings are accepted — team ids are
+    // positive integers — and everything else is dropped before it can reach the
+    // $in.
+    //
+    // Number()+Number.isFinite was not enough, and failed quietly: Number('') is
+    // 0 and finite, so a missing or blank `ids` produced [0] rather than [], the
+    // 400 below was unreachable, and `ids=1,2,` silently queried for team 0.
+    // Number.isFinite also admits 1.5, -3, 0x10 and 1e3.
     const ids = String(req.query.ids || '')
         .split(',')
-        .map(v => Number(v.trim()))
-        .filter(Number.isFinite);
+        .map(v => v.trim())
+        .filter(v => /^\d+$/.test(v))
+        .map(Number);
 
     if (!ids.length) {
         return res.status(400).json({ message: 'ids is required — a comma-separated list of team ids' });
