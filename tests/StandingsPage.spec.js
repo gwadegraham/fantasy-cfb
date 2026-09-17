@@ -1487,8 +1487,31 @@ describe('degrading when upstream calls fail', () => {
         expect(page.q('.football-loader').style.display).toBe('none');
         expect(page.q('#no-games-container').innerHTML).toContain('no-matchups-message');
         // A genuine failure still has to be loud — that's the whole point of not
-        // spending the console on empty weeks.
-        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Could not load games for Indiana'));
+        // spending the console on empty weeks. It names the WEEK rather than a
+        // team now: one request covers every rostered team, so there is no
+        // single team to blame.
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Could not load games for week'));
+    });
+
+    // A failing response whose body is not JSON — which is what Heroku answers
+    // for an H12 timeout or a 503: an HTML error page. Parsing it throws, and
+    // the helper must still log and degrade rather than take the page down.
+    it('degrades when the error response body is not JSON', async () => {
+        const page = await loadStandingsPage({
+            users: league(),
+            routes: [[/^\/games\/seasonType\//, respond(503)]]   // no body -> .json() rejects
+        });
+        expect(page.q('.football-loader').style.display).toBe('none');
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Could not load games for week'));
+    });
+
+    it('degrades when the games request rejects outright', async () => {
+        const page = await loadStandingsPage({
+            users: league(),
+            routes: [[/^\/games\/seasonType\//, () => { throw new Error('offline'); }]]
+        });
+        expect(page.q('.football-loader').style.display).toBe('none');
+        expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Could not load games for week'));
     });
 
     it('survives the team-logo endpoint erroring', async () => {

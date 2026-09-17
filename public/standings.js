@@ -875,26 +875,44 @@ function setupTiePopovers() {
 }
 setupTiePopovers();
 
-async function getGame(season, week, team) {
+// Every rostered team's games for one week, in ONE request, grouped back per
+// team id.
+//
+// This page loops EVERY manager's roster — 6 managers x 10 teams for the classic
+// league — and asking per team was 60 requests taking 8918ms in the browser. One
+// query over the same 60 ids is 568ms. Parallelism does not rescue the old shape:
+// the requests queue behind the M0 tier's ceiling, so 10 concurrent measured
+// 863ms against 1026ms sequential.
+//
+// A game is mapped to BOTH its rostered sides, which is what the per-team route
+// returned — two managers who drew opposite sides of the same game each saw it.
+async function getGamesByTeam(season, week, teamIds) {
+    const ids = [...new Set((teamIds || []).filter(id => id != null))];
+    if (!ids.length) return new Map();
 
-    var gamePromise = await fetch(`/games/seasonType/${season}/week/${week}/team/${team.id}`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json'
+    let games = [];
+    try {
+        const res = await fetch(`/games/seasonType/${season}/week/${week}/teams?ids=${encodeURIComponent(ids.join(','))}`,
+            { headers: { 'Accept': 'application/json' } });
+        if (res.status !== 200) {
+            const body = await res.json().catch(() => ({}));
+            console.error(`Could not load games for week ${week}: ${body.message || res.status}`);
+            return new Map();
         }
-    });
-
-    var game = await gamePromise;
-    var response = await game.json();
-
-    // The route answers "no game this week" with 200 + [], so a non-200 here is
-    // a real failure (500 / network) rather than an empty slate — log it as one.
-    if (game.status == 200) {
-        return response;
+        games = await res.json();
+    } catch (e) {
+        console.error(`Could not load games for week ${week}: ${e.message}`);
+        return new Map();
     }
 
-    console.error(`Could not load games for ${team.school}: ${response.message}`);
-    return [];
+    const byTeam = new Map(ids.map(id => [String(id), []]));
+    games.forEach(g => {
+        [g.homeId, g.awayId].forEach(side => {
+            const k = String(side);
+            if (byTeam.has(k)) byTeam.get(k).push(g);
+        });
+    });
+    return byTeam;
 }
 
 async function getRankings (week, seasonType, seasonYear) {
@@ -1120,6 +1138,11 @@ async function displaySchedule(data) {
     var allTeamLogos = await getAllTeamLogos();
     var allBettingLines = await getAllBettingLines(seasonYear) || [];
 
+    // One request for the whole league's rosters, before the loops. Each team's
+    // games are then a map lookup rather than a round trip — see getGamesByTeam.
+    var allRosteredIds = data.flatMap(u => (ccSeasonOf.payloadSeasonEntry(u).teams || []).map(t => t.id));
+    var gamesByTeam = await getGamesByTeam(seasonType, week, allRosteredIds);
+
     for (var iterUsers = 0; iterUsers < data.length; iterUsers++) {
 
         var userData = data[iterUsers];
@@ -1130,7 +1153,7 @@ async function displaySchedule(data) {
 
             var otherUsers = usersAndTeams.toSpliced(iterUsers, 1);
 
-            var gamesInfo = await getGame(seasonType, week, userTeamsForWeek[iterNum]);
+            var gamesInfo = gamesByTeam.get(String(userTeamsForWeek[iterNum].id)) || [];
 
             for (const [i, game] of gamesInfo.entries()) {
 

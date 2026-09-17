@@ -115,6 +115,59 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     }
 });
 
+// The same week's games for MANY teams, in one request.
+//
+// The single-team route above is an N+1 by construction: every caller loops a
+// roster and asks per team. Standings for a classic league loops EVERY
+// manager's roster — 6 managers x 10 teams — and made 60 requests taking 8918ms
+// measured in the browser. One query over the same 60 ids takes 568ms.
+//
+// Firing them in parallel does not rescue it: they queue behind the M0 tier's
+// throughput and op-rate ceiling, so 10 concurrent requests measured 863ms
+// against 1026ms for the same 10 run one at a time.
+//
+// Answers the union, deduplicated by Mongo — a game between two rostered teams
+// appears once. Callers that need it per team group it themselves; see
+// gamesByTeam in public/standings.js and public/userHome.js, which map a game to
+// BOTH its rostered sides, matching what the per-team route returned.
+//
+// The per-team route stays: modules/retrieve-games.js still exports a caller for
+// it, and nothing is served by breaking it.
+router.get('/seasonType/:seasonType/week/:weekNum/teams', async (req, res) => {
+    const week = req.params.weekNum;
+    const seasonType = req.params.seasonType;
+    const year = req.query.season || activeSeason('football');
+
+    // Ids arrive as a comma list. Parsed to Numbers and filtered, so a crafted
+    // value cannot reach the $in — the same guard mass-create needed.
+    const ids = String(req.query.ids || '')
+        .split(',')
+        .map(v => Number(v.trim()))
+        .filter(Number.isFinite);
+
+    if (!ids.length) {
+        return res.status(400).json({ message: 'ids is required — a comma-separated list of team ids' });
+    }
+    // A roster is 10 and a league is 60; this is a sanity bound, not a limit
+    // anyone should reach.
+    if (ids.length > 200) {
+        return res.status(400).json({ message: 'too many ids (max 200)' });
+    }
+
+    try {
+        const games = await Game.find({
+            season: year, seasonType, week,
+            $or: [{ homeId: { $in: ids } }, { awayId: { $in: ids } }]
+        }, GAME_READ_FIELDS);
+
+        // Same contract as the per-team route: no games is an empty array, not
+        // a client error. Most drafted teams play no bowl game.
+        res.status(200).json(games);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 //Getting All By Team
 router.get('/season/:season/team/:team', async (req, res) => {
     var team = req.params.team;
