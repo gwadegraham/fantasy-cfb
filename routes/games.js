@@ -27,6 +27,46 @@ var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
 
+// The field set GET /games/seasonType/:type/week/:week/team/:team answers with.
+//
+// Exported so a test can check it — though note the response test keeps its own
+// explicit list, because driving the assertion off this object would delete the
+// assertion along with the field.
+//
+// FOUR callers read these documents. A field dropped here goes silently
+// undefined in all of them:
+//   public/userHome.js         buildGameCard, batchTeamLogos, the 30s live patch
+//   public/standings.js        displaySchedule
+//   modules/scoring.js         updateScores — no UI. It fetches this route over
+//                              HTTP, once per rostered team per week, and hands
+//                              the raw document to calculateScoreV1/V2, which
+//                              feeds evaluate() -> buildContext() in
+//                              modules/scoring-detectors.js. That reads
+//                              conferenceGame / homeConference / awayConference.
+//                              Drop them and nothing throws: isConference()
+//                              answers undefined, so a conference win banks the
+//                              NON-conference rule in the claunts model and
+//                              silently loses confBonus in the graham model, and
+//                              isPowerFiveUpset(undefined, undefined) is false —
+//                              re-opening the non-P5 upset loophole. Wrong weekly
+//                              totals, clean job logs.
+//   modules/retrieve-games.js  retrieveGameBySeasonWeekTeam — no callers today,
+//                              but exported, and it returns the array verbatim
+//
+// conferenceGame / homeConference / awayConference exist solely for that third
+// consumer: modules/scoring-detectors.js reads them to decide conference wins
+// and non-P5 upsets. They have no UI.
+const GAME_READ_FIELDS = {
+    id: 1, season: 1, week: 1, seasonType: 1,
+    startDate: 1, startTimeTbd: 1, completed: 1, status: 1,
+    homeId: 1, homeTeam: 1, homePoints: 1,
+    awayId: 1, awayTeam: 1, awayPoints: 1,
+    period: 1, clock: 1, possession: 1, situation: 1,
+    notes: 1, outlet: 1, weather: 1, highlights: 1, lastUpdated: 1,
+    // scoring only — no UI reads these; see the note above
+    conferenceGame: 1, homeConference: 1, awayConference: 1
+};
+
 //Getting All
 router.get('/', async (req, res) => {
     try {
@@ -44,7 +84,25 @@ router.get('/seasonType/:seasonType/week/:weekNum/team/:team', async (req, res) 
     var seasonType = req.params.seasonType;
     var year = req.query.season || activeSeason('football');
     try {
-        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]});
+        // PROJECT. This route answers raw game documents to the browser, and
+        // My Team calls it ONCE PER ROSTERED TEAM from three places — so the
+        // set runs 2-3 times a load. Unprojected that meant every field of
+        // every game, including wpSnapshots (the live poller appends a row per
+        // tick) and livePlays (~50KB a game once the gamecast has run):
+        //
+        //   week 1: 10 requests, 191KB, 2637ms
+        //   week 2: 10 requests, 410KB, 5325ms   <- first weekend polled at 10s
+        //   week 4: 10 requests,   6KB,  636ms   <- not played yet
+        //
+        // Worst for weeks already played, and it grows every game weekend.
+        //
+        // Which fields, and why each one is there, lives with the constant —
+        // see GAME_READ_FIELDS at the top of this file. It is stated once on
+        // purpose: this block and that one drifted apart the first time they
+        // both described the callers, and the one here was the stale copy.
+        //
+        // 410KB -> 5KB, 5325ms -> 675ms.
+        const game = await Game.find({$and: [ { $or: [{"homeId":teamId}, {"awayId":teamId}]}, {"season":year}, {seasonType: seasonType}, {week: week}]}, GAME_READ_FIELDS);
 
         // "This team had no game that week" is an empty result, not a client
         // error. It used to 400, which put one console error per rostered team
@@ -945,3 +1003,4 @@ router.get('/plays/:gameId', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.GAME_READ_FIELDS = GAME_READ_FIELDS;

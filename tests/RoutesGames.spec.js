@@ -117,6 +117,106 @@ describe('GET /games/info (CFBD passthrough)', () => {
     });
 });
 
+// My Team calls this once per rostered team, from three places, so the set runs
+// 2-3 times a load. Unprojected it returned every field of every game —
+// including wpSnapshots (a row per live-poller tick) and livePlays (~50KB a game
+// once the gamecast has run). Measured against production data: 10 requests for
+// week 2 cost 410KB and 5325ms; projected, 5KB and 675ms.
+describe('GET /games/seasonType/:type/week/:week/team/:team', () => {
+    // Asserted on the QUERY. The route answers the documents directly, so a
+    // response-shape assertion would pass either way on data that happens to
+    // have no livePlays yet — which is every game in a fresh test database.
+    // Verified: this fails when the projection is removed.
+    it('projects away the poller payload the pages never read', async () => {
+        const spy = jest.spyOn(Game, 'find');
+        await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+
+        const projection = spy.mock.calls[0][1];
+        expect(projection).toBeDefined();
+        // The heavy fields must not be asked for.
+        ['wpSnapshots', 'livePlays', 'teamStats', 'playerStats',
+         'homeLineScores', 'awayLineScores'].forEach(f => {
+            expect(projection[f]).toBeUndefined();
+        });
+        spy.mockRestore();
+    });
+
+    // THREE consumers read these documents, and the third has no UI:
+    // modules/scoring.js fetches this route over HTTP, once per rostered team
+    // per week, and hands the raw game to calculateScoreV1/V2 ->
+    // buildContext(), which reads conferenceGame / homeConference /
+    // awayConference. Dropping those does not throw — it silently banks the
+    // wrong rule (a conference win scores as non-conference) and makes
+    // isPowerFiveUpset(undefined, undefined) false, re-opening the non-P5 upset
+    // loophole. A QA pass caught exactly that before this shipped.
+    it('carries the conference fields the scoring engine reads, which have no UI', async () => {
+        const { GAME_READ_FIELDS } = require('../routes/games');
+        ['conferenceGame', 'homeConference', 'awayConference'].forEach(f => {
+            expect(GAME_READ_FIELDS[f]).toBe(1);
+        });
+    });
+
+    // Asserts the RESPONSE carries every key of the projection, against a
+    // fixture that sets them all.
+    //
+    // Two weaker versions of this test came before it, and both were green
+    // against a deliberately broken projection. The first listed 18 fields by
+    // hand and silently omitted five that were in the constant. The second
+    // compared the query's second argument to the exported constant — a
+    // tautology: it only proves the route passes its own object, never what is
+    // in it. Deleting `weather: 1` left all 35 tests passing while killing the
+    // weather emoji on both My Team and Standings.
+    //
+    // Driving it off Object.keys means a field added to the projection is
+    // automatically asserted, and a field deleted from it fails here.
+    it('answers every field the projection claims to carry', async () => {
+        const { GAME_READ_FIELDS } = require('../routes/games');
+        // One value per projected field, so a missing key means the PROJECTION
+        // dropped it rather than the fixture never having set it.
+        await Game.create(gameDoc({
+            id: 802, season: 2025, week: 1, seasonType: 'regular',
+            homeId: 1, awayId: 2, completed: true, status: 'completed',
+            startTimeTbd: false, period: 4, clock: '00:00',
+            possession: 'Oregon', situation: '1st & 10',
+            notes: 'Week 1', outlet: 'ESPN', highlights: 'http://x/clip',
+            lastUpdated: '9/19/2025, 11:00:00 PM',
+            conferenceGame: true, homeConference: 'Big Ten', awayConference: 'ACC',
+            weather: { temp: 68, wind: 5, condition: 'Clear', emoji: '☀️' }
+        }));
+
+        const res = await request(app).get('/games/seasonType/regular/week/1/team/1?season=2025');
+        const g = res.body.find(x => x.id === 802);
+        expect(g).toBeDefined();
+
+        // This list is INDEPENDENT of GAME_READ_FIELDS on purpose, and that is
+        // the whole point. A third version of this test drove the assertion off
+        // Object.keys(GAME_READ_FIELDS) — which deletes the assertion along with
+        // the field, so removing `weather: 1` still passed. The contract lives
+        // here, spelled out, and changing the projection means changing this too.
+        const EXPECTED = [
+            'id', 'season', 'week', 'seasonType',
+            'startDate', 'startTimeTbd', 'completed', 'status',
+            'homeId', 'homeTeam', 'homePoints',
+            'awayId', 'awayTeam', 'awayPoints',
+            'period', 'clock', 'possession', 'situation',
+            'notes', 'outlet', 'weather', 'highlights', 'lastUpdated',
+            // no UI — modules/scoring.js reads these off the raw game
+            'conferenceGame', 'homeConference', 'awayConference'
+        ];
+        EXPECTED.forEach(f => expect(g).toHaveProperty(f));
+
+        // ...and the projection carries nothing this list has forgotten. Sorted
+        // both sides so the assertion is about membership, not declaration order.
+        expect(Object.keys(GAME_READ_FIELDS).sort()).toEqual(EXPECTED.slice().sort());
+    });
+
+    it('still answers an empty array for a team with no game that week', async () => {
+        const res = await request(app).get('/games/seasonType/regular/week/9/team/1?season=2025');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+});
+
 // public/current-week.js is the app's single source for "what week is it". It
 // used to read the number off the FULL scoreboard payload — 4.3s against the M0
 // tier — for one integer. The betting page pays that BEFORE it can fetch
