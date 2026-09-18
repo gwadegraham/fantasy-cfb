@@ -433,3 +433,69 @@ describe('updateScores reads the week in one batched request', () => {
         expect(patchBodies).toEqual({});
     });
 });
+
+// The batched route is asked in chunks of 200 ids, because it rejects more than
+// that. With more than one chunk, a game whose two rostered teams land in
+// DIFFERENT chunks comes back from BOTH requests — the first matches it on
+// homeId, the second on awayId. Mapping each response as it arrived pushed that
+// game onto both teams twice and doubled the week for both managers.
+//
+// models/game.js keeps a unique index on `id` for exactly this failure: "a
+// second doc with the same id DOUBLES that team's score for the week."
+// Duplicating in application code puts it back where that index cannot see it.
+describe('updateScores does not double-count a game that spans two id chunks', () => {
+    const OLD_ENV = process.env;
+
+    beforeEach(() => {
+        process.env = { ...OLD_ENV, URL: 'http://test.local', YEAR: '2025' };
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => { process.env = OLD_ENV; jest.restoreAllMocks(); });
+
+    it('credits a cross-chunk game exactly once to each side', async () => {
+        // 201 distinct rostered ids forces two chunks. uA holds id 1 (chunk 1)
+        // and uB holds id 500 (chunk 2); they play each other.
+        const filler = Array.from({ length: 199 }, (_, i) => ({ id: i + 2, school: `T${i + 2}` }));
+        const userA = {
+            _id: 'uA', league: 'graham-league',
+            seasons: [{ season: '2025', weeklyScore: [], teams: [{ id: 1, school: 'Alpha' }, ...filler] }],
+        };
+        const userB = {
+            _id: 'uB', league: 'graham-league',
+            seasons: [{ season: '2025', weeklyScore: [], teams: [{ id: 500, school: 'Omega' }] }],
+        };
+        const SHARED = { id: 900, homeId: 1, awayId: 500, homePoints: 28, awayPoints: 14, seasonType: 'regular' };
+
+        const gameUrls = [];
+        const patchBodies = {};
+        global.fetch = jest.fn((url, opts) => {
+            if (url.includes('/users/season/')) {
+                return Promise.resolve({ status: 200, json: () => Promise.resolve([userA, userB]) });
+            }
+            if (url.includes('/scoring-config/')) {
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({ model: 'graham', values: {} }) });
+            }
+            if (url.includes('/games/')) {
+                gameUrls.push(url);
+                // Each chunk's query matches the shared game on its own side,
+                // which is what Mongo really answers.
+                const asked = new URL(url).searchParams.get('ids').split(',');
+                const hit = asked.includes('1') || asked.includes('500');
+                return Promise.resolve({ status: 200, json: () => Promise.resolve(hit ? [SHARED] : []) });
+            }
+            patchBodies[url.split('/users/')[1]] = JSON.parse(opts.body);
+            return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+        });
+        jest.spyOn(scoringModule, 'calculateScoreV2').mockResolvedValue(7);
+
+        await scoringModule.updateScores('regular', 1);
+
+        // Two chunks really were requested — otherwise this proves nothing.
+        expect(gameUrls).toHaveLength(2);
+        // One entry each, not two, and 7 points rather than 14.
+        expect(patchBodies.uA.weeklyScore[0].scoreByTeam.filter(t => t.gameId === 900)).toHaveLength(1);
+        expect(patchBodies.uB.weeklyScore[0].scoreByTeam).toHaveLength(1);
+        expect(patchBodies.uA.weeklyScore[0].score).toBe(7);
+        expect(patchBodies.uB.weeklyScore[0].score).toBe(7);
+    });
+});

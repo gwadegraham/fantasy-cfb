@@ -592,6 +592,21 @@ async function updateUserCumulativeScore(userId, cumulativeScore, season) {
 // every manager with an empty map, score the whole league 0, and write those
 // zeros over real totals with clean job logs. Same reasoning as
 // getScoringConfig below: a load that did not load is not an empty result.
+//
+// Note what that costs, because it is the OPPOSITE of the policy stated in
+// modules/score-update.js:341 and :384. Nothing there catches updateScores, so
+// a throw here skips applyH2HBonuses, updateCumulativeScores,
+// updateAllTeamScores, updateAllTeamRecords, the betting refresh and parlay
+// resolution for that run — the passes those comments were written to protect
+// after the 12-13 Sep 2026 outage froze standings for two days. In the
+// postseason loop it is partial: a throw on week 2 leaves week 1 written.
+//
+// Deliberate, and the reasoning differs from the ingest case those comments
+// cover. There, the games were already in Mongo and still fully scoreable, so
+// degrading lost nothing. Here the input to scoring is what failed, so carrying
+// on does not produce a degraded result — it produces a confidently wrong one.
+// Stale standings are recoverable by re-running; zeros written over real totals
+// are not obviously wrong to anyone reading them.
 async function fetchWeekGamesByTeam(seasonType, week, year, userData) {
     // Resolved through seasonOrEmpty, exactly as the scoring loop does, so the
     // map's keys are the same set the loop looks up. (The /users/season/:year
@@ -607,13 +622,33 @@ async function fetchWeekGamesByTeam(seasonType, week, year, userData) {
     const byTeam = new Map(ids.map(id => [String(id), []]));
     if (!ids.length) return byTeam;
 
+    // Collected across every chunk BEFORE anything is mapped to a team, keyed by
+    // game id so a game seen twice is stored once.
+    //
+    // That matters only once there is more than one chunk, which is exactly the
+    // case the chunking exists for. A game between two rostered teams that land
+    // in DIFFERENT chunks comes back from both requests — the first matches it on
+    // homeId, the second on awayId — and mapping each response as it arrived
+    // pushed it onto both teams twice, doubling that week's points for both
+    // managers. models/game.js keeps a unique index on `id` for precisely this
+    // failure ("a second doc with the same id DOUBLES that team's score for the
+    // week"); duplicating in application code puts it back where that index
+    // cannot see it.
+    const gamesById = new Map();
+
     // The route rejects more than 200 ids. Two leagues are 69 distinct teams
     // today, but a third league must not turn every scoring run into a 400.
     const CHUNK = 200;
     for (let i = 0; i < ids.length; i += CHUNK) {
         const chunk = ids.slice(i, i + CHUNK);
+        // `season` is omitted rather than sent as the string "null" when the
+        // active season will not resolve: the route casts it to a Number, and
+        // "null" is a CastError and a 500 where an absent param just falls back
+        // to activeSeason(). A null scoring season is broken further upstream
+        // anyway; this keeps it from turning into an aborted run here.
+        const seasonParam = year == null ? '' : `season=${encodeURIComponent(year)}&`;
         const url = `${process.env.URL}/games/seasonType/${seasonType}/week/${week}/teams`
-            + `?season=${encodeURIComponent(year)}&ids=${encodeURIComponent(chunk.join(','))}`;
+            + `?${seasonParam}ids=${encodeURIComponent(chunk.join(','))}`;
 
         let res, games;
         try {
@@ -633,14 +668,21 @@ async function fetchWeekGamesByTeam(seasonType, week, year, userData) {
             throw new Error(`Could not load week ${week} games for scoring: expected an array of games`);
         }
 
-        // The route answers the deduplicated UNION, so a game between two
-        // rostered teams comes back once. Map it to BOTH rostered sides, which
-        // is what the per-team route returned for each of them.
         for (const game of games) {
-            for (const side of [game.homeId, game.awayId]) {
-                const key = String(side);
-                if (byTeam.has(key)) byTeam.get(key).push(game);
-            }
+            // A game with no id cannot be deduplicated, so it is kept rather
+            // than collapsed onto its neighbours under a shared `undefined`.
+            const key = (game && game.id != null) ? `id:${game.id}` : `pos:${gamesById.size}`;
+            if (!gamesById.has(key)) gamesById.set(key, game);
+        }
+    }
+
+    // The route answers the deduplicated UNION, so a game between two rostered
+    // teams comes back once. Map it to BOTH rostered sides, which is what the
+    // per-team route returned for each of them.
+    for (const game of gamesById.values()) {
+        for (const side of [game.homeId, game.awayId]) {
+            const key = String(side);
+            if (byTeam.has(key)) byTeam.get(key).push(game);
         }
     }
     return byTeam;
