@@ -442,3 +442,91 @@ describe('the H2H roster is pinned once a week settles', () => {
         expect(cal.seasons[0].weeklyScore[0].h2hResult).toBeUndefined();
     });
 });
+
+// The H2H pass reads its managers through an AGGREGATE now, so that it can slim
+// seasons[].teams — a plain projection and $elemMatch both return a subdocument
+// whole, and a manager carries four seasons of full team objects. Measured
+// against a dev copy of prod: 1059KB/11325ms unprojected, 40KB/608ms here.
+//
+// The aggregate brings two hazards a find() did not have, and these pin both.
+describe('POST /scores/h2h-bonus — the aggregate read', () => {
+    // THE TRAP. models/user.js declares seasonSchema.season as Number, and every
+    // caller in the app passes the season as a STRING — which works only because
+    // Mongoose casts it against the schema on a find(). An aggregate pipeline
+    // gets no casting at all: $match on '2026' matches nothing, the pass sees
+    // zero managers, skips the league, and logs "0 manager(s) updated". No error,
+    // no bonuses, and the standings quietly disagree with every other surface.
+    test('awards the bonus when the season arrives as a string', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        // String, exactly as modules/scoring.js and the job paths send it.
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: String(SEASON) });
+
+        expect(res.status).toBe(200);
+        const gl = res.body.leagues.find(l => l.league === LEAGUE);
+        expect(gl.managersUpdated).toBe(2);
+        expect(gl.bonusAwarded).toBe(3);
+
+        const winner = await User.findById(a._id).lean();
+        expect(winner.seasons[0].weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
+        const loser = await User.findById(b._id).lean();
+        expect(loser.seasons[0].weeklyScore[0].score).toBe(14);
+    });
+
+    // The write is a positional $set of ONE season's weeklyScore, not a save() of
+    // the whole document. A manager's OTHER seasons must come through untouched —
+    // a pass that rewrote them would silently rewrite banked history.
+    test('leaves the manager\'s other seasons exactly as they were', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        // A prior season, with its own roster and banked scores.
+        await User.updateOne({ _id: a._id }, { $push: { seasons: {
+            season: 2025, teams: [team(7, 'Texas')],
+            weeklyScore: [{ week: 1, score: 40, h2hBonus: 3, h2hResult: 'W' }],
+            cumulativeScore: 40
+        } } });
+        const before = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const after = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        expect(after).toEqual(before);
+        // ...and the scored season really was written.
+        const scored = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON);
+        expect(scored.weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3 });
+    });
+
+    // weeklyScore is read WHOLE rather than trimmed to the six fields the
+    // computation uses, precisely because the caller writes the array back.
+    // Trimming the read would make this write drop scoreByTeam and the Captain
+    // fields off every entry — silently, and only for managers who earned a bonus.
+    test('preserves scoreByTeam and the Captain fields on a rewritten entry', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await User.updateOne({ _id: a._id, 'seasons.season': SEASON }, { $set: {
+            'seasons.$.weeklyScore': [{
+                week: 1, score: 20,
+                scoreByTeam: [{ team: 'Oregon', teamId: 1, gameId: 101, score: 20 }],
+                captainTeamId: 1, captainBonus: 5
+            }]
+        } });
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const wk = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON).weeklyScore[0];
+        expect(wk.h2hBonus).toBe(3);
+        expect(wk.score).toBe(23);
+        // Untouched by the bonus write.
+        expect(wk.scoreByTeam).toHaveLength(1);
+        expect(wk.scoreByTeam[0]).toMatchObject({ team: 'Oregon', teamId: 1, gameId: 101, score: 20 });
+        expect(wk.captainTeamId).toBe(1);
+        expect(wk.captainBonus).toBe(5);
+    });
+});

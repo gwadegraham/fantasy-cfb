@@ -164,6 +164,65 @@ router.get('/readiness/:season', async (req, res) => {
     }
 });
 
+// The managers of one league, carrying ONLY what the H2H pass reads.
+//
+// This was User.find({ league, 'seasons.season' }) with no projection, which
+// answered every field of every season a manager has ever played. Measured
+// against a dev copy of prod, for the two leagues:
+//
+//   unprojected                         1059KB, 11325ms
+//   projected to teams.id + weeklyScore  435KB,  4192ms
+//   this aggregate                         40KB,   608ms
+//
+// A plain projection cannot get there. seasons[].teams holds FULL team objects
+// and a manager has four seasons of them, so the cost is the seasons this pass
+// is not scoring — and neither a projection nor $elemMatch can slim a subdocument
+// down to chosen fields. $filter + $map can.
+//
+// weeklyScore is kept WHOLE on purpose. Trimming it to the six fields the
+// computation reads gets this to 4KB/117ms, but the caller writes the array back,
+// so a trimmed read would silently drop scoreByTeam and the Captain fields off
+// every entry. 0.5s is not worth that.
+//
+// SEASON IS A NUMBER HERE, deliberately. models/user.js declares
+// seasonSchema.season as Number, and every other query in this file passes the
+// string — which works only because Mongoose casts it against the schema. An
+// aggregate pipeline gets NO casting: $match with '2026' matches nothing, returns
+// zero managers, and this pass then skips the league and applies no bonuses at
+// all, with a clean log line saying "0 manager(s) updated".
+async function h2hUsers(league, seasonNum) {
+    return User.aggregate([
+        { $match: { league, 'seasons.season': seasonNum } },
+        { $project: {
+            league: 1,
+            seasons: {
+                $map: {
+                    input: {
+                        $filter: {
+                            input: { $ifNull: ['$seasons', []] },
+                            as: 's',
+                            cond: { $eq: ['$$s.season', seasonNum] }
+                        }
+                    },
+                    as: 's',
+                    in: {
+                        season: '$$s.season',
+                        // Only the id is read, to build the drafted-team set.
+                        teams: {
+                            $map: {
+                                input: { $ifNull: ['$$s.teams', []] },
+                                as: 't',
+                                in: { id: '$$t.id' }
+                            }
+                        },
+                        weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
+                    }
+                }
+            }
+        } }
+    ]);
+}
+
 // Fold each league's head-to-head win/tie bonuses into the stored weekly scores.
 //
 // Why this is a separate pass: a week's H2H result depends on EVERY manager's
@@ -186,7 +245,7 @@ async function applyH2HBonuses(season) {
 
     for (const league of leagues) {
         if (!league) continue;
-        const users = await User.find({ league, 'seasons.season': seasonStr });
+        const users = await h2hUsers(league, seasonNum);
         if (!users.length) continue;
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
@@ -225,9 +284,30 @@ async function applyH2HBonuses(season) {
             const plain = (s.weeklyScore || []).map(e => (e.toObject ? e.toObject() : e));
             const next = applyAwards(plain, awards[String(user._id)], H2H_MAX_WEEK);
             if (!next.changed) continue;
-            s.weeklyScore = next.weeklyScore;
-            user.markModified('seasons');
-            await user.save();
+            // Write the ONE array that changed, not the whole manager.
+            //
+            // user.save() rewrote the entire document — 105KB, of which
+            // seasons[].teams is nearly all — to persist a 3KB weeklyScore, and
+            // measured 1239ms against 95ms for this. The positional $ resolves
+            // against the season matched in the filter, so it can only ever touch
+            // the season being scored.
+            //
+            // applyAwards returns the FULL entries (it copies each one and edits
+            // four fields), so this is lossless: scoreByTeam, the Captain fields
+            // and anything else on an entry are written back as they were read.
+            // That is exactly why the read below keeps weeklyScore whole instead
+            // of trimming it to the six fields the computation needs — a trimmed
+            // read would make this write silently destroy the rest.
+            const res = await User.updateOne(
+                { _id: user._id, 'seasons.season': seasonNum },
+                { $set: { 'seasons.$.weeklyScore': next.weeklyScore } }
+            );
+            if (!res.matchedCount) {
+                // Loud: a manager whose bonus could not be written is a standings
+                // row that silently disagrees with every other surface.
+                console.error(`H2H bonus not written for ${user._id} (${league} ${seasonStr}): no matching season`);
+                continue;
+            }
             updated++;
             awarded += next.weeklyScore.reduce((sum, e) => sum + (e.h2hBonus || 0), 0);
         }
