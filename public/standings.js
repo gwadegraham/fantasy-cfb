@@ -993,11 +993,20 @@ async function getAllTeamLogos () {
 
 // Vegas spreads for the schedule rows.
 //
-// This asked /betting, which is the PARLAY router — so it matched
-// router.get('/:id'), ran Parlay.findById("2026"), and answered 400. The 400
-// was swallowed by the degrade-to-[] below, so classic-league standings have
-// been rendering with NO spreads at all, silently, with one console line.
-// public/team.js hit the same bug and was fixed; this caller was missed.
+// This asked /betting, which is the PARLAY router, so a season never reached a
+// lines handler at all. What it actually got depends on the caller:
+//   - outside the betting group (the classic league, and most managers): 403.
+//     routes/betting.js mounts requireBettingGroupMember ABOVE the catch-all,
+//     so it never reaches a handler.
+//   - inside the group: 400 from the ObjectId validity guard in
+//     router.get('/:id'), which rejects the shape before Parlay.findById runs.
+//     (It used to reach findById and 500 on the CastError; that was fixed when
+//     public/team.js hit this same bug. This caller was missed.)
+//
+// Either way it is a non-200, swallowed by the degrade-to-[] below, so every
+// schedule this function feeds has been rendering with NO spreads at all,
+// silently, behind one console line. That is both entry points into
+// displaySchedule — the classic table and the H2H view.
 //
 // The lines live on /betting-lines/:year, which is what public/userHome.js and
 // public/team.js already ask for.
@@ -1145,6 +1154,17 @@ async function displaySchedule(data) {
         rankingsInfo = await getRankings(week, seasonType, seasonYear);
     }
 
+    // Left in series deliberately. Fixing the endpoint above means the lines are
+    // a real round trip now (~118KB, ~1.76s) where the broken path cost nothing,
+    // so firing these two together looks like the obvious recovery — but there is
+    // nothing to overlap. getAllTeamLogos is memoized behind _allLogosPromise and
+    // measured 1-25ms against betting's ~1760ms, so Promise.allSettled moved
+    // 1774ms to 1749ms and was SLOWER on one of three runs. It would also swap a
+    // logo failure from a rejection into a silent [], which is a real loss for
+    // 25ms. The same M0 ceiling is why routes/games.js notes that 10 concurrent
+    // requests measured 863ms against 1026ms sequential.
+    //
+    // The payload is what to attack here, not the concurrency — see the PR.
     var allTeamLogos = await getAllTeamLogos();
     var allBettingLines = await getAllBettingLines(seasonYear) || [];
 

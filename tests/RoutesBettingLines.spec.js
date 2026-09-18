@@ -84,6 +84,16 @@ describe('GET /betting-lines/:year', () => {
         const res = await request(app).get('/betting-lines/2019');
         expect(res.status).toBe(400);
     });
+
+    test('names the year it could not find, rather than "undefined"', async () => {
+        // The message read req.body.year on a GET, so it always said
+        // "for year undefined". Harmless while standings never reached this
+        // route; it lands in the log on every preseason render now that it does.
+        const res = await request(app).get('/betting-lines/2019');
+
+        expect(res.body.message).toContain('2019');
+        expect(res.body.message).not.toContain('undefined');
+    });
 });
 
 describe('GET /betting-lines', () => {

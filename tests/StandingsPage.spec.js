@@ -1425,9 +1425,12 @@ describe('schedule game cards', () => {
 
     // The spread assertions below say a line RENDERS. They did not say where it
     // came from, and the page was asking /betting/:year — the PARLAY router,
-    // which answers 400 for a season — so classic-league standings shipped with
-    // no spreads at all while these stayed green. (The harness matched
-    // /^\/betting\// , which covers both paths; it is anchored now.)
+    // which never reaches a lines handler: 403 for anyone outside the betting
+    // group (routes/betting.js mounts requireBettingGroupMember above the
+    // catch-all), and 400 from the ObjectId guard for anyone inside it. Either
+    // way the schedule shipped with no spreads at all while these stayed green.
+    // (The harness matched /^\/betting\// , which covers both paths; it is
+    // anchored now.)
     it('asks /betting-lines/:year, not the parlay router', async () => {
         const page = await loadStandingsPage({
             users: homeFirst(), teamLogos: LOGOS,
@@ -1438,7 +1441,7 @@ describe('schedule game cards', () => {
         const betting = page.urls().filter(u => u.includes('betting'));
         expect(betting.length).toBeGreaterThan(0);
         betting.forEach(u => expect(u).toMatch(/^\/betting-lines\//));
-        // /betting/:year is a 400 in the real app — Parlay.findById('2026').
+        // /betting/:year is a 403 or 400 in the real app, never lines.
         expect(betting.some(u => /^\/betting\/\d/.test(u))).toBe(false);
     });
 

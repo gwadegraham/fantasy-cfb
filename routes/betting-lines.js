@@ -26,7 +26,9 @@ const Betting = require('../models/bettingLine');
 // Nested _id cannot be excluded alongside an inclusion projection (Mongo rejects
 // it with "Cannot do inclusion on field homeTeam in exclusion projection"), but
 // it does not need to be — Mongoose leaves lines[]._id out when the projection
-// names nested fields, so the shape is already clean.
+// names nested fields, so the shape is already clean. That is COUPLED to the
+// .lean() below: hydrating a projected subdoc array can mint fresh _ids, so the
+// two travel together. tests/RoutesBettingLines.spec.js pins the shape.
 const LINE_READ_FIELDS = {
     _id: 0,
     homeTeam: 1, awayTeam: 1,
@@ -54,7 +56,11 @@ router.get('/:year', async (req, res) => {
         const bettingLines = await Betting.find({season: req.params.year}, LINE_READ_FIELDS).lean();
 
         if (JSON.stringify(bettingLines) === '[]') {
-            res.status(400).json({message: `No betting lines found for year ${req.body.year}`});
+            // req.params, not req.body — this is a GET, so req.body.year was
+            // always undefined and the message read "for year undefined".
+            // Harmless while standings never got here; it reaches the log on
+            // every preseason render now that it does.
+            res.status(400).json({message: `No betting lines found for year ${req.params.year}`});
         } else {
             res.status(200).json(bettingLines);
         }
