@@ -1423,6 +1423,25 @@ describe('schedule game cards', () => {
         expect(page.scheduleBody().querySelectorAll('.game-table')).toHaveLength(1);
     });
 
+    // The spread assertions below say a line RENDERS. They did not say where it
+    // came from, and the page was asking /betting/:year — the PARLAY router,
+    // which answers 400 for a season — so classic-league standings shipped with
+    // no spreads at all while these stayed green. (The harness matched
+    // /^\/betting\// , which covers both paths; it is anchored now.)
+    it('asks /betting-lines/:year, not the parlay router', async () => {
+        const page = await loadStandingsPage({
+            users: homeFirst(), teamLogos: LOGOS,
+            games: [game({ completed: false })],
+            bettingLines: [{ homeTeam: 'Purdue', awayTeam: 'Indiana', lines: [{ provider: 'DraftKings', formattedSpread: 'Indiana -7.5' }] }]
+        });
+
+        const betting = page.urls().filter(u => u.includes('betting'));
+        expect(betting.length).toBeGreaterThan(0);
+        betting.forEach(u => expect(u).toMatch(/^\/betting-lines\//));
+        // /betting/:year is a 400 in the real app — Parlay.findById('2026').
+        expect(betting.some(u => /^\/betting\/\d/.test(u))).toBe(false);
+    });
+
     it('shows the betting spread against the favoured team', async () => {
         const page = await loadStandingsPage({
             users: homeFirst(), teamLogos: LOGOS,
@@ -1530,7 +1549,7 @@ describe('degrading when upstream calls fail', () => {
     it('renders with no spreads when the betting endpoint errors', async () => {
         const page = await loadStandingsPage({
             users: league(), games: [],
-            routes: [[/^\/betting\//, respond(500, { message: 'nope' })]]
+            routes: [[/^\/betting-lines\//, respond(500, { message: 'nope' })]]
         });
         expect(page.q('.football-loader').style.display).toBe('none');
     });

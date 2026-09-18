@@ -259,7 +259,11 @@ async function loadStandingsPage(opts = {}) {
         [/\/standings\/projections\//, projections],
         [/^\/rankings\//, rankings],
         ['/teams/teamLogos/all', teamLogos],
-        [/^\/betting\//, bettingLines],
+        // ANCHORED to /betting-lines/ on purpose. This used to be /^\/betting\//,
+        // which also matches the PARLAY router's path — so the page asking
+        // /betting/:year (a 400 in the real app, and no spreads on the page)
+        // was answered happily here and the bug survived the whole suite.
+        [/^\/betting-lines\//, bettingLines],
         [/^\/games\/seasonType\//, games],
         [/\/scoring-config\//, { matched: [], total: 0 }],
         ['/users/me/profile', { ok: true }]

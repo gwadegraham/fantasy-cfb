@@ -991,10 +991,20 @@ async function getAllTeamLogos () {
     }
 }
 
+// Vegas spreads for the schedule rows.
+//
+// This asked /betting, which is the PARLAY router — so it matched
+// router.get('/:id'), ran Parlay.findById("2026"), and answered 400. The 400
+// was swallowed by the degrade-to-[] below, so classic-league standings have
+// been rendering with NO spreads at all, silently, with one console line.
+// public/team.js hit the same bug and was fixed; this caller was missed.
+//
+// The lines live on /betting-lines/:year, which is what public/userHome.js and
+// public/team.js already ask for.
 async function getAllBettingLines (seasonYear) {
     if (seasonYear == null) seasonYear = new Date().getFullYear();
 
-    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+    var bettingPromise = await fetch(`/betting-lines/${seasonYear}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
