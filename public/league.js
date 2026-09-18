@@ -46,11 +46,37 @@
         return [page, name(), 'Campus Clash'].filter(Boolean).join(' · ');
     }
 
-    // Fills every [league-label] on the page and applies the <title> of any view
-    // that opted in with [data-league-title]. Runs on DOMContentLoaded; exposed
-    // so a page that renders its header later can repaint.
+    // Points the navbar switcher at the league the page is actually showing.
+    //
+    // The <option> list is rendered in LEAGUES order with no `selected`, so with
+    // nothing else done a browser lands on the first one — Claunts. That is only
+    // ever right by accident: code() may resolve to the viewer's own league or to
+    // a server-pinned one, and an Admin on a fresh browser was shown "Claunts"
+    // above a page full of Graham League data, with no way back except selecting
+    // their own league and then re-selecting Claunts.
+    //
+    // Every page already wires a `change` handler to this element, but only four
+    // of them ever set its value, and those read localStorage directly rather
+    // than asking code() — so they miss the pinned and first-visit cases. This is
+    // the one place that knows the answer, so it is the one place that sets it.
+    function syncSwitcher(root) {
+        var sel = (root || document).querySelector('[league-select]');
+        if (!sel) return;                       // not an Admin, or no switcher here
+        var want = code();
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === want) { sel.value = want; return; }
+        }
+        // A league that isn't in the list: leave whatever is there rather than
+        // silently pointing the switcher at someone else's league.
+    }
+
+    // Fills every [league-label] on the page, points the navbar switcher at the
+    // right league, and applies the <title> of any view that opted in with
+    // [data-league-title]. Runs on DOMContentLoaded; exposed so a page that
+    // renders its header later can repaint.
     function paint(root) {
         var label = name();
+        syncSwitcher(root);
         var nodes = (root || document).querySelectorAll('[league-label]');
         for (var i = 0; i < nodes.length; i++) {
             nodes[i].textContent = label;
@@ -60,7 +86,7 @@
         if (t) document.title = title(t.getAttribute('data-league-title'));
     }
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint };
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher };
 
     document.addEventListener('DOMContentLoaded', function () { paint(); });
 })();

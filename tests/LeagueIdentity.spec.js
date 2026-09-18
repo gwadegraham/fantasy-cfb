@@ -95,6 +95,56 @@ describe('an unresolvable league', () => {
     });
 });
 
+// The navbar switcher. Its <option>s render in LEAGUES order with no `selected`,
+// so a browser lands on the first one (Claunts) whatever the page is showing —
+// an Admin on a fresh browser saw "Claunts" above Graham League data and had to
+// select their own league and re-select Claunts to get the two to agree.
+describe('the navbar switcher', () => {
+    const SWITCHER = '<select league-select>'
+        + '<option value="claunts-league">Claunts League</option>'
+        + '<option value="graham-league">CFB Sickos</option>'
+        + '</select>';
+    const sel = () => document.querySelector('[league-select]');
+
+    it('points at the viewer’s own league, not whichever renders first', () => {
+        const cc = load({ seed: admin, html: SWITCHER });
+        expect(sel().value).toBe('claunts-league');   // the browser's default
+        cc.paint();
+        expect(sel().value).toBe('graham-league');
+    });
+
+    it('follows an Admin’s sticky selection', () => {
+        const cc = load({ seed: admin, html: SWITCHER, stored: 'claunts-league' });
+        cc.paint();
+        expect(sel().value).toBe('claunts-league');
+    });
+
+    it('follows a server-pinned league over the sticky one', () => {
+        // /rules and /draft-board pin the league they rendered for, which can
+        // carry an Admin's ?league= that storage knows nothing about.
+        const cc = load({ seed: admin, html: SWITCHER, stored: 'claunts-league', pinned: 'graham-league' });
+        cc.paint();
+        expect(sel().value).toBe('graham-league');
+    });
+
+    it('is set on DOMContentLoaded, so no page has to wire it', () => {
+        load({ seed: admin, html: SWITCHER });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        expect(sel().value).toBe('graham-league');
+    });
+
+    it('leaves an unknown league alone rather than picking someone else’s', () => {
+        const cc = load({ seed: { code: 'retired-league', canSwitch: true, all: ALL }, html: SWITCHER });
+        cc.paint();
+        expect(sel().value).toBe('claunts-league');   // untouched, not silently reassigned
+    });
+
+    it('does nothing on a page with no switcher', () => {
+        const cc = load({ seed: member, html: '<span league-label hidden></span>' });
+        expect(() => cc.paint()).not.toThrow();
+    });
+});
+
 describe('painting', () => {
     it('fills every label and reveals it', () => {
         const cc = load({

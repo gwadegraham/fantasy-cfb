@@ -124,8 +124,12 @@ app.use(async (req, res, next) => {
     // viewer's own league and whether they may switch. Every page that shows a
     // league name reads it from there, so a rename lands everywhere at once and
     // no page has to re-derive the league from Auth0 metadata.
+    // Also exposed unwrapped, so navbar.ejs can mark the matching <option>
+    // `selected`. Without it the switcher renders on LEAGUES[0] (Claunts) no
+    // matter whose page it is, and only corrects once public/league.js runs.
+    res.locals.viewerLeagueCode = (req.oidc && req.oidc.isAuthenticated()) ? leagueCodeFor(req.effUser) : '';
     res.locals.leagueSeed = safeJson({
-        code: (req.oidc && req.oidc.isAuthenticated()) ? leagueCodeFor(req.effUser) : '',
+        code: res.locals.viewerLeagueCode,
         canSwitch: devRole.effectiveRoles(req).includes('Admin'),
         all: res.locals.leagues
     });

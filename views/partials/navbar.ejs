@@ -102,8 +102,14 @@
             <% if (_role === 'Admin') { %>
             <li league-selector>
                 <select class="league-select" league-select aria-label="League">
+                    <%# `selected` on the viewer's own league: the list renders in
+                        LEAGUES order, so without it the switcher shows whichever
+                        league happens to be first regardless of what the page is
+                        showing. public/league.js refines this on load for a
+                        server-pinned page or an Admin's sticky choice. %>
+                    <% var _vlc = (typeof viewerLeagueCode !== 'undefined' && viewerLeagueCode) || ''; %>
                     <% (typeof leagues !== 'undefined' && leagues || []).forEach(function (lg) { %>
-                    <option value="<%= lg.code %>"><%= lg.name %></option>
+                    <option value="<%= lg.code %>"<%= lg.code === _vlc ? ' selected' : '' %>><%= lg.name %></option>
                     <% }) %>
                 </select>
             </li>

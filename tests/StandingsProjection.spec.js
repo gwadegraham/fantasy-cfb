@@ -46,6 +46,68 @@ describe('simulateTitleOdds', () => {
     });
 });
 
+// Postseason uncertainty. simulateTitleOdds used to carry each manager's
+// postseason haul as one fixed number in every sim, so the only thing that
+// varied was the regular season — about 8 points of spread against a ~70-point
+// chunk treated as already decided. A 16-point projected gap in week 3 came out
+// as 93% title odds because of it.
+describe('simulateTitleOdds postseason variance', () => {
+    // Two managers, no games left, separated only by a 16-point postseason
+    // forecast gap — the shape of the week-3 Claunts board that prompted this.
+    const pair = (gap) => ([
+        { userId: 'lead', postExpected: 100 + gap, postRemaining: 70 + gap, perGame: [] },
+        { userId: 'chase', postExpected: 100, postRemaining: 70, perGame: [] }
+    ]);
+
+    it('does not hand a 16-point postseason gap to the leader outright', () => {
+        const odds = simulateTitleOdds(pair(16), 20000);
+        // Without the draw this is a 100/0 split: the totals are constants.
+        expect(odds.lead).toBeLessThan(0.85);
+        expect(odds.chase).toBeGreaterThan(0.15);
+    });
+
+    it('still favours the leader', () => {
+        const odds = simulateTitleOdds(pair(16), 20000);
+        expect(odds.lead).toBeGreaterThan(odds.chase);
+        expect(odds.lead).toBeGreaterThan(0.6);
+    });
+
+    it('widens the field as the draw grows', () => {
+        const tight = simulateTitleOdds(pair(16), 20000, { postseasonSd: 4 });
+        const wide = simulateTitleOdds(pair(16), 20000, { postseasonSd: 30 });
+        expect(wide.chase).toBeGreaterThan(tight.chase + 0.05);
+    });
+
+    it('collapses to the old deterministic result at sd 0', () => {
+        const odds = simulateTitleOdds(pair(16), 500, { postseasonSd: 0 });
+        expect(odds.lead).toBe(1);
+        expect(odds.chase).toBe(0);
+    });
+
+    it('leaves managers with no postseason forecast alone', () => {
+        // postRemaining 0 => nothing to be uncertain about, so a pure banked-points
+        // gap stays decisive however big the sd is.
+        const odds = simulateTitleOdds([
+            { userId: 'x', postExpected: 116, postRemaining: 0, perGame: [] },
+            { userId: 'y', postExpected: 100, postRemaining: 0, perGame: [] }
+        ], 500);
+        expect(odds.x).toBe(1);
+    });
+
+    it('never pays out a negative postseason', () => {
+        // 100 banked + a 5-point forecast, against a flat 99 with nothing left to
+        // play. An unclamped draw at this sd goes deeply negative and would drag
+        // the first manager below their own banked points — and below 99 — so the
+        // floor is the only thing keeping this at a clean sweep.
+        const odds = simulateTitleOdds([
+            { userId: 'floored', postExpected: 105, postRemaining: 5, perGame: [] },
+            { userId: 'flat', postExpected: 99, postRemaining: 0, perGame: [] }
+        ], 5000, { postseasonSd: 60 });
+        expect(odds.floored).toBe(1);
+    });
+
+});
+
 describe('buildProjections', () => {
     const season = 2026;
     const teamsById = {
@@ -67,6 +129,12 @@ describe('buildProjections', () => {
         expect(out[0].projectedFinal).toBeGreaterThan(10);   // banked + positive expected
         expect(out[0].perGame).toHaveLength(2);
         expect(out[0].perGame[0].winProb).toBeGreaterThan(0.5); // strong team favored
+        // The postseason forecast has to reach the sim separately from banked
+        // points, or it gets no uncertainty draw (see POSTSEASON_SD).
+        expect(out[0].postRemaining).toBeGreaterThan(0);
+        // Against the RAW cumulative score, not the rounded `banked` field —
+        // postExpected is built from the unrounded value.
+        expect(out[0].postExpected - out[0].postRemaining).toBeCloseTo(10, 6);
     });
 
     it('skips users with no roster for the season', () => {
