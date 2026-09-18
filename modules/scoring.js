@@ -238,6 +238,21 @@ module.exports= {
         var userData = await response.json();
         var configByLeague = {};
 
+        // Every rostered team's game for this week, in ONE request.
+        //
+        // This loop used to fetch per rostered team, sequentially:
+        // 120 team-slots in 2026 -> 120 round trips, 7.98s. The union of those
+        // same slots is 69 distinct teams and 55 games, and the batched route
+        // answers it in 0.44s. The cost was never the bytes — 69KB across the
+        // 120 replies against 32KB for the one — it was 120 sequential HTTP
+        // round trips, each one a request through Express, Mongoose and an M0
+        // connection before the next could start.
+        //
+        // Deduplicated on purpose: the two leagues draft overlapping teams, so
+        // 120 slots collapse to 69 ids and a game shared by two rostered teams
+        // is fetched once, not twice.
+        var gamesByTeam = await fetchWeekGamesByTeam(season, week, scoringYear, userData);
+
         for (const user of userData) {
             var score = 0;
             var teamScores = new Array();
@@ -253,46 +268,33 @@ module.exports= {
             var cfg = configByLeague[user.league];
 
             for (const team of userSeason.teams || []) {
-                var gamePromise = await internalFetch(process.env.URL + `/games/seasonType/${season}/week/${week}/team/${team.id}`, {
-                    method: 'GET',
-                    headers: {
-                    'Accept': 'application/json'
+                // A map lookup now, not a round trip. Same shape the per-team
+                // route returned: the games this team played that week, home or
+                // away, and an empty array when it was idle.
+                var teamGames = gamesByTeam.get(String(team.id)) || [];
+
+                for (const game of teamGames) {
+                    var teamScore = 0;
+
+                    // Pass the full resolved config (model + combineMode +
+                    // values + disabled) so commissioner structure changes
+                    // are honored, not just point values.
+                    if (cfg.model == "claunts") {
+                        teamScore = await module.exports.calculateScoreV1(team.id, game, week, scoringYear, cfg, rankingCache);
+                    } else if (cfg.model == "graham") {
+                        teamScore = await module.exports.calculateScoreV2(team.id, game, week, scoringYear, cfg, rankingCache);
                     }
-                });
-    
-                var game = await gamePromise;
-                var response = await game.json();
-    
-                if (game.status == 200) {
-                    for (const game of response) {
-                        var teamScore = 0;
 
-                        // Pass the full resolved config (model + combineMode +
-                        // values + disabled) so commissioner structure changes
-                        // are honored, not just point values.
-                        if (cfg.model == "claunts") {
-                            teamScore = await module.exports.calculateScoreV1(team.id, game, week, scoringYear, cfg, rankingCache);
-                        } else if (cfg.model == "graham") {
-                            teamScore = await module.exports.calculateScoreV2(team.id, game, week, scoringYear, cfg, rankingCache);
-                        }
+                    score += teamScore;
 
-                        score += teamScore;
+                    var teamScoreObject = {
+                        "team": team.school,
+                        "teamId": team.id,
+                        "gameId": game.id,
+                        "score": teamScore
+                    };
 
-                        var teamScoreObject = {
-                            "team": team.school,
-                            "teamId": team.id,
-                            "gameId": game.id,
-                            "score": teamScore
-                        };
-
-                        teamScores.push(teamScoreObject);
-                    }
-                } else {
-                    // The route answers "no game this week" with 200 + [], so a
-                    // non-200 here means the lookup itself failed and this
-                    // team's points are missing from the week — not that it was
-                    // idle. Loud on purpose.
-                    console.error(`Could not load games for ${team.school}: ${response.message}`);
+                    teamScores.push(teamScoreObject);
                 }
             }
 
@@ -566,6 +568,83 @@ async function updateUserCumulativeScore(userId, cumulativeScore, season) {
 }
 
 
+
+// Every rostered team's games for one week, keyed by team id, in one request.
+//
+// Replaces a fetch per rostered team. It asks the BATCHED route
+// (GET /games/seasonType/:type/week/:week/teams?ids=...), which shares the same
+// GAME_READ_FIELDS projection as the per-team route — including
+// conferenceGame / homeConference / awayConference, which have no UI and exist
+// only because scoring-detectors.js reads them to decide conference wins and
+// non-P5 upsets. Anything that drops those from the projection silently banks
+// the wrong rule here rather than throwing; see the note on GAME_READ_FIELDS in
+// routes/games.js.
+//
+// `seasonType` is 'regular' | 'postseason'; `year` is the season being scored,
+// passed EXPLICITLY rather than left to the route's activeSeason() default.
+// This pass runs for minutes while the season cache re-primes every 60s, and a
+// rollover mid-pass would otherwise have the route answer for a different year
+// than the managers were fetched for — the same tear scoringYear exists to
+// prevent everywhere else.
+//
+// A failed batch THROWS. The per-team loop it replaces logged and carried on,
+// which cost that one team its points; one failure here would instead leave
+// every manager with an empty map, score the whole league 0, and write those
+// zeros over real totals with clean job logs. Same reasoning as
+// getScoringConfig below: a load that did not load is not an empty result.
+async function fetchWeekGamesByTeam(seasonType, week, year, userData) {
+    // Resolved through seasonOrEmpty, exactly as the scoring loop does, so the
+    // map's keys are the same set the loop looks up. (The /users/season/:year
+    // route $elemMatch's a single season in, but keying off that would quietly
+    // depend on the projection staying as it is.)
+    const ids = [...new Set(
+        (userData || [])
+            .flatMap(u => seasonOrEmpty(u, year).teams || [])
+            .map(t => t && t.id)
+            .filter(id => id != null)
+    )];
+
+    const byTeam = new Map(ids.map(id => [String(id), []]));
+    if (!ids.length) return byTeam;
+
+    // The route rejects more than 200 ids. Two leagues are 69 distinct teams
+    // today, but a third league must not turn every scoring run into a 400.
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const url = `${process.env.URL}/games/seasonType/${seasonType}/week/${week}/teams`
+            + `?season=${encodeURIComponent(year)}&ids=${encodeURIComponent(chunk.join(','))}`;
+
+        let res, games;
+        try {
+            res = await internalFetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+        } catch (err) {
+            throw new Error(`Could not load week ${week} games for scoring: ${err.message}`);
+        }
+        if (res.status != 200) {
+            throw new Error(`Could not load week ${week} games for scoring: ${await failureMessage(res)}`);
+        }
+        try {
+            games = await res.json();
+        } catch (err) {
+            throw new Error(`Could not load week ${week} games for scoring: ${err.message}`);
+        }
+        if (!Array.isArray(games)) {
+            throw new Error(`Could not load week ${week} games for scoring: expected an array of games`);
+        }
+
+        // The route answers the deduplicated UNION, so a game between two
+        // rostered teams comes back once. Map it to BOTH rostered sides, which
+        // is what the per-team route returned for each of them.
+        for (const game of games) {
+            for (const side of [game.homeId, game.awayId]) {
+                const key = String(side);
+                if (byTeam.has(key)) byTeam.get(key).push(game);
+            }
+        }
+    }
+    return byTeam;
+}
 
 // Fetches the resolved scoring config (model + values) for a league via the
 // API, so it works in the web process and in job processes alike. Falls back
