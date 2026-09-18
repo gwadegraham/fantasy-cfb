@@ -57,6 +57,10 @@ ApiKeyAuth.apiKey = CFBD_API_KEY;
 // conferenceGame / homeConference / awayConference exist solely for that third
 // consumer: modules/scoring-detectors.js reads them to decide conference wins
 // and non-P5 upsets. They have no UI.
+// The most team ids the batched week lookup accepts in one request.
+// modules/scoring.js chunks to match; see the note at that route.
+const MAX_TEAM_IDS = 200;
+
 const GAME_READ_FIELDS = {
     id: 1, season: 1, week: 1, seasonType: 1,
     startDate: 1, startTimeTbd: 1, completed: 1, status: 1,
@@ -151,19 +155,34 @@ router.get('/seasonType/:seasonType/week/:weekNum/teams', async (req, res) => {
     // 0 and finite, so a missing or blank `ids` produced [0] rather than [], the
     // 400 below was unreachable, and `ids=1,2,` silently queried for team 0.
     // Number.isFinite also admits 1.5, -3, 0x10 and 1e3.
-    const ids = String(req.query.ids || '')
+    const raw = String(req.query.ids || '')
         .split(',')
         .map(v => v.trim())
-        .filter(v => /^\d+$/.test(v))
-        .map(Number);
+        .filter(v => v !== '');
+    const ids = raw.filter(v => /^\d+$/.test(v)).map(Number);
+
+    // A PARTIAL drop is silent otherwise, and modules/scoring.js is now a caller:
+    // a team whose id does not survive this filter is simply absent from the
+    // response, so it scores 0 for the week with a clean job log. A total drop
+    // 400s below and scoring throws; only the partial case needs saying out loud.
+    if (ids.length !== raw.length) {
+        const dropped = raw.filter(v => !/^\d+$/.test(v));
+        console.error(`Ignored ${dropped.length} non-numeric team id(s) on the batched week lookup: ${dropped.join(', ')}`);
+    }
 
     if (!ids.length) {
         return res.status(400).json({ message: 'ids is required — a comma-separated list of team ids' });
     }
     // A roster is 10 and a league is 60; this is a sanity bound, not a limit
     // anyone should reach.
-    if (ids.length > 200) {
-        return res.status(400).json({ message: 'too many ids (max 200)' });
+    //
+    // modules/scoring.js chunks its requests at exactly 200 to stay under this.
+    // The two constants are not shared, so LOWERING this number 400s every
+    // scoring run. tests/RoutesGames.spec.js pins 200-accepted / 201-rejected and
+    // tests/ScoringAggregation.spec.js pins that scoring splits at the same
+    // point; changing one without the other reds both.
+    if (ids.length > MAX_TEAM_IDS) {
+        return res.status(400).json({ message: `too many ids (max ${MAX_TEAM_IDS})` });
     }
 
     try {
@@ -1069,3 +1088,4 @@ router.get('/plays/:gameId', async (req, res) => {
 
 module.exports = router;
 module.exports.GAME_READ_FIELDS = GAME_READ_FIELDS;
+module.exports.MAX_TEAM_IDS = MAX_TEAM_IDS;

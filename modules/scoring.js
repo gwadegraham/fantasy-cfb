@@ -598,8 +598,20 @@ async function updateUserCumulativeScore(userId, cumulativeScore, season) {
 // a throw here skips applyH2HBonuses, updateCumulativeScores,
 // updateAllTeamScores, updateAllTeamRecords, the betting refresh and parlay
 // resolution for that run — the passes those comments were written to protect
-// after the 12-13 Sep 2026 outage froze standings for two days. In the
-// postseason loop it is partial: a throw on week 2 leaves week 1 written.
+// after the 12-13 Sep 2026 outage froze standings for two days.
+//
+// Three paths, not one, and the first is the widest:
+//   - the TRAILING-WEEK call runs BEFORE the postseason ingest and before the
+//     postseason scoring loop, so a throw there costs the entire postseason
+//     pass, not just a later week;
+//   - the postseason loop itself is partial — a throw on week 2 leaves week 1
+//     written and everything after it skipped;
+//   - runLiveUpdate calls this with no catch either, so a transient failure
+//     fails the whole 30s tick INCLUDING maybeFlushCompletions. Under the old
+//     per-team loop that same blip cost one team its points for one tick.
+//
+// The abort is at least loud: modules/score-job.js catches, writes a JobRun with
+// status 'error' and emails, then rethrows. It is not a silent seam.
 //
 // Deliberate, and the reasoning differs from the ingest case those comments
 // cover. There, the games were already in Mongo and still fully scoreable, so
