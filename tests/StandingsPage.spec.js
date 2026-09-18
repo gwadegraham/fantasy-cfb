@@ -1423,6 +1423,82 @@ describe('schedule game cards', () => {
         expect(page.scheduleBody().querySelectorAll('.game-table')).toHaveLength(1);
     });
 
+    // The spread assertions below say a line RENDERS. They did not say where it
+    // came from, and the page was asking /betting/:year — the PARLAY router,
+    // which never reaches a lines handler: 403 for anyone outside the betting
+    // group (routes/betting.js mounts requireBettingGroupMember above the
+    // catch-all), and 400 from the ObjectId guard for anyone inside it. Either
+    // way the schedule shipped with no spreads at all while these stayed green.
+    // (The harness matched /^\/betting\// , which covers both paths; it is
+    // anchored now.)
+    it('asks /betting-lines/:year, not the parlay router', async () => {
+        const page = await loadStandingsPage({
+            users: homeFirst(), teamLogos: LOGOS,
+            games: [game({ completed: false })],
+            bettingLines: [{ homeTeam: 'Purdue', awayTeam: 'Indiana', lines: [{ provider: 'DraftKings', formattedSpread: 'Indiana -7.5' }] }]
+        });
+
+        const betting = page.urls().filter(u => u.includes('betting'));
+        expect(betting.length).toBeGreaterThan(0);
+        betting.forEach(u => expect(u).toMatch(/^\/betting-lines\//));
+        // /betting/:year is a 403 or 400 in the real app, never lines.
+        expect(betting.some(u => /^\/betting\/\d/.test(u))).toBe(false);
+    });
+
+    // displaySchedule re-runs on every week change, and it is the only caller of
+    // getAllBettingLines. Unmemoized, each week click re-downloaded the ENTIRE
+    // season's lines (~118KB, ~1.76s on M0) to render one week — and the response
+    // is season-scoped, so the repeat fetch can never return anything new.
+    it('does not refetch the season lines on a week change', async () => {
+        const page = await loadStandingsPage({
+            users: homeFirst(), teamLogos: LOGOS,
+            games: [game({ completed: false })],
+            bettingLines: [{ homeTeam: 'Purdue', awayTeam: 'Indiana', lines: [{ provider: 'DraftKings', formattedSpread: 'Indiana -7.5' }] }]
+        });
+        const before = page.urls().filter(u => u.includes('/betting-lines/')).length;
+        expect(before).toBe(1);
+
+        const select = page.q('[rivalry-week]');
+        select.value = 'week-1';
+        select.dispatchEvent(new window.Event('change'));
+        await page.flush();
+
+        expect(page.urls().filter(u => u.includes('/betting-lines/'))).toHaveLength(before);
+        // ...and the spread still renders, from the memoized response.
+        expect(page.scheduleBody().innerHTML).toContain('betting-line">-7.5');
+    });
+
+    // A rejection must NOT be cached, or one transient blip leaves the page with
+    // no spreads until it is reloaded. The failed entry is dropped, so the next
+    // week click retries and recovers.
+    it('retries after a failed fetch instead of caching the failure', async () => {
+        let calls = 0;
+        const page = await loadStandingsPage({
+            users: homeFirst(), teamLogos: LOGOS,
+            games: [game({ completed: false })],
+            routes: [[/^\/betting-lines\//, () => {
+                calls++;
+                // Reject outright the first time — not a 4xx, which
+                // getAllBettingLines already degrades to [] on its own.
+                if (calls === 1) return Promise.reject(new Error('network'));
+                return [{ homeTeam: 'Purdue', awayTeam: 'Indiana', lines: [{ provider: 'DraftKings', formattedSpread: 'Indiana -7.5' }] }];
+            }]]
+        });
+
+        // The first render survives the failure with no spread.
+        expect(calls).toBe(1);
+        expect(page.scheduleBody().innerHTML).toContain('betting-line"></span>');
+
+        const select = page.q('[rivalry-week]');
+        select.value = 'week-1';
+        select.dispatchEvent(new window.Event('change'));
+        await page.flush();
+
+        // Retried, not served from a poisoned cache — and the spread appears.
+        expect(calls).toBe(2);
+        expect(page.scheduleBody().innerHTML).toContain('betting-line">-7.5');
+    });
+
     it('shows the betting spread against the favoured team', async () => {
         const page = await loadStandingsPage({
             users: homeFirst(), teamLogos: LOGOS,
@@ -1530,7 +1606,7 @@ describe('degrading when upstream calls fail', () => {
     it('renders with no spreads when the betting endpoint errors', async () => {
         const page = await loadStandingsPage({
             users: league(), games: [],
-            routes: [[/^\/betting\//, respond(500, { message: 'nope' })]]
+            routes: [[/^\/betting-lines\//, respond(500, { message: 'nope' })]]
         });
         expect(page.q('.football-loader').style.display).toBe('none');
     });

@@ -2,10 +2,48 @@ const express = require('express');
 const router = express.Router();
 const Betting = require('../models/bettingLine');
 
-//Getting All
+// The field set both read routes answer with.
+//
+// THREE callers read these documents, and between them they read exactly four
+// fields — homeTeam, awayTeam, and lines[].provider / lines[].formattedSpread:
+//   public/standings.js  displaySchedule, via getAllBettingLines
+//   public/userHome.js   buildGameCard
+//   public/team.js       renderTeamScheduleInfo
+//
+// Each one matches a line to a game on homeTeam + awayTeam, then picks the
+// DraftKings entry (or the first) and splits its formattedSpread. Nothing reads
+// spread, spreadOpen, overUnder, overUnderOpen, the moneylines, the conferences,
+// the classifications, the scores, startDate, week or seasonType.
+//
+// Unprojected, that cost (measured against a dev copy of prod):
+//   season 2026:  994 docs,  518KB, 6050ms   ->  115KB, 1747ms
+//   season 2025: 1597 docs, 1196KB, 12833ms  ->  290KB, 4236ms
+//
+// Bytes, not query time: the cluster is a free-tier M0 capped near 85KB/s, so
+// the payload IS the latency. Past seasons are worse than the current one
+// because a finished season has every week's lines in it.
+//
+// Nested _id cannot be excluded alongside an inclusion projection (Mongo rejects
+// it with "Cannot do inclusion on field homeTeam in exclusion projection"), but
+// it does not need to be — Mongoose leaves lines[]._id out when the projection
+// names nested fields, so the shape is already clean. That is COUPLED to the
+// .lean() below: hydrating a projected subdoc array can mint fresh _ids, so the
+// two travel together. tests/RoutesBettingLines.spec.js pins the shape.
+const LINE_READ_FIELDS = {
+    _id: 0,
+    homeTeam: 1, awayTeam: 1,
+    'lines.provider': 1, 'lines.formattedSpread': 1
+};
+
+// Getting All
+//
+// No caller in the app reaches this — every consumer asks for a season. It is
+// projected anyway rather than left as a bare find(): GET is open to any
+// authenticated member (see server.js), and unprojected this scans all 4164
+// stored lines across every season in one response.
 router.get('/', async (req, res) => {
     try {
-        const bettingLines = await Betting.find();
+        const bettingLines = await Betting.find({}, LINE_READ_FIELDS).lean();
         res.json(bettingLines);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -15,10 +53,14 @@ router.get('/', async (req, res) => {
 // Getting All By Season
 router.get('/:year', async (req, res) => {
     try {
-        const bettingLines = await Betting.find({season: req.params.year});
+        const bettingLines = await Betting.find({season: req.params.year}, LINE_READ_FIELDS).lean();
 
         if (JSON.stringify(bettingLines) === '[]') {
-            res.status(400).json({message: `No betting lines found for year ${req.body.year}`});
+            // req.params, not req.body — this is a GET, so req.body.year was
+            // always undefined and the message read "for year undefined".
+            // Harmless while standings never got here; it reaches the log on
+            // every preseason render now that it does.
+            res.status(400).json({message: `No betting lines found for year ${req.params.year}`});
         } else {
             res.status(200).json(bettingLines);
         }

@@ -991,10 +991,55 @@ async function getAllTeamLogos () {
     }
 }
 
+// One in-flight request per season, reused for the life of the page.
+//
+// displaySchedule re-runs on every week change (the [rivalry-week] handler) and
+// on a league switch, and it is the only caller — so without this, each week
+// click re-downloads the ENTIRE season's lines, ~118KB and ~1.76s on the M0
+// tier, to render one week. The response is season-scoped and does not change
+// within a page view, so the second fetch can never return anything new.
+//
+// Keyed by season because the league switcher can change it under us. The
+// PROMISE is cached, not the result, so two overlapping calls share one request
+// rather than racing. A rejection is not cached: the entry is dropped so a
+// transient failure can be retried on the next week click instead of poisoning
+// the page.
+var _bettingLinesBySeason = {};
+
+function bettingLinesForSeason(seasonYear) {
+    var key = String(seasonYear);
+    if (_bettingLinesBySeason[key]) return _bettingLinesBySeason[key];
+    _bettingLinesBySeason[key] = getAllBettingLines(seasonYear)
+        .catch(function (err) {
+            delete _bettingLinesBySeason[key];
+            throw err;
+        });
+    return _bettingLinesBySeason[key];
+}
+
+// Vegas spreads for the schedule rows.
+//
+// This asked /betting, which is the PARLAY router, so a season never reached a
+// lines handler at all. What it actually got depends on the caller:
+//   - outside the betting group (the classic league, and most managers): 403.
+//     routes/betting.js mounts requireBettingGroupMember ABOVE the catch-all,
+//     so it never reaches a handler.
+//   - inside the group: 400 from the ObjectId validity guard in
+//     router.get('/:id'), which rejects the shape before Parlay.findById runs.
+//     (It used to reach findById and 500 on the CastError; that was fixed when
+//     public/team.js hit this same bug. This caller was missed.)
+//
+// Either way it is a non-200, swallowed by the degrade-to-[] below, so every
+// schedule this function feeds has been rendering with NO spreads at all,
+// silently, behind one console line. That is both entry points into
+// displaySchedule — the classic table and the H2H view.
+//
+// The lines live on /betting-lines/:year, which is what public/userHome.js and
+// public/team.js already ask for.
 async function getAllBettingLines (seasonYear) {
     if (seasonYear == null) seasonYear = new Date().getFullYear();
 
-    var bettingPromise = await fetch(`/betting/${seasonYear}`, {
+    var bettingPromise = await fetch(`/betting-lines/${seasonYear}`, {
         method: 'GET',
         headers: {
         'Accept': 'application/json',
@@ -1135,8 +1180,19 @@ async function displaySchedule(data) {
         rankingsInfo = await getRankings(week, seasonType, seasonYear);
     }
 
+    // Left in series deliberately. Fixing the endpoint above means the lines are
+    // a real round trip now (~118KB, ~1.76s) where the broken path cost nothing,
+    // so firing these two together looks like the obvious recovery — but there is
+    // nothing to overlap. /teams/teamLogos/all is projected to "id logos", so it
+    // measured 1-25ms against betting's ~1760ms: Promise.allSettled moved 1774ms
+    // to 1749ms and was SLOWER on one of three runs, while swapping a logo
+    // failure from a rejection into a silent []. The same M0 ceiling is why
+    // routes/games.js notes 10 concurrent requests measured 863ms against 1026ms
+    // sequential.
+    //
+    // The payload is what to attack here, not the concurrency.
     var allTeamLogos = await getAllTeamLogos();
-    var allBettingLines = await getAllBettingLines(seasonYear) || [];
+    var allBettingLines = await bettingLinesForSeason(seasonYear).catch(function () { return []; }) || [];
 
     // One request for the whole league's rosters, before the loops. Each team's
     // games are then a map lookup rather than a round trip — see getGamesByTeam.
