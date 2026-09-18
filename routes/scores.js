@@ -237,6 +237,15 @@ async function h2hUsers(league, seasonNum) {
 //     changing the configured bonus converges instead of compounding;
 //   - a league with H2H off has any stale bonus stripped back out.
 async function applyH2HBonuses(season) {
+    // Both forms are needed, and which one goes where is not arbitrary:
+    //   seasonNum — anything the AGGREGATE touches, because a pipeline gets no
+    //               Mongoose casting (see h2hUsers). Safe for find/update
+    //               filters too, which cast either way.
+    //   seasonStr — object KEYS, which are strings in Mongo:
+    //               engagementBySeason[season] and h2hScheduleBySeason[season].
+    //               Also what computeH2HAwards/seasonEntry take, though those
+    //               stringify internally and would accept either.
+    // A new query added here wants seasonNum. A new keyed lookup wants seasonStr.
     const seasonStr = String(season);
     const seasonNum = Number(season);
 
@@ -370,10 +379,29 @@ router.post('/update', async (req, res) => {
         var seasonType = req.body.seasonType;
         var weekNumber = req.body.week;
 
+        // Resolved and checked BEFORE anything writes.
+        //
+        // applyH2HBonuses throws on a season it cannot match (see the guard
+        // there). Letting that fire mid-pipeline would be worse than the silent
+        // no-op it replaced: updateScores has already rewritten this week's
+        // weekly rows by then, so a throw skips updateCumulativeScores and
+        // strands cumulativeScore holding a bonus the weekly rows no longer
+        // carry. That is the 14 Sep 2026 drift exactly — the standings read model
+        // adds the win a second time while the weekly recap renders it missing,
+        // two screens disagreeing with no error anywhere. There is a test for it
+        // in tests/H2HBonusPersistence.spec.js.
+        //
+        // Failing here instead costs nothing: no pass has run, so there is no
+        // partial state to reconcile.
+        const h2hSeason = activeSeason('football');
+        if (!Number.isFinite(Number(h2hSeason)) || Number(h2hSeason) <= 0) {
+            return res.status(500).json({ message: `No active football season to score (got ${JSON.stringify(h2hSeason)})` });
+        }
+
         await scoringModule.updateScores(seasonType, weekNumber);
         // Before cumulative totals: the bonus is folded into the weekly scores
         // that updateCumulativeScores then sums.
-        await applyH2HBonuses(activeSeason('football'));
+        await applyH2HBonuses(h2hSeason);
         await scoringModule.updateCumulativeScores();
 
         try { const { resolveParlays } = require('../modules/parlay-resolve'); await resolveParlays(); } catch (_) {}
