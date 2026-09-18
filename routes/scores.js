@@ -194,7 +194,6 @@ async function h2hUsers(league, seasonNum) {
     return User.aggregate([
         { $match: { league, 'seasons.season': seasonNum } },
         { $project: {
-            league: 1,
             seasons: {
                 $map: {
                     input: {
@@ -240,6 +239,18 @@ async function h2hUsers(league, seasonNum) {
 async function applyH2HBonuses(season) {
     const seasonStr = String(season);
     const seasonNum = Number(season);
+
+    // Guard, not decoration. h2hUsers below $matches on seasonNum, and an
+    // aggregate gets no Mongoose casting — so a season that is not a real number
+    // silently matches nothing, and this pass reports "0 manager(s) updated" for
+    // every league while awarding nothing. The comment on h2hUsers explains the
+    // trap; this is what makes hitting it loud instead of quiet.
+    //
+    // Number(null) is 0 and finite, which is why this is not just isFinite.
+    if (!Number.isFinite(seasonNum) || seasonNum <= 0) {
+        throw new Error(`applyH2HBonuses needs a real season, got ${JSON.stringify(season)}`);
+    }
+
     const leagues = await User.distinct('league', { 'seasons.season': seasonStr });
     const summary = [];
 
@@ -298,6 +309,14 @@ async function applyH2HBonuses(season) {
             // That is exactly why the read below keeps weeklyScore whole instead
             // of trimming it to the six fields the computation needs — a trimmed
             // read would make this write silently destroy the rest.
+            //
+            // One real difference from the save() this replaces: updateOne does
+            // NOT run schema validators (update validators are off by default),
+            // and weeklyScoreSchema marks week and score required. Nothing
+            // reachable regresses — applyAwards always writes a numeric score
+            // (round1 of baseWeekScore, which floors a missing one to 0) and
+            // copies week through untouched — but an entry that was already
+            // malformed now persists instead of being rejected here.
             const res = await User.updateOne(
                 { _id: user._id, 'seasons.season': seasonNum },
                 { $set: { 'seasons.$.weeklyScore': next.weeklyScore } }

@@ -476,6 +476,32 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
         expect(loser.seasons[0].weeklyScore[0].score).toBe(14);
     });
 
+    // The aggregate $matches on a NUMBER, so a season that is not one matches
+    // nothing and this pass awards nothing while reporting success. Failing loudly
+    // is the difference between a bad call being noticed and standings quietly
+    // disagreeing with every other surface for a week.
+    test.each([
+        ['null', null],
+        ['undefined', undefined],
+        ['a non-numeric string', 'the-2026-season'],
+    ])('refuses to run for %s rather than silently awarding nothing', async (_label, bad) => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        const res = await request(app).post('/scores/h2h-bonus').send(bad === undefined ? {} : { season: bad });
+
+        // Note `null`/`{}` fall back to the active season inside the route, so
+        // those cases must still succeed — the guard must not break the default.
+        if (bad === 'the-2026-season') {
+            expect(res.status).toBe(500);
+            expect(res.body.message).toMatch(/needs a real season/);
+        } else {
+            expect(res.status).toBe(200);
+        }
+    });
+
     // The write is a positional $set of ONE season's weeklyScore, not a save() of
     // the whole document. A manager's OTHER seasons must come through untouched —
     // a pass that rewrote them would silently rewrite banked history.
