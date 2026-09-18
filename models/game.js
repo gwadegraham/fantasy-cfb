@@ -301,10 +301,17 @@ const gameSchema = new mongoose.Schema({
 
 // CFBD's game id is the identity of a game everywhere in the app, and the ingest
 // routes upsert on it. UNIQUE because a duplicate is not a cosmetic problem: the
-// per-team week lookup (`GET /games/seasonType/:st/week/:w/team/:id`) returns
-// every match, and modules/scoring.js adds a team's points once per returned
-// game — so a second doc with the same id DOUBLES that team's score for the week.
-// The index is the backstop; routes/games.js upserting is the fix.
+// week lookups return every match, and a caller that adds a team's points once
+// per returned game DOUBLES that team's score for the week. The index is the
+// backstop; routes/games.js upserting is the fix.
+//
+// Note that this index no longer protects scoring. modules/scoring.js moved off
+// the per-team route (`GET /games/seasonType/:st/week/:w/team/:id`) onto the
+// batched one, and it deduplicates the response by game id itself — which it has
+// to, because a game spanning two id chunks legitimately comes back from two
+// requests. That dedupe would also mask a genuine duplicate DOCUMENT rather than
+// double-counting it. The browser paths that still read a route directly are
+// what this index is guarding now.
 gameSchema.index({ id: 1 }, { unique: true });
 
 // Indexes for the standings / H2H / highlights lookups, which all filter by

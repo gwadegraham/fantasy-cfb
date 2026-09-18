@@ -289,6 +289,50 @@ describe('GET /games/seasonType/:type/week/:week/teams', () => {
             expect(res.status).toBe(400);
             expect(res.body.message).toMatch(/too many ids/);
         });
+
+        // The boundary the chunking scheme rests on. modules/scoring.js splits
+        // its requests at exactly MAX_TEAM_IDS, so a FULL chunk has to be
+        // accepted — lowering this cap without lowering that chunk size 400s
+        // every scoring run, and the two constants are not shared.
+        it('accepts a chunk of exactly the cap', async () => {
+            const { MAX_TEAM_IDS } = require('../routes/games');
+            expect(MAX_TEAM_IDS).toBe(200);
+
+            const exact = Array.from({ length: MAX_TEAM_IDS }, (_, i) => i + 1).join(',');
+            const res = await request(app).get(`/games/seasonType/regular/week/1/teams?ids=${exact}&season=2025`);
+
+            // Accepted, not 400 — that is the whole assertion. The id range
+            // covers several fixture teams, so the result set is incidental.
+            expect(res.status).toBe(200);
+            expect(res.body.map(g => g.id)).toContain(901);
+        });
+
+        // A team whose id does not survive the filter is simply absent from the
+        // response. modules/scoring.js is a caller now, and an absent team scores
+        // 0 for the week — so a PARTIAL drop must not be silent. (A total drop
+        // 400s above, and scoring throws on that.)
+        it('logs the ids it drops instead of dropping them silently', async () => {
+            const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            const res = await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,abc,2&season=2025');
+
+            expect(res.status).toBe(200);
+            expect(spy).toHaveBeenCalledWith(expect.stringMatching(/Ignored 1 non-numeric team id\(s\).*abc/));
+            spy.mockRestore();
+        });
+
+        it('does not log when every id is valid', async () => {
+            const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,2&season=2025');
+
+            // A trailing comma is not a dropped id — it is empty, and stripped
+            // before the check, so it must not raise a false alarm every run.
+            await request(app).get('/games/seasonType/regular/week/1/teams?ids=1,2,&season=2025');
+
+            expect(spy).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
     });
 
     it('projects the same fields as the per-team route', async () => {
