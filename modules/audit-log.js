@@ -36,11 +36,9 @@ const ACTIONS = {
 // action on the league. They share the collection — one trail, one query — but
 // the panel separates them, because a game week produces a captain row per
 // manager and would otherwise bury the handful of rows that change league data.
+// A Set rather than an array so membership reads as membership; routes/auditLog.js
+// spreads it into the $in / $nin that splits the two feeds.
 const MANAGER_ACTIONS = new Set(['captain.set', 'captain.locked']);
-
-function isManagerAction(action) {
-    return MANAGER_ACTIONS.has(action);
-}
 
 function labelFor(action) {
     return ACTIONS[action] || action;
@@ -90,4 +88,4 @@ function toRow(doc) {
     };
 }
 
-module.exports = { ACTIONS, MANAGER_ACTIONS, isManagerAction, labelFor, actorFrom, record, toRow };
+module.exports = { ACTIONS, MANAGER_ACTIONS, labelFor, actorFrom, record, toRow };
