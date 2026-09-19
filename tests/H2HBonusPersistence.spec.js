@@ -443,19 +443,27 @@ describe('the H2H roster is pinned once a week settles', () => {
     });
 });
 
-// The H2H pass reads its managers through an AGGREGATE now, so that it can slim
-// seasons[].teams — a plain projection and $elemMatch both return a subdocument
-// whole, and a manager carries four seasons of full team objects. Measured
-// against a dev copy of prod: 1059KB/11325ms unprojected, 40KB/608ms here.
+// The H2H pass reads its managers through an AGGREGATE now, so that it can drop
+// the seasons it is not scoring. A nested projection does slim subdocument
+// FIELDS, but it cannot drop array ELEMENTS, so a manager's other three seasons
+// come back either way; $elemMatch can pick the one element but returns it whole.
+// Measured against a dev copy of prod: 1059KB/11325ms unprojected, 435KB/4192ms
+// with a nested projection, 40KB/608ms here.
 //
 // The aggregate brings two hazards a find() did not have, and these pin both.
 describe('POST /scores/h2h-bonus — the aggregate read', () => {
-    // THE TRAP. models/user.js declares seasonSchema.season as Number, and every
-    // caller in the app passes the season as a STRING — which works only because
-    // Mongoose casts it against the schema on a find(). An aggregate pipeline
-    // gets no casting at all: $match on '2026' matches nothing, the pass sees
-    // zero managers, skips the league, and logs "0 manager(s) updated". No error,
-    // no bonuses, and the standings quietly disagree with every other surface.
+    // THE TRAP. models/user.js declares seasonSchema.season as Number, and
+    // applyH2HBonuses derives seasonStr for its other queries — which work only
+    // because Mongoose casts a string against the schema on find()/updateOne().
+    // An aggregate pipeline gets no casting at all: $match on '2026' matches
+    // nothing, the pass sees zero managers, skips the league, and logs "0
+    // manager(s) updated". No error, no bonuses, and the standings quietly
+    // disagree with every other surface.
+    //
+    // (Both production callers actually send a NUMBER — activeSeason returns
+    // one. This covers the string because the route accepts whatever a caller
+    // puts in the body, and because seasonStr is one refactor away from being
+    // the thing handed to the aggregate.)
     test('awards the bonus when the season arrives as a string', async () => {
         await enableH2H();
         const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
@@ -534,7 +542,11 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
         const res = await request(app).post('/scores/h2h-bonus').send({ season: bad });
 
         expect(res.status).toBe(500);
-        expect(res.body.message).toMatch(/needs a real season/);
+        // The route rejects it first (same words as /update); applyH2HBonuses
+        // keeps its own throw behind that as the function's contract, for the
+        // job paths that could one day call it directly.
+        expect(res.body.message).toMatch(/No active football season|needs a real season/);
+        expect(res.body.message).toContain(String(bad));
     });
 
     // The other half of the guard: it must not break the default. A missing or
