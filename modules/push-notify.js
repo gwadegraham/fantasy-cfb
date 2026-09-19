@@ -58,20 +58,30 @@ function applyVapid() {
     return true;
 }
 
-// Parsed narrowing list of User _ids. Comma-separated, whitespace tolerated.
-// Empty is the normal state and means "don't narrow" — see the header.
-function allowlist() {
-    return new Set(
-        String(process.env.PUSH_RECIPIENT_IDS || '')
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-    );
+// Entries of the narrowing list, as written. Empty is the normal state and means
+// "don't narrow" — see the header.
+function rawRecipientIds() {
+    return String(process.env.PUSH_RECIPIENT_IDS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
 }
 
-// True while delivery is narrowed to specific ids.
+// Only entries Mongo can actually match. An id that is not a 24-char hex string
+// makes `_id: { $in: [...] }` throw a CastError, which the wrappers below
+// swallow — so an unusable list would mean total silence explained by one log
+// line a tick. Screening here turns that into a visible, decided state.
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+function allowlist() {
+    return new Set(rawRecipientIds().filter(id => OBJECT_ID.test(id)));
+}
+
+// True while delivery is narrowed. Note the asymmetry with allowlist(): a var
+// set to something unusable ("none", "off", a typo) is still RESTRICTED, to an
+// empty set — nobody. Setting it to a non-id is the kill switch, and it fails
+// closed the way the original gate did, instead of quietly opening up.
 function isRestricted() {
-    return allowlist().size > 0;
+    return rawRecipientIds().length > 0;
 }
 
 // May this manager receive alerts at all? Open unless narrowed. Says nothing
@@ -80,16 +90,21 @@ function isAllowedRecipient(userId) {
     return !isRestricted() || allowlist().has(String(userId));
 }
 
-// Logged once per process, so the mode push is running in is visible in the
-// dyno log rather than something you infer from silence.
+// Logged once per process, so the mode push is running in is visible in the dyno
+// log rather than something you infer from silence.
 let announcedMode = false;
-function warnIfClosed() {
+function announceMode() {
     if (announcedMode) return;
     announcedMode = true;
-    if (isRestricted()) {
-        console.log(`Push: PUSH_RECIPIENT_IDS narrows alerts to ${allowlist().size} manager(s); everyone else stays silent.`);
-    } else {
+    if (!isRestricted()) {
         console.log('Push: alerts go to every manager with a registered device.');
+        return;
+    }
+    const usable = allowlist().size;
+    if (!usable) {
+        console.log(`Push: PUSH_RECIPIENT_IDS is set to ${rawRecipientIds().length} value(s), none of them a User id — NO alerts will be sent to anyone.`);
+    } else {
+        console.log(`Push: PUSH_RECIPIENT_IDS narrows alerts to ${usable} manager(s); everyone else stays silent.`);
     }
 }
 
@@ -223,8 +238,14 @@ async function recipientsFor(game, season) {
     };
     if (isRestricted()) query._id = { $in: [...allowlist()] };
 
+    // Project the two roster fields this function reads, NOT the whole `seasons`
+    // subtree: seasons[].teams holds a full team object each (logos, venue,
+    // colors), so `seasons: 1` returned 108,610 bytes per matched manager where
+    // this returns 1,208 — measured against the prod copy. That was one _id
+    // lookup while the allowlist was the gate; it is now an unindexed match run
+    // once per game, per tick, against a cluster capped around 85 KB/s.
     const users = await User.find(query,
-        { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, seasons: 1 }).lean();
+        { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, 'seasons.season': 1, 'seasons.teams.id': 1 }).lean();
 
     return users.map(user => {
         const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
@@ -314,7 +335,7 @@ function explainForTeam(cfg, teamId, game, rankings, bracket) {
 // Wrapped so it can NEVER take the poller down: an alert is a nicety, scoring is
 // not, and the poller runs every 10 seconds.
 async function notifyEvents(eventsByGameId) {
-    warnIfClosed();
+    announceMode();
     if (!isConfigured()) return { sent: 0 };
     const gameIds = Object.keys(eventsByGameId).map(Number).filter(n => !Number.isNaN(n));
     if (!gameIds.length) return { sent: 0 };
@@ -364,7 +385,7 @@ async function notifyEvents(eventsByGameId) {
 // both leagues score on wins — this is the only alert of the four that reports a
 // change to a manager's actual total.
 async function notifyFinals(gameIds) {
-    warnIfClosed();
+    announceMode();
     if (!isConfigured()) return { sent: 0 };
     const ids = (gameIds || []).map(Number).filter(n => !Number.isNaN(n));
     if (!ids.length) return { sent: 0 };
@@ -462,5 +483,5 @@ module.exports = {
     isAllowedRecipient,
     isRestricted,
     // exported for reuse/tests:
-    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, recipientsFor, explainForTeam
+    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, rawRecipientIds, recipientsFor, explainForTeam
 };

@@ -374,23 +374,31 @@ function auditTabs() {
         + '</div>';
 }
 
+// Everything the panel ever renders keeps the tabs above it. Writing a message
+// straight into the body — which the loading and error paths used to do — takes
+// the tabs with it, stranding whoever hit the error on the tab that failed with
+// no way back short of collapsing the panel.
+function auditPaint(body, html) {
+    body.innerHTML = auditTabs() + html;
+    bindAuditTabs(body);
+}
+
 async function loadAuditLog() {
     var body = document.querySelector('[audit-log-body]');
     if (!body) return;
-    body.textContent = 'Loading…';
+    auditPaint(body, '<p class="al-empty">Loading…</p>');
     try {
         var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind), { headers: { 'Accept': 'application/json' } });
         var data = await res.json();
-        if (!res.ok) { body.textContent = data.message || 'Could not load activity.'; return; }
+        if (!res.ok) { auditPaint(body, '<p class="al-empty">' + escapeHtml(data.message || 'Could not load activity.') + '</p>'); return; }
         if (!data.entries.length) {
-            body.innerHTML = auditTabs() + '<p class="al-empty">'
+            auditPaint(body, '<p class="al-empty">'
                 + (auditKind === 'captain' ? 'No captain picks recorded yet.' : 'No commissioner changes recorded yet.')
-                + '</p>';
-            bindAuditTabs(body);
+                + '</p>');
             return;
         }
         var multi = (data.scope || []).length > 1;
-        body.innerHTML = auditTabs() + '<div class="al-rows">' + data.entries.map(function (e) {
+        auditPaint(body, '<div class="al-rows">' + data.entries.map(function (e) {
             return '<div class="al-row">'
                 + '<span class="al-when" title="' + escapeHtml(new Date(e.at).toLocaleString()) + '">' + escapeHtml(timeAgo(e.at)) + '</span>'
                 + '<span class="al-tag">' + escapeHtml(e.label) + '</span>'
@@ -398,10 +406,9 @@ async function loadAuditLog() {
                 + '<span class="al-summary">' + escapeHtml(e.summary) + '</span>'
                 + '<span class="al-actor">' + escapeHtml(e.actor) + '</span>'
                 + '</div>';
-        }).join('') + '</div>';
-        bindAuditTabs(body);
+        }).join('') + '</div>');
     } catch (err) {
-        body.textContent = 'Could not load activity.';
+        auditPaint(body, '<p class="al-empty">Could not load activity.</p>');
     }
 }
 

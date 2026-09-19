@@ -245,6 +245,25 @@ describe('who may receive an alert', () => {
         });
     });
 
+    // `_id: { $in: ['none'] }` throws a CastError, and the wrappers swallow it —
+    // so an unusable value would mean total silence with one log line a tick.
+    // Screened out here instead, and a var whose entries are ALL unusable stays
+    // restricted (to nobody) rather than falling through to "everyone".
+    it('ignores an entry that is not a User id', async () => {
+        await withAllowlist('64b1f00000000000000000aa, not-an-id', () => {
+            expect(push.allowlist().size).toBe(1);
+            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(true);
+        });
+    });
+
+    it('treats a list of nothing but junk as the kill switch, not as open', async () => {
+        await withAllowlist('none', () => {
+            expect(push.isRestricted()).toBe(true);
+            expect(push.allowlist().size).toBe(0);
+            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(false);
+        });
+    });
+
     // VAPID keys are now the only thing that makes these free: with push
     // configured, an open list means real recipient lookups on every tick that
     // produced an event.

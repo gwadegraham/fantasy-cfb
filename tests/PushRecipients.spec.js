@@ -10,10 +10,14 @@
 // things that must ALL hold still do: a registered device, a rostered team in
 // this game, and the active season.
 
+process.env.YEAR = '2026';
+
 const express = require('express');
+const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
 const push = require('../modules/push-notify');
+const usersRouter = require('../routes/users');
 
 useMongo();
 
@@ -89,6 +93,20 @@ describe('with no narrowing list set (the normal state)', () => {
         });
     });
 
+    // The projection was slimmed to seasons.season + seasons.teams.id because
+    // seasons[].teams carries a full team object each — 108,610 bytes per
+    // matched manager against the prod copy, versus 1,208 here. If that
+    // projection ever drops a field recipientsFor reads, these go red.
+    it('still resolves the rostered teams from the slimmed projection', async () => {
+        await manager('Brock', [BAMA]);
+        await withAllowlist(undefined, async () => {
+            const [row] = await push.recipientsFor(GAME, SEASON);
+            expect(row.teamIds).toEqual([BAMA]);
+            expect(row.user.league).toBe(LEAGUE);
+            expect((row.user.pushSubscriptions || []).length).toBe(1);
+        });
+    });
+
     // A manager can hold both sides; the alert names the teams they actually own.
     it('reports both rostered teams when a manager holds both sides', async () => {
         await manager('Both', [BAMA, GEORGIA]);
@@ -100,6 +118,15 @@ describe('with no narrowing list set (the normal state)', () => {
 });
 
 describe('with a narrowing list set', () => {
+    // A value Mongo cannot cast to an ObjectId used to throw inside the send
+    // wrappers, which swallow it — silence with no decision behind it.
+    it('sends to nobody, without throwing, when every entry is junk', async () => {
+        await manager('Brock', [BAMA]);
+        await withAllowlist('none', async () => {
+            expect(await push.recipientsFor(GAME, SEASON)).toEqual([]);
+        });
+    });
+
     it('notifies only the listed ids, even though the others opted in', async () => {
         const brock = await manager('Brock', [BAMA]);
         await manager('Trevor', [GEORGIA]);
@@ -112,6 +139,49 @@ describe('with a narrowing list set', () => {
         const quiet = await manager('Quiet', [BAMA], { subscribed: false });
         await withAllowlist(String(quiet._id), async () => {
             expect(await push.recipientsFor(GAME, SEASON)).toEqual([]);
+        });
+    });
+});
+
+// GET /users/me/push reports `allowed`, which the profile modal uses to warn a
+// manager that their device is registered but will stay quiet.
+describe('what the Alerts panel is told', () => {
+    const appFor = (user) => {
+        const a = express();
+        a.use(express.json());
+        a.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: { user_metadata: { metadata: { userId: String(user._id) } } } };
+            next();
+        });
+        a.use('/users', usersRouter);
+        return a;
+    };
+
+    it('tells a manager playing this season that alerts will reach them', async () => {
+        const u = await manager('Brock', [BAMA]);
+        await withAllowlist(undefined, async () => {
+            const res = await request(appFor(u)).get('/users/me/push');
+            expect(res.body.allowed).toBe(true);
+            expect(res.body.deviceCount).toBe(1);
+        });
+    });
+
+    // Every alert is triggered by a game one of your teams is playing, so a
+    // manager with no roster this season will never hear one — saying "alerts
+    // are on" to them is the exact confusion `allowed` exists to prevent.
+    it('warns a manager with no roster this season, even unrestricted', async () => {
+        const u = await manager('LastYear', [BAMA], { season: SEASON - 1 });
+        await withAllowlist(undefined, async () => {
+            const res = await request(appFor(u)).get('/users/me/push');
+            expect(res.body.deviceCount).toBe(1);
+            expect(res.body.allowed).toBe(false);
+        });
+    });
+
+    it('warns a manager that a narrowing list is excluding them', async () => {
+        const u = await manager('Brock', [BAMA]);
+        await withAllowlist('64b1f00000000000000000aa', async () => {
+            expect((await request(appFor(u)).get('/users/me/push')).body.allowed).toBe(false);
         });
     });
 });

@@ -119,19 +119,29 @@ function sessionUserId(req) {
 }
 
 // What the client needs to decide which state to render: the VAPID public key
-// (public by definition — it ships to every browser), whether this manager is in
-// the rollout, and what they're already subscribed to.
+// (public by definition — it ships to every browser), whether an alert would
+// reach this manager at all, and what they're already subscribed to.
 router.get('/me/push', async (req, res) => {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
     try {
-        const user = await User.findById(userId, { pushSubscriptions: 1, pushPrefs: 1 }).lean();
+        // seasons.season only — enough to answer "do they play this year", and
+        // seasons[].teams holds full team objects, so asking for the subtree
+        // would pull ~100KB to decide one boolean.
+        const user = await User.findById(userId,
+            { pushSubscriptions: 1, pushPrefs: 1, 'seasons.season': 1 }).lean();
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
+        // `allowed` answers "would an alert actually reach me". Eligibility is
+        // one half; the other is having a roster this season, because every
+        // alert is triggered by a game one of your teams is playing. A manager
+        // carried over from a prior season would otherwise be told alerts are on
+        // and then never hear a thing.
+        const playsThisSeason = (user.seasons || []).some(s => Number(s.season) === activeSeason('football'));
         res.json({
             configured: pushNotify.isConfigured(),
-            allowed: pushNotify.isAllowedRecipient(userId),
+            allowed: pushNotify.isAllowedRecipient(userId) && playsThisSeason,
             deviceCount: subs.length,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },
@@ -229,8 +239,8 @@ router.patch('/me/push/prefs', async (req, res) => {
 });
 
 // Prove the chain works without waiting for a Saturday. Subject to the same
-// allowlist as a real alert, so a test that stays silent is telling the truth
-// about what a real game day would do.
+// eligibility rule as a real alert, so a test that stays silent is telling the
+// truth about what a real game day would do.
 router.post('/me/push/test', async (req, res) => {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
