@@ -8,10 +8,12 @@
 // first", "turn on", "on" — rather than a toggle that silently does nothing on
 // the one platform every manager in this league actually uses.
 //
-// A second state worth surfacing: during the initial rollout only the ids in
-// PUSH_RECIPIENT_IDS receive sends (modules/push-notify.js). The server reports
-// that as `allowed`, so a manager who subscribes outside the rollout is told
-// their device is registered but quiet, instead of being left to wonder.
+// Turning this on is the manager's own opt-in — the subscription IS the gate, so
+// anyone who installs and turns alerts on gets them. The one exception worth
+// surfacing: delivery can be narrowed to specific ids in an emergency
+// (PUSH_RECIPIENT_IDS, modules/push-notify.js). The server reports that as
+// `allowed`, so a manager outside a narrowed window is told their device is
+// registered but quiet, instead of being left to wonder.
 
 (function () {
     'use strict';
@@ -196,7 +198,7 @@
             }
 
             if (state.deviceCount > 0) {
-                var quiet = state.allowed ? '' : ' This device is registered, but alerts are still limited to the commissioner while the feature is being tested — you will not get anything yet.';
+                var quiet = state.allowed ? '' : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
                 say('Alerts are on for ' + state.deviceCount + (state.deviceCount === 1 ? ' device.' : ' devices.') + quiet, state.allowed ? 'ok' : 'info');
                 renderPrefs(state.prefs || {});
                 if (state.allowed) {

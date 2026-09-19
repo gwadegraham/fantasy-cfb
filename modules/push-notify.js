@@ -11,17 +11,22 @@
 // iOS will not even show a permission prompt to a plain Safari tab — the site
 // must be installed first. public/push-alerts.js is what explains that.
 //
-// ---- ROLLOUT GATE -----------------------------------------------------------
-// PUSH_RECIPIENT_IDS is an allowlist of User _ids that may receive a push. It
-// FAILS CLOSED: unset or empty means nobody is notified, and the reason is
-// logged once per process rather than silently. That is deliberate for the
-// initial deploy — the alerts run live against a real Saturday for one person
-// (the admin) before the rest of the league can be woken up by a bug in them.
-// Widening the rollout is an env var change, not a deploy.
+// ---- WHO GETS ONE -----------------------------------------------------------
+// Turning alerts on is the manager's own decision: anyone with a registered
+// device and a rostered team in the game is notified. The rollout is over, so
+// the opt-in IS the gate — no admin has to add anyone to a list.
+//
+// PUSH_RECIPIENT_IDS survives as a NARROWING override, not the gate. Set it to a
+// comma-separated list of User _ids and only those ids are notified; leave it
+// unset (the normal state) and every subscribed manager is. That inverts what it
+// used to mean — empty was "nobody" during the initial deploy — so clearing the
+// var in prod is what opens alerts to the league. It stays because it is the
+// only way to narrow delivery in a hurry without unsetting the VAPID keys and
+// killing push for everyone.
 //
 // The gate is applied at SEND time, not at subscribe time, and not in the UI.
 // A client-side gate would be cosmetic, and gating subscription would mean
-// re-subscribing every device when the rollout widens.
+// re-subscribing every device when the rollout changes.
 
 const webpush = require('web-push');
 const User = require('../models/user');
@@ -53,7 +58,8 @@ function applyVapid() {
     return true;
 }
 
-// Parsed allowlist of User _ids. Comma-separated, whitespace tolerated.
+// Parsed narrowing list of User _ids. Comma-separated, whitespace tolerated.
+// Empty is the normal state and means "don't narrow" — see the header.
 function allowlist() {
     return new Set(
         String(process.env.PUSH_RECIPIENT_IDS || '')
@@ -63,18 +69,27 @@ function allowlist() {
     );
 }
 
-function isAllowedRecipient(userId) {
-    return allowlist().has(String(userId));
+// True while delivery is narrowed to specific ids.
+function isRestricted() {
+    return allowlist().size > 0;
 }
 
-// Logged once per process so an empty allowlist is visibly a choice rather than
-// a silent dead feature — the exact failure mode that makes push feel broken.
-let warnedEmptyAllowlist = false;
+// May this manager receive alerts at all? Open unless narrowed. Says nothing
+// about whether they've turned them on — that's the subscription.
+function isAllowedRecipient(userId) {
+    return !isRestricted() || allowlist().has(String(userId));
+}
+
+// Logged once per process, so the mode push is running in is visible in the
+// dyno log rather than something you infer from silence.
+let announcedMode = false;
 function warnIfClosed() {
-    if (warnedEmptyAllowlist) return;
-    if (!allowlist().size) {
-        console.log('Push: PUSH_RECIPIENT_IDS is empty — no game alerts will be sent to anyone.');
-        warnedEmptyAllowlist = true;
+    if (announcedMode) return;
+    announcedMode = true;
+    if (isRestricted()) {
+        console.log(`Push: PUSH_RECIPIENT_IDS narrows alerts to ${allowlist().size} manager(s); everyone else stays silent.`);
+    } else {
+        console.log('Push: alerts go to every manager with a registered device.');
     }
 }
 
@@ -193,8 +208,8 @@ function buildFinalPayload(game, teamName, explain) {
 // ---- recipients -------------------------------------------------------------
 
 // Managers who roster either team in this game, for the active season, and who
-// have at least one push subscription. The allowlist is applied here so it
-// cannot be forgotten by a caller.
+// have at least one push subscription — the subscription being the manager's
+// own opt-in. Any narrowing list is applied here so a caller cannot forget it.
 //
 // Returns [{ user, teamIds }] where teamIds are the rostered teams involved —
 // a manager can roster BOTH sides of a game, which is why this is a list.
@@ -202,14 +217,14 @@ async function recipientsFor(game, season) {
     const teamIds = [game.homeId, game.awayId].filter(id => id != null);
     if (!teamIds.length) return [];
 
-    const ids = [...allowlist()];
-    if (!ids.length) return [];
-
-    const users = await User.find({
-        _id: { $in: ids },
+    const query = {
         pushSubscriptions: { $exists: true, $ne: [] },
         seasons: { $elemMatch: { season, 'teams.id': { $in: teamIds } } }
-    }, { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, seasons: 1 }).lean();
+    };
+    if (isRestricted()) query._id = { $in: [...allowlist()] };
+
+    const users = await User.find(query,
+        { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, seasons: 1 }).lean();
 
     return users.map(user => {
         const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
@@ -300,7 +315,7 @@ function explainForTeam(cfg, teamId, game, rankings, bracket) {
 // not, and the poller runs every 10 seconds.
 async function notifyEvents(eventsByGameId) {
     warnIfClosed();
-    if (!isConfigured() || !allowlist().size) return { sent: 0 };
+    if (!isConfigured()) return { sent: 0 };
     const gameIds = Object.keys(eventsByGameId).map(Number).filter(n => !Number.isNaN(n));
     if (!gameIds.length) return { sent: 0 };
 
@@ -350,7 +365,7 @@ async function notifyEvents(eventsByGameId) {
 // change to a manager's actual total.
 async function notifyFinals(gameIds) {
     warnIfClosed();
-    if (!isConfigured() || !allowlist().size) return { sent: 0 };
+    if (!isConfigured()) return { sent: 0 };
     const ids = (gameIds || []).map(Number).filter(n => !Number.isNaN(n));
     if (!ids.length) return { sent: 0 };
 
@@ -422,7 +437,7 @@ async function notifyFinals(gameIds) {
 // finding above is the only thing that needs revisiting if Apple ever changes.
 async function sendTest(userId) {
     if (!applyVapid()) return { sent: 0, reason: 'VAPID keys not configured' };
-    if (!isAllowedRecipient(userId)) return { sent: 0, reason: 'Not on the alert allowlist yet' };
+    if (!isAllowedRecipient(userId)) return { sent: 0, reason: 'Alerts are narrowed to other managers right now' };
     const user = await User.findById(userId, { pushSubscriptions: 1, firstName: 1 }).lean();
     if (!user) return { sent: 0, reason: 'User not found' };
     const res = await sendToUser(user, {
@@ -445,6 +460,7 @@ module.exports = {
     isConfigured,
     vapidConfig,
     isAllowedRecipient,
+    isRestricted,
     // exported for reuse/tests:
     buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, recipientsFor, explainForTeam
 };

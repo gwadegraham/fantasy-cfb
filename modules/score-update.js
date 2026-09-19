@@ -517,8 +517,9 @@ async function doLiveUpdate() {
     // already written to the DB — so a send that outlives this tick cannot
     // double-fire or observe torn state.
     //
-    // Both are no-ops unless VAPID keys are set AND PUSH_RECIPIENT_IDS is
-    // non-empty, and both check that before doing any DB work.
+    // Both are no-ops unless VAPID keys are set, checked before any DB work.
+    // Recipients are managers who turned alerts on themselves; see the header of
+    // modules/push-notify.js for the optional PUSH_RECIPIENT_IDS narrowing.
     const alertFailed = (e) => console.log(`Push: alert dispatch failed: ${e && e.message}`);
     pushNotify.notifyEvents(result.events || {}).catch(alertFailed);
     if (result.newlyCompleted && result.newlyCompleted.length) {
