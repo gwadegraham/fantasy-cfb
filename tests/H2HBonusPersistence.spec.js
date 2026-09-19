@@ -442,3 +442,201 @@ describe('the H2H roster is pinned once a week settles', () => {
         expect(cal.seasons[0].weeklyScore[0].h2hResult).toBeUndefined();
     });
 });
+
+// The H2H pass reads its managers through an AGGREGATE now, so that it can drop
+// the seasons it is not scoring. A nested projection does slim subdocument
+// FIELDS, but it cannot drop array ELEMENTS, so a manager's other three seasons
+// come back either way; $elemMatch can pick the one element but returns it whole.
+// Measured against a dev copy of prod: 1059KB/11325ms unprojected, 435KB/4192ms
+// with a nested projection, 40KB/608ms here.
+//
+// The aggregate brings two hazards a find() did not have, and these pin both.
+describe('POST /scores/h2h-bonus — the aggregate read', () => {
+    // THE TRAP. models/user.js declares seasonSchema.season as Number, and
+    // applyH2HBonuses derives seasonStr for its other queries — which work only
+    // because Mongoose casts a string against the schema on find()/updateOne().
+    // An aggregate pipeline gets no casting at all: $match on '2026' matches
+    // nothing, the pass sees zero managers, skips the league, and logs "0
+    // manager(s) updated". No error, no bonuses, and the standings quietly
+    // disagree with every other surface.
+    //
+    // (Both production callers actually send a NUMBER — activeSeason returns
+    // one. This covers the string because the route accepts whatever a caller
+    // puts in the body, and because seasonStr is one refactor away from being
+    // the thing handed to the aggregate.)
+    test('awards the bonus when the season arrives as a string', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        // String, exactly as modules/scoring.js and the job paths send it.
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: String(SEASON) });
+
+        expect(res.status).toBe(200);
+        const gl = res.body.leagues.find(l => l.league === LEAGUE);
+        expect(gl.managersUpdated).toBe(2);
+        expect(gl.bonusAwarded).toBe(3);
+
+        const winner = await User.findById(a._id).lean();
+        expect(winner.seasons[0].weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
+        const loser = await User.findById(b._id).lean();
+        expect(loser.seasons[0].weeklyScore[0].score).toBe(14);
+    });
+
+    // The aggregate $matches on a NUMBER, so a season that is not one matches
+    // nothing and this pass awards nothing while reporting success. Failing loudly
+    // is the difference between a bad call being noticed and standings quietly
+    // disagreeing with every other surface for a week.
+    // WHERE the guard fires matters as much as that it fires.
+    //
+    // POST /scores/update runs updateScores FIRST, which rewrites this week's
+    // weekly rows. If the season check tripped inside applyH2HBonuses after
+    // that, the 500 would skip updateCumulativeScores and strand
+    // cumulativeScore holding a bonus the weekly rows no longer carry — the
+    // 14 Sep 2026 drift, tested two describes up. So the route resolves and
+    // checks the season BEFORE any pass runs, when there is no partial state.
+    test('checks the season before updateScores writes anything', async () => {
+        const scoringModule = require('../modules/scoring');
+        const updateSpy = jest.spyOn(scoringModule, 'updateScores').mockResolvedValue(undefined);
+        const cumulativeSpy = jest.spyOn(scoringModule, 'updateCumulativeScores').mockResolvedValue(undefined);
+
+        // The router destructures activeSeason at require time, so spying on the
+        // module does not rebind it. Drive the real thing instead: with no
+        // primed cache (tests never prime it) and no YEAR, it answers null —
+        // which is the production shape of this failure, a dyno that came up
+        // without a season.
+        const YEAR = process.env.YEAR;
+        delete process.env.YEAR;
+        let res;
+        try {
+            res = await request(app).post('/scores/update').send({ seasonType: 'regular', week: 1 });
+        } finally {
+            process.env.YEAR = YEAR;
+        }
+
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/No active football season/);
+        // Nothing ran, so there is nothing half-written to reconcile.
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(cumulativeSpy).not.toHaveBeenCalled();
+    });
+
+    const twoManagersOneWeek = async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+    };
+
+    // Each of these REACHES the guard. `'0'` is the case the comment calls out:
+    // Number(null) and Number('0') are both 0 and both finite, which is why the
+    // check is isFinite AND > 0 rather than isFinite alone.
+    test.each([
+        ['a non-numeric string', 'the-2026-season'],
+        ['zero', '0'],
+        ['a negative year', '-2026'],
+    ])('refuses to run for %s rather than silently awarding nothing', async (_label, bad) => {
+        await twoManagersOneWeek();
+
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: bad });
+
+        // 400: the season came in the request body, so a bad one is the
+        // caller's mistake, not a server fault. /update answers 500 for the
+        // same check because there it is server state that is missing.
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/No active football season|needs a real season/);
+        expect(res.body.message).toContain(String(bad));
+    });
+
+    // isRealSeason only rejects things that are not numbers. A well-formed
+    // season nobody has played gets past it, matches no managers, and returns an
+    // empty summary that reads exactly like a successful no-op — the quiet
+    // failure the guard exists to stop, wearing a different hat.
+    test('says so when a well-formed season matches no managers', async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: 1999 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.leagues).toEqual([]);
+        expect(spy).toHaveBeenCalledWith(expect.stringMatching(/no managers found for season 1999/));
+    });
+
+    // The other half of the guard: it must not break the default. A missing or
+    // null season is NOT garbage — the route substitutes the active season, so
+    // these never reach the guard and must still award normally.
+    test.each([
+        ['an absent season', undefined],
+        ['an explicit null', null],
+    ])('%s still falls back to the active season and awards', async (_label, value) => {
+        await twoManagersOneWeek();
+
+        const res = await request(app).post('/scores/h2h-bonus').send(value === undefined ? {} : { season: value });
+
+        expect(res.status).toBe(200);
+        expect(res.body.leagues.find(l => l.league === LEAGUE).bonusAwarded).toBe(3);
+    });
+
+    // The write is a positional $set of ONE season's weeklyScore, not a save() of
+    // the whole document. A manager's OTHER seasons must come through untouched —
+    // a pass that rewrote them would silently rewrite banked history.
+    test('leaves the manager\'s other seasons exactly as they were', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        // A prior season, PREPENDED. Real data is chronological, so the season
+        // being scored is the LAST element — and a wrong filter whose positional
+        // match lands on seasons[0] would slip past a fixture built the other
+        // way round.
+        await User.updateOne({ _id: a._id }, { $push: { seasons: {
+            $each: [{
+                season: 2025, teams: [team(7, 'Texas')],
+                weeklyScore: [{ week: 1, score: 40, h2hBonus: 3, h2hResult: 'W' }],
+                cumulativeScore: 40
+            }],
+            $position: 0
+        } } });
+        const before = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const after = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        expect(after).toEqual(before);
+        // ...and the scored season really was written.
+        const scored = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON);
+        expect(scored.weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3 });
+    });
+
+    // weeklyScore is read WHOLE rather than trimmed to the six fields the
+    // computation uses, precisely because the caller writes the array back.
+    // Trimming the read would make this write drop scoreByTeam and the Captain
+    // fields off every entry — silently, and only for managers who earned a bonus.
+    test('preserves scoreByTeam and the Captain fields on a rewritten entry', async () => {
+        await enableH2H();
+        const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
+        await User.updateOne({ _id: a._id, 'seasons.season': SEASON }, { $set: {
+            'seasons.$.weeklyScore': [{
+                week: 1, score: 20,
+                scoreByTeam: [{ team: 'Oregon', teamId: 1, gameId: 101, score: 20 }],
+                captainTeamId: 1, captainBonus: 5
+            }]
+        } });
+        await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
+
+        await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
+
+        const wk = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON).weeklyScore[0];
+        expect(wk.h2hBonus).toBe(3);
+        expect(wk.score).toBe(23);
+        // Untouched by the bonus write.
+        expect(wk.scoreByTeam).toHaveLength(1);
+        expect(wk.scoreByTeam[0]).toMatchObject({ team: 'Oregon', teamId: 1, gameId: 101, score: 20 });
+        expect(wk.captainTeamId).toBe(1);
+        expect(wk.captainBonus).toBe(5);
+    });
+});

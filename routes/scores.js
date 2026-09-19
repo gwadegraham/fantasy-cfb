@@ -164,6 +164,81 @@ router.get('/readiness/:season', async (req, res) => {
     }
 });
 
+// Is this a season we can actually query for?
+//
+// Shared by both routes that reach applyH2HBonuses, so the two cannot drift.
+// Number(null) is 0 and finite, which is why this is not isFinite alone.
+function isRealSeason(season) {
+    const n = Number(season);
+    return Number.isFinite(n) && n > 0;
+}
+
+// The managers of one league, carrying ONLY what the H2H pass reads.
+//
+// This was User.find({ league, 'seasons.season' }) with no projection, which
+// answered every field of every season a manager has ever played. Measured
+// against a dev copy of prod, for the two leagues:
+//
+//   unprojected                         1059KB, 11325ms
+//   projected to teams.id + weeklyScore  435KB,  4192ms
+//   this aggregate                         40KB,   608ms
+//
+// A plain projection cannot get there, though NOT for the reason it looks like.
+// A nested projection DOES slim subdocuments — {'seasons.teams.id': 1} really
+// does return teams as [{id}], and routes/scores.js relies on that elsewhere.
+// That is what takes 1059KB to 435KB.
+//
+// What a projection cannot do is drop array ELEMENTS. It slims fields across
+// ALL FOUR of a manager's seasons, and the 435KB that remains is the three
+// seasons this pass is not scoring — mostly their weeklyScore. $elemMatch and
+// the positional projection can pick the one element, but they return it WHOLE
+// and cannot be combined with a nested field projection, so the full team
+// objects come back. $filter picks the element and $map slims it, which is why
+// this is an aggregate.
+//
+// weeklyScore is kept WHOLE on purpose. Trimming it to the six fields the
+// computation reads gets this to 4KB/117ms, but the caller writes the array back,
+// so a trimmed read would silently drop scoreByTeam and the Captain fields off
+// every entry. 0.5s is not worth that.
+//
+// SEASON IS A NUMBER HERE, deliberately. models/user.js declares
+// seasonSchema.season as Number, and the other queries in this function pass the
+// string — which works only because Mongoose casts it against the schema. An
+// aggregate pipeline gets NO casting: $match with '2026' matches nothing, returns
+// zero managers, and this pass then skips the league and applies no bonuses at
+// all, with a clean log line saying "0 manager(s) updated".
+async function h2hUsers(league, seasonNum) {
+    return User.aggregate([
+        { $match: { league, 'seasons.season': seasonNum } },
+        { $project: {
+            seasons: {
+                $map: {
+                    input: {
+                        $filter: {
+                            input: { $ifNull: ['$seasons', []] },
+                            as: 's',
+                            cond: { $eq: ['$$s.season', seasonNum] }
+                        }
+                    },
+                    as: 's',
+                    in: {
+                        season: '$$s.season',
+                        // Only the id is read, to build the drafted-team set.
+                        teams: {
+                            $map: {
+                                input: { $ifNull: ['$$s.teams', []] },
+                                as: 't',
+                                in: { id: '$$t.id' }
+                            }
+                        },
+                        weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
+                    }
+                }
+            }
+        } }
+    ]);
+}
+
 // Fold each league's head-to-head win/tie bonuses into the stored weekly scores.
 //
 // Why this is a separate pass: a week's H2H result depends on EVERY manager's
@@ -179,14 +254,44 @@ router.get('/readiness/:season', async (req, res) => {
 //     changing the configured bonus converges instead of compounding;
 //   - a league with H2H off has any stale bonus stripped back out.
 async function applyH2HBonuses(season) {
+    // Both forms are needed, and which one goes where is not arbitrary:
+    //   seasonNum — every QUERY, without exception. The aggregate REQUIRES it
+    //               (a pipeline gets no Mongoose casting — see h2hUsers), and
+    //               find/distinct/update cast either way, so there is no reason
+    //               for them to disagree with it and one good reason not to.
+    //   seasonStr — object KEYS, which are strings in Mongo:
+    //               engagementBySeason[season] and h2hScheduleBySeason[season].
+    //               Also what computeH2HAwards/seasonEntry take, though those
+    //               stringify internally and would accept either.
+    // A new query added here wants seasonNum. A new keyed lookup wants seasonStr.
     const seasonStr = String(season);
     const seasonNum = Number(season);
-    const leagues = await User.distinct('league', { 'seasons.season': seasonStr });
+
+    // Guard, not decoration. h2hUsers below $matches on seasonNum, and an
+    // aggregate gets no Mongoose casting — so a season that is not a real number
+    // silently matches nothing, and this pass reports "0 manager(s) updated" for
+    // every league while awarding nothing. The comment on h2hUsers explains the
+    // trap; this is what makes hitting it loud instead of quiet.
+    //
+    // Number(null) is 0 and finite, which is why this is not just isFinite.
+    if (!isRealSeason(season)) {
+        throw new Error(`applyH2HBonuses needs a real season, got ${JSON.stringify(season)}`);
+    }
+
+    const leagues = await User.distinct('league', { 'seasons.season': seasonNum });
     const summary = [];
+
+    // isRealSeason only rejects things that are not numbers. A well-formed
+    // season nobody has played — a typo'd 1999, or a rollover that ran early —
+    // gets past it, finds no managers, and returns an empty summary that reads
+    // exactly like a successful no-op. Say so.
+    if (!leagues.length) {
+        console.error(`H2H bonus: no managers found for season ${seasonStr} — nothing was applied`);
+    }
 
     for (const league of leagues) {
         if (!league) continue;
-        const users = await User.find({ league, 'seasons.season': seasonStr });
+        const users = await h2hUsers(league, seasonNum);
         if (!users.length) continue;
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();
@@ -225,9 +330,38 @@ async function applyH2HBonuses(season) {
             const plain = (s.weeklyScore || []).map(e => (e.toObject ? e.toObject() : e));
             const next = applyAwards(plain, awards[String(user._id)], H2H_MAX_WEEK);
             if (!next.changed) continue;
-            s.weeklyScore = next.weeklyScore;
-            user.markModified('seasons');
-            await user.save();
+            // Write the ONE array that changed, not the whole manager.
+            //
+            // user.save() rewrote the entire document — 105KB, of which
+            // seasons[].teams is nearly all — to persist a 3KB weeklyScore, and
+            // measured 1239ms against 95ms for this. The positional $ resolves
+            // against the season matched in the filter, so it can only ever touch
+            // the season being scored.
+            //
+            // applyAwards returns the FULL entries (it copies each one and edits
+            // four fields), so this is lossless: scoreByTeam, the Captain fields
+            // and anything else on an entry are written back as they were read.
+            // That is exactly why the read below keeps weeklyScore whole instead
+            // of trimming it to the six fields the computation needs — a trimmed
+            // read would make this write silently destroy the rest.
+            //
+            // One real difference from the save() this replaces: updateOne does
+            // NOT run schema validators (update validators are off by default),
+            // and weeklyScoreSchema marks week and score required. Nothing
+            // reachable regresses — applyAwards always writes a numeric score
+            // (round1 of baseWeekScore, which floors a missing one to 0) and
+            // copies week through untouched — but an entry that was already
+            // malformed now persists instead of being rejected here.
+            const res = await User.updateOne(
+                { _id: user._id, 'seasons.season': seasonNum },
+                { $set: { 'seasons.$.weeklyScore': next.weeklyScore } }
+            );
+            if (!res.matchedCount) {
+                // Loud: a manager whose bonus could not be written is a standings
+                // row that silently disagrees with every other surface.
+                console.error(`H2H bonus not written for ${user._id} (${league} ${seasonStr}): no matching season`);
+                continue;
+            }
             updated++;
             awarded += next.weeklyScore.reduce((sum, e) => sum + (e.h2hBonus || 0), 0);
         }
@@ -258,6 +392,19 @@ async function applyH2HBonuses(season) {
 router.post('/h2h-bonus', async (req, res) => {
     try {
         const season = (req.body && req.body.season) || activeSeason('football');
+        // Checked here too, not just on /update. This is the route the NIGHTLY
+        // path uses (modules/scoring.js applyH2HBonuses -> here), so a season
+        // that cannot be matched should say so in the same words from either
+        // entry point rather than arriving as a bare throw from two layers down.
+        //
+        // Nothing has written by this point on this route — it only runs the H2H
+        // pass — so unlike /update there is no partial state at stake here.
+        // 400, not 500: the season arrives in the request body, so a bad one is
+        // the caller's mistake. /update's is a 500 because there the season comes
+        // from server state. Both still fail in the same words.
+        if (!isRealSeason(season)) {
+            return res.status(400).json({ message: `No active football season to score (got ${JSON.stringify(season)})` });
+        }
         const leagues = await applyH2HBonuses(season);
         res.status(200).json({ season: String(season), leagues });
     } catch (err) {
@@ -271,10 +418,41 @@ router.post('/update', async (req, res) => {
         var seasonType = req.body.seasonType;
         var weekNumber = req.body.week;
 
+        // Resolved and checked BEFORE anything writes.
+        //
+        // applyH2HBonuses throws on a season it cannot match (see the guard
+        // there). Letting that fire mid-pipeline would be worse than the silent
+        // no-op it replaced: updateScores has already rewritten this week's
+        // weekly rows by then, so a throw skips updateCumulativeScores and
+        // strands cumulativeScore holding a bonus the weekly rows no longer
+        // carry. That is the 14 Sep 2026 drift exactly — the standings read model
+        // adds the win a second time while the weekly recap renders it missing,
+        // two screens disagreeing with no error anywhere. There is a test for it
+        // in tests/H2HBonusPersistence.spec.js.
+        //
+        // Failing here instead costs nothing: no pass has run, so there is no
+        // partial state to reconcile.
+        //
+        // This ordering matters for THIS route specifically, because it is the
+        // one that writes before reaching H2H. POST /h2h-bonus carries the same
+        // check for a consistent message, but has nothing to strand.
+        //
+        // Note this is a full stop, not a degrade, which is deliberately the
+        // opposite of the principle in modules/score-update.js:341. That one is
+        // about a failed INGEST, where the games are already stored and still
+        // scoreable, so carrying on loses nothing. With no resolvable season
+        // there is nothing to carry on WITH: updateScores would resolve the same
+        // missing season, fetch /users/season/null, find no managers and score
+        // everyone zero. Refusing is the degraded behaviour here.
+        const h2hSeason = activeSeason('football');
+        if (!isRealSeason(h2hSeason)) {
+            return res.status(500).json({ message: `No active football season to score (got ${JSON.stringify(h2hSeason)})` });
+        }
+
         await scoringModule.updateScores(seasonType, weekNumber);
         // Before cumulative totals: the bonus is folded into the weekly scores
         // that updateCumulativeScores then sums.
-        await applyH2HBonuses(activeSeason('football'));
+        await applyH2HBonuses(h2hSeason);
         await scoringModule.updateCumulativeScores();
 
         try { const { resolveParlays } = require('../modules/parlay-resolve'); await resolveParlays(); } catch (_) {}
