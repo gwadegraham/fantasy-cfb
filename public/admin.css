@@ -448,6 +448,22 @@
 .al-summary { min-width: 0; overflow-wrap: anywhere; }
 .al-actor { color: var(--cc-muted-2); font-size: 0.74rem; white-space: nowrap; }
 .al-empty { color: var(--cc-muted-2); font-size: 0.85rem; margin: 0; }
+/* Commissioner / Captain picks. A game week writes a captain row per manager,
+   so the two slices get their own tab rather than one interleaved feed. */
+.al-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+/* Scoped past `.sub-container button`, which paints every button in an admin
+   panel as a full-width brand-red action. These are filters, not actions. */
+.al-tabs .al-tab {
+    width: auto; display: inline-block;
+    background: none; border: 1px solid var(--cc-border); border-radius: var(--cc-r-sm);
+    color: var(--cc-muted-2); font-size: 0.72rem; font-weight: 400; letter-spacing: 0.04em;
+    padding: 4px 10px; margin: 0; cursor: pointer;
+}
+.al-tabs .al-tab:hover { color: var(--cc-muted-bright); border-color: var(--cc-border-2); }
+.al-tabs .al-tab.is-on {
+    color: var(--cc-text); border-color: var(--cc-muted-bright);
+    background: var(--cc-surface-3);
+}
 
 /* Mobile: the actor drops under the summary rather than squeezing it. */
 @media (max-width: 620px) {

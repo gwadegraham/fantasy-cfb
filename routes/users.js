@@ -106,11 +106,12 @@ router.patch('/me/profile', async (req, res) => {
 // subscriptions. They're exempted from the commissioner gate in server.js for
 // that reason (same rationale as /me/profile).
 //
-// Note what `allowed` does and does NOT do. During the initial rollout only the
-// ids in PUSH_RECIPIENT_IDS actually receive sends (modules/push-notify.js
-// enforces that at send time). This flag lets the UI say so honestly instead of
-// letting someone subscribe and then wonder why their phone is silent — but it
-// is a LABEL, not the gate. The gate is server-side and applies regardless.
+// Note what `allowed` does and does NOT do. It says whether this manager is
+// eligible to receive sends at all — normally true, and false only while
+// PUSH_RECIPIENT_IDS narrows delivery to other ids (modules/push-notify.js
+// enforces that at send time). It lets the UI say so honestly instead of letting
+// someone subscribe and then wonder why their phone is silent — but it is a
+// LABEL, not the gate. The gate is server-side.
 function sessionUserId(req) {
     const oidcUser = req.oidc && req.oidc.user;
     const meta = oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata;
@@ -118,19 +119,29 @@ function sessionUserId(req) {
 }
 
 // What the client needs to decide which state to render: the VAPID public key
-// (public by definition — it ships to every browser), whether this manager is in
-// the rollout, and what they're already subscribed to.
+// (public by definition — it ships to every browser), whether an alert would
+// reach this manager at all, and what they're already subscribed to.
 router.get('/me/push', async (req, res) => {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
     try {
-        const user = await User.findById(userId, { pushSubscriptions: 1, pushPrefs: 1 }).lean();
+        // seasons.season only — enough to answer "do they play this year", and
+        // seasons[].teams holds full team objects, so asking for the subtree
+        // would pull ~100KB to decide one boolean.
+        const user = await User.findById(userId,
+            { pushSubscriptions: 1, pushPrefs: 1, 'seasons.season': 1 }).lean();
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
+        // `allowed` answers "would an alert actually reach me". Eligibility is
+        // one half; the other is having a roster this season, because every
+        // alert is triggered by a game one of your teams is playing. A manager
+        // carried over from a prior season would otherwise be told alerts are on
+        // and then never hear a thing.
+        const playsThisSeason = (user.seasons || []).some(s => Number(s.season) === activeSeason('football'));
         res.json({
             configured: pushNotify.isConfigured(),
-            allowed: pushNotify.isAllowedRecipient(userId),
+            allowed: pushNotify.isAllowedRecipient(userId) && playsThisSeason,
             deviceCount: subs.length,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },
@@ -228,8 +239,8 @@ router.patch('/me/push/prefs', async (req, res) => {
 });
 
 // Prove the chain works without waiting for a Saturday. Subject to the same
-// allowlist as a real alert, so a test that stays silent is telling the truth
-// about what a real game day would do.
+// eligibility rule as a real alert, so a test that stays silent is telling the
+// truth about what a real game day would do.
 router.post('/me/push/test', async (req, res) => {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
@@ -321,6 +332,47 @@ router.get('/me/captain', async (req, res) => {
     }
 });
 
+// ---- Captain audit trail ----------------------------------------------------
+// A captain pick leaves NO history of its own: the PATCH below drops the week's
+// entry and pushes a fresh one, so the stored subdoc is only ever the latest
+// state. When a manager says "I picked X and it changed back", the data can say
+// what the pick IS and when it was last written, and nothing more.
+//
+// So both outcomes are recorded: the write, and the REJECTED write. The
+// rejection is the one that actually answers the question — an attempt to switch
+// after kickoff repaints the picker into its locked state, which looks exactly
+// like the pick reverting on its own.
+//
+// Best-effort, same as every other audit call: never fails the request.
+const capName = (season, teamId) => {
+    if (teamId == null) return 'no one';
+    const t = ((season && season.teams) || []).find(x => Number(x.id) === Number(teamId));
+    return (t && t.school) || `team ${teamId}`;
+};
+const capManager = (user) => `${user.firstName || ''} ${user.lastName || ''}`.trim() || String(user._id);
+
+async function recordCaptain(req, { user, season, seasonYear, week, action, teamId, prevTeamId, via, note }) {
+    const who = capManager(user);
+    const summary = action === 'captain.locked'
+        ? `${who} tried to set Week ${week} captain to ${capName(season, teamId)} after lock — stays ${capName(season, prevTeamId)}`
+        : teamId == null
+            ? `${who} cleared Week ${week} captain (was ${capName(season, prevTeamId)})`
+            : `${who} set Week ${week} captain: ${capName(season, teamId)}`
+                + (prevTeamId != null && Number(prevTeamId) !== Number(teamId) ? ` (was ${capName(season, prevTeamId)})` : '');
+    return audit.record(req, {
+        action,
+        league: user.league || null,
+        season: String(seasonYear),
+        summary: via === 'admin' ? `${summary} · admin override` : summary,
+        meta: {
+            userId: String(user._id), week,
+            teamId: teamId == null ? null : Number(teamId),
+            prevTeamId: prevTeamId == null ? null : Number(prevTeamId),
+            via, ...(note ? { note } : {})
+        }
+    });
+}
+
 // Self-service Captain pick (#230): the logged-in manager sets/clears their
 // captained team for a regular-season week. Locks at the kickoff of their own
 // earliest team that week (not the league-wide first game).
@@ -346,15 +398,25 @@ router.patch('/me/captain', async (req, res) => {
             return res.status(400).json({ message: 'That team is not on your roster.' });
         }
 
+        const prevTeamId = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
+
         // Lock: the manager's earliest team of the week has kicked off.
         const weekGames = (await captainGamesQuery(seasonYear, teamIds)).filter(g => Number(g.week) === week);
         const lockMs = captainLockMs(weekGames, teamIds);
         if (lockMs != null && Date.now() >= lockMs) {
+            await recordCaptain(req, {
+                user, season, seasonYear, week, action: 'captain.locked', teamId, prevTeamId, via: 'self',
+                note: `locked at ${new Date(lockMs).toISOString()}`
+            });
             return res.status(409).json({ message: "That week's captain is locked — your first team has kicked off." });
         }
         // Safety backstop: if a kickoff can't be determined (schedule missing) but
         // the week already has a completed game, never allow retro-editing it.
         if (lockMs == null && weekGames.some(g => g.completed === true)) {
+            await recordCaptain(req, {
+                user, season, seasonYear, week, action: 'captain.locked', teamId, prevTeamId, via: 'self',
+                note: 'no kickoff time; week already has a completed game'
+            });
             return res.status(409).json({ message: 'That week is locked.' });
         }
 
@@ -362,6 +424,11 @@ router.patch('/me/captain', async (req, res) => {
         season.captains = season.captains.filter(c => Number(c.week) !== week);   // drop any existing pick for the week
         if (teamId != null) season.captains.push({ week, teamId });
         await user.save();
+        // After the save: an audit row for a write that never landed is worse
+        // than a missing one.
+        await recordCaptain(req, {
+            user, season, seasonYear, week, action: 'captain.set', teamId, prevTeamId, via: 'self'
+        });
         res.json({ season: seasonYear, week, teamId, captains: season.captains });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -391,10 +458,14 @@ router.patch('/:id/captain', async (req, res) => {
                 return res.status(400).json({ message: 'That team is not on their roster.' });
             }
         }
+        const prevTeamId = ((season.captains || []).find(c => Number(c.week) === week) || {}).teamId;
         if (!Array.isArray(season.captains)) season.captains = [];
         season.captains = season.captains.filter(c => Number(c.week) !== week);
         if (teamId != null) season.captains.push({ week, teamId });
         await user.save();
+        await recordCaptain(req, {
+            user, season, seasonYear, week, action: 'captain.set', teamId, prevTeamId, via: 'admin'
+        });
         res.json({ userId: req.params.id, season: seasonYear, week, teamId, captains: season.captains });
     } catch (err) {
         res.status(500).json({ message: err.message });

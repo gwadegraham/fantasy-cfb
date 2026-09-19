@@ -2,9 +2,13 @@
 //
 // Two things are worth locking down here. The wording, because a notification is
 // the only surface in this app with no room to explain itself — it is one line
-// on a lock screen. And the allowlist, because it is the entire safety mechanism
-// for the initial deploy: if it ever fails OPEN, the whole league gets woken up
-// by a feature that has not been watched through a live Saturday yet.
+// on a lock screen. And who receives one, because that is the part that can wake
+// up the wrong phone.
+//
+// The rollout is over: a manager's own subscription is the opt-in, so unset
+// means EVERY subscribed manager. PUSH_RECIPIENT_IDS survives only as a
+// narrowing override for an emergency — the inverse of what it meant during the
+// initial deploy, when empty meant nobody.
 
 const push = require('../modules/push-notify');
 const { resolveConfig } = require('../modules/scoring-defaults');
@@ -204,21 +208,24 @@ describe('explainForTeam — the argument that shipped broken', () => {
     });
 });
 
-describe('the rollout allowlist', () => {
-    // FAIL CLOSED. Unset must mean "nobody", never "everybody" — this is the one
-    // property protecting the league from an untested feature.
-    it('allows nobody when it is unset or empty', async () => {
+describe('who may receive an alert', () => {
+    // The opt-in is the manager's own subscription, so an unset env var must mean
+    // "everyone who turned them on" — not "nobody", which is what it meant while
+    // the feature was being watched through its first live Saturday.
+    it('is open to everyone when the narrowing list is unset or empty', async () => {
         await withAllowlist('', () => {
-            expect(push.allowlist().size).toBe(0);
-            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(false);
+            expect(push.isRestricted()).toBe(false);
+            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(true);
         });
         await withAllowlist('   ', () => {
-            expect(push.allowlist().size).toBe(0);
+            expect(push.isRestricted()).toBe(false);
+            expect(push.isAllowedRecipient('64b1f00000000000000000bb')).toBe(true);
         });
     });
 
-    it('allows exactly the ids listed, and no one else', async () => {
+    it('narrows to exactly the ids listed when one is set', async () => {
         await withAllowlist('64b1f00000000000000000aa', () => {
+            expect(push.isRestricted()).toBe(true);
             expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(true);
             expect(push.isAllowedRecipient('64b1f00000000000000000bb')).toBe(false);
         });
@@ -228,6 +235,7 @@ describe('the rollout allowlist', () => {
         await withAllowlist(' 64b1f00000000000000000aa , 64b1f00000000000000000bb , ', () => {
             expect(push.allowlist().size).toBe(2);
             expect(push.isAllowedRecipient('64b1f00000000000000000bb')).toBe(true);
+            expect(push.isAllowedRecipient('64b1f00000000000000000cc')).toBe(false);
         });
     });
 
@@ -237,13 +245,40 @@ describe('the rollout allowlist', () => {
         });
     });
 
-    // The gate is checked before any DB work, so an empty allowlist costs
-    // nothing on every one of the 10-second ticks it runs on.
-    it('makes notifyEvents and notifyFinals no-ops while closed', async () => {
-        await withAllowlist('', async () => {
+    // `_id: { $in: ['none'] }` throws a CastError, and the wrappers swallow it —
+    // so an unusable value would mean total silence with one log line a tick.
+    // Screened out here instead, and a var whose entries are ALL unusable stays
+    // restricted (to nobody) rather than falling through to "everyone".
+    it('ignores an entry that is not a User id', async () => {
+        await withAllowlist('64b1f00000000000000000aa, not-an-id', () => {
+            expect(push.allowlist().size).toBe(1);
+            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(true);
+        });
+    });
+
+    it('treats a list of nothing but junk as the kill switch, not as open', async () => {
+        await withAllowlist('none', () => {
+            expect(push.isRestricted()).toBe(true);
+            expect(push.allowlist().size).toBe(0);
+            expect(push.isAllowedRecipient('64b1f00000000000000000aa')).toBe(false);
+        });
+    });
+
+    // VAPID keys are now the only thing that makes these free: with push
+    // configured, an open list means real recipient lookups on every tick that
+    // produced an event.
+    it('makes notifyEvents and notifyFinals no-ops when VAPID is not configured', async () => {
+        const pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
+        delete process.env.VAPID_PUBLIC_KEY;
+        delete process.env.VAPID_PRIVATE_KEY;
+        try {
+            expect(push.isConfigured()).toBe(false);
             expect(await push.notifyEvents({ 401628319: [{ type: 'score', side: 'home' }] })).toEqual({ sent: 0 });
             expect(await push.notifyFinals([401628319])).toEqual({ sent: 0 });
-        });
+        } finally {
+            if (pub === undefined) delete process.env.VAPID_PUBLIC_KEY; else process.env.VAPID_PUBLIC_KEY = pub;
+            if (priv === undefined) delete process.env.VAPID_PRIVATE_KEY; else process.env.VAPID_PRIVATE_KEY = priv;
+        }
     });
 });
 

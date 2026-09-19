@@ -1,4 +1,5 @@
-// Commissioner audit trail.
+// Audit trail: commissioner actions, plus the one manager action that rewrites
+// something nobody can otherwise reconstruct (the weekly Captain pick).
 //
 // Scheduled jobs already leave a record (modules/job-logger.js). Commissioner
 // actions did not — and several of them quietly rewrite history: a roster
@@ -26,8 +27,18 @@ const ACTIONS = {
     'draft.reset': 'Draft',
     'league.rename': 'League',
     'user.create': 'Manager',
-    'user.invite': 'Invite'
+    'user.invite': 'Invite',
+    'captain.set': 'Captain',
+    'captain.locked': 'Captain'
 };
+
+// Actions a MANAGER performs on their own team, as opposed to a commissioner
+// action on the league. They share the collection — one trail, one query — but
+// the panel separates them, because a game week produces a captain row per
+// manager and would otherwise bury the handful of rows that change league data.
+// A Set rather than an array so membership reads as membership; routes/auditLog.js
+// spreads it into the $in / $nin that splits the two feeds.
+const MANAGER_ACTIONS = new Set(['captain.set', 'captain.locked']);
 
 function labelFor(action) {
     return ACTIONS[action] || action;
@@ -77,4 +88,4 @@ function toRow(doc) {
     };
 }
 
-module.exports = { ACTIONS, labelFor, actorFrom, record, toRow };
+module.exports = { ACTIONS, MANAGER_ACTIONS, labelFor, actorFrom, record, toRow };

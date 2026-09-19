@@ -360,20 +360,45 @@ function auditLeagueTag(entry, multiLeague) {
     return '<span class="al-league">' + escapeHtml(short) + '</span>';
 }
 
+// Which slice of the trail is showing. Captain picks are their own tab rather
+// than mixed in: one game week writes a row per manager, which would bury the
+// league-data changes this panel exists for.
+var auditKind = 'commissioner';
+
+function auditTabs() {
+    return '<div class="al-tabs">'
+        + ['commissioner', 'captain'].map(function (k) {
+            return '<button type="button" class="al-tab' + (auditKind === k ? ' is-on' : '')
+                + '" data-audit-kind="' + k + '">' + (k === 'captain' ? 'Captain picks' : 'Commissioner') + '</button>';
+        }).join('')
+        + '</div>';
+}
+
+// Everything the panel ever renders keeps the tabs above it. Writing a message
+// straight into the body — which the loading and error paths used to do — takes
+// the tabs with it, stranding whoever hit the error on the tab that failed with
+// no way back short of collapsing the panel.
+function auditPaint(body, html) {
+    body.innerHTML = auditTabs() + html;
+    bindAuditTabs(body);
+}
+
 async function loadAuditLog() {
     var body = document.querySelector('[audit-log-body]');
     if (!body) return;
-    body.textContent = 'Loading…';
+    auditPaint(body, '<p class="al-empty">Loading…</p>');
     try {
-        var res = await fetch('/audit-log?limit=25', { headers: { 'Accept': 'application/json' } });
+        var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind), { headers: { 'Accept': 'application/json' } });
         var data = await res.json();
-        if (!res.ok) { body.textContent = data.message || 'Could not load activity.'; return; }
+        if (!res.ok) { auditPaint(body, '<p class="al-empty">' + escapeHtml(data.message || 'Could not load activity.') + '</p>'); return; }
         if (!data.entries.length) {
-            body.innerHTML = '<p class="al-empty">No commissioner changes recorded yet.</p>';
+            auditPaint(body, '<p class="al-empty">'
+                + (auditKind === 'captain' ? 'No captain picks recorded yet.' : 'No commissioner changes recorded yet.')
+                + '</p>');
             return;
         }
         var multi = (data.scope || []).length > 1;
-        body.innerHTML = '<div class="al-rows">' + data.entries.map(function (e) {
+        auditPaint(body, '<div class="al-rows">' + data.entries.map(function (e) {
             return '<div class="al-row">'
                 + '<span class="al-when" title="' + escapeHtml(new Date(e.at).toLocaleString()) + '">' + escapeHtml(timeAgo(e.at)) + '</span>'
                 + '<span class="al-tag">' + escapeHtml(e.label) + '</span>'
@@ -381,10 +406,19 @@ async function loadAuditLog() {
                 + '<span class="al-summary">' + escapeHtml(e.summary) + '</span>'
                 + '<span class="al-actor">' + escapeHtml(e.actor) + '</span>'
                 + '</div>';
-        }).join('') + '</div>';
+        }).join('') + '</div>');
     } catch (err) {
-        body.textContent = 'Could not load activity.';
+        auditPaint(body, '<p class="al-empty">Could not load activity.</p>');
     }
+}
+
+function bindAuditTabs(body) {
+    body.querySelectorAll('[data-audit-kind]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            auditKind = btn.getAttribute('data-audit-kind');
+            loadAuditLog();
+        });
+    });
 }
 
 // --- Correct a Roster --------------------------------------------------------
