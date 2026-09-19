@@ -541,12 +541,28 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
 
         const res = await request(app).post('/scores/h2h-bonus').send({ season: bad });
 
-        expect(res.status).toBe(500);
-        // The route rejects it first (same words as /update); applyH2HBonuses
-        // keeps its own throw behind that as the function's contract, for the
-        // job paths that could one day call it directly.
+        // 400: the season came in the request body, so a bad one is the
+        // caller's mistake, not a server fault. /update answers 500 for the
+        // same check because there it is server state that is missing.
+        expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/No active football season|needs a real season/);
         expect(res.body.message).toContain(String(bad));
+    });
+
+    // isRealSeason only rejects things that are not numbers. A well-formed
+    // season nobody has played gets past it, matches no managers, and returns an
+    // empty summary that reads exactly like a successful no-op — the quiet
+    // failure the guard exists to stop, wearing a different hat.
+    test('says so when a well-formed season matches no managers', async () => {
+        await enableH2H();
+        await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
+        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const res = await request(app).post('/scores/h2h-bonus').send({ season: 1999 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.leagues).toEqual([]);
+        expect(spy).toHaveBeenCalledWith(expect.stringMatching(/no managers found for season 1999/));
     });
 
     // The other half of the guard: it must not break the default. A missing or

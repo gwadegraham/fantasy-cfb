@@ -255,9 +255,10 @@ async function h2hUsers(league, seasonNum) {
 //   - a league with H2H off has any stale bonus stripped back out.
 async function applyH2HBonuses(season) {
     // Both forms are needed, and which one goes where is not arbitrary:
-    //   seasonNum — anything the AGGREGATE touches, because a pipeline gets no
-    //               Mongoose casting (see h2hUsers). Safe for find/update
-    //               filters too, which cast either way.
+    //   seasonNum — every QUERY, without exception. The aggregate REQUIRES it
+    //               (a pipeline gets no Mongoose casting — see h2hUsers), and
+    //               find/distinct/update cast either way, so there is no reason
+    //               for them to disagree with it and one good reason not to.
     //   seasonStr — object KEYS, which are strings in Mongo:
     //               engagementBySeason[season] and h2hScheduleBySeason[season].
     //               Also what computeH2HAwards/seasonEntry take, though those
@@ -277,8 +278,16 @@ async function applyH2HBonuses(season) {
         throw new Error(`applyH2HBonuses needs a real season, got ${JSON.stringify(season)}`);
     }
 
-    const leagues = await User.distinct('league', { 'seasons.season': seasonStr });
+    const leagues = await User.distinct('league', { 'seasons.season': seasonNum });
     const summary = [];
+
+    // isRealSeason only rejects things that are not numbers. A well-formed
+    // season nobody has played — a typo'd 1999, or a rollover that ran early —
+    // gets past it, finds no managers, and returns an empty summary that reads
+    // exactly like a successful no-op. Say so.
+    if (!leagues.length) {
+        console.error(`H2H bonus: no managers found for season ${seasonStr} — nothing was applied`);
+    }
 
     for (const league of leagues) {
         if (!league) continue;
@@ -390,8 +399,11 @@ router.post('/h2h-bonus', async (req, res) => {
         //
         // Nothing has written by this point on this route — it only runs the H2H
         // pass — so unlike /update there is no partial state at stake here.
+        // 400, not 500: the season arrives in the request body, so a bad one is
+        // the caller's mistake. /update's is a 500 because there the season comes
+        // from server state. Both still fail in the same words.
         if (!isRealSeason(season)) {
-            return res.status(500).json({ message: `No active football season to score (got ${JSON.stringify(season)})` });
+            return res.status(400).json({ message: `No active football season to score (got ${JSON.stringify(season)})` });
         }
         const leagues = await applyH2HBonuses(season);
         res.status(200).json({ season: String(season), leagues });
@@ -424,6 +436,14 @@ router.post('/update', async (req, res) => {
         // This ordering matters for THIS route specifically, because it is the
         // one that writes before reaching H2H. POST /h2h-bonus carries the same
         // check for a consistent message, but has nothing to strand.
+        //
+        // Note this is a full stop, not a degrade, which is deliberately the
+        // opposite of the principle in modules/score-update.js:341. That one is
+        // about a failed INGEST, where the games are already stored and still
+        // scoreable, so carrying on loses nothing. With no resolvable season
+        // there is nothing to carry on WITH: updateScores would resolve the same
+        // missing season, fetch /users/season/null, find no managers and score
+        // everyone zero. Refusing is the degraded behaviour here.
         const h2hSeason = activeSeason('football');
         if (!isRealSeason(h2hSeason)) {
             return res.status(500).json({ message: `No active football season to score (got ${JSON.stringify(h2hSeason)})` });

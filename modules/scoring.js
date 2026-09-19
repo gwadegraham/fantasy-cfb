@@ -207,7 +207,13 @@ module.exports= {
         if (response.status == 200) {
             console.log("✅ H2H bonuses applied", JSON.stringify(data.leagues || []));
         } else {
-            console.log("❌ H2H bonuses could not be applied" + " | " + response.status);
+            // console.error, not log. This is the UNATTENDED path — the nightly
+            // and live-flush jobs reach H2H through here — and it deliberately
+            // carries on into updateCumulativeScores rather than aborting the
+            // pass. That means a failure here is invisible unless it is loud:
+            // the run still reports success, and no JobRun records the miss.
+            // The body carries the reason; the status alone never did.
+            console.error(`❌ H2H bonuses could not be applied | ${response.status} | ${(data && data.message) || 'no message'}`);
         }
         return data;
     },
