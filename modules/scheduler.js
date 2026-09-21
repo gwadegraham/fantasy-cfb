@@ -22,7 +22,13 @@ const JOB_SCHEDULES = [
     // Half-hourly puts four ticks inside that window, so the reminder survives a
     // lost tick, and the job only writes a JobRun on a tick that actually sent
     // something.
-    { job: 'captain-reminder', modulePath: '../modules/captain-reminder-job', rule: { minute: [0, 30] } }
+    { job: 'captain-reminder', modulePath: '../modules/captain-reminder-job', rule: { minute: [0, 30] } },
+    // "Your weekly recap is ready", Monday, 0 CFBD calls. 07:05 because
+    // public/weekly-recap.js draws its once-a-week popup boundary at Monday
+    // 07:00, so the push and the popup describe the same week — and the weekend
+    // is scored long before then. The 19:05 pass is a free retry: the job
+    // dedupes on the recap's week, so it is a no-op unless the morning missed.
+    { job: 'recap-notice', modulePath: '../modules/recap-notice-job', rule: { dayOfWeek: 1, hour: [7, 19], minute: 5 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

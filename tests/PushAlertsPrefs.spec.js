@@ -71,6 +71,16 @@ describe('the lead-time dropdown', () => {
         expect(document.querySelectorAll('.push-pref-lead')).toHaveLength(1);   // only that row
     });
 
+    it('is the only row with a picker — the recap row is a plain switch', async () => {
+        await mountPanel();
+        const labels = [...document.querySelectorAll('.push-pref strong')].map(e => e.textContent);
+        expect(labels).toEqual(['Captain lock', 'Weekly recap', 'Final results',
+            'Lead changes', 'Crunch time', 'Every score']);
+        const recapRow = [...document.querySelectorAll('.push-pref')]
+            .find(r => r.querySelector('strong').textContent === 'Weekly recap');
+        expect(recapRow.querySelector('select')).toBeNull();
+    });
+
     it('shows the manager\'s stored lead, and the default when they have none', async () => {
         await mountPanel({ captainLockLeadMinutes: 360 });
         expect(leadSelect().value).toBe('360');

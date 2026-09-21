@@ -53,7 +53,7 @@ function sanitizeSubscription(body, userAgent) {
 
 // Only the known alert types, only booleans. An absent key is left absent so a
 // partial update doesn't silently re-enable something the manager muted.
-const PREF_KEYS = ['score', 'leadChange', 'closeGame', 'final', 'captainLock'];
+const PREF_KEYS = ['score', 'leadChange', 'closeGame', 'final', 'captainLock', 'recapReady'];
 
 // Prefs that carry a value rather than an on/off. Kept separate because the
 // boolean loop's error message ("must be true or false") would be a lie for

@@ -38,6 +38,7 @@
     // a timing they have changed.
     var ALERT_TYPES = [
         { key: 'captainLock', label: 'Captain lock', lead: true, hint: 'Before your weekly pick locks.' },
+        { key: 'recapReady', label: 'Weekly recap', hint: 'Monday morning, when your week is written up.' },
         { key: 'final', label: 'Final results', hint: 'Your team finished — and what it banked.' },
         { key: 'leadChange', label: 'Lead changes', hint: 'When your team takes or loses the lead.' },
         { key: 'closeGame', label: 'Crunch time', hint: 'Under 2:00, one score apart.' },
