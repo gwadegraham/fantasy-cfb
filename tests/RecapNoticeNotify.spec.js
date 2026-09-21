@@ -74,6 +74,7 @@ describe('notifyRecapReady — who gets one', () => {
         expect(res).toMatchObject({ due: 1, sent: 1 });
         expect(payloads()[0].type).toBe('recapReady');
         expect(payloads()[0].title).toBe('📖 Week 4 recap is ready');
+        expect(payloads()[0].body).toBe('See how your week went — tap to read it.');
     });
 
     it('skips a manager who muted this alert type', async () => {
@@ -110,7 +111,10 @@ describe('notifyRecapReady — who gets one', () => {
         expect(await push.notifyRecapReady(OFFSEASON)).toMatchObject({ skipped: 'offseason', sent: 0 });
     });
 
-    it('sends each manager their own recap, not the first one it loaded', async () => {
+    // Each manager is pointed at their OWN profile. The body is identical by
+    // design — it contains nothing from the recap — so the url is what proves
+    // this is per-manager rather than one payload sent twice.
+    it('points each manager at their own profile', async () => {
         const ann = await manager('Ann');
         const bob = await manager('Bob');
         stubRecap(id => ({
@@ -119,11 +123,10 @@ describe('notifyRecapReady — who gets one', () => {
 
         await push.notifyRecapReady(MONDAY);
 
-        const bodies = payloads().map(p => p.body).sort();
-        expect(bodies[0]).toContain('11 points · 6th');
-        expect(bodies[1]).toContain('26 points · 2nd');
         expect(payloads().map(p => p.url).sort())
             .toEqual([`/userHome?user=${ann._id}#recap`, `/userHome?user=${bob._id}#recap`].sort());
+        // Two very different weeks, and neither notification says so.
+        expect(new Set(payloads().map(p => p.body)).size).toBe(1);
     });
 });
 

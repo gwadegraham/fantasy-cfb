@@ -1,9 +1,10 @@
 // The pure half of the "your weekly recap is ready" push: which recap is the
-// new one, whether it has already been announced, and what the one-line hook
-// says. modules/push-notify.js does the fan-out (tests/RecapNoticeNotify.spec.js).
+// new one, whether it has already been announced, and the fixed copy that
+// announces it without giving any of it away. modules/push-notify.js does the
+// fan-out (tests/RecapNoticeNotify.spec.js).
 
 const {
-    alreadyNoticed, latestRecap, recapHook, ordinal, buildRecapNoticePayload
+    alreadyNoticed, latestRecap, buildRecapNoticePayload
 } = require('../modules/recap-notice');
 
 const recap = (o) => Object.assign({ week: 4, effWeek: 4, label: 'Week 4', score: 26, rank: 2 }, o);
@@ -45,65 +46,42 @@ describe('alreadyNoticed', () => {
     });
 });
 
-describe('ordinal', () => {
-    it('handles the teens, which are the ones that go wrong', () => {
-        expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(ordinal))
-            .toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd']);
-    });
-});
-
-describe('recapHook', () => {
-    it('leads with points, then rank, then movement', () => {
-        expect(recapHook(recap({ score: 26, rank: 2, rankDelta: 1 }))).toBe('26 points · 2nd · up 1');
-    });
-
-    it('says which way they moved', () => {
-        expect(recapHook(recap({ rankDelta: -3 }))).toContain('down 3');
-    });
-
-    // A week where nobody moved should not claim movement.
-    it('leaves movement out when the rank held', () => {
-        expect(recapHook(recap({ rankDelta: 0 }))).toBe('26 points · 2nd');
-        expect(recapHook(recap({ rankDelta: null }))).toBe('26 points · 2nd');
-    });
-
-    it('marks a shared rank as a tie', () => {
-        expect(recapHook(recap({ rank: 2, rankTie: true }))).toContain('T-2nd');
-    });
-
-    it('degrades to whatever it has', () => {
-        expect(recapHook({ score: 12 })).toBe('12 points');
-        expect(recapHook({})).toBe('');
-    });
-
-    // A zero week is still a week. Dropping it because it is falsy would make
-    // the worst Saturday of someone's season the one with no numbers on it.
-    it('reports a zero score rather than omitting it', () => {
-        expect(recapHook({ score: 0, rank: 6 })).toBe('0 points · 6th');
-    });
-});
-
 describe('buildRecapNoticePayload', () => {
     const built = (o) => buildRecapNoticePayload({ userId: 'u1', recap: recap(o) });
 
-    it('names the week and carries the hook', () => {
-        const p = built({ rankDelta: 1 });
+    it('names which week is ready and says to tap', () => {
+        const p = built();
         expect(p.title).toBe('📖 Week 4 recap is ready');
-        expect(p.body).toBe('26 points · 2nd · up 1. Tap to read your week.');
+        expect(p.body).toBe('See how your week went — tap to read it.');
     });
 
-    // The push is a POINTER. The narrative, MVP, upset and weather beats stay in
-    // the app — a push carrying the recap would be a recap by email.
-    it('does not carry the recap itself', () => {
-        const p = built({ narrative: 'A statement win powered by Texas.', mvpTeam: { school: 'Texas', score: 4 } });
-        expect(p.body).not.toContain('statement win');
-        expect(p.body).not.toContain('Texas');
-        expect(p.body.length).toBeLessThan(70);
+    // THE POINT OF THIS ALERT. It announces that a recap exists; it does not
+    // abridge it. A lock screen that reports the score has given the manager
+    // the week's result without them ever opening the app the recap lives in —
+    // which was the first cut, with points and rank in the body as a "hook".
+    it('carries nothing from the recap itself', () => {
+        const p = built({
+            score: 26, rank: 2, rankDelta: 1, rankTie: true, cumTotal: 71,
+            narrative: 'A statement win powered by Texas.',
+            mvpTeam: { school: 'Texas', score: 4 },
+            weekHigh: true, isSeasonHigh: true,
+            upset: { team: 'Texas', loser: 'Georgia', margin: 14 }
+        });
+        const text = `${p.title} ${p.body}`;
+        ['26', 'points', '2nd', 'up 1', '71', 'statement', 'Texas', 'Georgia', 'high']
+            .forEach(leak => expect(text).not.toContain(leak));
     });
 
-    it('still says something when there are no numbers', () => {
-        const p = buildRecapNoticePayload({ userId: 'u1', recap: { week: 4, label: 'Week 4' } });
-        expect(p.body).toBe('Tap to read your week.');
+    // The body is a constant, so no future field on the recap can leak into it.
+    it('says the same thing whatever the week held', () => {
+        const great = built({ score: 60, rank: 1, rankDelta: 4, isSeasonHigh: true });
+        const awful = built({ score: 0, rank: 6, rankDelta: -3, weekLow: true });
+        expect(great.body).toBe(awful.body);
+    });
+
+    it('falls back to a week label when the recap has none', () => {
+        const p = buildRecapNoticePayload({ userId: 'u1', recap: { week: 4 } });
+        expect(p.title).toBe('📖 Week 4 recap is ready');
     });
 
     it('carries the type the mute switch reads and a per-week tag', () => {

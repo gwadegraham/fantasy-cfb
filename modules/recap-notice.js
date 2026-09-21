@@ -6,11 +6,16 @@
 // week most people care about lands on Monday morning and is read on Thursday,
 // if at all.
 //
-// This notification is a POINTER, not a delivery. The body carries the headline
-// numbers the manager would see on the tile anyway (week, points, rank) and
-// stops there; the narrative, the MVP, the upset and the weather beats stay in
-// the app where they are already built. A push that contained the recap would
-// be a recap by email with extra steps.
+// This notification is a POINTER, not a delivery, and it carries NO recap
+// content at all — not the narrative, not the MVP, not the score, not the rank.
+// It says the recap exists and that tapping opens it. The first cut put points
+// and rank in the body as a "hook"; that is still the recap, just abridged, and
+// a manager who reads it on the lock screen has been given the week's result
+// without ever opening the app the recap was built for.
+//
+// The week number stays, in the title. It names WHICH recap is ready rather
+// than telling you anything that is in it, and without it two Mondays'
+// notifications are indistinguishable.
 //
 // DB-free so the decision and the copy are testable without a push service;
 // modules/push-notify.js does the fan-out and modules/recap-notice-job.js is the
@@ -44,35 +49,15 @@ function latestRecap(payload) {
         (!best || Number(r.effWeek || r.week) > Number(best.effWeek || best.week)) ? r : best, null);
 }
 
-// "2nd", "11th" — the recap payload carries rank as a bare number.
-function ordinal(n) {
-    const s = ['th', 'st', 'nd', 'rd'], v = Number(n) % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-// The one-line hook. Rank, then movement, because "you moved up two spots" is
-// the part a manager cannot get from the score alone.
-function recapHook(recap) {
-    const bits = [];
-    if (recap.score != null) bits.push(`${recap.score} points`);
-    if (recap.rank != null) bits.push(`${recap.rankTie ? 'T-' : ''}${ordinal(recap.rank)}`);
-    const delta = Number(recap.rankDelta);
-    if (Number.isFinite(delta) && delta !== 0) {
-        bits.push(delta > 0 ? `up ${delta}` : `down ${Math.abs(delta)}`);
-    }
-    return bits.join(' · ');
-}
-
 function buildRecapNoticePayload({ userId, recap }) {
     const label = recap.label || `Week ${recap.week}`;
-    const hook = recapHook(recap);
 
     return {
         type: 'recapReady',
         title: `📖 ${label} recap is ready`,
-        // Deliberately short. The tile and the popup tell the story; this says
-        // there IS one and gives the two numbers worth knowing on a lock screen.
-        body: hook ? `${hook}. Tap to read your week.` : 'Tap to read your week.',
+        // Fixed copy, on purpose. Nothing here is derived from the recap, so
+        // there is no way for a number to leak into it as the payload changes.
+        body: 'See how your week went — tap to read it.',
         // Same path the Captain reminder learned the hard way: `/` is Standings,
         // and /userHome without `?user=` renders blank because the client reads
         // the query param to decide whose profile to draw.
@@ -83,4 +68,4 @@ function buildRecapNoticePayload({ userId, recap }) {
     };
 }
 
-module.exports = { alreadyNoticed, latestRecap, recapHook, ordinal, buildRecapNoticePayload };
+module.exports = { alreadyNoticed, latestRecap, buildRecapNoticePayload };
