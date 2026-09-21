@@ -29,6 +29,92 @@ beforeEach(async () => {
     group = await BettingGroup.create({ active: true, season: 2026, members: [MEMBER] });
 });
 
+// The Bettors board's data. The computation is unit-tested in
+// tests/ParlayStats.spec.js; what matters here is that the route reaches the
+// right slips, seeds every group member, and does not need a second round trip
+// for names.
+describe('GET /betting/contributor-stats/:season', () => {
+    const OTHER = new mongoose.Types.ObjectId();
+
+    beforeEach(async () => {
+        await BettingGroup.findByIdAndUpdate(group._id, { members: [MEMBER, OTHER] });
+        await Parlay.create([
+            {
+                group: group._id, season: 2026, week: 1, status: 'lost',
+                legs: [
+                    { contributor: MEMBER, result: 'win', odds: -150 },
+                    { contributor: OTHER, result: 'loss', odds: -200 }
+                ]
+            },
+            {
+                group: group._id, season: 2026, week: 2, status: 'won',
+                legs: [
+                    { contributor: MEMBER, result: 'win', odds: -110 },
+                    { contributor: OTHER, result: 'win', odds: -130 }
+                ]
+            }
+        ]);
+    });
+
+    test('splits the group record out by contributor', async () => {
+        const res = await request(app).get('/betting/contributor-stats/2026');
+
+        expect(res.status).toBe(200);
+        const mine = res.body.rows.find(r => r.contributor === MEMBER.toString());
+        expect(mine).toMatchObject({ wins: 2, losses: 0, decided: 2, hitRate: 100 });
+        expect(res.body.slips).toBe(2);
+    });
+
+    // Week 1 lost with OTHER as the only loss — that is a solo kill.
+    test('surfaces the solo killer as an award', async () => {
+        const res = await request(app).get('/betting/contributor-stats/2026');
+        expect(res.body.superlatives.killer.contributor).toBe(OTHER.toString());
+    });
+
+    test('seeds every group member, including one with no legs', async () => {
+        const THIRD = new mongoose.Types.ObjectId();
+        await BettingGroup.findByIdAndUpdate(group._id, { members: [MEMBER, OTHER, THIRD] });
+
+        const res = await request(app).get('/betting/contributor-stats/2026');
+
+        const third = res.body.rows.find(r => r.contributor === THIRD.toString());
+        expect(third).toBeDefined();
+        expect(third).toMatchObject({ legs: 0, decided: 0, hitRate: null });
+    });
+
+    test('does not count another season', async () => {
+        await Parlay.create({
+            group: group._id, season: 2025, week: 1, status: 'lost',
+            legs: [{ contributor: MEMBER, result: 'loss' }]
+        });
+
+        const res = await request(app).get('/betting/contributor-stats/2026');
+
+        expect(res.body.rows.find(r => r.contributor === MEMBER.toString()).losses).toBe(0);
+    });
+
+    // Another group's slips are another group's business.
+    test('does not count another group', async () => {
+        const other = await BettingGroup.create({ active: true, season: 2026, members: [OTHER] });
+        await Parlay.create({
+            group: other._id, season: 2026, week: 3, status: 'lost',
+            legs: [{ contributor: MEMBER, result: 'loss' }]
+        });
+
+        const res = await request(app).get('/betting/contributor-stats/2026');
+
+        expect(res.body.rows.find(r => r.contributor === MEMBER.toString()).losses).toBe(0);
+    });
+
+    test('answers an empty board rather than an error for a season with no slips', async () => {
+        const res = await request(app).get('/betting/contributor-stats/2024');
+
+        expect(res.status).toBe(200);
+        expect(res.body.slips).toBe(0);
+        expect(res.body.rows.every(r => r.decided === 0)).toBe(true);
+    });
+});
+
 describe('GET /betting/:id', () => {
     // Regression. This is the last route in the router, so it catches anything
     // unmatched above it and treats the segment as a parlay id. public/team.js

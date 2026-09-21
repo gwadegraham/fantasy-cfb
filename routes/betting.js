@@ -12,6 +12,7 @@ const requireAdmin = require('../modules/require-admin');
 const { effectiveRoles } = require('../modules/dev-role');
 const { combinedAmericanOdds, settledPayout } = require('../modules/parlay-calc');
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
+const { contributorStats, superlatives } = require('../modules/parlay-stats');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
 // action. It re-grades stat legs whose box scores weren't available when the
@@ -88,6 +89,35 @@ router.get('/season-summary/:season', async (req, res) => {
             totalWagered,
             totalReturned,
             net: totalReturned - totalWagered
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Per-member breakdown for the "Bettors" board. The group's own record
+// (/season-summary above) says nothing about WHO is picking well: a slip is one
+// per group per week, but each leg carries its own contributor and result.
+//
+// Members come from the group rather than from the legs, so someone who hasn't
+// had a leg settle yet still appears — in a six-person group a missing name
+// reads as a bug. Names are left to the client, which already holds them from
+// /betting-groups for the leg rows.
+router.get('/contributor-stats/:season', async (req, res) => {
+    try {
+        const parlays = await Parlay.find({
+            group: req.bettingGroup._id,
+            season: Number(req.params.season)
+        }, { week: 1, status: 1, 'legs.contributor': 1, 'legs.result': 1, 'legs.odds': 1, _id: 0 }).lean();
+
+        const members = (req.bettingGroup.members || []).map(id => ({ id: String(id) }));
+        const rows = contributorStats(parlays, members);
+
+        res.json({
+            season: Number(req.params.season),
+            rows,
+            superlatives: superlatives(rows),
+            slips: parlays.length
         });
     } catch (err) {
         res.status(500).json({ message: err.message });

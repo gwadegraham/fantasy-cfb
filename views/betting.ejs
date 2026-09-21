@@ -65,6 +65,16 @@
     <div class="summary-title"><span id="summary-year"></span> Results</div>
     <div class="season-summary" id="season-summary"></div>
 
+    <!-- Who is actually picking well. The group's record above is one slip a
+         week; this splits it by the contributor on each leg. Rendered entirely
+         by public/betting.js loadContributorStats, and hidden until there is a
+         settled leg to talk about. -->
+    <div class="bettors-board" id="bettors-board" hidden>
+        <div class="summary-title">Bettors</div>
+        <div class="bettor-awards" id="bettor-awards"></div>
+        <div class="bettor-rows" id="bettor-rows"></div>
+    </div>
+
     <div class="history-section">
         <table class="history-table" id="history-table">
             <thead>
