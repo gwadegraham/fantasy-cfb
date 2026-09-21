@@ -576,6 +576,74 @@ describe('POST /games/:season/schedule', () => {
         expect(res.body).toMatchObject({ season: 2025, seasonType: 'regular', created: 1, updated: 1, total: 2 });
         expect(await Game.countDocuments()).toBe(2);   // no duplicate for id 501
     });
+
+    // The point of running this weekly: a future game's kickoff is TBD until
+    // ~12 days out, and nothing else re-dates a week that isn't the current one.
+    test('rewrites a stored kickoff when CFBD firms up a TBD date', async () => {
+        await Game.create(gameDoc({
+            id: 501, week: 7,
+            startDate: '2025-10-18T04:00:00.000Z', startTimeTbd: true
+        }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({
+            id: 501, week: 7,
+            startDate: '2025-10-18T19:30:00.000Z', startTimeTBD: false
+        })]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.status).toBe(201);
+        const g = await Game.findOne({ id: 501 }).lean();
+        expect(g.startDate.toISOString ? g.startDate.toISOString() : g.startDate)
+            .toBe('2025-10-18T19:30:00.000Z');
+        expect(g.startTimeTbd).toBe(false);
+    });
+
+    // Batched in one bulkWrite rather than a findOne + findOneAndUpdate per
+    // game: at ~800 games a season the old per-game loop was ~1600 sequential
+    // Atlas round trips, past Heroku's 30s ceiling on the M0 tier.
+    test('writes the whole slate in one bulkWrite', async () => {
+        const spy = jest.spyOn(Game, 'bulkWrite');
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501 }), cfbdGame({ id: 502 }), cfbdGame({ id: 503 })
+        ]));
+
+        await request(app).post('/games/2025/schedule').send({});
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toHaveLength(3);
+        expect(await Game.countDocuments()).toBe(3);
+    });
+
+    // Same guard mass-create has: CFBD sends null points for a game that isn't
+    // final, and this route writes the row wholesale. A weekly run landing
+    // mid-game must not wipe the live score the poller just wrote.
+    test('does not overwrite a live score with CFBD nulls', async () => {
+        await Game.create(gameDoc({ id: 501, homePoints: 21, awayPoints: 17, completed: false }));
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501, homePoints: null, awayPoints: null })
+        ]));
+
+        await request(app).post('/games/2025/schedule').send({});
+
+        const g = await Game.findOne({ id: 501 }).lean();
+        expect(g.homePoints).toBe(21);
+        expect(g.awayPoints).toBe(17);
+    });
+
+    // A malformed CFBD row must be skipped, not written over a good doc — the
+    // validator that insertMany used to provide for free.
+    test('skips an invalid row and still writes the rest', async () => {
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501 }),
+            cfbdGame({ id: 502, homeTeam: undefined })   // required field missing
+        ]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.body.total).toBe(2);
+        expect(res.body.created).toBe(1);
+        expect(await Game.countDocuments({ id: 502 })).toBe(0);
+    });
 });
 
 describe('POST /games/:season/media', () => {
