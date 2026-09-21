@@ -671,15 +671,27 @@ router.post('/week/mass-create', async (req, res) => {
     // the whole slate (every CFP round) in one call. `classification` is the
     // current CFBD param (the old `division` alias still works but is legacy).
     const weekParam = req.body.seasonType === 'postseason' ? '' : `&week=${req.body.week}`;
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}${weekParam}&seasonType=${req.body.seasonType}&classification=fbs`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Authorization': process.env.CFBD_API_KEY
-        }
-    });
+    // Guarded for the same reason as /:season/schedule below: a rejected fetch
+    // (DNS, TLS reset, socket hangup) is an unhandled rejection in an Express 4
+    // async handler, and with no process-level handler that kills the dyno
+    // mid-slate. This route runs on every scoring job, three times a Saturday.
+    // massRetrieveGames already degrades on a non-201, so a 502 costs one run's
+    // ingest instead of the process.
+    let response, gameData;
+    try {
+        response = await fetch(`https://api.collegefootballdata.com/games?year=${year}${weekParam}&seasonType=${req.body.seasonType}&classification=fbs`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Authorization': process.env.CFBD_API_KEY
+            }
+        });
 
-    var gameData = await response.json();
+        gameData = await response.json();
+    } catch (err) {
+        console.log('Game ingest could not reach CFBD:', err.message);
+        return res.status(502).json({ message: `Could not reach CFBD: ${err.message}` });
+    }
 
     var responseError = gamesResponseError(response.ok, response.status, gameData);
     if (responseError) {
@@ -811,11 +823,24 @@ router.post('/:season/schedule', async (req, res) => {
     const season = req.params.season;
     const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
 
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=${seasonType}&classification=fbs`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
-    });
-    const gameData = await response.json();
+    // fetch REJECTS on a network-layer failure (DNS, TLS reset, socket hangup)
+    // rather than resolving to a non-ok response, so gamesResponseError never
+    // sees it. Express 4 does not route an async handler's rejection to error
+    // middleware and there is no process-level unhandledRejection handler (see
+    // modules/internal-api.js), which means an unguarded throw here takes the
+    // whole dyno down — and this route is on a weekly cron now, so it will
+    // eventually meet a flaky CFBD.
+    let response, gameData;
+    try {
+        response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=${seasonType}&classification=fbs`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+        });
+        gameData = await response.json();
+    } catch (err) {
+        console.log('Schedule ingest could not reach CFBD:', err.message);
+        return res.status(502).json({ message: `Could not reach CFBD: ${err.message}` });
+    }
     const responseError = gamesResponseError(response.ok, response.status, gameData);
     if (responseError) return res.status(400).json({ message: responseError });
 
@@ -825,24 +850,41 @@ router.post('/:season/schedule', async (req, res) => {
     // the M0 tier is comfortably past Heroku's 30s request ceiling. It only ever
     // got away with it because nothing called it on a schedule. Something does
     // now (update-enrichment-job.js), so it has to finish inside the ceiling.
-    const ids = gameData.map(g => g.id);
-    const preExisting = new Set(
-        (await Game.find({ id: { $in: ids } }, { id: 1 }).lean()).map(g => g.id)
-    );
-
     const ops = [];
     for (const g of gameData) {
         const op = buildGameUpsertOp(g);
         if (op) ops.push(op);
     }
 
+    // The counts come off the WRITE RESULT, never off the ops we assembled.
+    // Counting the ops would mean a bulkWrite that wrote nothing at all still
+    // answered "888 updated" — and this route's only caller is a cron job that
+    // reads the status and the counts to decide whether the run was healthy, so
+    // an optimistic count is a week of stale kickoff dates with a green job
+    // report over it. The per-game try/catch this batching replaced got that
+    // right by accident: a failed save simply never reached its counter.
+    //
+    // matchedCount, not modifiedCount: a game whose CFBD row is byte-identical
+    // to what we stored modifies nothing, and reporting it as untouched would
+    // read as a partial failure on every quiet week.
+    let created = 0, updated = 0;
+    let writeFailure = null;
+
     if (ops.length) {
         try {
-            await Game.bulkWrite(ops, { ordered: false });
+            const result = await Game.bulkWrite(ops, { ordered: false });
+            created = result.upsertedCount || 0;
+            updated = result.matchedCount || 0;
         } catch (err) {
+            // Whatever DID land before the error still counts.
+            const partial = (err && err.result) || null;
+            created = partial ? (partial.upsertedCount || 0) : 0;
+            updated = partial ? (partial.matchedCount || 0) : 0;
+
             // Same concurrency story as mass-create: a duplicate-key loss means
-            // the other run wrote that game, so it is not worth failing over —
-            // but a silent loss of every write must not read as a clean run.
+            // the other run wrote that game, so it is not worth failing over.
+            // Anything else is a genuine loss and has to surface as a non-2xx —
+            // the caller only distinguishes healthy from not by the status.
             const writeErrors = (err && err.writeErrors) || [];
             const duplicates = writeErrors.filter(e => (e.err ? e.err.code : e.code) === 11000);
             const unexpected = writeErrors.filter(e => (e.err ? e.err.code : e.code) !== 11000);
@@ -851,17 +893,16 @@ router.post('/:season/schedule', async (req, res) => {
             }
             if (!writeErrors.length || unexpected.length) {
                 console.log('Schedule bulk save error:', err.message);
+                writeFailure = err.message;
             }
         }
     }
 
-    // Counted off the pre-existing set rather than per-write, so the numbers
-    // survive the batching. Skipped (invalid) rows fall out of both counts.
-    let created = 0, updated = 0;
-    ops.forEach(op => {
-        if (preExisting.has(op.updateOne.filter.id)) updated++; else created++;
-    });
-    return res.status(201).json({ season: Number(season), seasonType, created, updated, total: gameData.length });
+    const body = { season: Number(season), seasonType, created, updated, total: gameData.length };
+    if (writeFailure) {
+        return res.status(500).json(Object.assign(body, { message: `Schedule write failed: ${writeFailure}` }));
+    }
+    return res.status(201).json(body);
 });
 
 // Populate broadcast info (TV/web outlet) onto existing game docs from CFBD

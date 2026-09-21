@@ -268,9 +268,14 @@ function timeAgo(iso) {
     return Math.round(hrs / 24) + 'd ago';
 }
 
+// Every jobName in modules/scheduler.js JOB_SCHEDULES (plus the opt-in live
+// poller) needs an entry here AND in `order` below. A job missing from this map
+// still renders, under its raw jobName; one missing from `order` sorts to
+// indexOf -1 and jumps ahead of the scoring jobs.
 var JOB_LABELS = {
     'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
-    'live-scores': 'Live', 'enrichment': 'SP+ / media'
+    'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
+    'season-stats': 'Team stats', 'player-season-leaders': 'Player stats'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -298,7 +303,8 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // Any job missing from this list sorts to indexOf -1, i.e. AHEAD of the
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
-        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores', 'enrichment'];
+        var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
+                     'enrichment', 'season-stats', 'player-season-leaders'];
         // Collapse to the latest run per job — the live poller writes a run every
         // few minutes on game days, so showing raw history would bury the others.
         var latest = {};
