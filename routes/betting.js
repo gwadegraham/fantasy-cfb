@@ -83,12 +83,18 @@ router.get('/season-summary/:season', async (req, res) => {
             else record.pending++;
         }
 
+        // Rounded to cents before it leaves. Summing floats gives
+        // 114.81 - 100 = 14.810000000000002, and the page was printing every
+        // one of those digits under "Net". Rounding in the client instead would
+        // leave the raw value in the API for the next consumer to trip over.
+        const cents = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
         res.json({
             record,
             totalParlays: parlays.length,
-            totalWagered,
-            totalReturned,
-            net: totalReturned - totalWagered
+            totalWagered: cents(totalWagered),
+            totalReturned: cents(totalReturned),
+            net: cents(totalReturned - totalWagered)
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
