@@ -205,12 +205,16 @@ async function loadSeasonSummary() {
         var r = data.record;
         var netClass = data.net >= 0 ? 'stat-positive' : 'stat-negative';
         var netSign = data.net >= 0 ? '+' : '';
+        // money() everywhere, not raw interpolation: these are float sums, and
+        // "+$14.810000000000002" is what the Net card showed before. The server
+        // rounds too — this is the display half of the same fix, and it also
+        // makes $100 read as $100.00 beside $114.81.
         el.innerHTML =
             '<div class="stat-card"><div class="stat-label">Record</div><div class="stat-value">'
             + r.wins + '-' + r.losses + (r.pushes ? '-' + r.pushes : '') + '</div></div>'
-            + '<div class="stat-card"><div class="stat-label">Wagered</div><div class="stat-value">$' + data.totalWagered + '</div></div>'
-            + '<div class="stat-card"><div class="stat-label">Won</div><div class="stat-value">$' + data.totalReturned + '</div></div>'
-            + '<div class="stat-card"><div class="stat-label">Net</div><div class="stat-value ' + netClass + '">' + netSign + '$' + Math.abs(data.net) + '</div></div>';
+            + '<div class="stat-card"><div class="stat-label">Wagered</div><div class="stat-value">' + money(data.totalWagered) + '</div></div>'
+            + '<div class="stat-card"><div class="stat-label">Won</div><div class="stat-value">' + money(data.totalReturned) + '</div></div>'
+            + '<div class="stat-card"><div class="stat-label">Net</div><div class="stat-value ' + netClass + '">' + netSign + money(Math.abs(data.net)) + '</div></div>';
     } catch (e) { /* skip */ }
 }
 
@@ -356,6 +360,23 @@ function renderHistory() {
     }).join('');
 }
 
+// The judgements live in public/leg-display.js (shared, unit-tested); this is
+// only the markup around them.
+function gameIsFinal(game) { return ccLegDisplay.isFinal(game); }
+
+function matchupLine(game, gameId) {
+    if (!game) return 'Game #' + gameId;
+    var s = ccLegDisplay.finalScore(game);
+    if (!s) return ccLegDisplay.matchupText(game);
+
+    // Bold the winner so the row reads at a glance; a tie bolds neither.
+    var away = s.away + ' ' + s.awayPoints;
+    var home = s.homePoints + ' ' + s.home;
+    if (s.winner === 'away') away = '<b>' + away + '</b>';
+    if (s.winner === 'home') home = '<b>' + home + '</b>';
+    return '<span class="leg-final">' + away + ' &ndash; ' + home + '</span>';
+}
+
 function renderCurrentParlay() {
     var container = document.getElementById('betting-content');
     if (!container) return;
@@ -398,12 +419,19 @@ function renderCurrentParlay() {
         }
 
         var game = games.find(function (g) { return g.id === leg.gameId; });
-        var matchup = game ? (game.awayTeam + ' @ ' + game.homeTeam) : 'Game #' + leg.gameId;
+        var matchup = matchupLine(game, leg.gameId);
 
         var resultHtml = '';
         if (leg.result === 'win') resultHtml = '<div class="leg-result result-win"><i class="fa-solid fa-check"></i></div>';
         else if (leg.result === 'loss') resultHtml = '<div class="leg-result result-loss"><i class="fa-solid fa-xmark"></i></div>';
         else if (leg.result === 'push') resultHtml = '<div class="leg-result result-push"><i class="fa-solid fa-minus"></i></div>';
+        // A custom leg whose game is over is waiting on a person, not on the
+        // game — see needsManualGrading. One sat unresolved for a week on a slip
+        // that had already lost, which is exactly when nobody is looking.
+        else if (ccLegDisplay.needsManualGrading(leg, game)) {
+            resultHtml = '<div class="leg-result result-needs-grading" title="Game is final — this leg still needs a result">'
+                + '<i class="fa-solid fa-triangle-exclamation"></i></div>';
+        }
         else resultHtml = '<div class="leg-result result-pending"><i class="fa-solid fa-clock"></i></div>';
 
         if (shouldAnimate && leg.result && leg.result !== 'pending') {
@@ -418,8 +446,13 @@ function renderCurrentParlay() {
             editBtn = '<button type="button" onclick="editLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\')" style="background:none;border:none;color:var(--cc-interactive);font-size:12px;cursor:pointer;padding:2px 4px;" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>';
         }
 
+        // Normally the W/L/P buttons live behind admin edit mode, so the row
+        // stays clean. A leg flagged above is the exception: it needs an admin
+        // to act, and making them find the edit toggle first is how one went a
+        // week without being graded.
+        var needsGrading = ccLegDisplay.needsManualGrading(leg, game);
         var resolveHtml = '';
-        if (window.IS_ADMIN && adminEditing && leg.gameId) {
+        if (window.IS_ADMIN && (adminEditing || needsGrading) && leg.gameId) {
             resolveHtml = '<div class="leg-resolve">'
                 + '<button type="button" class="btn-resolve btn-resolve-win" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'win\')">W</button>'
                 + '<button type="button" class="btn-resolve btn-resolve-loss" onclick="resolveLeg(\'' + parlay._id + '\',\'' + leg.contributor + '\',\'loss\')">L</button>'
