@@ -214,6 +214,124 @@ async function loadSeasonSummary() {
     } catch (e) { /* skip */ }
 }
 
+// ---- Bettors board ---------------------------------------------------------
+// Who is actually picking well. The season summary above is the GROUP's record
+// — one slip a week — which hides the fact that inside it four people are
+// picking separately and some are carrying the others.
+
+// A W/L/P run as coloured pips, oldest on the left. Capped at the last 10 so a
+// long season doesn't wrap the row; the record beside it carries the full count.
+function formRow(results) {
+    var recent = (results || []).slice(-10);
+    if (!recent.length) return '';
+    return '<span class="bettor-form">' + recent.map(function (r) {
+        return '<i class="pip pip-' + r + '" title="' + r + '"></i>';
+    }).join('') + '</span>';
+}
+
+function streakLabel(streak) {
+    if (!streak || streak.count < 2) return '';
+    var cls = streak.type === 'win' ? 'streak-hot' : 'streak-cold';
+    return '<span class="bettor-streak ' + cls + '">'
+        + (streak.type === 'win' ? 'W' : 'L') + streak.count + '</span>';
+}
+
+// displayName() returns markup (<span class="leg-name">…</span>), which is what
+// the leg rows want but not what a bold name or an initial needs. These two are
+// the plain-text side of it.
+function plainName(contributorId) {
+    return memberNames[contributorId] || 'Member';
+}
+function esc(v) {
+    return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+// A stable colour per member, so the board's fallback initials match from one
+// render to the next. The leg rows key theirs off the leg's position in the
+// slip, which is not a per-member identity.
+function memberColor(contributorId) {
+    var str = String(contributorId), h = 0;
+    for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return MEMBER_COLORS[Math.abs(h) % MEMBER_COLORS.length];
+}
+
+function awardCard(emoji, title, row, detail) {
+    if (!row) return '';
+    return '<div class="award"><span class="award-emoji">' + emoji + '</span>'
+        + '<span class="award-text"><strong>' + esc(plainName(row.contributor)) + '</strong>'
+        + '<em>' + esc(title) + (detail ? ' · ' + esc(detail) : '') + '</em></span></div>';
+}
+
+async function loadContributorStats() {
+    var board = document.getElementById('bettors-board');
+    var awardsEl = document.getElementById('bettor-awards');
+    var rowsEl = document.getElementById('bettor-rows');
+    if (!board || !rowsEl) return;
+
+    try {
+        var res = await fetch('/betting/contributor-stats/' + currentSeason);
+        if (!res.ok) return;
+        var data = await res.json();
+        var rows = data.rows || [];
+
+        // Nothing has settled yet — week one of a season, or a group that has
+        // only ever had pending slips. An empty board is worse than no board.
+        if (!rows.some(function (r) { return r.decided > 0; })) { board.hidden = true; return; }
+
+        // Awards in priority order, then ONE PER PERSON. On real data the same
+        // manager took cold, slip killer and longest shot at once, and three
+        // cards with the same name on them stops reading as a board and starts
+        // reading as a pile-on. Best award wins; the rest move down the list.
+        // Re-sort on the same rule the server uses, with the names only the
+        // client has. Without this two managers on identical records fall back
+        // to the group's member order, which looks arbitrary on screen.
+        rows.sort(function (a, b) {
+            if ((a.hitRate == null) !== (b.hitRate == null)) return a.hitRate == null ? 1 : -1;
+            if (a.hitRate !== b.hitRate) return b.hitRate - a.hitRate;
+            if (a.decided !== b.decided) return b.decided - a.decided;
+            return plainName(a.contributor).localeCompare(plainName(b.contributor));
+        });
+
+        var s = data.superlatives || {};
+        var candidates = [
+            s.perfect ? { emoji: '🎯', title: 'Perfect so far', row: s.perfect, detail: s.perfect.wins + '-0' }
+                      : (s.hottest ? { emoji: '🔥', title: 'Hot hand', row: s.hottest, detail: s.hottest.hitRate + '%' } : null),
+            s.killer ? { emoji: '💀', title: 'Slip killer', row: s.killer,
+                detail: s.killer.soloKills === 1 ? 'busted a slip solo' : 'busted ' + s.killer.soloKills + ' slips solo' } : null,
+            s.longest ? { emoji: '🎲', title: 'Longest shot landed', row: s.longest, detail: formatOdds(s.longest.bestOdds) } : null,
+            s.coldest ? { emoji: '🧊', title: 'Ice cold', row: s.coldest, detail: s.coldest.hitRate + '%' } : null
+        ].filter(Boolean);
+
+        var taken = {};
+        awardsEl.innerHTML = candidates.filter(function (c) {
+            if (taken[c.row.contributor]) return false;
+            taken[c.row.contributor] = true;
+            return true;
+        }).map(function (c) { return awardCard(c.emoji, c.title, c.row, c.detail); }).join('');
+
+        rowsEl.innerHTML = rows.map(function (r) {
+            var name = plainName(r.contributor);
+            var color = memberColor(r.contributor);
+            var init = (name || '?').charAt(0).toUpperCase();
+            var record = r.decided
+                ? r.wins + '-' + r.losses + (r.pushes ? '-' + r.pushes : '')
+                : '—';
+            var rate = r.hitRate == null ? '' : r.hitRate + '%';
+            var rateCls = r.hitRate == null ? '' : (r.hitRate >= 50 ? 'stat-positive' : 'stat-negative');
+            return '<div class="bettor-row">'
+                + '<div class="bettor-who">' + avatarHtml(r.contributor, color, init)
+                + '<span class="bettor-name">' + esc(name) + '</span>'
+                + streakLabel(r.streak) + '</div>'
+                + formRow(r.results)
+                + '<span class="bettor-record">' + record + '</span>'
+                + '<span class="bettor-rate ' + rateCls + '">' + rate + '</span>'
+                + '</div>';
+        }).join('');
+
+        board.hidden = false;
+    } catch (e) { /* skip */ }
+}
+
 function renderHistory() {
     var body = document.getElementById('history-body');
     if (!body) return;
@@ -1352,6 +1470,7 @@ async function refresh() {
     renderCurrentParlay();
     renderHistory();
     loadSeasonSummary();
+    loadContributorStats();
 }
 
 document.getElementById('week-prev').addEventListener('click', function () {

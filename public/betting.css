@@ -1063,3 +1063,68 @@
     .alt-team-btn { min-height: 44px; }
     .game-picker { max-height: 90vh; max-height: 90dvh; border-radius: var(--cc-r-md) var(--cc-r-md) 0 0; }
 }
+
+/* ---- Bettors board -------------------------------------------------------
+   Per-member leg record, under the group's season Results. The group line is
+   one slip a week; this is who inside it is actually picking well. */
+/* width:100% is load-bearing, not decoration. The page's content sits directly
+   inside `body`, which is a flex container — so a block child shrinks to its
+   content instead of filling the row, and this board rendered at 382px next to
+   a 1013px Results strip. .season-summary above carries the same declaration
+   for the same reason. */
+.bettors-board { margin-bottom: 20px; width: 100%; box-sizing: border-box; }
+.bettors-board[hidden] { display: none; }
+
+.bettor-awards {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 0 24px; margin-bottom: 10px;
+}
+.award {
+    flex: 1 1 calc(50% - 4px); min-width: 0;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--cc-surface); border-radius: var(--cc-r-sm);
+    padding: 8px 10px;
+}
+.award-emoji { font-size: 18px; line-height: 1; flex: none; }
+.award-text { display: flex; flex-direction: column; min-width: 0; }
+.award-text strong { font-size: 13px; font-weight: 600; color: var(--cc-text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.award-text em { font-style: normal; font-size: 10px; color: var(--cc-muted-2);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.bettor-rows { padding: 0 24px; display: flex; flex-direction: column; gap: 4px; }
+.bettor-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--cc-surface); border-radius: var(--cc-r-sm);
+    padding: 8px 12px;
+}
+.bettor-who { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.bettor-name { font-size: 13px; font-weight: 500; color: var(--cc-text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bettor-record { font-size: 13px; font-weight: 600; color: var(--cc-text);
+    flex: none; min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+.bettor-rate { font-size: 12px; flex: none; min-width: 44px; text-align: right;
+    font-variant-numeric: tabular-nums; }
+
+/* Form pips: oldest on the left, last ten only. */
+.bettor-form { display: flex; gap: 3px; flex: none; }
+.pip { width: 6px; height: 6px; border-radius: 50%; display: block; }
+.pip-win { background: var(--cc-success); }
+.pip-loss { background: var(--cc-danger-text); }
+.pip-push { background: var(--cc-muted-2); }
+
+.bettor-streak {
+    font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: var(--cc-r-pill);
+    flex: none; letter-spacing: 0.3px;
+}
+.streak-hot { background: rgba(34, 195, 122, 0.16); color: var(--cc-success); }
+.streak-cold { background: rgba(237, 88, 88, 0.16); color: var(--cc-danger-text); }
+
+@media (max-width: 600px) {
+    .bettor-awards { padding: 0 16px; }
+    .bettor-rows { padding: 0 16px; }
+    .award { flex-basis: 100%; }
+    /* The pips are the first thing worth losing on a narrow screen — the
+       record and the rate beside them say the same thing in less space. */
+    .bettor-form { display: none; }
+}
