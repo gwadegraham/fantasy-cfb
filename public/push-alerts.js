@@ -166,10 +166,17 @@
             return b;
         }
 
-        // The "how far ahead" picker on the Captain row. Lives inside the row's
-        // <label>, so every click on it would otherwise toggle the checkbox the
-        // label is for — hence the stopPropagation and the preventDefault on
-        // mousedown, which is what a label acts on.
+        // The "how far ahead" picker on the Captain row.
+        //
+        // It sits inside the row's <label>, and the first cut guarded against
+        // that by calling preventDefault on the select's own click and mousedown
+        // — which is precisely what stops a native <select> from opening. The
+        // dropdown was unclickable. No guard is needed: the HTML spec skips a
+        // label's activation behaviour when the event target is interactive
+        // content, and a <select> is interactive content, so clicking it has
+        // never toggled the checkbox. There is a test below for that, clicking
+        // for real rather than dispatching a synthetic event — a dispatched
+        // click cannot tell a suppressed dropdown from a working one.
         function leadPicker(current, onSaved) {
             var sel = document.createElement('select');
             sel.className = 'push-pref-lead';
@@ -181,9 +188,6 @@
                 sel.appendChild(o);
             });
             sel.value = String(current);
-            ['click', 'mousedown'].forEach(function (evt) {
-                sel.addEventListener(evt, function (e) { e.stopPropagation(); e.preventDefault(); });
-            });
             sel.addEventListener('change', function () {
                 var was = sel.dataset.was || String(current);
                 savePref('captainLockLeadMinutes', Number(sel.value))
