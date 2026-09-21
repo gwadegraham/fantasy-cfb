@@ -592,6 +592,64 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Turn a CFBD /games row into a bulkWrite upsert op, or null if the row is
+// malformed. Shared by the two ingest routes below (/week/mass-create pulls one
+// week, /:season/schedule pulls the whole season) so a field mapping or a guard
+// added for one is never silently missing from the other — which is exactly how
+// the season-wide route ended up being the only one that could refresh a future
+// week's kickoff time, and the only one that wasn't batched.
+function buildGameUpsertOp(game) {
+    // CFBD's casing for these three differs from the schema's.
+    game.startTimeTbd = game.startTimeTBD;
+    game.homePostWinProb = game.homePostgameWinProbability;
+    game.awayPostWinProb = game.awayPostgameWinProbability;
+
+    // Keep the live poller's in-progress score from being overwritten by the
+    // nulls CFBD's /games sends for a game that isn't final yet.
+    stripAbsentScores(game);
+
+    var date = new Date();
+    game.lastUpdated = date.toLocaleString("en-US", { timeZone: "America/Chicago" });
+
+    // These routes are a SECOND path to completed:true — CFBD's /games carries
+    // the flag, and `$set: game` writes it. modules/scoreboard.js nulls the
+    // live-only fields on its own completion tick, but it cannot be relied
+    // on to get there first: /scoreboard only returns games in its current
+    // window, and the poller's games-live gate stops firing the moment the
+    // last live game reads final. Set completed here and the poller may
+    // never run again for that game, leaving a stale "3rd & 7" on a final
+    // card. So clear them here too.
+    //
+    // Only on a completed game — doing it unconditionally would wipe the
+    // fresh situation the poller just wrote for a game still in progress.
+    if (game.completed) {
+        game.situation = null;
+        game.lastPlay = null;
+    }
+
+    // bulkWrite's updateOne does not run validators, and the `required`
+    // validator doesn't fire for a merely-absent path on upsert — so
+    // validate the candidate up front. insertMany used to do this for new
+    // games; doing it for updates too means a malformed CFBD row is skipped
+    // rather than written over a good doc.
+    var invalid = new Game(game).validateSync();
+    if (invalid) {
+        console.log("Skipping invalid game with id:", game.id, "|", invalid.message);
+        return null;
+    }
+
+    // `id` stays in the $set (same value the filter matches on), so an insert
+    // seeds it and the read-back below can still name the game.
+    return {
+        updateOne: {
+            filter: { id: game.id },
+            update: { $set: game },
+            upsert: true
+        }
+    };
+}
+
+
 //Creating Many By Week
 router.post('/week/mass-create', async (req, res) => {
 
@@ -613,15 +671,27 @@ router.post('/week/mass-create', async (req, res) => {
     // the whole slate (every CFP round) in one call. `classification` is the
     // current CFBD param (the old `division` alias still works but is legacy).
     const weekParam = req.body.seasonType === 'postseason' ? '' : `&week=${req.body.week}`;
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${year}${weekParam}&seasonType=${req.body.seasonType}&classification=fbs`, {
-        method: 'GET',
-        headers: {
-        'Accept': 'application/json',
-        'Authorization': process.env.CFBD_API_KEY
-        }
-    });
+    // Guarded for the same reason as /:season/schedule below: a rejected fetch
+    // (DNS, TLS reset, socket hangup) is an unhandled rejection in an Express 4
+    // async handler, and with no process-level handler that kills the dyno
+    // mid-slate. This route runs on every scoring job, three times a Saturday.
+    // massRetrieveGames already degrades on a non-201, so a 502 costs one run's
+    // ingest instead of the process.
+    let response, gameData;
+    try {
+        response = await fetch(`https://api.collegefootballdata.com/games?year=${year}${weekParam}&seasonType=${req.body.seasonType}&classification=fbs`, {
+            method: 'GET',
+            headers: {
+            'Accept': 'application/json',
+            'Authorization': process.env.CFBD_API_KEY
+            }
+        });
 
-    var gameData = await response.json();
+        gameData = await response.json();
+    } catch (err) {
+        console.log('Game ingest could not reach CFBD:', err.message);
+        return res.status(502).json({ message: `Could not reach CFBD: ${err.message}` });
+    }
 
     var responseError = gamesResponseError(response.ok, response.status, gameData);
     if (responseError) {
@@ -660,76 +730,8 @@ router.post('/week/mass-create', async (req, res) => {
 
     const ops = [];
     for (const game of gameData) {
-        game.seasonType = game.seasonType;
-        game.startDate = game.startDate;
-        game.startTimeTbd = game.startTimeTBD;
-        game.neutralSite = game.neutralSite;
-        game.conferenceGame = game.conferenceGame;
-        game.venueId = game.venueId;
-        game.homeId = game.homeId;
-        game.homeTeam = game.homeTeam;
-        game.homeConference = game.homeConference;
-        game.homeDivision = game.homeDivision;
-        game.homePoints = game.homePoints;
-        game.homeLineScores = game.homeLineScores;
-        game.homePostWinProb = game.homePostgameWinProbability;
-        game.homePregameElo = game.homePregameElo;
-        game.homePostgameElo = game.homePostgameElo;
-        game.awayId = game.awayId;
-        game.awayTeam = game.awayTeam;
-        game.awayConference = game.awayConference;
-        game.awayDivision = game.awayDivision;
-        game.awayPoints = game.awayPoints;
-        game.awayLineScores = game.awayLineScores;
-        game.awayPostWinProb = game.awayPostgameWinProbability;
-        game.awayPregameElo = game.awayPregameElo;
-        game.awayPostgameElo = game.awayPostgameElo;
-        game.excitementIndex = game.excitementIndex;
-
-        // Keep the live poller's in-progress score from being overwritten by the
-        // nulls CFBD's /games sends for a game that isn't final yet.
-        stripAbsentScores(game);
-
-        var date = new Date();
-        var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
-        game.lastUpdated = centralTime;
-
-        // This route is a SECOND path to completed:true — CFBD's /games carries
-        // the flag, and `$set: game` writes it. modules/scoreboard.js nulls the
-        // live-only fields on its own completion tick, but it cannot be relied
-        // on to get there first: /scoreboard only returns games in its current
-        // window, and the poller's games-live gate stops firing the moment the
-        // last live game reads final. Set completed here and the poller may
-        // never run again for that game, leaving a stale "3rd & 7" on a final
-        // card. So clear them here too.
-        //
-        // Only on a completed game — doing it unconditionally would wipe the
-        // fresh situation the poller just wrote for a game still in progress.
-        if (game.completed) {
-            game.situation = null;
-            game.lastPlay = null;
-        }
-
-        // bulkWrite's updateOne does not run validators, and the `required`
-        // validator doesn't fire for a merely-absent path on upsert — so
-        // validate the candidate up front. insertMany used to do this for new
-        // games; doing it for updates too means a malformed CFBD row is skipped
-        // rather than written over a good doc.
-        var invalid = new Game(game).validateSync();
-        if (invalid) {
-            console.log("Skipping invalid game with id:", game.id, "|", invalid.message);
-            continue;
-        }
-
-        // `id` stays in the $set (same value the filter matches on), so an insert
-        // seeds it and the read-back below can still name the game.
-        ops.push({
-            updateOne: {
-                filter: { id: game.id },
-                update: { $set: game },
-                upsert: true
-            }
-        });
+        const op = buildGameUpsertOp(game);
+        if (op) ops.push(op);
     }
 
     if (ops.length) {
@@ -796,11 +798,21 @@ router.post('/week/mass-create', async (req, res) => {
     return res.status(201).json(returnedGames);
 });
 
-// Bulk-ingest a full FBS schedule in one CFBD call. Preseason prerequisite for
-// draft grades (the projection reads each team's schedule) and for the live
-// poller's games-live gate (it needs kickoff times in the DB ahead of time).
-// Upserts by game id, so it's safe to re-run and future games (no scores yet)
-// store fine. One shot instead of looping /week/mass-create over the weeks.
+// Bulk-ingest a full FBS schedule in one CFBD call. Upserts by game id, so it's
+// safe to re-run and future games (no scores yet) store fine. One shot instead
+// of looping /week/mass-create over the weeks.
+//
+// Preseason it's a prerequisite for draft grades (the projection reads each
+// team's schedule) and for the live poller's games-live gate (it needs kickoff
+// times in the DB ahead of time).
+//
+// IN SEASON it is the only thing that refreshes a FUTURE week. The scoring jobs
+// mass-create the CURRENT week and nothing else, so a game more than a week out
+// kept whatever kickoff it was first stored with. Real kickoffs are TBD until
+// ~12 days before the game, which meant weeks 5-15 of 2026 sat on their August
+// placeholder dates (midnight ET) all season and showed managers the wrong day.
+// update-enrichment-job.js now posts this weekly — 1 CFBD call for every week
+// at once, so the fix costs the same whether one game moved or fifty did.
 // Defaults to the regular season; pass { seasonType: 'postseason' } to preload
 // the bowl/CFP schedule once the bracket is published (so day-1 postseason games
 // are live-pollable). `postseason` omits the week param to pull every round.
@@ -811,36 +823,86 @@ router.post('/:season/schedule', async (req, res) => {
     const season = req.params.season;
     const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
 
-    const response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=${seasonType}&classification=fbs`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
-    });
-    const gameData = await response.json();
+    // fetch REJECTS on a network-layer failure (DNS, TLS reset, socket hangup)
+    // rather than resolving to a non-ok response, so gamesResponseError never
+    // sees it. Express 4 does not route an async handler's rejection to error
+    // middleware and there is no process-level unhandledRejection handler (see
+    // modules/internal-api.js), which means an unguarded throw here takes the
+    // whole dyno down — and this route is on a weekly cron now, so it will
+    // eventually meet a flaky CFBD.
+    let response, gameData;
+    try {
+        response = await fetch(`https://api.collegefootballdata.com/games?year=${season}&seasonType=${seasonType}&classification=fbs`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Authorization': process.env.CFBD_API_KEY }
+        });
+        gameData = await response.json();
+    } catch (err) {
+        console.log('Schedule ingest could not reach CFBD:', err.message);
+        return res.status(502).json({ message: `Could not reach CFBD: ${err.message}` });
+    }
     const responseError = gamesResponseError(response.ok, response.status, gameData);
     if (responseError) return res.status(400).json({ message: responseError });
 
-    const centralTime = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
-    let created = 0, updated = 0;
+    // ONE bulkWrite for the whole season, for the reason /week/mass-create was
+    // batched in Sep 2026: this used to do a findOne plus a findOneAndUpdate per
+    // game — ~1600 sequential Atlas round trips for an 800-game season, which on
+    // the M0 tier is comfortably past Heroku's 30s request ceiling. It only ever
+    // got away with it because nothing called it on a schedule. Something does
+    // now (update-enrichment-job.js), so it has to finish inside the ceiling.
+    const ops = [];
     for (const g of gameData) {
-        g.startTimeTbd = g.startTimeTBD;
-        g.homePostWinProb = g.homePostgameWinProbability;
-        g.awayPostWinProb = g.awayPostgameWinProbability;
-        g.lastUpdated = centralTime;
-        // Same clobber as mass-create: this is a preseason prerequisite, but it
-        // is re-runnable in season and writes the CFBD row wholesale.
-        stripAbsentScores(g);
-        const exists = await Game.findOne({ id: g.id });
-        if (!exists) {
-            try { await new Game(g).save(); created++; }
-            catch (err) { console.log('Error saving game', g.id, err.message); }
-        } else {
-            const filter = { id: g.id };
-            delete g.id;
-            try { await Game.findOneAndUpdate(filter, g); updated++; }
-            catch (err) { console.log('Error updating game', filter.id, err.message); }
+        const op = buildGameUpsertOp(g);
+        if (op) ops.push(op);
+    }
+
+    // The counts come off the WRITE RESULT, never off the ops we assembled.
+    // Counting the ops would mean a bulkWrite that wrote nothing at all still
+    // answered "888 updated" — and this route's only caller is a cron job that
+    // reads the status and the counts to decide whether the run was healthy, so
+    // an optimistic count is a week of stale kickoff dates with a green job
+    // report over it. The per-game try/catch this batching replaced got that
+    // right by accident: a failed save simply never reached its counter.
+    //
+    // matchedCount, not modifiedCount: a game whose CFBD row is byte-identical
+    // to what we stored modifies nothing, and reporting it as untouched would
+    // read as a partial failure on every quiet week.
+    let created = 0, updated = 0;
+    let writeFailure = null;
+
+    if (ops.length) {
+        try {
+            const result = await Game.bulkWrite(ops, { ordered: false });
+            created = result.upsertedCount || 0;
+            updated = result.matchedCount || 0;
+        } catch (err) {
+            // Whatever DID land before the error still counts.
+            const partial = (err && err.result) || null;
+            created = partial ? (partial.upsertedCount || 0) : 0;
+            updated = partial ? (partial.matchedCount || 0) : 0;
+
+            // Same concurrency story as mass-create: a duplicate-key loss means
+            // the other run wrote that game, so it is not worth failing over.
+            // Anything else is a genuine loss and has to surface as a non-2xx —
+            // the caller only distinguishes healthy from not by the status.
+            const writeErrors = (err && err.writeErrors) || [];
+            const duplicates = writeErrors.filter(e => (e.err ? e.err.code : e.code) === 11000);
+            const unexpected = writeErrors.filter(e => (e.err ? e.err.code : e.code) !== 11000);
+            if (duplicates.length) {
+                console.log(`Schedule ingest lost ${duplicates.length} of ${ops.length} upserts to a concurrent run`);
+            }
+            if (!writeErrors.length || unexpected.length) {
+                console.log('Schedule bulk save error:', err.message);
+                writeFailure = err.message;
+            }
         }
     }
-    return res.status(201).json({ season: Number(season), seasonType, created, updated, total: gameData.length });
+
+    const body = { season: Number(season), seasonType, created, updated, total: gameData.length };
+    if (writeFailure) {
+        return res.status(500).json(Object.assign(body, { message: `Schedule write failed: ${writeFailure}` }));
+    }
+    return res.status(201).json(body);
 });
 
 // Populate broadcast info (TV/web outlet) onto existing game docs from CFBD

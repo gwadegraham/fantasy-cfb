@@ -67,6 +67,9 @@ describe('update-enrichment-job run()', () => {
             } else if (url.includes('/enrich')) {
                 res.status = over.enrichStatus || 200;
                 res.json = () => Promise.resolve(over.enrichBody || { updated: 130 });
+            } else if (url.includes('/schedule')) {
+                res.status = over.scheduleStatus || 201;
+                res.json = () => Promise.resolve(over.scheduleBody || { created: 12, updated: 700, total: 712 });
             } else if (url.includes('/media')) {
                 res.status = over.mediaStatus || 200;
                 res.json = () => Promise.resolve({ updated: 55 });
@@ -86,14 +89,15 @@ describe('update-enrichment-job run()', () => {
     const dataCalls = () => global.fetch.mock.calls
         .filter(c => !c[0].includes('/job-runs') && !c[0].includes('/seasons/'));
 
-    test('posts enrich + media to the season endpoints with the internal token', async () => {
+    test('posts enrich + schedule + media to the season endpoints with the internal token', async () => {
         stubFetch();
         const results = await enrichmentJob.run();
 
         const calls = dataCalls();
-        expect(calls).toHaveLength(3);
+        expect(calls).toHaveLength(4);
         const urls = calls.map(c => c[0]);
         expect(urls).toContain('http://test.local/teams/2025/enrich');
+        expect(urls).toContain('http://test.local/games/2025/schedule');
         expect(urls).toContain('http://test.local/games/2025/media');
         expect(urls).toContain('http://test.local/betting/retry-stat-legs');
 
@@ -105,6 +109,52 @@ describe('update-enrichment-job run()', () => {
 
         expect(results.teams.body.updated).toBe(130);
         expect(results.media.body.updated).toBe(55);
+        expect(results.schedule.body.updated).toBe(700);
+    });
+
+    // The reason the schedule leg exists: a game more than a week out is only
+    // ever re-dated by this call, so it has to run on EVERY enrichment run —
+    // not just in-season ones, and not only when a week resolves. A preseason
+    // run is exactly when the first full schedule lands.
+    test('refreshes the whole season schedule on every run, preseason included', async () => {
+        stubFetch();
+        await enrichmentJob.run({ preseason: true });
+        const sched = global.fetch.mock.calls.find(c => c[0].includes('/schedule'));
+        expect(sched).toBeDefined();
+        expect(sched[1].method).toBe('POST');
+    });
+
+    // Before media, so the outlet pass writes onto the rows the schedule call
+    // just created or re-dated rather than a week behind them.
+    test('refreshes the schedule before attaching media', async () => {
+        stubFetch();
+        await enrichmentJob.run();
+        const urls = dataCalls().map(c => c[0]);
+        expect(urls.findIndex(u => u.includes('/schedule')))
+            .toBeLessThan(urls.findIndex(u => u.includes('/media')));
+    });
+
+    // The schedule route answers 201 (it creates games). Treating only 200 as
+    // OK would file every single healthy run as a failure.
+    test('accepts the schedule route\'s 201 as success', async () => {
+        stubFetch();
+        await enrichmentJob.run();
+        const finish = global.fetch.mock.calls.find(c => c[0].includes('/job-runs/run-1'));
+        expect(JSON.parse(finish[1].body).status).toBe('success');
+    });
+
+    // A schedule leg that didn't land must not read as a clean run — a silent
+    // failure here is indistinguishable from the stale dates it was added to fix.
+    test('a failed schedule leg is recorded as an error, not a success', async () => {
+        stubFetch({ scheduleStatus: 400, scheduleBody: { message: 'CFBD rate limit' } });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(enrichmentJob.run()).rejects.toThrow(/schedule -> 400/);
+
+        const finish = global.fetch.mock.calls.find(c => c[0].includes('/job-runs/run-1'));
+        const done = JSON.parse(finish[1].body);
+        expect(done.status).toBe('error');
+        expect(done.message).toContain('CFBD rate limit');
     });
 
     test('always sends scope "all" to the enrich endpoint', async () => {
@@ -177,6 +227,7 @@ describe('update-enrichment-job run()', () => {
         const done = JSON.parse(finish[1].body);
         expect(done.status).toBe('success');
         expect(done.message).toContain('130 teams enriched');
+        expect(done.message).toContain('712 games rescheduled (12 new)');
     });
 
     // The whole point of the logging: a leg that didn't land must not be filed
@@ -209,6 +260,9 @@ describe('update-enrichment-job box score backfill', () => {
                 res.json = () => Promise.resolve({ _id: 'run-1' });
             } else if (url.includes('/enrich')) {
                 res.json = () => Promise.resolve({ updated: 130 });
+            } else if (url.includes('/schedule')) {
+                res.status = 201;
+                res.json = () => Promise.resolve({ created: 12, updated: 700, total: 712 });
             } else if (url.includes('/media')) {
                 res.json = () => Promise.resolve({ updated: 55 });
             } else if (url.includes('/player-stats') || url.includes('/team-stats')) {

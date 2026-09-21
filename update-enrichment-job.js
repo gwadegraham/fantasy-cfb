@@ -9,9 +9,10 @@ const { sendJobEmail, emailOnSuccess } = require('./modules/job-mailer');
 const { getCalendar } = require('./modules/cfbd-calendar');
 const { resolveCurrentWeek } = require('./modules/score-update');
 
-// Pulls opponent-agnostic CFBD data onto each team's season, plus broadcast
-// outlets onto games. Every run pulls all 5 team endpoints (SP+, FPI, talent,
-// returning production, coaches) = ~5 CFBD calls for the enrich leg. With the
+// Pulls opponent-agnostic CFBD data onto each team's season, plus the full
+// season schedule and broadcast outlets onto games. Every run pulls all 5 team
+// endpoints (SP+, FPI, talent, returning production, coaches) = ~5 CFBD calls
+// for the enrich leg, plus 1 each for the schedule and media legs. With the
 // 5k/mo Tier 1 budget this is cheap enough to run weekly.
 //
 // The 'preseason' flag now only controls whether pregame WP / weather / box
@@ -64,6 +65,17 @@ async function run(opts = {}) {
         const enrichBody = { scope: 'all' };
         if (currentWeek != null) enrichBody.week = currentWeek;
         results.teams = await post(`/teams/${season}/enrich`, enrichBody);
+
+        // The whole regular-season schedule, 1 CFBD call, BEFORE media so the
+        // outlet pass lands on freshly-dated rows (and on any game the August
+        // pull didn't have at all — 2026 was missing week 14 entirely).
+        //
+        // This is the only refresh a future week gets. The scoring jobs
+        // mass-create the CURRENT week only, and CFBD doesn't firm up a kickoff
+        // until ~12 days out, so without this every game more than a week away
+        // keeps its preseason placeholder date and advertises the wrong day.
+        results.schedule = await post(`/games/${season}/schedule`);
+
         results.media = await post(`/games/${season}/media`);
 
         // Pregame win probabilities and weather look FORWARD, at the week about
@@ -95,8 +107,10 @@ async function run(opts = {}) {
             }
         }
 
-        // A non-200 from a core leg means the data did NOT land.
-        const coreLeg = [results.teams, results.media].filter(r => r.status !== 200);
+        // A non-OK status from a core leg means the data did NOT land. The
+        // schedule route answers 201 (it creates games), the others 200.
+        const OK = { 200: true, 201: true };
+        const coreLeg = [results.teams, results.schedule, results.media].filter(r => !OK[r.status]);
         if (coreLeg.length) {
             throw new Error(coreLeg.map(r => `${r.path} -> ${r.status}`
                 + (r.body && r.body.message ? ` (${r.body.message})` : '')).join('; '));
@@ -109,6 +123,8 @@ async function run(opts = {}) {
             console.log(`[${JOB_NAME}] weather warning:`, results.weather.body.message || results.weather.status);
         }
 
+        const schedUpdated = results.schedule ? (results.schedule.body.updated || 0) : 0;
+        const schedCreated = results.schedule ? (results.schedule.body.created || 0) : 0;
         const wpUpdated = results.pregameWP ? (results.pregameWP.body.updated || 0) : 0;
         const wxUpdated = results.weather ? (results.weather.body.updated || 0) : 0;
         const psIngested = results.playerStats ? (results.playerStats.body.ingested || 0) : 0;
@@ -117,6 +133,7 @@ async function run(opts = {}) {
         const statResolved = results.statRetry ? (results.statRetry.body.resolved || 0) : 0;
         const secs = Math.round((Date.now() - startMs) / 1000);
         const summary = `${results.teams.body.updated} teams enriched · `
+            + `${schedUpdated + schedCreated} games rescheduled (${schedCreated} new) · `
             + `${results.media.body.updated} games given media`
             + (wpUpdated ? ` · ${wpUpdated} games given pregame WP` : '')
             + (wxUpdated ? ` · ${wxUpdated} games given weather` : '')
@@ -126,6 +143,7 @@ async function run(opts = {}) {
             + ` (${secs}s)`;
         console.log(`[${JOB_NAME}] season ${season} (scope=all):`,
             `teams enriched=${results.teams.body.updated}`,
+            `schedule updated=${schedUpdated} created=${schedCreated}`,
             `media updated=${results.media.body.updated}`,
             wpUpdated ? `pregameWP updated=${wpUpdated}` : '',
             wxUpdated ? `weather updated=${wxUpdated}` : '',
@@ -143,6 +161,7 @@ async function run(opts = {}) {
                     ['Week', currentWeek != null ? String(currentWeek) : 'n/a'],
                     ['Backfilled week', backfillWeek != null ? String(backfillWeek) : 'n/a'],
                     ['Teams enriched', String(results.teams.body.updated)],
+                    ['Schedule refreshed', `${schedUpdated} updated, ${schedCreated} new`],
                     ['Games w/ media', String(results.media.body.updated)],
                     ['Pregame WP', String(wpUpdated)],
                     ['Weather', String(wxUpdated)],

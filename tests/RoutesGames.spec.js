@@ -548,6 +548,17 @@ describe('POST /games/week/mass-create', () => {
         expect(bulkWrite.mock.calls[0][0]).toHaveLength(60);
     });
 
+    // Same exposure as the schedule route, and this one runs on every scoring
+    // job — three times a Saturday.
+    test('answers 502 when CFBD is unreachable instead of throwing', async () => {
+        global.fetch = jest.fn(() => Promise.reject(new Error('socket hang up')));
+
+        const res = await request(app).post('/games/week/mass-create').send({ week: 1, seasonType: 'regular' });
+
+        expect(res.status).toBe(502);
+        expect(res.body.message).toMatch(/socket hang up/);
+    });
+
     test('one unsaveable game does not take the rest of the slate down', async () => {
         // homeTeam is required, so this row can't save — the other one still must.
         global.fetch = jest.fn(() => fetchOk([
@@ -575,6 +586,117 @@ describe('POST /games/:season/schedule', () => {
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({ season: 2025, seasonType: 'regular', created: 1, updated: 1, total: 2 });
         expect(await Game.countDocuments()).toBe(2);   // no duplicate for id 501
+    });
+
+    // The point of running this weekly: a future game's kickoff is TBD until
+    // ~12 days out, and nothing else re-dates a week that isn't the current one.
+    test('rewrites a stored kickoff when CFBD firms up a TBD date', async () => {
+        await Game.create(gameDoc({
+            id: 501, week: 7,
+            startDate: '2025-10-18T04:00:00.000Z', startTimeTbd: true
+        }));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({
+            id: 501, week: 7,
+            startDate: '2025-10-18T19:30:00.000Z', startTimeTBD: false
+        })]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.status).toBe(201);
+        const g = await Game.findOne({ id: 501 }).lean();
+        expect(g.startDate.toISOString ? g.startDate.toISOString() : g.startDate)
+            .toBe('2025-10-18T19:30:00.000Z');
+        expect(g.startTimeTbd).toBe(false);
+    });
+
+    // Batched in one bulkWrite rather than a findOne + findOneAndUpdate per
+    // game: at ~800 games a season the old per-game loop was ~1600 sequential
+    // Atlas round trips, past Heroku's 30s ceiling on the M0 tier.
+    test('writes the whole slate in one bulkWrite', async () => {
+        const spy = jest.spyOn(Game, 'bulkWrite');
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501 }), cfbdGame({ id: 502 }), cfbdGame({ id: 503 })
+        ]));
+
+        await request(app).post('/games/2025/schedule').send({});
+
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][0]).toHaveLength(3);
+        expect(await Game.countDocuments()).toBe(3);
+    });
+
+    // Same guard mass-create has: CFBD sends null points for a game that isn't
+    // final, and this route writes the row wholesale. A weekly run landing
+    // mid-game must not wipe the live score the poller just wrote.
+    test('does not overwrite a live score with CFBD nulls', async () => {
+        await Game.create(gameDoc({ id: 501, homePoints: 21, awayPoints: 17, completed: false }));
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501, homePoints: null, awayPoints: null })
+        ]));
+
+        await request(app).post('/games/2025/schedule').send({});
+
+        const g = await Game.findOne({ id: 501 }).lean();
+        expect(g.homePoints).toBe(21);
+        expect(g.awayPoints).toBe(17);
+    });
+
+    // The counts drive a cron job's health check, so they have to describe what
+    // was WRITTEN, not what was attempted. Counting the assembled ops meant a
+    // bulkWrite that wrote nothing still answered "2 created" with a 201, and
+    // the enrichment job filed that as a clean run.
+    test('a failed bulkWrite reports zero written and a non-2xx, not a full success', async () => {
+        jest.spyOn(Game, 'bulkWrite').mockRejectedValue(new Error('connection timed out'));
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({ id: 501 }), cfbdGame({ id: 502 })]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.status).toBe(500);
+        expect(res.body).toMatchObject({ created: 0, updated: 0, total: 2 });
+        expect(res.body.message).toMatch(/connection timed out/);
+        expect(await Game.countDocuments()).toBe(0);
+    });
+
+    // A duplicate-key loss is another run winning the same upsert — that game IS
+    // written, so it must not fail the slate the way a real write error does.
+    test('a duplicate-key collision with a concurrent run still succeeds', async () => {
+        const err = new Error('E11000 duplicate key');
+        err.writeErrors = [{ code: 11000 }];
+        err.result = { upsertedCount: 1, matchedCount: 0 };
+        jest.spyOn(Game, 'bulkWrite').mockRejectedValue(err);
+        global.fetch = jest.fn(() => fetchOk([cfbdGame({ id: 501 }), cfbdGame({ id: 502 })]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({ created: 1, updated: 0 });   // what actually landed
+    });
+
+    // A rejected fetch (DNS, TLS reset, socket hangup) never reaches
+    // gamesResponseError. Unguarded it is an unhandled rejection in an Express 4
+    // async handler, which with no process-level handler kills the dyno.
+    test('answers 502 when CFBD is unreachable instead of throwing', async () => {
+        global.fetch = jest.fn(() => Promise.reject(new Error('ECONNRESET')));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.status).toBe(502);
+        expect(res.body.message).toMatch(/ECONNRESET/);
+    });
+
+    // A malformed CFBD row must be skipped, not written over a good doc — the
+    // validator that insertMany used to provide for free.
+    test('skips an invalid row and still writes the rest', async () => {
+        global.fetch = jest.fn(() => fetchOk([
+            cfbdGame({ id: 501 }),
+            cfbdGame({ id: 502, homeTeam: undefined })   // required field missing
+        ]));
+
+        const res = await request(app).post('/games/2025/schedule').send({});
+
+        expect(res.body.total).toBe(2);
+        expect(res.body.created).toBe(1);
+        expect(await Game.countDocuments({ id: 502 })).toBe(0);
     });
 });
 

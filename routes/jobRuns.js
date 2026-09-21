@@ -4,10 +4,28 @@ const JobRun = require('../models/jobRun');
 const { latestPerJob } = require('../modules/job-runs-util');
 
 // Latest run per job — powers the admin status strip's "last run / outcome".
+//
+// Grouped in the DB, NOT by pulling the N newest rows and reducing them here.
+// That was the old shape (`limit: 200` then latestPerJob) and it quietly hid
+// most of the automation: the live poller writes a JobRun every 10 seconds
+// while games are live, so 200 rows is about half an hour of a Saturday. Every
+// weekly job — enrichment, season-stats, player-season-leaders — fell outside
+// the window and disappeared from the admin strip entirely. Measured against a
+// copy of prod: all 7 jobs had runs recorded, the page showed 2.
+//
+// The $sort keys match the { jobName: 1, startedAt: -1 } index on the model, so
+// Mongo walks the index instead of sorting the whole collection in memory, and
+// the cost does not grow with poller history.
 router.get('/', async (req, res) => {
     try {
-        // Pull recent runs (newest first) and reduce to the latest per job.
-        const runs = await JobRun.find({}, null, { sort: { startedAt: -1 }, limit: 200 }).lean();
+        const runs = await JobRun.aggregate([
+            { $sort: { jobName: 1, startedAt: -1 } },
+            { $group: { _id: '$jobName', doc: { $first: '$$ROOT' } } },
+            { $replaceRoot: { newRoot: '$doc' } }
+        ]);
+        // Already one row per job; the helper stays as the single definition of
+        // that invariant, so a future change to the query above cannot start
+        // serving duplicates without this catching it.
         res.json(latestPerJob(runs));
     } catch (err) {
         res.status(500).json({ message: err.message });

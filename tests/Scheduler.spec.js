@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = require('../modules/scheduler');
 
 describe('scheduler config', () => {
@@ -81,5 +83,39 @@ describe('scheduler config', () => {
         expect(at50.getUTCSeconds()).toBe(50);
         expect(next.getUTCSeconds()).toBe(0);
         expect(next.getTime() - at50.getTime()).toBe(10000);
+    });
+});
+
+// Every scheduled job writes a JobRun (via modules/score-job.js makeJob or its
+// own startRun/finishRun), and the admin page's "Automated jobs" strip is the
+// only place anyone sees them. Two tables in public/admin.js decide what that
+// strip shows, and both were missing season-stats and player-season-leaders:
+// an unlabelled job renders under its raw jobName, and one missing from `order`
+// sorts to indexOf -1 and jumps ahead of the scoring jobs. Neither failure is
+// visible from the server side, so assert it against the file itself.
+describe('admin job strip covers every scheduled job', () => {
+    const adminSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+
+    // The jobs the scheduler can register: the always-on set plus the opt-in
+    // live poller.
+    const scheduled = JOB_SCHEDULES.map(s => s.job).concat(LIVE_POLL_SCHEDULE.job);
+
+    function literal(name) {
+        const m = adminSrc.match(new RegExp('var ' + name + '\\s*=\\s*([\\s\\S]*?);'));
+        expect(m).not.toBeNull();
+        return m[1];
+    }
+
+    it('labels every scheduled job', () => {
+        const labels = literal('JOB_LABELS');
+        const unlabelled = scheduled.filter(j => !labels.includes(`'${j}'`));
+        expect(unlabelled).toEqual([]);
+    });
+
+    it('gives every scheduled job a sort position', () => {
+        const order = adminSrc.match(/var order = \[([\s\S]*?)\];/);
+        expect(order).not.toBeNull();
+        const unordered = scheduled.filter(j => !order[1].includes(`'${j}'`));
+        expect(unordered).toEqual([]);
     });
 });
