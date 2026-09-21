@@ -106,7 +106,7 @@ function timeLeftLabel(lockMs, nowMs) {
 // do anything?" on a lock screen. "No pick yet" alone would send everyone into
 // the app to find out what the default was; "we'll use Georgia" lets the
 // manager who is happy with that ignore it.
-function buildCaptainReminderPayload({ week, lockMs, nowMs, currentPick, autoPick }) {
+function buildCaptainReminderPayload({ userId, week, lockMs, nowMs, currentPick, autoPick }) {
     const left = timeLeftLabel(lockMs, nowMs);
     const pick = currentPick || autoPick || null;
     const body = currentPick
@@ -120,10 +120,17 @@ function buildCaptainReminderPayload({ week, lockMs, nowMs, currentPick, autoPic
         title: '🧢 Captain locks soon',
         body,
         // Deep link straight into the Captain picker — public/userHome.js opens
-        // the drawer on this hash once the tile has its data. Landing on the
-        // home page and hunting for the tile is a worse answer to a notification
-        // that exists to say "you have two hours".
-        url: '/#captain',
+        // the drawer on this hash once the tile has its data. Landing somewhere
+        // else and hunting for the tile is a worse answer to a notification that
+        // exists to say "you have two hours".
+        //
+        // The whole path matters and every part of it was wrong once. `/` is
+        // STANDINGS, not the profile. The Captain tile is on /userHome. And
+        // /userHome without `?user=` renders an empty page — the server hands
+        // the template the session user either way, but public/userHome.js reads
+        // the query param to decide whose profile to draw, so the id has to be
+        // on the URL even though it is always the recipient's own.
+        url: userId ? `/userHome?user=${userId}#captain` : '/userHome#captain',
         // One tag per (week): a second send for the same week REPLACES the first
         // on the lock screen instead of stacking. The dedupe log should make that
         // impossible, but a tag costs nothing and a duplicated nag is the most

@@ -553,6 +553,7 @@ async function notifyCaptainLocks(nowMs) {
             };
 
             const payload = buildCaptainReminderPayload({
+                userId: user._id,
                 week: focus.week,
                 lockMs: focus.first,
                 nowMs: now,

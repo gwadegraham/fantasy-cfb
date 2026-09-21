@@ -215,8 +215,21 @@ describe('buildCaptainReminderPayload', () => {
     // Tapping the notification has to land on the picker. The service worker
     // navigates to payload.url verbatim, and public/userHome.js opens the
     // Captain drawer on this hash.
-    it('deep links into the Captain drawer', () => {
-        const p = buildCaptainReminderPayload(Object.assign({}, base, { currentPick: { id: 1, school: 'Miami' } }));
-        expect(p.url).toBe('/#captain');
+    //
+    // Every part of this path was wrong in the first cut, and none of it failed
+    // loudly: `/` is Standings, not the profile; the tile is on /userHome; and
+    // /userHome WITHOUT `?user=` renders an empty page, because the server hands
+    // the template the session user but the client reads the query param to
+    // decide whose profile to draw. A tap just landed somewhere unhelpful.
+    it('deep links into the Captain drawer on the recipient\'s own profile', () => {
+        const p = buildCaptainReminderPayload(Object.assign({}, base, {
+            userId: '64f539d45cf0433f3b6a6a1e', currentPick: { id: 1, school: 'Miami' }
+        }));
+        expect(p.url).toBe('/userHome?user=64f539d45cf0433f3b6a6a1e#captain');
+    });
+
+    it('never points at / — that is Standings, not the Captain tile', () => {
+        const p = buildCaptainReminderPayload(Object.assign({}, base, { userId: 'abc' }));
+        expect(p.url.startsWith('/userHome')).toBe(true);
     });
 });

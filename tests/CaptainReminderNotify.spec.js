@@ -172,6 +172,15 @@ describe('notifyCaptainLocks — who gets one', () => {
 // The reminder goes to everyone with a game that week, set or unset — the body
 // is what differs.
 describe('notifyCaptainLocks — what it says', () => {
+    // Verified against the running app: this exact path opens the Captain drawer.
+    it('deep links to the recipient\'s own profile, not the app root', async () => {
+        const ann = await manager('Ann', [MIAMI]);
+
+        await push.notifyCaptainLocks(LOCK - 1 * H);
+
+        expect(payloads()[0].url).toBe(`/userHome?user=${ann._id}#captain`);
+    });
+
     it('names an existing pick', async () => {
         await manager('Ann', [MIAMI, GEORGIA], { season: { captains: [{ week: 4, teamId: GEORGIA }] } });
 
