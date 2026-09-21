@@ -91,6 +91,12 @@ describe('sanitizePrefs', () => {
         expect(sanitizePrefs({ score: false, nonsense: true })).toEqual({ score: false });
     });
 
+    // The Captain lock reminder is the one alert that isn't about a game in
+    // progress, and it is muted through the same switch as the rest.
+    it('accepts the captainLock pref', () => {
+        expect(sanitizePrefs({ captainLock: false })).toEqual({ captainLock: false });
+    });
+
     it('refuses a non-boolean, rather than coercing it', () => {
         expect(() => sanitizePrefs({ score: 'yes' })).toThrow(/true or false/);
         expect(() => sanitizePrefs({ closeGame: 1 })).toThrow(/true or false/);

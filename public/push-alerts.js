@@ -18,7 +18,10 @@
 (function () {
     'use strict';
 
+    // Ordered loudest-last. captainLock leads because it is the only one that
+    // asks the manager to DO something before a deadline; the rest are results.
     var ALERT_TYPES = [
+        { key: 'captainLock', label: 'Captain lock', hint: 'About 2 hours before your pick locks — once a week.' },
         { key: 'final', label: 'Final results', hint: 'Your team finished — and what it banked.' },
         { key: 'leadChange', label: 'Lead changes', hint: 'When your team takes or loses the lead.' },
         { key: 'closeGame', label: 'Crunch time', hint: 'Under 2:00, one score apart.' },

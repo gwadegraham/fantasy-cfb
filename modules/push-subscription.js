@@ -51,9 +51,9 @@ function sanitizeSubscription(body, userAgent) {
     };
 }
 
-// Only the four known alert types, only booleans. An absent key is left absent
-// so a partial update doesn't silently re-enable something the manager muted.
-const PREF_KEYS = ['score', 'leadChange', 'closeGame', 'final'];
+// Only the known alert types, only booleans. An absent key is left absent so a
+// partial update doesn't silently re-enable something the manager muted.
+const PREF_KEYS = ['score', 'leadChange', 'closeGame', 'final', 'captainLock'];
 
 function sanitizePrefs(body) {
     const b = body || {};

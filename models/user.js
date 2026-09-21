@@ -223,7 +223,24 @@ const pushPrefsSchema = new mongoose.Schema({
     score: { type: Boolean, default: true },
     leadChange: { type: Boolean, default: true },
     closeGame: { type: Boolean, default: true },
-    final: { type: Boolean, default: true }
+    final: { type: Boolean, default: true },
+    // The only alert that is not about a game in progress: a nudge ~6 hours
+    // before the manager's weekly Captain pick locks at their first kickoff.
+    captainLock: { type: Boolean, default: true }
+}, { _id: false });
+
+// One row per Captain reminder actually delivered, so the job never sends the
+// same week twice. Kept on the user rather than in a collection of its own for
+// the same reasons as pushSubscriptions: it is small (one row per played week),
+// always read with the user, and pruned with them.
+//
+// NOT derived from the audit log. That trail records what a manager did; this
+// records what we did TO them, and conflating the two means a manager who never
+// touches the app has no row to check against.
+const captainReminderSchema = new mongoose.Schema({
+    season: { type: Number, required: true },
+    week: { type: Number, required: true },
+    sentAt: { type: Date, default: Date.now }
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({
@@ -283,6 +300,10 @@ const userSchema = new mongoose.Schema({
     },
     // Which alert types this manager wants. Unset means "all four", so a
     // subscriber gets everything until they narrow it.
+    captainReminders: {
+        type: [captainReminderSchema],
+        default: undefined
+    },
     pushPrefs: {
         type: pushPrefsSchema,
         default: undefined

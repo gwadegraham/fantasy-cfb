@@ -275,7 +275,8 @@ function timeAgo(iso) {
 var JOB_LABELS = {
     'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
     'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
-    'season-stats': 'Team stats', 'player-season-leaders': 'Player stats'
+    'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
+    'captain-reminder': 'Captain alerts'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -304,7 +305,7 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
         var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'enrichment', 'season-stats', 'player-season-leaders'];
+                     'enrichment', 'season-stats', 'player-season-leaders', 'captain-reminder'];
         // Collapse to the latest run per job — the live poller writes a run every
         // few minutes on game days, so showing raw history would bury the others.
         var latest = {};

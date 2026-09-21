@@ -226,7 +226,7 @@ router.patch('/me/push/prefs', async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const prefs = Object.assign(
-            { score: true, leadChange: true, closeGame: true, final: true },
+            { score: true, leadChange: true, closeGame: true, final: true, captainLock: true },
             user.pushPrefs ? user.pushPrefs.toObject ? user.pushPrefs.toObject() : user.pushPrefs : {},
             clean
         );
