@@ -4,7 +4,8 @@
 // service.
 
 const {
-    LEAD_MS, isDue, alreadySent, timeLeftLabel, buildCaptainReminderPayload
+    LEAD_MS, DEFAULT_LEAD_MINUTES, LEAD_CHOICES, LEAD_MINUTES, isLeadChoice, leadMsFor,
+    isDue, alreadySent, timeLeftLabel, buildCaptainReminderPayload
 } = require('../modules/captain-reminder');
 
 const ms = iso => Date.parse(iso);
@@ -51,6 +52,78 @@ describe('isDue', () => {
         expect(LEAD_MS).toBe(2 * H);
         expect(isDue(LOCK, LOCK - 1 * H)).toBe(true);
         expect(isDue(LOCK, LOCK - 3 * H)).toBe(false);
+    });
+
+    it('honours a lead the manager widened or narrowed', () => {
+        const day = leadMsFor({ captainLockLeadMinutes: 1440 });
+        expect(isDue(LOCK, LOCK - 20 * H, day)).toBe(true);
+        expect(isDue(LOCK, LOCK - 25 * H, day)).toBe(false);
+
+        const half = leadMsFor({ captainLockLeadMinutes: 30 });
+        expect(isDue(LOCK, LOCK - 20 * 60000, half)).toBe(true);
+        expect(isDue(LOCK, LOCK - 45 * 60000, half)).toBe(false);
+    });
+
+    // Every offered lead has to be reachable by a sweep that only fires on the
+    // hour and the half hour, whatever minute the kickoff falls on.
+    it('every offered lead contains at least one half-hourly sweep', () => {
+        LEAD_MINUTES.forEach(minutes => {
+            const lead = minutes * 60000;
+            for (let offset = 0; offset < 30; offset++) {
+                const lock = LOCK + offset * 60000;
+                const hits = [];
+                for (let t = lock - lead - 60 * 60000; t < lock; t += 30 * 60000) {
+                    if (isDue(lock, t, lead)) hits.push(t);
+                }
+                expect(hits.length).toBeGreaterThan(0);
+            }
+        });
+    });
+});
+
+// The lead is the manager's own setting, so the guards around it are what stop
+// a stored value from either silencing the alert or making it meaningless.
+describe('lead choices', () => {
+    it('defaults to two hours', () => {
+        expect(DEFAULT_LEAD_MINUTES).toBe(120);
+        expect(LEAD_MS).toBe(2 * H);
+        expect(LEAD_MINUTES).toContain(120);
+    });
+
+    // Shorter than the 30-minute sweep and a manager's window could fall
+    // between two ticks and never fire; far longer and the reminder is really
+    // "whenever the week comes into focus" wearing a countdown.
+    it('offers nothing shorter than the sweep interval, or longer than a day', () => {
+        expect(Math.min.apply(null, LEAD_MINUTES)).toBe(30);
+        expect(Math.max.apply(null, LEAD_MINUTES)).toBe(1440);
+        expect(LEAD_CHOICES.every(c => c.label && c.minutes)).toBe(true);
+    });
+
+    it('accepts only the offered values', () => {
+        expect(isLeadChoice(30)).toBe(true);
+        expect(isLeadChoice('120')).toBe(true);        // a form posts strings
+        expect(isLeadChoice(45)).toBe(false);
+        expect(isLeadChoice(0)).toBe(false);
+        expect(isLeadChoice(-60)).toBe(false);
+        expect(isLeadChoice(100000)).toBe(false);
+        expect(isLeadChoice(null)).toBe(false);
+        expect(isLeadChoice('soon')).toBe(false);
+    });
+
+    describe('leadMsFor', () => {
+        it('uses the manager\'s choice', () => {
+            expect(leadMsFor({ captainLockLeadMinutes: 30 })).toBe(30 * 60000);
+            expect(leadMsFor({ captainLockLeadMinutes: 1440 })).toBe(24 * H);
+        });
+
+        // A bad stored value must not be the reason someone stops being warned.
+        it('falls back to the default rather than throwing or silencing', () => {
+            expect(leadMsFor(undefined)).toBe(LEAD_MS);
+            expect(leadMsFor({})).toBe(LEAD_MS);
+            expect(leadMsFor({ captainLockLeadMinutes: null })).toBe(LEAD_MS);
+            expect(leadMsFor({ captainLockLeadMinutes: 47 })).toBe(LEAD_MS);
+            expect(leadMsFor({ captainLockLeadMinutes: 'lots' })).toBe(LEAD_MS);
+        });
     });
 });
 

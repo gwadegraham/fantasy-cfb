@@ -35,7 +35,7 @@ const { activeSeason } = require('./active-season');
 const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
 const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
-const { isDue, alreadySent, buildCaptainReminderPayload, LEAD_MS } = require('./captain-reminder');
+const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
 
 // ---- config ----------------------------------------------------------------
 
@@ -447,8 +447,9 @@ async function notifyFinals(gameIds) {
 // route, which would drag the whole router in.
 const CAPTAIN_WEEK_GRACE_MS = 6 * 60 * 60 * 1000;
 
-// ~2 hours before a manager's Captain pick locks. Called from
-// update-captain-reminder-job.js on a fixed cadence.
+// Ahead of each manager's Captain lock, by the lead THEY chose (2 hours unless
+// they changed it). Called from modules/captain-reminder-job.js on a fixed
+// cadence.
 //
 // Three things make this different from the other four alerts, which are all
 // reactions to a game event:
@@ -463,14 +464,17 @@ const CAPTAIN_WEEK_GRACE_MS = 6 * 60 * 60 * 1000;
 //      user.captainReminders and checks that row before sending. The other
 //      alerts are naturally one-per-event.
 //
+// The lead is per manager, which is why there is no single window to query on:
+// two managers with the same lock are due 23 hours apart if one picked a day's
+// notice and the other picked an hour. Each row carries its own answer.
+//
 // Returns { sent, due, skipped } for the job report. Never throws: a reminder is
 // a nicety.
-async function notifyCaptainLocks(nowMs, leadMs) {
+async function notifyCaptainLocks(nowMs) {
     announceMode();
     if (!isConfigured()) return { sent: 0, due: 0, skipped: 'VAPID not configured' };
 
     const now = nowMs == null ? Date.now() : nowMs;
-    const lead = leadMs == null ? LEAD_MS : leadMs;
     const season = activeSeason('football');
     if (season == null) return { sent: 0, due: 0, skipped: 'no active season' };
 
@@ -530,7 +534,8 @@ async function notifyCaptainLocks(nowMs, leadMs) {
             const teamIds = roster.map(t => Number(t.id));
             const focus = captainFocusWeek(games, teamIds, now, CAPTAIN_WEEK_GRACE_MS);
             if (!focus) continue;                                   // season out of reach
-            if (!isDue(focus.first, now, lead)) continue;           // too early, or already locked
+            // Their own lead, not a global one.
+            if (!isDue(focus.first, now, leadMsFor(user.pushPrefs))) continue;
             if (alreadySent(user.captainReminders, season, focus.week)) continue;
 
             due++;

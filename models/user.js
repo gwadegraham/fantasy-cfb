@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const {
+    DEFAULT_LEAD_MINUTES: CAPTAIN_DEFAULT_LEAD_MINUTES,
+    LEAD_MINUTES: CAPTAIN_LEAD_MINUTES
+} = require('../modules/captain-reminder');
 
 const locationSchema = new mongoose.Schema({
     venue_id: {
@@ -224,9 +228,15 @@ const pushPrefsSchema = new mongoose.Schema({
     leadChange: { type: Boolean, default: true },
     closeGame: { type: Boolean, default: true },
     final: { type: Boolean, default: true },
-    // The only alert that is not about a game in progress: a nudge ~6 hours
-    // before the manager's weekly Captain pick locks at their first kickoff.
-    captainLock: { type: Boolean, default: true }
+    // The only alert that is not about a game in progress: a nudge before the
+    // manager's weekly Captain pick locks at their first kickoff.
+    captainLock: { type: Boolean, default: true },
+    // How far ahead of that lock, in minutes — the manager picks it. Validated
+    // against the allowlist in modules/captain-reminder.js rather than left
+    // free: see LEAD_CHOICES for why an arbitrary number is worse than no
+    // choice at all. The enum is belt-and-braces behind the route's sanitizer,
+    // so a write from anywhere else still can't store a lead that never fires.
+    captainLockLeadMinutes: { type: Number, default: CAPTAIN_DEFAULT_LEAD_MINUTES, enum: CAPTAIN_LEAD_MINUTES }
 }, { _id: false });
 
 // One row per Captain reminder actually delivered, so the job never sends the

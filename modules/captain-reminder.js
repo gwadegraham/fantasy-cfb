@@ -1,5 +1,6 @@
-// Pure helpers for the Captain lock reminder: a push alert ~2 hours before a
-// manager's weekly Captain pick stops being editable.
+// Pure helpers for the Captain lock reminder: a push alert some chosen distance
+// (2 hours by default) before a manager's weekly Captain pick stops being
+// editable.
 //
 // The lock is PER MANAGER, not league-wide — modules/captain.js locks a week at
 // the manager's own earliest kickoff among their rostered teams. So there is no
@@ -11,8 +12,43 @@
 // push service or a Mongo connection; modules/push-notify.js does the fan-out
 // and modules/captain-reminder-job.js is the cron entry point.
 
-// How far ahead of the lock the reminder goes out.
-const LEAD_MS = 2 * 60 * 60 * 1000;
+// How far ahead of the lock the reminder goes out, when a manager hasn't chosen
+// otherwise.
+const DEFAULT_LEAD_MINUTES = 120;
+const LEAD_MS = DEFAULT_LEAD_MINUTES * 60 * 1000;
+
+// The leads a manager can pick, in minutes. An allowlist rather than a free
+// number for two reasons. A huge lead is not a longer warning, it is a wrong
+// one: the reminder can only fire once the week is in focus (see
+// captainFocusWeek), so anything past a couple of days would silently behave as
+// "as soon as the week opens" while claiming a precise countdown. And a lead
+// SHORTER than the sweep interval could fall between two ticks and never fire
+// at all — 30 minutes is the floor because modules/scheduler.js sweeps every 30
+// minutes, and a half-open window exactly one interval wide always contains
+// exactly one tick.
+const LEAD_CHOICES = [
+    { minutes: 30, label: '30 minutes' },
+    { minutes: 60, label: '1 hour' },
+    { minutes: 120, label: '2 hours' },
+    { minutes: 180, label: '3 hours' },
+    { minutes: 360, label: '6 hours' },
+    { minutes: 720, label: '12 hours' },
+    { minutes: 1440, label: '1 day' }
+];
+
+const LEAD_MINUTES = LEAD_CHOICES.map(c => c.minutes);
+
+function isLeadChoice(minutes) {
+    return LEAD_MINUTES.indexOf(Number(minutes)) !== -1;
+}
+
+// This manager's lead, in ms. Anything unset, unrecognised or left over from an
+// older shape falls back to the default rather than throwing or disabling the
+// alert — a bad stored value must not be the reason someone stops being warned.
+function leadMsFor(prefs) {
+    const chosen = prefs && prefs.captainLockLeadMinutes;
+    return (isLeadChoice(chosen) ? Number(chosen) : DEFAULT_LEAD_MINUTES) * 60 * 1000;
+}
 
 // Is this manager inside the reminder window for a lock at `lockMs`?
 //
@@ -23,12 +59,12 @@ const LEAD_MS = 2 * 60 * 60 * 1000;
 // the once-per-week dedupe means a late run still delivers — later than two
 // hours out, but delivered, which is the point of the alert.
 //
-// The window matters more at a two-hour lead than it did at six: there are only
-// four half-hourly ticks inside it, so a band one tick wide would have three
-// chances in a week to drop the alert entirely.
+// The window matters more the shorter the lead: at the 30-minute floor exactly
+// one sweep lands inside it, so a band narrower than the window would have to be
+// re-tuned every time a manager picks a different lead.
 //
 // That is also why the message quotes the real remaining time rather than the
-// constant: a reminder sent 40 minutes out must not claim 2 hours.
+// manager's setting: a reminder sent 40 minutes out must not claim 2 hours.
 function isDue(lockMs, nowMs, leadMs) {
     if (lockMs == null || !Number.isFinite(lockMs)) return false;
     const lead = leadMs == null ? LEAD_MS : leadMs;
@@ -98,4 +134,8 @@ function buildCaptainReminderPayload({ week, lockMs, nowMs, currentPick, autoPic
     };
 }
 
-module.exports = { LEAD_MS, isDue, alreadySent, timeLeftLabel, buildCaptainReminderPayload };
+module.exports = {
+    LEAD_MS, DEFAULT_LEAD_MINUTES, LEAD_CHOICES, LEAD_MINUTES,
+    isLeadChoice, leadMsFor,
+    isDue, alreadySent, timeLeftLabel, buildCaptainReminderPayload
+};

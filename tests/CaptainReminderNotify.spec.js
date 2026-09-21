@@ -201,6 +201,51 @@ describe('notifyCaptainLocks — what it says', () => {
     });
 });
 
+// The lead is per manager, so two people with the same lock are due at very
+// different moments. This is the half that a global window would get wrong.
+describe('notifyCaptainLocks — each manager\'s own lead', () => {
+    it('reminds a manager who asked for a day\'s notice, a day out', async () => {
+        await manager('Ann', [MIAMI], { user: { pushPrefs: { captainLockLeadMinutes: 1440 } } });
+
+        expect(await push.notifyCaptainLocks(LOCK - 20 * H)).toMatchObject({ due: 1, sent: 1 });
+    });
+
+    it('keeps a default-lead manager quiet at the same instant', async () => {
+        await manager('Ann', [MIAMI]);                       // no pref: 2 hours
+        expect(await push.notifyCaptainLocks(LOCK - 20 * H)).toMatchObject({ due: 0, sent: 0 });
+    });
+
+    it('holds a manager who asked for 30 minutes until 30 minutes out', async () => {
+        await manager('Ann', [MIAMI], { user: { pushPrefs: { captainLockLeadMinutes: 30 } } });
+
+        expect(await push.notifyCaptainLocks(LOCK - 1 * H)).toMatchObject({ due: 0, sent: 0 });
+        expect(await push.notifyCaptainLocks(LOCK - 20 * 60000)).toMatchObject({ due: 1, sent: 1 });
+    });
+
+    it('sends two managers with one lock at the moment each of them chose', async () => {
+        await manager('Ann', [MIAMI], { user: { pushPrefs: { captainLockLeadMinutes: 360 } } });
+        await manager('Bob', [MIAMI], { user: { pushPrefs: { captainLockLeadMinutes: 60 } } });
+
+        const early = await push.notifyCaptainLocks(LOCK - 5 * H);
+        expect(early).toMatchObject({ due: 1, sent: 1 });     // Ann only
+
+        webpush.sendNotification.mockClear();
+        const late = await push.notifyCaptainLocks(LOCK - 30 * 60000);
+        expect(late).toMatchObject({ due: 1, sent: 1 });      // Bob only
+    });
+
+    // A value that predates the allowlist, or was written around the schema, must
+    // not silence the alert. Written through the raw driver precisely because
+    // the model's enum refuses it — which is the guard working, not a reason to
+    // assume no such document can exist.
+    it('falls back to the default when the stored lead is unusable', async () => {
+        const ann = await manager('Ann', [MIAMI]);
+        await User.collection.updateOne({ _id: ann._id }, { $set: { 'pushPrefs.captainLockLeadMinutes': 0 } });
+
+        expect(await push.notifyCaptainLocks(LOCK - 1 * H)).toMatchObject({ due: 1, sent: 1 });
+    });
+});
+
 describe('notifyCaptainLocks — exactly once per week', () => {
     it('does not remind the same manager twice for the same week', async () => {
         await manager('Ann', [MIAMI]);

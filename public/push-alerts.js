@@ -18,10 +18,26 @@
 (function () {
     'use strict';
 
+    // Mirrors LEAD_CHOICES in modules/captain-reminder.js. Duplicated rather than
+    // fetched: it is seven fixed strings, and the server validates the value
+    // anyway — a stale copy here can only ever be rejected, never stored.
+    var LEAD_CHOICES = [
+        { minutes: 30, label: '30 minutes' },
+        { minutes: 60, label: '1 hour' },
+        { minutes: 120, label: '2 hours' },
+        { minutes: 180, label: '3 hours' },
+        { minutes: 360, label: '6 hours' },
+        { minutes: 720, label: '12 hours' },
+        { minutes: 1440, label: '1 day' }
+    ];
+    var DEFAULT_LEAD_MINUTES = 120;
+
     // Ordered loudest-last. captainLock leads because it is the only one that
     // asks the manager to DO something before a deadline; the rest are results.
+    // Its hint is built from the manager's own lead, so the row never advertises
+    // a timing they have changed.
     var ALERT_TYPES = [
-        { key: 'captainLock', label: 'Captain lock', hint: 'About 2 hours before your pick locks — once a week.' },
+        { key: 'captainLock', label: 'Captain lock', lead: true, hint: 'Before your weekly pick locks.' },
         { key: 'final', label: 'Final results', hint: 'Your team finished — and what it banked.' },
         { key: 'leadChange', label: 'Lead changes', hint: 'When your team takes or loses the lead.' },
         { key: 'closeGame', label: 'Crunch time', hint: 'Under 2:00, one score apart.' },
@@ -150,6 +166,44 @@
             return b;
         }
 
+        // The "how far ahead" picker on the Captain row. Lives inside the row's
+        // <label>, so every click on it would otherwise toggle the checkbox the
+        // label is for — hence the stopPropagation and the preventDefault on
+        // mousedown, which is what a label acts on.
+        function leadPicker(current, onSaved) {
+            var sel = document.createElement('select');
+            sel.className = 'push-pref-lead';
+            sel.setAttribute('aria-label', 'How long before the lock');
+            LEAD_CHOICES.forEach(function (c) {
+                var o = document.createElement('option');
+                o.value = String(c.minutes);
+                o.textContent = c.label + ' before';
+                sel.appendChild(o);
+            });
+            sel.value = String(current);
+            ['click', 'mousedown'].forEach(function (evt) {
+                sel.addEventListener(evt, function (e) { e.stopPropagation(); e.preventDefault(); });
+            });
+            sel.addEventListener('change', function () {
+                var was = sel.dataset.was || String(current);
+                savePref('captainLockLeadMinutes', Number(sel.value))
+                    .then(function () { sel.dataset.was = sel.value; onSaved(Number(sel.value)); })
+                    .catch(function () {
+                        sel.value = was;
+                        say('Could not save that setting.', 'error');
+                    });
+            });
+            sel.dataset.was = String(current);
+            return sel;
+        }
+
+        function leadLabel(minutes) {
+            for (var i = 0; i < LEAD_CHOICES.length; i++) {
+                if (LEAD_CHOICES[i].minutes === Number(minutes)) return LEAD_CHOICES[i].label;
+            }
+            return '2 hours';
+        }
+
         function renderPrefs(prefs) {
             prefsWrap.innerHTML = '';
             ALERT_TYPES.forEach(function (t) {
@@ -168,9 +222,18 @@
                 text.className = 'push-pref-text';
                 text.innerHTML = '<strong></strong><em></em>';
                 text.querySelector('strong').textContent = t.label;
-                text.querySelector('em').textContent = t.hint;
+                var hint = text.querySelector('em');
+                hint.textContent = t.hint;
                 row.appendChild(cb);
                 row.appendChild(text);
+
+                if (t.lead) {
+                    var mins = prefs.captainLockLeadMinutes || DEFAULT_LEAD_MINUTES;
+                    var setHint = function (m) { hint.textContent = leadLabel(m) + ' before your weekly pick locks.'; };
+                    setHint(mins);
+                    row.appendChild(leadPicker(mins, setHint));
+                }
+
                 prefsWrap.appendChild(row);
             });
             prefsWrap.hidden = false;

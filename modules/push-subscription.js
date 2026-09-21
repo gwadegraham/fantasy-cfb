@@ -55,6 +55,25 @@ function sanitizeSubscription(body, userAgent) {
 // partial update doesn't silently re-enable something the manager muted.
 const PREF_KEYS = ['score', 'leadChange', 'closeGame', 'final', 'captainLock'];
 
+// Prefs that carry a value rather than an on/off. Kept separate because the
+// boolean loop's error message ("must be true or false") would be a lie for
+// them, and because each one needs its own validator.
+const { isLeadChoice, LEAD_CHOICES } = require('./captain-reminder');
+const VALUE_PREFS = {
+    captainLockLeadMinutes: {
+        // An arbitrary number is worse than no choice: too short and the
+        // reminder can fall between two sweeps, too long and it fires whenever
+        // the week opens while claiming a countdown. See LEAD_CHOICES.
+        parse: (v) => {
+            const n = Number(v);
+            if (!isLeadChoice(n)) {
+                throw new Error(`captainLockLeadMinutes must be one of: ${LEAD_CHOICES.map(c => c.minutes).join(', ')}.`);
+            }
+            return n;
+        }
+    }
+};
+
 function sanitizePrefs(body) {
     const b = body || {};
     const out = {};
@@ -64,8 +83,13 @@ function sanitizePrefs(body) {
             out[key] = b[key];
         }
     }
+    for (const key of Object.keys(VALUE_PREFS)) {
+        if (Object.prototype.hasOwnProperty.call(b, key)) {
+            out[key] = VALUE_PREFS[key].parse(b[key]);
+        }
+    }
     if (!Object.keys(out).length) throw new Error('No alert preferences supplied.');
     return out;
 }
 
-module.exports = { sanitizeSubscription, sanitizePrefs, isHttpsUrl, PREF_KEYS, MAX_SUBSCRIPTIONS };
+module.exports = { sanitizeSubscription, sanitizePrefs, isHttpsUrl, PREF_KEYS, VALUE_PREFS, MAX_SUBSCRIPTIONS };
