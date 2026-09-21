@@ -36,6 +36,9 @@ const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
 const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
 const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
+const { alreadyNoticed, latestRecap, buildRecapNoticePayload } = require('./recap-notice');
+const { isRecapSeason } = require('./weekly-recap');
+const { internalFetch } = require('./internal-api');
 
 // ---- config ----------------------------------------------------------------
 
@@ -585,6 +588,97 @@ async function notifyCaptainLocks(nowMs) {
     return { sent, due };
 }
 
+// ---- Weekly recap ready -----------------------------------------------------
+
+// "Your week is written up." Called from modules/recap-notice-job.js on Monday
+// morning, once the weekend is scored.
+//
+// The recap is computed by GET /standings/recap, which pulls the whole league's
+// season plus games, spreads, rankings and weather to place one manager's week
+// in context. That is far too much to reimplement here, and it is the same call
+// the My Team tile makes on every page load — so this asks the API for it,
+// once per manager, a dozen times a week. modules/scoring.js already talks to
+// our own API this way.
+//
+// Unlike the Captain reminder there is no per-league gate: both leagues get
+// recaps, and buildWeeklyRecaps answers with an empty list for a season that
+// hasn't been played rather than needing to be asked whether it has.
+//
+// Returns { sent, due, skipped }. Never throws.
+async function notifyRecapReady(nowMs) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0, due: 0, skipped: 'VAPID not configured' };
+
+    const now = nowMs == null ? Date.now() : nowMs;
+    // Matches the in-app popup's own gate, so the offseason is quiet on both.
+    if (!isRecapSeason(new Date(now))) return { sent: 0, due: 0, skipped: 'offseason' };
+
+    const season = activeSeason('football');
+    if (season == null) return { sent: 0, due: 0, skipped: 'no active season' };
+
+    let sent = 0, due = 0;
+
+    try {
+        const query = {
+            pushSubscriptions: { $exists: true, $ne: [] },
+            seasons: { $elemMatch: { season } }
+        };
+        if (isRestricted()) query._id = { $in: [...allowlist()] };
+
+        // No roster fields here — unlike the Captain reminder this needs nothing
+        // from seasons[].teams, and that subtree is ~100KB a manager.
+        const users = await User.find(query,
+            { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, recapNotices: 1 }).lean();
+        if (!users.length) return { sent: 0, due: 0 };
+
+        for (const user of users) {
+            if (!wantsType(user, 'recapReady')) continue;
+
+            let payload;
+            try {
+                const res = await internalFetch(
+                    `${process.env.URL}/standings/recap/${encodeURIComponent(user.league)}/${season}/${user._id}`,
+                    { headers: { Accept: 'application/json' } });
+                if (res.status !== 200) {
+                    console.log(`Push: recap lookup for ${user._id} answered ${res.status}`);
+                    continue;
+                }
+                payload = await res.json();
+            } catch (e) {
+                console.log(`Push: could not load recap for ${user._id}: ${e && e.message}`);
+                continue;
+            }
+
+            // An empty list is the preseason, or a league that hasn't played —
+            // not an error, and nothing to announce.
+            const recap = latestRecap(payload);
+            if (!recap) continue;
+            if (alreadyNoticed(user.recapNotices, season, recap.week)) continue;
+
+            due++;
+
+            const res = await sendToUser(user, buildRecapNoticePayload({ userId: user._id, recap }));
+            sent += res.sent;
+
+            // Logged only on delivery, for the same reason as the Captain
+            // reminder: a manager whose last subscription was pruned mid-send
+            // has not been told, and a row here would mean they never are.
+            if (res.sent) {
+                try {
+                    await User.updateOne({ _id: user._id },
+                        { $push: { recapNotices: { season, week: recap.week, sentAt: new Date() } } });
+                } catch (e) {
+                    console.log(`Push: could not log recap notice for ${user._id}: ${e && e.message}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyRecapReady failed: ${err && err.message}`);
+    }
+
+    return { sent, due };
+}
+
 // One-off delivery used by the "send me a test" button, so a manager can prove
 // the whole chain works without waiting for a Saturday.
 // One-off delivery used by the "Send a test" button, so a manager can prove the
@@ -626,6 +720,7 @@ module.exports = {
     notifyEvents,
     notifyFinals,
     notifyCaptainLocks,
+    notifyRecapReady,
     sendTest,
     isConfigured,
     vapidConfig,

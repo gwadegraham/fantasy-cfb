@@ -1136,6 +1136,11 @@ async function hydrateRecap(user, activeYear) {
             g.innerHTML = latest.narrative ? escapeHtml(latest.narrative) : `${escapeHtml(latest.label)}${place}`;
         }
         uhDrawer.recap = (body) => { window.ccRecap.mountInline(body, data); };
+
+        // Deep link from the "recap is ready" push (#recap), the same way the
+        // Captain tile handles #captain — opened here rather than with the other
+        // tiles because the drawer cannot mount until this data has arrived.
+        if (location.hash === '#recap') openDrawer('recap');
     } catch (e) {
         console.error('weekly recap failed:', e);
         hide();

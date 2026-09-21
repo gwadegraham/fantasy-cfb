@@ -115,6 +115,10 @@ describe('sanitizePrefs', () => {
         expect(() => sanitizePrefs({ captainLockLeadMinutes: 'whenever' })).toThrow(/must be one of/);
     });
 
+    it('accepts the recapReady pref', () => {
+        expect(sanitizePrefs({ recapReady: false })).toEqual({ recapReady: false });
+    });
+
     it('takes the lead alongside the mute switches in one patch', () => {
         expect(sanitizePrefs({ captainLock: true, captainLockLeadMinutes: 360 }))
             .toEqual({ captainLock: true, captainLockLeadMinutes: 360 });

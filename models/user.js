@@ -236,7 +236,9 @@ const pushPrefsSchema = new mongoose.Schema({
     // free: see LEAD_CHOICES for why an arbitrary number is worse than no
     // choice at all. The enum is belt-and-braces behind the route's sanitizer,
     // so a write from anywhere else still can't store a lead that never fires.
-    captainLockLeadMinutes: { type: Number, default: CAPTAIN_DEFAULT_LEAD_MINUTES, enum: CAPTAIN_LEAD_MINUTES }
+    captainLockLeadMinutes: { type: Number, default: CAPTAIN_DEFAULT_LEAD_MINUTES, enum: CAPTAIN_LEAD_MINUTES },
+    // "Your weekly recap is ready" — a pointer to the My Team recap, once a week.
+    recapReady: { type: Boolean, default: true }
 }, { _id: false });
 
 // One row per Captain reminder actually delivered, so the job never sends the
@@ -311,6 +313,15 @@ const userSchema = new mongoose.Schema({
     // Which alert types this manager wants. Unset means "all four", so a
     // subscriber gets everything until they narrow it.
     captainReminders: {
+        type: [captainReminderSchema],
+        default: undefined
+    },
+    // One row per weekly-recap notice delivered. Its own array rather than a
+    // shared push log with captainReminders above: they are the same shape, but
+    // merging them would have meant migrating rows that are already in
+    // production, and a migration that goes wrong re-notifies or silences a
+    // Captain lock. Worth generalising when a third one of these turns up.
+    recapNotices: {
         type: [captainReminderSchema],
         default: undefined
     },
