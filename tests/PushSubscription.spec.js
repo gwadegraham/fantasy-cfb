@@ -91,6 +91,35 @@ describe('sanitizePrefs', () => {
         expect(sanitizePrefs({ score: false, nonsense: true })).toEqual({ score: false });
     });
 
+    // The Captain lock reminder is the one alert that isn't about a game in
+    // progress, and it is muted through the same switch as the rest.
+    it('accepts the captainLock pref', () => {
+        expect(sanitizePrefs({ captainLock: false })).toEqual({ captainLock: false });
+    });
+
+    // The lead is the one pref that carries a value rather than an on/off, so it
+    // gets its own validator — the boolean loop's "must be true or false" would
+    // be a lie for it.
+    it('accepts an offered lead, as a number or the string a form posts', () => {
+        expect(sanitizePrefs({ captainLockLeadMinutes: 30 })).toEqual({ captainLockLeadMinutes: 30 });
+        expect(sanitizePrefs({ captainLockLeadMinutes: '1440' })).toEqual({ captainLockLeadMinutes: 1440 });
+    });
+
+    // An unoffered lead is rejected rather than clamped: too short and the
+    // reminder can fall between two sweeps, too long and it fires whenever the
+    // week opens while claiming a countdown.
+    it('rejects a lead that is not on the list', () => {
+        expect(() => sanitizePrefs({ captainLockLeadMinutes: 45 })).toThrow(/must be one of/);
+        expect(() => sanitizePrefs({ captainLockLeadMinutes: 0 })).toThrow(/must be one of/);
+        expect(() => sanitizePrefs({ captainLockLeadMinutes: -120 })).toThrow(/must be one of/);
+        expect(() => sanitizePrefs({ captainLockLeadMinutes: 'whenever' })).toThrow(/must be one of/);
+    });
+
+    it('takes the lead alongside the mute switches in one patch', () => {
+        expect(sanitizePrefs({ captainLock: true, captainLockLeadMinutes: 360 }))
+            .toEqual({ captainLock: true, captainLockLeadMinutes: 360 });
+    });
+
     it('refuses a non-boolean, rather than coercing it', () => {
         expect(() => sanitizePrefs({ score: 'yes' })).toThrow(/true or false/);
         expect(() => sanitizePrefs({ closeGame: 1 })).toThrow(/true or false/);

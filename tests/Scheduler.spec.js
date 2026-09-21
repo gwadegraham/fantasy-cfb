@@ -5,8 +5,24 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['daily-scores', 'enrichment', 'player-season-leaders', 'saturday-scores', 'season-stats', 'sunday-scores']);
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'player-season-leaders',
+            'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
+    });
+
+    // The reminder lead is six hours, so the sweep only has to be fine-grained
+    // enough that a manager is never first seen AFTER their lock. Half-hourly,
+    // with the window in modules/captain-reminder.js open for the whole run-up.
+    it('sweeps for captain locks every 30 minutes, around the clock', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'captain-reminder');
+        expect(spec.rule).toEqual({ minute: [0, 30] });
+        expect(spec.rule.hour).toBeUndefined();     // unset = every hour
+        expect(spec.rule.dayOfWeek).toBeUndefined();
+
+        const rule = toRule(spec.rule);
+        const first = rule.nextInvocationDate(new Date('2026-09-12T18:05:00.000Z'));
+        const second = rule.nextInvocationDate(first);
+        expect(second.getTime() - first.getTime()).toBe(30 * 60 * 1000);
     });
 
     it('keeps the live poller out of the always-on jobs (it is opt-in)', () => {

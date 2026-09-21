@@ -33,6 +33,9 @@ const User = require('../models/user');
 const Game = require('../models/game');
 const { activeSeason } = require('./active-season');
 const scoringModule = require('./scoring');
+const { engagementForSeason } = require('./scoring-defaults');
+const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
+const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
 
 // ---- config ----------------------------------------------------------------
 
@@ -437,6 +440,151 @@ async function notifyFinals(gameIds) {
     return { sent };
 }
 
+// ---- Captain lock reminder --------------------------------------------------
+
+// Matches routes/users.js: a week stays in focus this long past its last kickoff
+// before the tile advances. Duplicated as a constant rather than imported from a
+// route, which would drag the whole router in.
+const CAPTAIN_WEEK_GRACE_MS = 6 * 60 * 60 * 1000;
+
+// Ahead of each manager's Captain lock, by the lead THEY chose (2 hours unless
+// they changed it). Called from modules/captain-reminder-job.js on a fixed
+// cadence.
+//
+// Three things make this different from the other four alerts, which are all
+// reactions to a game event:
+//
+//   1. The lock instant is PER MANAGER — their own earliest kickoff that week —
+//      so there is no shared deadline to schedule against. Each manager's window
+//      is computed from their roster.
+//   2. Captain is a per-league opt-in (engagementBySeason[year].captainEnabled).
+//      A league playing the classic game has no pick to lock, and telling its
+//      managers otherwise would be advertising a mechanic they don't have.
+//   3. It must fire exactly once per manager per week, so it writes a row to
+//      user.captainReminders and checks that row before sending. The other
+//      alerts are naturally one-per-event.
+//
+// The lead is per manager, which is why there is no single window to query on:
+// two managers with the same lock are due 23 hours apart if one picked a day's
+// notice and the other picked an hour. Each row carries its own answer.
+//
+// Returns { sent, due, skipped } for the job report. Never throws: a reminder is
+// a nicety.
+async function notifyCaptainLocks(nowMs) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0, due: 0, skipped: 'VAPID not configured' };
+
+    const now = nowMs == null ? Date.now() : nowMs;
+    const season = activeSeason('football');
+    if (season == null) return { sent: 0, due: 0, skipped: 'no active season' };
+
+    let sent = 0, due = 0;
+
+    try {
+        const query = {
+            pushSubscriptions: { $exists: true, $ne: [] },
+            seasons: { $elemMatch: { season } }
+        };
+        if (isRestricted()) query._id = { $in: [...allowlist()] };
+
+        // Same projection discipline as recipientsFor: seasons[].teams holds a
+        // full team object each, so pulling `seasons: 1` is ~100KB per manager
+        // against a cluster capped around 85 KB/s. `school` is here because the
+        // notification body names the team.
+        const users = await User.find(query, {
+            firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, captainReminders: 1,
+            'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.teams.school': 1,
+            'seasons.captains': 1, 'seasons.weeklyScore': 1
+        }).lean();
+        if (!users.length) return { sent: 0, due: 0 };
+
+        // Captain is per-league, so resolve each league's config once rather
+        // than once per manager.
+        const captainByLeague = new Map();
+        async function captainOn(league) {
+            if (captainByLeague.has(league)) return captainByLeague.get(league);
+            let on = false;
+            try {
+                const cfg = await scoringModule.getScoringConfig(league);
+                on = !!engagementForSeason(cfg.engagementBySeason, season).captainEnabled;
+            } catch (e) {
+                console.log(`Push: could not read scoring config for ${league}: ${e && e.message}`);
+            }
+            captainByLeague.set(league, on);
+            return on;
+        }
+
+        // One games read for the whole run. Every manager's focus week is
+        // computed from the same regular-season slate, so fetching per manager
+        // would be the same rows over and over.
+        const games = await Game.find(
+            { season, seasonType: 'regular' },
+            { week: 1, homeId: 1, awayId: 1, startDate: 1, startTimeTbd: 1, seasonType: 1, _id: 0 }
+        ).lean();
+        if (!games.length) return { sent: 0, due: 0, skipped: 'no games stored' };
+
+        for (const user of users) {
+            if (!wantsType(user, 'captainLock')) continue;
+            if (!(await captainOn(user.league))) continue;
+
+            const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
+            const roster = (entry && entry.teams) || [];
+            if (!roster.length) continue;
+
+            const teamIds = roster.map(t => Number(t.id));
+            const focus = captainFocusWeek(games, teamIds, now, CAPTAIN_WEEK_GRACE_MS);
+            if (!focus) continue;                                   // season out of reach
+            // Their own lead, not a global one.
+            if (!isDue(focus.first, now, leadMsFor(user.pushPrefs))) continue;
+            if (alreadySent(user.captainReminders, season, focus.week)) continue;
+
+            due++;
+
+            const byId = new Map(roster.map(t => [Number(t.id), t]));
+            const pickedId = captainForWeek(entry.captains, focus.week);
+            // The default modules/captain.js would apply if they never pick —
+            // scored off the weeks BEFORE this one, the same slice the scorer uses.
+            const prior = ((entry && entry.weeklyScore) || []).filter(w => Number(w.week) < focus.week);
+            const autoId = pickedId != null ? null : autoCaptainTeamId(roster, prior);
+
+            const toTeam = id => {
+                const t = id != null ? byId.get(Number(id)) : null;
+                return t ? { id: Number(t.id), school: t.school } : null;
+            };
+
+            const payload = buildCaptainReminderPayload({
+                userId: user._id,
+                week: focus.week,
+                lockMs: focus.first,
+                nowMs: now,
+                currentPick: toTeam(pickedId),
+                autoPick: toTeam(autoId)
+            });
+
+            const res = await sendToUser(user, payload);
+            sent += res.sent;
+
+            // Recorded only when a device actually took it. A manager whose only
+            // subscription was pruned mid-send has NOT been reminded, and
+            // writing the row anyway would mean they never are.
+            if (res.sent) {
+                try {
+                    await User.updateOne({ _id: user._id },
+                        { $push: { captainReminders: { season, week: focus.week, sentAt: new Date() } } });
+                } catch (e) {
+                    // The send already happened; failing to log it risks one
+                    // duplicate next tick, which the payload's tag collapses.
+                    console.log(`Push: could not log captain reminder for ${user._id}: ${e && e.message}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyCaptainLocks failed: ${err && err.message}`);
+    }
+
+    return { sent, due };
+}
+
 // One-off delivery used by the "send me a test" button, so a manager can prove
 // the whole chain works without waiting for a Saturday.
 // One-off delivery used by the "Send a test" button, so a manager can prove the
@@ -477,6 +625,7 @@ async function sendTest(userId) {
 module.exports = {
     notifyEvents,
     notifyFinals,
+    notifyCaptainLocks,
     sendTest,
     isConfigured,
     vapidConfig,

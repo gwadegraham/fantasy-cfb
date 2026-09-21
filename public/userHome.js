@@ -1106,6 +1106,12 @@ async function hydrateCaptain(user, activeYear) {
 
     setGlance();
     uhDrawer.captain = (body) => { paint(body); body.insertAdjacentHTML('beforeend', captainAnalytics()); };
+
+    // Deep link from the Captain lock push notification (#/captain). Opened here
+    // rather than with the other tiles because the drawer cannot paint until this
+    // function has the week, the lock and the slate — a tap that landed while the
+    // fetches were still in flight used to open an empty drawer.
+    if (location.hash === '#captain') openDrawer('captain');
 }
 
 // Weekly Recap (#212) → Your Week tile. Glance shows the latest week's narrative;

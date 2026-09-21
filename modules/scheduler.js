@@ -15,7 +15,14 @@ const JOB_SCHEDULES = [
     // Weekly season stats (CFBD /stats/season). 1 API call, all FBS teams.
     { job: 'season-stats', modulePath: '../update-season-stats-job', rule: { dayOfWeek: 2, hour: 6, minute: 0 } },
     // Weekly player season leaders (CFBD /stats/player/season). 1 API call, all FBS teams.
-    { job: 'player-season-leaders', modulePath: '../update-player-season-leaders-job', rule: { dayOfWeek: 2, hour: 6, minute: 30 } }
+    { job: 'player-season-leaders', modulePath: '../update-player-season-leaders-job', rule: { dayOfWeek: 2, hour: 6, minute: 30 } },
+    // Captain lock reminders, every 30 minutes, 0 CFBD calls. Each manager's
+    // pick locks at their OWN first kickoff, so there is no single deadline to
+    // schedule against — the job sweeps for managers within two hours of theirs.
+    // Half-hourly puts four ticks inside that window, so the reminder survives a
+    // lost tick, and the job only writes a JobRun on a tick that actually sent
+    // something.
+    { job: 'captain-reminder', modulePath: '../modules/captain-reminder-job', rule: { minute: [0, 30] } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

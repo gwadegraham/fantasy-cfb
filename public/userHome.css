@@ -401,6 +401,15 @@
 .push-pref-text { display: flex; flex-direction: column; gap: 1px; }
 .push-pref-text strong { font-size: 0.85rem; font-weight: 500; color: var(--cc-text); }
 .push-pref-text em { font-style: normal; font-size: 0.72rem; color: var(--cc-muted-2); }
+/* The "how far ahead" picker on the Captain row. margin-left:auto parks it on
+   the right so the rows above it still read as a plain checklist. */
+.push-pref-lead {
+    margin-left: auto; flex: none; align-self: center;
+    font: inherit; font-size: 0.72rem; color: var(--cc-text);
+    background: var(--cc-surface-2); border: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-sm); padding: 0.25em 0.45em; cursor: pointer;
+}
+.push-pref-lead:focus-visible { outline: 2px solid var(--cc-interactive); outline-offset: 1px; }
 .push-actions { display: flex; gap: 0.6em; flex-wrap: wrap; }
 .push-actions:empty { display: none; }
 
