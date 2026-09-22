@@ -139,7 +139,18 @@ async function plan() {
     );
 
     const steps = [];
-    const problems = [];
+    // Schema problems belong in the PLAN, not only in verify().
+    //
+    // Both guards used to run exclusively inside verify(), which is reached
+    // only AFTER migrate() has written. So the responsible cutover sequence —
+    // dry run against prod, read it, then --apply — showed a clean table while
+    // a field was about to be silently dropped, and the failure only surfaced
+    // once 26 documents had been written. Rounds 3, 4 and 5 each re-cut WHAT
+    // these check; none noticed they were unreachable from the one entry point
+    // an operator actually runs first.
+    const problems = [...unroutedFields(), ...uncoveredUserFields().map(f =>
+        `models/user.js has field "${f}" that the migration ignores — add it to ACCOUNT_FIELDS ` +
+        `or FRANCHISE_FIELDS *and* to the matching model, or it is dropped silently`)];
     for (const user of users) {
         if (!user.league) {
             // Without a league there is no franchise to create. Report it rather
@@ -164,6 +175,13 @@ async function plan() {
 async function migrate({ apply = false } = {}) {
     const planned = await plan();
     if (!apply) return { applied: false, ...planned };
+
+    // Refuse to write against a schema mismatch rather than writing 26
+    // documents and discovering it in the verify afterwards.
+    const blocking = [...unroutedFields(), ...uncoveredUserFields()];
+    if (blocking.length) {
+        return { applied: false, blocked: true, ...planned };
+    }
 
     let accounts = 0;
     let franchises = 0;
@@ -315,7 +333,9 @@ async function verify() {
             strays.forEach(stray => mismatches.push({
                 userId: id, field: '_id',
                 reason: `account ${stray._id} claims to come from this user but has a different _id — ` +
-                        `an Auth0 login resolving through metadata.userId would find nothing`
+                        `an Auth0 login resolving through metadata.userId would find nothing. ` +
+                        `NOT self-healing: no sweep removes this shape, so re-running will not ` +
+                        `clear it — roll back and re-migrate.`
             }));
             ACCOUNT_FIELDS.forEach(f => {
                 const before = stripIds(expectedAccount[f] === undefined ? null : expectedAccount[f]);
@@ -365,7 +385,18 @@ async function verify() {
         mismatches.push({ field: 'accountCount', expected: users.length, actual: migratedAccounts });
     }
     if (migratedFranchises !== expectedFranchiseCount) {
-        mismatches.push({ field: 'franchiseCount', expected: expectedFranchiseCount, actual: migratedFranchises });
+        // The sweeps key on `accountId` (a live user) and on `migratedFrom`
+        // (not a live user). A migrated franchise whose accountId matches no
+        // user but whose migratedFrom does falls between the two, so re-running
+        // never clears it. This code cannot produce that shape — it always
+        // writes accountId: user._id — but a hand edit can.
+        mismatches.push({
+            field: 'franchiseCount', expected: expectedFranchiseCount, actual: migratedFranchises,
+            reason: migratedFranchises > expectedFranchiseCount
+                ? 'if a re-run does not fix this, the extra franchise is unreachable by both ' +
+                  'sweeps — roll back and re-migrate'
+                : undefined
+        });
     }
     if (extraAccounts || extraFranchises) {
         warnings.push(`${extraAccounts} account(s) and ${extraFranchises} franchise(s) were not created by this ` +

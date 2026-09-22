@@ -34,12 +34,13 @@ const ALLOWED_DEV_DBS = ['test', 'dev'];
 function dbNameFrom(url) {
     // mongodb+srv://user:pass@host/dbname?opts
     const match = String(url).match(/^mongodb(?:\+srv)?:\/\/[^/]*\/([^?]+)/);
-    const name = match ? decodeURIComponent(match[1]) : '';
-    // A URI with no database in the path connects to one literally called
-    // "test" — which is on the dev allowlist. Reporting null instead made the
-    // banner say "NOT a known dev database" while the connection was in fact
-    // going somewhere allowed, and left the confirm prompt unanswerable.
-    return name || 'test';
+    // Deliberately NOT defaulted to "test". A pathless URI does connect to a
+    // database called "test", but "no database was specified" and "the database
+    // is dev" are different facts, and collapsing them made `known` true and
+    // skipped the prod confirmation entirely. scripts/sync-prod-to-dev.sh — the
+    // script this one claims to match, and which only READS — refuses a pathless
+    // DEV_URI outright. Returns null; a writing run treats that as a refusal.
+    return match ? decodeURIComponent(match[1]) : null;
 }
 
 function userFrom(url) {
@@ -111,6 +112,13 @@ async function main() {
     const { db, known } = banner(process.env.DATABASE_URL);
 
     const writing = apply && !wantVerify;
+    if (writing && !db) {
+        console.error(
+            'DATABASE_URL has no database name in its path, so there is no way to tell\n' +
+            'which database this would write to. Add one (…mongodb.net/<name>) and re-run.'
+        );
+        process.exit(1);
+    }
     if (writing && !known && !assumeYes) {
         console.log(`"${db}" is not one of the known dev databases (${ALLOWED_DEV_DBS.join(', ')}).`);
         const answer = await confirm(`Type the database name to write to it: `);
@@ -192,6 +200,15 @@ async function main() {
         if (result.problems.length) {
             console.error(`\n⚠️  ${result.problems.length} problem(s):`);
             result.problems.forEach(p => console.error('   ', p));
+        }
+
+        if (result.blocked) {
+            console.error(
+                '\nREFUSING TO WRITE. The schema problems above would drop data silently.\n' +
+                'Nothing was written. Fix them and re-run.'
+            );
+            process.exitCode = 1;
+            return;
         }
 
         if (apply) {

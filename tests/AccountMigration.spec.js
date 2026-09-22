@@ -365,6 +365,48 @@ describe('verify', () => {
         }
     });
 
+    test('the DRY RUN reports a schema problem, before anything is written', async () => {
+        // The guards used to run only inside verify(), reached only AFTER the
+        // writes. So the responsible cutover sequence — dry run against prod,
+        // read it, then --apply — showed a clean table while a field was about
+        // to be dropped, and it surfaced once 26 documents had been written.
+        await seedUser();
+        User.schema.add({ timezone: String });
+        try {
+            const dry = await migration.migrate();
+            expect(dry.applied).toBe(false);
+            expect(dry.problems.join(' ')).toMatch(/timezone/);
+        } finally {
+            delete User.schema.paths.timezone;
+        }
+    });
+
+    test('--apply refuses to write while a schema problem stands', async () => {
+        await seedUser();
+        User.schema.add({ timezone: String });
+        try {
+            const result = await migration.migrate({ apply: true });
+            expect(result).toMatchObject({ applied: false, blocked: true });
+            // The point: nothing written, rather than 26 documents to diagnose.
+            expect(await Account.countDocuments({})).toBe(0);
+            expect(await Franchise.countDocuments({})).toBe(0);
+        } finally {
+            delete User.schema.paths.timezone;
+        }
+    });
+
+    test('a listed-but-unrouted FRANCHISE field is caught too, not just an account one', async () => {
+        // The franchise half of unroutedFields() was the one uncovered line.
+        migration.FRANCHISE_FIELDS.push('nonsense');
+        try {
+            expect(migration.unroutedFields()).toContainEqual(
+                expect.stringContaining('models/franchise.js')
+            );
+        } finally {
+            migration.FRANCHISE_FIELDS.pop();
+        }
+    });
+
     test('the two field lists currently cover the whole User schema', async () => {
         // Guards the real thing rather than the mechanism: if this fails, some
         // field of a manager is about to be thrown away at cutover.
