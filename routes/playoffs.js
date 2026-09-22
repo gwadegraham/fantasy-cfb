@@ -598,7 +598,7 @@ router.get('/bracket/:season/:league', async (req, res) => {
         const gameDocs = await Game.find(
             { id: { $in: gameIds } },
             { id: 1, homeId: 1, awayId: 1, homeTeam: 1, awayTeam: 1, homePoints: 1,
-              awayPoints: 1, completed: 1, venue: 1, startDate: 1, period: 1, clock: 1,
+              awayPoints: 1, completed: 1, venue: 1, startDate: 1, startTimeTbd: 1, period: 1, clock: 1,
               situation: 1, outlet: 1, notes: 1, attendance: 1, neutralSite: 1 }
         );
         const gameMap = {};
@@ -661,6 +661,10 @@ router.get('/bracket/:season/:league', async (req, res) => {
                     completed: gameDoc.completed,
                     venue: gameDoc.venue,
                     startDate: gameDoc.startDate,
+                    // The bracket pill prints a date off this, and a TBD
+                    // kickoff's date is midnight EASTERN — a day early read
+                    // anywhere west of there. See public/kickoff-day.js.
+                    startTimeTbd: !!gameDoc.startTimeTbd,
                     period: gameDoc.period,
                     clock: gameDoc.clock,
                     // Down-and-distance only. lastPlay is deliberately left out:

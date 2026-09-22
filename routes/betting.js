@@ -159,7 +159,7 @@ router.get('/games/:season/:week', async (req, res) => {
         // needs. 21135ms -> 513ms.
         const GAME_FIELDS = {
             id: 1, homeTeam: 1, awayTeam: 1, homeId: 1, awayId: 1,
-            startDate: 1, completed: 1, homePoints: 1, awayPoints: 1, _id: 0
+            startDate: 1, startTimeTbd: 1, completed: 1, homePoints: 1, awayPoints: 1, _id: 0
         };
 
         const teamIds = new Set();
@@ -202,6 +202,10 @@ router.get('/games/:season/:week', async (req, res) => {
                 homeRank: rankMap.get(game.homeTeam) || null,
                 awayRank: rankMap.get(game.awayTeam) || null,
                 startDate: game.startDate,
+                // Without this the picker cannot tell a real 11pm kickoff from
+                // the midnight-Eastern placeholder CFBD sends for a TBD game,
+                // and it printed the placeholder as a Friday night game.
+                startTimeTbd: !!game.startTimeTbd,
                 completed: game.completed,
                 homePoints: game.homePoints,
                 awayPoints: game.awayPoints,
@@ -309,7 +313,13 @@ router.patch('/:id/legs', async (req, res) => {
 
         if (gameId != null) {
             const game = await Game.findOne({ id: gameId }).lean();
-            if (game && game.startDate && new Date(game.startDate) < new Date() && !isAdmin(req)) {
+            // `startTimeTbd` first: that startDate is midnight EASTERN, a
+            // placeholder, so this lock would refuse the leg from 11 PM the
+            // night before — on a game the picker (correctly) still offers as
+            // "Sat TBD". A game with no announced kickoff has not started.
+            const started = game && game.startDate && !game.startTimeTbd
+                && new Date(game.startDate) < new Date();
+            if (started && !isAdmin(req)) {
                 return res.status(400).json({ message: 'Game has already started' });
             }
             leg.gameId = gameId;

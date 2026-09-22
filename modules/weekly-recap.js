@@ -415,4 +415,34 @@ function isRecapSeason(date) {
     return m >= 8 || m === 1;
 }
 
-module.exports = { buildWeeklyRecaps, buildSlides, indexUpsets, narrate, effWeek, weekLabel, cumThrough, rankAt, recapWindowKey, isRecapSeason };
+// Which weeks have fully started, for the recap gate: a week counts once the
+// clock is past its LAST drafted-team kickoff, so the popup can't fire on
+// Thursday's result while Saturday's slate is still hours away.
+//
+// A game whose kickoff is still TBD has no usable start: CFBD stores midnight
+// EASTERN as the placeholder, which is 11 PM Central the night before, so
+// taking it as the week's last start declares the week complete BEFORE the
+// slate it is gating on. Such a game blocks its week outright, and stops
+// blocking once it is played — a completed game did start, whatever the row
+// still says about its time. (See public/kickoff-day.js for the placeholder.)
+//
+// Lives here rather than inline in routes/standings.js so the rule is testable
+// on its own; the route passes the games it already fetched.
+function completedWeeks(games, now) {
+    const lastStart = {};
+    const unknownStart = new Set();
+    (games || []).forEach(g => {
+        const ew = (g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week;
+        if (g.startTimeTbd && !g.completed) { unknownStart.add(ew); return; }
+        const sd = g.startDate ? new Date(g.startDate) : null;
+        if (sd && !isNaN(sd.getTime()) && (!lastStart[ew] || sd > lastStart[ew])) lastStart[ew] = sd;
+    });
+    const complete = new Set();
+    for (const w in lastStart) {
+        if (unknownStart.has(Number(w))) continue;
+        if (now >= lastStart[w]) complete.add(Number(w));
+    }
+    return complete;
+}
+
+module.exports = { buildWeeklyRecaps, buildSlides, indexUpsets, narrate, effWeek, weekLabel, cumThrough, rankAt, recapWindowKey, isRecapSeason, completedWeeks };

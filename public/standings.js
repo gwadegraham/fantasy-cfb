@@ -1346,12 +1346,14 @@ async function displaySchedule(data) {
                         }
                     } else {
         
-                        var centralDate = new Date(game.startDate);
-                        var dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][centralDate.getDay()];
-                        var h = centralDate.getHours(), min = centralDate.getMinutes().toString().padStart(2, '0');
-                        var standardTime = h === 0 ? '12:' + min + 'AM' : h < 12 ? h + ':' + min + 'AM' : h === 12 ? '12:' + min + 'PM' : (h - 12) + ':' + min + 'PM';
+                        // ccKickoff, not getDay(): a TBD kickoff is stored as
+                        // midnight EASTERN, which read in the viewer's zone is
+                        // the night before (public/kickoff-day.js).
+                        var tbd = game.startTimeTbd;
+                        var dayAbbr = window.ccKickoff.dayAbbr(game.startDate, tbd);
+                        var standardTime = window.ccKickoff.time(game.startDate, tbd);
 
-                        topData = '<span class="gc-date">' + dayAbbr + ' ' + (centralDate.getMonth() + 1) + '/' + centralDate.getDate() + '</span>';
+                        topData = '<span class="gc-date">' + dayAbbr + ' ' + window.ccKickoff.monthDay(game.startDate, tbd) + '</span>';
                         bottomData = '<span class="gc-time">' + standardTime + '</span>';
                     }
         

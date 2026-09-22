@@ -116,6 +116,14 @@ function defaultWeek(windows, nowMs) {
 // running clock over a score that had quietly stopped moving.
 function gameState(game, nowMs) {
     if (game.completed) return 'final';
+    // A TBD kickoff's startDate is a placeholder — midnight EASTERN on the game
+    // date, not a time anyone plays at. Comparing it to the clock walks the card
+    // through 'live' at 11 PM the night before and into 'final' by mid-morning,
+    // so the game would sit there reading Final with no score. It has not
+    // happened (CFBD firms every time before the date arrives, and the weekly
+    // schedule refresh in update-enrichment-job.js pulls that down), but that
+    // makes this a bug waiting on one missed job run. No kickoff = not started.
+    if (game.startTimeTbd) return 'pre';
     const start = Date.parse(game.startDate);
     if (Number.isNaN(start) || start > nowMs) return 'pre';
     return (nowMs - start) <= MAX_GAME_MS ? 'live' : 'final';

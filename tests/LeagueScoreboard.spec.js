@@ -156,6 +156,23 @@ describe('gameState', () => {
         expect(gameState(game(), start + 7 * HOUR)).toBe('live');
     });
 
+    // A TBD kickoff's startDate is midnight EASTERN on the game date — a
+    // placeholder, not a time. Compared to the clock it walks the card into
+    // 'live' the night before and 'final' by mid-morning, so the game would
+    // read FINAL with no score while it was actually being played. Every game
+    // so far has had its time firmed before the date arrived (the weekly
+    // schedule pull in update-enrichment-job.js), which is the only reason this
+    // never shipped a visibly wrong card.
+    test('a TBD kickoff is pre, however long its placeholder has passed', () => {
+        const tbd = game({ startTimeTbd: true });
+        expect(gameState(tbd, start + HOUR)).toBe('pre');
+        expect(gameState(tbd, start + MAX_GAME_MS + HOUR)).toBe('pre');
+    });
+
+    test('a TBD game that is actually over still reads final', () => {
+        expect(gameState(game({ startTimeTbd: true, completed: true }), start + HOUR)).toBe('final');
+    });
+
     // The window is what stops a stuck `completed` flag from reading live all
     // week, so it must stay finite even as it widens.
     test('the game window is between six and twelve hours', () => {

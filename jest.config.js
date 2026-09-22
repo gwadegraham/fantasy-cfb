@@ -22,6 +22,10 @@ module.exports = {
     // first entry.
     testPathIgnorePatterns: ["/node_modules/", "<rootDir>/.claude/worktrees/"],
 
+    // Pins TZ before the workers fork — see the file for why the suite cannot
+    // be left to inherit whatever zone the machine is in.
+    globalSetup: "<rootDir>/tests/helpers/global-setup.js",
+
     testTimeout: 20000,
     transform: {
         "public[\\\\/].+\\.js$": "<rootDir>/tests/helpers/esm-transform.js",

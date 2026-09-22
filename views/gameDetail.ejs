@@ -333,11 +333,10 @@
             var isLive = !isFinal && game.period;
 
             // Game date
-            var dateStr = '';
-            if (game.startDate) {
-                var d = new Date(game.startDate);
-                dateStr = d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            }
+            // ccKickoff, not toLocaleDateString: a TBD kickoff is stored as
+            // midnight EASTERN, so a Saturday game read in the viewer's zone
+            // headlined this page as a Friday (public/kickoff-day.js).
+            var dateStr = window.ccKickoff.longDate(game.startDate, game.startTimeTbd);
 
             // Status label
             var statusLabel = '';
@@ -349,8 +348,7 @@
             } else {
                 var timeStr = 'Scheduled';
                 if (game.startDate && !game.startTimeTbd) {
-                    var dt = new Date(game.startDate);
-                    timeStr = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    timeStr = window.ccKickoff.time(game.startDate, false, 'spaced');
                 }
                 statusLabel = '<span class="gd-status gd-scheduled">' + timeStr + '</span>';
             }

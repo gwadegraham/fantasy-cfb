@@ -292,6 +292,47 @@ describe('PATCH /betting/:id/legs — correcting the odds', () => {
     });
 });
 
+// The kickoff lock reads a game's startDate to refuse a leg on a game already
+// under way. A game with no announced kickoff carries midnight EASTERN as a
+// placeholder instead of a time, so comparing it to the clock locked the leg
+// from 11 PM Central the night before — on a Saturday game the picker was
+// still (correctly) offering as "Sat TBD". See public/kickoff-day.js.
+describe('PATCH /betting/:id/legs — kickoff lock', () => {
+    let parlay;
+    beforeEach(async () => {
+        parlay = await Parlay.create({
+            group: group._id, season: 2026, week: 5, wager: 20,
+            legs: [{ contributor: MEMBER }]
+        });
+    });
+
+    const pickGame = id => request(app)
+        .patch(`/betting/${parlay._id}/legs`)
+        .send({ contributor: MEMBER.toString(), gameId: id });
+
+    const storeGame = (over) => Game.create(Object.assign({
+        id: 700001, season: 2026, week: 5, seasonType: 'regular',
+        homeId: 1, awayId: 2, homeTeam: 'Clemson', awayTeam: 'Miami',
+        startTimeTbd: false, neutralSite: false, conferenceGame: true
+    }, over));
+
+    test('refuses a leg on a game that has really kicked off', async () => {
+        await storeGame({ id: 700001, startDate: new Date(Date.now() - 60 * 60 * 1000) });
+        const res = await pickGame(700001);
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/already started/);
+    });
+
+    test('allows a leg on a TBD game whose placeholder has passed', async () => {
+        await storeGame({ id: 700002, startTimeTbd: true, startDate: new Date(Date.now() - 60 * 60 * 1000) });
+        const res = await pickGame(700002);
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].gameId).toBe(700002);
+    });
+});
+
 describe('PATCH /betting/:id/legs — alternate spreads', () => {
     let parlay;
     beforeEach(async () => {

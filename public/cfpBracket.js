@@ -16,16 +16,19 @@
         return c.startsWith('#') ? c : '#' + c;
     }
 
-    function dateFmt(iso) {
+    // The bracket pins Central on purpose — a postseason card says one date for
+    // the whole league — but a TBD kickoff is not an instant to convert. CFBD
+    // stores it as midnight EASTERN, so converting it to Central moves it to
+    // the night before and the pill named the wrong day. ccKickoff reads those
+    // in Eastern; everything with a real kickoff still converts to Central.
+    function dateFmt(iso, tbd) {
         if (!iso) return '';
+        if (tbd) {
+            var p = window.ccKickoff.parts(iso, true);
+            return p ? p.monthShort + ' ' + p.day : '';
+        }
         var d = new Date(iso);
         return d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' });
-    }
-
-    function timeFmt(iso) {
-        if (!iso) return '';
-        var d = new Date(iso);
-        return d.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
     }
 
     function roundLabel(round) {
@@ -52,7 +55,7 @@
         if (!game) return '';
         if (game.completed) return '<span class="cfp-pill cfp-final">Final</span>';
         if (game.period) return '<span class="cfp-pill cfp-live">Q' + game.period + (game.clock ? ' ' + game.clock : '') + '</span>';
-        if (game.startDate) return '<span class="cfp-pill cfp-scheduled">' + dateFmt(game.startDate) + '</span>';
+        if (game.startDate) return '<span class="cfp-pill cfp-scheduled">' + dateFmt(game.startDate, game.startTimeTbd) + '</span>';
         return '';
     }
 
