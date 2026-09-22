@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // migration verifies itself by diffing a Franchise's seasons against the User's
 // it came from, and two look-alike definitions would make that diff lie.
 const { seasonSchema } = require('./schemas/season');
+const { captainReminderSchema } = require('./schemas/push');
 
 // One ACCOUNT's entry in ONE league. The other half of the User split (#313).
 //
@@ -49,6 +50,17 @@ const franchiseSchema = new mongoose.Schema({
     // THIS league's scores were last written.
     isUpdated: { type: Boolean, default: false },
     lastUpdated: { type: String },
+
+    // "Already sent" ledgers for the Captain-lock nudge and the weekly-recap
+    // pointer. On the FRANCHISE, not the Account, and this is a real trap:
+    // modules/push-notify.js dedupes on `{season, week}` with no league in the
+    // key, which is unambiguous only while one person has one league. Once an
+    // account holds two, a shared ledger means the football recap notice
+    // silences the basketball one for the same week — the manager is simply
+    // never told their other league's recap is ready. Per-franchise, each league
+    // keeps its own record.
+    captainReminders: { type: [captainReminderSchema], default: undefined },
+    recapNotices: { type: [captainReminderSchema], default: undefined },
 
     // Provenance: set only by modules/account-migration.js. Rollback scopes its
     // delete to documents carrying it, so anything created directly — a

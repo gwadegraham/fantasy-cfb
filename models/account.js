@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { pushSubscriptionSchema, pushPrefsSchema } = require('./schemas/push');
 
 // A PERSON. One human, one login, however many leagues they play in.
 //
@@ -44,6 +45,12 @@ const accountSchema = new mongoose.Schema({
     // Chart/avatar colour. On the person, not the franchise: someone playing
     // two sports should be the same colour on both charts.
     color: { type: String },
+
+    // Push notifications belong to the PERSON, not to a league entry: a
+    // subscription is a device, and the preferences are which alerts that human
+    // wants. Someone in two leagues subscribes once and sets preferences once.
+    pushSubscriptions: { type: [pushSubscriptionSchema], default: undefined },
+    pushPrefs: { type: pushPrefsSchema, default: undefined },
 
     // Provenance: set only by modules/account-migration.js. Rollback scopes its
     // delete to documents carrying it, so anything created directly — a

@@ -24,8 +24,13 @@ const Account = require('../models/account');
 const Franchise = require('../models/franchise');
 
 // Person-level fields move to the Account; everything else is the franchise's.
-const ACCOUNT_FIELDS = ['firstName', 'lastName', 'email', 'authSub', 'avatarUrl', 'profilePrompted', 'color'];
-const FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated'];
+const ACCOUNT_FIELDS = ['firstName', 'lastName', 'email', 'authSub', 'avatarUrl', 'profilePrompted', 'color',
+    // Devices and alert preferences follow the person, not the league entry.
+    'pushSubscriptions', 'pushPrefs'];
+const FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated',
+    // Per-league send ledgers — see models/franchise.js for why a shared one
+    // would silence a second league's notices.
+    'captainReminders', 'recapNotices'];
 // Handled structurally rather than by name.
 const STRUCTURAL_FIELDS = ['_id', '__v', 'league', 'seasons'];
 

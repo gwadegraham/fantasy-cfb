@@ -27,6 +27,10 @@ async function seedUser(overrides = {}) {
         league: 'graham-league', color: '#ED5858', authSub: 'google-oauth2|123',
         avatarUrl: 'https://example.com/a.jpg', profilePrompted: true,
         isUpdated: true, lastUpdated: '9/7/2026, 11:42:28 PM',
+        pushSubscriptions: [{ endpoint: 'https://push.example/abc', keys: { p256dh: 'k', auth: 'a' }, userAgent: 'iPhone' }],
+        pushPrefs: { score: true, final: false, captainLockLeadMinutes: 60 },
+        captainReminders: [{ season: 2026, week: 1, sentAt: new Date('2026-09-05T12:00:00Z') }],
+        recapNotices: [{ season: 2026, week: 1, sentAt: new Date('2026-09-08T12:00:00Z') }],
         seasons: [{
             season: 2026,
             franchiseName: 'Name, Image, & Sadness',
@@ -124,6 +128,33 @@ describe('what moves where', () => {
         // The scores themselves are what must survive byte-identical.
         expect(season.weeklyScore[0].scoreByTeam[0]).toMatchObject({ teamId: 251, gameId: 1, score: 8 });
         expect(season.captains[0]).toMatchObject({ week: 1, teamId: 251 });
+    });
+
+    test('devices and alert preferences follow the PERSON', async () => {
+        await seedUser();
+        await migration.migrate({ apply: true });
+        const account = await Account.findOne({}).lean();
+
+        expect(account.pushSubscriptions).toHaveLength(1);
+        expect(account.pushSubscriptions[0]).toMatchObject({ endpoint: 'https://push.example/abc', userAgent: 'iPhone' });
+        expect(account.pushSubscriptions[0].keys).toMatchObject({ p256dh: 'k', auth: 'a' });
+        expect(account.pushPrefs).toMatchObject({ score: true, final: false, captainLockLeadMinutes: 60 });
+        // A device is not a property of a league entry.
+        expect(account.captainReminders).toBeUndefined();
+    });
+
+    test('the "already sent" ledgers follow the LEAGUE entry', async () => {
+        // modules/push-notify.js dedupes on {season, week} with NO league in the
+        // key. Shared across leagues, a football recap notice would silence the
+        // basketball one for the same week.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        const franchise = await Franchise.findOne({}).lean();
+
+        expect(franchise.captainReminders).toHaveLength(1);
+        expect(franchise.captainReminders[0]).toMatchObject({ season: 2026, week: 1 });
+        expect(franchise.recapNotices).toHaveLength(1);
+        expect(franchise.pushSubscriptions).toBeUndefined();
     });
 
     test('every season comes across, not just the active one', async () => {
