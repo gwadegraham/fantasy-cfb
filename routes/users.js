@@ -1,6 +1,9 @@
 const express = require('express');
 const { activeSeason } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
+// Reads go through the repo, which decides its source from FRANCHISE_READS.
+// Unset means the users collection, so this swap is inert until the flag flips.
+const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const User = require('../models/user');
 const Game = require('../models/game');
@@ -486,8 +489,7 @@ router.get('/', async (req, res) => {
 //Getting All By Season
 router.get('/season/:seasonYear', async (req, res) => {
     try {
-        const users = await User.find({"seasons.season": {"$eq": req.params.seasonYear}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": req.params.seasonYear}}}});
+        const users = await franchiseRepo.bySeason(req.params.seasonYear);
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -560,8 +562,7 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     const year = req.query.season || activeSeason('football');
     try {
         console.log("finding all users in league", leagueCode, "season", year);
-        const users = await User.find({"seasons.season": {"$eq": year}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "email": 1, "league": 1, "lastUpdated": 1, "color": 1, "avatarUrl": 1, "profilePrompted": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
+        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, year);
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -573,8 +574,7 @@ router.get('/league/:leagueCodeReq/previous', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
     try {
         console.log("finding user in league", leagueCode);
-        const users = await User.find({"seasons.season": {"$eq": (activeSeason('football') - 1)}, "league": leagueCode},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": (activeSeason('football') - 1)}}}});
+        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, activeSeason('football') - 1);
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -599,9 +599,12 @@ router.get('/:id/season', async (req, res) => {
     var year = activeSeason('football');
 
     try {
-        const user = await User.find({_id: userId, "seasons.season": {"$eq": year}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": year}}}});
-        res.json(user);
+        // Returns an ARRAY, as User.find() did — the client indexes [0].
+        const one = await franchiseRepo.byAccountId(userId);
+        const scoped = one && (one.seasons || []).some(sn => Number(sn.season) === Number(year))
+            ? [{ ...one, seasons: (one.seasons || []).filter(sn => Number(sn.season) === Number(year)) }]
+            : [];
+        res.json(scoped);
     } catch (err) {
         res.status(500).json({message: err.message});
     }
