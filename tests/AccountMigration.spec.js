@@ -340,6 +340,31 @@ describe('verify', () => {
         );
     });
 
+    test('a field LISTED but missing from the destination model also fails', async () => {
+        // The other half of the guard, and the nastier one: following verify's
+        // own advice ("add it to ACCOUNT_FIELDS") without also adding it to
+        // models/account.js produced a GREEN run that still dropped the field,
+        // because Mongoose discards an undeclared path on both the stored
+        // document and the expected one, so the two agree.
+        User.schema.add({ timezone: String });
+        migration.ACCOUNT_FIELDS.push('timezone');
+        try {
+            expect(migration.uncoveredUserFields()).toEqual([]);   // source side satisfied
+            expect(migration.unroutedFields()).toContainEqual(expect.stringContaining('timezone'));
+
+            await seedUser({ timezone: 'America/Chicago' });
+            await migration.migrate({ apply: true });
+            const v = await migration.verify();
+            expect(v.ok).toBe(false);
+            expect(v.mismatches).toContainEqual(
+                expect.objectContaining({ field: 'schema-routing', reason: expect.stringContaining('models/account.js') })
+            );
+        } finally {
+            migration.ACCOUNT_FIELDS.pop();
+            delete User.schema.paths.timezone;
+        }
+    });
+
     test('the two field lists currently cover the whole User schema', async () => {
         // Guards the real thing rather than the mechanism: if this fails, some
         // field of a manager is about to be thrown away at cutover.
@@ -448,6 +473,49 @@ describe('a league that changed between runs', () => {
     });
 });
 
+describe('convergence on removed data', () => {
+    test('re-running clears a field the user no longer has', async () => {
+        // routes/users.js $unset's authSub when a commissioner resets someone's
+        // login link. $set-only writes left it on the Account forever, so verify
+        // went red and STAYED red however many times you re-ran — against the
+        // stated property that a half-finished run is safe to repeat. After
+        // phase 2 the Account would also be holding a revoked credential.
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        expect((await Account.findById(user._id).lean()).authSub).toBe('google-oauth2|123');
+
+        await User.collection.updateOne({ _id: user._id }, { $unset: { authSub: '' } });
+        await migration.migrate({ apply: true });
+
+        expect((await Account.findById(user._id).lean()).authSub).toBeUndefined();
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('re-running removes the franchise of a user whose league was cleared', async () => {
+        // The stale sweep sat below `if (!user.league) continue;`, so it never
+        // ran for the one user that needed it.
+        const user = await seedUser();
+        await migration.migrate({ apply: true });
+        expect(await Franchise.countDocuments({ accountId: user._id })).toBe(1);
+
+        await User.collection.updateOne({ _id: user._id }, { $unset: { league: '' } });
+        await migration.migrate({ apply: true });
+
+        expect(await Franchise.countDocuments({ accountId: user._id })).toBe(0);
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('still does not clear a field the destination model defaults', async () => {
+        // Unsetting `isUpdated` would remove it while the expected document
+        // carries `default: false` — the clear becoming the mismatch it was
+        // meant to prevent.
+        const user = await seedUser();
+        await User.collection.updateOne({ _id: user._id }, { $unset: { isUpdated: '' } });
+        await migration.migrate({ apply: true });
+        expect((await migration.verify()).ok).toBe(true);
+    });
+});
+
 describe('rollback', () => {
     test('dry run reports without deleting', async () => {
         await seedUser();
@@ -504,6 +572,27 @@ describe('rollback', () => {
         await migration.migrate({ apply: true });
         await migration.migrate({ apply: true });
         expect((await migration.rollback()).touchedSinceMigration).toBe(0);
+    });
+
+    test('does not warn about data loss when nothing was ever migrated', async () => {
+        // "account missing" is a mismatch carrying a userId, so counting those
+        // made a rollback on a clean database announce that two documents'
+        // edits were about to be lost — with zero documents to delete.
+        await seedUser();
+        await seedUser({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com' });
+
+        const r = await migration.rollback();
+        expect(r.wouldDelete).toMatchObject({ accounts: 0, franchises: 0 });
+        expect(r.touchedSinceMigration).toBe(0);
+    });
+
+    test('counts divergent DOCUMENTS, not users', async () => {
+        await seedUser();
+        await migration.migrate({ apply: true });
+        await Account.updateOne({}, { $set: { avatarUrl: 'https://example.com/new.jpg' } });
+        await Franchise.updateOne({}, { $set: { lastUpdated: 'tampered' } });
+        // One user, but two documents at risk.
+        expect((await migration.rollback()).touchedSinceMigration).toBe(2);
     });
 
     test('a migrate after a rollback is clean', async () => {

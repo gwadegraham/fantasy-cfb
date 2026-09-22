@@ -44,11 +44,34 @@ function uncoveredUserFields() {
     const known = new Set([...ACCOUNT_FIELDS, ...FRANCHISE_FIELDS, ...STRUCTURAL_FIELDS]);
     // Compared on the ROOT segment, not the full path. Filtering out anything
     // dotted was only correct for `seasons` — every other nested shape
-    // (`prefs: { timezone }`, `notifications: { weeklyRecap }`) dropped out of
-    // this check entirely, so the migration would lose it AND verify would stay
-    // green. That is the exact failure this function exists to prevent.
+    // (`prefs: { timezone }`, `pushPrefs`) dropped out of this check entirely,
+    // so the migration would lose it AND verify would stay green.
     const roots = new Set(Object.keys(User.schema.paths).map(path => path.split('.')[0]));
     return [...roots].filter(root => !known.has(root)).sort();
+}
+
+// The other half of the same guard: a field can be LISTED and still not exist
+// on the model it is being copied to.
+//
+// Mongoose strict mode silently drops an unknown path, on the destination
+// document and on the expected document verify() builds — so the two agree and
+// the field is gone with a green run. That makes the remediation message below
+// a trap: "add it to ACCOUNT_FIELDS" is exactly what someone does after the
+// source-side guard fires, and following it produces a clean verify that has
+// quietly thrown the field away.
+function unroutedFields() {
+    const problems = [];
+    ACCOUNT_FIELDS.forEach(f => {
+        if (!Account.schema.path(f) && !Account.schema.nested[f]) {
+            problems.push(`${f} is in ACCOUNT_FIELDS but is not a path on models/account.js`);
+        }
+    });
+    FRANCHISE_FIELDS.forEach(f => {
+        if (!Franchise.schema.path(f) && !Franchise.schema.nested[f]) {
+            problems.push(`${f} is in FRANCHISE_FIELDS but is not a path on models/franchise.js`);
+        }
+    });
+    return problems;
 }
 
 function accountFrom(user) {
@@ -64,6 +87,31 @@ function franchiseFrom(user) {
     };
     FRANCHISE_FIELDS.forEach(f => { if (user[f] !== undefined) doc[f] = user[f]; });
     return doc;
+}
+
+// Fields the user no longer has, which a `$set`-only write would leave behind
+// forever. `routes/users.js` $unset's `authSub` when a commissioner resets
+// someone's login link, so this is reachable today — and without it a re-run
+// never converges: verify() goes red and stays red, which contradicts the whole
+// "a half-finished run is safe to repeat" property. Worse after phase 2, where
+// the Account would keep a deliberately revoked credential.
+function unsetFor(user, fields, expected) {
+    const gone = {};
+    fields.forEach(f => {
+        if (user[f] !== undefined) return;
+        // Not if the destination schema supplies a default. Unsetting
+        // `isUpdated` on a user that lacks it removes the field, while the
+        // expected document built through the model carries `false` — so the
+        // clear itself becomes the mismatch it was meant to prevent.
+        if (expected && expected[f] !== undefined) return;
+        gone[f] = '';
+    });
+    return gone;
+}
+
+// $set plus $unset in one update, skipping an empty $unset (Mongo rejects it).
+function writeOps($set, $unset) {
+    return Object.keys($unset).length ? { $set, $unset } : { $set };
 }
 
 // What the run would do, without doing it.
@@ -108,14 +156,32 @@ async function migrate({ apply = false } = {}) {
     for (const user of users) {
         // Upsert, never insert: re-running must not duplicate or throw on the
         // unique (accountId, league) index.
-        await Account.updateOne({ _id: user._id }, { $set: accountFrom(user) }, { upsert: true });
+        const accountDoc = accountFrom(user);
+        await Account.updateOne(
+            { _id: user._id },
+            writeOps(accountDoc, unsetFor(user, ACCOUNT_FIELDS, new Account(accountDoc).toObject())),
+            { upsert: true }
+        );
         accounts++;
 
-        if (!user.league) continue;
+        if (!user.league) {
+            // A user whose league was CLEARED keeps their franchise forever
+            // otherwise: the sweep below is the only thing that removes one, and
+            // it used to sit under this `continue`. verify() went red on the
+            // franchise count and no amount of re-running fixed it.
+            const orphaned = await Franchise.deleteMany({
+                accountId: user._id,
+                migratedFrom: { $exists: true }
+            });
+            if (orphaned.deletedCount) {
+                console.log(`removed ${orphaned.deletedCount} franchise(s) for ${user.firstName} ${user.lastName}, who now has no league`);
+            }
+            continue;
+        }
         const f = franchiseFrom(user);
         await Franchise.updateOne(
             { accountId: f.accountId, league: f.league },
-            { $set: f },
+            writeOps(f, unsetFor(user, FRANCHISE_FIELDS, new Franchise(f).toObject())),
             { upsert: true }
         );
         franchises++;
@@ -168,12 +234,20 @@ async function verify() {
 
     // A field on User in neither list is dropped by the migration AND invisible
     // to every comparison below, because they only look at fields they know.
+    // A field listed but absent from the model it copies to. Checked FIRST,
+    // because the message below tells you to add a name to a list — and doing
+    // that without adding it to the model produces a green run that still drops
+    // the field.
+    unroutedFields().forEach(reason => mismatches.push({ field: 'schema-routing', reason }));
+
     const uncovered = uncoveredUserFields();
     if (uncovered.length) {
         mismatches.push({
             field: 'schema-coverage',
             reason: `models/user.js has field(s) the migration ignores: ${uncovered.join(', ')}. ` +
-                    `Add them to ACCOUNT_FIELDS or FRANCHISE_FIELDS.`
+                    `Add each to ACCOUNT_FIELDS or FRANCHISE_FIELDS *and* to the matching model ` +
+                    `(models/account.js / models/franchise.js) — listing it alone drops it ` +
+                    `silently, because Mongoose discards a path the schema does not declare.`
         });
     }
 
@@ -336,10 +410,22 @@ async function rollback({ apply = false } = {}) {
     // document after a second --apply. A document that still matches what the
     // migration would produce carries nothing that `users` cannot rebuild,
     // however many times it has been rewritten.
-    const divergent = (await verify()).mismatches
-        .filter(m => m.userId)
-        .map(m => m.userId);
-    const touchedSinceMigration = new Set(divergent).size;
+    // Which DOCUMENTS exist and disagree with their source user.
+    //
+    // Two corrections over counting mismatches directly: a *missing* account is
+    // a mismatch carrying a userId too, so a rollback on a never-migrated
+    // database used to warn that documents' edits were about to be lost when
+    // there were no documents at all. And a user whose account AND franchise
+    // both diverge is two documents at risk, not one.
+    const FRANCHISE_SIDE = new Set(['seasons', 'franchise', ...FRANCHISE_FIELDS]);
+    const divergent = new Set();
+    (await verify()).mismatches.forEach(m => {
+        if (!m.userId) return;
+        if (m.field === 'account' && m.reason === 'missing') return;
+        if (m.field === 'franchise' && String(m.reason || '').startsWith('missing')) return;
+        divergent.add(`${m.userId}:${FRANCHISE_SIDE.has(m.field) ? 'franchise' : 'account'}`);
+    });
+    const touchedSinceMigration = divergent.size;
 
     if (!apply) {
         return {
@@ -361,6 +447,6 @@ async function rollback({ apply = false } = {}) {
 
 module.exports = {
     plan, migrate, verify, rollback,
-    accountFrom, franchiseFrom, stripIds, uncoveredUserFields, fingerprint,
+    accountFrom, franchiseFrom, stripIds, uncoveredUserFields, unroutedFields, fingerprint,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS
 };
