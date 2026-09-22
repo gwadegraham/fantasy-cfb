@@ -1423,6 +1423,21 @@ describe('schedule game cards', () => {
         expect(page.scheduleBody().querySelectorAll('.game-table')).toHaveLength(1);
     });
 
+    // CFBD has no kickoff time until ~12 days out and sends midnight EASTERN as
+    // the placeholder, which this card used to read in the viewer's zone — so a
+    // Saturday game advertised itself as Friday for the whole league (the suite
+    // runs in Central; see public/kickoff-day.js).
+    it('dates a TBD game by the Eastern calendar day, not the local instant', async () => {
+        const page = await loadStandingsPage({
+            users: homeFirst(), teamLogos: LOGOS,
+            games: [game({ completed: false, startTimeTbd: true, startDate: '2026-10-03T04:00:00.000Z' })]
+        });
+        const html = page.scheduleBody().innerHTML;
+        expect(html).toContain('SAT 10/3');
+        expect(html).not.toContain('FRI 10/2');
+        expect(html).toContain('TBD');
+    });
+
     // The spread assertions below say a line RENDERS. They did not say where it
     // came from, and the page was asking /betting/:year — the PARLAY router,
     // which never reaches a lines handler: 403 for anyone outside the betting

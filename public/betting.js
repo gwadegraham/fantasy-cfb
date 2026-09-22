@@ -146,15 +146,14 @@ function calcPayout(wager, legs) {
     return toCents(wager * dec);
 }
 
-function formatGameTime(dateStr) {
-    if (!dateStr) return '';
-    var d = new Date(dateStr);
-    var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    var h = d.getHours();
-    var m = d.getMinutes();
-    var p = h >= 12 ? 'p' : 'a';
-    h = h % 12 || 12;
-    return days[d.getDay()] + ' ' + h + (m ? ':' + String(m).padStart(2, '0') : '') + p;
+// Sat 6:30p, or Sat TBD. Both halves go through ccKickoff because a TBD
+// kickoff is stored as midnight EASTERN — the picker used to offer a Saturday
+// game as "Fri 11p" (public/kickoff-day.js).
+function formatGameTime(dateStr, tbd) {
+    var p = window.ccKickoff.parts(dateStr, tbd);
+    if (!p) return '';
+    var day = p.weekdayLong.slice(0, 3);
+    return day + ' ' + window.ccKickoff.time(dateStr, tbd, 'terse');
 }
 
 async function loadMemberNames() {
@@ -792,7 +791,7 @@ function renderGameList(gamesToShow) {
             + '<span class="game-picker-at">@</span>'
             + teamLogo(g.homeLogos) + rankLabel(g.homeRank) + '<span>' + g.homeTeam + '</span>'
             + '</div>'
-            + '<span class="game-picker-time">' + formatGameTime(g.startDate) + '</span>'
+            + '<span class="game-picker-time">' + formatGameTime(g.startDate, g.startTimeTbd) + '</span>'
             + '</div>';
     }).join('');
 }

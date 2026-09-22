@@ -1377,16 +1377,18 @@ function renderPlayerSeasonLeaders(data) {
 }
 
 // Helper: Format the date to readable format
+// SAT 10/3 TBD, or SAT 9/26, 5:30PM. The day and date come from ccKickoff
+// (public/kickoff-day.js) because a TBD kickoff is stored as midnight EASTERN,
+// which read locally is the night before — see that file.
 function formatDate(isTbd, dateStr) {
-  const date = new Date(dateStr);
-  const day = ['SUN','MON','TUE','WED','THU','FRI','SAT'][date.getDay()];
-  const datePart = (date.getMonth() + 1) + '/' + date.getDate();
+  const day = window.ccKickoff.dayAbbr(dateStr, isTbd);
+  if (!day) return '';
+  const datePart = window.ccKickoff.monthDay(dateStr, isTbd);
+  const time = window.ccKickoff.time(dateStr, isTbd);
 
   if (isTbd) {
     return day + ' ' + datePart + ' TBD';
   } else {
-    var h = date.getHours(), m = date.getMinutes().toString().padStart(2, '0');
-    var time = h === 0 ? '12:' + m + 'AM' : h < 12 ? h + ':' + m + 'AM' : h === 12 ? '12:' + m + 'PM' : (h - 12) + ':' + m + 'PM';
     return day + ' ' + datePart + ', ' + time;
   }
 }

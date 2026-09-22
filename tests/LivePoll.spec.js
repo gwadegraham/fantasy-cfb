@@ -61,3 +61,24 @@ describe('decide', () => {
         expect(decide({ phase: 'regular', remainingCalls: null }).poll).toBe(true);
     });
 });
+
+// A TBD kickoff is not a kickoff. CFBD stores those as midnight EASTERN, so
+// this gate would open at 11 PM Central the night before and hold the poller
+// on for the whole window — every 10 seconds, against billable endpoints, on a
+// game nobody is playing. See public/kickoff-day.js.
+describe('anyGameInProgress with a TBD kickoff', () => {
+    const now = Date.parse('2026-10-03T17:00:00.000Z');
+
+    it('false for a TBD game whose placeholder has passed', () => {
+        const games = [{ startDate: '2026-10-03T04:00:00.000Z', startTimeTbd: true, completed: false }];
+        expect(anyGameInProgress(games, now, 9)).toBe(false);
+    });
+
+    it('still true for a real kickoff in the same slate', () => {
+        const games = [
+            { startDate: '2026-10-03T04:00:00.000Z', startTimeTbd: true, completed: false },
+            { startDate: '2026-10-03T16:00:00.000Z', startTimeTbd: false, completed: false }
+        ];
+        expect(anyGameInProgress(games, now, 9)).toBe(true);
+    });
+});

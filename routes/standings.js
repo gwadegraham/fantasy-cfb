@@ -14,7 +14,7 @@ const { resolveConfig, engagementForSeason, overridesFromDoc } = require('../mod
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds, applyEngagement } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
-const { buildWeeklyRecaps, indexUpsets } = require('../modules/weekly-recap');
+const { buildWeeklyRecaps, indexUpsets, completedWeeks } = require('../modules/weekly-recap');
 // Shared with the classic standings table and My Team, so a tied placement reads
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
@@ -395,7 +395,7 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         if (idList.length) {
             const allGames = await Game.find(
                 { season: seasonNum, $or: [{ homeId: { $in: idList } }, { awayId: { $in: idList } }] },
-                { id: 1, week: 1, seasonType: 1, startDate: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, homeId: 1, awayId: 1, weather: 1, _id: 0 }
+                { id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, completed: 1, homeId: 1, awayId: 1, weather: 1, _id: 0 }
             );
             const games = allGames.filter(g => g.completed && g.seasonType === 'regular');
 
@@ -404,17 +404,9 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
             // the last game's start. This keeps the popup from firing mid-week
             // when early games (Thursday/Friday) finish before the Saturday
             // slate even starts.
-            const now = new Date();
-            const weekLastStart = {};
-            allGames.forEach(g => {
-                const ew = (g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week;
-                const sd = g.startDate ? new Date(g.startDate) : null;
-                if (sd && (!weekLastStart[ew] || sd > weekLastStart[ew])) weekLastStart[ew] = sd;
-            });
-            completeWeeks = new Set();
-            for (const w in weekLastStart) {
-                if (now >= weekLastStart[w]) completeWeeks.add(Number(w));
-            }
+            // The rule itself is in modules/weekly-recap.js (completedWeeks),
+            // including why a TBD kickoff blocks its week rather than dating it.
+            completeWeeks = completedWeeks(allGames, new Date());
             const betting = await Betting.find({ season: seasonNum, seasonType: 'regular' },
                 // `lines` carries every provider's complete line (moneylines,
                 // over/under, opening numbers). Both readers want one number:

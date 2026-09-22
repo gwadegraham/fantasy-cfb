@@ -52,10 +52,17 @@ const { MAX_GAME_HOURS } = require('./game-window');
 
 // Any game in progress right now? Kicked off within maxHours and not yet final.
 // `games` are already-narrowed active-season candidates (one phase) from the DB.
+//
+// A TBD kickoff is not a kickoff. CFBD stores those as midnight EASTERN on the
+// game date, so this gate would open at 11 PM Central the night before and hold
+// the poller on for the whole window — every 10 seconds, against billable
+// endpoints, on a game nobody is playing. A game with no announced time cannot
+// be in progress.
 function anyGameInProgress(games, nowMs, maxHours) {
     const windowMs = maxHours * 3600 * 1000;
     return (games || []).some(g => {
         if (g.completed === true) return false;
+        if (g.startTimeTbd) return false;
         const start = Date.parse(g.startDate);
         if (Number.isNaN(start)) return false;
         return start <= nowMs && (nowMs - start) <= windowMs;
@@ -99,9 +106,13 @@ async function run() {
         console.error('live-poll: no active season resolved — skipping (this is not "no games")');
         return { skipped: 'no active season' };
     }
+    // startTimeTbd is projected because anyGameInProgress has to see it; the
+    // query itself does not exclude those rows, so the one place that decides
+    // "is this a kickoff" stays the pure helper above rather than being split
+    // across a Mongo filter and a JS predicate that could drift apart.
     const candidates = await Game.find(
         { season, completed: { $ne: true }, startDate: { $lte: now.toISOString() } },
-        { startDate: 1, completed: 1, seasonType: 1 }
+        { startDate: 1, startTimeTbd: 1, completed: 1, seasonType: 1 }
     ).lean();
     const postLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'postseason'), nowMs, MAX_GAME_HOURS);
     const regLive = anyGameInProgress(candidates.filter(g => g.seasonType === 'regular'), nowMs, MAX_GAME_HOURS);

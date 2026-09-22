@@ -287,6 +287,10 @@ async function loadStandingsPage(opts = {}) {
     // Likewise the real ranking helper — rankedRows places the standings table
     // through it, so a stub would hide the tie behavior the rows are asserted on.
     global.ccLeagueRank = require('../../public/league-rank.js');
+    // Real too, for the same reason: the schedule cards' day/date line is the
+    // thing that read a TBD kickoff as the night before, so a stub would put
+    // the regression right back out of reach.
+    window.ccKickoff = require('../../public/kickoff-day.js');
     global.Chart = class {
         constructor(canvas, config) { charts.push({ canvas, config }); this.destroyed = false; }
         destroy() { this.destroyed = true; }

@@ -43,16 +43,15 @@ function sbApi(url) {
 // ---- formatting -------------------------------------------------------------
 
 function kickoff(startDate, tbd) {
-    if (tbd) return 'TBD';
-    var d = new Date(startDate);
-    if (isNaN(d)) return '';
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return window.ccKickoff.time(startDate, tbd, 'spaced');
 }
 
-function dayKey(startDate) {
-    var d = new Date(startDate);
-    if (isNaN(d)) return 'TBD';
-    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+// The heading a game is filed under. This needs the TBD flag as much as the
+// kickoff line does: a TBD game is stored at midnight EASTERN, so read in the
+// viewer's zone it opened a Friday heading of its own above the Saturday slate
+// it belongs to (public/kickoff-day.js).
+function dayKey(startDate, tbd) {
+    return window.ccKickoff.dayKey(startDate, tbd);
 }
 
 // Q3 8:42 / OT. Periods past 4 are overtime — CFBD keeps counting (5 = OT1).
@@ -235,20 +234,23 @@ function render() {
         return;
     }
 
-    // Games arrive kickoff-ordered, so walking them in order produces day
-    // groups already in sequence — no second sort.
-    var html = '';
-    var currentDay = null;
+    // Games arrive kickoff-ordered, but the heading a game files under is NOT a
+    // function of that order any more: a TBD game is keyed in Eastern and a
+    // firm one in the viewer's zone. For a viewer west of Eastern a late Friday
+    // kickoff (9 PM Pacific = 04:00Z) sorts after a Saturday TBD placeholder at
+    // the same instant while keying as Friday, and a run-length grouping would
+    // then open "Saturday" twice with a "Friday" wedged between them. Grouping
+    // into buckets in first-seen order keeps the sequence and cannot split a day.
+    var order = [];
+    var buckets = {};
     games.forEach(function (g) {
-        var day = dayKey(g.startDate);
-        if (day !== currentDay) {
-            if (currentDay !== null) html += '</div>';
-            html += '<h2 class="sb-day">' + esc(day) + '</h2><div class="sb-grid">';
-            currentDay = day;
-        }
-        html += cardHtml(g);
+        var day = dayKey(g.startDate, g.startTimeTbd);
+        if (!buckets[day]) { buckets[day] = ''; order.push(day); }
+        buckets[day] += cardHtml(g);
     });
-    if (currentDay !== null) html += '</div>';
+    var html = order.map(function (day) {
+        return '<h2 class="sb-day">' + esc(day) + '</h2><div class="sb-grid">' + buckets[day] + '</div>';
+    }).join('');
 
     container.innerHTML = html;
 }

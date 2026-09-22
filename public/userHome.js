@@ -1947,16 +1947,6 @@ function logoHtmlFromMap(map, teamId) {
     return map[teamId] || '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
 }
 
-// Formats a kickoff time like "7:30PM" from a game's start date.
-function kickoffTime(date) {
-    const mil = date.toString().substring(16, 21);
-    const [h, m] = mil.split(':');
-    const hours = parseInt(h);
-    if (hours < 12) return hours + ':' + m + 'AM';
-    if (hours == 12) return '12:' + m + 'PM';
-    return (hours - 12) + ':' + m + 'PM';
-}
-
 // Builds one game card. The green "+N" badge shows the fantasy points a
 // ROSTERED team earned in this game (from the season's weeklyScore) and only
 // when that's > 0 — so a team that earned nothing (or isn't yours) shows no
@@ -2056,10 +2046,13 @@ function buildGameCard(game, rosteredIds, logoMap, rankingsInfo, allBettingLines
                 + '</td></tr>';
         }
     } else {
-        const d = new Date(game.startDate);
-        const dayAbbr = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
-        awayScore = '<span class="gc-date">' + dayAbbr + ' ' + (d.getMonth() + 1) + '/' + d.getDate() + '</span></td>';
-        homeScore = '<span class="gc-time">' + (game.startTimeTbd ? 'TBD' : kickoffTime(d)) + '</span></td>';
+        // The date has to come from ccKickoff too, not just the time: a TBD
+        // kickoff is midnight EASTERN, a day earlier read locally. The card
+        // said TBD on the wrong day (public/kickoff-day.js).
+        const tbd = game.startTimeTbd;
+        const dayAbbr = window.ccKickoff.dayAbbr(game.startDate, tbd);
+        awayScore = '<span class="gc-date">' + dayAbbr + ' ' + window.ccKickoff.monthDay(game.startDate, tbd) + '</span></td>';
+        homeScore = '<span class="gc-time">' + window.ccKickoff.time(game.startDate, tbd) + '</span></td>';
     }
 
     // data-game is what the live refresh below patches against — without an id

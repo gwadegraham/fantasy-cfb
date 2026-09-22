@@ -419,3 +419,49 @@ describe('H2H bonus is excluded from weekly performance figures', () => {
         expect(out.recaps[0].rank).toBe(1);
     });
 });
+
+// The gate that decides a week has fully started. It exists so the recap popup
+// can't fire on Thursday's result while Saturday's slate is still hours away —
+// and a TBD kickoff is exactly what could defeat that, because CFBD stores
+// midnight EASTERN as the placeholder for one (see public/kickoff-day.js).
+describe('completedWeeks', () => {
+    const { completedWeeks } = require('../modules/weekly-recap');
+    const SAT_NOON_CT = new Date('2026-10-03T17:00:00.000Z');
+
+    const g = (over) => Object.assign({
+        week: 5, seasonType: 'regular', completed: false,
+        startDate: '2026-10-03T16:00:00.000Z', startTimeTbd: false
+    }, over);
+
+    it('counts a week whose last kickoff has passed', () => {
+        expect([...completedWeeks([g()], SAT_NOON_CT)]).toEqual([5]);
+    });
+
+    it('does not count a week still waiting on a later kickoff', () => {
+        const later = g({ startDate: '2026-10-03T23:00:00.000Z' });
+        expect([...completedWeeks([g(), later], SAT_NOON_CT)]).toEqual([]);
+    });
+
+    it('a TBD game blocks its week rather than dating it from the placeholder', () => {
+        // The placeholder is 04:00Z — already "past" at noon, which is how this
+        // used to declare the week complete before the slate began.
+        const tbd = g({ startTimeTbd: true, startDate: '2026-10-03T04:00:00.000Z' });
+        expect([...completedWeeks([g(), tbd], SAT_NOON_CT)]).toEqual([]);
+    });
+
+    it('stops blocking once the TBD game has actually been played', () => {
+        const tbd = g({ startTimeTbd: true, completed: true, startDate: '2026-10-03T04:00:00.000Z' });
+        expect([...completedWeeks([g(), tbd], SAT_NOON_CT)]).toEqual([5]);
+    });
+
+    it('blocks only the week the TBD game is in', () => {
+        const wk4 = g({ week: 4, startDate: '2026-09-26T16:00:00.000Z' });
+        const tbd = g({ startTimeTbd: true, startDate: '2026-10-03T04:00:00.000Z' });
+        expect([...completedWeeks([wk4, g(), tbd], SAT_NOON_CT)]).toEqual([4]);
+    });
+
+    it('files a postseason game under week 17', () => {
+        const post = g({ week: 1, seasonType: 'postseason', startDate: '2026-10-03T16:00:00.000Z' });
+        expect([...completedWeeks([post], SAT_NOON_CT)]).toEqual([17]);
+    });
+});
