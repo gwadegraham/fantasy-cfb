@@ -1128,3 +1128,11 @@
        record and the rate beside them say the same thing in less space. */
     .bettor-form { display: none; }
 }
+
+/* A pending leg whose game is already final — waiting on a person, not on the
+   game. Amber rather than the neutral clock, because it is an action. */
+.result-needs-grading { color: var(--cc-amber); }
+
+/* The box score that replaces the matchup line once a game ends. */
+.leg-final { font-variant-numeric: tabular-nums; }
+.leg-final b { font-weight: 600; color: var(--cc-text); }

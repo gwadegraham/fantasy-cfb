@@ -29,6 +29,44 @@ beforeEach(async () => {
     group = await BettingGroup.create({ active: true, season: 2026, members: [MEMBER] });
 });
 
+// The Net card on the betting page read "+$14.810000000000002" in production.
+// Summing floats does that, and the client was interpolating the raw number.
+// Rounding only in the client would have left the next consumer of this API to
+// trip over the same value.
+describe('GET /betting/season-summary/:season money', () => {
+    test('rounds to cents rather than emitting float noise', async () => {
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 1, status: 'won', wager: 20, payout: 114.81, legs: [] },
+            { group: group._id, season: 2026, week: 2, status: 'lost', wager: 20, payout: 0, legs: [] },
+            { group: group._id, season: 2026, week: 3, status: 'lost', wager: 20, payout: 0, legs: [] },
+            { group: group._id, season: 2026, week: 4, status: 'lost', wager: 20, payout: 0, legs: [] },
+            { group: group._id, season: 2026, week: 5, status: 'lost', wager: 20, payout: 0, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/season-summary/2026');
+
+        // The exact production case: 114.81 - 100 is 14.810000000000002 in IEEE 754.
+        expect(res.body.net).toBe(14.81);
+        expect(res.body.totalReturned).toBe(114.81);
+        expect(res.body.totalWagered).toBe(100);
+        // Nothing should ever carry more than two decimals out of here.
+        [res.body.net, res.body.totalReturned, res.body.totalWagered].forEach(v => {
+            expect(String(v)).toMatch(/^-?\d+(\.\d{1,2})?$/);
+        });
+    });
+
+    test('rounds a negative net the same way', async () => {
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 1, status: 'won', wager: 33.33, payout: 10.10, legs: [] },
+            { group: group._id, season: 2026, week: 2, status: 'lost', wager: 33.33, payout: 0, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/season-summary/2026');
+
+        expect(res.body.net).toBe(-56.56);
+    });
+});
+
 // The Bettors board's data. The computation is unit-tested in
 // tests/ParlayStats.spec.js; what matters here is that the route reaches the
 // right slips, seeds every group member, and does not need a second round trip
