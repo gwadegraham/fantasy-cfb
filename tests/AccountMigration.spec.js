@@ -505,6 +505,52 @@ describe('convergence on removed data', () => {
         expect((await migration.verify()).ok).toBe(true);
     });
 
+    test('re-running restores the DEFAULT of a field the user dropped', async () => {
+        // The third shape of the same hole, and this one was introduced by the
+        // fix for the second: $set copies only defined values, and unsetFor
+        // skips anything the destination defaults — so the field appeared in
+        // neither and the old value simply survived, red forever.
+        const user = await seedUser({ profilePrompted: true, isUpdated: true });
+        await migration.migrate({ apply: true });
+        expect((await Account.findById(user._id).lean()).profilePrompted).toBe(true);
+
+        await User.collection.updateOne({ _id: user._id }, { $unset: { profilePrompted: '', isUpdated: '' } });
+        await migration.migrate({ apply: true });
+
+        expect((await Account.findById(user._id).lean()).profilePrompted).toBe(false);
+        expect((await Franchise.findOne({ accountId: user._id }).lean()).isUpdated).toBe(false);
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('re-running removes documents whose user was DELETED', async () => {
+        // Every other sweep is keyed on a user being iterated, so a deleted user
+        // is never visited and their account and franchise — carrying their
+        // roster, scores and authSub — survived every re-run.
+        const keep = await seedUser();
+        const gone = await seedUser({ firstName: 'Cole', lastName: 'Walker', email: 'c@example.com' });
+        await migration.migrate({ apply: true });
+        expect(await Account.countDocuments({})).toBe(2);
+
+        await User.deleteOne({ _id: gone._id });
+        await migration.migrate({ apply: true });
+
+        expect(await Account.countDocuments({})).toBe(1);
+        expect(await Franchise.countDocuments({})).toBe(1);
+        expect(await Account.findById(keep._id).lean()).not.toBeNull();
+        expect((await migration.verify()).ok).toBe(true);
+    });
+
+    test('does not remove documents the migration did not create', async () => {
+        // A basketball-only manager (#310) has no User at all — the orphan sweep
+        // must not take them.
+        await seedUser();
+        await migration.migrate({ apply: true });
+        const outsider = await Account.create({ firstName: 'Hoops', lastName: 'Only' });
+
+        await migration.migrate({ apply: true });
+        expect(await Account.findById(outsider._id).lean()).not.toBeNull();
+    });
+
     test('still does not clear a field the destination model defaults', async () => {
         // Unsetting `isUpdated` would remove it while the expected document
         // carries `default: false` — the clear becoming the mismatch it was
@@ -551,30 +597,30 @@ describe('rollback', () => {
         expect(await User.find({}).lean()).toEqual(before);
     });
 
-    test('reports documents the app has written to since the migration', async () => {
-        // "A full return to the pre-migration state" stops being true the
-        // moment phase 2 ships: the app writes here, `users` does not have
-        // those edits, and deleting is data loss rather than a rollback.
+    test('reports documents that differ from their source user', async () => {
+        // Reported as a fact, not as "your edits are gone": it cannot tell WHICH
+        // side moved. In phase 1 a difference means the copy is stale and users
+        // is authoritative; after the read cutover it can mean the reverse.
         await seedUser();
         await migration.migrate({ apply: true });
-        expect((await migration.rollback()).touchedSinceMigration).toBe(0);
+        expect((await migration.rollback()).divergentFromUsers).toBe(0);
 
         await Account.updateOne({}, { $set: { avatarUrl: 'https://example.com/new.jpg' } });
-        expect((await migration.rollback()).touchedSinceMigration).toBe(1);
+        expect((await migration.rollback()).divergentFromUsers).toBe(1);
     });
 
-    test('a plain re-apply is NOT counted as an app write', async () => {
+    test('a plain re-apply reports no divergence', async () => {
         // Detecting this by `updatedAt > createdAt` counted the migration's own
-        // re-run as divergence, so the warning fired on every document after a
-        // second --apply — which would have taught an operator to ignore it.
+        // re-run as divergence, so it fired on every document after a second
+        // --apply — teaching an operator to ignore it.
         await seedUser();
         await migration.migrate({ apply: true });
         await migration.migrate({ apply: true });
         await migration.migrate({ apply: true });
-        expect((await migration.rollback()).touchedSinceMigration).toBe(0);
+        expect((await migration.rollback()).divergentFromUsers).toBe(0);
     });
 
-    test('does not warn about data loss when nothing was ever migrated', async () => {
+    test('reports no divergence when nothing was ever migrated', async () => {
         // "account missing" is a mismatch carrying a userId, so counting those
         // made a rollback on a clean database announce that two documents'
         // edits were about to be lost — with zero documents to delete.
@@ -583,7 +629,7 @@ describe('rollback', () => {
 
         const r = await migration.rollback();
         expect(r.wouldDelete).toMatchObject({ accounts: 0, franchises: 0 });
-        expect(r.touchedSinceMigration).toBe(0);
+        expect(r.divergentFromUsers).toBe(0);
     });
 
     test('counts divergent DOCUMENTS, not users', async () => {
@@ -592,7 +638,7 @@ describe('rollback', () => {
         await Account.updateOne({}, { $set: { avatarUrl: 'https://example.com/new.jpg' } });
         await Franchise.updateOne({}, { $set: { lastUpdated: 'tampered' } });
         // One user, but two documents at risk.
-        expect((await migration.rollback()).touchedSinceMigration).toBe(2);
+        expect((await migration.rollback()).divergentFromUsers).toBe(2);
     });
 
     test('a migrate after a rollback is clean', async () => {

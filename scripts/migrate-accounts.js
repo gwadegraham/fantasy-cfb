@@ -144,15 +144,23 @@ async function main() {
             console.log(apply
                 ? `rolled back: deleted ${r.deleted.accounts} accounts, ${r.deleted.franchises} franchises`
                 : `DRY RUN — would delete ${r.wouldDelete.accounts} accounts, ${r.wouldDelete.franchises} franchises`);
-            if (r.touchedSinceMigration) {
-                console.error(
-                    `\n⚠️  ${r.touchedSinceMigration} of the deleted document(s) had been WRITTEN TO since the\n` +
-                    `   migration created them. Those edits are gone and are NOT in the users\n` +
-                    `   collection — users only has what it had before the cutover.`
+            if (r.divergentFromUsers) {
+                // Deliberately NOT "those edits are gone". Nothing reads these
+                // collections yet, so a difference means the COPY is stale and
+                // `users` still holds the truth — the normal state a day after a
+                // rehearsal, with scoring running nightly. Announcing data loss
+                // every time is how an operator learns to ignore the warning
+                // that will actually matter after the read cutover.
+                console.log(
+                    `\nnote: ${r.divergentFromUsers} document(s) differ from their source user.\n` +
+                    `   While nothing reads accounts/franchises (phase 1), that means the copy is\n` +
+                    `   stale and users is authoritative — deleting loses nothing and a re-run\n` +
+                    `   restores it. AFTER the read cutover the same number would mean edits that\n` +
+                    `   exist ONLY here, and deleting them would be real loss.`
                 );
             } else {
-                console.log('\nusers were never modified, and nothing had written to these documents since');
-                console.log('the migration created them, so this is a full return to the pre-migration state.');
+                console.log('\nusers were never modified, and every document still matches its source,');
+                console.log('so this is a full return to the pre-migration state.');
             }
             return;
         }

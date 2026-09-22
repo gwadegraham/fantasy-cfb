@@ -99,14 +99,30 @@ function unsetFor(user, fields, expected) {
     const gone = {};
     fields.forEach(f => {
         if (user[f] !== undefined) return;
-        // Not if the destination schema supplies a default. Unsetting
-        // `isUpdated` on a user that lacks it removes the field, while the
-        // expected document built through the model carries `false` — so the
-        // clear itself becomes the mismatch it was meant to prevent.
+        // Anything the destination schema DEFAULTS is handled by writing the
+        // default (see defaultsFor) rather than unsetting it: clearing it would
+        // leave the stored document without a field the expected document has,
+        // which is the mismatch this was meant to prevent.
         if (expected && expected[f] !== undefined) return;
         gone[f] = '';
     });
     return gone;
+}
+
+// Fields the user has dropped that the destination schema defaults.
+//
+// These fell through both halves: `accountFrom`/`franchiseFrom` copy only
+// defined values, and `unsetFor` skips them to avoid fighting the default — so
+// the previous value simply survived, and verify() went red forever. Writing
+// the default explicitly is what actually converges.
+function defaultsFor(user, fields, expected) {
+    const restored = {};
+    fields.forEach(f => {
+        if (user[f] !== undefined) return;
+        if (!expected || expected[f] === undefined) return;
+        restored[f] = expected[f];
+    });
+    return restored;
 }
 
 // $set plus $unset in one update, skipping an empty $unset (Mongo rejects it).
@@ -157,9 +173,13 @@ async function migrate({ apply = false } = {}) {
         // Upsert, never insert: re-running must not duplicate or throw on the
         // unique (accountId, league) index.
         const accountDoc = accountFrom(user);
+        const accountExpected = new Account(accountDoc).toObject();
         await Account.updateOne(
             { _id: user._id },
-            writeOps(accountDoc, unsetFor(user, ACCOUNT_FIELDS, new Account(accountDoc).toObject())),
+            writeOps(
+                { ...accountDoc, ...defaultsFor(user, ACCOUNT_FIELDS, accountExpected) },
+                unsetFor(user, ACCOUNT_FIELDS, accountExpected)
+            ),
             { upsert: true }
         );
         accounts++;
@@ -179,9 +199,13 @@ async function migrate({ apply = false } = {}) {
             continue;
         }
         const f = franchiseFrom(user);
+        const franchiseExpected = new Franchise(f).toObject();
         await Franchise.updateOne(
             { accountId: f.accountId, league: f.league },
-            writeOps(f, unsetFor(user, FRANCHISE_FIELDS, new Franchise(f).toObject())),
+            writeOps(
+                { ...f, ...defaultsFor(user, FRANCHISE_FIELDS, franchiseExpected) },
+                unsetFor(user, FRANCHISE_FIELDS, franchiseExpected)
+            ),
             { upsert: true }
         );
         franchises++;
@@ -202,7 +226,27 @@ async function migrate({ apply = false } = {}) {
         }
     }
 
-    return { applied: true, accounts, franchises, ...planned };
+    // Documents whose user no longer exists at all.
+    //
+    // Every other sweep is keyed on a user we are iterating, so a DELETED user
+    // is never visited and their account and franchise — carrying that person's
+    // roster, scores and authSub — survive every re-run. The two holes closed
+    // last round were "a field removed from a user" and "a league removed from a
+    // user"; this is the third shape, "a user removed", and it needs a pass
+    // outside the loop.
+    const liveIds = users.map(u => u._id);
+    const orphanedAccounts = await Account.deleteMany({ migratedFrom: { $exists: true, $nin: liveIds } });
+    const orphanedFranchises = await Franchise.deleteMany({ migratedFrom: { $exists: true, $nin: liveIds } });
+    if (orphanedAccounts.deletedCount || orphanedFranchises.deletedCount) {
+        console.log(`removed ${orphanedAccounts.deletedCount} account(s) and ` +
+                    `${orphanedFranchises.deletedCount} franchise(s) whose user no longer exists`);
+    }
+
+    return {
+        applied: true, accounts, franchises,
+        orphansRemoved: orphanedAccounts.deletedCount + orphanedFranchises.deletedCount,
+        ...planned
+    };
 }
 
 // Did it actually work?
@@ -412,27 +456,44 @@ async function rollback({ apply = false } = {}) {
     // however many times it has been rewritten.
     // Which DOCUMENTS exist and disagree with their source user.
     //
-    // Two corrections over counting mismatches directly: a *missing* account is
-    // a mismatch carrying a userId too, so a rollback on a never-migrated
-    // database used to warn that documents' edits were about to be lost when
-    // there were no documents at all. And a user whose account AND franchise
-    // both diverge is two documents at risk, not one.
+    // NOTE WHAT THIS CAN AND CANNOT TELL YOU. It knows the two sides differ; it
+    // does NOT know which side moved. That matters enormously:
+    //
+    //   Phase 1 (now — nothing reads these collections): every divergence is a
+    //   write to `users`. The copy is merely STALE and `users` holds the truth,
+    //   so deleting loses nothing. With nightly scoring, all 13 documents
+    //   diverge within a day of a rehearsal.
+    //
+    //   Phase 2 (once the app reads and writes here): a divergence can be an
+    //   edit that exists ONLY here — an avatar, a renamed franchise, a week of
+    //   scores — and deleting it is real loss.
+    //
+    // Reported as a fact, not as a conclusion. The previous version announced
+    // "those edits are gone" during phase 1, which is false in every clause and
+    // fires on every document — teaching an operator to ignore the one warning
+    // that will matter later. That is the same wolf-crying the round before it
+    // set out to fix, inverted.
     const FRANCHISE_SIDE = new Set(['seasons', 'franchise', ...FRANCHISE_FIELDS]);
     const divergent = new Set();
     (await verify()).mismatches.forEach(m => {
         if (!m.userId) return;
+        // A MISSING document is not a divergent one — counting those made a
+        // rollback on a never-migrated database warn about losing edits when
+        // there was nothing to delete.
         if (m.field === 'account' && m.reason === 'missing') return;
         if (m.field === 'franchise' && String(m.reason || '').startsWith('missing')) return;
         divergent.add(`${m.userId}:${FRANCHISE_SIDE.has(m.field) ? 'franchise' : 'account'}`);
     });
-    const touchedSinceMigration = divergent.size;
+    // Counted over documents, not users: an account AND a franchise that both
+    // diverge are two documents, not one.
+    const divergentFromUsers = divergent.size;
 
     if (!apply) {
         return {
             applied: false,
             wouldDelete: { accounts, franchises },
             wouldKeep: { accounts: keptAccounts, franchises: keptFranchises },
-            touchedSinceMigration
+            divergentFromUsers
         };
     }
     await Account.deleteMany(owned);
@@ -441,12 +502,13 @@ async function rollback({ apply = false } = {}) {
         applied: true,
         deleted: { accounts, franchises },
         kept: { accounts: keptAccounts, franchises: keptFranchises },
-        touchedSinceMigration
+        divergentFromUsers
     };
 }
 
 module.exports = {
     plan, migrate, verify, rollback,
     accountFrom, franchiseFrom, stripIds, uncoveredUserFields, unroutedFields, fingerprint,
+    unsetFor, defaultsFor,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS
 };
