@@ -15,6 +15,16 @@ const repo = require('../modules/franchise-repo');
 
 useMongo();
 
+// Default the flag ON for the body of this file — these tests are about the new
+// source. The switch itself gets its own block at the bottom, where both
+// positions are exercised against the same data.
+const ORIGINAL_FLAG = process.env.FRANCHISE_READS;
+beforeEach(() => { process.env.FRANCHISE_READS = 'true'; });
+afterEach(() => {
+    if (ORIGINAL_FLAG === undefined) delete process.env.FRANCHISE_READS;
+    else process.env.FRANCHISE_READS = ORIGINAL_FLAG;
+});
+
 async function seedManager(overrides = {}) {
     const user = await User.create(Object.assign({
         firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com',
@@ -134,6 +144,35 @@ describe('leaguesFor — what replaces the Auth0 gg/cl flag', () => {
     });
 });
 
+describe('a list read does not leak credentials', () => {
+    // The old list endpoints project these out. Assembling from the account
+    // without narrowing would have started shipping the Auth0 subject and the
+    // push endpoints + encryption keys to every manager's Standings page.
+    test.each(['authSub', 'pushSubscriptions', 'pushPrefs', 'captainReminders', 'recapNotices'])(
+        'byLeagueAndSeason omits %s', async (field) => {
+            await seedManager({ pushSubscriptions: [{ endpoint: 'https://push/x', keys: { p256dh: 'k', auth: 'a' } }] });
+            const [got] = await repo.byLeagueAndSeason('graham-league', 2026);
+            expect(got[field]).toBeUndefined();
+        }
+    );
+
+    test('bySeason omits them too — it feeds the scoring pass, not a page', async () => {
+        await seedManager();
+        const [got] = await repo.bySeason(2026);
+        expect(got.authSub).toBeUndefined();
+        expect(got.pushSubscriptions).toBeUndefined();
+    });
+
+    test('but the single-document read still carries them, as findById did', async () => {
+        // The admin roster needs authSub to report whether a manager is linked,
+        // and /users/me/push needs the subscriptions. Narrowing this one would
+        // break both.
+        const user = await seedManager();
+        const got = await repo.byAccountId(user._id);
+        expect(got.authSub).toBe('google-oauth2|123');
+    });
+});
+
 describe('missing data', () => {
     test('an unknown account id is null, not a throw', async () => {
         const mongoose = require('mongoose');
@@ -156,3 +195,62 @@ describe('missing data', () => {
         expect(await repo.bySeason(2026)).toEqual([]);
     });
 });
+
+describe('the switch', () => {
+    test('UNSET reads from users — so deploying this changes nothing', async () => {
+        // The property the whole rollout rests on: shipping the flag is inert.
+        const user = await seedManager();
+        delete process.env.FRANCHISE_READS;
+        expect(repo.readsFromFranchises()).toBe(false);
+
+        // Prove it is genuinely the users collection by making the two disagree.
+        await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
+        const got = await repo.byAccountId(user._id);
+        expect(got.league).toBe('graham-league');
+    });
+
+    test('only the exact string "true" turns it on', async () => {
+        for (const value of ['1', 'yes', 'TRUE', 'on', '']) {
+            process.env.FRANCHISE_READS = value;
+            expect(repo.readsFromFranchises()).toBe(false);
+        }
+        process.env.FRANCHISE_READS = 'true';
+        expect(repo.readsFromFranchises()).toBe(true);
+    });
+
+    test('is read PER CALL, so a flip needs no module reload', async () => {
+        const user = await seedManager();
+        await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
+
+        process.env.FRANCHISE_READS = 'false';
+        expect((await repo.byAccountId(user._id)).league).toBe('graham-league');
+        process.env.FRANCHISE_READS = 'true';
+        expect((await repo.byAccountId(user._id)).league).toBe('tampered-league');
+    });
+
+    test('both positions return the same thing on real, untampered data', async () => {
+        // The assertion the offline diff makes against prod, held here so a
+        // regression fails CI rather than waiting for someone to run a script.
+        await seedManager();
+        await seedManager({ firstName: 'Jeff', lastName: 'Claunts', email: 'j@example.com',
+            league: 'claunts-league', seasons: [{ season: 2026, cumulativeScore: 1 }] });
+
+        const off = await withFlag(false, () => repo.bySeason(2026));
+        const on = await withFlag(true, () => repo.bySeason(2026));
+        expect(strip(on)).toEqual(strip(off));
+
+        const offLeague = await withFlag(false, () => repo.byLeagueAndSeason('graham-league', 2026));
+        const onLeague = await withFlag(true, () => repo.byLeagueAndSeason('graham-league', 2026));
+        expect(strip(onLeague)).toEqual(strip(offLeague));
+    });
+});
+
+function withFlag(on, fn) {
+    process.env.FRANCHISE_READS = on ? 'true' : 'false';
+    return Promise.resolve(fn());
+}
+
+// Subdocument ids differ between the two copies and are referenced nowhere.
+function strip(value) {
+    return JSON.parse(JSON.stringify(value, (k, v) => (k === '_id' || k === '__v' ? undefined : v)));
+}

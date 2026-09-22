@@ -23,6 +23,18 @@ if (process.env.NODE_ENV !== 'production') {
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const repo = require('../modules/franchise-repo');
+
+// The comparison is now literally "flag off vs flag on", which is exactly the
+// change a deploy makes. Each read below is taken twice with the switch in each
+// position, so what gets diffed is the decision you will actually flip.
+function withFlag(on, fn) {
+    const before = process.env.FRANCHISE_READS;
+    process.env.FRANCHISE_READS = on ? 'true' : 'false';
+    return Promise.resolve(fn()).finally(() => {
+        if (before === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = before;
+    });
+}
 const { activeSeason, prime } = require('../modules/active-season');
 
 // Subdocument ids are re-minted on copy and referenced nowhere, so compare on
@@ -120,12 +132,8 @@ async function main() {
 
     // --- GET /users/season/:year — what the scoring pass and ingest read.
     {
-        const oldWay = await User.find(
-            { 'seasons.season': { $eq: season } },
-            { firstName: 1, lastName: 1, league: 1, lastUpdated: 1, color: 1,
-              seasons: { $elemMatch: { season: { $eq: season } } } }
-        ).lean();
-        const newWay = await repo.bySeason(season);
+        const oldWay = await withFlag(false, () => repo.bySeason(season));
+        const newWay = await withFlag(true, () => repo.bySeason(season));
         // The old projection omits fields the repo returns in full; compare only
         // what the old read actually exposed.
         const trimmed = newWay.map(d => pick(d, Object.keys(oldWay[0] || d)));
@@ -135,13 +143,8 @@ async function main() {
 
     // --- GET /users/league/:code — what standings, My Team and admin read.
     for (const league of ['graham-league', 'claunts-league']) {
-        const oldWay = await User.find(
-            { 'seasons.season': { $eq: season }, league },
-            { firstName: 1, lastName: 1, email: 1, league: 1, lastUpdated: 1, color: 1,
-              avatarUrl: 1, profilePrompted: 1,
-              seasons: { $elemMatch: { season: { $eq: season } } } }
-        ).lean();
-        const newWay = await repo.byLeagueAndSeason(league, season);
+        const oldWay = await withFlag(false, () => repo.byLeagueAndSeason(league, season));
+        const newWay = await withFlag(true, () => repo.byLeagueAndSeason(league, season));
         const trimmed = newWay.map(d => pick(d, Object.keys(oldWay[0] || d)));
         diffList(`/users/league/${league}`, oldWay, trimmed, problems, defaults);
         checks.push([`/users/league/${league}`, oldWay.length]);
@@ -151,8 +154,8 @@ async function main() {
     {
         const all = await User.find({}, { _id: 1 }).lean();
         for (const { _id } of all) {
-            const oldWay = await User.findById(_id).lean();
-            const newWay = await repo.byAccountId(_id);
+            const oldWay = await withFlag(false, () => repo.byAccountId(_id));
+            const newWay = await withFlag(true, () => repo.byAccountId(_id));
             if (!newWay) { problems.push(`findById ${_id}: nothing came back the new way`); continue; }
             compareDoc(`findById:${oldWay.firstName} ${oldWay.lastName}`, oldWay, newWay, problems, defaults);
         }
@@ -163,7 +166,11 @@ async function main() {
     {
         const all = await User.find({}, { _id: 1, league: 1, firstName: 1 }).lean();
         for (const u of all) {
-            const leagues = await repo.leaguesFor(u._id);
+            const oldLeagues = await withFlag(false, () => repo.leaguesFor(u._id));
+            const leagues = await withFlag(true, () => repo.leaguesFor(u._id));
+            if (JSON.stringify(oldLeagues) !== JSON.stringify(leagues)) {
+                problems.push(`leaguesFor ${u.firstName}: ${JSON.stringify(oldLeagues)} -> ${JSON.stringify(leagues)}`);
+            }
             if (u.league && !leagues.includes(u.league)) {
                 problems.push(`leaguesFor ${u.firstName}: ${JSON.stringify(leagues)} does not include ${u.league}`);
             }
@@ -171,7 +178,7 @@ async function main() {
         checks.push(['leaguesFor (replaces the Auth0 gg/cl flag)', all.length]);
     }
 
-    console.log(`\nactive season: ${season}\n`);
+    console.log(`\nactive season: ${season}   (comparing FRANCHISE_READS off vs on)\n`);
     checks.forEach(([label, n]) => console.log(`  checked  ${String(n).padStart(3)}  ${label}`));
 
     if (defaults.length) {
