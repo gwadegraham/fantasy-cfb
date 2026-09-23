@@ -278,12 +278,14 @@ function asProjection(fields) {
 // storage swap should be doing: parity is the contract that makes flipping the
 // flag a non-event. The pre-existing over-exposure on those two is worth fixing
 // on its own, where the change is visible as a change.
-async function byLeague(league, { list = false, fields } = {}) {
+// No `list` option, deliberately. It used to take one, no caller passed it, and
+// the two paths disagreed about what it meant — flag-off returned
+// userProjection(), which has no `seasons` key at all, while flag-on returned
+// every season. A parameter nobody uses and nobody agrees on is a trap for
+// whoever tries it first.
+async function byLeague(league, { fields } = {}) {
     if (!readsFromFranchises()) {
-        return User.find(
-            { league },
-            fields ? asProjection(fields) : (list ? userProjection() : null)
-        ).lean();
+        return User.find({ league }, fields ? asProjection(fields) : null).lean();
     }
     // Projected at the query. Narrowing only in keepOnly afterwards still pulled
     // whole franchises — rosters, weekly scores and all — so the admin roster
@@ -292,7 +294,7 @@ async function byLeague(league, { list = false, fields } = {}) {
         { league },
         fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
     ).lean();
-    return hydrate(franchises, { list, fields });
+    return hydrate(franchises, { list: false, fields });
 }
 
 // Managers matching conditions on BOTH halves at once.
@@ -325,9 +327,16 @@ async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields }
     const ids = franchises.map(f => f.accountId);
     const accountRoots = fields && new Set(fields.map(f => f.split('.')[0]));
     const wanted = accountRoots ? ACCOUNT_FIELDS.filter(f => accountRoots.has(f)) : ACCOUNT_FIELDS;
-    // $and rather than a merge: an accountFilter carrying its own `_id` (the
-    // PUSH_RECIPIENT_IDS narrowing does exactly that) would otherwise replace
-    // the franchise-derived `$in` and scan every account in the collection.
+    // $and rather than a merge, so an accountFilter carrying its own `_id` — the
+    // PUSH_RECIPIENT_IDS narrowing does exactly that — does not replace the
+    // franchise-derived `$in`.
+    //
+    // This is a SELECTIVITY guard, not a correctness one, and the distinction
+    // matters because it cannot be tested through the return value: the
+    // franchise-side intersection below makes both forms produce the same
+    // managers. A merge would simply scan every account instead of the handful
+    // the franchises named. Believing a test could catch it is how it would get
+    // reverted by someone tidying.
     const accounts = await Account.find(
         { $and: [{ _id: { $in: ids } }, accountFilter] },
         fields ? asProjection(wanted) : null
@@ -391,18 +400,16 @@ function franchiseSideOf(fields) {
 }
 
 // Every manager, any league. The bare GET /users listing.
-async function all({ list = false, fields } = {}) {
+// Same: no `list` option. See byLeague.
+async function all({ fields } = {}) {
     if (!readsFromFranchises()) {
-        return User.find(
-            {},
-            fields ? asProjection(fields) : (list ? userProjection() : null)
-        ).lean();
+        return User.find({}, fields ? asProjection(fields) : null).lean();
     }
     const franchises = await Franchise.find(
         {},
         fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
     ).lean();
-    return hydrate(franchises, { list, fields });
+    return hydrate(franchises, { list: false, fields });
 }
 
 // Does any manager match? An existence check, not a fetch.

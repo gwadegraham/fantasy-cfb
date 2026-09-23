@@ -298,6 +298,32 @@ describe('findManagers — conditions split across both documents', () => {
     });
 });
 
+describe('byAccountId trims to the fields asked for', () => {
+    test('adds no key the caller did not request, on either path', async () => {
+        // It was the only fields-taking read that skipped keepOnly, so flag-on
+        // carried a `seasons: []` that flag-off did not. A silent widening, and
+        // the one fix in its commit with no test — reverting it left every spec
+        // green and only the offline script noticed.
+        const user = await seedManager();
+        const fields = ['league', 'firstName', 'lastName', 'authSub'];
+        const shapes = [];
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            shapes.push(Object.keys(await repo.byAccountId(user._id, { fields })).sort());
+        }
+        expect(shapes[1]).toEqual(shapes[0]);
+        expect(shapes[0]).toEqual(['_id', 'authSub', 'firstName', 'lastName', 'league']);
+    });
+
+    test('still trims when only account-side fields are asked for', async () => {
+        // The branch that skips the franchise query entirely.
+        const user = await seedManager();
+        process.env.FRANCHISE_READS = 'true';
+        const got = await repo.byAccountId(user._id, { fields: ['firstName', 'color'] });
+        expect(Object.keys(got).sort()).toEqual(['_id', 'color', 'firstName']);
+    });
+});
+
 describe('an explicit field list beats the list default', () => {
     // LIST_ACCOUNT_FIELDS keeps credentials off the broad listings, and it is a
     // DEFAULT for callers that name nothing — not a ceiling. Intersecting an

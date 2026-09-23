@@ -154,6 +154,8 @@ async function main() {
     const problems = [];
     const defaults = [];
     const checks = [];
+    // Which repo methods this run actually compared; audited at the end.
+    const exercised = new Set();
 
     // --- GET /users/season/:year — what the scoring pass and ingest read.
     {
@@ -164,8 +166,8 @@ async function main() {
               seasons: { $elemMatch: { season: { $eq: season } } } }
         ).lean();
         const fields = ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'];
-        const oldWay = await withFlag(false, () => repo.bySeason(season, { fields }));
-        const newWay = await withFlag(true, () => repo.bySeason(season, { fields }));
+        const oldWay = await withFlag(false, () => (exercised.add('bySeason'), repo.bySeason)(season, { fields }));
+        const newWay = await withFlag(true, () => (exercised.add('bySeason'), repo.bySeason)(season, { fields }));
         await compareThree(`/users/season/${season}`, original, oldWay, newWay, problems, defaults);
         diffList(`/users/season/${season}`, oldWay, newWay, problems, defaults);
         checks.push([`/users/season/${season}`, oldWay.length]);
@@ -181,8 +183,8 @@ async function main() {
         ).lean();
         const fields = ['firstName', 'lastName', 'email', 'league', 'lastUpdated', 'color',
                         'avatarUrl', 'profilePrompted', 'seasons'];
-        const oldWay = await withFlag(false, () => repo.byLeagueAndSeason(league, season, { fields }));
-        const newWay = await withFlag(true, () => repo.byLeagueAndSeason(league, season, { fields }));
+        const oldWay = await withFlag(false, () => (exercised.add('byLeagueAndSeason'), repo.byLeagueAndSeason)(league, season, { fields }));
+        const newWay = await withFlag(true, () => (exercised.add('byLeagueAndSeason'), repo.byLeagueAndSeason)(league, season, { fields }));
         await compareThree(`/users/league/${league}`, original, oldWay, newWay, problems, defaults);
         diffList(`/users/league/${league}`, oldWay, newWay, problems, defaults);
         checks.push([`/users/league/${league}`, oldWay.length]);
@@ -193,8 +195,8 @@ async function main() {
         const all = await User.find({}, { _id: 1 }).lean();
         for (const { _id } of all) {
             const original = await User.findById(_id).lean();
-            const oldWay = await withFlag(false, () => repo.byAccountId(_id));
-            const newWay = await withFlag(true, () => repo.byAccountId(_id));
+            const oldWay = await withFlag(false, () => (exercised.add('byAccountId'), repo.byAccountId)(_id));
+            const newWay = await withFlag(true, () => (exercised.add('byAccountId'), repo.byAccountId)(_id));
             compareDoc(`findById:${original.firstName} [original vs flag-off]`, original, oldWay, problems, defaults);
             if (!newWay) { problems.push(`findById ${_id}: nothing came back the new way`); continue; }
             compareDoc(`findById:${oldWay.firstName} ${oldWay.lastName}`, oldWay, newWay, problems, defaults);
@@ -206,8 +208,8 @@ async function main() {
     {
         const all = await User.find({}, { _id: 1, league: 1, firstName: 1 }).lean();
         for (const u of all) {
-            const oldLeagues = await withFlag(false, () => repo.leaguesFor(u._id));
-            const leagues = await withFlag(true, () => repo.leaguesFor(u._id));
+            const oldLeagues = await withFlag(false, () => (exercised.add('leaguesFor'), repo.leaguesFor)(u._id));
+            const leagues = await withFlag(true, () => (exercised.add('leaguesFor'), repo.leaguesFor)(u._id));
             if (JSON.stringify(oldLeagues) !== JSON.stringify(leagues)) {
                 problems.push(`leaguesFor ${u.firstName}: ${JSON.stringify(oldLeagues)} -> ${JSON.stringify(leagues)}`);
             }
@@ -233,8 +235,8 @@ async function main() {
                 firstName: 1, lastName: 1, color: 1, email: 1, authSub: 1,
                 'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.weeklyScore.scoreByTeam': 1
             }).lean();
-            const off = await withFlag(false, () => repo.byLeague(league, { fields }));
-            const on = await withFlag(true, () => repo.byLeague(league, { fields }));
+            const off = await withFlag(false, () => (exercised.add('byLeague'), repo.byLeague)(league, { fields }));
+            const on = await withFlag(true, () => (exercised.add('byLeague'), repo.byLeague)(league, { fields }));
             await compareThree(`byLeague(${league}) [admin roster]`, original, off, on, problems, defaults);
             checks.push([`byLeague(${league}) — admin roster`, original.length]);
         }
@@ -260,8 +262,8 @@ async function main() {
             franchiseFilter: { seasons: { $elemMatch: { season, 'teams.id': { $in: teamIds } } } },
             fields
         };
-        const off = await withFlag(false, () => repo.findManagers(args));
-        const on = await withFlag(true, () => repo.findManagers(args));
+        const off = await withFlag(false, () => (exercised.add('findManagers'), repo.findManagers)(args));
+        const on = await withFlag(true, () => (exercised.add('findManagers'), repo.findManagers)(args));
         await compareThree('findManagers [push recipients]', original, off, on, problems, defaults);
         checks.push(['findManagers — push recipients', original.length]);
     }
@@ -272,8 +274,8 @@ async function main() {
         const original = await User.find({ _id: { $in: ids } }, {
             firstName: 1, league: 1, avatarUrl: 1, 'seasons.season': 1, 'seasons.franchiseName': 1
         }).lean();
-        const off = await withFlag(false, () => repo.byIds(ids, { fields }));
-        const on = await withFlag(true, () => repo.byIds(ids, { fields }));
+        const off = await withFlag(false, () => (exercised.add('byIds'), repo.byIds)(ids, { fields }));
+        const on = await withFlag(true, () => (exercised.add('byIds'), repo.byIds)(ids, { fields }));
         await compareThree('byIds [betting groups]', original, off, on, problems, defaults);
         checks.push(['byIds — betting groups', original.length]);
     }
@@ -282,8 +284,8 @@ async function main() {
         for (const league of ['graham-league', 'claunts-league']) {
             const original = (await User.find({ league }, { color: 1 }).lean())
                 .map(u => u.color).filter(Boolean).sort();
-            const off = (await withFlag(false, () => repo.usedColors(league))).sort();
-            const on = (await withFlag(true, () => repo.usedColors(league))).sort();
+            const off = (await withFlag(false, () => (exercised.add('usedColors'), repo.usedColors)(league))).sort();
+            const on = (await withFlag(true, () => (exercised.add('usedColors'), repo.usedColors)(league))).sort();
             if (JSON.stringify(original) !== JSON.stringify(off)) problems.push(`usedColors(${league}) [original vs flag-off]`);
             if (JSON.stringify(original) !== JSON.stringify(on)) problems.push(`usedColors(${league}) [original vs flag-on]`);
             checks.push([`usedColors(${league})`, original.length]);
@@ -304,8 +306,8 @@ async function main() {
         for (const [label, fields] of shapes) {
             for (const { _id } of all) {
                 const original = await User.findById(_id, asProjection(fields)).lean();
-                const off = await withFlag(false, () => repo.byAccountId(_id, { fields }));
-                const on = await withFlag(true, () => repo.byAccountId(_id, { fields }));
+                const off = await withFlag(false, () => (exercised.add('byAccountId'), repo.byAccountId)(_id, { fields }));
+                const on = await withFlag(true, () => (exercised.add('byAccountId'), repo.byAccountId)(_id, { fields }));
                 compareDoc(`byAccountId ${label} [original vs flag-off]`, original, off, problems, defaults);
                 compareDoc(`byAccountId ${label} [original vs flag-on]`, original, on, problems, defaults);
             }
@@ -319,12 +321,98 @@ async function main() {
         for (const league of ['graham-league', 'claunts-league']) {
             const filter = { league, seasons: { $elemMatch: { season, 'weeklyScore.scoreByTeam.0': { $exists: true } } } };
             const original = !!(await User.exists(filter));
-            const off = await withFlag(false, () => repo.anyFranchise(filter));
-            const on = await withFlag(true, () => repo.anyFranchise(filter));
+            const off = await withFlag(false, () => (exercised.add('anyFranchise'), repo.anyFranchise)(filter));
+            const on = await withFlag(true, () => (exercised.add('anyFranchise'), repo.anyFranchise)(filter));
             if (original !== off) problems.push(`anyFranchise(${league}) [original vs flag-off]: ${original} -> ${off}`);
             if (original !== on) problems.push(`anyFranchise(${league}) [original vs flag-on]: ${original} -> ${on}`);
             checks.push([`anyFranchise(${league}) — mid-season edit gate`, 1]);
         }
+    }
+
+    // byLeagueAndSeasonForAccount — GET /users/:id/season.
+    {
+        const fields = ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'];
+        for (const { _id } of await User.find({}, { _id: 1 }).lean()) {
+            const original = await User.find(
+                { _id, 'seasons.season': season },
+                { firstName: 1, lastName: 1, league: 1, lastUpdated: 1, color: 1,
+                  seasons: { $elemMatch: { season } } }
+            ).lean();
+            const off = await withFlag(false, () => (exercised.add('byLeagueAndSeasonForAccount'), repo.byLeagueAndSeasonForAccount)(_id, season, { fields }));
+            const on = await withFlag(true, () => repo.byLeagueAndSeasonForAccount(_id, season, { fields }));
+            await compareThree('byLeagueAndSeasonForAccount [/users/:id/season]', original, off, on, problems, defaults);
+        }
+        checks.push(['byLeagueAndSeasonForAccount — /users/:id/season', 13]);
+    }
+
+    // all() — the bare GET /users listing, unprojected on both sides.
+    {
+        const original = await User.find({}).lean();
+        const off = await withFlag(false, () => (exercised.add('all'), repo.all)());
+        const on = await withFlag(true, () => repo.all());
+        await compareThree('all [GET /users]', original, off, on, problems, defaults);
+        checks.push(['all — GET /users', original.length]);
+    }
+
+    // The two push-ledger findManagers shapes. These carry captainReminders and
+    // recapNotices — the per-franchise send ledgers, and the highest-consequence
+    // fields the moment the flag ever flips, because getting them wrong re-sends
+    // a notification on every tick.
+    {
+        const shapes = [
+            ['captain locks', {
+                firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, captainReminders: 1,
+                'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.teams.school': 1,
+                'seasons.captains': 1, 'seasons.weeklyScore': 1
+            }, ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'captainReminders',
+                'seasons.season', 'seasons.teams.id', 'seasons.teams.school',
+                'seasons.captains', 'seasons.weeklyScore']],
+            ['recap ready', {
+                firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, recapNotices: 1
+            }, ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'recapNotices']]
+        ];
+        for (const [label, projection, fields] of shapes) {
+            const original = await User.find({
+                pushSubscriptions: { $exists: true, $ne: [] },
+                seasons: { $elemMatch: { season } }
+            }, projection).lean();
+            const args = {
+                accountFilter: { pushSubscriptions: { $exists: true, $ne: [] } },
+                franchiseFilter: { seasons: { $elemMatch: { season } } },
+                fields
+            };
+            const off = await withFlag(false, () => repo.findManagers(args));
+            const on = await withFlag(true, () => repo.findManagers(args));
+            await compareThree(`findManagers [${label}]`, original, off, on, problems, defaults);
+            checks.push([`findManagers — ${label}`, original.length]);
+        }
+    }
+
+    // Every exported read must be exercised above.
+    //
+    // The gap three reviews kept finding was never a wrong comparison — it was a
+    // shape nobody had listed. Enumerating by hand means an unlisted read is
+    // invisible AND unmentioned, so the green tick reads as "the swap is safe"
+    // when it means "the reads I remembered match". Checking the module's own
+    // exports turns a forgotten shape into a failure instead of a silence.
+    const READ_METHODS = ['bySeason', 'byLeagueAndSeason', 'byLeagueAndSeasonForAccount',
+        'byAccountId', 'byLeague', 'byIds', 'all', 'leaguesFor', 'findManagers',
+        'usedColors', 'anyFranchise'];
+    const unexercised = READ_METHODS.filter(m => !exercised.has(m));
+    if (unexercised.length) {
+        problems.push(`read shapes never compared: ${unexercised.join(', ')} — ` +
+                      `add them here, or this script's pass means less than it looks`);
+    }
+    const unknown = READ_METHODS.filter(m => typeof repo[m] !== 'function');
+    if (unknown.length) {
+        problems.push(`listed but not exported by the repo: ${unknown.join(', ')}`);
+    }
+    const exportedReads = Object.keys(repo).filter(k =>
+        typeof repo[k] === 'function' && !READ_METHODS.includes(k) &&
+        !['toUserShape', 'hydrate', 'keepOnly', 'asProjection', 'seasonScopedProjection',
+          'franchiseSideOf', 'userProjection', 'readsFromFranchises'].includes(k));
+    if (exportedReads.length) {
+        problems.push(`repo exports a read this script does not know about: ${exportedReads.join(', ')}`);
     }
 
     console.log(`\nactive season: ${season}   (original vs flag-off vs flag-on)\n`);
