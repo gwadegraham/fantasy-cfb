@@ -144,6 +144,45 @@ describe('leaguesFor — what replaces the Auth0 gg/cl flag', () => {
     });
 });
 
+describe('projections are preserved, because the documents are heavy', () => {
+    // A manager carries their full roster — every team object with its venue
+    // subdocument — so an unprojected read is ~100KB. Several callers project
+    // down to a few keys precisely for that reason, and dropping the projection
+    // while moving the storage would undo deliberate work on a free-tier
+    // cluster that also serves a 30-second poller.
+    test('fields narrows the document on BOTH flag positions', async () => {
+        const user = await seedManager();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const got = await repo.byAccountId(user._id, { fields: ['pushSubscriptions', 'pushPrefs'] });
+            expect(got.firstName).toBeUndefined();
+            expect(got.seasons).toBeUndefined();
+            expect(got.authSub).toBeUndefined();
+        }
+    });
+
+    test('a franchise-side field can be asked for alongside an account-side one', async () => {
+        const user = await seedManager();
+        const got = await repo.byAccountId(user._id, { fields: ['color', 'league', 'seasons'] });
+        expect(got).toMatchObject({ color: '#ED5858', league: 'graham-league' });
+        expect(got.seasons).toHaveLength(2);
+        expect(got.firstName).toBeUndefined();
+    });
+
+    test('usedColors reads colours, not rosters', async () => {
+        await seedManager();
+        await seedManager({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com', color: '#71D28D' });
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            expect((await repo.usedColors('graham-league')).sort()).toEqual(['#71D28D', '#ED5858']);
+        }
+    });
+
+    test('usedColors is empty for a league nobody is in', async () => {
+        expect(await repo.usedColors('nobody-league')).toEqual([]);
+    });
+});
+
 describe('a list read does not leak credentials', () => {
     // The old list endpoints project these out. Assembling from the account
     // without narrowing would have started shipping the Auth0 subject and the

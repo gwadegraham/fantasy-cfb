@@ -136,13 +136,64 @@ async function bySeason(season, { projectSeason = true } = {}) {
 // hold two, the callers that care will have to say which, and the ones that
 // don't will need to stop guessing. That is the real work phase 2 defers, and
 // naming it here beats discovering it later.
-async function byAccountId(accountId, league) {
-    if (!readsFromFranchises()) return User.findById(accountId).lean();
-    const account = await Account.findById(accountId).lean();
+async function byAccountId(accountId, { league, fields } = {}) {
+    // `fields` is not a nicety. A manager document carries their full roster —
+    // every team object with its venue subdocument — so an unprojected read is
+    // ~100KB, and several callers project down to a handful of keys precisely
+    // because of that (see the note on GET /users/me/push). Dropping the
+    // projection while moving the storage would undo deliberate work on a
+    // free-tier cluster that also serves a 30-second poller.
+    if (!readsFromFranchises()) {
+        return User.findById(accountId, fields ? asProjection(fields) : null).lean();
+    }
+
+    const accountFields = fields && fields.filter(f => ACCOUNT_FIELDS.includes(f));
+    const franchiseFields = fields && fields.filter(f => f === 'league' || f === 'seasons' || FRANCHISE_FIELDS.includes(f));
+
+    const account = await Account.findById(
+        accountId,
+        accountFields ? asProjection(accountFields) : null
+    ).lean();
     if (!account) return null;
+
+    // No franchise-side field asked for means don't go and get one. An empty
+    // projection object means "every field" to Mongo, so passing one through
+    // would have fetched the whole franchise — rosters and all — for a caller
+    // that only wanted a push subscription. Skipping the query entirely is both
+    // the correct answer and one round trip cheaper.
+    if (fields && !franchiseFields.length) return toUserShape(account, null);
+
     const filter = league ? { accountId, league } : { accountId };
-    const franchise = await Franchise.findOne(filter).lean();
+    const franchise = await Franchise.findOne(
+        filter,
+        franchiseFields && franchiseFields.length ? asProjection(franchiseFields) : null
+    ).lean();
     return toUserShape(account, franchise);
+}
+
+// Everyone's colour in a league, and nothing else.
+//
+// Its own method rather than byLeague({ fields }) because the caller wants one
+// scalar per manager and byLeague returns whole documents — which here would be
+// megabytes of roster to choose a hex code.
+async function usedColors(league) {
+    if (!readsFromFranchises()) {
+        const users = await User.find({ league }, { color: 1 }).lean();
+        return users.map(u => u.color).filter(Boolean);
+    }
+    const franchises = await Franchise.find({ league }, { accountId: 1, _id: 0 }).lean();
+    if (!franchises.length) return [];
+    const accounts = await Account.find(
+        { _id: { $in: franchises.map(f => f.accountId) } },
+        { color: 1, _id: 0 }
+    ).lean();
+    return accounts.map(a => a.color).filter(Boolean);
+}
+
+// A field list as a Mongo projection. Dotted paths are passed through, so a
+// caller can ask for 'seasons.season' and still get the slim read they wanted.
+function asProjection(fields) {
+    return fields.reduce((acc, f) => Object.assign(acc, { [f]: 1 }), {});
 }
 
 // Everyone in a league, whatever season — the roster views and colour picker,
@@ -222,5 +273,6 @@ async function hydrate(franchises, { list = true } = {}) {
 module.exports = {
     readsFromFranchises, userProjection,
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, all, leaguesFor, hydrate,
+    usedColors, asProjection,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

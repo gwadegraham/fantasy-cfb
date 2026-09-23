@@ -46,8 +46,7 @@ function captainGamesQuery(season, teamIds) {
 const USER_COLORS = ['#ED5858', '#E0B341', '#71D28D', '#64B5F6', '#8E8CF0', '#F27E3F', '#4FC3C7', '#EC6FA6', '#9CCC65', '#C97BE0'];
 
 async function pickUnusedColor(league) {
-    const users = await User.find({ league }, { color: 1 }).lean();
-    const used = new Set(users.map(u => String(u.color || '').toUpperCase()));
+    const used = new Set((await franchiseRepo.usedColors(league)).map(c => String(c || '').toUpperCase()));
     const free = USER_COLORS.filter(c => !used.has(c.toUpperCase()));
     const pool = free.length ? free : USER_COLORS;
     return pool[Math.floor(Math.random() * pool.length)];
@@ -133,8 +132,8 @@ router.get('/me/push', async (req, res) => {
         // seasons.season only — enough to answer "do they play this year", and
         // seasons[].teams holds full team objects, so asking for the subtree
         // would pull ~100KB to decide one boolean.
-        const user = await User.findById(userId,
-            { pushSubscriptions: 1, pushPrefs: 1, 'seasons.season': 1 }).lean();
+        const user = await franchiseRepo.byAccountId(userId,
+            { fields: ['pushSubscriptions', 'pushPrefs', 'seasons'] });
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
         // `allowed` answers "would an alert actually reach me". Eligibility is
@@ -207,7 +206,7 @@ router.delete('/me/push', async (req, res) => {
             ? { $pull: { pushSubscriptions: { endpoint } } }
             : { $set: { pushSubscriptions: [] } };
         await User.updateOne({ _id: userId }, update);
-        const user = await User.findById(userId, { pushSubscriptions: 1 }).lean();
+        const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions'] });
         res.json({ deviceCount: ((user && user.pushSubscriptions) || []).length });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -900,10 +899,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
         const league = req.params.league;
         const season = Number(req.query.season || activeSeason('football'));
 
-        const users = await User.find(
-            { league, 'seasons.season': season },
-            { firstName: 1, lastName: 1, color: 1, seasons: { $elemMatch: { season } } }
-        ).lean();
+        const users = await franchiseRepo.byLeagueAndSeason(league, season);
 
         const taken = new Set();
         const managers = users.map(u => {
