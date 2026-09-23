@@ -183,6 +183,86 @@ describe('projections are preserved, because the documents are heavy', () => {
     });
 });
 
+describe('findManagers — conditions split across both documents', () => {
+    // The case the convenience methods cannot express. push-notify wants
+    // managers who have a push subscription (an ACCOUNT field) AND a rostered
+    // team playing this week (a FRANCHISE field) — one `find` while both lived
+    // on the same document, two queries and an intersection afterwards.
+    const subscribed = { pushSubscriptions: { $exists: true, $ne: [] } };
+
+    async function seedSubscribed(over = {}) {
+        return seedManager(Object.assign({
+            pushSubscriptions: [{ endpoint: 'https://push/x', keys: { p256dh: 'k', auth: 'a' } }]
+        }, over));
+    }
+
+    test('requires BOTH halves, on both flag positions', async () => {
+        await seedSubscribed();                                   // subscribed + rostered
+        await seedManager({ firstName: 'NoSub', lastName: 'Here', email: 'n@example.com' });
+
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const got = await repo.findManagers({
+                accountFilter: subscribed,
+                franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } },
+                fields: ['firstName', 'pushSubscriptions']
+            });
+            expect(got.map(u => u.firstName)).toEqual(['Garrett']);
+        }
+    });
+
+    test('an account failing its filter drops its franchise too', async () => {
+        // The original was one document: failing either condition meant no row.
+        // Matching franchises first and intersecting has to give the same answer.
+        await seedManager();   // rostered, NOT subscribed
+        const got = await repo.findManagers({
+            accountFilter: subscribed,
+            franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } }
+        });
+        expect(got).toEqual([]);
+    });
+
+    test('a franchise failing its filter is excluded even when subscribed', async () => {
+        await seedSubscribed();
+        const got = await repo.findManagers({
+            accountFilter: subscribed,
+            franchiseFilter: { seasons: { $elemMatch: { season: 2099 } } }
+        });
+        expect(got).toEqual([]);
+    });
+
+    test('an _id narrowing on the account side still applies', async () => {
+        // PUSH_RECIPIENT_IDS narrows delivery by account id; losing that would
+        // notify people the operator meant to exclude.
+        const a = await seedSubscribed();
+        await seedSubscribed({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com' });
+        const got = await repo.findManagers({
+            accountFilter: Object.assign({ _id: { $in: [a._id] } }, subscribed),
+            franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } },
+            fields: ['firstName']
+        });
+        expect(got.map(u => u.firstName)).toEqual(['Garrett']);
+    });
+
+    test('keeps the roster projection narrow', async () => {
+        // push-notify measured seasons: 1 at 108,610 bytes per manager against
+        // 1,208 for the projected form, on a cluster capped near 85 KB/s.
+        await seedSubscribed();
+        const [got] = await repo.findManagers({
+            accountFilter: subscribed,
+            franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } },
+            fields: ['firstName', 'pushSubscriptions', 'seasons.season', 'seasons.teams.id']
+        });
+        expect(got.seasons).toBeDefined();
+        expect(got.seasons[0].weeklyScore).toBeUndefined();
+        expect(got.league).toBeUndefined();
+    });
+
+    test('nothing matching is an empty array, not a throw', async () => {
+        expect(await repo.findManagers({ franchiseFilter: { league: 'nobody' } })).toEqual([]);
+    });
+});
+
 describe('subfield projections survive', () => {
     test('seasons.franchiseName does not drag the rosters along', async () => {
         // routes/betting-groups.js records this exact projection as

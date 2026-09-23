@@ -29,6 +29,7 @@
 // re-subscribing every device when the rollout changes.
 
 const webpush = require('web-push');
+const franchiseRepo = require('./franchise-repo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const { activeSeason } = require('./active-season');
@@ -238,11 +239,11 @@ async function recipientsFor(game, season) {
     const teamIds = [game.homeId, game.awayId].filter(id => id != null);
     if (!teamIds.length) return [];
 
-    const query = {
-        pushSubscriptions: { $exists: true, $ne: [] },
-        seasons: { $elemMatch: { season, 'teams.id': { $in: teamIds } } }
-    };
-    if (isRestricted()) query._id = { $in: [...allowlist()] };
+    // Split across the two documents since #313: the subscription is the
+    // person's, the roster is their league entry's.
+    const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+    const franchiseFilter = { seasons: { $elemMatch: { season, 'teams.id': { $in: teamIds } } } };
+    if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
 
     // Project the two roster fields this function reads, NOT the whole `seasons`
     // subtree: seasons[].teams holds a full team object each (logos, venue,
@@ -250,8 +251,8 @@ async function recipientsFor(game, season) {
     // this returns 1,208 — measured against the prod copy. That was one _id
     // lookup while the allowlist was the gate; it is now an unindexed match run
     // once per game, per tick, against a cluster capped around 85 KB/s.
-    const users = await User.find(query,
-        { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, 'seasons.season': 1, 'seasons.teams.id': 1 }).lean();
+    const users = await franchiseRepo.findManagers({ accountFilter, franchiseFilter,
+        fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'seasons.season', 'seasons.teams.id'] });
 
     return users.map(user => {
         const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
@@ -484,21 +485,21 @@ async function notifyCaptainLocks(nowMs) {
     let sent = 0, due = 0;
 
     try {
-        const query = {
-            pushSubscriptions: { $exists: true, $ne: [] },
-            seasons: { $elemMatch: { season } }
-        };
-        if (isRestricted()) query._id = { $in: [...allowlist()] };
+        // Split across the two documents since #313: the subscription belongs to
+        // the person, the season entry to their league franchise.
+        const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+        const franchiseFilter = { seasons: { $elemMatch: { season } } };
+        if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
 
         // Same projection discipline as recipientsFor: seasons[].teams holds a
         // full team object each, so pulling `seasons: 1` is ~100KB per manager
         // against a cluster capped around 85 KB/s. `school` is here because the
         // notification body names the team.
-        const users = await User.find(query, {
-            firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, captainReminders: 1,
-            'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.teams.school': 1,
-            'seasons.captains': 1, 'seasons.weeklyScore': 1
-        }).lean();
+        const users = await franchiseRepo.findManagers({ accountFilter, franchiseFilter, fields: [
+            'firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'captainReminders',
+            'seasons.season', 'seasons.teams.id', 'seasons.teams.school',
+            'seasons.captains', 'seasons.weeklyScore'
+        ] });
         if (!users.length) return { sent: 0, due: 0 };
 
         // Captain is per-league, so resolve each league's config once rather
@@ -619,16 +620,16 @@ async function notifyRecapReady(nowMs) {
     let sent = 0, due = 0;
 
     try {
-        const query = {
-            pushSubscriptions: { $exists: true, $ne: [] },
-            seasons: { $elemMatch: { season } }
-        };
-        if (isRestricted()) query._id = { $in: [...allowlist()] };
+        // Split across the two documents since #313: the subscription belongs to
+        // the person, the season entry to their league franchise.
+        const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+        const franchiseFilter = { seasons: { $elemMatch: { season } } };
+        if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
 
         // No roster fields here — unlike the Captain reminder this needs nothing
         // from seasons[].teams, and that subtree is ~100KB a manager.
-        const users = await User.find(query,
-            { firstName: 1, league: 1, pushSubscriptions: 1, pushPrefs: 1, recapNotices: 1 }).lean();
+        const users = await franchiseRepo.findManagers({ accountFilter, franchiseFilter,
+            fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'recapNotices'] });
         if (!users.length) return { sent: 0, due: 0 };
 
         for (const user of users) {
@@ -701,7 +702,7 @@ async function notifyRecapReady(nowMs) {
 async function sendTest(userId) {
     if (!applyVapid()) return { sent: 0, reason: 'VAPID keys not configured' };
     if (!isAllowedRecipient(userId)) return { sent: 0, reason: 'Alerts are narrowed to other managers right now' };
-    const user = await User.findById(userId, { pushSubscriptions: 1, firstName: 1 }).lean();
+    const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions', 'firstName'] });
     if (!user) return { sent: 0, reason: 'User not found' };
     const res = await sendToUser(user, {
         type: 'test',

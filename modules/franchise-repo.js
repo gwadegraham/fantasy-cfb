@@ -231,6 +231,51 @@ async function byLeague(league, { list = false, fields } = {}) {
     return hydrate(franchises, { list: fields ? true : list, fields });
 }
 
+// Managers matching conditions on BOTH halves at once.
+//
+// The other methods here are conveniences over one collection. This is the
+// primitive for the case they cannot express: a query whose conditions are
+// split across the two documents. modules/push-notify.js is the live example —
+// it wants managers who have a push subscription (an ACCOUNT field) AND a
+// rostered team playing this week (a FRANCHISE field), which was one `find`
+// while both lived on the same document.
+//
+// Franchise-side filtering happens FIRST on purpose. The roster condition is
+// far more selective than "has any subscription", so narrowing there means the
+// account query is a small `$in` rather than a scan — which matters, because
+// push-notify runs this once per game per tick against a cluster capped around
+// 85 KB/s, and says so in its own comments.
+async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields } = {}) {
+    if (!readsFromFranchises()) {
+        // One document, so the two halves recombine into a single query.
+        const merged = Object.assign({}, accountFilter, franchiseFilter);
+        return User.find(merged, fields ? asProjection(fields) : null).lean();
+    }
+
+    const franchises = await Franchise.find(
+        franchiseFilter,
+        fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
+    ).lean();
+    if (!franchises.length) return [];
+
+    const ids = franchises.map(f => f.accountId);
+    const accountRoots = fields && new Set(fields.map(f => f.split('.')[0]));
+    const wanted = accountRoots ? ACCOUNT_FIELDS.filter(f => accountRoots.has(f)) : ACCOUNT_FIELDS;
+    const accounts = await Account.find(
+        Object.assign({ _id: { $in: ids } }, accountFilter),
+        fields ? asProjection(wanted) : null
+    ).lean();
+
+    // An account that failed accountFilter drops its franchise with it — the
+    // original query required both conditions of one document, so requiring
+    // both here is the same answer.
+    const byId = new Map(accounts.map(a => [String(a._id), a]));
+    return franchises
+        .map(f => (byId.has(String(f.accountId)) ? toUserShape(byId.get(String(f.accountId)), f) : null))
+        .filter(Boolean)
+        .map(doc => (fields ? keepOnly(doc, fields) : doc));
+}
+
 // Specific managers by account id — the betting-group membership read, which
 // is keyed on ids rather than on a league.
 async function byIds(ids, { fields } = {}) {
@@ -327,7 +372,7 @@ function keepOnly(doc, fields) {
 
 module.exports = {
     readsFromFranchises, userProjection,
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate, findManagers,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };
