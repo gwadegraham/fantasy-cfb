@@ -37,7 +37,7 @@ const round = (v) => Math.round(v * 10) / 10;
 // "Week 5" -> "Wk 5", for the places that have a column's width to say it in.
 // Postseason has no shorter honest form, so it is left alone.
 function shortWeekLabel(label) {
-    return String(label || '').replace(/^Week /, 'Wk ');
+    return String(label).replace(/^Week /, 'Wk ');
 }
 
 // Label for a weekly entry ("Week 5", or "Postseason").

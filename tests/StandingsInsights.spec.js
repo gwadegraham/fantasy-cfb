@@ -29,7 +29,9 @@ const {
     buildHighlights,
     buildHighlightsHtml,
     buildChartData,
-    settledWeekIndex
+    settledWeekIndex,
+    settledWeekLabel,
+    managerChipHtml
 } = require('../public/standings-insights.js');
 
 // Node test env has no `window`, which is the "page hasn't loaded icons" branch.
@@ -263,6 +265,73 @@ describe('standingsHeadHtml', () => {
         expect(html).toContain('>Total<');
         expect(html).toContain('h2h-caret-head');
         expect(html.match(/<th/g)).toHaveLength(6);
+    });
+
+    // Says which week the movement arrows below it describe. Abbreviated
+    // because it lives in a column header — "since Week 12" would widen the
+    // rank column enough to matter.
+    it('carries the movement week in the rank column, abbreviated', () => {
+        expect(standingsHeadHtml(false, 'Week 3')).toContain('<span class="move-since">since Wk 3</span>');
+        expect(standingsHeadHtml(true, 'Week 12')).toContain('since Wk 12');
+    });
+
+    // Postseason has no shorter honest form, so it is left whole.
+    it('leaves a postseason label alone', () => {
+        expect(standingsHeadHtml(false, 'Postseason')).toContain('since Postseason');
+    });
+
+    it('says nothing when there is no movement week', () => {
+        expect(standingsHeadHtml(false)).not.toContain('move-since');
+        expect(standingsHeadHtml(true, '')).not.toContain('move-since');
+    });
+
+    it('escapes the label', () => {
+        expect(standingsHeadHtml(false, 'Week <script>')).toContain('&lt;script&gt;');
+    });
+});
+
+// Avatar + display name for one manager, for the surfaces outside the ranked
+// table that name one — the rivalry cards.
+describe('managerChipHtml', () => {
+    it('uses the franchise name and a face-cropped photo', () => {
+        const html = managerChipHtml(user('a', 'Alice', 'Adams', [10], {
+            franchiseName: 'Hogs Gone Wild',
+            avatarUrl: 'https://res.cloudinary.com/x/image/upload/a.jpg'
+        }));
+        expect(html).toContain('Hogs Gone Wild');
+        expect(html).toContain('c_fill,g_face,w_48,h_48');
+    });
+
+    // A URL that isn't a Cloudinary upload has no transform to insert.
+    it('leaves a non-Cloudinary photo url alone', () => {
+        const html = managerChipHtml(user('a', 'Alice', 'Adams', [10], { avatarUrl: 'https://example.com/a.jpg' }));
+        expect(html).toContain('src="https://example.com/a.jpg"');
+        expect(html).not.toContain('c_fill');
+    });
+
+    it('falls back to an initials circle, and to the initialled name', () => {
+        const html = managerChipHtml(user('a', 'Alice', 'Adams', [10]));
+        expect(html).toContain('std-avatar-initials');
+        expect(html).toContain('>AA<');
+        expect(html).toContain('Alice A.');
+    });
+
+    it('colors the initials circle from the stored color when there is one', () => {
+        const withColor = managerChipHtml(user('a', 'Alice', 'Adams', [10], { color: '#ff0000' }));
+        expect(withColor).toContain('background:#ff0000');
+        // No stored color: a stable hue hashed off the name, not a blank.
+        expect(managerChipHtml(user('a', 'Alice', 'Adams', [10]))).toMatch(/background:hsl\(\d+, 45%, 45%\)/);
+    });
+
+    it('copes with a one-name manager and with no manager at all', () => {
+        const html = managerChipHtml({ _id: 'x', firstName: 'Cher', seasons: [{ teams: [], weeklyScore: [] }] });
+        expect(html).toContain('>C<');
+        expect(html).toContain('Cher .');
+        expect(managerChipHtml(null)).toBe('');
+    });
+
+    it('escapes the name', () => {
+        expect(managerChipHtml(user('a', 'Alice', 'Adams', [10], { franchiseName: '<script>' }))).toContain('&lt;script&gt;');
     });
 });
 
@@ -568,6 +637,25 @@ describe('settledWeekIndex', () => {
         ], { liveNow: { week: 1, seasonType: 'postseason' } })).toBe(1);
     });
 
+    // The helper is a browser global from the navbar partial. Missing, it
+    // throws rather than defaulting: silently answering "nothing has been
+    // played" would blank every weekly card and read as a quiet season, which
+    // is worse than a failure that names where the helper comes from.
+    it('names the missing helper rather than reporting an unplayed season', () => {
+        const real = global.ccSeasonScoring;
+        delete global.ccSeasonScoring;
+        try {
+            expect(() => settledWeekIndex([user('a', 'Alice', 'Adams', [10])])).toThrow(/ccSeasonScoring/);
+        } finally {
+            global.ccSeasonScoring = real;
+        }
+    });
+
+    it('tolerates being asked about no league at all', () => {
+        expect(settledWeekIndex(undefined)).toBe(-1);
+        expect(settledWeekLabel(undefined)).toBe('');
+    });
+
     it('has no settled week before anyone has played', () => {
         expect(settledWeekIndex([user('a', 'Alice', 'Adams', [0])])).toBe(-1);
         expect(settledWeekIndex([user('a', 'Alice', 'Adams', [])])).toBe(-1);
@@ -577,6 +665,32 @@ describe('settledWeekIndex', () => {
     // Week 1, mid-slate: points are landing but no week has finished.
     it('has no settled week during the first slate of the season', () => {
         expect(settledWeekIndex([user('a', 'Alice', 'Adams', [12])], { liveNow: { week: 1, seasonType: 'regular' } })).toBe(-1);
+    });
+});
+
+// What that week is CALLED, for the surfaces that caption it.
+describe('settledWeekLabel', () => {
+    it('names the settled week', () => {
+        expect(settledWeekLabel([user('a', 'Alice', 'Adams', [10, 20, 0])])).toBe('Week 2');
+    });
+
+    it('names a postseason week as Postseason', () => {
+        expect(settledWeekLabel([
+            user('a', 'Alice', 'Adams', [10, { week: 1, season: 'postseason', score: 30 }])
+        ])).toBe('Postseason');
+    });
+
+    // Reads the label off whoever HAS the week, not off the first manager in
+    // the payload — whose weeks can stop short of it.
+    it('reads the label off a manager who has that week', () => {
+        expect(settledWeekLabel([
+            user('z', 'Zed', 'Zane', [3]),
+            user('a', 'Alice', 'Adams', [10, 20, 30])
+        ])).toBe('Week 3');
+    });
+
+    it('is empty before any week has settled', () => {
+        expect(settledWeekLabel([user('a', 'Alice', 'Adams', [0])])).toBe('');
     });
 });
 
