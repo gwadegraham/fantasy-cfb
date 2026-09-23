@@ -57,6 +57,13 @@ function normalise(value) {
 }
 
 // Compare two lists of manager documents, matched on _id.
+// Compare three results pairwise: original vs flag-off, and original vs flag-on.
+// Both matter — a widening on the flag-off path ships the moment this merges.
+async function compareThree(label, original, repoOff, repoOn, problems, defaults) {
+    diffList(`${label} [original vs flag-off]`, original, repoOff, problems, defaults);
+    diffList(`${label} [original vs flag-on]`, original, repoOn, problems, defaults);
+}
+
 function diffList(label, oldDocs, newDocs, problems, defaults) {
     const oldById = new Map(oldDocs.map(d => [String(d._id), d]));
     const newById = new Map(newDocs.map(d => [String(d._id), d]));
@@ -132,21 +139,34 @@ async function main() {
 
     // --- GET /users/season/:year — what the scoring pass and ingest read.
     {
-        const oldWay = await withFlag(false, () => repo.bySeason(season));
-        const newWay = await withFlag(true, () => repo.bySeason(season));
-        // The old projection omits fields the repo returns in full; compare only
-        // what the old read actually exposed.
-        const trimmed = newWay.map(d => pick(d, Object.keys(oldWay[0] || d)));
-        diffList(`/users/season/${season}`, oldWay, trimmed, problems, defaults);
+        // The query as it stood before the swap, written out rather than called.
+        const original = await User.find(
+            { 'seasons.season': { $eq: season } },
+            { firstName: 1, lastName: 1, league: 1, lastUpdated: 1, color: 1,
+              seasons: { $elemMatch: { season: { $eq: season } } } }
+        ).lean();
+        const fields = ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'];
+        const oldWay = await withFlag(false, () => repo.bySeason(season, { fields }));
+        const newWay = await withFlag(true, () => repo.bySeason(season, { fields }));
+        await compareThree(`/users/season/${season}`, original, oldWay, newWay, problems, defaults);
+        diffList(`/users/season/${season}`, oldWay, newWay, problems, defaults);
         checks.push([`/users/season/${season}`, oldWay.length]);
     }
 
     // --- GET /users/league/:code — what standings, My Team and admin read.
     for (const league of ['graham-league', 'claunts-league']) {
-        const oldWay = await withFlag(false, () => repo.byLeagueAndSeason(league, season));
-        const newWay = await withFlag(true, () => repo.byLeagueAndSeason(league, season));
-        const trimmed = newWay.map(d => pick(d, Object.keys(oldWay[0] || d)));
-        diffList(`/users/league/${league}`, oldWay, trimmed, problems, defaults);
+        const original = await User.find(
+            { 'seasons.season': { $eq: season }, league },
+            { firstName: 1, lastName: 1, email: 1, league: 1, lastUpdated: 1, color: 1,
+              avatarUrl: 1, profilePrompted: 1,
+              seasons: { $elemMatch: { season: { $eq: season } } } }
+        ).lean();
+        const fields = ['firstName', 'lastName', 'email', 'league', 'lastUpdated', 'color',
+                        'avatarUrl', 'profilePrompted', 'seasons'];
+        const oldWay = await withFlag(false, () => repo.byLeagueAndSeason(league, season, { fields }));
+        const newWay = await withFlag(true, () => repo.byLeagueAndSeason(league, season, { fields }));
+        await compareThree(`/users/league/${league}`, original, oldWay, newWay, problems, defaults);
+        diffList(`/users/league/${league}`, oldWay, newWay, problems, defaults);
         checks.push([`/users/league/${league}`, oldWay.length]);
     }
 
@@ -178,7 +198,7 @@ async function main() {
         checks.push(['leaguesFor (replaces the Auth0 gg/cl flag)', all.length]);
     }
 
-    console.log(`\nactive season: ${season}   (comparing FRANCHISE_READS off vs on)\n`);
+    console.log(`\nactive season: ${season}   (original vs flag-off vs flag-on)\n`);
     checks.forEach(([label, n]) => console.log(`  checked  ${String(n).padStart(3)}  ${label}`));
 
     if (defaults.length) {

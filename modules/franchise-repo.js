@@ -31,21 +31,37 @@ const User = require('../models/user');
 // ---- the switch -------------------------------------------------------------
 //
 // Which collection these reads come from. UNSET MEANS USERS — the old path —
-// so merging and deploying this changes nothing at all. Flip
-// FRANCHISE_READS=true when you want to try the new source, and flip it back if
-// anything looks wrong. That makes the undo a config change measured in seconds
-// rather than a revert commit and a build.
+// so merging and deploying this changes nothing.
 //
-// ONE definition, read PER CALL. Both of those are deliberate: this repo has
-// been bitten by LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as
-// OFF and modules/live-poll.js treated it as ON, so the poller believed it was
-// enabled while never being scheduled and nothing logged a thing. Reading per
-// call also lets a test flip it without re-requiring the module.
+// ⚠️ THIS IS A DEVELOPMENT SWITCH. DO NOT SET IT IN PRODUCTION. ⚠️
 //
-// THIS IS TEMPORARY. Two read paths can drift, which is the same "two sources of
-// truth" the issue warns about — it is tolerable only because it is reads, and
-// only until the writes move. The flag and the whole `users` branch below get
-// deleted in that same change.
+// An earlier version of this comment called it a rollout control you could
+// "flip and flip back in seconds". That was wrong, and dangerously so. Nothing
+// writes to `accounts` or `franchises` — modules/account-migration.js populated
+// them once and no other code touches them. Writes still go to `users`. So with
+// this on in production, every read returns a SNAPSHOT frozen at migration
+// time:
+//
+//   - modules/push-notify.js would read the "already sent" ledgers from the
+//     Franchise while writing them to the User, so the dedupe never sees its own
+//     writes — every eligible manager gets the Captain reminder and the recap
+//     pointer again on EVERY tick, forever.
+//   - Standings, scores and history would show migration-era numbers. Mid-season
+//     that is last month's table, with nothing erroring.
+//   - GET /users/me/push would not show a device registered a moment earlier.
+//
+// And flipping back does not undo it: the duplicate pushes have been sent.
+//
+// The flag exists so scripts/diff-franchise-reads.js can compare the two
+// sources against a freshly migrated copy, and so the swap can be exercised in
+// tests. It becomes a real switch only when the writes move — and at that point
+// it is deleted along with the `users` branch below, because two sources of
+// truth for live scoring is the thing this whole change is trying to end.
+//
+// ONE definition, read PER CALL. Both deliberate: this repo has been bitten by
+// LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as OFF and
+// modules/live-poll.js treated it as ON, so the poller believed it was enabled
+// while never being scheduled and nothing logged a word.
 function readsFromFranchises() {
     return process.env.FRANCHISE_READS === 'true';
 }
@@ -129,11 +145,19 @@ async function bySeason(season, { projectSeason = true, fields } = {}) {
     if (!readsFromFranchises()) {
         return User.find(
             { 'seasons.season': season },
-            fields ? asProjection(fields) : (projectSeason ? userProjection(season) : null)
+            fields
+                ? (projectSeason ? seasonScopedProjection(fields, season) : asProjection(fields))
+                : (projectSeason ? userProjection(season) : null)
         ).lean();
     }
+    // Asking for `seasons` by name must NOT lose the season narrowing — callers
+    // index seasons[0] through public/season-of.js, so returning every season
+    // silently serves the wrong year. byLeagueAndSeason already did this; this
+    // did not, and a test caught it reading 2025's entry as the current one.
     const projection = fields
-        ? asProjection(franchiseSideOf(fields).concat('accountId'))
+        ? (projectSeason
+            ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
+            : asProjection(franchiseSideOf(fields).concat('accountId')))
         : (projectSeason
             ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
             : null);
@@ -162,8 +186,14 @@ async function byAccountId(accountId, { league, fields } = {}) {
         return User.findById(accountId, fields ? asProjection(fields) : null).lean();
     }
 
-    const accountFields = fields && fields.filter(f => ACCOUNT_FIELDS.includes(f));
-    const franchiseFields = fields && fields.filter(f => f === 'league' || f === 'seasons' || FRANCHISE_FIELDS.includes(f));
+    // Matched on the ROOT of a dotted path, via the same helper the other reads
+    // use. Comparing whole strings meant 'seasons.season' was not recognised as
+    // franchise-side, so the franchise query was skipped entirely and the caller
+    // got NO seasons — which on GET /users/me/push silently turns "you have a
+    // roster this season" into false.
+    const roots = fields && new Set(fields.map(f => f.split('.')[0]));
+    const accountFields = fields && ACCOUNT_FIELDS.filter(f => roots.has(f));
+    const franchiseFields = fields && franchiseSideOf(fields);
 
     const account = await Account.findById(
         accountId,
@@ -208,6 +238,11 @@ async function usedColors(league) {
 // A field list as a Mongo projection. Dotted paths are passed through, so a
 // caller can ask for 'seasons.season' and still get the slim read they wanted.
 function asProjection(fields) {
+    // `{}` means EVERY field to Mongo, so an empty list must never become an
+    // empty projection — that turns "I want nothing from here" into "give me
+    // all of it", which is how a narrowed read quietly becomes a full one.
+    // `_id` alone is the honest encoding of an empty request.
+    if (!fields.length) return { _id: 1 };
     return fields.reduce((acc, f) => Object.assign(acc, { [f]: 1 }), {});
 }
 
@@ -266,8 +301,11 @@ async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields }
     const ids = franchises.map(f => f.accountId);
     const accountRoots = fields && new Set(fields.map(f => f.split('.')[0]));
     const wanted = accountRoots ? ACCOUNT_FIELDS.filter(f => accountRoots.has(f)) : ACCOUNT_FIELDS;
+    // $and rather than a merge: an accountFilter carrying its own `_id` (the
+    // PUSH_RECIPIENT_IDS narrowing does exactly that) would otherwise replace
+    // the franchise-derived `$in` and scan every account in the collection.
     const accounts = await Account.find(
-        Object.assign({ _id: { $in: ids } }, accountFilter),
+        { $and: [{ _id: { $in: ids } }, accountFilter] },
         fields ? asProjection(wanted) : null
     ).lean();
 

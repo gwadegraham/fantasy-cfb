@@ -133,7 +133,7 @@ router.get('/me/push', async (req, res) => {
         // seasons[].teams holds full team objects, so asking for the subtree
         // would pull ~100KB to decide one boolean.
         const user = await franchiseRepo.byAccountId(userId,
-            { fields: ['pushSubscriptions', 'pushPrefs', 'seasons'] });
+            { fields: ['pushSubscriptions', 'pushPrefs', 'seasons.season'] });
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
         // `allowed` answers "would an alert actually reach me". Eligibility is
@@ -488,7 +488,8 @@ router.get('/', async (req, res) => {
 //Getting All By Season
 router.get('/season/:seasonYear', async (req, res) => {
     try {
-        const users = await franchiseRepo.bySeason(req.params.seasonYear);
+        const users = await franchiseRepo.bySeason(req.params.seasonYear,
+            { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -518,9 +519,13 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
     }
     try {
         const year = activeSeason('football');
-        // Needs the full document: it reports whether a manager is `linked`,
-        // which is authSub reduced to a boolean below and never sent raw.
-        const users = await franchiseRepo.byLeague(leagueCode);
+        // The original projection, kept. It already included authSub — this
+        // route reduces it to `linked` below and never sends it raw — so there
+        // was never a reason to widen the read.
+        const users = await franchiseRepo.byLeague(leagueCode, { fields: [
+            'firstName', 'lastName', 'color', 'email', 'authSub',
+            'seasons.season', 'seasons.teams.id', 'seasons.weeklyScore.scoreByTeam'
+        ] });
         const players = users.map(u => {
             const s = (u.seasons || []).find(x => Number(x.season) === year);
             const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
@@ -561,7 +566,10 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
     const year = req.query.season || activeSeason('football');
     try {
         console.log("finding all users in league", leagueCode, "season", year);
-        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, year);
+        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, year, { fields: [
+            'firstName', 'lastName', 'email', 'league', 'lastUpdated', 'color',
+            'avatarUrl', 'profilePrompted', 'seasons'
+        ] });
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -573,7 +581,8 @@ router.get('/league/:leagueCodeReq/previous', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
     try {
         console.log("finding user in league", leagueCode);
-        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, activeSeason('football') - 1);
+        const users = await franchiseRepo.byLeagueAndSeason(leagueCode, activeSeason('football') - 1,
+            { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -600,7 +609,13 @@ router.get('/:id/season', async (req, res) => {
 
     try {
         // Returns an ARRAY, as User.find() did — the client indexes [0].
-        const one = await franchiseRepo.byAccountId(userId);
+        //
+        // The field list is NOT optional. Without it this spreads the whole
+        // document into the response, and /users has no per-id ownership check —
+        // so any signed-in manager could read any other manager's Auth0 subject
+        // and their devices' push encryption keys by id.
+        const one = await franchiseRepo.byAccountId(userId,
+            { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
         const scoped = one && (one.seasons || []).some(sn => Number(sn.season) === Number(year))
             ? [{ ...one, seasons: (one.seasons || []).filter(sn => Number(sn.season) === Number(year)) }]
             : [];
@@ -704,7 +719,8 @@ router.post('/', async (req, res) => {
 // mid-season is exactly when someone loses access to their login.
 router.post('/:id/invite-link', async (req, res) => {
     try {
-        const user = await franchiseRepo.byAccountId(req.params.id);
+        const user = await franchiseRepo.byAccountId(req.params.id,
+            { fields: ['league', 'firstName', 'lastName', 'authSub'] });
         if (!user) return res.status(404).json({ message: 'Cannot find user' });
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
@@ -744,7 +760,8 @@ router.post('/:id/invite-link', async (req, res) => {
 // it claims a new invite, and identity-guard blocks it in the meantime.
 router.delete('/:id/invite-link', async (req, res) => {
     try {
-        const user = await franchiseRepo.byAccountId(req.params.id);
+        const user = await franchiseRepo.byAccountId(req.params.id,
+            { fields: ['league', 'firstName', 'lastName'] });
         if (!user) return res.status(404).json({ message: 'Cannot find user' });
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });

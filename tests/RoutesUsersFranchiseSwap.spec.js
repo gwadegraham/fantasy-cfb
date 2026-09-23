@@ -19,6 +19,7 @@ const SportSeason = require('../models/sportSeason');
 const activeSeason = require('../modules/active-season');
 const migration = require('../modules/account-migration');
 const usersRouter = require('../routes/users');
+const franchiseRepo = require('../modules/franchise-repo');
 
 const app = express();
 app.use(express.json());
@@ -159,6 +160,69 @@ describe('what the responses must and must not contain', () => {
         const { on } = await bothWays('/users/season/2026');
         const garrett = on.body.find(u => u.firstName === 'Garrett');
         expect(garrett.seasons[0].weeklyScore[0].scoreByTeam[0]).toMatchObject({ teamId: 251, score: 8 });
+    });
+});
+
+// Compare a route's CURRENT response against the query it replaced, written out
+// verbatim. Flag-off-vs-flag-on cannot see a widening that affects both paths —
+// which is how five call sites regressed while every check stayed green.
+async function originalVsRoute(path, originalQuery) {
+    const original = await originalQuery();
+    process.env.FRANCHISE_READS = 'false';
+    const off = await request(app).get(path);
+    process.env.FRANCHISE_READS = 'true';
+    const on = await request(app).get(path);
+    return { original, off: off.body, on: on.body };
+}
+
+describe('responses match the query they replaced, not just each other', () => {
+    test('GET /users/:id/season exposes no credentials', async () => {
+        // It spread an unprojected document, and /users has no per-id ownership
+        // check — so any signed-in manager could read anyone else's Auth0
+        // subject and their devices' push encryption keys by id.
+        await seedLeague();
+        const garrett = await User.findOne({ firstName: 'Garrett' }).lean();
+        const { original, off, on } = await originalVsRoute(
+            `/users/${garrett._id}/season`,
+            () => User.find({ _id: garrett._id, 'seasons.season': { $eq: 2026 } },
+                { firstName: 1, lastName: 1, league: 1, lastUpdated: 1, color: 1,
+                  seasons: { $elemMatch: { season: { $eq: 2026 } } } }).lean()
+        );
+        for (const body of [off, on]) {
+            expect(Object.keys(body[0]).sort()).toEqual(Object.keys(original[0]).sort());
+            expect(body[0].authSub).toBeUndefined();
+            expect(body[0].pushSubscriptions).toBeUndefined();
+        }
+    });
+
+    test('GET /users/me/push does not pull the roster subtree', async () => {
+        // The route's own comment: an unprojected read "would pull ~100KB to
+        // decide one boolean". Asking for `seasons` instead of `seasons.season`
+        // did exactly that — 110 bytes to 107KB.
+        await seedLeague();
+        const garrett = await User.findOne({ firstName: 'Garrett' }).lean();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const got = await franchiseRepo.byAccountId(garrett._id,
+                { fields: ['pushSubscriptions', 'pushPrefs', 'seasons.season'] });
+            expect(got.seasons.every(sn => sn.teams === undefined)).toBe(true);
+            expect(got.seasons.every(sn => sn.weeklyScore === undefined)).toBe(true);
+        }
+    });
+
+    test('the admin roster keeps its projection', async () => {
+        await seedLeague();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const [got] = await franchiseRepo.byLeague('graham-league', { fields: [
+                'firstName', 'lastName', 'color', 'email', 'authSub',
+                'seasons.season', 'seasons.teams.id', 'seasons.weeklyScore.scoreByTeam'
+            ] });
+            // authSub is wanted here — it becomes `linked` — but the heavy parts
+            // of a season must not ride along.
+            expect(got.seasons[0].franchiseName).toBeUndefined();
+            expect(got.seasons[0].captains).toBeUndefined();
+        }
     });
 });
 
