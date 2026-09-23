@@ -98,11 +98,11 @@ function toUserShape(account, franchise, { list = false } = {}) {
 // The $elemMatch projection is reproduced here rather than dropped — callers
 // index straight into seasons[0] via public/season-of.js, and a full seasons
 // array would silently hand them the wrong year.
-async function byLeagueAndSeason(league, season, { projectSeason = true } = {}) {
+async function byLeagueAndSeason(league, season, { projectSeason = true, fields } = {}) {
     if (!readsFromFranchises()) {
         return User.find(
             { league, 'seasons.season': season },
-            projectSeason ? userProjection(season) : null
+            fields ? seasonScopedProjection(fields, season) : (projectSeason ? userProjection(season) : null)
         ).lean();
     }
     const query = { league, 'seasons.season': season };
@@ -110,7 +110,17 @@ async function byLeagueAndSeason(league, season, { projectSeason = true } = {}) 
         ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
         : null;
     const franchises = await Franchise.find(query, projection).lean();
-    return hydrate(franchises);
+    return hydrate(franchises, { list: true, fields });
+}
+
+// A caller's field list plus the season projection they were already getting.
+// Callers that named their fields did so to keep a ~100KB document off the
+// wire; honouring that is the difference between moving the storage and
+// quietly making every standings read heavier.
+function seasonScopedProjection(fields, season) {
+    const projection = asProjection(fields.filter(f => f !== 'seasons'));
+    if (fields.includes('seasons')) projection.seasons = { $elemMatch: { season } };
+    return projection;
 }
 
 // Everyone with an entry for `season`, any league. Replaces
@@ -210,12 +220,39 @@ function asProjection(fields) {
 // storage swap should be doing: parity is the contract that makes flipping the
 // flag a non-event. The pre-existing over-exposure on those two is worth fixing
 // on its own, where the change is visible as a change.
-async function byLeague(league, { list = false } = {}) {
+async function byLeague(league, { list = false, fields } = {}) {
     if (!readsFromFranchises()) {
-        return User.find({ league }, list ? userProjection() : null).lean();
+        return User.find(
+            { league },
+            fields ? asProjection(fields) : (list ? userProjection() : null)
+        ).lean();
     }
     const franchises = await Franchise.find({ league }).lean();
-    return hydrate(franchises, { list });
+    return hydrate(franchises, { list: fields ? true : list, fields });
+}
+
+// Specific managers by account id — the betting-group membership read, which
+// is keyed on ids rather than on a league.
+async function byIds(ids, { fields } = {}) {
+    if (!readsFromFranchises()) {
+        return User.find({ _id: { $in: ids } }, fields ? asProjection(fields) : null).lean();
+    }
+    // Franchise-side fields projected at the query, dotted paths included, so a
+    // caller asking for seasons.franchiseName does not get every roster.
+    const franchises = await Franchise.find(
+        { accountId: { $in: ids } },
+        fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
+    ).lean();
+    return hydrate(franchises, { list: true, fields });
+}
+
+// The requested fields that live on the franchise rather than the account,
+// keeping dotted paths intact.
+function franchiseSideOf(fields) {
+    return fields.filter(f => {
+        const root = f.split('.')[0];
+        return root === 'league' || root === 'seasons' || FRANCHISE_FIELDS.includes(root);
+    });
 }
 
 // Every manager, any league. The bare GET /users listing.
@@ -256,23 +293,41 @@ function userProjection(season) {
 }
 
 // Attach each franchise's account in one round trip rather than per document.
-async function hydrate(franchises, { list = true } = {}) {
+async function hydrate(franchises, { list = true, fields } = {}) {
     if (!franchises.length) return [];
     const ids = franchises.map(f => f.accountId);
     // Projected at the query, not just filtered after: credentials should not
-    // cross the wire from Mongo either.
-    const fields = (list ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS)
-        .reduce((acc, f) => Object.assign(acc, { [f]: 1 }), {});
-    const accounts = await Account.find({ _id: { $in: ids } }, fields).lean();
+    // cross the wire from Mongo either. A caller's own field list narrows it
+    // further still.
+    const base = list ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS;
+    const roots = fields && new Set(fields.map(f => f.split('.')[0]));
+    const wanted = roots ? base.filter(f => roots.has(f)) : base;
+    const accounts = await Account.find({ _id: { $in: ids } }, asProjection(wanted)).lean();
     const byId = new Map(accounts.map(a => [String(a._id), a]));
     return franchises
         .map(f => toUserShape(byId.get(String(f.accountId)), f, { list }))
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(doc => (fields ? keepOnly(doc, fields) : doc));
+}
+
+// Trim an assembled document to the fields a caller asked for, `_id` always
+// surviving because every caller keys on it.
+function keepOnly(doc, fields) {
+    const out = { _id: doc._id };
+    // Keep the ROOT of a dotted path. Callers project subfields deliberately —
+    // routes/betting-groups.js asks for seasons.season and seasons.franchiseName
+    // and records the result as "418KB -> 1KB, 4.4s -> 75ms" — so trimming on
+    // the literal 'seasons.season' would drop the data entirely, and widening it
+    // to 'seasons' would hand back the rosters that projection exists to avoid.
+    new Set(fields.map(f => f.split('.')[0])).forEach(root => {
+        if (doc[root] !== undefined) out[root] = doc[root];
+    });
+    return out;
 }
 
 module.exports = {
     readsFromFranchises, userProjection,
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, all, leaguesFor, hydrate,
-    usedColors, asProjection,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate,
+    usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

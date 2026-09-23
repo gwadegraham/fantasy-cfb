@@ -1,5 +1,6 @@
 const express = require('express');
 const { seasonForLeague } = require('../modules/active-season');
+const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const User = require('../models/user');
 const Team = require('../models/team');
@@ -106,9 +107,8 @@ router.get('/highlights/:league/:season', async (req, res) => {
         // every consumer resolves the season the same way (see the `.find` on
         // seasons below, and modules/h2h.js / weekly-recap.js): none of them
         // looks at a prior season.
-        const users = await User.find(
-            { league: league, 'seasons.season': season },
-            { firstName: 1, lastName: 1, seasons: { $elemMatch: { season: seasonNum } } });
+        const users = await franchiseRepo.byLeagueAndSeason(league, seasonNum,
+            { fields: ['firstName', 'lastName', 'seasons'] });
         const draftedIds = new Set();
         const draftedNames = new Set();
         const metaById = {};
@@ -374,10 +374,8 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
         // needed for rank/average, but only for THIS season — buildWeeklyRecaps
         // resolves one season entry and never looks back (modules/weekly-recap.js).
         // Dropping the other three seasons takes the read from ~620KB to ~100KB.
-        const users = await User.find(
-            { league: league, 'seasons.season': season },
-            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
-              seasons: { $elemMatch: { season: seasonNum } } });
+        const users = await franchiseRepo.byLeagueAndSeason(league, seasonNum,
+            { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
         const user = users.find(u => String(u._id) === String(userId));
         if (!user) return res.json({ league, season: seasonNum, userId, recaps: [] });
 
@@ -476,10 +474,8 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // $elemMatch the rendered season — h2hRoster and
         // modules/h2h.js all resolve exactly one season entry, so the other three
         // were pure transfer cost against a tier that meters bytes.
-        const users = await User.find(
-            { league, 'seasons.season': season },
-            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
-              seasons: { $elemMatch: { season: seasonNum } } }).lean();
+        const users = await franchiseRepo.byLeagueAndSeason(league, seasonNum,
+            { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
         const isRegular = w => w.season !== 'postseason' && w.week <= 16;
         const round = v => Math.round(v * 10) / 10;
         // Deterministic manager ordering — the pairing schedule is positional, so

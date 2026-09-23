@@ -183,6 +183,34 @@ describe('projections are preserved, because the documents are heavy', () => {
     });
 });
 
+describe('subfield projections survive', () => {
+    test('seasons.franchiseName does not drag the rosters along', async () => {
+        // routes/betting-groups.js records this exact projection as
+        // "418KB -> 1KB, 4.4s -> 75ms". Widening it to `seasons` would undo that
+        // silently, with every test still green.
+        const user = await seedManager();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const [got] = await repo.byIds([user._id],
+                { fields: ['firstName', 'league', 'seasons.season', 'seasons.franchiseName'] });
+            expect(got.firstName).toBe('Garrett');
+            expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
+            expect(got.seasons[0].franchiseName).toBeDefined();
+            // The expensive part must NOT be there.
+            expect(got.seasons[0].weeklyScore).toBeUndefined();
+            expect(got.seasons[0].teams).toBeUndefined();
+        }
+    });
+
+    test('byIds returns only the accounts asked for', async () => {
+        const a = await seedManager();
+        await seedManager({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com' });
+        const got = await repo.byIds([a._id], { fields: ['firstName'] });
+        expect(got).toHaveLength(1);
+        expect(got[0].firstName).toBe('Garrett');
+    });
+});
+
 describe('a list read does not leak credentials', () => {
     // The old list endpoints project these out. Assembling from the account
     // without narrowing would have started shipping the Auth0 subject and the

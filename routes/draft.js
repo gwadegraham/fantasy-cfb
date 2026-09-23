@@ -1,4 +1,5 @@
 const express = require('express');
+const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
@@ -30,8 +31,8 @@ router.get('/grades/:league/:season', async (req, res) => {
         if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
             return res.json({ league, season, managers: [] });
         }
-        const users = await User.find({ league },
-            { firstName: 1, lastName: 1, league: 1, avatarUrl: 1, seasons: 1 }).lean();
+        const users = await franchiseRepo.byLeague(league,
+            { fields: ['firstName', 'lastName', 'league', 'avatarUrl', 'seasons'] });
         const usersById = {};
         users.forEach(u => { usersById[String(u._id)] = u; });
 
