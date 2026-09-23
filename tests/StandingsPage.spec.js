@@ -164,6 +164,36 @@ describe('classic standings table', () => {
         expect(page.tableBody().innerHTML.indexOf('Bob B.')).toBeLessThan(page.tableBody().innerHTML.indexOf('Alice A.'));
     });
 
+    // The arrows describe the last week that FINISHED, which on a Saturday is
+    // not the week the visible points are moving in — the top row can carry a
+    // down arrow. The caption is what stops that reading as a bug.
+    it('captions the movement arrows with the week they describe', async () => {
+        const page = await loadStandingsPage({ users: league() });
+        expect(page.moveNote().hidden).toBe(false);
+        expect(page.moveNote().textContent).toBe('Movement since Week 2');
+    });
+
+    // A seeded week must not be named — that is the whole point of the fix the
+    // caption describes.
+    it('names the played week, not the one seeded at zero', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                scored('a', 'Alice', 'Adams', [10, 20, 0]),
+                scored('b', 'Bob', 'Brown', [40, 5, 0])
+            ]
+        });
+        expect(page.moveNote().textContent).toBe('Movement since Week 2');
+    });
+
+    // One week in, there is no week-over-week movement to caption.
+    it('hides the caption when there are no arrows', async () => {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10]), scored('b', 'Bob', 'Brown', [40])]
+        });
+        expect(page.moveNote().hidden).toBe(true);
+        expect(page.moveNote().textContent).toBe('');
+    });
+
     it('marks the table as points-only', async () => {
         const page = await loadStandingsPage({ users: league() });
         const table = page.tableBody().closest('table');
@@ -247,6 +277,14 @@ describe('head-to-head standings', () => {
         // Week 1: Bob 40, Alice 10. Week 2 flips it — Alice climbs one.
         expect(page.tableBody().innerHTML).toContain('title="Up 1"');
         expect(page.tableBody().innerHTML).toContain('title="Down 1"');
+    });
+
+    it('captions the H2H arrows with the week they describe', async () => {
+        const page = await loadStandingsPage({
+            users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
+        });
+        expect(page.moveNote().hidden).toBe(false);
+        expect(page.moveNote().textContent).toBe('Movement since Week 2');
     });
 
     it('treats a scoreless H2H league as a flat tie', async () => {

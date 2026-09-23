@@ -1,5 +1,5 @@
 import { setChartData } from './weekByWeek.js';
-import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex } from './standings-insights.js';
+import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel } from './standings-insights.js';
 
 // Which week the "latest week" surfaces report on — see settledWeekIndex. Starts
 // empty, which answers "the newest week anyone has played", and is narrowed once
@@ -228,7 +228,7 @@ async function getUsers() {
 function displayUsers(data) {
     // Base render: ranked by cumulative points. loadH2H() re-renders this same
     // table with adjusted totals + a Record column when the league runs H2H.
-    renderStandingsTable(rankedRows(data, weekOpts), { h2h: false });
+    renderStandingsTable(rankedRows(data, weekOpts), { h2h: false, moveLabel: settledWeekLabel(data, weekOpts) });
 }
 
 // Narrow weekOpts with the calendar's answer, and repaint the highlights if it
@@ -428,6 +428,17 @@ function renderStandingsTable(rows, opts) {
         note.textContent = h2h ? 'Ranked by total points + H2H bonuses' : '';
         note.hidden = !h2h;
     }
+    // Says WHICH week the arrows describe. Without it they read as a
+    // contradiction on a Saturday: the points move as they land, so the row that
+    // just went top can carry a down arrow — because the arrow is deliberately
+    // about the last week that FINISHED, not about the half-played one.
+    const moveNote = document.querySelector('[standings-move-note]');
+    if (moveNote) {
+        const label = (opts && opts.moveLabel) || '';
+        const show = !!label && rows.some(r => r.delta != null);
+        moveNote.textContent = show ? `Movement since ${label}` : '';
+        moveNote.hidden = !show;
+    }
 }
 
 // Each row's caret button toggles the hidden roster row that follows it. The
@@ -623,7 +634,7 @@ async function loadH2H(league, season, fallbackData) {
         data = await res.json();
     } catch (e) { return renderClassic(); }
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
-    renderStandingsTable(h2hRows(data), { h2h: true });
+    renderStandingsTable(h2hRows(data), { h2h: true, moveLabel: settledWeekLabel(usersData || [], weekOpts) });
 
     // 2a) The current week's cards ride along in that same fast response, so the
     //     matchups paint WITH the table instead of ~6s later. They carry no

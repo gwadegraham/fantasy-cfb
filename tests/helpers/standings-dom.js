@@ -26,6 +26,7 @@ const FIXTURE = `
 <div class="no-data-message" style="display: none;"></div>
 <div class="get-users-container" get-users-container>
     <p class="standings-rank-note" standings-rank-note hidden></p>
+    <p class="standings-rank-note standings-move-note" standings-move-note hidden></p>
     <table class="fl-table">
         <thead user-table-head></thead>
         <tbody user-table-body></tbody>
@@ -332,6 +333,7 @@ async function loadStandingsPage(opts = {}) {
         tableHead: () => q('[user-table-head]'),
         tableBody: () => q('[user-table-body]'),
         rankNote: () => q('[standings-rank-note]'),
+        moveNote: () => q('[standings-move-note]'),
         highlights: () => q('.highlights-container'),
         highlightsHeader: () => q('.highlights-header'),
         projPanel: () => q('#proj-panel'),

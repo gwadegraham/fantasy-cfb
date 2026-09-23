@@ -107,6 +107,17 @@ export function settledWeekIndex(users, opts) {
     return -1;
 }
 
+// What the settled week is CALLED ("Week 3", "Postseason"), or '' when no week
+// has finished yet. For captioning anything that reports on it — the movement
+// arrows read as a contradiction on a Saturday otherwise, with the top row
+// carrying a down arrow because the live points that put it top are deliberately
+// not in the arrow.
+export function settledWeekLabel(users, opts) {
+    const i = settledWeekIndex(users, opts);
+    if (i < 0) return '';
+    return weekLabel((users || []).map(u => weekly(u)[i]).find(Boolean));
+}
+
 // --- ranked table rows -------------------------------------------------------
 
 // Ranked rows with movement (rank change vs last week) and gap to the leader.

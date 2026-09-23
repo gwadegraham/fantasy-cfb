@@ -759,6 +759,11 @@
 .standings-rank-note::before { content: "\2694\FE0F"; }
 .standings-rank-note[hidden] { display: none; }
 
+/* Same chip, for the note that says WHICH week the movement arrows describe.
+   Its own glyph — the swords belong to the H2H note, and both chips can be on
+   screen at once in an H2H league. */
+.standings-move-note::before { content: "\25B2\FE0E\25BC\FE0E"; letter-spacing: -0.06em; }
+
 /* Compact rows: tighter line-height, and every column but the name shrinks to
    content so the name hugs the left and record/total/caret group on the right. */
 .mode-h2h .standings-row td { line-height: 1.35; }
