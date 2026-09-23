@@ -342,8 +342,9 @@ function renderHistory() {
 
     var sorted = parlays.slice().sort(function (a, b) { return a.week - b.week; });
     body.innerHTML = sorted.map(function (p) {
-        var filled = p.legs.filter(function (l) { return l.gameId; }).length;
-        var total = p.legs.length;
+        // Picks-in while the week is live, legs that hit once it has settled —
+        // the judgement lives in public/leg-display.js, with the tests.
+        var tally = ccLegDisplay.legTally(p);
         var statusColor = p.status === 'won' ? 'var(--cc-success)' : (p.status === 'lost' ? 'var(--cc-danger-text)' : 'var(--cc-info)');
         var statusLabel = p.status === 'won' ? 'Won' : (p.status === 'lost' ? 'Lost' : (p.status === 'push' ? 'Push' : 'Pend'));
         var payoutColor = p.status === 'won' ? 'var(--cc-success)' : (p.status === 'lost' ? 'var(--cc-danger-text)' : 'var(--cc-muted)');
@@ -351,7 +352,7 @@ function renderHistory() {
 
         return '<tr>'
             + '<td>Wk ' + p.week + '</td>'
-            + '<td style="color:var(--cc-muted-2);">' + filled + '/' + total + '</td>'
+            + '<td style="color:var(--cc-muted-2);" title="' + esc(tally.title) + '">' + tally.text + '</td>'
             + '<td>' + money(p.wager || 0) + '</td>'
             + '<td><span style="font-weight:600;color:' + statusColor + ';">' + statusLabel + '</span></td>'
             + '<td class="text-right" style="color:' + payoutColor + ';">' + payoutText + '</td>'
