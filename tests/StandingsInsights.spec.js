@@ -17,6 +17,10 @@ global.ccLeagueRank = require('../public/league-rank.js');
 // fixtures below carry a one-element seasons array exactly as the route projects
 // it. SeasonOf.spec.js covers the lookup itself.
 global.ccSeasonOf = require('../public/season-of.js');
+// The app-wide "has this been played" rule. Real, not a stub: settledWeekIndex
+// decides which week every "this week" card reports on by asking it, and the
+// whole point of routing through it is that the two cannot drift.
+global.ccSeasonScoring = require('../public/season-scoring.js');
 
 const {
     rankedRows,
@@ -165,7 +169,7 @@ describe('rankedRows', () => {
         const rows = rankedRows([
             user('a', 'Alice', 'Adams', [10, 100, 0]),
             user('b', 'Bob', 'Brown', [50, 10, 200])
-        ], { liveWeek: 3 });
+        ], { liveNow: { week: 3, seasonType: 'regular' } });
         expect(rows.map(r => r.id)).toEqual(['b', 'a']);
         expect(rows.map(r => r.score)).toEqual([260, 110]);   // live points counted
         expect(rows.map(r => r.delta)).toEqual([-1, 1]);      // week 2's movement
@@ -515,11 +519,23 @@ describe('settledWeekIndex', () => {
         expect(settledWeekIndex([user('a', 'Alice', 'Adams', [10, 0, 0])])).toBe(0);
     });
 
-    // A game that was worth nothing is still a game played. Without this, a
-    // manager's bye-heavy week would look like a week that never happened.
-    it('counts a recorded game as played even at zero points', () => {
+    // THE shape this has to reject, taken from a live season: the scoring job
+    // writes one scoreByTeam row per SCHEDULED game, so a week nobody has played
+    // already carries a full set of rows sitting at zero. A "has a recorded
+    // game" test passes on exactly the week it exists to reject.
+    it('skips a seeded week that already has a full set of zeroed game rows', () => {
+        const seeded = { score: 0, scoreByTeam: Array.from({ length: 10 }, (_, n) => ({ teamId: n, gameId: 900 + n, score: 0 })) };
         expect(settledWeekIndex([
-            user('a', 'Alice', 'Adams', [10, { score: 0, scoreByTeam: [{ teamId: 1, score: 0 }] }])
+            user('a', 'Alice', 'Adams', [10, 20, seeded]),
+            user('b', 'Bob', 'Brown', [5, 8, seeded])
+        ])).toBe(1);
+    });
+
+    // A manager on bye scores nothing; the week still happened for the league.
+    it('counts a week anyone scored in, even if one manager blanked', () => {
+        expect(settledWeekIndex([
+            user('a', 'Alice', 'Adams', [10, 0]),
+            user('b', 'Bob', 'Brown', [5, 12])
         ])).toBe(1);
     });
 
@@ -528,7 +544,7 @@ describe('settledWeekIndex', () => {
             user('a', 'Alice', 'Adams', [10, 20, 6]),
             user('b', 'Bob', 'Brown', [5, 5, 0])
         ];
-        expect(settledWeekIndex(league, { liveWeek: 3 })).toBe(1);
+        expect(settledWeekIndex(league, { liveNow: { week: 3, seasonType: 'regular' } })).toBe(1);
         // Same data once the slate is over — the calendar stops calling it live.
         expect(settledWeekIndex(league, {})).toBe(2);
     });
@@ -539,7 +555,17 @@ describe('settledWeekIndex', () => {
     it('does not mistake a postseason week for the live regular-season week', () => {
         expect(settledWeekIndex([
             user('a', 'Alice', 'Adams', [10, { week: 1, season: 'postseason', score: 30 }])
-        ], { liveWeek: 1 })).toBe(1);
+        ], { liveNow: { week: 1, seasonType: 'regular' } })).toBe(1);
+    });
+
+    // The other half of that: a bowl slate IS live, and the postseason week must
+    // be held. /games/current-week reads both season types for exactly this —
+    // asking only the regular season in January finds every window in the past
+    // and reports that nothing is being played.
+    it('holds a postseason week that is being played', () => {
+        expect(settledWeekIndex([
+            user('a', 'Alice', 'Adams', [10, 20, { week: 1, season: 'postseason', score: 30 }])
+        ], { liveNow: { week: 1, seasonType: 'postseason' } })).toBe(1);
     });
 
     it('has no settled week before anyone has played', () => {
@@ -550,7 +576,7 @@ describe('settledWeekIndex', () => {
 
     // Week 1, mid-slate: points are landing but no week has finished.
     it('has no settled week during the first slate of the season', () => {
-        expect(settledWeekIndex([user('a', 'Alice', 'Adams', [12])], { liveWeek: 1 })).toBe(-1);
+        expect(settledWeekIndex([user('a', 'Alice', 'Adams', [12])], { liveNow: { week: 1, seasonType: 'regular' } })).toBe(-1);
     });
 });
 
@@ -589,7 +615,7 @@ describe('buildHighlights', () => {
             user('a', 'Alice', 'Adams', [10, 40, 0]),
             user('b', 'Bob', 'Brown', [50, 5, 6])
         ];
-        const live = byTitle(buildHighlights(league, { liveWeek: 3 }));
+        const live = byTitle(buildHighlights(league, { liveNow: { week: 3, seasonType: 'regular' } }));
         expect(live['Big Winner']).toMatchObject({ tag: 'Week 2', name: 'Alice A.', value: '+40' });
         // Once the slate is over the same data rolls forward on its own.
         const done = byTitle(buildHighlights(league, {}));
@@ -613,7 +639,7 @@ describe('buildHighlights', () => {
         const cards = titles(buildHighlights([
             user('a', 'Alice', 'Adams', [12]),
             user('b', 'Bob', 'Brown', [30])
-        ], { liveWeek: 1 }));
+        ], { liveNow: { week: 1, seasonType: 'regular' } }));
         expect(cards).not.toContain('Big Winner');
         expect(cards).not.toContain('Big Loser');
         expect(cards).not.toContain('Hot Streak');
@@ -846,6 +872,33 @@ describe('buildHighlights', () => {
         ]));
         expect(cards['Big Winner']).toMatchObject({ tag: 'Week 2', name: 'Alice A.', value: '+20' });
         expect(cards['Season High'].value).toBe('+20');
+    });
+
+    // A manager whose weeks stop SHORT, rather than being absent entirely — the
+    // case an empty-array fixture doesn't reach. The label used to be read off
+    // the first manager in the payload (empty tag if his weeks ran out) and the
+    // loser was ranked across everyone (a phantom "+0" for a week he has no row
+    // for).
+    it('labels and ranks the week off the managers who have it', () => {
+        const cards = byTitle(buildHighlights([
+            user('z', 'Zed', 'Zane', [3]),
+            user('a', 'Alice', 'Adams', [10, 40, 12]),
+            user('b', 'Bob', 'Brown', [5, 6, 7])
+        ]));
+        expect(cards['Big Winner']).toMatchObject({ tag: 'Week 3', name: 'Alice A.', value: '+12' });
+        expect(cards['Big Loser']).toMatchObject({ tag: 'Week 3', name: 'Bob B.', value: '+7' });
+    });
+
+    // Variance over PLAYED weeks. A trailing zero week nobody has played pulls
+    // every average down and widens every spread — and it costs a high scorer
+    // more than a low one, so it can hand the card to the wrong manager.
+    it('measures Mr. Reliable over the played weeks only', () => {
+        const cards = byTitle(buildHighlights([
+            user('a', 'Alice', 'Adams', [50, 50, 0]),
+            user('b', 'Bob', 'Brown', [12, 20, 0])
+        ]));
+        expect(cards['Mr. Reliable']).toMatchObject({ name: 'Alice A.', value: '±0 pts/wk' });
+        expect(cards['Mr. Reliable'].sub).toContain('avg 50/wk');
     });
 });
 

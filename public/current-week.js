@@ -27,12 +27,13 @@
     function pin() { ls(function (s) { s.setItem('weekPinned', '1'); }); }
     function unpin() { ls(function (s) { s.removeItem('weekPinned'); }); }
 
-    // The league's current week AND whether that slate is being played right
-    // now, or { week: null, live: false } when it can't be resolved. Cached per
+    // The league's current week, plus `liveNow` — the slate being PLAYED right
+    // now as { week, seasonType }, or null between slates. Resolves to
+    // { week: null, liveNow: null } when it can't be answered. Cached per
     // league+season: several tiles on one page ask, and they must not race.
     function state(season) {
         var league = leagueCode();
-        if (!league || !season) return Promise.resolve({ week: null, live: false });
+        if (!league || !season) return Promise.resolve({ week: null, liveNow: null });
         var key = league + '/' + season;
         if (!cache[key]) {
             // /games/current-week, not /games/scoreboard. This used to read the
@@ -44,12 +45,15 @@
                                { headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (d) {
+                    var ln = d && d.liveNow;
                     return {
                         week: d && typeof d.week === 'number' ? d.week : null,
-                        live: !!(d && d.live)
+                        liveNow: (ln && typeof ln.week === 'number')
+                            ? { week: ln.week, seasonType: ln.seasonType || 'regular' }
+                            : null
                     };
                 })
-                .catch(function () { return { week: null, live: false }; });
+                .catch(function () { return { week: null, liveNow: null }; });
         }
         return cache[key];
     }

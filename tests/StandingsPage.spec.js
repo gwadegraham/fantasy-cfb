@@ -1024,7 +1024,7 @@ describe('weekly win celebration', () => {
         window.ccCurrentWeek = {
             pinned: () => false, pin: () => {}, unpin: () => {},
             get: async () => 3,
-            state: async () => ({ week: 3, live: true }),
+            state: async () => ({ week: 3, liveNow: { week: 3, seasonType: 'regular' } }),
             sync: async () => 'week-3'
         };
         try {
@@ -1044,6 +1044,19 @@ describe('weekly win celebration', () => {
         } finally {
             delete window.ccCurrentWeek;
         }
+    });
+
+    // The server's advanced cards land second and rebuild the highlights
+    // container. The bounce is a class on a card INSIDE that container, so a
+    // repaint used to strip it and leave the confetti falling over a still
+    // trophy.
+    it('keeps the trophy bouncing when the advanced cards repaint the panel', async () => {
+        const page = await loadStandingsPage({
+            users: winner(), userState: asMe, reducedMotion: false,
+            advancedCards: [{ icon: 'chart', title: 'Overachiever', tag: 'vs expected wins', name: 'Alice A.', value: '+2.1', tone: 'good' }]
+        });
+        expect(page.highlights().innerHTML).toContain('Overachiever');
+        expect(page.q('.highlights-container .sub-highlight-container:first-child .hl-icon').classList.contains('celebrate')).toBe(true);
     });
 
     it('stays quiet when someone else won the week', async () => {

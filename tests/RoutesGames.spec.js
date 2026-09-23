@@ -354,7 +354,7 @@ describe('GET /games/current-week/:season', () => {
         expect(res.status).toBe(200);
         expect(typeof res.body.week === 'number' || res.body.week === null).toBe(true);
         // The point of the endpoint: it carries the week and nothing heavy.
-        expect(Object.keys(res.body).sort()).toEqual(['live', 'season', 'seasonType', 'week']);
+        expect(Object.keys(res.body).sort()).toEqual(['live', 'liveNow', 'season', 'seasonType', 'week']);
         expect(res.body.games).toBeUndefined();
         expect(res.body.conferences).toBeUndefined();
     });
@@ -380,12 +380,32 @@ describe('GET /games/current-week/:season', () => {
 
         // Mid-slate: week 1 kicked off two hours ago.
         const live = await request(app).get('/games/current-week/2031');
-        expect(live.body).toMatchObject({ week: 1, live: true });
+        expect(live.body).toMatchObject({ week: 1, live: true, liveNow: { week: 1, seasonType: 'regular' } });
 
         // Between slates: week 1 is long gone, week 2 is days away. The week
         // number moves on, but nothing is being played.
         const between = await request(app).get('/games/current-week/2032');
-        expect(between.body).toMatchObject({ week: 2, live: false });
+        expect(between.body).toMatchObject({ week: 2, live: false, liveNow: null });
+    });
+
+    // In January every REGULAR window is in the past, so a regular-season-only
+    // read reports "nothing is being played" through the whole postseason — and
+    // the standings highlights would call a half-finished bowl slate settled.
+    test('finds a live bowl slate even though the season type asked for is regular', async () => {
+        const now = Date.now();
+        await Game.create([
+            gameDoc({ id: 731, season: 2033, week: 1, startDate: new Date(now - 60 * 24 * 3600 * 1000).toISOString() }),
+            gameDoc({ id: 732, season: 2033, week: 1, seasonType: 'postseason', startDate: new Date(now - 2 * 3600 * 1000).toISOString() })
+        ]);
+        const res = await request(app).get('/games/current-week/2033');
+        // `week` still answers for the regular season — three pages default
+        // their week picker off it and that must not move.
+        expect(res.body).toMatchObject({
+            seasonType: 'regular',
+            week: 1,
+            live: false,
+            liveNow: { week: 1, seasonType: 'postseason' }
+        });
     });
 
     // Must not drift from the week /scoreboard lands on — they share

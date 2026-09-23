@@ -52,13 +52,21 @@ function weekCount(users) {
 // Has this week actually been played? The nightly scoring job seeds a weekly
 // entry as soon as a week's games EXIST, so an entry on its own means nothing —
 // on a Wednesday the current week is sitting there at zero for every manager.
-// Either real points or a recorded game counts: a scoreByTeam row means a game
-// was scored even if it happened to be worth nothing.
+//
+// Banked points, through the app-wide rule in public/season-scoring.js, which
+// exists for exactly this and says so. Do NOT widen it to "has a scoreByTeam
+// row": modules/scoring.js writes one row per SCHEDULED game (the batched week
+// lookup in routes/games.js has no `completed` filter, and the whole schedule is
+// ingested weeks ahead), so a seeded week already carries a full set of rows at
+// zero — measured, 9-10 of them per manager on the live 2026 week. A check that
+// counted those would pass on precisely the week it exists to reject.
+//
+// League-wide, like seasonHasScoring: one manager's bye is not a week that
+// didn't happen, so a single scorer is enough.
 function weekPlayed(users, i) {
-    return (users || []).some(u => {
-        const w = weekly(u)[i];
-        return !!w && (num(w.score) !== 0 || (w.scoreByTeam || []).length > 0);
-    });
+    const lib = globalThis.ccSeasonScoring;
+    if (!lib) throw new Error('ccSeasonScoring is not loaded (expected from views/partials/navbar.ejs)');
+    return (users || []).some(u => lib.entryHasScoring(weekly(u)[i]));
 }
 
 // WHICH week the "latest week" surfaces should report on: the most recent one
@@ -72,23 +80,26 @@ function weekPlayed(users, i) {
 //      among six ties on zero.
 //   2. It IS being played. Half a slate makes a "Big Winner" out of whoever had
 //      the early kickoff, and the Hot Streak window quietly slides onto it.
-//      `liveWeek` comes from ccCurrentWeek.state() — the calendar's own answer,
+//      `liveNow` comes from ccCurrentWeek.state() — the calendar's own answer,
 //      which stops calling a slate live six hours after its last kickoff, so
 //      the highlights roll over on their own late Saturday night.
 //
-// `liveWeek` is optional and asynchronous in the browser; without it the rule
-// degrades to (1) alone, which is the right answer on every day except a game
-// day. That is deliberate — it lets the page paint correct highlights off the
-// roster payload it already has, instead of holding them behind another
-// request all week for a distinction that only matters while games are on.
+// `liveNow` carries a season type as well as a week because the postseason
+// numbers its weeks from 1 again: without it, "regular week 1 is live" would
+// knock out the first week of the bowls.
+//
+// It is optional and asynchronous in the browser; without it the rule degrades
+// to (1) alone, which is the right answer on every day except a game day. That
+// is deliberate — it lets the page paint correct highlights off the roster
+// payload it already has, instead of holding them behind another request all
+// week for a distinction that only matters while games are on.
 export function settledWeekIndex(users, opts) {
-    const liveWeek = (opts && opts.liveWeek != null) ? Number(opts.liveWeek) : null;
+    const live = (opts && opts.liveNow) || null;
     for (let i = weekCount(users) - 1; i >= 0; i--) {
         const entry = (users || []).map(u => weekly(u)[i]).find(Boolean);
         if (!entry) continue;
-        // The live week is a REGULAR-season week number; a postseason entry
-        // carries its own week numbering, so it must not collide with it.
-        const isLive = liveWeek != null && entry.season !== 'postseason' && Number(entry.week) === liveWeek;
+        const entryType = entry.season === 'postseason' ? 'postseason' : 'regular';
+        const isLive = !!live && (live.seasonType || 'regular') === entryType && Number(entry.week) === Number(live.week);
         if (isLive) continue;
         if (!weekPlayed(users, i)) continue;
         return i;
@@ -319,15 +330,21 @@ export function buildHighlights(users, opts) {
     const weeks = lastIdx + 1;
     const latest = (u) => weekly(u)[lastIdx];
     const latestScore = (u) => num(latest(u) && latest(u).score);
-    const thisWeekLabel = weekLabel(weekly(withWeeks[0])[lastIdx]);
+    // From whoever HAS that week, not from the first manager in the payload —
+    // the array lengths can differ, and reading the label off a manager whose
+    // weeks stop short prints an empty tag for everyone.
+    const thisWeekLabel = weekLabel(users.map(latest).find(Boolean));
 
     // Every weekly card is skipped until a week has finished — during week 1's
     // own slate there is no settled week to report on, and the season-long
     // cards below still have something to say.
     const haveWeek = lastIdx >= 0;
 
-    // Big winner / loser (this week)
-    const byLatest = withWeeks.slice().sort((a, b) => latestScore(b) - latestScore(a));
+    // Big winner / loser (this week). Only managers with an entry for the week:
+    // a missing entry is not a zero, and ranking one as the Big Loser invents a
+    // bad week for somebody who simply has no row.
+    const played = withWeeks.filter(u => latest(u));
+    const byLatest = played.slice().sort((a, b) => latestScore(b) - latestScore(a));
     if (haveWeek && byLatest.length) {
         const w = byLatest[0], l = byLatest[byLatest.length - 1];
         cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
@@ -402,11 +419,15 @@ export function buildHighlights(users, opts) {
         }
     }
 
-    // Mr. Reliable (lowest weekly variance)
-    const eligible = withWeeks.filter(u => weekly(u).length >= 2);
+    // Mr. Reliable (lowest weekly variance). Weeks that have been PLAYED only —
+    // a trailing zero week nobody has played drags every average down and widens
+    // every spread, and it punishes a high scorer hardest, so it can hand the
+    // card to the wrong manager for the whole week.
+    const playedWeeks = (u) => weekly(u).slice(0, weeks).map(w => w.score || 0);
+    const eligible = haveWeek ? withWeeks.filter(u => playedWeeks(u).length >= 2) : [];
     if (eligible.length) {
-        const steady = eligible.slice().sort((a, b) => stdev(weekly(a).map(w => w.score || 0)) - stdev(weekly(b).map(w => w.score || 0)))[0];
-        const scores = weekly(steady).map(w => w.score || 0);
+        const steady = eligible.slice().sort((a, b) => stdev(playedWeeks(a)) - stdev(playedWeeks(b)))[0];
+        const scores = playedWeeks(steady);
         const sd = stdev(scores);
         const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
         cards.push({ icon: 'target', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });

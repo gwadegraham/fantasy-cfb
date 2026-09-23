@@ -3,14 +3,25 @@ import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights,
 
 // Which week the "latest week" surfaces report on — see settledWeekIndex. Starts
 // empty, which answers "the newest week anyone has played", and is narrowed once
-// the calendar says whether that week is still being played. Every caller reads
-// this object rather than taking a copy, so the refinement reaches all of them.
+// the calendar says which slate (if any) is still being played. Callers read the
+// binding when they run, so the refinement reaches every later read.
 let weekOpts = {};
 
 // Server-computed highlight cards, held so a re-render of the panel can put them
 // back. They are appended to the same container the local cards paint into, and
 // that container is rebuilt whenever the settled week changes.
 let advancedCards = [];
+
+// Has the weekly-win celebration fired this load? The trophy bounce is a class
+// on a card inside the highlights container, and the container is rebuilt on
+// every repaint, so the class has to be re-applied rather than set once.
+let celebrating = false;
+
+function applyCelebration() {
+    if (!celebrating) return;
+    const icon = document.querySelector('.highlights-container .sub-highlight-container:first-child .hl-icon');
+    if (icon) icon.classList.add('celebrate');
+}
 
 // Escapes HTML special chars before interpolating user-controlled values
 // (player/team names) into innerHTML, preventing stored/second-order XSS.
@@ -237,10 +248,12 @@ async function settleWeekOpts(activeSeason, data) {
     if (!window.ccCurrentWeek || !window.ccCurrentWeek.state) return;
     let st;
     try { st = await window.ccCurrentWeek.state(activeSeason); } catch (e) { return; }
-    if (!st || !st.live || st.week == null) return;   // nothing being played → the payload rule stands
+    if (!st || !st.liveNow) return;   // nothing being played → the payload rule stands
 
     const before = settledWeekIndex(data, weekOpts);
-    weekOpts = { liveWeek: st.week };
+    // Reassigned, not mutated: every caller reads the module binding when it
+    // runs, so they all see this — but a copy taken before now would not.
+    weekOpts = { liveNow: st.liveNow };
     if (settledWeekIndex(data, weekOpts) !== before) displayHighlights(data);
 }
 
@@ -544,6 +557,7 @@ function displayHighlights(users) {
     }
     if (header) header.style.display = '';
     if (container) { container.style.display = ''; container.innerHTML = buildHighlightsHtml(cards); }
+    applyCelebration();   // the repaint dropped the trophy's bounce; put it back
 }
 
 // Forward-looking analytics (#210): projected final points + title odds, in a
@@ -783,7 +797,7 @@ function renderH2HMatchups(d) {
     const openKeys = new Set();
     el.querySelectorAll('.h2h-mcard.open[data-pair]').forEach(c => openKeys.add(c.dataset.pair));
     const selectedWeek = (prevSel != null && allWeeks.includes(prevSel)) ? prevSel : d.featuredWeek;
-    const weekOpts = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
+    const weekOptionsHtml = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     // Once the schedule is exhausted the panel would otherwise sit on the last
@@ -797,7 +811,7 @@ function renderH2HMatchups(d) {
         : `Win your weekly matchup for <b>+${d.winBonus}</b>${d.tieBonus > 0 ? ` · ties earn <b>+${d.tieBonus}</b> each` : ''}. Bonuses count toward your <b>Total</b> above.`;
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}${title}${preview}</h2>
         <p class="h2h-panel-note">${note}</p>
-        <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
+        <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOptionsHtml}</select></div>
         <div class="h2h-matches" h2h-matches></div>`;
     el.hidden = false;
 
@@ -865,8 +879,12 @@ function maybeCelebrateWeeklyWin(users) {
         if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
         // Big Winner is the first highlight card; bounce its trophy + confetti.
-        const icon = document.querySelector('.highlights-container .sub-highlight-container:first-child .hl-icon');
-        if (icon) icon.classList.add('celebrate');
+        // The flag outlives this call because the panel can be painted again
+        // after it — the server's advanced cards land second and rebuild the
+        // container, which used to take the class with it and leave the confetti
+        // firing over a still trophy.
+        celebrating = true;
+        applyCelebration();
         if (typeof startConfetti === 'function') {
             startConfetti();
             setTimeout(() => { if (typeof stopConfetti === 'function') stopConfetti(); }, 3500);
