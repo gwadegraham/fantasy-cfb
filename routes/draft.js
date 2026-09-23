@@ -3,7 +3,6 @@ const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
-const User = require('../models/user');
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');

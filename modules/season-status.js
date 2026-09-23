@@ -1,4 +1,3 @@
-const User = require('../models/user');
 const franchiseRepo = require('./franchise-repo');
 
 // True once at least one drafted-team game has been scored in `season` for this

@@ -31,6 +31,17 @@ async function seedManager(overrides = {}) {
         league: 'graham-league', color: '#ED5858', authSub: 'google-oauth2|123',
         avatarUrl: 'https://example.com/a.jpg', profilePrompted: true,
         isUpdated: true, lastUpdated: '9/7/2026, 11:42:28 PM',
+        // Present so the credential-omission tests below can actually fail.
+        // Without these, three of the five cases asserted that a field the
+        // fixture never had was absent — true whatever the code does.
+        //
+        // pushSubscriptions is deliberately NOT here: findManagers uses an
+        // unsubscribed manager as its "fails the account filter" case, and
+        // seeding one everywhere would quietly delete that contrast. Tests that
+        // need a subscription add it themselves.
+        pushPrefs: { score: true, final: false },
+        captainReminders: [{ season: 2026, week: 1, sentAt: new Date('2026-09-05T12:00:00Z') }],
+        recapNotices: [{ season: 2026, week: 1, sentAt: new Date('2026-09-08T12:00:00Z') }],
         seasons: [
             { season: 2025, cumulativeScore: 163, franchiseName: 'Acuff Me Up', weeklyScore: [] },
             { season: 2026, cumulativeScore: 34, franchiseName: 'Name, Image, & Sadness',

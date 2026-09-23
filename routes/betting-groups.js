@@ -4,7 +4,6 @@ const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
-const User = require('../models/user');
 
 router.get('/', async (req, res) => {
     try {

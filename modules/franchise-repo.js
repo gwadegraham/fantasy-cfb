@@ -120,13 +120,25 @@ async function byLeagueAndSeason(league, season, { projectSeason = true, fields 
     if (!readsFromFranchises()) {
         return User.find(
             { league, 'seasons.season': season },
-            fields ? seasonScopedProjection(fields, season) : (projectSeason ? userProjection(season) : null)
+            fields
+                ? (projectSeason ? seasonScopedProjection(fields, season) : asProjection(fields))
+                : (projectSeason ? userProjection(season) : null)
         ).lean();
     }
+    // This was the one method whose flag-on branch ignored `fields` and
+    // hardcoded its projection, so a caller asking for captainReminders got
+    // them with the flag off and not with it on — and `projectSeason: false`
+    // plus fields returned EVERY season, which is the "callers index seasons[0],
+    // wrong year served silently" failure this module warns about in four
+    // places. Both halves now read the same arguments.
     const query = { league, 'seasons.season': season };
-    const projection = projectSeason
-        ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
-        : null;
+    const projection = fields
+        ? (projectSeason
+            ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
+            : asProjection(franchiseSideOf(fields).concat('accountId')))
+        : (projectSeason
+            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
+            : null);
     const franchises = await Franchise.find(query, projection).lean();
     return hydrate(franchises, { list: !!(fields || projectSeason), fields });
 }
@@ -208,14 +220,18 @@ async function byAccountId(accountId, { league, fields } = {}) {
     // would have fetched the whole franchise — rosters and all — for a caller
     // that only wanted a push subscription. Skipping the query entirely is both
     // the correct answer and one round trip cheaper.
-    if (fields && !franchiseFields.length) return toUserShape(account, null);
+    if (fields && !franchiseFields.length) return keepOnly(toUserShape(account, null), fields);
 
     const filter = league ? { accountId, league } : { accountId };
     const franchise = await Franchise.findOne(
         filter,
         franchiseFields && franchiseFields.length ? asProjection(franchiseFields) : null
     ).lean();
-    return toUserShape(account, franchise);
+    // Trimmed like every other fields-taking read. Without this, flag-on added a
+    // `seasons: []` key that flag-off did not have — a silent widening, which is
+    // the thing this branch keeps being caught by.
+    const shaped = toUserShape(account, franchise);
+    return fields ? keepOnly(shaped, fields) : shaped;
 }
 
 // Everyone's colour in a league, and nothing else.

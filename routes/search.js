@@ -4,7 +4,6 @@ const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
-const User = require('../models/user');
 const { pickLogo } = require('../public/logo.js');
 const { leagueCodeFor } = require('../modules/league-access');
 

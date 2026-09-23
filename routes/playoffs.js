@@ -3,7 +3,6 @@ const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const CfpBracket = require('../models/cfpBracket');
 const { deriveBracket, BracketRejected, ROUNDS } = require('../modules/cfp-bracket');
-const User = require('../models/user');
 const Team = require('../models/team');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');

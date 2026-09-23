@@ -23,6 +23,7 @@ if (process.env.NODE_ENV !== 'production') {
 const mongoose = require('mongoose');
 const User = require('../models/user');
 const repo = require('../modules/franchise-repo');
+const { asProjection } = require('../modules/franchise-repo');
 
 // The comparison is now literally "flag off vs flag on", which is exactly the
 // change a deploy makes. Each read below is taken twice with the switch in each
@@ -39,8 +40,8 @@ const { activeSeason, prime } = require('../modules/active-season');
 
 // Subdocument ids are re-minted on copy and referenced nowhere, so compare on
 // content. Same rule modules/account-migration.js verify() uses.
-function normalise(value) {
-    if (Array.isArray(value)) return value.map(normalise);
+function normalise(value, depth = 0) {
+    if (Array.isArray(value)) return value.map(v => normalise(v, depth + 1));
     if (value instanceof Date) return value.toISOString();
     if (value && typeof value === 'object' && typeof value.toHexString === 'function') {
         return value.toHexString();
@@ -48,8 +49,13 @@ function normalise(value) {
     if (value && typeof value === 'object') {
         const out = {};
         Object.keys(value).sort().forEach(k => {
-            if (k === '_id' || k === '__v' || k === 'createdAt' || k === 'updatedAt') return;
-            out[k] = normalise(value[k]);
+            if (k === '__v' || k === 'createdAt' || k === 'updatedAt') return;
+            // `_id` is NOT stripped at the top level: "the _id is the ACCOUNT's,
+            // not the franchise's" is the contract that breaks every login if it
+            // is wrong, and dropping it here made that unfalsifiable. Nested
+            // subdocument ids are re-minted on copy and still ignored.
+            if (k === '_id' && depth > 0) return;
+            out[k] = normalise(value[k], depth + 1);
         });
         return out;
     }
@@ -65,6 +71,9 @@ async function compareThree(label, original, repoOff, repoOn, problems, defaults
 }
 
 function diffList(label, oldDocs, newDocs, problems, defaults) {
+    // Matched on _id rather than position: nothing guarantees `users` and
+    // `franchises` come back in the same natural order, and this branch has
+    // already lost a round to an assertion that depended on it.
     const oldById = new Map(oldDocs.map(d => [String(d._id), d]));
     const newById = new Map(newDocs.map(d => [String(d._id), d]));
 
@@ -95,14 +104,23 @@ function diffList(label, oldDocs, newDocs, problems, defaults) {
 // check would be a real behaviour change and must NOT be filtered out here.
 function isAddedDefaultOnly(before, after) {
     if (before === null || after === null) return false;
+    // ARRAYS ARE NOT OBJECTS FOR THIS PURPOSE, even though typeof says they are.
+    //
+    // Without this, an array that grew at the tail matched "added keys only" and
+    // got downgraded to a benign note — so dropping the $elemMatch on a past
+    // season read (`seasons: [2025]` becoming `[2025, 2026]`) was reported as a
+    // schema default and the script printed its green tick. That is the exact
+    // regression this gate exists to catch, and the gate was laundering it.
+    if (Array.isArray(before) || Array.isArray(after)) return false;
     const b = typeof before === 'object' ? before : null;
     const a = typeof after === 'object' ? after : null;
     if (!b || !a) return false;
-    // Every key the old side had must be unchanged, and the new side may only
-    // have ADDED keys.
+    // Only scalar additions count. An added key whose value is itself an object
+    // or array is a shape change, not a default.
     const addedOnly = Object.keys(b).every(k => JSON.stringify(b[k]) === JSON.stringify(a[k]));
     const added = Object.keys(a).filter(k => !(k in b));
-    return addedOnly && added.length > 0;
+    if (!added.length || !addedOnly) return false;
+    return added.every(k => a[k] === null || typeof a[k] !== 'object');
 }
 
 function compareDoc(label, oldDoc, newDoc, problems, defaults) {
@@ -272,6 +290,43 @@ async function main() {
         }
     }
 
+    // byAccountId WITH a field list — 8 call sites (navUser, both invite paths,
+    // /me/push, the push test send). Only the no-fields form was diffed, which
+    // is how a silent widening lived here through two reviews.
+    {
+        const shapes = [
+            ['navUser', ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub']],
+            ['invite-link', ['league', 'firstName', 'lastName', 'authSub']],
+            ['/me/push', ['pushSubscriptions', 'pushPrefs', 'seasons.season']],
+            ['push test send', ['pushSubscriptions', 'firstName']]
+        ];
+        const all = await User.find({}, { _id: 1 }).lean();
+        for (const [label, fields] of shapes) {
+            for (const { _id } of all) {
+                const original = await User.findById(_id, asProjection(fields)).lean();
+                const off = await withFlag(false, () => repo.byAccountId(_id, { fields }));
+                const on = await withFlag(true, () => repo.byAccountId(_id, { fields }));
+                compareDoc(`byAccountId ${label} [original vs flag-off]`, original, off, problems, defaults);
+                compareDoc(`byAccountId ${label} [original vs flag-on]`, original, on, problems, defaults);
+            }
+            checks.push([`byAccountId — ${label}`, all.length]);
+        }
+    }
+
+    // anyFranchise — modules/season-status.js, the gate on destructive
+    // mid-season edits. Untested on either path until now.
+    {
+        for (const league of ['graham-league', 'claunts-league']) {
+            const filter = { league, seasons: { $elemMatch: { season, 'weeklyScore.scoreByTeam.0': { $exists: true } } } };
+            const original = !!(await User.exists(filter));
+            const off = await withFlag(false, () => repo.anyFranchise(filter));
+            const on = await withFlag(true, () => repo.anyFranchise(filter));
+            if (original !== off) problems.push(`anyFranchise(${league}) [original vs flag-off]: ${original} -> ${off}`);
+            if (original !== on) problems.push(`anyFranchise(${league}) [original vs flag-on]: ${original} -> ${on}`);
+            checks.push([`anyFranchise(${league}) — mid-season edit gate`, 1]);
+        }
+    }
+
     console.log(`\nactive season: ${season}   (original vs flag-off vs flag-on)\n`);
     checks.forEach(([label, n]) => console.log(`  checked  ${String(n).padStart(3)}  ${label}`));
 
@@ -293,10 +348,5 @@ async function main() {
     await mongoose.disconnect();
 }
 
-function pick(doc, keys) {
-    const out = {};
-    keys.forEach(k => { if (doc[k] !== undefined) out[k] = doc[k]; });
-    return out;
-}
 
 main().catch(err => { console.error(err); process.exit(1); });

@@ -2,7 +2,6 @@ const express = require('express');
 const franchiseRepo = require('../modules/franchise-repo');
 const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
-const User = require('../models/user');
 const Draft = require('../models/draft');
 const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
 
