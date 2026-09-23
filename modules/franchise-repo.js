@@ -145,6 +145,37 @@ async function byAccountId(accountId, league) {
     return toUserShape(account, franchise);
 }
 
+// Everyone in a league, whatever season — the roster views and colour picker,
+// which care about membership rather than about a particular year.
+//
+// `list: false` widens it to the full account, for the admin roster: it reports
+// whether a manager is `linked` and needs authSub to know. That is the one list
+// read that legitimately wants a credential, and it never sends it raw.
+// `list` defaults to FALSE here, unlike the season-scoped reads.
+//
+// The endpoints this replaces — GET /users and GET /users/league/:code/all —
+// ran `User.find()` with NO projection, so they returned whole documents,
+// authSub and all. Narrowing them would be an improvement, and it is not what a
+// storage swap should be doing: parity is the contract that makes flipping the
+// flag a non-event. The pre-existing over-exposure on those two is worth fixing
+// on its own, where the change is visible as a change.
+async function byLeague(league, { list = false } = {}) {
+    if (!readsFromFranchises()) {
+        return User.find({ league }, list ? userProjection() : null).lean();
+    }
+    const franchises = await Franchise.find({ league }).lean();
+    return hydrate(franchises, { list });
+}
+
+// Every manager, any league. The bare GET /users listing.
+async function all({ list = false } = {}) {
+    if (!readsFromFranchises()) {
+        return User.find({}, list ? userProjection() : null).lean();
+    }
+    const franchises = await Franchise.find({}).lean();
+    return hydrate(franchises, { list });
+}
+
 // Every league a person plays in. The query this whole split exists to make
 // possible, and the replacement for the Auth0 'gg'/'cl' flag.
 async function leaguesFor(accountId) {
@@ -162,11 +193,15 @@ async function leaguesFor(accountId) {
 // through public/season-of.js, so both paths must narrow to one season or the
 // wrong year is served.
 function userProjection(season) {
-    return {
+    const projection = {
         firstName: 1, lastName: 1, email: 1, league: 1, lastUpdated: 1, color: 1,
-        avatarUrl: 1, profilePrompted: 1, isUpdated: 1,
-        seasons: { $elemMatch: { season } }
+        avatarUrl: 1, profilePrompted: 1, isUpdated: 1
     };
+    // Omit the season filter entirely when none is asked for — a membership
+    // read wants every season, and `$elemMatch: { season: undefined }` would
+    // quietly match nothing.
+    if (season !== undefined) projection.seasons = { $elemMatch: { season } };
+    return projection;
 }
 
 // Attach each franchise's account in one round trip rather than per document.
@@ -186,6 +221,6 @@ async function hydrate(franchises, { list = true } = {}) {
 
 module.exports = {
     readsFromFranchises, userProjection,
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, leaguesFor, hydrate,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, all, leaguesFor, hydrate,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

@@ -89,7 +89,9 @@ describe('responses are identical with the flag off and on', () => {
         ['GET /users/season/:year', '/users/season/2026'],
         ['GET /users/league/:code', '/users/league/graham-league'],
         ['GET /users/league/:code (other league)', '/users/league/claunts-league'],
-        ['GET /users/league/:code?season= (past season)', '/users/league/graham-league?season=2025']
+        ['GET /users/league/:code?season= (past season)', '/users/league/graham-league?season=2025'],
+        ['GET /users (every manager)', '/users'],
+        ['GET /users/league/:code/all (membership, any season)', '/users/league/graham-league/all']
     ])('%s', async (_label, path) => {
         await seedLeague();
         const { off, on } = await bothWays(path);
@@ -128,6 +130,20 @@ describe('what the responses must and must not contain', () => {
         });
     });
 
+    test('the unprojected listings expose what they always exposed — parity, not an improvement', async () => {
+        // GET /users and /league/:code/all ran User.find() with NO projection,
+        // so they returned whole documents including authSub. Narrowing them
+        // here would be a behaviour change smuggled inside a storage change; if
+        // the old response carried a field, the new one has to as well. The
+        // over-exposure is real and worth fixing where it reads as a fix.
+        await seedLeague();
+        const { off, on } = await bothWays('/users/league/graham-league/all');
+        const offGarrett = off.body.find(u => u.firstName === 'Garrett');
+        const onGarrett = on.body.find(u => u.firstName === 'Garrett');
+        expect(offGarrett.authSub).toBe('google-oauth2|123');
+        expect(onGarrett.authSub).toBe(offGarrett.authSub);
+    });
+
     test.each(['authSub', 'pushSubscriptions', 'pushPrefs'])(
         'no %s reaches the browser', async (field) => {
             await seedLeague();
@@ -143,5 +159,42 @@ describe('what the responses must and must not contain', () => {
         const { on } = await bothWays('/users/season/2026');
         const garrett = on.body.find(u => u.firstName === 'Garrett');
         expect(garrett.seasons[0].weeklyScore[0].scoreByTeam[0]).toMatchObject({ teamId: 251, score: 8 });
+    });
+});
+
+describe('the reads that are not plain lists', () => {
+    test('GET /users/:id returns an ARRAY, as User.find() did', async () => {
+        // The client indexes [0]. Returning the bare object would break every
+        // caller silently rather than loudly.
+        await seedLeague();
+        const garrett = await User.findOne({ firstName: 'Garrett' }).lean();
+        const { off, on } = await bothWays(`/users/${garrett._id}`);
+        expect(Array.isArray(on.body)).toBe(true);
+        expect(strip(on.body)).toEqual(strip(off.body));
+        expect(on.body[0].firstName).toBe('Garrett');
+    });
+
+    test('GET /users/:id carries the FULL seasons array, not one season', async () => {
+        await seedLeague();
+        const garrett = await User.findOne({ firstName: 'Garrett' }).lean();
+        const { on } = await bothWays(`/users/${garrett._id}`);
+        expect(on.body[0].seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
+    });
+
+    test('a membership listing spans seasons, unlike the season-scoped one', async () => {
+        // /league/:code/all has no season filter — a manager who only played a
+        // past season still belongs to the league.
+        await seedLeague();
+        const { off, on } = await bothWays('/users/league/graham-league/all');
+        expect(strip(on.body)).toEqual(strip(off.body));
+        expect(on.body.length).toBe(2);
+    });
+
+    test('an unknown id is handled the same way both ways', async () => {
+        await seedLeague();
+        const mongoose = require('mongoose');
+        const { off, on } = await bothWays(`/users/${new mongoose.Types.ObjectId()}`);
+        expect(on.status).toBe(off.status);
+        expect(strip(on.body)).toEqual(strip(off.body));
     });
 });

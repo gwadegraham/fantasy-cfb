@@ -479,7 +479,7 @@ router.patch('/:id/captain', async (req, res) => {
 //Getting All
 router.get('/', async (req, res) => {
     try {
-        const users = await User.find();
+        const users = await franchiseRepo.all();
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -501,7 +501,7 @@ router.get('/league/:leagueCodeReq/all', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
     try {
         console.log("finding all users in league", leagueCode);
-        const users = await User.find({"league": leagueCode});
+        const users = await franchiseRepo.byLeague(leagueCode);
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -519,9 +519,9 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
     }
     try {
         const year = activeSeason('football');
-        const users = await User.find({ league: leagueCode },
-            { firstName: 1, lastName: 1, color: 1, email: 1, authSub: 1,
-              'seasons.season': 1, 'seasons.teams.id': 1, 'seasons.weeklyScore.scoreByTeam': 1 }).lean();
+        // Needs the full document: it reports whether a manager is `linked`,
+        // which is authSub reduced to a boolean below and never sent raw.
+        const users = await franchiseRepo.byLeague(leagueCode);
         const players = users.map(u => {
             const s = (u.seasons || []).find(x => Number(x.season) === year);
             const scored = !!(s && (s.weeklyScore || []).some(w => (w.scoreByTeam || []).length > 0));
@@ -586,7 +586,8 @@ router.get('/:id', async (req, res) => {
     var userId = req.params.id;
 
     try {
-        const user = await User.find({_id: userId});
+        const one = await franchiseRepo.byAccountId(userId);
+        const user = one ? [one] : [];
         res.json(user);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -704,7 +705,7 @@ router.post('/', async (req, res) => {
 // mid-season is exactly when someone loses access to their login.
 router.post('/:id/invite-link', async (req, res) => {
     try {
-        const user = await User.findById(req.params.id, { league: 1, firstName: 1, lastName: 1, authSub: 1 }).lean();
+        const user = await franchiseRepo.byAccountId(req.params.id);
         if (!user) return res.status(404).json({ message: 'Cannot find user' });
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
@@ -744,7 +745,7 @@ router.post('/:id/invite-link', async (req, res) => {
 // it claims a new invite, and identity-guard blocks it in the meantime.
 router.delete('/:id/invite-link', async (req, res) => {
     try {
-        const user = await User.findById(req.params.id, { league: 1, firstName: 1, lastName: 1 }).lean();
+        const user = await franchiseRepo.byAccountId(req.params.id);
         if (!user) return res.status(404).json({ message: 'Cannot find user' });
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
