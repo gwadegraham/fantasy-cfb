@@ -332,6 +332,7 @@ async function loadStandingsPage(opts = {}) {
         tableHead: () => q('[user-table-head]'),
         tableBody: () => q('[user-table-body]'),
         rankNote: () => q('[standings-rank-note]'),
+        moveSince: () => q('[user-table-head] .move-since'),
         highlights: () => q('.highlights-container'),
         highlightsHeader: () => q('.highlights-header'),
         projPanel: () => q('#proj-panel'),

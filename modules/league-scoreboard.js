@@ -98,12 +98,25 @@ const WEEK_TAIL_MS = 6 * 3600 * 1000;
 // current one on a schedule of its own, independent of how long one delayed
 // game inside it is still being played.
 function defaultWeek(windows, nowMs) {
-    if (!windows || !windows.length) return null;
+    return weekState(windows, nowMs).week;
+}
+
+// The same pick, plus WHICH of the three branches answered.
+//
+// `live` separates "this slate is being played right now" from "this is the
+// next one up" / "this is where the season ended", which defaultWeek's single
+// number cannot express — Wednesday of week 4 and Saturday of week 4 both come
+// back as 4. Anything reporting on a FINISHED week needs the difference: the
+// standings highlights hold last week's winner while a slate is live, and
+// letting go of it the moment the tail passes is what "wait until the weekend
+// is over" means in practice.
+function weekState(windows, nowMs) {
+    if (!windows || !windows.length) return { week: null, live: false };
     const live = windows.find(w => nowMs >= w.first && nowMs <= w.last + WEEK_TAIL_MS);
-    if (live) return live.week;
+    if (live) return { week: live.week, live: true };
     const next = windows.find(w => w.first > nowMs);
-    if (next) return next.week;
-    return windows[windows.length - 1].week;
+    if (next) return { week: next.week, live: false };
+    return { week: windows[windows.length - 1].week, live: false };
 }
 
 // A game's display state. `completed` is authoritative for finals; anything
@@ -367,7 +380,7 @@ function shapeGames(games, ctx) {
 }
 
 module.exports = {
-    pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek,
+    pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek, weekState,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
     recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf, hasPossession,
     CONFERENCE_ABBR, WEEK_TAIL_MS, MAX_GAME_MS

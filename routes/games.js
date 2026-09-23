@@ -14,7 +14,7 @@ const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
 const { buildPlayByPlay, buildDriveChart } = require('../modules/play-by-play');
 const {
-    ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
+    ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek, weekState,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
     shapeGames
 } = require('../modules/league-scoreboard');
@@ -423,15 +423,43 @@ router.get('/current-week/:season', async (req, res) => {
             return res.status(400).json({ message: 'Invalid season' });
         }
         const seasonType = req.query.seasonType === 'postseason' ? 'postseason' : 'regular';
-        const weekRows = await Game.find(
-            { season, seasonType },
-            { week: 1, startDate: 1, _id: 0 }
+        // Both season types in one read. `week` is still resolved from the
+        // requested one — that answer is what three pages default their week
+        // picker to and it must not move — but `liveNow` below has to be able to
+        // name a bowl slate, and a regular-season-only query can never do that:
+        // in January every regular window is in the past, so the calendar would
+        // report "nothing is being played" through the whole postseason.
+        const rows = await Game.find(
+            { season },
+            { week: 1, startDate: 1, seasonType: 1, _id: 0 }
         ).lean();
-        const windows = weekWindows(weekRows);
-        const week = defaultWeek(windows, Date.now());
-        // Same shape the scoreboard answers with for these two fields, so a
-        // caller can read `week` off either.
-        res.json({ season, seasonType, week: Number.isFinite(week) ? week : null });
+        const forType = (t) => weekWindows(rows.filter(g => g.seasonType === t));
+        const now = Date.now();
+        const { week } = weekState(forType(seasonType), now);
+
+        // Whichever slate is being PLAYED right now, across both season types,
+        // or null between slates. Distinct from `week`: on a Wednesday `week` is
+        // already the NEXT week, and only this says nobody is playing it yet.
+        //
+        // The caller that needs it reports on a FINISHED week — the standings
+        // highlights, which hold last week's winner until the weekend is over —
+        // so it needs the season type too. Postseason weeks carry their own
+        // numbering and would otherwise collide with a regular-season one.
+        let liveNow = null;
+        for (const t of ['regular', 'postseason']) {
+            const st = weekState(forType(t), now);
+            if (st.live) { liveNow = { week: st.week, seasonType: t }; break; }
+        }
+
+        // Same shape the scoreboard answers with for season/seasonType/week, so
+        // a caller can read `week` off either.
+        res.json({
+            season,
+            seasonType,
+            week: Number.isFinite(week) ? week : null,
+            live: !!(liveNow && liveNow.seasonType === seasonType && liveNow.week === week),
+            liveNow
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

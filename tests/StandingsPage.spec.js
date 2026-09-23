@@ -164,6 +164,34 @@ describe('classic standings table', () => {
         expect(page.tableBody().innerHTML.indexOf('Bob B.')).toBeLessThan(page.tableBody().innerHTML.indexOf('Alice A.'));
     });
 
+    // The arrows describe the last week that FINISHED, which on a Saturday is
+    // not the week the visible points are moving in — the top row can carry a
+    // down arrow. The caption is what stops that reading as a bug.
+    it('names the week the arrows describe in the rank column header', async () => {
+        const page = await loadStandingsPage({ users: league() });
+        expect(page.moveSince().textContent).toBe('since Wk 2');
+    });
+
+    // A seeded week must not be named — that is the whole point of the fix the
+    // caption describes.
+    it('names the played week, not the one seeded at zero', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                scored('a', 'Alice', 'Adams', [10, 20, 0]),
+                scored('b', 'Bob', 'Brown', [40, 5, 0])
+            ]
+        });
+        expect(page.moveSince().textContent).toBe('since Wk 2');
+    });
+
+    // One week in, there is no week-over-week movement to caption.
+    it('says nothing when there are no arrows', async () => {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10]), scored('b', 'Bob', 'Brown', [40])]
+        });
+        expect(page.moveSince()).toBe(null);
+    });
+
     it('marks the table as points-only', async () => {
         const page = await loadStandingsPage({ users: league() });
         const table = page.tableBody().closest('table');
@@ -244,9 +272,17 @@ describe('head-to-head standings', () => {
         const page = await loadStandingsPage({
             users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
         });
-        // Week 1: Bob 40, Alice 10. Week 2 flips it — Alice climbs one.
-        expect(page.tableBody().innerHTML).toContain('title="Up 1"');
-        expect(page.tableBody().innerHTML).toContain('title="Down 1"');
+        // Week 1: Bob 40, Alice 10. Week 2 flips it — Alice climbs one. The
+        // tooltip names the week, so the arrow says what it means on its own.
+        expect(page.tableBody().innerHTML).toContain('title="Up 1 in Week 2"');
+        expect(page.tableBody().innerHTML).toContain('title="Down 1 in Week 2"');
+    });
+
+    it('names the week on the H2H header too', async () => {
+        const page = await loadStandingsPage({
+            users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
+        });
+        expect(page.moveSince().textContent).toBe('since Wk 2');
     });
 
     it('treats a scoreless H2H league as a flat tie', async () => {
@@ -1016,6 +1052,49 @@ describe('weekly win celebration', () => {
         expect(global.startConfetti).not.toHaveBeenCalled();
     });
 
+    // The confetti is once-per-week keyed, so firing it mid-slate spends the
+    // week's one shot on whoever happened to kick off first. Here Bob won week 2
+    // outright; I am only "ahead" in week 3 because my early game has scored and
+    // his has not.
+    it('does not celebrate a lead in a week that is still being played', async () => {
+        window.ccCurrentWeek = {
+            pinned: () => false, pin: () => {}, unpin: () => {},
+            get: async () => 3,
+            state: async () => ({ week: 3, liveNow: { week: 3, seasonType: 'regular' } }),
+            sync: async () => 'week-3'
+        };
+        try {
+            const page = await loadStandingsPage({
+                users: [
+                    scored('me', 'Alice', 'Adams', [10, 5, 30]),
+                    scored('b', 'Bob', 'Brown', [40, 40, 0])
+                ],
+                userState: asMe,
+                reducedMotion: false
+            });
+            expect(page.q('.hl-icon').classList.contains('celebrate')).toBe(false);
+            expect(global.startConfetti).not.toHaveBeenCalled();
+            // And the week's one shot is still unspent, so it can fire for the
+            // real winner once the slate is over.
+            expect(window.localStorage.getItem('weekWin-2025-3')).toBe(null);
+        } finally {
+            delete window.ccCurrentWeek;
+        }
+    });
+
+    // The server's advanced cards land second and rebuild the highlights
+    // container. The bounce is a class on a card INSIDE that container, so a
+    // repaint used to strip it and leave the confetti falling over a still
+    // trophy.
+    it('keeps the trophy bouncing when the advanced cards repaint the panel', async () => {
+        const page = await loadStandingsPage({
+            users: winner(), userState: asMe, reducedMotion: false,
+            advancedCards: [{ icon: 'chart', title: 'Overachiever', tag: 'vs expected wins', name: 'Alice A.', value: '+2.1', tone: 'good' }]
+        });
+        expect(page.highlights().innerHTML).toContain('Overachiever');
+        expect(page.q('.highlights-container .sub-highlight-container:first-child .hl-icon').classList.contains('celebrate')).toBe(true);
+    });
+
     it('stays quiet when someone else won the week', async () => {
         const page = await loadStandingsPage({
             users: winner(),
@@ -1347,6 +1426,40 @@ describe('schedule game cards', () => {
         awayPoints: 28, homePoints: 21, completed: true, seasonType: 'regular',
         startDate: '2025-09-06T16:00:00Z', notes: ''
     }, over);
+
+    // The cards used to print a bare first name while every other surface on the
+    // page calls the same manager by their franchise.
+    it('names both managers by franchise, with their avatar', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                makeUser({ top: { _id: 'b', firstName: 'Bob', lastName: 'Brown' }, avatarUrl: 'https://res.cloudinary.com/x/image/upload/bob.jpg', franchiseName: 'Big Mac', teams: [PURDUE] }),
+                makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, franchiseName: 'Hogs Gone Wild', teams: [INDIANA] })
+            ],
+            games: [game()], teamLogos: LOGOS
+        });
+        const html = page.scheduleBody().innerHTML;
+        expect(html).toContain('Hogs Gone Wild');
+        expect(html).toContain('Big Mac');
+        expect(html).not.toContain('>Bob<');
+        // Uploaded photo is face-cropped; the manager without one gets initials.
+        expect(html).toContain('c_fill,g_face');
+        expect(html).toContain('>AA<');
+    });
+
+    // Not everyone has named a franchise. The fallback matches the standings
+    // rows rather than reverting to the bare first name.
+    it('falls back to the initialled name when a manager has no franchise', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                makeUser({ top: { _id: 'b', firstName: 'Bob', lastName: 'Brown' }, teams: [PURDUE] }),
+                makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, teams: [INDIANA] })
+            ],
+            games: [game()], teamLogos: LOGOS
+        });
+        const html = page.scheduleBody().innerHTML;
+        expect(html).toContain('Alice A.');
+        expect(html).toContain('Bob B.');
+    });
 
     it('badges the away winner even though the home manager builds the card', async () => {
         const page = await loadStandingsPage({ users: homeFirst(), games: [game()], teamLogos: LOGOS });

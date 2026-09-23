@@ -34,6 +34,12 @@ const cumThrough = (u, n) => weekly(u).slice(0, n).reduce((s, w) => s + (w.score
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const round = (v) => Math.round(v * 10) / 10;
 
+// "Week 5" -> "Wk 5", for the places that have a column's width to say it in.
+// Postseason has no shorter honest form, so it is left alone.
+function shortWeekLabel(label) {
+    return String(label).replace(/^Week /, 'Wk ');
+}
+
 // Label for a weekly entry ("Week 5", or "Postseason").
 function weekLabel(entry) {
     if (!entry) return '';
@@ -41,12 +47,95 @@ function weekLabel(entry) {
     return 'Week ' + entry.week;
 }
 
+// How many weekly entries the league has. The longest roster of weeks, not
+// users[0]'s — a manager who joined late (or whose entry the nightly job hasn't
+// touched) would otherwise decide the answer for everyone, and index 0 is not
+// guaranteed to be the fullest.
+function weekCount(users) {
+    return (users || []).reduce((n, u) => Math.max(n, weekly(u).length), 0);
+}
+
+// Has this week actually been played? The nightly scoring job seeds a weekly
+// entry as soon as a week's games EXIST, so an entry on its own means nothing —
+// on a Wednesday the current week is sitting there at zero for every manager.
+//
+// Banked points, through the app-wide rule in public/season-scoring.js, which
+// exists for exactly this and says so. Do NOT widen it to "has a scoreByTeam
+// row": modules/scoring.js writes one row per SCHEDULED game (the batched week
+// lookup in routes/games.js has no `completed` filter, and the whole schedule is
+// ingested weeks ahead), so a seeded week already carries a full set of rows at
+// zero — measured, 9-10 of them per manager on the live 2026 week. A check that
+// counted those would pass on precisely the week it exists to reject.
+//
+// League-wide, like seasonHasScoring: one manager's bye is not a week that
+// didn't happen, so a single scorer is enough.
+function weekPlayed(users, i) {
+    const lib = globalThis.ccSeasonScoring;
+    if (!lib) throw new Error('ccSeasonScoring is not loaded (expected from views/partials/navbar.ejs)');
+    return (users || []).some(u => lib.entryHasScoring(weekly(u)[i]));
+}
+
+// WHICH week the "latest week" surfaces should report on: the most recent one
+// that is both played and finished. Returns -1 when no week qualifies yet.
+//
+// Two different things disqualify the newest entry, and both had to be handled
+// for the standings to stop reporting on a week that hadn't happened:
+//
+//   1. It has not been played. This is the Wednesday case — "Big Winner, Week 4,
+//      +0", with the winner being whichever manager happened to sort first
+//      among six ties on zero.
+//   2. It IS being played. Half a slate makes a "Big Winner" out of whoever had
+//      the early kickoff, and the Hot Streak window quietly slides onto it.
+//      `liveNow` comes from ccCurrentWeek.state() — the calendar's own answer,
+//      which stops calling a slate live six hours after its last kickoff, so
+//      the highlights roll over on their own late Saturday night.
+//
+// `liveNow` carries a season type as well as a week because the postseason
+// numbers its weeks from 1 again: without it, "regular week 1 is live" would
+// knock out the first week of the bowls.
+//
+// It is optional and asynchronous in the browser; without it the rule degrades
+// to (1) alone, which is the right answer on every day except a game day. That
+// is deliberate — it lets the page paint correct highlights off the roster
+// payload it already has, instead of holding them behind another request all
+// week for a distinction that only matters while games are on.
+export function settledWeekIndex(users, opts) {
+    const live = (opts && opts.liveNow) || null;
+    for (let i = weekCount(users) - 1; i >= 0; i--) {
+        const entry = (users || []).map(u => weekly(u)[i]).find(Boolean);
+        if (!entry) continue;
+        const entryType = entry.season === 'postseason' ? 'postseason' : 'regular';
+        const isLive = !!live && (live.seasonType || 'regular') === entryType && Number(entry.week) === Number(live.week);
+        if (isLive) continue;
+        if (!weekPlayed(users, i)) continue;
+        return i;
+    }
+    return -1;
+}
+
+// What the settled week is CALLED ("Week 3", "Postseason"), or '' when no week
+// has finished yet. For captioning anything that reports on it — the movement
+// arrows read as a contradiction on a Saturday otherwise, with the top row
+// carrying a down arrow because the live points that put it top are deliberately
+// not in the arrow.
+export function settledWeekLabel(users, opts) {
+    const i = settledWeekIndex(users, opts);
+    if (i < 0) return '';
+    return weekLabel((users || []).map(u => weekly(u)[i]).find(Boolean));
+}
+
 // --- ranked table rows -------------------------------------------------------
 
 // Ranked rows with movement (rank change vs last week) and gap to the leader.
-export function rankedRows(users) {
+export function rankedRows(users, opts) {
     const sorted = users.slice().sort((a, b) => cum(b) - cum(a));
-    const weeks = sorted.length ? weekly(sorted[0]).length : 0;
+    // Movement is measured ACROSS the last week that actually finished, not
+    // across the last entry in the array. With the nightly job's seeded zero
+    // week on the end, "through this week" and "through last week" were the
+    // same number all week, so every arrow in the table vanished from Sunday
+    // night until the next kickoff. See settledWeekIndex.
+    const settled = settledWeekIndex(sorted, opts);
+    const weeks = settled + 1;
 
     // Placements are competition-ranked, NOT each row's index in `sorted`: an
     // index splits tied managers by whatever order the DB happened to return,
@@ -56,6 +145,13 @@ export function rankedRows(users) {
     const now = ccLeagueRank.competitionRanks(sorted, cum);
     // Movement compares like with like, competition rank then vs now, so losing a
     // share of the lead reads as a slip instead of "no change".
+    //
+    // It compares the two ends of the settled week, which is NOT the same pair
+    // as (displayed rank, rank last week): the displayed rank counts a live
+    // week's points as they land — a Saturday table should move — while an
+    // arrow claiming "▲2 this week" has to mean a week that finished. With no
+    // live or seeded week on the end the two are the same number anyway.
+    const nowSettled = weeks > 0 ? ccLeagueRank.competitionRanks(sorted, (u) => cumThrough(u, weeks)) : null;
     const prev = weeks > 1 ? ccLeagueRank.competitionRanks(sorted, (u) => cumThrough(u, weeks - 1)) : null;
 
     const leader = sorted.length ? cum(sorted[0]) : 0;
@@ -76,7 +172,7 @@ export function rankedRows(users) {
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
         preseason: preseason,
-        delta: prev ? (prev[i].rank - now[i].rank) : null
+        delta: (prev && nowSettled) ? (prev[i].rank - nowSettled[i].rank) : null
     }));
 }
 
@@ -101,11 +197,14 @@ function stdAvatarHtml(r) {
     return `<span class="std-avatar std-avatar-initials" style="background:${r.color}">${escapeHtml(r.initials || '?')}</span>`;
 }
 
-function movementHtml(delta) {
+function movementHtml(delta, moveLabel) {
     if (delta == null) return '';
-    if (delta > 0) return `<span class="move up" title="Up ${delta}">▲${delta}</span>`;
-    if (delta < 0) return `<span class="move down" title="Down ${-delta}">▼${-delta}</span>`;
-    return `<span class="move flat" title="No change">–</span>`;
+    // " in Week 3" on the tooltip as well as in the column header: the header
+    // says it once for the table, this says it on the thing being pointed at.
+    const wk = moveLabel ? ` in ${escapeHtml(moveLabel)}` : '';
+    if (delta > 0) return `<span class="move up" title="Up ${delta}${wk}">▲${delta}</span>`;
+    if (delta < 0) return `<span class="move down" title="Down ${-delta}${wk}">▼${-delta}</span>`;
+    return `<span class="move flat" title="No change${wk}">–</span>`;
 }
 
 // One team's clickable logo for the expandable roster drawer. Handles both row
@@ -120,12 +219,18 @@ function teamLogoLink(t) {
 // Header row for the standings table. Points-only mode keeps the classic
 // header (blank, blank, Teams, Score); H2H mode swaps in Record + Total and a
 // trailing cell for the expand caret.
-export function standingsHeadHtml(h2h) {
+export function standingsHeadHtml(h2h, moveLabel) {
+    // The rank column's header cell is otherwise empty, and it sits directly
+    // above the arrows — so it can say which week they describe for free. It has
+    // to be said somewhere: the points beside the arrows move as a live week
+    // scores, while an arrow reports the last week that FINISHED, so on a
+    // Saturday the row that just went top can carry a down arrow.
+    const since = moveLabel ? `<span class="move-since">since ${escapeHtml(shortWeekLabel(moveLabel))}</span>` : '';
     if (h2h) {
         // Teams column shows inline on desktop; the caret column shows on mobile.
         // Both stay in the markup and are toggled by CSS at the 64em breakpoint.
         return `<tr>
-            <th class="team-header"></th>
+            <th class="team-header rank-head">${since}</th>
             <th class="team-header"></th>
             <th class="team-header h2h-teams-head teams-col" style="text-align: center;">Teams</th>
             <th class="team-header rec-head">Record</th>
@@ -134,7 +239,7 @@ export function standingsHeadHtml(h2h) {
         </tr>`;
     }
     return `<tr>
-        <th class="sticky-header team-header"></th>
+        <th class="sticky-header team-header rank-head">${since}</th>
         <th class="sticky-header team-header"></th>
         <th class="team-header teams-col" style="text-align: center;">Teams</th>
         <th class="sticky-header-score team-header">Score</th>
@@ -172,10 +277,10 @@ function inlineTeamLogos(teams) {
 // Classic full-width standings row (points-only): rank · avatar/name · the
 // team-logo strip filling the middle · score. This is the original layout — the
 // logos are what make the wide row read as full, not empty.
-function classicRowHtml(r) {
+function classicRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     return `<tr class="standings-row${medal}">
-        <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</th>
+        <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</th>
         <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
         <td class="team-item"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gapHtml(r)}</th>
@@ -186,12 +291,12 @@ function classicRowHtml(r) {
 // expand caret, plus a hidden sibling row holding the full clickable roster.
 // Reuses the classic `.standings-row.medal-1` / `.rank-num` / `.score-num`
 // classes so the leader animation and score count-up carry over.
-function h2hRowHtml(r) {
+function h2hRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     const logos = (r.teams || []).map(teamLogoLink).join('');
     const who = escapeHtml(r.franchise || r.name);
     return `<tr class="standings-row${medal}">
-        <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</td>
+        <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</td>
         <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span></a></td>
         <td class="team-item h2h-teams-cell"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <td class="rec-cell">${escapeHtml(r.record || '—')}</td>
@@ -204,7 +309,31 @@ function h2hRowHtml(r) {
 // Points-only keeps the original wide layout; H2H uses the compact merged rows.
 export function buildStandingsRowsHtml(rows, opts) {
     const h2h = !!(opts && opts.h2h);
-    return rows.map(h2h ? h2hRowHtml : classicRowHtml).join('');
+    const label = (opts && opts.moveLabel) || '';
+    // Wrapped rather than passed to map directly — map hands the callback an
+    // INDEX as its second argument, which would land in moveLabel.
+    return rows.map(r => (h2h ? h2hRowHtml(r, label) : classicRowHtml(r, label))).join('');
+}
+
+// Avatar circle + display name for one manager out of the users payload, for
+// anywhere outside the ranked table that has to name a manager — the rivalry
+// cards, which used to print a bare first name.
+//
+// Franchise name first, because that is what the league calls each other
+// everywhere else on the page; the initialled real name is the fallback for a
+// manager who has not set one, matching the standings rows exactly. Built here
+// rather than at the call site so the avatar rules (the Cloudinary face crop,
+// the initials fallback, the hashed color) stay in one place.
+export function managerChipHtml(user) {
+    if (!user) return '';
+    const initials = (((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '')).toUpperCase();
+    const avatar = stdAvatarHtml({
+        avatarUrl: user.avatarUrl || null,
+        initials,
+        color: user.color || avatarColor(user)
+    });
+    const label = franchiseName(user) || initialName(user);
+    return `<span class="gc-manager">${avatar}<span class="gc-manager-name">${escapeHtml(label)}</span></span>`;
 }
 
 // --- league highlights -------------------------------------------------------
@@ -239,36 +368,52 @@ function stdev(vals) {
 
 // Returns the ordered list of highlight cards to render. Only includes a card
 // when the underlying data exists, so early-season / empty state stays clean.
-export function buildHighlights(users) {
+export function buildHighlights(users, opts) {
     const cards = [];
     const withWeeks = users.filter(u => weekly(u).length > 0);
     if (!withWeeks.length) return cards;
 
-    const weeks = weekly(users[0]).length;
-    const lastIdx = weeks - 1;
+    // Every card below that says "this week" reports on the last week that
+    // finished — not the last entry in the array, which from Sunday night until
+    // the next kickoff is a week nobody has played. See settledWeekIndex.
+    const lastIdx = settledWeekIndex(users, opts);
+    const weeks = lastIdx + 1;
     const latest = (u) => weekly(u)[lastIdx];
     const latestScore = (u) => num(latest(u) && latest(u).score);
-    const thisWeekLabel = weekLabel(weekly(withWeeks[0])[lastIdx]);
+    // From whoever HAS that week, not from the first manager in the payload —
+    // the array lengths can differ, and reading the label off a manager whose
+    // weeks stop short prints an empty tag for everyone.
+    const thisWeekLabel = weekLabel(users.map(latest).find(Boolean));
 
-    // Big winner / loser (this week)
-    const byLatest = withWeeks.slice().sort((a, b) => latestScore(b) - latestScore(a));
-    if (byLatest.length) {
+    // Every weekly card is skipped until a week has finished — during week 1's
+    // own slate there is no settled week to report on, and the season-long
+    // cards below still have something to say.
+    const haveWeek = lastIdx >= 0;
+
+    // Big winner / loser (this week). Only managers with an entry for the week:
+    // a missing entry is not a zero, and ranking one as the Big Loser invents a
+    // bad week for somebody who simply has no row.
+    const played = withWeeks.filter(u => latest(u));
+    const byLatest = played.slice().sort((a, b) => latestScore(b) - latestScore(a));
+    if (haveWeek && byLatest.length) {
         const w = byLatest[0], l = byLatest[byLatest.length - 1];
         cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
         cards.push({ icon: 'heartbreak', title: 'Big Loser', tag: thisWeekLabel, name: initialName(l), value: `+${latestScore(l)}`, tone: 'bad' });
     }
 
-    // Hot / cold streak (last 2 weeks)
-    const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2)).reduce((s, w) => s + (w.score || 0), 0);
+    // Hot / cold streak (last 2 weeks) — the two weeks ending at the settled
+    // one, so the window can't quietly slide onto a week that hasn't happened
+    // and report a single week's points under a two-week label.
+    const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2), weeks).reduce((s, w) => s + (w.score || 0), 0);
     const byStreak = withWeeks.slice().sort((a, b) => twoWk(b) - twoWk(a));
-    if (byStreak.length) {
+    if (haveWeek && byStreak.length) {
         cards.push({ icon: 'flame', title: 'Hot Streak', tag: 'last 2 weeks', name: initialName(byStreak[0]), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
         cards.push({ icon: 'snowflake', title: 'Cold Streak', tag: 'last 2 weeks', name: initialName(byStreak[byStreak.length - 1]), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
     }
 
     // Biggest riser (rank climb vs last week)
     if (weeks > 1) {
-        const rows = rankedRows(users).filter(r => r.delta != null);
+        const rows = rankedRows(users, opts).filter(r => r.delta != null);
         const riser = rows.slice().sort((a, b) => b.delta - a.delta)[0];
         if (riser && riser.delta > 0) {
             cards.push({ icon: 'riser', title: 'Biggest Riser', tag: thisWeekLabel, name: riser.name, value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
@@ -276,7 +421,7 @@ export function buildHighlights(users) {
     }
 
     // Closest race (gap between 1st and 2nd)
-    const ranked = rankedRows(users);
+    const ranked = rankedRows(users, opts);
     if (ranked.length > 1) {
         const g = ranked[1].gap;
         cards.push({ icon: 'checkered', title: 'Closest Race', tag: 'season', name: `${ranked[0].name} over ${ranked[1].name}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
@@ -324,11 +469,15 @@ export function buildHighlights(users) {
         }
     }
 
-    // Mr. Reliable (lowest weekly variance)
-    const eligible = withWeeks.filter(u => weekly(u).length >= 2);
+    // Mr. Reliable (lowest weekly variance). Weeks that have been PLAYED only —
+    // a trailing zero week nobody has played drags every average down and widens
+    // every spread, and it punishes a high scorer hardest, so it can hand the
+    // card to the wrong manager for the whole week.
+    const playedWeeks = (u) => weekly(u).slice(0, weeks).map(w => w.score || 0);
+    const eligible = haveWeek ? withWeeks.filter(u => playedWeeks(u).length >= 2) : [];
     if (eligible.length) {
-        const steady = eligible.slice().sort((a, b) => stdev(weekly(a).map(w => w.score || 0)) - stdev(weekly(b).map(w => w.score || 0)))[0];
-        const scores = weekly(steady).map(w => w.score || 0);
+        const steady = eligible.slice().sort((a, b) => stdev(playedWeeks(a)) - stdev(playedWeeks(b)))[0];
+        const scores = playedWeeks(steady);
         const sd = stdev(scores);
         const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
         cards.push({ icon: 'target', title: 'Mr. Reliable', tag: 'season', name: initialName(steady), value: `±${round(sd)} pts/wk`, sub: `avg ${round(avg)}/wk — smallest swing`, tone: 'neutral' });

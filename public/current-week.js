@@ -27,11 +27,13 @@
     function pin() { ls(function (s) { s.setItem('weekPinned', '1'); }); }
     function unpin() { ls(function (s) { s.removeItem('weekPinned'); }); }
 
-    // The league's current week, or null when it can't be resolved. Cached per
+    // The league's current week, plus `liveNow` — the slate being PLAYED right
+    // now as { week, seasonType }, or null between slates. Resolves to
+    // { week: null, liveNow: null } when it can't be answered. Cached per
     // league+season: several tiles on one page ask, and they must not race.
-    function get(season) {
+    function state(season) {
         var league = leagueCode();
-        if (!league || !season) return Promise.resolve(null);
+        if (!league || !season) return Promise.resolve({ week: null, liveNow: null });
         var key = league + '/' + season;
         if (!cache[key]) {
             // /games/current-week, not /games/scoreboard. This used to read the
@@ -42,10 +44,25 @@
             cache[key] = fetch('/games/current-week/' + encodeURIComponent(season),
                                { headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
-                .then(function (d) { return d && typeof d.week === 'number' ? d.week : null; })
-                .catch(function () { return null; });
+                .then(function (d) {
+                    var ln = d && d.liveNow;
+                    return {
+                        week: d && typeof d.week === 'number' ? d.week : null,
+                        liveNow: (ln && typeof ln.week === 'number')
+                            ? { week: ln.week, seasonType: ln.seasonType || 'regular' }
+                            : null
+                    };
+                })
+                .catch(function () { return { week: null, liveNow: null }; });
         }
         return cache[key];
+    }
+
+    // Just the week number — what almost every caller wants. `live` matters
+    // only to a surface reporting on a FINISHED week (see the standings
+    // highlights), so it reads state() instead.
+    function get(season) {
+        return state(season).then(function (s) { return s.week; });
     }
 
     // Bring the stored week picker up to the current week, unless the viewer
@@ -67,5 +84,5 @@
         });
     }
 
-    window.ccCurrentWeek = { get: get, sync: sync, pinned: pinned, pin: pin, unpin: unpin };
+    window.ccCurrentWeek = { get: get, state: state, sync: sync, pinned: pinned, pin: pin, unpin: unpin };
 })();

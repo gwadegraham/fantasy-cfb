@@ -1,5 +1,27 @@
 import { setChartData } from './weekByWeek.js';
-import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml } from './standings-insights.js';
+import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel, managerChipHtml } from './standings-insights.js';
+
+// Which week the "latest week" surfaces report on — see settledWeekIndex. Starts
+// empty, which answers "the newest week anyone has played", and is narrowed once
+// the calendar says which slate (if any) is still being played. Callers read the
+// binding when they run, so the refinement reaches every later read.
+let weekOpts = {};
+
+// Server-computed highlight cards, held so a re-render of the panel can put them
+// back. They are appended to the same container the local cards paint into, and
+// that container is rebuilt whenever the settled week changes.
+let advancedCards = [];
+
+// Has the weekly-win celebration fired this load? The trophy bounce is a class
+// on a card inside the highlights container, and the container is rebuilt on
+// every repaint, so the class has to be re-applied rather than set once.
+let celebrating = false;
+
+function applyCelebration() {
+    if (!celebrating) return;
+    const icon = document.querySelector('.highlights-container .sub-highlight-container:first-child .hl-icon');
+    if (icon) icon.classList.add('celebrate');
+}
 
 // Escapes HTML special chars before interpolating user-controlled values
 // (player/team names) into innerHTML, preventing stored/second-order XSS.
@@ -169,19 +191,27 @@ async function getUsers() {
                 ? window.ccCurrentWeek.sync(activeSeason)
                 : Promise.resolve(null)
             ).then(cw => applyCurrentWeek(cw, data)).catch(() => null);
+            // Is the newest week still being PLAYED? Shares the one
+            // /games/current-week request with the sync above (ccCurrentWeek
+            // caches per league+season), so this costs nothing extra.
+            const weekStatePromise = settleWeekOpts(activeSeason, data);
             // Standings table: decide the layout before painting so an H2H
             // league doesn't flash the classic table then swap (see below). It
             // owns the schedule render too — an H2H league hides that section,
             // and its ~60 game fetches are pure waste until we know the mode.
-            renderStandingsSection(data, leagueCode, activeSeason, cwPromise);
+            renderStandingsSection(data, leagueCode, activeSeason, cwPromise, weekStatePromise);
             maybePromptProfileSetup(data);
             displayLastUpdated(data);
             displayHighlights(data);
-            maybeCelebrateWeeklyWin(data);
+            // Confetti waits for the live-week answer: mid-slate the top score
+            // belongs to whoever kicked off first, and the celebration is
+            // once-per-week keyed, so firing it then would spend the week's one
+            // shot on the wrong manager.
+            weekStatePromise.then(() => maybeCelebrateWeeklyWin(data));
             // Server "advanced" highlights append to the same panel — skip them
             // too until there's real scoring, or they'd re-populate the panel
             // displayHighlights just hid.
-            if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, activeSeason);
+            if (seasonHasScoring(data)) loadAdvancedHighlights(leagueCode, activeSeason, data);
             loadProjections(leagueCode, activeSeason);
             seedUserIdFromEmail(userMetadata, usersData);
             // Chart is responsive now, so show it on mobile too — but only once
@@ -198,7 +228,33 @@ async function getUsers() {
 function displayUsers(data) {
     // Base render: ranked by cumulative points. loadH2H() re-renders this same
     // table with adjusted totals + a Record column when the league runs H2H.
-    renderStandingsTable(rankedRows(data), { h2h: false });
+    renderStandingsTable(rankedRows(data, weekOpts), { h2h: false, moveLabel: settledWeekLabel(data, weekOpts) });
+}
+
+// Narrow weekOpts with the calendar's answer, and repaint the highlights if it
+// moved the settled week.
+//
+// The panel paints immediately off the roster payload, before this lands, and
+// that first answer is already right on every day except a game day — the only
+// thing this adds is "the newest played week is still being PLAYED", which can
+// only be true while a slate is on. So the repaint costs a flicker on a
+// Saturday and never fires the rest of the week, which is a better trade than
+// holding League Highlights behind a request for six days out of seven.
+//
+// The standings TABLE is not repainted here; renderStandingsSection awaits this
+// promise before it paints rows, alongside the /enabled probe it already waits
+// on, so the arrows are right the first time.
+async function settleWeekOpts(activeSeason, data) {
+    if (!window.ccCurrentWeek || !window.ccCurrentWeek.state) return;
+    let st;
+    try { st = await window.ccCurrentWeek.state(activeSeason); } catch (e) { return; }
+    if (!st || !st.liveNow) return;   // nothing being played → the payload rule stands
+
+    const before = settledWeekIndex(data, weekOpts);
+    // Reassigned, not mutated: every caller reads the module binding when it
+    // runs, so they all see this — but a copy taken before now would not.
+    weekOpts = { liveNow: st.liveNow };
+    if (settledWeekIndex(data, weekOpts) !== before) displayHighlights(data);
 }
 
 // Store the resolved current week and point the rivalry picker at it. Split out
@@ -223,7 +279,7 @@ function applyCurrentWeek(cwCode, data) {
 // render the classic table and then flash to the (heavier, ~1s) H2H view. A
 // cheap /enabled check decides: non-H2H leagues render classic immediately;
 // H2H leagues show a loading skeleton, then loadH2H swaps in the real table.
-async function renderStandingsSection(data, league, season, cwPromise) {
+async function renderStandingsSection(data, league, season, cwPromise, weekStatePromise) {
     const params = new URLSearchParams(location.search);
     const preview = params.get('h2h') === '1' || !!params.get('h2hSim');
 
@@ -240,6 +296,12 @@ async function renderStandingsSection(data, league, season, cwPromise) {
     // chrome, and a classic league should never see it flash.
     showStandingsLoading();
 
+    // Settled-week answer before any rows are painted, so the movement arrows
+    // are right the first time rather than swapping. It runs alongside the
+    // /enabled probe below, both already in flight, so the table waits on the
+    // slower of the two rather than on the sum.
+    const weekSettled = (weekStatePromise || Promise.resolve()).catch(() => {});
+
     let enabled = false;
     if (league && season != null) {
         try {
@@ -253,6 +315,8 @@ async function renderStandingsSection(data, league, season, cwPromise) {
             enabled = !!(j && j.enabled);
         } catch (e) { /* timeout or error → treat as classic */ }
     }
+
+    await weekSettled;
 
     if (!enabled && !preview) {
         displayUsers(data);
@@ -353,9 +417,13 @@ function renderStandingsTable(rows, opts) {
         // Preseason / undrafted: no rosters yet, so hide the empty Teams column.
         table.classList.toggle('std-no-teams', !rows.some(r => (r.teams || []).length));
     }
-    if (head) head.innerHTML = standingsHeadHtml(h2h);
+    // Which week the arrows describe, said in the rank column's header cell
+    // (empty otherwise) and again on each arrow's tooltip — it costs no vertical
+    // space, and it sits directly above the thing it explains.
+    const moveLabel = (rows.some(r => r.delta != null) && opts && opts.moveLabel) || '';
+    if (head) head.innerHTML = standingsHeadHtml(h2h, moveLabel);
     if (body) {
-        body.innerHTML = buildStandingsRowsHtml(rows, { h2h });
+        body.innerHTML = buildStandingsRowsHtml(rows, { h2h, moveLabel });
         animateScores(body);
         wireRosterToggles(body);
     }
@@ -461,21 +529,23 @@ function relativeTime(d) {
 // Advanced highlights (Overachiever, Draft Steal, Giant Killer) come from the
 // server since they need records/games/rankings/draft data the roster payload
 // doesn't carry. Appended to the highlights grid; failures are silent.
-async function loadAdvancedHighlights(league, season) {
+async function loadAdvancedHighlights(league, season, users) {
     if (!league || season == null) return;
     try {
         const res = await fetch(`/standings/highlights/${league}/${season}`, { headers: { 'Accept': 'application/json' } });
         if (!res.ok) return;
         const cards = await res.json();
-        const container = document.querySelector('.highlights-container');
-        if (container && Array.isArray(cards) && cards.length) {
-            container.insertAdjacentHTML('beforeend', buildHighlightsHtml(cards));
-        }
+        if (!Array.isArray(cards) || !cards.length) return;
+        // Kept, not just appended: displayHighlights owns the container and may
+        // paint it again when the settled week is narrowed, which would wipe
+        // anything that had only been stuck on the end.
+        advancedCards = cards;
+        displayHighlights(users);
     } catch (e) { /* advanced highlights are best-effort */ }
 }
 
 function displayHighlights(users) {
-    const cards = buildHighlights(users);
+    const cards = buildHighlights(users, weekOpts).concat(advancedCards);
     const container = document.querySelector('.highlights-container');
     const header = document.querySelector('.highlights-header');
     // Hide the whole section (header + its leading divider) when there's nothing
@@ -491,6 +561,7 @@ function displayHighlights(users) {
     }
     if (header) header.style.display = '';
     if (container) { container.style.display = ''; container.innerHTML = buildHighlightsHtml(cards); }
+    applyCelebration();   // the repaint dropped the trophy's bounce; put it back
 }
 
 // Forward-looking analytics (#210): projected final points + title odds, in a
@@ -556,7 +627,7 @@ async function loadH2H(league, season, fallbackData) {
         data = await res.json();
     } catch (e) { return renderClassic(); }
     if (!data || !(data.managers || []).length || (!data.enabled && !preview)) return renderClassic();
-    renderStandingsTable(h2hRows(data), { h2h: true });
+    renderStandingsTable(h2hRows(data), { h2h: true, moveLabel: settledWeekLabel(usersData || [], weekOpts) });
 
     // 2a) The current week's cards ride along in that same fast response, so the
     //     matchups paint WITH the table instead of ~6s later. They carry no
@@ -611,7 +682,7 @@ function h2hRows(d) {
     const leader = managers.length ? managers[0].adjustedTotal : 0;
     const preseason = leader <= 0;   // no points scored yet → flat tie, no crown
     const deltaById = {};
-    try { rankedRows(usersData || []).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
+    try { rankedRows(usersData || [], weekOpts).forEach(r => { deltaById[r.id] = r.delta; }); } catch (e) { /* movement is best-effort */ }
     return managers.map((m, i) => ({
         rank: m.rank != null ? m.rank : i + 1,
         tie: !!m.tie,                     // competition-ranked server-side, so ties share a place
@@ -730,7 +801,7 @@ function renderH2HMatchups(d) {
     const openKeys = new Set();
     el.querySelectorAll('.h2h-mcard.open[data-pair]').forEach(c => openKeys.add(c.dataset.pair));
     const selectedWeek = (prevSel != null && allWeeks.includes(prevSel)) ? prevSel : d.featuredWeek;
-    const weekOpts = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
+    const weekOptionsHtml = allWeeks.map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`).join('');
 
     const preview = !d.enabled ? '<span class="h2h-preview-tag">preview</span>' : '';
     // Once the schedule is exhausted the panel would otherwise sit on the last
@@ -744,7 +815,7 @@ function renderH2HMatchups(d) {
         : `Win your weekly matchup for <b>+${d.winBonus}</b>${d.tieBonus > 0 ? ` · ties earn <b>+${d.tieBonus}</b> each` : ''}. Bonuses count toward your <b>Total</b> above.`;
     el.innerHTML = `<h2 class="h2h-panel-title">${window.ccIcon ? window.ccIcon('swords', { size: 22 }) : ''}${title}${preview}</h2>
         <p class="h2h-panel-note">${note}</p>
-        <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOpts}</select></div>
+        <div class="h2h-week-bar"><span class="h2h-week-cap">${done ? 'Final week' : 'Matchups'}</span><select h2h-week aria-label="Matchup week">${weekOptionsHtml}</select></div>
         <div class="h2h-matches" h2h-matches></div>`;
     el.hidden = false;
 
@@ -783,9 +854,14 @@ function maybeCelebrateWeeklyWin(users) {
         if (!myId || !Array.isArray(users) || !users.length) return;
 
         const weekOf = (u) => (ccSeasonOf.payloadSeasonEntry(u).weeklyScore || []);
-        const weeks = weekOf(users[0]).length;
-        if (!weeks) return;
-        const lastIdx = weeks - 1;
+        // The week that FINISHED, not the last entry. Two ways that used to go
+        // wrong: on a Wednesday the newest entry is everyone on zero (caught by
+        // the max <= 0 guard below), and mid-slate on a Saturday the top score
+        // belongs to whoever kicked off first — which passed every guard, threw
+        // confetti for the wrong manager, and then set the once-per-week key so
+        // the real winner got nothing.
+        const lastIdx = settledWeekIndex(users, weekOpts);
+        if (lastIdx < 0) return;
 
         const scored = users.map(u => {
             const wk = weekOf(u)[lastIdx];
@@ -807,8 +883,12 @@ function maybeCelebrateWeeklyWin(users) {
         if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
         // Big Winner is the first highlight card; bounce its trophy + confetti.
-        const icon = document.querySelector('.highlights-container .sub-highlight-container:first-child .hl-icon');
-        if (icon) icon.classList.add('celebrate');
+        // The flag outlives this call because the panel can be painted again
+        // after it — the server's advanced cards land second and rebuild the
+        // container, which used to take the class with it and leave the confetti
+        // firing over a still trophy.
+        celebrating = true;
+        applyCelebration();
         if (typeof startConfetti === 'function') {
             startConfetti();
             setTimeout(() => { if (typeof stopConfetti === 'function') stopConfetti(); }, 3500);
@@ -1137,7 +1217,10 @@ async function displaySchedule(data) {
         var user = data[i];
         var userTeams = ccSeasonOf.payloadSeasonEntry(user).teams;
         var userTeamObject = {
-            userName: user.firstName, 
+            // The rendered chip, not a name: the opponent lookup below returns
+            // whatever is in here straight into the card, and building it once
+            // per manager beats rebuilding it per game.
+            userName: managerChipHtml(user),
             teams: userTeams
         };
 
@@ -1284,7 +1367,7 @@ async function displaySchedule(data) {
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;
 
-                        awayUser = userData.firstName;
+                        awayUser = managerChipHtml(userData);
                         awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                         homeUser = oppName;
@@ -1302,7 +1385,7 @@ async function displaySchedule(data) {
                         awayUser = oppName;
                         awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
-                        homeUser = userData.firstName;
+                        homeUser = managerChipHtml(userData);
                         homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
 
                         if (doesExist) {
@@ -1358,7 +1441,7 @@ async function displaySchedule(data) {
                     }
         
                     var teamTable = '<td><table class="schedule-table game-table' + (game.id ? ' gc-clickable' : '') + '"' + (game.id ? ' data-game-id="' + game.id + '"' : '') + '><tbody><tr firstRow></tr>';
-                    teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
+                    teamTable += `<tr id="awayUserRow"><td>${awayUser}</td></tr>`;
 
                     teamTable += '<tr><td style="width: 250px;">';
         
@@ -1370,7 +1453,7 @@ async function displaySchedule(data) {
                     teamTable += homeTeam.replace('>', '>' + homeImg + homeRank);
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
-                    teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
+                    teamTable += `<tr><td>${homeUser}</td></tr>`;
                     var wxEmoji = game.weather && game.weather.emoji ? (window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] || '') : '';
                     var wxTip = game.weather ? (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') : '';
                     var wxSpan = wxEmoji ? `<span class="game-weather" title="${wxTip}">${wxEmoji}</span>` : '';
