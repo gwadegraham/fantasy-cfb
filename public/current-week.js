@@ -27,11 +27,12 @@
     function pin() { ls(function (s) { s.setItem('weekPinned', '1'); }); }
     function unpin() { ls(function (s) { s.removeItem('weekPinned'); }); }
 
-    // The league's current week, or null when it can't be resolved. Cached per
+    // The league's current week AND whether that slate is being played right
+    // now, or { week: null, live: false } when it can't be resolved. Cached per
     // league+season: several tiles on one page ask, and they must not race.
-    function get(season) {
+    function state(season) {
         var league = leagueCode();
-        if (!league || !season) return Promise.resolve(null);
+        if (!league || !season) return Promise.resolve({ week: null, live: false });
         var key = league + '/' + season;
         if (!cache[key]) {
             // /games/current-week, not /games/scoreboard. This used to read the
@@ -42,10 +43,22 @@
             cache[key] = fetch('/games/current-week/' + encodeURIComponent(season),
                                { headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
-                .then(function (d) { return d && typeof d.week === 'number' ? d.week : null; })
-                .catch(function () { return null; });
+                .then(function (d) {
+                    return {
+                        week: d && typeof d.week === 'number' ? d.week : null,
+                        live: !!(d && d.live)
+                    };
+                })
+                .catch(function () { return { week: null, live: false }; });
         }
         return cache[key];
+    }
+
+    // Just the week number — what almost every caller wants. `live` matters
+    // only to a surface reporting on a FINISHED week (see the standings
+    // highlights), so it reads state() instead.
+    function get(season) {
+        return state(season).then(function (s) { return s.week; });
     }
 
     // Bring the stored week picker up to the current week, unless the viewer
@@ -67,5 +80,5 @@
         });
     }
 
-    window.ccCurrentWeek = { get: get, sync: sync, pinned: pinned, pin: pin, unpin: unpin };
+    window.ccCurrentWeek = { get: get, state: state, sync: sync, pinned: pinned, pin: pin, unpin: unpin };
 })();

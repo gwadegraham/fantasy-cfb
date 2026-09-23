@@ -14,7 +14,7 @@ const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
 const { buildPlayByPlay, buildDriveChart } = require('../modules/play-by-play');
 const {
-    ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek,
+    ownersByTeam, pointsByTeamGame, weekWindows, defaultWeek, weekState,
     conferenceList, fbsConferenceNames, weekRangeOf, weekList, recordsByTeam,
     shapeGames
 } = require('../modules/league-scoreboard');
@@ -427,11 +427,16 @@ router.get('/current-week/:season', async (req, res) => {
             { season, seasonType },
             { week: 1, startDate: 1, _id: 0 }
         ).lean();
-        const windows = weekWindows(weekRows);
-        const week = defaultWeek(windows, Date.now());
+        const { week, live } = weekState(weekWindows(weekRows), Date.now());
         // Same shape the scoreboard answers with for these two fields, so a
         // caller can read `week` off either.
-        res.json({ season, seasonType, week: Number.isFinite(week) ? week : null });
+        //
+        // `live` is the extra: is this slate being PLAYED right now, or is it
+        // merely the next one up (Tue-Thu) / where the season stopped? The week
+        // number alone can't say, and a caller reporting on a finished week —
+        // the standings highlights, which hold last week's winner until the
+        // weekend is over — needs to know which.
+        res.json({ season, seasonType, week: Number.isFinite(week) ? week : null, live: !!live });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

@@ -1016,6 +1016,36 @@ describe('weekly win celebration', () => {
         expect(global.startConfetti).not.toHaveBeenCalled();
     });
 
+    // The confetti is once-per-week keyed, so firing it mid-slate spends the
+    // week's one shot on whoever happened to kick off first. Here Bob won week 2
+    // outright; I am only "ahead" in week 3 because my early game has scored and
+    // his has not.
+    it('does not celebrate a lead in a week that is still being played', async () => {
+        window.ccCurrentWeek = {
+            pinned: () => false, pin: () => {}, unpin: () => {},
+            get: async () => 3,
+            state: async () => ({ week: 3, live: true }),
+            sync: async () => 'week-3'
+        };
+        try {
+            const page = await loadStandingsPage({
+                users: [
+                    scored('me', 'Alice', 'Adams', [10, 5, 30]),
+                    scored('b', 'Bob', 'Brown', [40, 40, 0])
+                ],
+                userState: asMe,
+                reducedMotion: false
+            });
+            expect(page.q('.hl-icon').classList.contains('celebrate')).toBe(false);
+            expect(global.startConfetti).not.toHaveBeenCalled();
+            // And the week's one shot is still unspent, so it can fire for the
+            // real winner once the slate is over.
+            expect(window.localStorage.getItem('weekWin-2025-3')).toBe(null);
+        } finally {
+            delete window.ccCurrentWeek;
+        }
+    });
+
     it('stays quiet when someone else won the week', async () => {
         const page = await loadStandingsPage({
             users: winner(),

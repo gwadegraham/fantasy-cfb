@@ -41,12 +41,73 @@ function weekLabel(entry) {
     return 'Week ' + entry.week;
 }
 
+// How many weekly entries the league has. The longest roster of weeks, not
+// users[0]'s — a manager who joined late (or whose entry the nightly job hasn't
+// touched) would otherwise decide the answer for everyone, and index 0 is not
+// guaranteed to be the fullest.
+function weekCount(users) {
+    return (users || []).reduce((n, u) => Math.max(n, weekly(u).length), 0);
+}
+
+// Has this week actually been played? The nightly scoring job seeds a weekly
+// entry as soon as a week's games EXIST, so an entry on its own means nothing —
+// on a Wednesday the current week is sitting there at zero for every manager.
+// Either real points or a recorded game counts: a scoreByTeam row means a game
+// was scored even if it happened to be worth nothing.
+function weekPlayed(users, i) {
+    return (users || []).some(u => {
+        const w = weekly(u)[i];
+        return !!w && (num(w.score) !== 0 || (w.scoreByTeam || []).length > 0);
+    });
+}
+
+// WHICH week the "latest week" surfaces should report on: the most recent one
+// that is both played and finished. Returns -1 when no week qualifies yet.
+//
+// Two different things disqualify the newest entry, and both had to be handled
+// for the standings to stop reporting on a week that hadn't happened:
+//
+//   1. It has not been played. This is the Wednesday case — "Big Winner, Week 4,
+//      +0", with the winner being whichever manager happened to sort first
+//      among six ties on zero.
+//   2. It IS being played. Half a slate makes a "Big Winner" out of whoever had
+//      the early kickoff, and the Hot Streak window quietly slides onto it.
+//      `liveWeek` comes from ccCurrentWeek.state() — the calendar's own answer,
+//      which stops calling a slate live six hours after its last kickoff, so
+//      the highlights roll over on their own late Saturday night.
+//
+// `liveWeek` is optional and asynchronous in the browser; without it the rule
+// degrades to (1) alone, which is the right answer on every day except a game
+// day. That is deliberate — it lets the page paint correct highlights off the
+// roster payload it already has, instead of holding them behind another
+// request all week for a distinction that only matters while games are on.
+export function settledWeekIndex(users, opts) {
+    const liveWeek = (opts && opts.liveWeek != null) ? Number(opts.liveWeek) : null;
+    for (let i = weekCount(users) - 1; i >= 0; i--) {
+        const entry = (users || []).map(u => weekly(u)[i]).find(Boolean);
+        if (!entry) continue;
+        // The live week is a REGULAR-season week number; a postseason entry
+        // carries its own week numbering, so it must not collide with it.
+        const isLive = liveWeek != null && entry.season !== 'postseason' && Number(entry.week) === liveWeek;
+        if (isLive) continue;
+        if (!weekPlayed(users, i)) continue;
+        return i;
+    }
+    return -1;
+}
+
 // --- ranked table rows -------------------------------------------------------
 
 // Ranked rows with movement (rank change vs last week) and gap to the leader.
-export function rankedRows(users) {
+export function rankedRows(users, opts) {
     const sorted = users.slice().sort((a, b) => cum(b) - cum(a));
-    const weeks = sorted.length ? weekly(sorted[0]).length : 0;
+    // Movement is measured ACROSS the last week that actually finished, not
+    // across the last entry in the array. With the nightly job's seeded zero
+    // week on the end, "through this week" and "through last week" were the
+    // same number all week, so every arrow in the table vanished from Sunday
+    // night until the next kickoff. See settledWeekIndex.
+    const settled = settledWeekIndex(sorted, opts);
+    const weeks = settled + 1;
 
     // Placements are competition-ranked, NOT each row's index in `sorted`: an
     // index splits tied managers by whatever order the DB happened to return,
@@ -56,6 +117,13 @@ export function rankedRows(users) {
     const now = ccLeagueRank.competitionRanks(sorted, cum);
     // Movement compares like with like, competition rank then vs now, so losing a
     // share of the lead reads as a slip instead of "no change".
+    //
+    // It compares the two ends of the settled week, which is NOT the same pair
+    // as (displayed rank, rank last week): the displayed rank counts a live
+    // week's points as they land — a Saturday table should move — while an
+    // arrow claiming "▲2 this week" has to mean a week that finished. With no
+    // live or seeded week on the end the two are the same number anyway.
+    const nowSettled = weeks > 0 ? ccLeagueRank.competitionRanks(sorted, (u) => cumThrough(u, weeks)) : null;
     const prev = weeks > 1 ? ccLeagueRank.competitionRanks(sorted, (u) => cumThrough(u, weeks - 1)) : null;
 
     const leader = sorted.length ? cum(sorted[0]) : 0;
@@ -76,7 +144,7 @@ export function rankedRows(users) {
         score: cum(u),
         gap: i === 0 ? 0 : leader - cum(u),
         preseason: preseason,
-        delta: prev ? (prev[i].rank - now[i].rank) : null
+        delta: (prev && nowSettled) ? (prev[i].rank - nowSettled[i].rank) : null
     }));
 }
 
@@ -239,36 +307,46 @@ function stdev(vals) {
 
 // Returns the ordered list of highlight cards to render. Only includes a card
 // when the underlying data exists, so early-season / empty state stays clean.
-export function buildHighlights(users) {
+export function buildHighlights(users, opts) {
     const cards = [];
     const withWeeks = users.filter(u => weekly(u).length > 0);
     if (!withWeeks.length) return cards;
 
-    const weeks = weekly(users[0]).length;
-    const lastIdx = weeks - 1;
+    // Every card below that says "this week" reports on the last week that
+    // finished — not the last entry in the array, which from Sunday night until
+    // the next kickoff is a week nobody has played. See settledWeekIndex.
+    const lastIdx = settledWeekIndex(users, opts);
+    const weeks = lastIdx + 1;
     const latest = (u) => weekly(u)[lastIdx];
     const latestScore = (u) => num(latest(u) && latest(u).score);
     const thisWeekLabel = weekLabel(weekly(withWeeks[0])[lastIdx]);
 
+    // Every weekly card is skipped until a week has finished — during week 1's
+    // own slate there is no settled week to report on, and the season-long
+    // cards below still have something to say.
+    const haveWeek = lastIdx >= 0;
+
     // Big winner / loser (this week)
     const byLatest = withWeeks.slice().sort((a, b) => latestScore(b) - latestScore(a));
-    if (byLatest.length) {
+    if (haveWeek && byLatest.length) {
         const w = byLatest[0], l = byLatest[byLatest.length - 1];
         cards.push({ icon: 'trophy', title: 'Big Winner', tag: thisWeekLabel, name: initialName(w), value: `+${latestScore(w)}`, tone: 'good' });
         cards.push({ icon: 'heartbreak', title: 'Big Loser', tag: thisWeekLabel, name: initialName(l), value: `+${latestScore(l)}`, tone: 'bad' });
     }
 
-    // Hot / cold streak (last 2 weeks)
-    const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2)).reduce((s, w) => s + (w.score || 0), 0);
+    // Hot / cold streak (last 2 weeks) — the two weeks ending at the settled
+    // one, so the window can't quietly slide onto a week that hasn't happened
+    // and report a single week's points under a two-week label.
+    const twoWk = (u) => weekly(u).slice(Math.max(0, weeks - 2), weeks).reduce((s, w) => s + (w.score || 0), 0);
     const byStreak = withWeeks.slice().sort((a, b) => twoWk(b) - twoWk(a));
-    if (byStreak.length) {
+    if (haveWeek && byStreak.length) {
         cards.push({ icon: 'flame', title: 'Hot Streak', tag: 'last 2 weeks', name: initialName(byStreak[0]), value: `+${twoWk(byStreak[0])}`, tone: 'good' });
         cards.push({ icon: 'snowflake', title: 'Cold Streak', tag: 'last 2 weeks', name: initialName(byStreak[byStreak.length - 1]), value: `+${twoWk(byStreak[byStreak.length - 1])}`, tone: 'bad' });
     }
 
     // Biggest riser (rank climb vs last week)
     if (weeks > 1) {
-        const rows = rankedRows(users).filter(r => r.delta != null);
+        const rows = rankedRows(users, opts).filter(r => r.delta != null);
         const riser = rows.slice().sort((a, b) => b.delta - a.delta)[0];
         if (riser && riser.delta > 0) {
             cards.push({ icon: 'riser', title: 'Biggest Riser', tag: thisWeekLabel, name: riser.name, value: `▲ ${riser.delta} spot${riser.delta > 1 ? 's' : ''}`, tone: 'good' });
@@ -276,7 +354,7 @@ export function buildHighlights(users) {
     }
 
     // Closest race (gap between 1st and 2nd)
-    const ranked = rankedRows(users);
+    const ranked = rankedRows(users, opts);
     if (ranked.length > 1) {
         const g = ranked[1].gap;
         cards.push({ icon: 'checkered', title: 'Closest Race', tag: 'season', name: `${ranked[0].name} over ${ranked[1].name}`, value: g === 0 ? 'Tied!' : `${g} pt${g === 1 ? '' : 's'}`, tone: 'neutral' });
