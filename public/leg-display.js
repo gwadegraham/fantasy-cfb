@@ -73,8 +73,59 @@
         return leg.betType === 'custom' && isFinal(game);
     }
 
+    // What the history table's "Legs" column says for one week.
+    //
+    // The column used to count picks that had a game attached, which answers
+    // "has everyone got a pick in yet?" — a live question for the current week
+    // and a dead one for every row below it, where it read 4/4 forever. So a
+    // settled week counts legs that HIT instead, which is what you want when
+    // scanning down the table for why a week lost.
+    //
+    // The denominator drops pushes, matching the payout: deriveParlayStatus in
+    // modules/parlay-resolve.js takes them out of the slip, so a 2-1 week with a
+    // push reads 2/3, not 2/4. The pushes are named in the tooltip rather than
+    // silently vanishing.
+    //
+    // A slip goes 'lost' the moment one leg loses, with its other legs still
+    // pending, so the denominator is DECIDED legs — the fraction grows as the
+    // rest settle instead of showing a Saturday-afternoon 1/4 that reads as a
+    // wipeout.
+    function legTally(parlay) {
+        var legs = (parlay && parlay.legs) || [];
+        var total = legs.length;
+        if (!total) return { kind: 'none', text: '—', title: 'No legs on this slip' };
+
+        var decided = legs.filter(function (l) { return l.result === 'win' || l.result === 'loss'; });
+        var pushes = legs.filter(function (l) { return l.result === 'push'; }).length;
+        var settled = !!parlay.status && parlay.status !== 'pending';
+
+        if (!settled) {
+            var filled = legs.filter(function (l) { return l.gameId; }).length;
+            return {
+                kind: 'submitted',
+                text: filled + '/' + total,
+                title: filled + ' of ' + total + ' picks in'
+            };
+        }
+
+        // Every leg pushed. There is no fraction to print; "0/0" would read as a
+        // wipeout for a week that cost nothing.
+        if (!decided.length) {
+            return { kind: 'pushed', text: '—', title: 'All ' + total + ' legs pushed' };
+        }
+
+        var wins = decided.filter(function (l) { return l.result === 'win'; }).length;
+        var title = wins + ' of ' + decided.length + ' legs hit';
+        if (pushes) title += ' (' + pushes + ' push' + (pushes > 1 ? 'es' : '') + ' not counted)';
+        var pending = total - decided.length - pushes;
+        if (pending) title += ', ' + pending + ' still pending';
+
+        return { kind: 'hits', text: wins + '/' + decided.length, title: title };
+    }
+
     return {
         isFinal: isFinal,
+        legTally: legTally,
         needsManualGrading: needsManualGrading,
         finalScore: finalScore,
         finalScoreText: finalScoreText,

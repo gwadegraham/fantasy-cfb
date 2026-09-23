@@ -4,7 +4,7 @@
 // whose game had finished hours earlier. The tick beside it already said the
 // leg won; the only thing the row would not tell you was the score.
 
-const { isFinal, needsManualGrading, finalScore, finalScoreText, matchupText } = require('../public/leg-display.js');
+const { isFinal, needsManualGrading, finalScore, finalScoreText, matchupText, legTally } = require('../public/leg-display.js');
 
 const game = (o) => Object.assign({
     awayTeam: 'Stanford', homeTeam: 'Duke', awayAbbr: 'STAN', homeAbbr: 'DUKE',
@@ -129,5 +129,59 @@ describe('needsManualGrading', () => {
     it('handles a missing leg or game', () => {
         expect(needsManualGrading(null, game())).toBe(false);
         expect(needsManualGrading(custom(), null)).toBe(false);
+    });
+});
+
+// The history table's "Legs" column. It used to count picks that had a game
+// attached, so every settled row read 4/4 and the column said nothing about the
+// week it sat on.
+describe('legTally', () => {
+    const slip = (status, results) => ({
+        status,
+        legs: results.map(r => (r === null ? {} : { gameId: 1, result: r }))
+    });
+
+    it('counts picks in while the week is still live', () => {
+        const t = legTally(slip('pending', ['pending', 'pending', null, null]));
+        expect(t.text).toBe('2/4');
+        expect(t.title).toBe('2 of 4 picks in');
+    });
+
+    it('counts legs that hit once the week has settled', () => {
+        expect(legTally(slip('lost', ['win', 'win', 'win', 'loss'])).text).toBe('3/4');
+        expect(legTally(slip('won', ['win', 'win', 'win', 'win'])).text).toBe('4/4');
+    });
+
+    // Matching the payout: deriveParlayStatus drops pushes out of the slip, so
+    // they must not sit in the denominator making a clean week look missed.
+    it('leaves pushes out of the denominator and names them', () => {
+        const t = legTally(slip('lost', ['win', 'win', 'loss', 'push']));
+        expect(t.text).toBe('2/3');
+        expect(t.title).toBe('2 of 3 legs hit (1 push not counted)');
+    });
+
+    it('pluralises more than one push', () => {
+        expect(legTally(slip('lost', ['win', 'loss', 'push', 'push'])).title)
+            .toBe('1 of 2 legs hit (2 pushes not counted)');
+    });
+
+    // A slip goes 'lost' the moment one leg loses, hours before the late games
+    // settle. The fraction has to describe what is decided so far, not read as a
+    // wipeout, and say that it is still moving.
+    it('counts only decided legs while the rest of a lost slip is pending', () => {
+        const t = legTally(slip('lost', ['win', 'loss', 'pending', 'pending']));
+        expect(t.text).toBe('1/2');
+        expect(t.title).toBe('1 of 2 legs hit, 2 still pending');
+    });
+
+    it('prints no fraction when every leg pushed', () => {
+        const t = legTally(slip('push', ['push', 'push']));
+        expect(t.text).toBe('—');
+        expect(t.title).toBe('All 2 legs pushed');
+    });
+
+    it('handles a slip with no legs at all', () => {
+        expect(legTally({ status: 'pending', legs: [] }).text).toBe('—');
+        expect(legTally(null).text).toBe('—');
     });
 });
