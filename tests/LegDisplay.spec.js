@@ -171,13 +171,47 @@ describe('legTally', () => {
     it('counts only decided legs while the rest of a lost slip is pending', () => {
         const t = legTally(slip('lost', ['win', 'loss', 'pending', 'pending']));
         expect(t.text).toBe('1/2');
-        expect(t.title).toBe('1 of 2 legs hit, 2 still pending');
+        expect(t.title).toBe('1 of 2 legs hit, 2 still to settle');
     });
 
     it('prints no fraction when every leg pushed', () => {
         const t = legTally(slip('push', ['push', 'push']));
         expect(t.text).toBe('—');
         expect(t.title).toBe('All 2 legs pushed');
+    });
+
+    it('does not pluralise a single leg or a single push', () => {
+        expect(legTally(slip('push', ['push'])).title).toBe('All 1 leg pushed');
+        expect(legTally(slip('lost', ['win', 'loss', 'push'])).title)
+            .toBe('1 of 2 legs hit (1 push not counted)');
+    });
+
+    // The bug this whole column change exists to kill, in its last hiding place.
+    // A slip stays 'pending' forever when a custom leg never gets graded, so
+    // keying the switch off parlay.status left week 3 reading a meaningless 4/4
+    // in October.
+    it('shows hits on a slip stuck pending with an ungraded leg', () => {
+        const t = legTally(slip('pending', ['win', 'win', 'win', 'pending']));
+        expect(t.text).toBe('3/3');
+        expect(t.title).toBe('3 of 3 legs hit, 1 still to settle');
+    });
+
+    // Picks close when the slip leaves 'pending' — routes/betting.js refuses a
+    // PATCH after that, admins included. So an unpicked leg on a settled slip is
+    // a gap in the week, not something to check back on.
+    it('calls out legs nobody ever picked, and does not call them pending', () => {
+        const t = legTally(slip('lost', ['win', 'loss', null, null]));
+        expect(t.text).toBe('1/2');
+        expect(t.title).toBe('1 of 2 legs hit, 2 never picked');
+    });
+
+    // Latent today: deriveParlayStatus cannot return 'lost' with nothing
+    // decided. If it ever does, the column must not invent a push week — the
+    // old "nothing decided means everything pushed" guard said exactly that.
+    it('does not claim a push week when a settled slip has nothing decided', () => {
+        const t = legTally(slip('lost', ['pending', 'pending', 'pending', 'pending']));
+        expect(t.title).not.toMatch(/pushed/);
+        expect(t.text).toBe('4/4');
     });
 
     it('handles a slip with no legs at all', () => {

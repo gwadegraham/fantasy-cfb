@@ -90,37 +90,57 @@
     // pending, so the denominator is DECIDED legs — the fraction grows as the
     // rest settle instead of showing a Saturday-afternoon 1/4 that reads as a
     // wipeout.
+    //
+    // Which count a row gets is decided by the LEGS, not by parlay.status.
+    // Status is the obvious switch and it's wrong at both ends: a slip sits on
+    // 'pending' forever when a custom leg never gets graded or a member never
+    // picks, which is exactly the stuck row that used to read 4/4 — and a slip
+    // that HAS settled can still hold legs nobody ever picked, which are not
+    // "pending", they're never coming. So: picks-in only while picks are still
+    // open, hits from the first decided leg onward.
     function legTally(parlay) {
         var legs = (parlay && parlay.legs) || [];
         var total = legs.length;
-        if (!total) return { kind: 'none', text: '—', title: 'No legs on this slip' };
+        if (!total) return { text: '—', title: 'No legs on this slip' };
 
+        var picked = legs.filter(function (l) { return l.gameId; }).length;
         var decided = legs.filter(function (l) { return l.result === 'win' || l.result === 'loss'; });
         var pushes = legs.filter(function (l) { return l.result === 'push'; }).length;
-        var settled = !!parlay.status && parlay.status !== 'pending';
+        var unpicked = total - picked;
+        var awaiting = picked - decided.length - pushes;
 
-        if (!settled) {
-            var filled = legs.filter(function (l) { return l.gameId; }).length;
-            return {
-                kind: 'submitted',
-                text: filled + '/' + total,
-                title: filled + ' of ' + total + ' picks in'
-            };
+        var picksIn = {
+            text: picked + '/' + total,
+            title: picked + ' of ' + total + ' picks in'
+        };
+
+        // Picks close the moment a slip leaves 'pending' — routes/betting.js
+        // refuses a PATCH after that, admins included — so "who still owes a
+        // pick" is a live question only while the slip is pending AND someone
+        // is missing.
+        if (unpicked && parlay.status === 'pending') return picksIn;
+
+        if (decided.length) {
+            var wins = decided.filter(function (l) { return l.result === 'win'; }).length;
+            var title = wins + ' of ' + decided.length + ' legs hit';
+            if (pushes) title += ' (' + pushes + ' push' + (pushes === 1 ? '' : 'es') + ' not counted)';
+            if (awaiting) title += ', ' + awaiting + ' still to settle';
+            // Not "pending": a slip that has settled can't take these picks any
+            // more, so they are a gap in the week, not a wait.
+            if (unpicked) title += ', ' + unpicked + ' never picked';
+            return { text: wins + '/' + decided.length, title: title };
         }
 
-        // Every leg pushed. There is no fraction to print; "0/0" would read as a
-        // wipeout for a week that cost nothing.
-        if (!decided.length) {
-            return { kind: 'pushed', text: '—', title: 'All ' + total + ' legs pushed' };
+        // Every pick pushed. There is no fraction to print; "0/0" would read as
+        // a wipeout for a week that cost nothing. Guarded on the pushes
+        // themselves rather than on "nothing decided", so a slip whose status
+        // disagrees with its legs falls through to the honest count below
+        // instead of being told a week it lost was a push.
+        if (pushes && pushes === total) {
+            return { text: '—', title: 'All ' + total + ' leg' + (total === 1 ? '' : 's') + ' pushed' };
         }
 
-        var wins = decided.filter(function (l) { return l.result === 'win'; }).length;
-        var title = wins + ' of ' + decided.length + ' legs hit';
-        if (pushes) title += ' (' + pushes + ' push' + (pushes > 1 ? 'es' : '') + ' not counted)';
-        var pending = total - decided.length - pushes;
-        if (pending) title += ', ' + pending + ' still pending';
-
-        return { kind: 'hits', text: wins + '/' + decided.length, title: title };
+        return picksIn;
     }
 
     return {
