@@ -110,7 +110,7 @@ async function byLeagueAndSeason(league, season, { projectSeason = true, fields 
         ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
         : null;
     const franchises = await Franchise.find(query, projection).lean();
-    return hydrate(franchises, { list: true, fields });
+    return hydrate(franchises, { list: !!(fields || projectSeason), fields });
 }
 
 // A caller's field list plus the season projection they were already getting.
@@ -125,18 +125,23 @@ function seasonScopedProjection(fields, season) {
 
 // Everyone with an entry for `season`, any league. Replaces
 // GET /users/season/:year, which the scoring pass and the ingest read.
-async function bySeason(season, { projectSeason = true } = {}) {
+async function bySeason(season, { projectSeason = true, fields } = {}) {
     if (!readsFromFranchises()) {
         return User.find(
             { 'seasons.season': season },
-            projectSeason ? userProjection(season) : null
+            fields ? asProjection(fields) : (projectSeason ? userProjection(season) : null)
         ).lean();
     }
-    const projection = projectSeason
-        ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
-        : null;
+    const projection = fields
+        ? asProjection(franchiseSideOf(fields).concat('accountId'))
+        : (projectSeason
+            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
+            : null);
+    // `projectSeason: false` replaces an UNPROJECTED User.find, so it has to
+    // return whole documents — narrowing here would be the same parity break as
+    // on the two listing endpoints, just quieter.
     const franchises = await Franchise.find({ 'seasons.season': season }, projection).lean();
-    return hydrate(franchises);
+    return hydrate(franchises, { list: !!(fields || projectSeason), fields });
 }
 
 // One manager by their account id — the id Auth0 hands us.
@@ -309,6 +314,16 @@ async function all({ list = false } = {}) {
     return hydrate(franchises, { list });
 }
 
+// Does any manager match? An existence check, not a fetch.
+//
+// The filter here is entirely franchise-side (a league and a season entry), so
+// it needs no account at all — and `exists` stops at the first match instead of
+// pulling documents that are ~100KB each.
+async function anyFranchise(franchiseFilter) {
+    if (!readsFromFranchises()) return !!(await User.exists(franchiseFilter));
+    return !!(await Franchise.exists(franchiseFilter));
+}
+
 // Every league a person plays in. The query this whole split exists to make
 // possible, and the replacement for the Auth0 'gg'/'cl' flag.
 async function leaguesFor(accountId) {
@@ -372,7 +387,7 @@ function keepOnly(doc, fields) {
 
 module.exports = {
     readsFromFranchises, userProjection,
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate, findManagers,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

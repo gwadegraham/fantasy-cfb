@@ -183,6 +183,30 @@ describe('projections are preserved, because the documents are heavy', () => {
     });
 });
 
+describe('projectSeason: false means the whole document', () => {
+    test('it replaces an UNPROJECTED find, so it must not narrow', async () => {
+        // routes/scores.js and routes/playoffs.js both ran User.find() with no
+        // projection. Returning the list shape here would be the same parity
+        // break as on the two listing endpoints, just quieter — nothing would
+        // fail, a caller would simply stop seeing a field.
+        const user = await seedManager();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const [got] = await repo.bySeason(2026, { projectSeason: false });
+            expect(got.authSub).toBe('google-oauth2|123');
+            expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
+        }
+        expect(user).toBeDefined();
+    });
+
+    test('the default stays narrowed', async () => {
+        await seedManager();
+        const [got] = await repo.bySeason(2026);
+        expect(got.authSub).toBeUndefined();
+        expect(got.seasons).toHaveLength(1);
+    });
+});
+
 describe('findManagers — conditions split across both documents', () => {
     // The case the convenience methods cannot express. push-notify wants
     // managers who have a push subscription (an ACCOUNT field) AND a rostered

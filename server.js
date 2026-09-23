@@ -25,6 +25,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const User = require('./models/user');
 const League = require('./models/league');
 const seasons = require('./modules/active-season');
+const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
@@ -147,8 +148,8 @@ app.use(async (req, res, next) => {
             && req.oidc && req.oidc.isAuthenticated()) {
             const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
             if (innerMeta.userId) {
-                const u = await User.findById(innerMeta.userId,
-                    { avatarUrl: 1, color: 1, firstName: 1, lastName: 1, authSub: 1 }).lean();
+                const u = await franchiseRepo.byAccountId(innerMeta.userId,
+                    { fields: ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub'] });
                 if (u) {
                     const initials = (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
                     res.locals.navUser = {
@@ -387,7 +388,7 @@ app.get('/invite/:token', async (req, res, next) => {
             });
         }
 
-        const user = await User.findById(claim.userId, { firstName: 1, league: 1 }).lean();
+        const user = await franchiseRepo.byAccountId(claim.userId, { fields: ['firstName', 'league'] });
         if (!user) {
             return res.status(404).render('invite', {
                 ok: false,
@@ -441,7 +442,7 @@ app.get('/invite/:token/start', async (req, res, next) => {
         // an error for someone doing exactly what they were told to do.
         if (req.query.returning) authorizationParams['ext-returning'] = '1';
         if (claim) {
-            const user = await User.findById(claim.userId, { email: 1 }).lean();
+            const user = await franchiseRepo.byAccountId(claim.userId, { fields: ['email'] });
             if (user && user.email) authorizationParams.login_hint = user.email;
         }
         return res.oidc.login({ returnTo: '/standings', authorizationParams });

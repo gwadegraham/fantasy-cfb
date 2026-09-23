@@ -1,4 +1,5 @@
 const express = require('express');
+const franchiseRepo = require('../modules/franchise-repo');
 const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const scoringModule = require('../modules/scoring.js');
@@ -21,7 +22,7 @@ const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards, pinnedH2HIds }
 router.get('/status/:season', async (req, res) => {
     try {
         const season = req.params.season;
-        const users = await User.find({ "seasons.season": season });
+        const users = await franchiseRepo.bySeason(season, { projectSeason: false });
         const games = await Game.find(
             { season: Number(season) },
             { id: 1, week: 1, seasonType: 1, completed: 1, homeId: 1, awayId: 1, homePoints: 1, awayPoints: 1, _id: 0 }
@@ -49,10 +50,8 @@ const PENDING_REGULAR_MAX_HOURS = Number(process.env.PENDING_REGULAR_MAX_HOURS) 
 router.get('/pending-regular/:season', async (req, res) => {
     try {
         const season = req.params.season;
-        const users = await User.find(
-            { 'seasons.season': season },
-            { 'seasons.season': 1, 'seasons.teams.id': 1 }
-        ).lean();
+        const users = await franchiseRepo.bySeason(season,
+            { projectSeason: false, fields: ['seasons.season', 'seasons.teams.id'] });
         const games = await Game.find(
             { season: Number(season), seasonType: 'regular', completed: { $ne: true } },
             { week: 1, seasonType: 1, completed: 1, startDate: 1, homeId: 1, awayId: 1, _id: 0 }
@@ -133,7 +132,7 @@ router.get('/readiness/:season', async (req, res) => {
 
         // Per-league setup. Only the fields needed — season rosters carry heavy
         // weeklyScore arrays we don't read here.
-        const members = await User.find({ 'seasons.season': season }, { league: 1 }).lean();
+        const members = await franchiseRepo.bySeason(season, { projectSeason: false, fields: ['league'] });
         const memberCount = {};
         members.forEach(m => { memberCount[m.league] = (memberCount[m.league] || 0) + 1; });
         const drafts = await Draft.find({ season: seasonNum }).lean();
