@@ -614,11 +614,11 @@ router.get('/:id/season', async (req, res) => {
         // document into the response, and /users has no per-id ownership check —
         // so any signed-in manager could read any other manager's Auth0 subject
         // and their devices' push encryption keys by id.
-        const one = await franchiseRepo.byAccountId(userId,
+        // Season-scoped at the QUERY, not filtered in JS afterwards: the
+        // original projected one season, and fetching every season to throw
+        // most away is ~4x the bytes on a cluster capped near 85KB/s.
+        const scoped = await franchiseRepo.byLeagueAndSeasonForAccount(userId, year,
             { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
-        const scoped = one && (one.seasons || []).some(sn => Number(sn.season) === Number(year))
-            ? [{ ...one, seasons: (one.seasons || []).filter(sn => Number(sn.season) === Number(year)) }]
-            : [];
         res.json(scoped);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -916,7 +916,8 @@ router.get('/league/:league/roster-teams', async (req, res) => {
         const league = req.params.league;
         const season = Number(req.query.season || activeSeason('football'));
 
-        const users = await franchiseRepo.byLeagueAndSeason(league, season);
+        const users = await franchiseRepo.byLeagueAndSeason(league, season,
+            { fields: ['firstName', 'lastName', 'color', 'seasons'] });
 
         const taken = new Set();
         const managers = users.map(u => {

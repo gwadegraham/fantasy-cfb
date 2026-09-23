@@ -214,14 +214,25 @@ describe('responses match the query they replaced, not just each other', () => {
         await seedLeague();
         for (const on of [false, true]) {
             process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const [got] = await franchiseRepo.byLeague('graham-league', { fields: [
+            const rows = await franchiseRepo.byLeague('graham-league', { fields: [
                 'firstName', 'lastName', 'color', 'email', 'authSub',
                 'seasons.season', 'seasons.teams.id', 'seasons.weeklyScore.scoreByTeam'
             ] });
-            // authSub is wanted here — it becomes `linked` — but the heavy parts
-            // of a season must not ride along.
-            expect(got.seasons[0].franchiseName).toBeUndefined();
-            expect(got.seasons[0].captains).toBeUndefined();
+            // Selected BY NAME, not by position. Asserting on rows[0] made this
+            // both flaky and vacuous: Mongo's natural order varies between runs,
+            // and the other manager has no franchiseName, so half the time it
+            // asserted that an absent field was absent and proved nothing.
+            const got = rows.find(u => u.firstName === 'Garrett');
+            expect(got).toBeDefined();
+            expect(got.seasons.length).toBeGreaterThan(0);
+
+            // authSub is wanted here — it becomes `linked` on the admin panel —
+            // but the heavy parts of a season must not ride along.
+            expect(got.authSub).toBe('google-oauth2|123');
+            got.seasons.forEach(sn => {
+                expect(sn.franchiseName).toBeUndefined();
+                expect(sn.captains).toBeUndefined();
+            });
         }
     });
 });

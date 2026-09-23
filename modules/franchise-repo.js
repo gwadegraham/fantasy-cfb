@@ -93,10 +93,12 @@ const LIST_FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated'];
 // at and the id every existing client, link and localStorage key already holds.
 // Using the franchise's own id here would break logins and every /userHome?user=
 // URL in the wild.
-function toUserShape(account, franchise, { list = false } = {}) {
+function toUserShape(account, franchise, { list = false, explicit = false } = {}) {
     if (!account) return null;
-    const accountFields = list ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS;
-    const franchiseFields = list ? LIST_FRANCHISE_FIELDS : FRANCHISE_FIELDS;
+    // `explicit` means the caller named its fields, so the list defaults must
+    // not trim what was asked for — see the note in hydrate.
+    const accountFields = (list && !explicit) ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS;
+    const franchiseFields = (list && !explicit) ? LIST_FRANCHISE_FIELDS : FRANCHISE_FIELDS;
 
     const doc = { _id: account._id };
     accountFields.forEach(f => { if (account[f] !== undefined) doc[f] = account[f]; });
@@ -267,8 +269,14 @@ async function byLeague(league, { list = false, fields } = {}) {
             fields ? asProjection(fields) : (list ? userProjection() : null)
         ).lean();
     }
-    const franchises = await Franchise.find({ league }).lean();
-    return hydrate(franchises, { list: fields ? true : list, fields });
+    // Projected at the query. Narrowing only in keepOnly afterwards still pulled
+    // whole franchises — rosters, weekly scores and all — so the admin roster
+    // read was fixed on the flag-off path and left heavy on this one.
+    const franchises = await Franchise.find(
+        { league },
+        fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
+    ).lean();
+    return hydrate(franchises, { list, fields });
 }
 
 // Managers matching conditions on BOTH halves at once.
@@ -319,6 +327,29 @@ async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields }
         .map(doc => (fields ? keepOnly(doc, fields) : doc));
 }
 
+// One manager, one season, as an ARRAY — the shape GET /users/:id/season
+// returns, where the client indexes [0].
+//
+// Season-scoped at the query. Fetching every season and filtering in JS gives
+// the same answer and reads ~4x the bytes, which is the sort of thing that only
+// shows up as a slow Saturday.
+async function byLeagueAndSeasonForAccount(accountId, season, { fields } = {}) {
+    if (!readsFromFranchises()) {
+        return User.find(
+            { _id: accountId, 'seasons.season': season },
+            fields ? seasonScopedProjection(fields, season) : userProjection(season)
+        ).lean();
+    }
+    const franchise = await Franchise.findOne(
+        { accountId, 'seasons.season': season },
+        fields
+            ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
+            : { accountId: 1, league: 1, seasons: { $elemMatch: { season } } }
+    ).lean();
+    if (!franchise) return [];
+    return hydrate([franchise], { list: true, fields });
+}
+
 // Specific managers by account id — the betting-group membership read, which
 // is keyed on ids rather than on a league.
 async function byIds(ids, { fields } = {}) {
@@ -344,12 +375,18 @@ function franchiseSideOf(fields) {
 }
 
 // Every manager, any league. The bare GET /users listing.
-async function all({ list = false } = {}) {
+async function all({ list = false, fields } = {}) {
     if (!readsFromFranchises()) {
-        return User.find({}, list ? userProjection() : null).lean();
+        return User.find(
+            {},
+            fields ? asProjection(fields) : (list ? userProjection() : null)
+        ).lean();
     }
-    const franchises = await Franchise.find({}).lean();
-    return hydrate(franchises, { list });
+    const franchises = await Franchise.find(
+        {},
+        fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
+    ).lean();
+    return hydrate(franchises, { list, fields });
 }
 
 // Does any manager match? An existence check, not a fetch.
@@ -397,13 +434,25 @@ async function hydrate(franchises, { list = true, fields } = {}) {
     // Projected at the query, not just filtered after: credentials should not
     // cross the wire from Mongo either. A caller's own field list narrows it
     // further still.
-    const base = list ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS;
+    // An explicit `fields` list is a REQUEST and wins over the list default.
+    //
+    // This used to intersect with LIST_ACCOUNT_FIELDS whenever `fields` was
+    // given, which silently dropped authSub — so the admin Manager Logins panel
+    // computed `linked: !!u.authSub` against a field that was never fetched and
+    // reported EVERY manager as never having logged in. That is the panel an
+    // admin reads before minting an invite link.
+    //
+    // LIST_ACCOUNT_FIELDS remains the default for a caller that names nothing,
+    // which is what keeps credentials off the broad listings. A caller that
+    // names authSub has said so deliberately, and one of them needs it.
     const roots = fields && new Set(fields.map(f => f.split('.')[0]));
-    const wanted = roots ? base.filter(f => roots.has(f)) : base;
+    const wanted = roots
+        ? ACCOUNT_FIELDS.filter(f => roots.has(f))
+        : (list ? LIST_ACCOUNT_FIELDS : ACCOUNT_FIELDS);
     const accounts = await Account.find({ _id: { $in: ids } }, asProjection(wanted)).lean();
     const byId = new Map(accounts.map(a => [String(a._id), a]));
     return franchises
-        .map(f => toUserShape(byId.get(String(f.accountId)), f, { list }))
+        .map(f => toUserShape(byId.get(String(f.accountId)), f, { list, explicit: !!fields }))
         .filter(Boolean)
         .map(doc => (fields ? keepOnly(doc, fields) : doc));
 }
@@ -425,7 +474,7 @@ function keepOnly(doc, fields) {
 
 module.exports = {
     readsFromFranchises, userProjection,
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

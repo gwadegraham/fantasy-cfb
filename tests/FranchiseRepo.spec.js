@@ -287,6 +287,45 @@ describe('findManagers — conditions split across both documents', () => {
     });
 });
 
+describe('an explicit field list beats the list default', () => {
+    // LIST_ACCOUNT_FIELDS keeps credentials off the broad listings, and it is a
+    // DEFAULT for callers that name nothing — not a ceiling. Intersecting an
+    // explicit request with it silently drops what was asked for: the admin
+    // Manager Logins panel computes `linked: !!u.authSub`, so a dropped authSub
+    // reports every manager as never having logged in, on the panel an admin
+    // reads before minting an invite link.
+    //
+    // byIds is the read that exercises this — it hydrates with list: true.
+    test('byIds returns authSub when authSub is asked for', async () => {
+        const user = await seedManager();
+        for (const on of [false, true]) {
+            process.env.FRANCHISE_READS = on ? 'true' : 'false';
+            const [got] = await repo.byIds([user._id], { fields: ['firstName', 'authSub'] });
+            expect(got.authSub).toBe('google-oauth2|123');
+        }
+    });
+
+    test('but a caller that names nothing still gets the narrow list', async () => {
+        const user = await seedManager();
+        process.env.FRANCHISE_READS = 'true';
+        const [got] = await repo.byIds([user._id]);
+        expect(got.authSub).toBeUndefined();
+        expect(got.pushSubscriptions).toBeUndefined();
+    });
+
+    test('findManagers honours an explicit credential request too', async () => {
+        const user = await seedManager({
+            pushSubscriptions: [{ endpoint: 'https://push/x', keys: { p256dh: 'k', auth: 'a' } }]
+        });
+        const [got] = await repo.findManagers({
+            franchiseFilter: { league: 'graham-league' },
+            fields: ['firstName', 'pushSubscriptions']
+        });
+        expect(got.pushSubscriptions).toHaveLength(1);
+        expect(user).toBeDefined();
+    });
+});
+
 describe('subfield projections survive', () => {
     test('seasons.franchiseName does not drag the rosters along', async () => {
         // routes/betting-groups.js records this exact projection as
