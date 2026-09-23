@@ -34,6 +34,12 @@ const cumThrough = (u, n) => weekly(u).slice(0, n).reduce((s, w) => s + (w.score
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const round = (v) => Math.round(v * 10) / 10;
 
+// "Week 5" -> "Wk 5", for the places that have a column's width to say it in.
+// Postseason has no shorter honest form, so it is left alone.
+function shortWeekLabel(label) {
+    return String(label || '').replace(/^Week /, 'Wk ');
+}
+
 // Label for a weekly entry ("Week 5", or "Postseason").
 function weekLabel(entry) {
     if (!entry) return '';
@@ -191,11 +197,14 @@ function stdAvatarHtml(r) {
     return `<span class="std-avatar std-avatar-initials" style="background:${r.color}">${escapeHtml(r.initials || '?')}</span>`;
 }
 
-function movementHtml(delta) {
+function movementHtml(delta, moveLabel) {
     if (delta == null) return '';
-    if (delta > 0) return `<span class="move up" title="Up ${delta}">▲${delta}</span>`;
-    if (delta < 0) return `<span class="move down" title="Down ${-delta}">▼${-delta}</span>`;
-    return `<span class="move flat" title="No change">–</span>`;
+    // " in Week 3" on the tooltip as well as in the column header: the header
+    // says it once for the table, this says it on the thing being pointed at.
+    const wk = moveLabel ? ` in ${escapeHtml(moveLabel)}` : '';
+    if (delta > 0) return `<span class="move up" title="Up ${delta}${wk}">▲${delta}</span>`;
+    if (delta < 0) return `<span class="move down" title="Down ${-delta}${wk}">▼${-delta}</span>`;
+    return `<span class="move flat" title="No change${wk}">–</span>`;
 }
 
 // One team's clickable logo for the expandable roster drawer. Handles both row
@@ -210,12 +219,18 @@ function teamLogoLink(t) {
 // Header row for the standings table. Points-only mode keeps the classic
 // header (blank, blank, Teams, Score); H2H mode swaps in Record + Total and a
 // trailing cell for the expand caret.
-export function standingsHeadHtml(h2h) {
+export function standingsHeadHtml(h2h, moveLabel) {
+    // The rank column's header cell is otherwise empty, and it sits directly
+    // above the arrows — so it can say which week they describe for free. It has
+    // to be said somewhere: the points beside the arrows move as a live week
+    // scores, while an arrow reports the last week that FINISHED, so on a
+    // Saturday the row that just went top can carry a down arrow.
+    const since = moveLabel ? `<span class="move-since">since ${escapeHtml(shortWeekLabel(moveLabel))}</span>` : '';
     if (h2h) {
         // Teams column shows inline on desktop; the caret column shows on mobile.
         // Both stay in the markup and are toggled by CSS at the 64em breakpoint.
         return `<tr>
-            <th class="team-header"></th>
+            <th class="team-header rank-head">${since}</th>
             <th class="team-header"></th>
             <th class="team-header h2h-teams-head teams-col" style="text-align: center;">Teams</th>
             <th class="team-header rec-head">Record</th>
@@ -224,7 +239,7 @@ export function standingsHeadHtml(h2h) {
         </tr>`;
     }
     return `<tr>
-        <th class="sticky-header team-header"></th>
+        <th class="sticky-header team-header rank-head">${since}</th>
         <th class="sticky-header team-header"></th>
         <th class="team-header teams-col" style="text-align: center;">Teams</th>
         <th class="sticky-header-score team-header">Score</th>
@@ -262,10 +277,10 @@ function inlineTeamLogos(teams) {
 // Classic full-width standings row (points-only): rank · avatar/name · the
 // team-logo strip filling the middle · score. This is the original layout — the
 // logos are what make the wide row read as full, not empty.
-function classicRowHtml(r) {
+function classicRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     return `<tr class="standings-row${medal}">
-        <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</th>
+        <th class="sticky-header rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</th>
         <th class="sticky-header name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${escapeHtml(r.franchise || r.name)}</span></a></th>
         <td class="team-item"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <th class="sticky-header-score"><span class="score-num" data-count="${r.score}">${r.score}</span><br>${gapHtml(r)}</th>
@@ -276,12 +291,12 @@ function classicRowHtml(r) {
 // expand caret, plus a hidden sibling row holding the full clickable roster.
 // Reuses the classic `.standings-row.medal-1` / `.rank-num` / `.score-num`
 // classes so the leader animation and score count-up carry over.
-function h2hRowHtml(r) {
+function h2hRowHtml(r, moveLabel) {
     const medal = (!r.preseason && r.rank <= 3) ? ` medal-${r.rank}` : '';
     const logos = (r.teams || []).map(teamLogoLink).join('');
     const who = escapeHtml(r.franchise || r.name);
     return `<tr class="standings-row${medal}">
-        <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta)}</td>
+        <td class="rank-cell">${rankNumHtml(r)}${movementHtml(r.delta, moveLabel)}</td>
         <td class="name-cell"><a href="/userHome?user=${r.id}">${stdAvatarHtml(r)}<span class="std-name">${who}</span></a></td>
         <td class="team-item h2h-teams-cell"><div class="team-logos">${inlineTeamLogos(r.teams)}</div></td>
         <td class="rec-cell">${escapeHtml(r.record || '—')}</td>
@@ -294,7 +309,10 @@ function h2hRowHtml(r) {
 // Points-only keeps the original wide layout; H2H uses the compact merged rows.
 export function buildStandingsRowsHtml(rows, opts) {
     const h2h = !!(opts && opts.h2h);
-    return rows.map(h2h ? h2hRowHtml : classicRowHtml).join('');
+    const label = (opts && opts.moveLabel) || '';
+    // Wrapped rather than passed to map directly — map hands the callback an
+    // INDEX as its second argument, which would land in moveLabel.
+    return rows.map(r => (h2h ? h2hRowHtml(r, label) : classicRowHtml(r, label))).join('');
 }
 
 // --- league highlights -------------------------------------------------------

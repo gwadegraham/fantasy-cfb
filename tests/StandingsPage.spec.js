@@ -167,10 +167,9 @@ describe('classic standings table', () => {
     // The arrows describe the last week that FINISHED, which on a Saturday is
     // not the week the visible points are moving in — the top row can carry a
     // down arrow. The caption is what stops that reading as a bug.
-    it('captions the movement arrows with the week they describe', async () => {
+    it('names the week the arrows describe in the rank column header', async () => {
         const page = await loadStandingsPage({ users: league() });
-        expect(page.moveNote().hidden).toBe(false);
-        expect(page.moveNote().textContent).toBe('Movement since Week 2');
+        expect(page.moveSince().textContent).toBe('since Wk 2');
     });
 
     // A seeded week must not be named — that is the whole point of the fix the
@@ -182,16 +181,15 @@ describe('classic standings table', () => {
                 scored('b', 'Bob', 'Brown', [40, 5, 0])
             ]
         });
-        expect(page.moveNote().textContent).toBe('Movement since Week 2');
+        expect(page.moveSince().textContent).toBe('since Wk 2');
     });
 
     // One week in, there is no week-over-week movement to caption.
-    it('hides the caption when there are no arrows', async () => {
+    it('says nothing when there are no arrows', async () => {
         const page = await loadStandingsPage({
             users: [scored('a', 'Alice', 'Adams', [10]), scored('b', 'Bob', 'Brown', [40])]
         });
-        expect(page.moveNote().hidden).toBe(true);
-        expect(page.moveNote().textContent).toBe('');
+        expect(page.moveSince()).toBe(null);
     });
 
     it('marks the table as points-only', async () => {
@@ -274,17 +272,17 @@ describe('head-to-head standings', () => {
         const page = await loadStandingsPage({
             users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
         });
-        // Week 1: Bob 40, Alice 10. Week 2 flips it — Alice climbs one.
-        expect(page.tableBody().innerHTML).toContain('title="Up 1"');
-        expect(page.tableBody().innerHTML).toContain('title="Down 1"');
+        // Week 1: Bob 40, Alice 10. Week 2 flips it — Alice climbs one. The
+        // tooltip names the week, so the arrow says what it means on its own.
+        expect(page.tableBody().innerHTML).toContain('title="Up 1 in Week 2"');
+        expect(page.tableBody().innerHTML).toContain('title="Down 1 in Week 2"');
     });
 
-    it('captions the H2H arrows with the week they describe', async () => {
+    it('names the week on the H2H header too', async () => {
         const page = await loadStandingsPage({
             users: users(), h2hEnabled: true, h2hStandings: H2H_PAYLOAD
         });
-        expect(page.moveNote().hidden).toBe(false);
-        expect(page.moveNote().textContent).toBe('Movement since Week 2');
+        expect(page.moveSince().textContent).toBe('since Wk 2');
     });
 
     it('treats a scoreless H2H league as a flat tie', async () => {

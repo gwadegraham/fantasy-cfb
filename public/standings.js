@@ -417,9 +417,13 @@ function renderStandingsTable(rows, opts) {
         // Preseason / undrafted: no rosters yet, so hide the empty Teams column.
         table.classList.toggle('std-no-teams', !rows.some(r => (r.teams || []).length));
     }
-    if (head) head.innerHTML = standingsHeadHtml(h2h);
+    // Which week the arrows describe, said in the rank column's header cell
+    // (empty otherwise) and again on each arrow's tooltip — it costs no vertical
+    // space, and it sits directly above the thing it explains.
+    const moveLabel = (rows.some(r => r.delta != null) && opts && opts.moveLabel) || '';
+    if (head) head.innerHTML = standingsHeadHtml(h2h, moveLabel);
     if (body) {
-        body.innerHTML = buildStandingsRowsHtml(rows, { h2h });
+        body.innerHTML = buildStandingsRowsHtml(rows, { h2h, moveLabel });
         animateScores(body);
         wireRosterToggles(body);
     }
@@ -427,17 +431,6 @@ function renderStandingsTable(rows, opts) {
     if (note) {
         note.textContent = h2h ? 'Ranked by total points + H2H bonuses' : '';
         note.hidden = !h2h;
-    }
-    // Says WHICH week the arrows describe. Without it they read as a
-    // contradiction on a Saturday: the points move as they land, so the row that
-    // just went top can carry a down arrow — because the arrow is deliberately
-    // about the last week that FINISHED, not about the half-played one.
-    const moveNote = document.querySelector('[standings-move-note]');
-    if (moveNote) {
-        const label = (opts && opts.moveLabel) || '';
-        const show = !!label && rows.some(r => r.delta != null);
-        moveNote.textContent = show ? `Movement since ${label}` : '';
-        moveNote.hidden = !show;
     }
 }
 

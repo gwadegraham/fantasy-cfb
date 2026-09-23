@@ -759,10 +759,16 @@
 .standings-rank-note::before { content: "\2694\FE0F"; }
 .standings-rank-note[hidden] { display: none; }
 
-/* Same chip, for the note that says WHICH week the movement arrows describe.
-   Its own glyph — the swords belong to the H2H note, and both chips can be on
-   screen at once in an H2H league. */
-.standings-move-note::before { content: "\25B2\FE0E\25BC\FE0E"; letter-spacing: -0.06em; }
+/* Which week the movement arrows describe, in the rank column's header cell —
+   which is empty otherwise, and sits directly above the arrows. Deliberately not
+   a chip of its own above the table: this costs no vertical space at all.
+   Nowrap because "since Wk 3" breaking over two lines would push the header
+   taller than the row beneath it. */
+.rank-head { text-align: left; padding-left: 14px; }
+.move-since {
+    font-size: 0.62rem; font-weight: 500; letter-spacing: 0.02em;
+    color: var(--cc-muted); white-space: nowrap;
+}
 
 /* Compact rows: tighter line-height, and every column but the name shrinks to
    content so the name hugs the left and record/total/caret group on the right. */
