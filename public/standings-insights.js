@@ -315,6 +315,27 @@ export function buildStandingsRowsHtml(rows, opts) {
     return rows.map(r => (h2h ? h2hRowHtml(r, label) : classicRowHtml(r, label))).join('');
 }
 
+// Avatar circle + display name for one manager out of the users payload, for
+// anywhere outside the ranked table that has to name a manager — the rivalry
+// cards, which used to print a bare first name.
+//
+// Franchise name first, because that is what the league calls each other
+// everywhere else on the page; the initialled real name is the fallback for a
+// manager who has not set one, matching the standings rows exactly. Built here
+// rather than at the call site so the avatar rules (the Cloudinary face crop,
+// the initials fallback, the hashed color) stay in one place.
+export function managerChipHtml(user) {
+    if (!user) return '';
+    const initials = (((user.firstName || '')[0] || '') + ((user.lastName || '')[0] || '')).toUpperCase();
+    const avatar = stdAvatarHtml({
+        avatarUrl: user.avatarUrl || null,
+        initials,
+        color: user.color || avatarColor(user)
+    });
+    const label = franchiseName(user) || initialName(user);
+    return `<span class="gc-manager">${avatar}<span class="gc-manager-name">${escapeHtml(label)}</span></span>`;
+}
+
 // --- league highlights -------------------------------------------------------
 
 // Each drafted team's total season points, summed from scoreByTeam across all

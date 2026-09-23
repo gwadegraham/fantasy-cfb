@@ -1427,6 +1427,40 @@ describe('schedule game cards', () => {
         startDate: '2025-09-06T16:00:00Z', notes: ''
     }, over);
 
+    // The cards used to print a bare first name while every other surface on the
+    // page calls the same manager by their franchise.
+    it('names both managers by franchise, with their avatar', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                makeUser({ top: { _id: 'b', firstName: 'Bob', lastName: 'Brown' }, avatarUrl: 'https://res.cloudinary.com/x/image/upload/bob.jpg', franchiseName: 'Big Mac', teams: [PURDUE] }),
+                makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, franchiseName: 'Hogs Gone Wild', teams: [INDIANA] })
+            ],
+            games: [game()], teamLogos: LOGOS
+        });
+        const html = page.scheduleBody().innerHTML;
+        expect(html).toContain('Hogs Gone Wild');
+        expect(html).toContain('Big Mac');
+        expect(html).not.toContain('>Bob<');
+        // Uploaded photo is face-cropped; the manager without one gets initials.
+        expect(html).toContain('c_fill,g_face');
+        expect(html).toContain('>AA<');
+    });
+
+    // Not everyone has named a franchise. The fallback matches the standings
+    // rows rather than reverting to the bare first name.
+    it('falls back to the initialled name when a manager has no franchise', async () => {
+        const page = await loadStandingsPage({
+            users: [
+                makeUser({ top: { _id: 'b', firstName: 'Bob', lastName: 'Brown' }, teams: [PURDUE] }),
+                makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, teams: [INDIANA] })
+            ],
+            games: [game()], teamLogos: LOGOS
+        });
+        const html = page.scheduleBody().innerHTML;
+        expect(html).toContain('Alice A.');
+        expect(html).toContain('Bob B.');
+    });
+
     it('badges the away winner even though the home manager builds the card', async () => {
         const page = await loadStandingsPage({ users: homeFirst(), games: [game()], teamLogos: LOGOS });
         const html = page.scheduleBody().innerHTML;

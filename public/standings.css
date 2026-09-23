@@ -430,6 +430,16 @@
         max-width: 75%;
     }
 }
+/* Manager line on a rivalry card: avatar circle + franchise name. The cards used
+   to print a bare first name, while every other surface on the page calls the
+   same person by their franchise.
+   The image rule is scoped past `.game-table img { height: 2rem }`, which would
+   otherwise blow the 22px circle open. */
+.gc-manager { display: inline-flex; align-items: center; gap: 0.45em; }
+.gc-manager .std-avatar { width: 22px; height: 22px; }
+.game-table .gc-manager .std-avatar img { width: 100%; height: 100%; object-fit: cover; margin: 0; }
+.gc-manager-name { font-weight: 700; font-size: 0.85rem; line-height: 1.2; }
+
 /* Tappable "+N" scoring badge + the per-game breakdown it reveals. */
 .game-table .score-explain {
     appearance: none;

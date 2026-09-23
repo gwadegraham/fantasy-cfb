@@ -1,5 +1,5 @@
 import { setChartData } from './weekByWeek.js';
-import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel } from './standings-insights.js';
+import { rankedRows, buildStandingsRowsHtml, standingsHeadHtml, buildHighlights, buildHighlightsHtml, settledWeekIndex, settledWeekLabel, managerChipHtml } from './standings-insights.js';
 
 // Which week the "latest week" surfaces report on — see settledWeekIndex. Starts
 // empty, which answers "the newest week anyone has played", and is narrowed once
@@ -1217,7 +1217,10 @@ async function displaySchedule(data) {
         var user = data[i];
         var userTeams = ccSeasonOf.payloadSeasonEntry(user).teams;
         var userTeamObject = {
-            userName: user.firstName, 
+            // The rendered chip, not a name: the opponent lookup below returns
+            // whatever is in here straight into the card, and building it once
+            // per manager beats rebuilding it per game.
+            userName: managerChipHtml(user),
             teams: userTeams
         };
 
@@ -1364,7 +1367,7 @@ async function displaySchedule(data) {
                         var doesExist = existObject.doesExist;
                         oppName = existObject.name;
 
-                        awayUser = userData.firstName;
+                        awayUser = managerChipHtml(userData);
                         awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
                         homeUser = oppName;
@@ -1382,7 +1385,7 @@ async function displaySchedule(data) {
                         awayUser = oppName;
                         awayTeam = `<a href="/team?team=${game.awayId}">${game.awayTeam}<span class="betting-line">${awayLine ? '-' + awayLine : ''}</span></a>`;
 
-                        homeUser = userData.firstName;
+                        homeUser = managerChipHtml(userData);
                         homeTeam = `<a href="/team?team=${game.homeId}">${game.homeTeam}<span class="betting-line">${homeLine ? '-' + homeLine : ''}</span></a>`;
 
                         if (doesExist) {
@@ -1438,7 +1441,7 @@ async function displaySchedule(data) {
                     }
         
                     var teamTable = '<td><table class="schedule-table game-table' + (game.id ? ' gc-clickable' : '') + '"' + (game.id ? ' data-game-id="' + game.id + '"' : '') + '><tbody><tr firstRow></tr>';
-                    teamTable += `<tr id="awayUserRow"><td><strong>${awayUser}</strong></td></tr>`;
+                    teamTable += `<tr id="awayUserRow"><td>${awayUser}</td></tr>`;
 
                     teamTable += '<tr><td style="width: 250px;">';
         
@@ -1450,7 +1453,7 @@ async function displaySchedule(data) {
                     teamTable += homeTeam.replace('>', '>' + homeImg + homeRank);
                     teamTable += '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData;
                     teamTable += '</tr>';
-                    teamTable += `<tr><td><strong>${homeUser}</strong></td></tr>`;
+                    teamTable += `<tr><td>${homeUser}</td></tr>`;
                     var wxEmoji = game.weather && game.weather.emoji ? (window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] || '') : '';
                     var wxTip = game.weather ? (game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '') : '';
                     var wxSpan = wxEmoji ? `<span class="game-weather" title="${wxTip}">${wxEmoji}</span>` : '';
