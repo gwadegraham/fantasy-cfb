@@ -480,6 +480,193 @@ async function hydrate(franchises, { list = true, fields } = {}) {
         .map(doc => (fields ? keepOnly(doc, fields) : doc));
 }
 
+// ---- the two aggregation shapes ---------------------------------------------
+//
+// These are the only reads that cannot be expressed as "fetch, then assemble".
+// Both exist because a projection cannot drop array ELEMENTS: routes/scores.js
+// measured 1059KB -> 40KB and routes/standings.js 106KB -> 3KB by using $filter
+// to pick the one season and $map to slim what survives. On an M0 tier, where
+// latency tracks bytes, that is seconds per request. Reproducing them as a
+// find() plus JS trimming would move the storage and undo the optimisation in
+// the same change, which is exactly the kind of thing that only shows up as a
+// slow Saturday.
+//
+// SEASON MUST BE A NUMBER in both, deliberately. models/user.js declares
+// seasonSchema.season as Number, and the find/distinct/update calls around them
+// pass the string — which works only because Mongoose casts it against the
+// schema. A pipeline gets NO casting: $match with '2026' matches nothing, so
+// the caller sees an empty result that reads exactly like "this league has no
+// managers", and the H2H pass then applies no bonuses at all while logging a
+// clean "0 manager(s) updated". routes/scores.js guards this with isRealSeason.
+// The guard lives at the caller; this note is here so the next person to add a
+// pipeline knows why it has to.
+
+// The season-slimming stage, shared by both branches of both reads.
+//
+// Factored out rather than written twice per method because the whole point of
+// the flag is that the two branches answer identically, and a $map that drifts
+// between them is a difference the diff script would report as a data problem
+// rather than as the code problem it is.
+function slimSeasons(season, inner) {
+    return { $map: {
+        input: { $filter: { input: { $ifNull: ['$seasons', []] }, as: 's', cond: inner.cond(season) } },
+        as: 's',
+        in: inner.in
+    } };
+}
+
+// Managers for the standings projections page: identity plus a roster slimmed
+// to team ids. Replaces the User.aggregate in routes/standings.js.
+//
+// seasons.teams stores the FULL team object per pick — that is how the draft
+// persists them — so six managers came to 106KB, 90KB of it logos, venues, alt
+// names and colours the projection never reads. It needs the team id; the rest
+// it looks up in teamsById. On an M0 tier that one query cost 1.67 SECONDS for
+// six documents; slimmed here it is ~3KB and ~100ms.
+async function projectionManagers(league, season) {
+    // Both branches project the same four account-side fields and the same
+    // slimmed seasons. Fields absent on the stored document stay absent — Mongo
+    // omits a projected field that does not exist — which is the same presence
+    // semantics toUserShape gives the non-aggregate reads.
+    const seasons = slimSeasons(season, {
+        cond: s => ({ $in: ['$$s.season', [s, String(s)]] }),
+        in: {
+            season: '$$s.season',
+            franchiseName: '$$s.franchiseName',
+            cumulativeScore: '$$s.cumulativeScore',
+            // school is kept only for the teamsById miss path in
+            // buildProjections, which falls back to this object.
+            teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
+                             in: { id: '$$t.id', school: '$$t.school' } } }
+        }
+    });
+
+    if (!readsFromFranchises()) {
+        return User.aggregate([
+            { $match: { league, 'seasons.season': season } },
+            { $project: { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons } }
+        ]);
+    }
+    return Franchise.aggregate([
+        { $match: { league, 'seasons.season': season } },
+        { $project: { accountId: 1, seasons } },
+        ...accountJoin(['firstName', 'lastName', 'avatarUrl', 'color'])
+    ]);
+}
+
+// Managers for the H2H bonus pass: team ids and the WHOLE weeklyScore array.
+// Replaces h2hUsers in routes/scores.js.
+//
+// This was User.find({ league, 'seasons.season' }) with no projection, which
+// answered every field of every season a manager has ever played. Measured
+// against a dev copy of prod, for the two leagues:
+//
+//   unprojected                         1059KB, 11325ms
+//   projected to teams.id + weeklyScore  435KB,  4192ms
+//   this aggregate                         40KB,   608ms
+//
+// A plain projection cannot get there, though NOT for the reason it looks like.
+// A nested projection DOES slim subdocuments — {'seasons.teams.id': 1} really
+// does return teams as [{id}], and routes/scores.js relies on that elsewhere.
+// That is what takes 1059KB to 435KB.
+//
+// What a projection cannot do is drop array ELEMENTS. It slims fields across
+// ALL FOUR of a manager's seasons, and the 435KB that remains is the three
+// seasons this pass is not scoring — mostly their weeklyScore. $elemMatch and
+// the positional projection can pick the one element, but they return it WHOLE
+// and cannot be combined with a nested field projection, so the full team
+// objects come back. $filter picks the element and $map slims it, which is why
+// this is an aggregate.
+//
+// weeklyScore stays whole deliberately. Trimming it to the six fields the
+// computation reads gets this to 4KB/117ms, but the caller writes the array
+// back, so a trimmed read would silently drop scoreByTeam and the Captain
+// fields off every entry. 0.5s is not worth that.
+async function h2hManagers(league, season) {
+    const seasons = slimSeasons(season, {
+        cond: s => ({ $eq: ['$$s.season', s] }),
+        in: {
+            season: '$$s.season',
+            // Only the id is read, to build the drafted-team set.
+            teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't', in: { id: '$$t.id' } } },
+            weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
+        }
+    });
+
+    if (!readsFromFranchises()) {
+        return User.aggregate([
+            { $match: { league, 'seasons.season': season } },
+            { $project: { seasons } }
+        ]);
+    }
+    // The join costs a keyed _id lookup per manager and returns nothing but the
+    // id — this read wants no account field at all. It is here for MEMBERSHIP,
+    // not for data: every other read drops a franchise whose account is missing
+    // (toUserShape returns null), and this one must agree, because the H2H pass
+    // pairs managers against each other. An extra manager in the list does not
+    // just add a row — it re-partners everyone else for that week.
+    return Franchise.aggregate([
+        { $match: { league, 'seasons.season': season } },
+        { $project: { accountId: 1, seasons } },
+        ...accountJoin([])
+    ]);
+}
+
+// Join each franchise to its account and return documents in User shape:
+// `_id` is the ACCOUNT's id, because that is what Auth0 points at, what every
+// client holds, and — until the write cutover — what routes/scores.js keys its
+// User.updateOne on.
+//
+// Franchises with no account are dropped, matching toUserShape.
+function accountJoin(fields) {
+    // AN EMPTY FIELD LIST MUST NOT BECOME AN EXCLUSION PROJECTION.
+    //
+    // `{ _id: 0 }` reads like "nothing", and it is the opposite: an
+    // exclusion-only projection returns EVERY OTHER FIELD. The first run of
+    // scripts/diff-franchise-reads.js against this caught h2hManagers merging
+    // whole accounts — authSub, email, avatarUrl — into a result that is
+    // supposed to carry an id and a roster, and which routes/scores.js hands
+    // straight to computeH2HAwards. `{ _id: 1 }` is the inclusion form that
+    // actually means "the id and nothing else", and the merge below overwrites
+    // that id anyway.
+    //
+    // This is the same trap asProjection documents a few lines up. It is
+    // written out twice because the two are not shared code and the second one
+    // still cost a debugging round.
+    const projection = fields.length ? { _id: 0 } : { _id: 1 };
+    fields.forEach(f => { projection[f] = 1; });
+    return [
+        { $lookup: {
+            from: Account.collection.name,
+            localField: 'accountId',
+            foreignField: '_id',
+            as: 'acct',
+            // Projected inside the join, so an unwanted roster-sized field never
+            // leaves the server.
+            pipeline: [{ $project: projection }]
+        } },
+        { $match: { 'acct.0': { $exists: true } } },
+        // _id and seasons go LAST so they win the merge outright, whatever the
+        // account happens to carry.
+        { $replaceWith: { $mergeObjects: [
+            { $arrayElemAt: ['$acct', 0] },
+            { _id: '$accountId', seasons: '$seasons' }
+        ] } }
+    ];
+}
+
+// Every league with at least one manager in `season`. Replaces the
+// User.distinct('league', …) that drives the H2H pass's per-league loop.
+//
+// Sorted, which distinct() is not. The caller iterates and the order carries no
+// meaning, so this is a deliberate narrowing rather than a silent one: an
+// unordered result is a flake waiting to happen in the comparison script.
+async function leaguesWithSeason(season) {
+    const Model = readsFromFranchises() ? Franchise : User;
+    const leagues = await Model.distinct('league', { 'seasons.season': season });
+    return leagues.filter(Boolean).sort();
+}
+
 // Trim an assembled document to the fields a caller asked for, `_id` always
 // surviving because every caller keys on it.
 function keepOnly(doc, fields) {
@@ -499,5 +686,6 @@ module.exports = {
     readsFromFranchises, userProjection,
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
+    projectionManagers, h2hManagers, leaguesWithSeason,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

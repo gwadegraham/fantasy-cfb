@@ -2,7 +2,6 @@ const express = require('express');
 const { seasonForLeague } = require('../modules/active-season');
 const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
-const User = require('../models/user');
 const Team = require('../models/team');
 const Record = require('../models/record');
 const Game = require('../models/game');
@@ -215,34 +214,17 @@ router.get('/projections/:league/:season', async (req, res) => {
         const league = req.params.league;
         const season = Number(req.params.season);
 
-        // Aggregate rather than $elemMatch, to reshape the roster on the server.
-        //
-        // seasons.teams stores the FULL team object per pick (that is how the
-        // draft persists them), so six managers came to 106KB — 90KB of it
-        // logos, venues, alt names and colours the projection never reads. It
+        // Aggregated rather than $elemMatch'd, to reshape the roster on the
+        // server. seasons.teams stores the FULL team object per pick (that is
+        // how the draft persists them), so six managers came to 106KB — 90KB of
+        // it logos, venues, alt names and colours the projection never reads. It
         // needs the team id; everything else it looks up in teamsById. On an M0
         // tier, where latency tracks bytes, that one query cost 1.67 SECONDS for
         // six documents. $elemMatch cannot slim a subdocument, only select it.
-        const users = await User.aggregate([
-            { $match: { league, 'seasons.season': season } },
-            { $project: {
-                firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
-                seasons: { $map: {
-                    input: { $filter: { input: { $ifNull: ['$seasons', []] }, as: 's',
-                                        cond: { $in: ['$$s.season', [season, String(season)]] } } },
-                    as: 's',
-                    in: {
-                        season: '$$s.season',
-                        franchiseName: '$$s.franchiseName',
-                        cumulativeScore: '$$s.cumulativeScore',
-                        // school is kept only for the teamsById miss path in
-                        // buildProjections, which falls back to this object.
-                        teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
-                                         in: { id: '$$t.id', school: '$$t.school' } } }
-                    }
-                } }
-            } }
-        ]);
+        //
+        // The pipeline itself now lives in modules/franchise-repo.js, so it can
+        // answer from either accounts+franchises or users (#313 phase 2).
+        const users = await franchiseRepo.projectionManagers(league, season);
         if (!users.length) return res.json({ league, season, managers: [] });
 
         // All four reads at once. Against an M0 tier these are seconds rather
