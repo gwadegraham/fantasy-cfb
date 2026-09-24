@@ -1,8 +1,8 @@
 const express = require('express');
+const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const CfpBracket = require('../models/cfpBracket');
 const { deriveBracket, BracketRejected, ROUNDS } = require('../modules/cfp-bracket');
-const User = require('../models/user');
 const Team = require('../models/team');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
@@ -484,7 +484,7 @@ router.get('/bracket/:season/:league', async (req, res) => {
         const pointsByRound = buildPointsByRound(cfg, model);
 
         // Users in this league for team-to-franchise mapping
-        const users = await User.find({ league, 'seasons.season': season });
+        const users = await franchiseRepo.byLeagueAndSeason(league, season, { projectSeason: false });
         const teamOwnerMap = {};
         users.forEach(u => {
             const s = (u.seasons || []).find(x => String(x.season) === String(season));

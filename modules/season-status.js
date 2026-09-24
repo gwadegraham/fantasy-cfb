@@ -1,4 +1,4 @@
-const User = require('../models/user');
+const franchiseRepo = require('./franchise-repo');
 
 // True once at least one drafted-team game has been scored in `season` for this
 // league — the "season is underway" signal. Used to lock destructive edits
@@ -15,11 +15,10 @@ async function hasScoredGames(league, season) {
         console.error(`hasScoredGames: unusable season ${JSON.stringify(season)} for ${league} — treating as underway`);
         return true;
     }
-    const hit = await User.exists({
+    return franchiseRepo.anyFranchise({
         league,
         seasons: { $elemMatch: { season: n, 'weeklyScore.scoreByTeam.0': { $exists: true } } }
     });
-    return !!hit;
 }
 
 module.exports = { hasScoredGames };

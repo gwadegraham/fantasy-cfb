@@ -1,7 +1,7 @@
 const express = require('express');
+const franchiseRepo = require('../modules/franchise-repo');
 const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
-const User = require('../models/user');
 const Draft = require('../models/draft');
 const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
 
@@ -18,8 +18,8 @@ const { buildRecords, buildDraftHistory } = require('../modules/hall-of-fame');
 router.get('/:league', async (req, res) => {
     try {
         const league = req.params.league;
-        const users = await User.find({ league },
-            { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons: 1 }).lean();
+        const users = await franchiseRepo.byLeague(league,
+            { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
 
         // A season-year with a scored postseason entry has wrapped. Combined with
         // "any past season", this crowns a season as soon as it truly finishes

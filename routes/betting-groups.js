@@ -1,9 +1,9 @@
 const express = require('express');
+const franchiseRepo = require('../modules/franchise-repo');
 const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
-const User = require('../models/user');
 
 router.get('/', async (req, res) => {
     try {
@@ -20,11 +20,10 @@ router.get('/', async (req, res) => {
         // Subfield projection rather than $elemMatch: it keeps every season
         // element (so the .find below is unchanged) while carrying only the two
         // fields read off one. 418KB -> 1KB, 4.4s -> 75ms.
-        const members = await User.find(
-            { _id: { $in: group.members } },
-            { firstName: 1, league: 1, avatarUrl: 1,
-              'seasons.season': 1, 'seasons.franchiseName': 1 }
-        ).lean();
+        const members = await franchiseRepo.byIds(
+            group.members,
+            { fields: ['firstName', 'league', 'avatarUrl', 'seasons.season', 'seasons.franchiseName'] }
+        );
 
         const memberDetails = members.map(m => {
             const s = (m.seasons || []).find(s => s.season === season);
