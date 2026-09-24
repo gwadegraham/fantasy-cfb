@@ -443,6 +443,119 @@ describe('missing data', () => {
     });
 });
 
+// A rostered team as the user schema demands it: abbreviation, conference and a
+// complete location are all required, and every one of them is weight this
+// aggregate exists to leave on the server.
+const LOC = { venue_id: 7, name: 'Autzen', city: 'Eugene', state: 'OR', zip: '97401',
+              latitude: 44, longitude: -123, capacity: 54000, grass: true, dome: false };
+const rosterTeam = (o) => Object.assign({
+    id: 251, school: 'Texas', mascot: 'Longhorns', abbreviation: 'TEX',
+    conference: 'SEC', color: '#BF5700', logos: ['a.png', 'b.png'], location: LOC
+}, o);
+
+describe('the aggregation reads — standings projections and the H2H pass', () => {
+    // These two are the only reads that run a $lookup rather than assembling a
+    // document from two finds, so they can fail in ways the rest cannot.
+
+    test('projectionManagers answers identically from either source', async () => {
+        await seedManager();
+        await seedManager({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com',
+            color: '#f9a857', authSub: 'auth0|9',
+            seasons: [{ season: 2026, cumulativeScore: 12, franchiseName: 'Second Best',
+                        teams: [rosterTeam({ id: 333, school: 'Georgia' })] }] });
+
+        const off = await withFlag(false, () => repo.projectionManagers('graham-league', 2026));
+        const on = await withFlag(true, () => repo.projectionManagers('graham-league', 2026));
+        expect(on.length).toBe(2);
+        expect(sortByName(on)).toEqual(sortByName(off));
+    });
+
+    test('projectionManagers keeps _id as the ACCOUNT id', async () => {
+        const user = await seedManager();
+        const [got] = await repo.projectionManagers('graham-league', 2026);
+        expect(String(got._id)).toBe(String(user._id));
+    });
+
+    test('projectionManagers slims each team to id and school', async () => {
+        // The reason this is an aggregate at all: a rostered team carries its
+        // logos, venue and colours, and six managers of them came to 106KB on a
+        // cluster where latency tracks bytes.
+        await seedManager({ seasons: [{ season: 2026, franchiseName: 'Heavy',
+            teams: [rosterTeam()] }] });
+        const [got] = await repo.projectionManagers('graham-league', 2026);
+        expect(got.seasons[0].teams).toEqual([{ id: 251, school: 'Texas' }]);
+    });
+
+    test('projectionManagers returns only the season asked for', async () => {
+        // seedManager holds 2025 and 2026. Callers index seasons[0].
+        await seedManager();
+        const [got] = await repo.projectionManagers('graham-league', 2026);
+        expect(got.seasons.map(sn => sn.season)).toEqual([2026]);
+    });
+
+    test('h2hManagers keeps weeklyScore WHOLE', async () => {
+        // Not a nicety: routes/scores.js reads this array, edits four fields and
+        // writes the whole thing back with $set. Anything trimmed off the read
+        // is deleted from the stored document on the next H2H pass — scoreByTeam
+        // and the Captain fields included.
+        await seedManager();
+        const [got] = await repo.h2hManagers('graham-league', 2026);
+        expect(strip(got.seasons[0].weeklyScore)).toEqual([{
+            week: 1, score: 8, season: 'regular',
+            scoreByTeam: [{ teamId: 251, gameId: 1, score: 8 }]
+        }]);
+    });
+
+    test('h2hManagers carries no account fields at all', async () => {
+        // A regression test with a specific bug behind it. The join projected
+        // `{ _id: 0 }` for the no-fields case, which is an EXCLUSION projection
+        // and therefore returns every other field — so this read merged whole
+        // accounts, authSub and email included, into a result the H2H pass hands
+        // to computeH2HAwards. It is `{ _id: 1 }`, the inclusion form, now.
+        await seedManager();
+        const [got] = await repo.h2hManagers('graham-league', 2026);
+        expect(Object.keys(got).sort()).toEqual(['_id', 'seasons']);
+    });
+
+    test('h2hManagers keeps _id as the ACCOUNT id', async () => {
+        // The H2H pass writes back with updateOne({ _id: user._id }). A
+        // franchise id here matches nothing and the bonus is silently not stored.
+        const user = await seedManager();
+        const [got] = await repo.h2hManagers('graham-league', 2026);
+        expect(String(got._id)).toBe(String(user._id));
+    });
+
+    test('h2hManagers answers identically from either source', async () => {
+        await seedManager();
+        const off = await withFlag(false, () => repo.h2hManagers('graham-league', 2026));
+        const on = await withFlag(true, () => repo.h2hManagers('graham-league', 2026));
+        expect(strip(on)).toEqual(strip(off));
+    });
+
+    test('a franchise whose account vanished is dropped from both aggregates', async () => {
+        // Membership, not decoration. The H2H pass PAIRS managers against each
+        // other, so an extra entry does not add a row — it re-partners everyone
+        // else for that week.
+        const user = await seedManager();
+        await Account.deleteOne({ _id: user._id });
+        expect(await repo.h2hManagers('graham-league', 2026)).toEqual([]);
+        expect(await repo.projectionManagers('graham-league', 2026)).toEqual([]);
+    });
+
+    test('leaguesWithSeason agrees across both sources and skips empty leagues', async () => {
+        await seedManager();
+        await seedManager({ firstName: 'Jeff', lastName: 'Claunts', email: 'j@example.com',
+            league: 'claunts-league', authSub: 'auth0|7',
+            seasons: [{ season: 2025, cumulativeScore: 1 }] });
+
+        const off = await withFlag(false, () => repo.leaguesWithSeason(2026));
+        const on = await withFlag(true, () => repo.leaguesWithSeason(2026));
+        expect(on).toEqual(off);
+        // claunts-league has a 2025 entry and no 2026 one, so it must not appear.
+        expect(on).toEqual(['graham-league']);
+    });
+});
+
 describe('the switch', () => {
     test('UNSET reads from users — so deploying this changes nothing', async () => {
         // The property the whole rollout rests on: shipping the flag is inert.
@@ -475,6 +588,60 @@ describe('the switch', () => {
         expect((await repo.byAccountId(user._id)).league).toBe('tampered-league');
     });
 
+    test('an explicit field list still narrows to ONE season, on both positions', async () => {
+        // The gap a QA pass found in this PR. routes/games.js now asks for
+        // `seasons` by NAME, which routes through seasonScopedProjection rather
+        // than userProjection — a different code path, and the one this PR put
+        // on the scoreboard. Replacing its $elemMatch with `seasons: 1` left
+        // every test added here green; only the pre-existing /users suite
+        // caught it.
+        //
+        // It matters because callers index seasons[0] via public/season-of.js.
+        // The scoreboard itself happens to survive — modules/league-scoreboard.js
+        // resolves the entry by value, not by position — but the projection is
+        // shared, and the next caller to use it will not.
+        const user = await seedManager();   // holds 2025 AND 2026
+        const fields = ['firstName', 'color', 'seasons'];
+
+        for (const flag of [false, true]) {
+            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2026, { fields }));
+            expect(got.seasons.map(sn => sn.season)).toEqual([2026]);
+            expect(got.seasons[0].franchiseName).toBe('Name, Image, & Sadness');
+        }
+
+        // And the past season projects the past season, not the active one.
+        for (const flag of [false, true]) {
+            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2025, { fields }));
+            expect(got.seasons.map(sn => sn.season)).toEqual([2025]);
+        }
+        expect(String(user._id)).toBeTruthy();
+    });
+
+    test('anyFranchise and leaguesFor answer from users when the flag is off', async () => {
+        // These two were the last uncovered lines in the module, and both were
+        // the FLAG-OFF branch — the one running in production right now. A
+        // suite that only exercises the new source proves nothing about the
+        // path that is actually live.
+        const user = await seedManager();
+
+        expect(await withFlag(false, () => repo.anyFranchise({ league: 'graham-league' }))).toBe(true);
+        expect(await withFlag(false, () => repo.anyFranchise({ league: 'nobody-league' }))).toBe(false);
+        expect(await withFlag(false, () => repo.leaguesFor(user._id))).toEqual(['graham-league']);
+        expect(await withFlag(true, () => repo.anyFranchise({ league: 'graham-league' }))).toBe(true);
+        expect(await withFlag(true, () => repo.anyFranchise({ league: 'nobody-league' }))).toBe(false);
+
+        // Prove it is genuinely reading users, not franchises, by making the
+        // two disagree — otherwise this passes whichever branch runs.
+        await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
+        expect(await withFlag(false, () => repo.leaguesFor(user._id))).toEqual(['graham-league']);
+        expect(await withFlag(true, () => repo.leaguesFor(user._id))).toEqual(['tampered-league']);
+    });
+
+    test('leaguesFor is empty for an unknown account on the users path too', async () => {
+        const mongoose = require('mongoose');
+        expect(await withFlag(false, () => repo.leaguesFor(new mongoose.Types.ObjectId()))).toEqual([]);
+    });
+
     test('both positions return the same thing on real, untampered data', async () => {
         // The assertion the offline diff makes against prod, held here so a
         // regression fails CI rather than waiting for someone to run a script.
@@ -500,4 +667,10 @@ function withFlag(on, fn) {
 // Subdocument ids differ between the two copies and are referenced nowhere.
 function strip(value) {
     return JSON.parse(JSON.stringify(value, (k, v) => (k === '_id' || k === '__v' ? undefined : v)));
+}
+
+// projectionManagers returns managers in whatever order the collection yields,
+// and the two sources are two different collections.
+function sortByName(docs) {
+    return strip(docs).slice().sort((a, b) => String(a.firstName).localeCompare(String(b.firstName)));
 }

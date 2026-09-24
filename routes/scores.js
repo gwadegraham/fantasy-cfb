@@ -172,71 +172,11 @@ function isRealSeason(season) {
     return Number.isFinite(n) && n > 0;
 }
 
-// The managers of one league, carrying ONLY what the H2H pass reads.
-//
-// This was User.find({ league, 'seasons.season' }) with no projection, which
-// answered every field of every season a manager has ever played. Measured
-// against a dev copy of prod, for the two leagues:
-//
-//   unprojected                         1059KB, 11325ms
-//   projected to teams.id + weeklyScore  435KB,  4192ms
-//   this aggregate                         40KB,   608ms
-//
-// A plain projection cannot get there, though NOT for the reason it looks like.
-// A nested projection DOES slim subdocuments — {'seasons.teams.id': 1} really
-// does return teams as [{id}], and routes/scores.js relies on that elsewhere.
-// That is what takes 1059KB to 435KB.
-//
-// What a projection cannot do is drop array ELEMENTS. It slims fields across
-// ALL FOUR of a manager's seasons, and the 435KB that remains is the three
-// seasons this pass is not scoring — mostly their weeklyScore. $elemMatch and
-// the positional projection can pick the one element, but they return it WHOLE
-// and cannot be combined with a nested field projection, so the full team
-// objects come back. $filter picks the element and $map slims it, which is why
-// this is an aggregate.
-//
-// weeklyScore is kept WHOLE on purpose. Trimming it to the six fields the
-// computation reads gets this to 4KB/117ms, but the caller writes the array back,
-// so a trimmed read would silently drop scoreByTeam and the Captain fields off
-// every entry. 0.5s is not worth that.
-//
-// SEASON IS A NUMBER HERE, deliberately. models/user.js declares
-// seasonSchema.season as Number, and the other queries in this function pass the
-// string — which works only because Mongoose casts it against the schema. An
-// aggregate pipeline gets NO casting: $match with '2026' matches nothing, returns
-// zero managers, and this pass then skips the league and applies no bonuses at
-// all, with a clean log line saying "0 manager(s) updated".
-async function h2hUsers(league, seasonNum) {
-    return User.aggregate([
-        { $match: { league, 'seasons.season': seasonNum } },
-        { $project: {
-            seasons: {
-                $map: {
-                    input: {
-                        $filter: {
-                            input: { $ifNull: ['$seasons', []] },
-                            as: 's',
-                            cond: { $eq: ['$$s.season', seasonNum] }
-                        }
-                    },
-                    as: 's',
-                    in: {
-                        season: '$$s.season',
-                        // Only the id is read, to build the drafted-team set.
-                        teams: {
-                            $map: {
-                                input: { $ifNull: ['$$s.teams', []] },
-                                as: 't',
-                                in: { id: '$$t.id' }
-                            }
-                        },
-                        weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
-                    }
-                }
-            }
-        } }
-    ]);
-}
+// The managers of one league, carrying ONLY what the H2H pass reads, moved to
+// modules/franchise-repo.js as h2hManagers (#313 phase 2), along with the
+// measurements that justify the pipeline and the number-vs-string season trap
+// that makes it fail silently. isRealSeason above is what makes that trap loud;
+// the guard inside applyH2HBonuses says why.
 
 // Fold each league's head-to-head win/tie bonuses into the stored weekly scores.
 //
@@ -255,8 +195,9 @@ async function h2hUsers(league, seasonNum) {
 async function applyH2HBonuses(season) {
     // Both forms are needed, and which one goes where is not arbitrary:
     //   seasonNum — every QUERY, without exception. The aggregate REQUIRES it
-    //               (a pipeline gets no Mongoose casting — see h2hUsers), and
-    //               find/distinct/update cast either way, so there is no reason
+    //               (a pipeline gets no Mongoose casting — see h2hManagers in
+    //               modules/franchise-repo.js), and find/distinct/update cast
+    //               either way, so there is no reason
     //               for them to disagree with it and one good reason not to.
     //   seasonStr — object KEYS, which are strings in Mongo:
     //               engagementBySeason[season] and h2hScheduleBySeason[season].
@@ -266,18 +207,19 @@ async function applyH2HBonuses(season) {
     const seasonStr = String(season);
     const seasonNum = Number(season);
 
-    // Guard, not decoration. h2hUsers below $matches on seasonNum, and an
-    // aggregate gets no Mongoose casting — so a season that is not a real number
-    // silently matches nothing, and this pass reports "0 manager(s) updated" for
-    // every league while awarding nothing. The comment on h2hUsers explains the
-    // trap; this is what makes hitting it loud instead of quiet.
+    // Guard, not decoration. franchiseRepo.h2hManagers $matches on seasonNum,
+    // and an aggregate gets no Mongoose casting — so a season that is not a real
+    // number silently matches nothing, and this pass reports "0 manager(s)
+    // updated" for every league while awarding nothing. The comment on
+    // h2hManagers explains the trap; this is what makes hitting it loud instead
+    // of quiet.
     //
     // Number(null) is 0 and finite, which is why this is not just isFinite.
     if (!isRealSeason(season)) {
         throw new Error(`applyH2HBonuses needs a real season, got ${JSON.stringify(season)}`);
     }
 
-    const leagues = await User.distinct('league', { 'seasons.season': seasonNum });
+    const leagues = await franchiseRepo.leaguesWithSeason(seasonNum);
     const summary = [];
 
     // isRealSeason only rejects things that are not numbers. A well-formed
@@ -288,9 +230,11 @@ async function applyH2HBonuses(season) {
         console.error(`H2H bonus: no managers found for season ${seasonStr} — nothing was applied`);
     }
 
+    // No `if (!league) continue;` here any more: leaguesWithSeason filters falsy
+    // leagues out itself, and says so, because a guard in both places reads like
+    // neither is load-bearing.
     for (const league of leagues) {
-        if (!league) continue;
-        const users = await h2hUsers(league, seasonNum);
+        const users = await franchiseRepo.h2hManagers(league, seasonNum);
         if (!users.length) continue;
 
         const cfgDoc = await ScoringConfig.findOne({ league }).lean();

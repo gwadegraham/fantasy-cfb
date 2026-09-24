@@ -7,7 +7,7 @@ const Ranking = require('../models/ranking');
 const Record = require('../models/record');
 const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
-const User = require('../models/user');
+const franchiseRepo = require('../modules/franchise-repo');
 const Team = require('../models/team');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
@@ -22,7 +22,6 @@ const {
 // Configure API key authorization: ApiKeyAuth
 const CFBD_API_KEY = process.env.CFBD_API_KEY;
 var cfb = require('cfb.js');
-const { findOneAndUpdate } = require('../models/user');
 var defaultClient = cfb.ApiClient.instance;
 var ApiKeyAuth = defaultClient.authentications['ApiKeyAuth'];
 ApiKeyAuth.apiKey = CFBD_API_KEY;
@@ -509,13 +508,8 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
                     outlet: 1, weather: 1, notes: 1, venue: 1, _id: 0
                 }
             ).lean(),
-            User.find(
-                { league, 'seasons.season': season },
-                {
-                    firstName: 1, lastName: 1, color: 1, avatarUrl: 1,
-                    seasons: { $elemMatch: { season } }
-                }
-            ).lean()
+            franchiseRepo.byLeagueAndSeason(league, season,
+                { fields: ['firstName', 'lastName', 'color', 'avatarUrl', 'seasons'] })
         ]);
 
         const owners = ownersByTeam(users, season);

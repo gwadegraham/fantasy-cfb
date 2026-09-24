@@ -388,6 +388,106 @@ async function main() {
         }
     }
 
+    // --- the two aggregation pipelines (routes/standings.js, routes/scores.js).
+    //
+    // Written out here against `users` as they stood before the swap, because
+    // these are the only reads where the repo does not assemble a document from
+    // two finds — it runs a $lookup, and a $lookup can differ from an assembly
+    // in ways the other comparisons would never reach: a franchise with no
+    // account survives it, and $mergeObjects can let a stray account key win.
+    {
+        for (const league of ['graham-league', 'claunts-league']) {
+            const original = await User.aggregate([
+                { $match: { league, 'seasons.season': season } },
+                { $project: {
+                    firstName: 1, lastName: 1, avatarUrl: 1, color: 1,
+                    seasons: { $map: {
+                        input: { $filter: { input: { $ifNull: ['$seasons', []] }, as: 's',
+                                            cond: { $in: ['$$s.season', [season, String(season)]] } } },
+                        as: 's',
+                        in: {
+                            season: '$$s.season',
+                            franchiseName: '$$s.franchiseName',
+                            cumulativeScore: '$$s.cumulativeScore',
+                            teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
+                                             in: { id: '$$t.id', school: '$$t.school' } } }
+                        }
+                    } }
+                } }
+            ]);
+            const off = await withFlag(false, () => (exercised.add('projectionManagers'), repo.projectionManagers)(league, season));
+            const on = await withFlag(true, () => (exercised.add('projectionManagers'), repo.projectionManagers)(league, season));
+            await compareThree(`projectionManagers(${league})`, original, off, on, problems, defaults);
+            // A league with nobody in the active season compares three empty
+            // lists and prints a green `checked 0`. leaguesWithSeason got this
+            // gate and these two did not, which is the same "green tick that
+            // means nothing was checked" this script exists to prevent.
+            if (!original.length) {
+                problems.push(`projectionManagers(${league}): no managers in ${season} — nothing was compared`);
+            }
+            checks.push([`projectionManagers(${league}) — standings projections`, original.length]);
+        }
+    }
+
+    {
+        for (const league of ['graham-league', 'claunts-league']) {
+            const original = await User.aggregate([
+                { $match: { league, 'seasons.season': season } },
+                { $project: {
+                    seasons: { $map: {
+                        input: { $filter: { input: { $ifNull: ['$seasons', []] }, as: 's',
+                                            cond: { $eq: ['$$s.season', season] } } },
+                        as: 's',
+                        in: {
+                            season: '$$s.season',
+                            teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
+                                             in: { id: '$$t.id' } } },
+                            weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
+                        }
+                    } }
+                } }
+            ]);
+            const off = await withFlag(false, () => (exercised.add('h2hManagers'), repo.h2hManagers)(league, season));
+            const on = await withFlag(true, () => (exercised.add('h2hManagers'), repo.h2hManagers)(league, season));
+            await compareThree(`h2hManagers(${league})`, original, off, on, problems, defaults);
+            if (!original.length) {
+                problems.push(`h2hManagers(${league}): no managers in ${season} — nothing was compared`);
+            }
+            checks.push([`h2hManagers(${league}) — H2H bonus pass`, original.length]);
+
+            // The H2H pass writes back with User.updateOne({ _id: user._id }).
+            // An _id that is not the ACCOUNT's silently matches nothing and the
+            // bonus is never stored — the route logs that, but only per manager.
+            // compareThree matches ON _id, so it would report this as "missing
+            // from the new read" rather than naming the cause.
+            const accountIds = new Set((await User.find({ league }, { _id: 1 }).lean()).map(u => String(u._id)));
+            for (const doc of on) {
+                if (!accountIds.has(String(doc._id))) {
+                    problems.push(`h2hManagers(${league}): _id ${doc._id} is not an account id — ` +
+                                  `the weeklyScore write would match nothing`);
+                }
+            }
+        }
+    }
+
+    // --- leaguesWithSeason — drives the H2H pass's per-league loop.
+    {
+        const original = (await User.distinct('league', { 'seasons.season': season })).filter(Boolean).sort();
+        const off = await withFlag(false, () => (exercised.add('leaguesWithSeason'), repo.leaguesWithSeason)(season));
+        const on = await withFlag(true, () => (exercised.add('leaguesWithSeason'), repo.leaguesWithSeason)(season));
+        if (JSON.stringify(original) !== JSON.stringify(off)) {
+            problems.push(`leaguesWithSeason [original vs flag-off]: ${original} vs ${off}`);
+        }
+        if (JSON.stringify(original) !== JSON.stringify(on)) {
+            problems.push(`leaguesWithSeason [original vs flag-on]: ${original} vs ${on}`);
+        }
+        // An empty list is not a pass. The H2H pass loops over this; zero
+        // leagues is a silent no-op that reports success, which is the exact
+        // failure routes/scores.js already logs a warning for.
+        if (!original.length) problems.push('leaguesWithSeason: no leagues for the active season — nothing was compared');
+        checks.push(['leaguesWithSeason — H2H per-league loop', original.length]);
+    }
+
     // Every exported read must be exercised above.
     //
     // The gap three reviews kept finding was never a wrong comparison — it was a
@@ -397,7 +497,7 @@ async function main() {
     // exports turns a forgotten shape into a failure instead of a silence.
     const READ_METHODS = ['bySeason', 'byLeagueAndSeason', 'byLeagueAndSeasonForAccount',
         'byAccountId', 'byLeague', 'byIds', 'all', 'leaguesFor', 'findManagers',
-        'usedColors', 'anyFranchise'];
+        'usedColors', 'anyFranchise', 'projectionManagers', 'h2hManagers', 'leaguesWithSeason'];
     const unexercised = READ_METHODS.filter(m => !exercised.has(m));
     if (unexercised.length) {
         problems.push(`read shapes never compared: ${unexercised.join(', ')} — ` +

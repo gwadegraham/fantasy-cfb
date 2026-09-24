@@ -55,6 +55,18 @@ module.exports = {
             functions: 100,
             lines: 90
         },
+        // Every manager read in the app goes through here, and it answers from
+        // one of two collections depending on a flag. Both branches have to stay
+        // covered: the flag-off branch is what production runs today, and the
+        // flag-on branch is what the write cutover will make permanent. Three of
+        // the four QA rounds on #458 found evidence that only reached one of
+        // them.
+        "./modules/franchise-repo.js": {
+            statements: 95,
+            branches: 82,
+            functions: 100,
+            lines: 95
+        },
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.

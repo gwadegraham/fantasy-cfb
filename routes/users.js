@@ -979,10 +979,21 @@ router.patch('/:id/roster-team', async (req, res) => {
         // Is the replacement already spoken for anywhere in this league?
         let takenBy = null;
         if (targetTeam) {
-            const holder = await User.findOne(
-                { league: user.league, _id: { $ne: user._id }, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
-                { firstName: 1, lastName: 1 }
-            ).lean();
+            // Split across the two filters rather than merged: `_id` is the
+            // ACCOUNT's, the league and the roster are the FRANCHISE's, and
+            // findManagers is what knows that. Returns a list where the original
+            // returned one document. That is the same answer whenever a team is
+            // held once, which is the only state the app permits — but if two
+            // managers somehow hold it, [0] picks by natural collection order,
+            // and `users` and `franchises` need not agree on that. So the two
+            // flag positions could name a DIFFERENT manager in `takenBy`. The
+            // count is unaffected; the name is not.
+            const holders = await franchiseRepo.findManagers({
+                accountFilter: { _id: { $ne: user._id } },
+                franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
+                fields: ['firstName', 'lastName']
+            });
+            const holder = holders[0];
             if (holder) takenBy = { name: `${holder.firstName || ''} ${holder.lastName || ''}`.trim() };
         }
 
