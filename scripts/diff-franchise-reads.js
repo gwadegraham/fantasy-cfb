@@ -292,15 +292,26 @@ async function main() {
         }
     }
 
-    // byAccountId WITH a field list — 8 call sites (navUser, both invite paths,
-    // /me/push, the push test send). Only the no-fields form was diffed, which
-    // is how a silent widening lived here through two reviews.
+    // byAccountId WITH a field list — 10 call sites (navUser, both invite paths,
+    // /me/push, the push test send, and the two login-path reads). Only the
+    // no-fields form was diffed, which is how a silent widening lived here
+    // through two reviews.
+    //
+    // The two login shapes are the ones that decide whether anyone gets in at
+    // all. 'identity-guard' asks for one field and compares it against the
+    // login's email; a read that stops returning it does not error, it makes
+    // every session look unverifiable and waves the wrong ones through.
+    // 'invite-bind' straddles both documents — email and authSub off the
+    // account, league off the franchise — and each of those fields is a refusal
+    // decideInvite would otherwise stop making.
     {
         const shapes = [
             ['navUser', ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub']],
             ['invite-link', ['league', 'firstName', 'lastName', 'authSub']],
             ['/me/push', ['pushSubscriptions', 'pushPrefs', 'seasons.season']],
-            ['push test send', ['pushSubscriptions', 'firstName']]
+            ['push test send', ['pushSubscriptions', 'firstName']],
+            ['identity-guard', ['email']],
+            ['invite-bind', ['email', 'league', 'authSub', 'firstName']]
         ];
         const all = await User.find({}, { _id: 1 }).lean();
         for (const [label, fields] of shapes) {

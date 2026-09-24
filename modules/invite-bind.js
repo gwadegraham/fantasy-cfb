@@ -152,8 +152,18 @@ function renderRefusalPage(reason) {
         + '</div></div></body></html>';
 }
 
-// Middleware factory. deps: { User, management, secret, inviteToken }.
+// Middleware factory. deps: { repo, User, management, secret, inviteToken }.
+//
+// BOTH a repo and a model, on purpose and only for now. The READ moved to
+// modules/franchise-repo.js with #313 phase 2; the WRITE below still goes to
+// `users`, because the write cutover is a single later step and dual-writing
+// two sources of truth mid-season is the thing that step exists to avoid.
+//
+// While FRANCHISE_READS is unset — which it is, in production — both halves
+// resolve to the same collection and nothing is split. When the writes move,
+// `User` leaves this file and `repo` is all that is left.
 function inviteBind(deps) {
+    const repo = deps.repo;
     const User = deps.User;
     const management = deps.management;
     const inviteToken = deps.inviteToken;
@@ -190,8 +200,14 @@ function inviteBind(deps) {
             let lookupError = false;
             if (sub && !innerMeta.userId) {
                 try {
-                    record = await User.findById(invite.userId,
-                        { email: 1, league: 1, authSub: 1, firstName: 1 }).lean();
+                    // Straddles both documents now: email and authSub are the
+                    // ACCOUNT's, league is the FRANCHISE's. byAccountId is what
+                    // knows which is which — asking the Account for `league`
+                    // would silently return undefined, and decideInvite reads a
+                    // missing league as "no league constraint" rather than as a
+                    // mismatch, so a forwarded invite would stop being refused.
+                    record = await repo.byAccountId(invite.userId,
+                        { fields: ['email', 'league', 'authSub', 'firstName'] });
                 } catch (e) {
                     lookupError = true;
                 }

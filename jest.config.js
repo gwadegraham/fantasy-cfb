@@ -67,6 +67,25 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // The two middlewares that decide whether anyone gets into the app at
+        // all, and the only reads whose failure mode is a lockout rather than a
+        // wrong number. Both fail OPEN in every ambiguous case, which means the
+        // safe-looking paths are the ones that have to stay covered: a guard
+        // that silently stopped comparing would pass every smoke test.
+        // identity-guard was at 57/50/60/66 before #313 phase 2 put a ratchet
+        // on it.
+        "./modules/identity-guard.js": {
+            statements: 95,
+            branches: 85,
+            functions: 100,
+            lines: 95
+        },
+        "./modules/invite-bind.js": {
+            statements: 95,
+            branches: 88,
+            functions: 100,
+            lines: 95
+        },
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.

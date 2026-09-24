@@ -18,6 +18,7 @@ const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
 const usersRouter = require('../routes/users');
 const inviteToken = require('../modules/invite-token');
+const franchiseRepo = require('../modules/franchise-repo');
 const { leagueCodeFor } = require('../modules/league-access');
 
 // A League Manager for graham-league: can manage their own league, not the other.
@@ -217,7 +218,7 @@ describe('inviteBind middleware', () => {
             next();
         });
         app.use(inviteBind({
-            User, management, inviteToken,
+            repo: franchiseRepo, User, management, inviteToken,
             secret: () => process.env.AUTH_SECRET
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
@@ -307,8 +308,8 @@ describe('inviteBind middleware', () => {
         });
         app.use(inviteBind({
             // Only the lookup fails; everything else is intact.
-            User: { findById: () => ({ lean: () => Promise.reject(new Error('db down')) }) },
-            management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
+            repo: { byAccountId: () => Promise.reject(new Error('db down')) },
+            User, management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
 
@@ -325,7 +326,7 @@ describe('inviteBind middleware', () => {
             next();
         });
         app.use(inviteBind({
-            User, management: okManagement(), inviteToken,
+            repo: franchiseRepo, User, management: okManagement(), inviteToken,
             secret: () => { throw new Error('boom'); }   // fails before any decision
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
@@ -421,6 +422,106 @@ describe('inviteBind middleware', () => {
 
 // How the panel learns who a long-standing member is without a Management API
 // read scope or a migration: record the sub that already arrives in the session.
+// The invite read is the one in the app that straddles BOTH new documents:
+// email and authSub are the Account's, league is the Franchise's. Every refusal
+// decideInvite can reach is a field it read off one of them, so a half-wired
+// projection does not error — it quietly stops refusing.
+describe('inviteBind reads the same record from either source (#313 phase 2)', () => {
+    const { inviteBind, COOKIE } = require('../modules/invite-bind');
+    const migration = require('../modules/account-migration');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
+    const session = (over) => Object.assign(
+        { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} }, over);
+    const tokenFor = (u, league) => inviteToken.sign(
+        { userId: u._id, league: league || u.league }, process.env.AUTH_SECRET);
+
+    function bindApp(oidcUser, management) {
+        const app = express();
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => !!oidcUser, user: oidcUser };
+            next();
+        });
+        app.use(inviteBind({
+            repo: franchiseRepo, User, management, inviteToken,
+            secret: () => process.env.AUTH_SECRET
+        }));
+        app.get('/anything', (req, res) => res.status(200).send('passed-through'));
+        return app;
+    }
+
+    // Seeded once, then replayed under each flag. The bind WRITES, so each run
+    // needs its own record — a bound franchise refuses the second time round,
+    // which would read as a flag difference and is not one.
+    async function attempt(flag, seed, tokenOverride) {
+        process.env.FRANCHISE_READS = 'false';
+        const u = await User.create(seed());
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+        const res = await request(bindApp(session(), okManagement()))
+            .get('/anything').set('Cookie', `${COOKIE}=${tokenOverride ? tokenOverride(u) : tokenFor(u)}`);
+        return { status: res.status, text: res.text, location: res.headers.location };
+    }
+
+    test('a good invite binds from either source', async () => {
+        for (const flag of ['false', 'true']) {
+            const got = await attempt(flag, () => player({ email: 'ann@example.com' }));
+            expect(got.status).toBe(302);
+            expect(got.location).toBe('/login?returnTo=%2Fstandings');
+        }
+    });
+
+    test('a spent link is refused by both — authSub is an ACCOUNT field', async () => {
+        // If the read stopped returning authSub, decideInvite would fall through
+        // to the email gate and hand an already-claimed franchise to whoever
+        // opened the link second. It would not error; it would just bind.
+        for (const flag of ['false', 'true']) {
+            const got = await attempt(flag, () => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
+            expect(got.status).toBe(403);
+            expect(got.text).toMatch(/invite/i);
+        }
+    });
+
+    test('a token minted for the other league is refused by both — league is a FRANCHISE field', async () => {
+        // The asymmetric one. decideInvite reads a MISSING league as "no league
+        // constraint" rather than as a mismatch, so a read that fetched only the
+        // account would stop refusing forwarded invites instead of erroring.
+        for (const flag of ['false', 'true']) {
+            const got = await attempt(flag, () => player({ email: 'ann@example.com' }), (u) => tokenFor(u, OTHER));
+            expect(got.status).toBe(403);
+        }
+    });
+
+    test('a claimer signing in with a different address is refused by both', async () => {
+        for (const flag of ['false', 'true']) {
+            const got = await attempt(flag, () => player({ email: 'someone.else@example.com' }));
+            expect(got.status).toBe(403);
+        }
+    });
+
+    test('and the record itself carries all four fields, from either source', async () => {
+        // Directly, because three of the four assertions above are 403s and a
+        // 403 does not say WHICH refusal fired.
+        const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|held' }));
+        await migration.migrate({ apply: true });
+        for (const flag of ['false', 'true']) {
+            process.env.FRANCHISE_READS = flag;
+            const rec = await franchiseRepo.byAccountId(u._id,
+                { fields: ['email', 'league', 'authSub', 'firstName'] });
+            expect(rec).toMatchObject({
+                email: 'ann@example.com', league: LEAGUE,
+                authSub: 'auth0|held', firstName: 'Ann'
+            });
+            expect(String(rec._id)).toBe(String(u._id));
+        }
+    });
+});
+
 describe('auth-sub backfill', () => {
     const { shouldRecord, recordAuthSub } = require('../modules/auth-sub-backfill');
 

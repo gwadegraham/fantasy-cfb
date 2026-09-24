@@ -19,6 +19,7 @@ const express = require('express');
 const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
+const franchiseRepo = require('../modules/franchise-repo');
 const identityGuard = require('../modules/identity-guard');
 const { decideIdentity } = identityGuard;
 
@@ -47,7 +48,7 @@ function guardedApp(oidcUser, deps) {
         req.oidc = { isAuthenticated: () => !!oidcUser, user: oidcUser };
         next();
     });
-    app.use(identityGuard(deps || { User }));
+    app.use(identityGuard(deps || { repo: franchiseRepo }));
     app.use((req, res) => res.status(200).send('reached'));
     return app;
 }
@@ -165,7 +166,7 @@ describe('it never locks anyone out by accident', () => {
         // this guard exists to catch. Note the record here WOULD mismatch.
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
         const app = guardedApp(session(bob._id, 'ann@example.com'), {
-            User: { findById: () => ({ lean: () => Promise.reject(new Error('db down')) }) }
+            repo: { byAccountId: () => Promise.reject(new Error('db down')) }
         });
         expect((await request(app).get('/standings')).status).toBe(200);
     });
@@ -182,7 +183,7 @@ describe('it never locks anyone out by accident', () => {
 
     test('a throw inside the lookup is caught and allowed', async () => {
         const app = guardedApp(session('u1', 'ann@example.com'), {
-            User: { findById: () => { throw new Error('boom'); } }
+            repo: { byAccountId: () => { throw new Error('boom'); } }
         });
         expect((await request(app).get('/standings')).status).toBe(200);
     });
@@ -199,16 +200,92 @@ describe('it never locks anyone out by accident', () => {
             };
             next();
         });
-        app.use(identityGuard({ User }));
+        app.use(identityGuard({ repo: franchiseRepo }));
         app.use((req, res) => res.status(200).send('reached'));
         expect((await request(app).get('/standings')).status).toBe(200);
+    });
+});
+
+describe('the verdict is the same from either source (#313 phase 2)', () => {
+    // Everything above runs with FRANCHISE_READS unset, which is the production
+    // path — and therefore proves nothing about the source the cutover will make
+    // permanent. Reviews of #458 kept finding evidence that only reached one
+    // branch; this is the other one.
+    //
+    // For THIS middleware the stakes are not a wrong number on a page. A verdict
+    // that differs between the two sources is either a manager locked out of the
+    // app or a session served someone else's franchise.
+    const migration = require('../modules/account-migration');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    async function statusBothWays(userId, email, path) {
+        const out = {};
+        for (const flag of ['false', 'true']) {
+            process.env.FRANCHISE_READS = flag;
+            out[flag] = (await request(guardedApp(session(userId, email))).get(path || '/standings')).status;
+        }
+        return out;
+    }
+
+    test('a matching login is served from accounts too', async () => {
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        await migration.migrate({ apply: true });
+        const got = await statusBothWays(u._id, 'ann@example.com');
+        expect(got).toEqual({ false: 200, true: 200 });
+    });
+
+    test('a mismatched login is blocked by both', async () => {
+        await User.create(player({ email: 'ann@example.com' }));
+        const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
+        await migration.migrate({ apply: true });
+        const got = await statusBothWays(bob._id, 'ann@example.com');
+        expect(got).toEqual({ false: 403, true: 403 });
+    });
+
+    test('a record with no email is served by both, not blocked by one', async () => {
+        // The asymmetric case. If the account read dropped `email`, this record
+        // would look unverifiable and be ALLOWED where it should be — but a
+        // mismatched one would be allowed too. The test above is what catches
+        // that; this one catches the opposite, a dropped field turning into a
+        // block for every pre-invite-era record in the league.
+        const u = await User.create(player());
+        await migration.migrate({ apply: true });
+        const got = await statusBothWays(u._id, 'ann@example.com');
+        expect(got).toEqual({ false: 200, true: 200 });
+    });
+
+    test('a pointer resolving to nothing is blocked by both', async () => {
+        const mongoose = require('mongoose');
+        await User.create(player({ email: 'ann@example.com' }));
+        await migration.migrate({ apply: true });
+        const got = await statusBothWays(new mongoose.Types.ObjectId(), 'ann@example.com');
+        expect(got).toEqual({ false: 403, true: 403 });
+    });
+
+    test('the read asks for email and gets email, from either source', async () => {
+        // Directly, rather than only through a status code: a 200 can mean
+        // "matched" or "nothing to compare", and those are very different.
+        const u = await User.create(player({ email: 'ann@example.com' }));
+        await migration.migrate({ apply: true });
+        for (const flag of ['false', 'true']) {
+            process.env.FRANCHISE_READS = flag;
+            const rec = await franchiseRepo.byAccountId(u._id, { fields: ['email'] });
+            expect(rec.email).toBe('ann@example.com');
+            expect(String(rec._id)).toBe(String(u._id));
+            expect(decideIdentity({ userId: u._id, tokenEmail: 'ann@example.com', record: rec }))
+                .toEqual({ ok: true, reason: 'match' });
+        }
     });
 });
 
 describe('the paths that stay open to a blocked session', () => {
     // A blocked session still has to be able to load the block page's own
     // assets, reach its invite link, and log out.
-    const deadPointer = { User: { findById: () => ({ lean: async () => null }) } };
+    const deadPointer = { repo: { byAccountId: async () => null } };
     const unlinked = { sub: 'auth0|new', email: 'ann@example.com', user_metadata: {} };
 
     test.each([
