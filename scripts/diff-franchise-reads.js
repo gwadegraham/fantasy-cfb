@@ -418,6 +418,13 @@ async function main() {
             const off = await withFlag(false, () => (exercised.add('projectionManagers'), repo.projectionManagers)(league, season));
             const on = await withFlag(true, () => (exercised.add('projectionManagers'), repo.projectionManagers)(league, season));
             await compareThree(`projectionManagers(${league})`, original, off, on, problems, defaults);
+            // A league with nobody in the active season compares three empty
+            // lists and prints a green `checked 0`. leaguesWithSeason got this
+            // gate and these two did not, which is the same "green tick that
+            // means nothing was checked" this script exists to prevent.
+            if (!original.length) {
+                problems.push(`projectionManagers(${league}): no managers in ${season} — nothing was compared`);
+            }
             checks.push([`projectionManagers(${league}) — standings projections`, original.length]);
         }
     }
@@ -443,6 +450,9 @@ async function main() {
             const off = await withFlag(false, () => (exercised.add('h2hManagers'), repo.h2hManagers)(league, season));
             const on = await withFlag(true, () => (exercised.add('h2hManagers'), repo.h2hManagers)(league, season));
             await compareThree(`h2hManagers(${league})`, original, off, on, problems, defaults);
+            if (!original.length) {
+                problems.push(`h2hManagers(${league}): no managers in ${season} — nothing was compared`);
+            }
             checks.push([`h2hManagers(${league}) — H2H bonus pass`, original.length]);
 
             // The H2H pass writes back with User.updateOne({ _id: user._id }).

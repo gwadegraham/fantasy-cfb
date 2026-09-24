@@ -209,9 +209,12 @@ describe('GET /games/scoreboard — the owners read', () => {
     });
 
     test('both rostered teams still resolve to an owner', async () => {
-        // ownersByTeam keys off the projected season entry. A read that returned
-        // every season would key the wrong year's roster and quietly orphan the
-        // teams, leaving a scoreboard that renders with no owner badges at all.
+        // What this actually guards: that the join still produces a manager the
+        // scoreboard can attribute a team to. It does NOT guard the season
+        // narrowing, despite that being the obvious worry — modules/league-
+        // scoreboard.js resolves the entry by value rather than by position, so
+        // this surface survives a lost $elemMatch. The narrowing is covered in
+        // tests/FranchiseRepo.spec.js, on the shared projection where it lives.
         const { on } = await bothWays(`/games/scoreboard/${LEAGUE}/${SEASON}/1`);
         const game = on.body.games.find(g => g.id === 401);
         expect(game.home.owner).toBeTruthy();

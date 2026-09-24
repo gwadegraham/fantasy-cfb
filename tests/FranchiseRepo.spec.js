@@ -588,6 +588,35 @@ describe('the switch', () => {
         expect((await repo.byAccountId(user._id)).league).toBe('tampered-league');
     });
 
+    test('an explicit field list still narrows to ONE season, on both positions', async () => {
+        // The gap a QA pass found in this PR. routes/games.js now asks for
+        // `seasons` by NAME, which routes through seasonScopedProjection rather
+        // than userProjection — a different code path, and the one this PR put
+        // on the scoreboard. Replacing its $elemMatch with `seasons: 1` left
+        // every test added here green; only the pre-existing /users suite
+        // caught it.
+        //
+        // It matters because callers index seasons[0] via public/season-of.js.
+        // The scoreboard itself happens to survive — modules/league-scoreboard.js
+        // resolves the entry by value, not by position — but the projection is
+        // shared, and the next caller to use it will not.
+        const user = await seedManager();   // holds 2025 AND 2026
+        const fields = ['firstName', 'color', 'seasons'];
+
+        for (const flag of [false, true]) {
+            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2026, { fields }));
+            expect(got.seasons.map(sn => sn.season)).toEqual([2026]);
+            expect(got.seasons[0].franchiseName).toBe('Name, Image, & Sadness');
+        }
+
+        // And the past season projects the past season, not the active one.
+        for (const flag of [false, true]) {
+            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2025, { fields }));
+            expect(got.seasons.map(sn => sn.season)).toEqual([2025]);
+        }
+        expect(String(user._id)).toBeTruthy();
+    });
+
     test('anyFranchise and leaguesFor answer from users when the flag is off', async () => {
         // These two were the last uncovered lines in the module, and both were
         // the FLAG-OFF branch — the one running in production right now. A

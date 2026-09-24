@@ -195,8 +195,9 @@ function isRealSeason(season) {
 async function applyH2HBonuses(season) {
     // Both forms are needed, and which one goes where is not arbitrary:
     //   seasonNum — every QUERY, without exception. The aggregate REQUIRES it
-    //               (a pipeline gets no Mongoose casting — see h2hUsers), and
-    //               find/distinct/update cast either way, so there is no reason
+    //               (a pipeline gets no Mongoose casting — see h2hManagers in
+    //               modules/franchise-repo.js), and find/distinct/update cast
+    //               either way, so there is no reason
     //               for them to disagree with it and one good reason not to.
     //   seasonStr — object KEYS, which are strings in Mongo:
     //               engagementBySeason[season] and h2hScheduleBySeason[season].
@@ -206,11 +207,12 @@ async function applyH2HBonuses(season) {
     const seasonStr = String(season);
     const seasonNum = Number(season);
 
-    // Guard, not decoration. h2hUsers below $matches on seasonNum, and an
-    // aggregate gets no Mongoose casting — so a season that is not a real number
-    // silently matches nothing, and this pass reports "0 manager(s) updated" for
-    // every league while awarding nothing. The comment on h2hUsers explains the
-    // trap; this is what makes hitting it loud instead of quiet.
+    // Guard, not decoration. franchiseRepo.h2hManagers $matches on seasonNum,
+    // and an aggregate gets no Mongoose casting — so a season that is not a real
+    // number silently matches nothing, and this pass reports "0 manager(s)
+    // updated" for every league while awarding nothing. The comment on
+    // h2hManagers explains the trap; this is what makes hitting it loud instead
+    // of quiet.
     //
     // Number(null) is 0 and finite, which is why this is not just isFinite.
     if (!isRealSeason(season)) {
@@ -228,8 +230,10 @@ async function applyH2HBonuses(season) {
         console.error(`H2H bonus: no managers found for season ${seasonStr} — nothing was applied`);
     }
 
+    // No `if (!league) continue;` here any more: leaguesWithSeason filters falsy
+    // leagues out itself, and says so, because a guard in both places reads like
+    // neither is load-bearing.
     for (const league of leagues) {
-        if (!league) continue;
         const users = await franchiseRepo.h2hManagers(league, seasonNum);
         if (!users.length) continue;
 

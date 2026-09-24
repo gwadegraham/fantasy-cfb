@@ -48,6 +48,16 @@ const User = require('../models/user');
 //     pointer again on EVERY tick, forever.
 //   - Standings, scores and history would show migration-era numbers. Mid-season
 //     that is last month's table, with nothing erroring.
+//   - routes/scores.js applyH2HBonuses would DESTROY DATA, not just misreport
+//     it. Every other hazard on this list is a stale read; this one is a stale
+//     read that gets written back. h2hManagers below hands the pass a
+//     weeklyScore frozen at migration time, applyAwards (modules/h2h.js) maps
+//     that array and returns it as a COMPLETE replacement, and the route then
+//     $sets 'seasons.$.weeklyScore' to it on the live `users` document. A
+//     manager with five scored weeks whose snapshot holds three is left with
+//     three — weeks four and five deleted. It needs one entry to differ for the
+//     write to fire at all, which on a mid-season snapshot is close to certain,
+//     since the awards are recomputed from the snapshot's own totals.
 //   - GET /users/me/push would not show a device registered a moment earlier.
 //
 // And flipping back does not undo it: the duplicate pushes have been sent.
@@ -664,6 +674,10 @@ function accountJoin(fields) {
 async function leaguesWithSeason(season) {
     const Model = readsFromFranchises() ? Franchise : User;
     const leagues = await Model.distinct('league', { 'seasons.season': season });
+    // filter(Boolean) is a CONTRACT, not tidying: routes/scores.js used to carry
+    // its own `if (!league) continue;` and that guard was removed on the
+    // strength of this line. A manager with no league is a data fault that must
+    // not become a per-league scoring pass over `undefined`.
     return leagues.filter(Boolean).sort();
 }
 
