@@ -482,8 +482,11 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
         // opened the link second. It would not error; it would just bind.
         for (const flag of ['false', 'true']) {
             const got = await attempt(flag, () => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
+            // Status only. renderRefusalPage titles every refusal "Invite", so
+            // matching the body cannot tell WHICH refusal fired and would read
+            // as evidence it is not. The 403 is the real assertion: dropping
+            // authSub falls through to the email gate and yields a 302.
             expect(got.status).toBe(403);
-            expect(got.text).toMatch(/invite/i);
         }
     });
 
@@ -502,6 +505,35 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
             const got = await attempt(flag, () => player({ email: 'someone.else@example.com' }));
             expect(got.status).toBe(403);
         }
+    });
+
+    // Documented, not asserted-as-correct. This is a KNOWN gap on the flag-on
+    // path, and it exists here so that flipping the flag fails a test instead of
+    // failing an invite.
+    test('an account with NO franchise loses the league-mismatch refusal under flag-on', async () => {
+        const Account = require('../models/account');
+        const { decideInvite } = require('../modules/invite-bind');
+        const a = await Account.create({ firstName: 'Hoops', lastName: 'Only', email: 'hoops@example.com' });
+
+        const invite = { userId: a._id, league: OTHER };
+        const args = { sub: 'auth0|new', tokenEmail: 'hoops@example.com', sessionUserId: null };
+
+        process.env.FRANCHISE_READS = 'true';
+        const rec = await franchiseRepo.byAccountId(a._id,
+            { fields: ['email', 'league', 'authSub', 'firstName'] });
+
+        // The whole mechanism in one line: no franchise, so no league, and
+        // decideInvite reads a missing league as "no constraint".
+        expect(rec.league).toBeUndefined();
+        expect(decideInvite(Object.assign({ invite, record: rec }, args)))
+            .toEqual({ action: 'bind', reason: 'verified' });
+
+        // What the same invite does when the league IS known — the behaviour the
+        // production path gives today, and the one that has to survive the
+        // cutover.
+        const withFranchise = Object.assign({}, rec, { league: LEAGUE });
+        expect(decideInvite(Object.assign({ invite, record: withFranchise }, args)))
+            .toEqual({ action: 'refuse', reason: 'league-mismatch' });
     });
 
     test('and the record itself carries all four fields, from either source', async () => {

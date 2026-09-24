@@ -80,12 +80,10 @@ module.exports = {
             functions: 100,
             lines: 95
         },
-        "./modules/invite-bind.js": {
-            statements: 95,
-            branches: 88,
-            functions: 100,
-            lines: 95
-        },
+        // (invite-bind already has a ratchet further down, and a stricter one —
+        // branches 90. A second entry here was silently overridden by it, since
+        // the later key wins in an object literal, so it was a threshold that
+        // looked like a promise and enforced nothing.)
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.
