@@ -22,7 +22,6 @@ const auth0Management = require('./modules/auth0-management');
 const authSubBackfill = require('./modules/auth-sub-backfill');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const ScoringConfig = require('./models/scoringConfig');
-const User = require('./models/user');
 const League = require('./models/league');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
@@ -96,8 +95,7 @@ app.use((req, res, next) => {
 // pointer yet, which is precisely what the guard 403s on, so binding has to
 // happen first. See modules/invite-bind.js.
 app.use(inviteBind({
-    repo: franchiseRepo,   // the read
-    User,                  // the write, until the #313 write cutover
+    repo: franchiseRepo,   // reads AND writes, since #313 phase 3
     management: auth0Management,
     inviteToken,
     secret: () => process.env.AUTH_SECRET

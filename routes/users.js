@@ -5,7 +5,6 @@ const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Unset means the users collection, so this swap is inert until the flag flips.
 const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
-const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
@@ -708,18 +707,22 @@ router.post('/', async (req, res) => {
         : [{ season: activeSeason('football') }];
     const color = req.body.color || await pickUnusedColor(req.body.league);
 
-    const user = new User({
-        firstName: req.body.firstName,
-        lastName: req.body.lastName,
-        email: email,
-        seasons: seasons,
-        color: color,
-        league: req.body.league,
-        lastUpdated: centralTime
-    });
-
+    // The one route that CREATES the pair, and the one place an orphan Account
+    // could come from. createManager routes each field to its document and, if
+    // the franchise write fails, deletes the account it just made — because an
+    // account with no franchise is not an inert half-record: decideInvite reads
+    // a missing league as "no league constraint", so an orphan is an account
+    // that can claim an invite minted for ANY league.
     try {
-        const newUser = await user.save();
+        const newUser = await franchiseRepo.createManager({
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            email: email,
+            seasons: seasons,
+            color: color,
+            league: req.body.league,
+            lastUpdated: centralTime
+        });
         await audit.record(req, {
             action: 'user.create',
             league: newUser.league, season: String(activeSeason('football')),

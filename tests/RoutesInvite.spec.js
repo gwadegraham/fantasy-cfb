@@ -62,6 +62,79 @@ function scoredSeason() {
     }];
 }
 
+// POST /users is the one route that CREATES the pair, and the only place an
+// orphan Account can come from — which matters because decideInvite reads a
+// missing league as "no league constraint", so an orphan is an account that can
+// claim an invite minted for any league.
+//
+// Its own block because everything above runs with FRANCHISE_READS unset, where
+// createManager is still `new User(...)` and the routing is not exercised at all.
+// Verified as a gap: passing an unrouted field through the route passed all 47
+// tests here, because mongoose silently drops unknown keys in strict mode and
+// the throw only exists on the flag-on path.
+describe('POST /users creates the pair from either source (#313 phase 3)', () => {
+    const Account = require('../models/account');
+    const Franchise = require('../models/franchise');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    const body = { firstName: 'Ann', lastName: 'Lee', league: LEAGUE, email: 'ann@example.com' };
+
+    test.each([['false'], ['true']])('the response is User-shaped with the flag %s', async (flag) => {
+        process.env.FRANCHISE_READS = flag;
+        const res = await request(managerApp).post('/users').send(body);
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({ firstName: 'Ann', lastName: 'Lee', league: LEAGUE, email: 'ann@example.com' });
+        expect(res.body._id).toBeTruthy();
+        expect(res.body.seasons).toHaveLength(1);
+    });
+
+    test('flag ON writes each field to its own document, and nothing to `users`', async () => {
+        process.env.FRANCHISE_READS = 'true';
+        const res = await request(managerApp).post('/users').send(body);
+
+        const account = await Account.findById(res.body._id).lean();
+        const franchise = await Franchise.findOne({ accountId: res.body._id }).lean();
+
+        expect(account.email).toBe('ann@example.com');
+        expect(account.color).toBeTruthy();          // auto-assigned from the palette
+        expect(account.league).toBeUndefined();
+        expect(account.seasons).toBeUndefined();
+
+        expect(franchise.league).toBe(LEAGUE);
+        expect(franchise.seasons).toHaveLength(1);
+        expect(franchise.lastUpdated).toBeTruthy();
+
+        expect(await User.countDocuments({ firstName: 'Ann' })).toBe(0);
+    });
+
+    test('the new manager is immediately readable through the repo', async () => {
+        // A created pair that the app cannot read back is the same bug as not
+        // creating it. This is what the admin roster and the invite flow hit
+        // one request later.
+        process.env.FRANCHISE_READS = 'true';
+        const res = await request(managerApp).post('/users').send(body);
+        const back = await require('../modules/franchise-repo').byAccountId(res.body._id);
+        expect(back).toMatchObject({ firstName: 'Ann', league: LEAGUE, email: 'ann@example.com' });
+        expect(back.seasons).toHaveLength(1);
+    });
+
+    test('a franchise that cannot be written leaves NO orphan account behind', async () => {
+        process.env.FRANCHISE_READS = 'true';
+        const boom = jest.spyOn(Franchise, 'create').mockRejectedValueOnce(new Error('write failed'));
+
+        const res = await request(managerApp).post('/users').send(body);
+        expect(res.status).toBe(400);
+        expect(await Account.countDocuments({})).toBe(0);
+        expect(await Franchise.countDocuments({})).toBe(0);
+
+        boom.mockRestore();
+    });
+});
+
 describe('POST /users/:id/invite-link', () => {
     test('returns a signed link that resolves back to the franchise', async () => {
         const u = await User.create(player());
@@ -218,7 +291,7 @@ describe('inviteBind middleware', () => {
             next();
         });
         app.use(inviteBind({
-            repo: franchiseRepo, User, management, inviteToken,
+            repo: franchiseRepo, management, inviteToken,
             secret: () => process.env.AUTH_SECRET
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
@@ -309,7 +382,7 @@ describe('inviteBind middleware', () => {
         app.use(inviteBind({
             // Only the lookup fails; everything else is intact.
             repo: { byAccountId: () => Promise.reject(new Error('db down')) },
-            User, management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
+            management: okManagement(), inviteToken, secret: () => process.env.AUTH_SECRET
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
 
@@ -326,7 +399,7 @@ describe('inviteBind middleware', () => {
             next();
         });
         app.use(inviteBind({
-            repo: franchiseRepo, User, management: okManagement(), inviteToken,
+            repo: franchiseRepo, management: okManagement(), inviteToken,
             secret: () => { throw new Error('boom'); }   // fails before any decision
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));
@@ -448,7 +521,7 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
             next();
         });
         app.use(inviteBind({
-            repo: franchiseRepo, User, management, inviteToken,
+            repo: franchiseRepo, management, inviteToken,
             secret: () => process.env.AUTH_SECRET
         }));
         app.get('/anything', (req, res) => res.status(200).send('passed-through'));

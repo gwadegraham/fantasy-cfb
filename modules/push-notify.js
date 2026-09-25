@@ -30,7 +30,6 @@
 
 const webpush = require('web-push');
 const franchiseRepo = require('./franchise-repo');
-const User = require('../models/user');
 const Game = require('../models/game');
 const { activeSeason } = require('./active-season');
 const scoringModule = require('./scoring');

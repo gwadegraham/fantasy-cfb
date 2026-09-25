@@ -30,43 +30,52 @@ const User = require('../models/user');
 
 // ---- the switch -------------------------------------------------------------
 //
-// Which collection these reads come from. UNSET MEANS USERS — the old path —
-// so merging and deploying this changes nothing.
+// Which collection managers are read from AND written to. UNSET MEANS USERS —
+// the old path — so deploying this changes nothing.
 //
-// ⚠️ THIS IS A DEVELOPMENT SWITCH. DO NOT SET IT IN PRODUCTION. ⚠️
+// This comment used to say, in capitals, never to set it in production. That was
+// correct then and is not now, and the difference is the whole of #313 phase 3.
+// It said so because the flag governed READS while writes always went to
+// `users`: flag-on meant reading a migration-era snapshot and writing somewhere
+// else, which for routes/scores.js destroys data rather than merely misreporting
+// it (applyAwards returns weeklyScore as a COMPLETE replacement, so a manager
+// with five scored weeks whose snapshot holds three is left with three).
 //
-// An earlier version of this comment called it a rollout control you could
-// "flip and flip back in seconds". That was wrong, and dangerously so. Nothing
-// writes to `accounts` or `franchises` — modules/account-migration.js populated
-// them once and no other code touches them. Writes still go to `users`. So with
-// this on in production, every read returns a SNAPSHOT frozen at migration
-// time:
+// Writes now follow the flag. There is one source of truth at any moment and the
+// two halves cannot disagree about which. Nothing dual-writes.
 //
-//   - modules/push-notify.js would read the "already sent" ledgers from the
-//     Franchise while writing them to the User, so the dedupe never sees its own
-//     writes — every eligible manager gets the Captain reminder and the recap
-//     pointer again on EVERY tick, forever.
-//   - Standings, scores and history would show migration-era numbers. Mid-season
-//     that is last month's table, with nothing erroring.
-//   - routes/scores.js applyH2HBonuses would DESTROY DATA, not just misreport
-//     it. Every other hazard on this list is a stale read; this one is a stale
-//     read that gets written back. h2hManagers below hands the pass a
-//     weeklyScore frozen at migration time, applyAwards (modules/h2h.js) maps
-//     that array and returns it as a COMPLETE replacement, and the route then
-//     $sets 'seasons.$.weeklyScore' to it on the live `users` document. A
-//     manager with five scored weeks whose snapshot holds three is left with
-//     three — weeks four and five deleted. It needs one entry to differ for the
-//     write to fire at all, which on a mid-season snapshot is close to certain,
-//     since the awards are recomputed from the snapshot's own totals.
-//   - GET /users/me/push would not show a device registered a moment earlier.
+// ---- what it still is NOT --------------------------------------------------
 //
-// And flipping back does not undo it: the duplicate pushes have been sent.
+// Not reversible in general. Flip on, let an hour of scoring run, and flipping
+// back silently reverts that hour — `users` will not have seen any of it, and
+// nothing errors to say so. The window in which flipping back is cheap is
+// measured in seconds, not hours.
 //
-// The flag exists so scripts/diff-franchise-reads.js can compare the two
-// sources against a freshly migrated copy, and so the swap can be exercised in
-// tests. It becomes a real switch only when the writes move — and at that point
-// it is deleted along with the `users` branch below, because two sources of
-// truth for live scoring is the thing this whole change is trying to end.
+// Not safe to flip against a stale copy. `accounts` and `franchises` hold
+// whatever scripts/migrate-accounts.js last wrote. It upserts by
+// (accountId, league) and UPDATES existing rows, so re-running it re-syncs —
+// and it must be re-run immediately before the flip or the app starts serving
+// however far behind they are.
+//
+// ---- the cutover -----------------------------------------------------------
+//
+//   1. Deploy this code with the var unset. Nothing changes; verify that.
+//   2. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js"
+//      Dry run. Read the drift: every manager should show accountAction
+//      'update', and the field-routing guards must pass.
+//   3. Same command with --apply, then with --verify.
+//   4. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
+//   5. Watch. A block from modules/identity-guard.js, a second Captain reminder
+//      in one week, or a standings table that stops moving all mean flip back:
+//      heroku config:unset FRANCHISE_READS -a fantasy-cfb
+//
+// Do it midweek, between Sunday scoring and Saturday kickoff. Never on a game
+// day: the nightly job is what exercises the heaviest write in the app.
+//
+// Once it has been on through a full scoring cycle, delete the flag and the
+// `users` branch of every function below. Two sources of truth for live scoring
+// is the thing this whole change exists to end; the flag is scaffolding, not a
+// feature.
 //
 // ONE definition, read PER CALL. Both deliberate: this repo has been bitten by
 // LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as OFF and

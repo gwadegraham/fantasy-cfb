@@ -3,7 +3,6 @@ const franchiseRepo = require('../modules/franchise-repo');
 const { activeSeason } = require('../modules/active-season');
 const router = express.Router();
 const scoringModule = require('../modules/scoring.js');
-const User = require('../models/user');
 const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
 const Team = require('../models/team');

@@ -152,19 +152,13 @@ function renderRefusalPage(reason) {
         + '</div></div></body></html>';
 }
 
-// Middleware factory. deps: { repo, User, management, secret, inviteToken }.
+// Middleware factory. deps: { repo, management, secret, inviteToken }.
 //
-// BOTH a repo and a model, on purpose and only for now. The READ moved to
-// modules/franchise-repo.js with #313 phase 2; the WRITE below still goes to
-// `users`, because the write cutover is a single later step and dual-writing
-// two sources of truth mid-season is the thing that step exists to avoid.
-//
-// While FRANCHISE_READS is unset — which it is, in production — both halves
-// resolve to the same collection and nothing is split. When the writes move,
-// `User` leaves this file and `repo` is all that is left.
+// The model dep is gone: phase 2 moved the read here and phase 3 moved the
+// write, so both halves go through modules/franchise-repo.js and land wherever
+// the flag says. This file no longer knows which collection that is.
 function inviteBind(deps) {
     const repo = deps.repo;
-    const User = deps.User;
     const management = deps.management;
     const inviteToken = deps.inviteToken;
 
