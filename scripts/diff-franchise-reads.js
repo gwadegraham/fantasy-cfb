@@ -535,7 +535,7 @@ async function main() {
     // that happens to read slip through unnoticed, which is the exact failure
     // this guard exists for.
     const WRITE_METHODS = ['writesToFranchises', 'loadForWrite', 'saveBoth',
-        'updateAccount', 'updateFranchise', 'createManager'];
+        'updateAccount', 'updateFranchise', 'createManager', 'rosteredForWrite'];
     const missingWrites = WRITE_METHODS.filter(m => typeof repo[m] !== 'function');
     if (missingWrites.length) {
         problems.push(`listed as a write but not exported: ${missingWrites.join(', ')}`);

@@ -74,27 +74,35 @@ router.patch('/me/profile', async (req, res) => {
     }
 
     try {
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: 'User not found.' });
+        // The only handler in the app that writes to BOTH documents, and the
+        // reason loadForWrite hands back two names for what may be one object:
+        // the avatar and the prompt flag belong to the PERSON, the franchise
+        // name belongs to their entry in one league. With the flag unset both
+        // names point at the same User doc and this is the single write it
+        // always was.
+        const ctx = await franchiseRepo.loadForWrite(userId);
+        if (!ctx) return res.status(404).json({ message: 'User not found.' });
+        const { account, franchise } = ctx;
 
-        if (clean.avatarUrl !== undefined) user.avatarUrl = clean.avatarUrl;
-        if (clean.prompted !== undefined) user.profilePrompted = clean.prompted;
+        if (clean.avatarUrl !== undefined) account.avatarUrl = clean.avatarUrl;
+        if (clean.prompted !== undefined) account.profilePrompted = clean.prompted;
 
-        if (clean.franchiseName !== undefined) {
+        if (clean.franchiseName !== undefined && franchise) {
             // Only name the active season — never fall back to a prior season.
             // Before the league drafts the active year there's no entry to name,
             // so the update is ignored (the client locks the field to match).
             const year = activeSeason('football');
-            const season = (user.seasons || []).find(s => Number(s.season) === year);
+            const season = (franchise.seasons || []).find(s => Number(s.season) === year);
             if (season) season.franchiseName = clean.franchiseName;
         }
 
-        await user.save();
-        const current = (user.seasons || []).find(s => Number(s.season) === activeSeason('football'))
-            || (user.seasons && user.seasons[user.seasons.length - 1]);
+        await franchiseRepo.saveBoth(ctx);
+        const seasons = (franchise && franchise.seasons) || [];
+        const current = seasons.find(s => Number(s.season) === activeSeason('football'))
+            || seasons[seasons.length - 1];
         res.json({
-            avatarUrl: user.avatarUrl || null,
-            profilePrompted: user.profilePrompted,
+            avatarUrl: account.avatarUrl || null,
+            profilePrompted: account.profilePrompted,
             franchiseName: (current && current.franchiseName) || null
         });
     } catch (err) {
@@ -170,10 +178,13 @@ router.post('/me/push', async (req, res) => {
     }
 
     try {
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: 'User not found.' });
+        // Account-side: a device belongs to the person, not to one league's
+        // entry. `franchise` goes unused here, which is the normal case.
+        const ctx = await franchiseRepo.loadForWrite(userId);
+        if (!ctx) return res.status(404).json({ message: 'User not found.' });
+        const { account } = ctx;
 
-        const subs = (user.pushSubscriptions || []).filter(s => s.endpoint !== clean.endpoint);
+        const subs = (account.pushSubscriptions || []).filter(s => s.endpoint !== clean.endpoint);
         if (subs.length >= MAX_SUBSCRIPTIONS) {
             // Drop the oldest rather than refusing: a manager hitting the cap is
             // someone whose browser keeps reissuing endpoints, and failing their
@@ -182,8 +193,8 @@ router.post('/me/push', async (req, res) => {
             subs.splice(0, subs.length - MAX_SUBSCRIPTIONS + 1);
         }
         subs.push(clean);
-        user.pushSubscriptions = subs;
-        await user.save();
+        account.pushSubscriptions = subs;
+        await franchiseRepo.saveBoth(ctx);
 
         res.json({
             deviceCount: subs.length,
@@ -228,15 +239,17 @@ router.patch('/me/push/prefs', async (req, res) => {
     }
 
     try {
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: 'User not found.' });
+        // Account-side: alert preferences follow the person across leagues.
+        const ctx = await franchiseRepo.loadForWrite(userId);
+        if (!ctx) return res.status(404).json({ message: 'User not found.' });
+        const { account } = ctx;
         const prefs = Object.assign(
             { score: true, leadChange: true, closeGame: true, final: true, captainLock: true, captainLockLeadMinutes: CAPTAIN_DEFAULT_LEAD_MINUTES, recapReady: true },
-            user.pushPrefs ? user.pushPrefs.toObject ? user.pushPrefs.toObject() : user.pushPrefs : {},
+            account.pushPrefs ? account.pushPrefs.toObject ? account.pushPrefs.toObject() : account.pushPrefs : {},
             clean
         );
-        user.pushPrefs = prefs;
-        await user.save();
+        account.pushPrefs = prefs;
+        await franchiseRepo.saveBoth(ctx);
         res.json({ prefs });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -270,7 +283,14 @@ router.get('/me/captain', async (req, res) => {
     const seasonYear = Number(req.query.season) || activeSeason('football');
     const none = { season: seasonYear, week: null, lockAt: null, teamId: null, locked: true };
     try {
-        const user = await User.findById(userId);
+        // A pure read — this handler never saves. It was filed with the
+        // write-bound ones during the phase 2 survey and is not; moving it here
+        // rather than in its own change now that the surrounding file is being
+        // rewritten anyway.
+        //
+        // Unprojected on purpose, as findById was: it reads the whole season
+        // entry (teams, captains) and the projection would have to list them all.
+        const user = await franchiseRepo.byAccountId(userId);
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season || !(season.teams || []).length) return res.json(none);
@@ -394,8 +414,11 @@ router.patch('/me/captain', async (req, res) => {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
     try {
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: 'User not found.' });
+        // Franchise-side: captains live on the season entry, which belongs to
+        // the manager's entry in ONE league.
+        const ctx = await franchiseRepo.loadForWrite(userId);
+        if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
+        const user = ctx.franchise;
         const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season) return res.status(404).json({ message: 'No roster for that season.' });
         const teamIds = (season.teams || []).map(t => Number(t.id));
@@ -428,7 +451,7 @@ router.patch('/me/captain', async (req, res) => {
         if (!Array.isArray(season.captains)) season.captains = [];
         season.captains = season.captains.filter(c => Number(c.week) !== week);   // drop any existing pick for the week
         if (teamId != null) season.captains.push({ week, teamId });
-        await user.save();
+        await franchiseRepo.saveBoth(ctx);
         // After the save: an audit row for a write that never landed is worse
         // than a missing one.
         await recordCaptain(req, {
@@ -453,8 +476,10 @@ router.patch('/:id/captain', async (req, res) => {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
     try {
-        const user = await User.findById(req.params.id);
-        if (!user) return res.status(404).json({ message: 'User not found.' });
+        // Franchise-side, same as the self-serve route above.
+        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
+        const user = ctx.franchise;
         const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season) return res.status(404).json({ message: 'No roster for that season.' });
         if (teamId != null) {
@@ -467,7 +492,7 @@ router.patch('/:id/captain', async (req, res) => {
         if (!Array.isArray(season.captains)) season.captains = [];
         season.captains = season.captains.filter(c => Number(c.week) !== week);
         if (teamId != null) season.captains.push({ week, teamId });
-        await user.save();
+        await franchiseRepo.saveBoth(ctx);
         await recordCaptain(req, {
             user, season, seasonYear, week, action: 'captain.set', teamId, prevTeamId, via: 'admin'
         });
@@ -831,8 +856,14 @@ router.patch('/:id', getUser, async (req, res) => {
         res.user.isUpdated = req.body.isUpdated;
     }
     try {
-        const updatedUser = await res.user.save();
-        res.status(200).json(updatedUser);
+        await franchiseRepo.saveBoth(res.ctx);
+        // Re-assembled rather than echoing one document: the response has always
+        // carried the person's name and colour alongside the season, and with
+        // the flag on those live on the account.
+        res.status(200).json(franchiseRepo.toUserShape(
+            res.ctx.account.toObject ? res.ctx.account.toObject() : res.ctx.account,
+            res.ctx.franchise && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise)
+        ));
     } catch (err) {
         res.status(400).json({message: err.message});
     }
@@ -860,8 +891,14 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
     }
 
     try {
-        const updatedUser = await res.user.save();
-        res.status(200).json(updatedUser);
+        await franchiseRepo.saveBoth(res.ctx);
+        // Re-assembled rather than echoing one document: the response has always
+        // carried the person's name and colour alongside the season, and with
+        // the flag on those live on the account.
+        res.status(200).json(franchiseRepo.toUserShape(
+            res.ctx.account.toObject ? res.ctx.account.toObject() : res.ctx.account,
+            res.ctx.franchise && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise)
+        ));
     } catch (err) {
         res.status(400).json({message: err.message});
     }
@@ -874,8 +911,11 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
 router.post('/:id/season-membership', async (req, res) => {
     try {
         const included = !!(req.body && req.body.included);
-        const user = await User.findById(req.params.id);
-        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        // Franchise-side: membership IS the seasons array, and `league` below is
+        // read off the same document.
+        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
+        const user = ctx.franchise;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
@@ -892,7 +932,7 @@ router.post('/:id/season-membership', async (req, res) => {
             user.seasons = user.seasons.filter(s => Number(s.season) !== year);
         }
         user.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
-        await user.save();
+        await franchiseRepo.saveBoth(ctx);
         const inSeason = (user.seasons || []).some(s => Number(s.season) === year);
         // Removing someone drops that year's scores, so this one is worth a trail
         // even though it's reversible in principle.
@@ -964,8 +1004,10 @@ router.get('/league/:league/roster-teams', async (req, res) => {
 // one without the other would leave them quietly disagreeing.
 router.patch('/:id/roster-team', async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        if (!user) return res.status(404).json({ message: 'Cannot find user' });
+        // Franchise-side: a roster correction rewrites seasons[].teams.
+        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
+        const user = ctx.franchise;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
@@ -1014,7 +1056,7 @@ router.patch('/:id/roster-team', async (req, res) => {
         user.markModified('seasons');
         user.lastUpdated = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
         try {
-            await user.save();
+            await franchiseRepo.saveBoth(ctx);
         } catch (err) {
             // Most likely the roster schema rejecting a thin location record.
             return res.status(422).json({ message: `Could not roster ${targetTeam.school}: ${err.message}` });
@@ -1077,37 +1119,42 @@ function requestedSeason(req) {
     return activeSeason('football');
 }
 
+// The handlers below write ONLY franchise-side fields (lastUpdated, isUpdated,
+// seasons) but their RESPONSE carries the person's name and colour, which is why
+// the projection spans both documents. res.user is what they mutate; res.ctx is
+// what gets saved and re-assembled for the response.
 async function getUser(req, res, next) {
-    let user;
     const season = requestedSeason(req);
     try {
-        user = await User.findOne({_id: req.params.id, "seasons.season": {"$eq": season}},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": {"$elemMatch": {"season": {"$eq": season}}}});
-        if (user == null) {
+        const ctx = await franchiseRepo.loadForWrite(req.params.id,
+            { season, fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
+        if (ctx == null) {
             return res.status(404).json({message: `Cannot find user ${req.params.id} for season ${season}`});
         }
+        res.ctx = ctx;
+        res.user = ctx.franchise;
     } catch (err) {
         return res.status(500).json({message: err.message});
     }
-    res.user = user;
     // Stash it so the handler writes into the SAME entry getUser projected,
     // rather than resolving the season a second time and possibly differing.
     res.userSeason = season;
     next();
 }
 
+// No season scoping here, deliberately: the draft handler looks for an existing
+// entry and pushes a new one if there is none, so it needs every season.
 async function getUserNewSeason(req, res, next) {
-    let user;
     try {
-        user = await User.findOne({_id: req.params.id},
-                    {"firstName": 1, "lastName": 1, "league": 1, "lastUpdated": 1, "color": 1, "seasons": 1});
-        if (user == null) {
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
+        if (ctx == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }
+        res.ctx = ctx;
+        res.user = ctx.franchise;
     } catch (err) {
         return res.status(500).json({message: err.message});
     }
-    res.user = user;
     next();
 }
 

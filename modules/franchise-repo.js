@@ -740,16 +740,52 @@ async function leaguesWithSeason(season) {
 //
 // `franchise` is null for an account with no entry in `league`. Callers that
 // need one must say so; they are the same callers that 404 today.
-async function loadForWrite(accountId, { league } = {}) {
+// `fields` and `season` exist for the two PATCH middlewares in routes/users.js,
+// which have always projected rather than loading a ~100KB document to write one
+// number — and where the projection is not only an optimisation. The comment on
+// PATCH /:id records that mongoose REFUSES to save a document that both edits a
+// scalar and replaces an array wholesale under an $elemMatch projection, so a
+// body carrying cumulativeScore AND weeklyScore throws instead of writing half.
+// tests/RosterCorrection.spec.js pins all four combinations. Reproducing the
+// projection on both flag positions is what keeps that true.
+//
+// `season` also narrows the FILTER, not just the projection: those middlewares
+// 404 when the manager has no entry for the season being written, and that 404
+// is the filter failing to match.
+async function loadForWrite(accountId, { league, fields, season } = {}) {
+    const scoped = (list) => (season !== undefined ? seasonScopedProjection(list, season) : asProjection(list));
+
     if (!writesToFranchises()) {
-        const user = await User.findById(accountId);
+        if (!fields) {
+            const user = await User.findById(accountId);
+            if (!user) return null;
+            return { account: user, franchise: user, same: true };
+        }
+        const filter = { _id: accountId };
+        if (season !== undefined) filter['seasons.season'] = season;
+        const user = await User.findOne(filter, scoped(fields));
         if (!user) return null;
         return { account: user, franchise: user, same: true };
     }
-    const account = await Account.findById(accountId);
+
+    const roots = fields && new Set(fields.map(f => f.split('.')[0]));
+    const account = await Account.findById(
+        accountId,
+        fields ? asProjection(ACCOUNT_FIELDS.filter(f => roots.has(f))) : null
+    );
     if (!account) return null;
+
     const filter = league ? { accountId, league } : { accountId };
-    const franchise = await Franchise.findOne(filter);
+    if (season !== undefined) filter['seasons.season'] = season;
+    const franchiseFields = fields && franchiseSideOf(fields);
+    const franchise = await Franchise.findOne(
+        filter,
+        franchiseFields && franchiseFields.length ? scoped(franchiseFields) : null
+    );
+    // A season-scoped load is a load OF THAT SEASON. No entry means the caller's
+    // 404, not a document with an empty roster — which is what the flag-off
+    // filter above does, and the two have to agree.
+    if (season !== undefined && !franchise) return null;
     return { account, franchise, same: false };
 }
 
@@ -810,6 +846,20 @@ async function updateFranchise(accountId, update, { league, filter } = {}) {
     return Franchise.updateOne(Object.assign(base, filter || {}), update);
 }
 
+// Every entry that has a roster, as MUTABLE documents, for the one bulk write in
+// the app: routes/teams.js propagating refreshed team fields (logos, school,
+// colours) into the denormalised copies on each roster.
+//
+// No account side at all — this touches seasons[].teams and nothing else — so
+// there is nothing to assemble and the caller saves each document directly. That
+// is also why it returns documents rather than a loadForWrite context: the
+// caller already loops, and wrapping each one in a two-key object it would never
+// use would be ceremony.
+async function rosteredForWrite() {
+    const Model = writesToFranchises() ? Franchise : User;
+    return Model.find({ 'seasons.teams.0': { $exists: true } });
+}
+
 // Create a manager: one person and their entry in one league.
 //
 // NOT a transaction, deliberately. Atlas would support one, but the test harness
@@ -868,6 +918,6 @@ module.exports = {
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
-    writesToFranchises, loadForWrite, saveBoth, updateAccount, updateFranchise, createManager,
+    writesToFranchises, loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

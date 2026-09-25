@@ -219,6 +219,111 @@ describe('loadForWrite / saveBoth', () => {
     });
 });
 
+describe('loadForWrite with a projection and a season', () => {
+    // What the two PATCH middlewares in routes/users.js need. The projection is
+    // not only about bytes: PATCH /:id relies on mongoose REFUSING to save a
+    // document that both edits a scalar and replaces an array wholesale under an
+    // $elemMatch projection, so a body carrying cumulativeScore AND weeklyScore
+    // throws instead of writing half. Reproducing the projection on both flag
+    // positions is what keeps that true.
+    const FIELDS = ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'];
+
+    test('narrows to ONE season on both positions', async () => {
+        for (const on of [false, true]) {
+            const user = await seed({ email: `p${on}@example.com` });
+            await withFlag(on, async () => {
+                const ctx = await repo.loadForWrite(user._id, { season: 2026, fields: FIELDS });
+                expect(ctx.franchise.seasons).toHaveLength(1);
+                expect(Number(ctx.franchise.seasons[0].season)).toBe(2026);
+            });
+            await User.deleteMany({}); await Account.deleteMany({}); await Franchise.deleteMany({});
+        }
+    });
+
+    test('a season the manager never played is null, which is the callers 404', async () => {
+        // The filter, not the projection. Returning a document with an empty
+        // roster instead would turn a 404 into a write against nothing.
+        for (const on of [false, true]) {
+            const user = await seed({ email: `q${on}@example.com` });
+            const ctx = await withFlag(on, () => repo.loadForWrite(user._id, { season: 1999, fields: FIELDS }));
+            expect(ctx).toBeNull();
+            await User.deleteMany({}); await Account.deleteMany({}); await Franchise.deleteMany({});
+        }
+    });
+
+    test('a past season projects the past season, not the active one', async () => {
+        const user = await seed();
+        const ctx = await withFlag(true, () => repo.loadForWrite(user._id, { season: 2025, fields: FIELDS }));
+        expect(ctx.franchise.seasons.map(x => Number(x.season))).toEqual([2025]);
+    });
+
+    test('the account side carries the response fields, and only those', async () => {
+        const user = await seed();
+        const ctx = await withFlag(true, () => repo.loadForWrite(user._id, { season: 2026, fields: FIELDS }));
+        expect(ctx.account.firstName).toBe('Garrett');
+        expect(ctx.account.color).toBe('#ED5858');
+        // authSub and the devices are not in the field list and must not ride along.
+        expect(ctx.account.authSub).toBeUndefined();
+        expect(ctx.account.pushSubscriptions).toBeUndefined();
+    });
+
+    test('an edit through the projected context is written and read back', async () => {
+        for (const on of [false, true]) {
+            const user = await seed({ email: `r${on}@example.com` });
+            await withFlag(on, async () => {
+                const ctx = await repo.loadForWrite(user._id, { season: 2026, fields: FIELDS });
+                ctx.franchise.seasons[0].cumulativeScore = 77;
+                ctx.franchise.lastUpdated = 'just now';
+                await repo.saveBoth(ctx);
+                const back = await repo.byAccountId(user._id);
+                expect(back.lastUpdated).toBe('just now');
+                expect(back.seasons.find(x => Number(x.season) === 2026).cumulativeScore).toBe(77);
+                // The season NOT projected must survive the write untouched.
+                expect(back.seasons.find(x => Number(x.season) === 2025).cumulativeScore).toBe(163);
+            });
+            await User.deleteMany({}); await Account.deleteMany({}); await Franchise.deleteMany({});
+        }
+    });
+});
+
+describe('rosteredForWrite', () => {
+    test('returns every entry that has a roster, and skips those that do not', async () => {
+        const withRoster = await seed({ email: 'has@example.com', seasons: [{
+            season: 2026,
+            teams: [{ id: 251, school: 'Texas', mascot: 'M', abbreviation: 'TEX', conference: 'SEC',
+                      color: '#000', logos: ['a.png'],
+                      location: { venue_id: 1, name: 'V', city: 'C', state: 'ST', zip: '1',
+                                  latitude: 1, longitude: 1, capacity: 1, grass: true, dome: false } }]
+        }] });
+        await User.create({ firstName: 'No', lastName: 'Roster', league: 'graham-league', seasons: [{ season: 2026 }] });
+        await migration.migrate({ apply: true });
+
+        for (const on of [false, true]) {
+            const docs = await withFlag(on, () => repo.rosteredForWrite());
+            expect(docs).toHaveLength(1);
+            expect(String(docs[0].seasons[0].teams[0].id)).toBe('251');
+        }
+        expect(String(withRoster._id)).toBeTruthy();
+    });
+
+    test('the documents it returns are mutable and save to the live collection', async () => {
+        const user = await seed({ seasons: [{
+            season: 2026,
+            teams: [{ id: 251, school: 'Stale Name', mascot: 'M', abbreviation: 'TEX', conference: 'SEC',
+                      color: '#000', logos: ['a.png'],
+                      location: { venue_id: 1, name: 'V', city: 'C', state: 'ST', zip: '1',
+                                  latitude: 1, longitude: 1, capacity: 1, grass: true, dome: false } }]
+        }] });
+        await withFlag(true, async () => {
+            const [doc] = await repo.rosteredForWrite();
+            doc.seasons[0].teams[0].school = 'Texas';
+            await doc.save();
+        });
+        expect((await Franchise.findOne({ accountId: user._id }).lean()).seasons[0].teams[0].school).toBe('Texas');
+        expect((await User.findById(user._id).lean()).seasons[0].teams[0].school).toBe('Stale Name');
+    });
+});
+
 describe('createManager', () => {
     const NEW = {
         firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com',
