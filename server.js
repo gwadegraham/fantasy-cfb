@@ -96,7 +96,8 @@ app.use((req, res, next) => {
 // pointer yet, which is precisely what the guard 403s on, so binding has to
 // happen first. See modules/invite-bind.js.
 app.use(inviteBind({
-    User,
+    repo: franchiseRepo,   // the read
+    User,                  // the write, until the #313 write cutover
     management: auth0Management,
     inviteToken,
     secret: () => process.env.AUTH_SECRET
@@ -105,7 +106,7 @@ app.use(inviteBind({
 // Identity-match guard. Refuses to serve a session whose login email doesn't
 // match the franchise its Auth0 pointer resolves to (see modules/identity-guard).
 // Runs on the REAL identity so dev role-spoofing can't trigger a false block.
-app.use(identityGuard({ User }));
+app.use(identityGuard({ repo: franchiseRepo }));
 
 // Per-request league display names (editable via /leagues) for the navbar
 // switcher — HTML GETs only, falling back to the hardcoded defaults.

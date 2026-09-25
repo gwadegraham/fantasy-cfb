@@ -312,7 +312,7 @@ describe('identity-guard leaves the invite path open', () => {
             next();
         });
         // No pointer resolves, so the guard would normally refuse every request.
-        app.use(identityGuard({ User: { findById: () => ({ lean: async () => null }) } }));
+        app.use(identityGuard({ repo: { byAccountId: async () => null } }));
         app.use((req, res) => res.status(200).send('reached'));   // version-agnostic catch-all
         return app;
     }

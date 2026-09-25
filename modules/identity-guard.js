@@ -80,10 +80,22 @@ function renderBlockPage() {
         + '</div></div></body></html>';
 }
 
-// Middleware factory. `deps.User` is the Mongoose User model (injected for
+// Middleware factory. `deps.repo` is modules/franchise-repo.js (injected for
 // testability). Returns an async Express middleware.
+//
+// It reads through the repo rather than the User model because #313 phase 2
+// moves managers onto accounts + franchises, and this is the read that decides
+// whether anyone gets in at all. The repo's flag is UNSET in production, so
+// this still resolves against `users` today — byAccountId's flag-off branch is
+// the same User.findById this used to call, with the same projection.
+//
+// What the swap must not change, and what tests/IdentityGuard.spec.js pins:
+// a resolved record still produces an email to compare, a missing one still
+// produces null (blocked), and a throw still reaches the catch below and fails
+// OPEN. byAccountId returns null rather than throwing for an unknown id, and
+// still throws on a malformed one — both the same as findById.
 function identityGuard(deps) {
-    const User = deps.User;
+    const repo = deps.repo;
     return async function identityGuardMw(req, res, next) {
         try {
             // Public / logged-out traffic is not gated.
@@ -107,7 +119,7 @@ function identityGuard(deps) {
             let lookupError = false;
             if (userId) {
                 try {
-                    record = await User.findById(userId, { email: 1 }).lean();
+                    record = await repo.byAccountId(userId, { fields: ['email'] });
                 } catch (e) {
                     lookupError = true; // transient DB error: fail open, don't lock out
                 }

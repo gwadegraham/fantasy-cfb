@@ -152,8 +152,18 @@ function renderRefusalPage(reason) {
         + '</div></div></body></html>';
 }
 
-// Middleware factory. deps: { User, management, secret, inviteToken }.
+// Middleware factory. deps: { repo, User, management, secret, inviteToken }.
+//
+// BOTH a repo and a model, on purpose and only for now. The READ moved to
+// modules/franchise-repo.js with #313 phase 2; the WRITE below still goes to
+// `users`, because the write cutover is a single later step and dual-writing
+// two sources of truth mid-season is the thing that step exists to avoid.
+//
+// While FRANCHISE_READS is unset — which it is, in production — both halves
+// resolve to the same collection and nothing is split. When the writes move,
+// `User` leaves this file and `repo` is all that is left.
 function inviteBind(deps) {
+    const repo = deps.repo;
     const User = deps.User;
     const management = deps.management;
     const inviteToken = deps.inviteToken;
@@ -190,8 +200,34 @@ function inviteBind(deps) {
             let lookupError = false;
             if (sub && !innerMeta.userId) {
                 try {
-                    record = await User.findById(invite.userId,
-                        { email: 1, league: 1, authSub: 1, firstName: 1 }).lean();
+                    // Straddles both documents: email and authSub are the
+                    // ACCOUNT's, league is the FRANCHISE's. byAccountId is what
+                    // knows which is which.
+                    //
+                    // ⚠️ AND IT ONLY ANSWERS `league` WHEN A FRANCHISE EXISTS.
+                    // decideInvite reads a MISSING league as "no league
+                    // constraint" rather than as a mismatch, so an account with
+                    // no franchise — a basketball-only manager, or one
+                    // mid-onboarding — takes the league-mismatch refusal off the
+                    // table entirely. Measured, not theorised: flag-on, a
+                    // franchise-less account handed an invite minted for the
+                    // OTHER league returns {action:'bind'} where flag-off
+                    // returns {action:'refuse', reason:'league-mismatch'}.
+                    //
+                    // Not reachable today: the flag is unset, and every migrated
+                    // account has exactly one franchise. It becomes reachable
+                    // the moment the write cutover lands, which is why
+                    // decideInvite's `record.league &&` guard has to be settled
+                    // as part of that step and not after it.
+                    //
+                    // Passing `league: invite.league` here is NOT the fix, and
+                    // looks like one. It filters the franchise lookup by the
+                    // league being claimed, so a genuinely mismatched invite
+                    // finds no franchise, the record comes back with no league,
+                    // and decideInvite binds it — turning the refusal this read
+                    // exists to make into the bind it exists to prevent.
+                    record = await repo.byAccountId(invite.userId,
+                        { fields: ['email', 'league', 'authSub', 'firstName'] });
                 } catch (e) {
                     lookupError = true;
                 }

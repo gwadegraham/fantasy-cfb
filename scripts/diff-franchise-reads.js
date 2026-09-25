@@ -292,15 +292,32 @@ async function main() {
         }
     }
 
-    // byAccountId WITH a field list — 8 call sites (navUser, both invite paths,
-    // /me/push, the push test send). Only the no-fields form was diffed, which
-    // is how a silent widening lived here through two reviews.
+    // byAccountId WITH a field list. Only the no-fields form was diffed once,
+    // which is how a silent widening lived here through two reviews.
+    //
+    // SIX shapes, not every call site. Ten call sites pass a field list; the
+    // four not listed below ask for strict SUBSETS of shapes that are
+    // (['firstName','league'], ['pushSubscriptions'],
+    // ['league','firstName','lastName']). Field routing is per-field, so a
+    // subset cannot diverge where its superset agrees — but saying "10 call
+    // sites" here read as though the list were exhaustive, which is the same
+    // trap this comment warns about.
+    //
+    // The two login shapes are the ones that decide whether anyone gets in at
+    // all. 'identity-guard' asks for one field and compares it against the
+    // login's email; a read that stops returning it does not error, it makes
+    // every session look unverifiable and waves the wrong ones through.
+    // 'invite-bind' straddles both documents — email and authSub off the
+    // account, league off the franchise — and each of those fields is a refusal
+    // decideInvite would otherwise stop making.
     {
         const shapes = [
             ['navUser', ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub']],
             ['invite-link', ['league', 'firstName', 'lastName', 'authSub']],
             ['/me/push', ['pushSubscriptions', 'pushPrefs', 'seasons.season']],
-            ['push test send', ['pushSubscriptions', 'firstName']]
+            ['push test send', ['pushSubscriptions', 'firstName']],
+            ['identity-guard', ['email']],
+            ['invite-bind', ['email', 'league', 'authSub', 'firstName']]
         ];
         const all = await User.find({}, { _id: 1 }).lean();
         for (const [label, fields] of shapes) {
