@@ -62,20 +62,41 @@ const User = require('../models/user');
 //   1. Deploy this code with the var unset. Nothing changes; verify that.
 //   2. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js"
 //      Dry run. Read the drift: every manager should show accountAction
-//      'update', and the field-routing guards must pass.
-//   3. Same command with --apply, then with --verify.
+//      'update', and the field-routing guards must pass. QUOTE THE WHOLE
+//      COMMAND — unquoted, the heroku CLI eats the flags as its own.
+//   3. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js --apply --yes"
+//      --apply verifies and fingerprints on its own, so a separate --verify pass
+//      is optional. --yes matters: without a TTY the database-name prompt exits
+//      1 having written NOTHING, which reads like a no-op and is not one.
 //   4. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
-//   5. Watch. A block from modules/identity-guard.js, a second Captain reminder
-//      in one week, or a standings table that stops moving all mean flip back:
-//      heroku config:unset FRANCHISE_READS -a fantasy-cfb
+//   5. node scripts/diff-franchise-reads.js against a dev copy synced from prod
+//      — positive confirmation, rather than only watching for symptoms.
+//   6. Then watch. A block from modules/identity-guard.js, a second Captain
+//      reminder inside one week, or a standings table that stops moving all mean
+//      flip back: heroku config:unset FRANCHISE_READS -a fantasy-cfb.
+//      ⚠️ Flipping back REVERTS everything written since the flip — `users` has
+//      not seen any of it and nothing errors to say so. Minutes are cheap;
+//      hours are not.
 //
-// Do it midweek, between Sunday scoring and Saturday kickoff. Never on a game
-// day: the nightly job is what exercises the heaviest write in the app.
+// ---- WHEN ------------------------------------------------------------------
 //
-// Once it has been on through a full scoring cycle, delete the flag and the
-// `users` branch of every function below. Two sources of truth for live scoring
-// is the thing this whole change exists to end; the flag is scaffolding, not a
-// feature.
+// Step 4 restarts the dyno. In-flight requests are SIGTERMed and any job mid-run
+// dies where it stands, so the hour matters as much as the day. From
+// modules/scheduler.js:
+//
+//   daily-scores      23:00 CT nightly      the heaviest write in the app
+//   captain-reminder  :00 and :30, always   writes the franchise ledger
+//   recap-notice      Mon 07:05 and 19:05
+//
+// So: midweek, never a game day, and flip at around :10 past an hour that is not
+// 23:00 — that is the widest clear gap between reminder ticks. A flip at 23:05
+// on a Wednesday kills the nightly pass mid-loop with some managers written and
+// the rest not.
+//
+// One web dyno today, so there is no window where two dynos disagree about the
+// flag. That stops being true the moment the app scales out, and a rolling
+// restart that splits reads and writes across collections is the exact
+// divergence this module spends forty lines warning about.
 //
 // ONE definition, read PER CALL. Both deliberate: this repo has been bitten by
 // LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as OFF and
@@ -786,10 +807,14 @@ async function loadForWrite(accountId, { league, fields, season } = {}) {
 
     const filter = league ? { accountId, league } : { accountId };
     if (season !== undefined) filter['seasons.season'] = season;
+    // `null` here would mean EVERY field, which for a franchise is the whole
+    // roster — the same trap asProjection guards and byAccountId documents. A
+    // caller that named fields and none of them franchise-side gets the id and
+    // nothing else, rather than ~100KB it did not ask for.
     const franchiseFields = fields && franchiseSideOf(fields);
     const franchise = await Franchise.findOne(
         filter,
-        franchiseFields && franchiseFields.length ? scoped(franchiseFields) : null
+        fields ? (franchiseFields.length ? scoped(franchiseFields) : { _id: 1 }) : null
     );
     // A season-scoped load is a load OF THAT SEASON. No entry means the caller's
     // 404, not a document with an empty roster — which is what the flag-off
@@ -897,14 +922,25 @@ async function createManager(fields) {
     });
 
     const account = await Account.create(accountFields);
+    let franchise;
     try {
-        await Franchise.create(Object.assign({ accountId: account._id }, franchiseFields));
+        franchise = await Franchise.create(Object.assign({ accountId: account._id }, franchiseFields));
     } catch (e) {
-        await Account.deleteOne({ _id: account._id }).catch(() => {});
+        // Loud if the compensation ITSELF fails. The orphan this is removing is
+        // an invite-hijack vector (see the note above), so "we tried" is not a
+        // state anyone should have to infer from its absence.
+        await Account.deleteOne({ _id: account._id }).catch((delErr) => {
+            console.error(`createManager: franchise write failed AND the rollback failed — `
+                + `account ${account._id} is an ORPHAN and can claim an invite for any league. `
+                + `Delete it by hand. rollback error: ${delErr && delErr.message}`);
+        });
         throw e;
     }
-    // In User shape, because every caller reads .league and ._id off the result.
-    return toUserShape(account.toObject(), Object.assign({}, franchiseFields));
+    // In User shape, because every caller reads .league and ._id off the result —
+    // and built from the CREATED documents, not from the input. Echoing the
+    // input back skips schema defaults, casting and subdocument ids, so the
+    // response would differ from what a read returns a moment later.
+    return toUserShape(account.toObject(), franchise.toObject());
 }
 
 // Trim an assembled document to the fields a caller asked for, `_id` always

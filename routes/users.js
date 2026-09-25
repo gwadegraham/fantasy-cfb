@@ -417,8 +417,12 @@ router.patch('/me/captain', async (req, res) => {
         // the manager's entry in ONE league.
         const ctx = await franchiseRepo.loadForWrite(userId);
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
-        const user = ctx.franchise;
-        const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
+        const franchise = ctx.franchise;
+        // The audit row is about the PERSON; their league comes off the entry.
+        // Merged here so recordCaptain keeps one argument shape.
+        const user = { _id: ctx.account._id, firstName: ctx.account.firstName,
+                       lastName: ctx.account.lastName, league: franchise.league };
+        const season = (franchise.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season) return res.status(404).json({ message: 'No roster for that season.' });
         const teamIds = (season.teams || []).map(t => Number(t.id));
         if (teamId != null && !teamIds.includes(teamId)) {
@@ -478,8 +482,10 @@ router.patch('/:id/captain', async (req, res) => {
         // Franchise-side, same as the self-serve route above.
         const ctx = await franchiseRepo.loadForWrite(req.params.id);
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
-        const user = ctx.franchise;
-        const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
+        const franchise = ctx.franchise;
+        const user = { _id: ctx.account._id, firstName: ctx.account.firstName,
+                       lastName: ctx.account.lastName, league: franchise.league };
+        const season = (franchise.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season) return res.status(404).json({ message: 'No roster for that season.' });
         if (teamId != null) {
             const teamIds = (season.teams || []).map(t => Number(t.id));
@@ -863,10 +869,18 @@ router.patch('/:id', getUser, async (req, res) => {
         // Re-assembled rather than echoing one document: the response has always
         // carried the person's name and colour alongside the season, and with
         // the flag on those live on the account.
-        res.status(200).json(franchiseRepo.toUserShape(
+        const franchiseDoc = res.ctx.franchise
+            && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise);
+        const body = franchiseRepo.toUserShape(
             res.ctx.account.toObject ? res.ctx.account.toObject() : res.ctx.account,
-            res.ctx.franchise && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise)
-        ));
+            franchiseDoc
+        );
+        // __v carried through so the flag-off response is byte-identical to the
+        // document this route used to echo. Nothing reads it — both callers
+        // check only the status — but "merging changes nothing" is a claim worth
+        // being able to make literally.
+        if (franchiseDoc && franchiseDoc.__v !== undefined) body.__v = franchiseDoc.__v;
+        res.status(200).json(body);
     } catch (err) {
         res.status(400).json({message: err.message});
     }
@@ -898,10 +912,18 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
         // Re-assembled rather than echoing one document: the response has always
         // carried the person's name and colour alongside the season, and with
         // the flag on those live on the account.
-        res.status(200).json(franchiseRepo.toUserShape(
+        const franchiseDoc = res.ctx.franchise
+            && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise);
+        const body = franchiseRepo.toUserShape(
             res.ctx.account.toObject ? res.ctx.account.toObject() : res.ctx.account,
-            res.ctx.franchise && (res.ctx.franchise.toObject ? res.ctx.franchise.toObject() : res.ctx.franchise)
-        ));
+            franchiseDoc
+        );
+        // __v carried through so the flag-off response is byte-identical to the
+        // document this route used to echo. Nothing reads it — both callers
+        // check only the status — but "merging changes nothing" is a claim worth
+        // being able to make literally.
+        if (franchiseDoc && franchiseDoc.__v !== undefined) body.__v = franchiseDoc.__v;
+        res.status(200).json(body);
     } catch (err) {
         res.status(400).json({message: err.message});
     }
@@ -916,9 +938,14 @@ router.post('/:id/season-membership', async (req, res) => {
         const included = !!(req.body && req.body.included);
         // Franchise-side: membership IS the seasons array, and `league` below is
         // read off the same document.
+        // `identity` and `user` are named apart on purpose. An earlier version
+        // aliased `user = ctx.franchise`, which put the FRANCHISE's own _id
+        // everywhere the ACCOUNT's was meant — the same value with the flag off,
+        // a different one with it on. See the roster-team handler below for what
+        // that cost.
         const ctx = await franchiseRepo.loadForWrite(req.params.id);
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
-        const user = ctx.franchise;
+        const { account: identity, franchise: user } = ctx;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
@@ -943,8 +970,8 @@ router.post('/:id/season-membership', async (req, res) => {
             await audit.record(req, {
                 action: 'season.membership',
                 league: user.league, season: String(year),
-                summary: `${inSeason ? 'Added' : 'Removed'} ${user.firstName} ${user.lastName}`,
-                meta: { userId: String(user._id), included: inSeason }
+                summary: `${inSeason ? 'Added' : 'Removed'} ${identity.firstName} ${identity.lastName}`,
+                meta: { userId: String(identity._id), included: inSeason }
             });
         }
         res.json({ inSeason });
@@ -1007,10 +1034,18 @@ router.get('/league/:league/roster-teams', async (req, res) => {
 // one without the other would leave them quietly disagreeing.
 router.patch('/:id/roster-team', async (req, res) => {
     try {
-        // Franchise-side: a roster correction rewrites seasons[].teams.
+        // Franchise-side for the DATA, account-side for the IDENTITY, and the
+        // distinction is load-bearing here: draft.picks[].userId holds the
+        // ACCOUNT id, so matching on the franchise's own _id finds no pick — the
+        // correction then reports success while leaving the draft untouched.
+        // `identity` and `user` are named apart on purpose. An earlier version
+        // aliased `user = ctx.franchise`, which put the FRANCHISE's own _id
+        // everywhere the ACCOUNT's was meant — the same value with the flag off,
+        // a different one with it on. See the roster-team handler below for what
+        // that cost.
         const ctx = await franchiseRepo.loadForWrite(req.params.id);
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
-        const user = ctx.franchise;
+        const { account: identity, franchise: user } = ctx;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
@@ -1037,7 +1072,7 @@ router.patch('/:id/roster-team', async (req, res) => {
             // flag positions could name a DIFFERENT manager in `takenBy`. The
             // count is unaffected; the name is not.
             const holders = await franchiseRepo.findManagers({
-                accountFilter: { _id: { $ne: user._id } },
+                accountFilter: { _id: { $ne: identity._id } },
                 franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
                 fields: ['firstName', 'lastName']
             });
@@ -1070,7 +1105,8 @@ router.patch('/:id/roster-team', async (req, res) => {
         let draftUpdated = false;
         const draft = await Draft.findOne({ league: user.league, season });
         if (draft) {
-            const nextPicks = rosterCorrection.replaceDraftPick(draft.picks, user._id, fromTeamId, nextTeam);
+            // The ACCOUNT id — that is what a pick records.
+            const nextPicks = rosterCorrection.replaceDraftPick(draft.picks, identity._id, fromTeamId, nextTeam);
             if (nextPicks.changed) {
                 draft.picks = nextPicks.picks;
                 draft.markModified('picks');
@@ -1080,19 +1116,19 @@ router.patch('/:id/roster-team', async (req, res) => {
             }
         }
 
-        console.log(`Roster correction · ${user.league} ${season}: ${user.firstName} ${check.current.school} -> ${targetTeam.school}`
+        console.log(`Roster correction · ${user.league} ${season}: ${identity.firstName} ${check.current.school} -> ${targetTeam.school}`
             + (draftUpdated ? ' (draft pick updated)' : ' (no draft pick found)'));
 
         await audit.record(req, {
             action: 'roster.correct',
             league: user.league, season: String(season),
-            summary: `${user.firstName} ${user.lastName}: ${check.current.school} → ${targetTeam.school}`
+            summary: `${identity.firstName} ${identity.lastName}: ${check.current.school} → ${targetTeam.school}`
                 + (draftUpdated ? ' (draft record too)' : ''),
-            meta: { userId: String(user._id), from: check.current.id, to: nextTeam.id, draftUpdated }
+            meta: { userId: String(identity._id), from: check.current.id, to: nextTeam.id, draftUpdated }
         });
 
         res.json({
-            userId: String(user._id), season: String(season),
+            userId: String(identity._id), season: String(season),
             from: { id: check.current.id, school: check.current.school },
             to: { id: nextTeam.id, school: nextTeam.school, logo: pickLogo(nextTeam.logos) || null },
             draftUpdated,
