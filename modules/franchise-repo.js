@@ -30,43 +30,73 @@ const User = require('../models/user');
 
 // ---- the switch -------------------------------------------------------------
 //
-// Which collection these reads come from. UNSET MEANS USERS — the old path —
-// so merging and deploying this changes nothing.
+// Which collection managers are read from AND written to. UNSET MEANS USERS —
+// the old path — so deploying this changes nothing.
 //
-// ⚠️ THIS IS A DEVELOPMENT SWITCH. DO NOT SET IT IN PRODUCTION. ⚠️
+// This comment used to say, in capitals, never to set it in production. That was
+// correct then and is not now, and the difference is the whole of #313 phase 3.
+// It said so because the flag governed READS while writes always went to
+// `users`: flag-on meant reading a migration-era snapshot and writing somewhere
+// else, which for routes/scores.js destroys data rather than merely misreporting
+// it (applyAwards returns weeklyScore as a COMPLETE replacement, so a manager
+// with five scored weeks whose snapshot holds three is left with three).
 //
-// An earlier version of this comment called it a rollout control you could
-// "flip and flip back in seconds". That was wrong, and dangerously so. Nothing
-// writes to `accounts` or `franchises` — modules/account-migration.js populated
-// them once and no other code touches them. Writes still go to `users`. So with
-// this on in production, every read returns a SNAPSHOT frozen at migration
-// time:
+// Writes now follow the flag. There is one source of truth at any moment and the
+// two halves cannot disagree about which. Nothing dual-writes.
 //
-//   - modules/push-notify.js would read the "already sent" ledgers from the
-//     Franchise while writing them to the User, so the dedupe never sees its own
-//     writes — every eligible manager gets the Captain reminder and the recap
-//     pointer again on EVERY tick, forever.
-//   - Standings, scores and history would show migration-era numbers. Mid-season
-//     that is last month's table, with nothing erroring.
-//   - routes/scores.js applyH2HBonuses would DESTROY DATA, not just misreport
-//     it. Every other hazard on this list is a stale read; this one is a stale
-//     read that gets written back. h2hManagers below hands the pass a
-//     weeklyScore frozen at migration time, applyAwards (modules/h2h.js) maps
-//     that array and returns it as a COMPLETE replacement, and the route then
-//     $sets 'seasons.$.weeklyScore' to it on the live `users` document. A
-//     manager with five scored weeks whose snapshot holds three is left with
-//     three — weeks four and five deleted. It needs one entry to differ for the
-//     write to fire at all, which on a mid-season snapshot is close to certain,
-//     since the awards are recomputed from the snapshot's own totals.
-//   - GET /users/me/push would not show a device registered a moment earlier.
+// ---- what it still is NOT --------------------------------------------------
 //
-// And flipping back does not undo it: the duplicate pushes have been sent.
+// Not reversible in general. Flip on, let an hour of scoring run, and flipping
+// back silently reverts that hour — `users` will not have seen any of it, and
+// nothing errors to say so. The window in which flipping back is cheap is
+// measured in seconds, not hours.
 //
-// The flag exists so scripts/diff-franchise-reads.js can compare the two
-// sources against a freshly migrated copy, and so the swap can be exercised in
-// tests. It becomes a real switch only when the writes move — and at that point
-// it is deleted along with the `users` branch below, because two sources of
-// truth for live scoring is the thing this whole change is trying to end.
+// Not safe to flip against a stale copy. `accounts` and `franchises` hold
+// whatever scripts/migrate-accounts.js last wrote. It upserts by
+// (accountId, league) and UPDATES existing rows, so re-running it re-syncs —
+// and it must be re-run immediately before the flip or the app starts serving
+// however far behind they are.
+//
+// ---- the cutover -----------------------------------------------------------
+//
+//   1. Deploy this code with the var unset. Nothing changes; verify that.
+//   2. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js"
+//      Dry run. Read the drift: every manager should show accountAction
+//      'update', and the field-routing guards must pass. QUOTE THE WHOLE
+//      COMMAND — unquoted, the heroku CLI eats the flags as its own.
+//   3. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js --apply --yes"
+//      --apply verifies and fingerprints on its own, so a separate --verify pass
+//      is optional. --yes matters: without a TTY the database-name prompt exits
+//      1 having written NOTHING, which reads like a no-op and is not one.
+//   4. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
+//   5. node scripts/diff-franchise-reads.js against a dev copy synced from prod
+//      — positive confirmation, rather than only watching for symptoms.
+//   6. Then watch. A block from modules/identity-guard.js, a second Captain
+//      reminder inside one week, or a standings table that stops moving all mean
+//      flip back: heroku config:unset FRANCHISE_READS -a fantasy-cfb.
+//      ⚠️ Flipping back REVERTS everything written since the flip — `users` has
+//      not seen any of it and nothing errors to say so. Minutes are cheap;
+//      hours are not.
+//
+// ---- WHEN ------------------------------------------------------------------
+//
+// Step 4 restarts the dyno. In-flight requests are SIGTERMed and any job mid-run
+// dies where it stands, so the hour matters as much as the day. From
+// modules/scheduler.js:
+//
+//   daily-scores      23:00 CT nightly      the heaviest write in the app
+//   captain-reminder  :00 and :30, always   writes the franchise ledger
+//   recap-notice      Mon 07:05 and 19:05
+//
+// So: midweek, never a game day, and flip at around :10 past an hour that is not
+// 23:00 — that is the widest clear gap between reminder ticks. A flip at 23:05
+// on a Wednesday kills the nightly pass mid-loop with some managers written and
+// the rest not.
+//
+// One web dyno today, so there is no window where two dynos disagree about the
+// flag. That stops being true the moment the app scales out, and a rolling
+// restart that splits reads and writes across collections is the exact
+// divergence this module spends forty lines warning about.
 //
 // ONE definition, read PER CALL. Both deliberate: this repo has been bitten by
 // LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as OFF and
@@ -74,6 +104,23 @@ const User = require('../models/user');
 // while never being scheduled and nothing logged a word.
 function readsFromFranchises() {
     return process.env.FRANCHISE_READS === 'true';
+}
+
+// The SAME switch, under a name that reads correctly at a write call site.
+//
+// An alias, and it must stay one. It is tempting to give the write side its own
+// `process.env.FRANCHISE_WRITES` so the two could be staged independently — that
+// is exactly the bug this module already warns about a few lines up, where
+// modules/scheduler.js and modules/live-poll.js disagreed about LIVE_POLL_ENABLED
+// and the poller believed it was enabled while never being scheduled.
+//
+// Here the consequence is worse than a silent no-op. Reads and writes pointing
+// at different collections is precisely the divergence the whole cutover exists
+// to avoid: with reads on the new source and writes on the old, the H2H pass
+// overwrites a live weeklyScore with a stale one. One variable, one answer, both
+// halves.
+function writesToFranchises() {
+    return readsFromFranchises();
 }
 
 // Fields that live on the Account, mirroring modules/account-migration.js.
@@ -681,6 +728,221 @@ async function leaguesWithSeason(season) {
     return leagues.filter(Boolean).sort();
 }
 
+// ---- writes -----------------------------------------------------------------
+//
+// THE FLAG NOW GATES WRITES TOO, AND THAT IS THE WHOLE POINT.
+//
+// Until this block existed, FRANCHISE_READS chose where reads came from while
+// writes always went to `users`. That is why the comment above says never to set
+// it in production: flag-on meant reading a snapshot and writing somewhere else,
+// and the two diverge immediately — in one case destructively (see the
+// applyH2HBonuses note).
+//
+// Everything below moves the write to the SAME place the read came from. There
+// is still exactly one source of truth at any moment; which one it is depends on
+// the flag, and reads and writes can never disagree about it. That is not
+// dual-writing, which remains forbidden — nothing here writes both.
+//
+// What it buys: the cutover stops being a deploy. This code ships inert, gets
+// verified in production changing nothing, and then someone sets one config var
+// at a chosen moment. A flip that goes wrong is flipped back in seconds, losing
+// only the writes made in between, instead of needing a revert and a redeploy.
+//
+// It does NOT make the cutover reversible in general. Flip on, let an hour of
+// scoring run, and flipping back silently reverts that hour — `users` will not
+// have seen it. The window is small, not absent. Re-run
+// scripts/migrate-accounts.js before flipping, or the new collections answer
+// from whenever they were last synced.
+
+// One manager, as MUTABLE documents, for a handler that will change and save.
+//
+// Always returns the same two-key shape, and this is the trick that keeps the
+// callers free of flag checks: with the flag OFF, `account` and `franchise` are
+// THE SAME User document. Setting account.avatarUrl and franchise.seasons both
+// mutate the one doc, saveBoth notices they are the same object and saves it
+// once, and the result is byte-for-byte the single-document write the route did
+// before. With the flag ON they are two documents and both are saved.
+//
+// So a handler is written once, reads naturally (`account.email`,
+// `franchise.seasons`), and documents at its mutation site which document each
+// field belongs to — which is the thing that was previously invisible and is the
+// reason a field ever gets routed to the wrong place.
+//
+// `franchise` is null for an account with no entry in `league`. Callers that
+// need one must say so; they are the same callers that 404 today.
+// `fields` and `season` exist for the two PATCH middlewares in routes/users.js,
+// which have always projected rather than loading a ~100KB document to write one
+// number — and where the projection is not only an optimisation. The comment on
+// PATCH /:id records that mongoose REFUSES to save a document that both edits a
+// scalar and replaces an array wholesale under an $elemMatch projection, so a
+// body carrying cumulativeScore AND weeklyScore throws instead of writing half.
+// tests/RosterCorrection.spec.js pins all four combinations. Reproducing the
+// projection on both flag positions is what keeps that true.
+//
+// `season` also narrows the FILTER, not just the projection: those middlewares
+// 404 when the manager has no entry for the season being written, and that 404
+// is the filter failing to match.
+async function loadForWrite(accountId, { league, fields, season } = {}) {
+    const scoped = (list) => (season !== undefined ? seasonScopedProjection(list, season) : asProjection(list));
+
+    if (!writesToFranchises()) {
+        if (!fields) {
+            const user = await User.findById(accountId);
+            if (!user) return null;
+            return { account: user, franchise: user, same: true };
+        }
+        const filter = { _id: accountId };
+        if (season !== undefined) filter['seasons.season'] = season;
+        const user = await User.findOne(filter, scoped(fields));
+        if (!user) return null;
+        return { account: user, franchise: user, same: true };
+    }
+
+    const roots = fields && new Set(fields.map(f => f.split('.')[0]));
+    const account = await Account.findById(
+        accountId,
+        fields ? asProjection(ACCOUNT_FIELDS.filter(f => roots.has(f))) : null
+    );
+    if (!account) return null;
+
+    const filter = league ? { accountId, league } : { accountId };
+    if (season !== undefined) filter['seasons.season'] = season;
+    // `null` here would mean EVERY field, which for a franchise is the whole
+    // roster — the same trap asProjection guards and byAccountId documents. A
+    // caller that named fields and none of them franchise-side gets the id and
+    // nothing else, rather than ~100KB it did not ask for.
+    const franchiseFields = fields && franchiseSideOf(fields);
+    const franchise = await Franchise.findOne(
+        filter,
+        fields ? (franchiseFields.length ? scoped(franchiseFields) : { _id: 1 }) : null
+    );
+    // A season-scoped load is a load OF THAT SEASON. No entry means the caller's
+    // 404, not a document with an empty roster — which is what the flag-off
+    // filter above does, and the two have to agree.
+    if (season !== undefined && !franchise) return null;
+    return { account, franchise, same: false };
+}
+
+// Persist whatever loadForWrite handed back.
+//
+// Deliberately smaller than it first was. The original guarded each save with
+// isModified() and short-circuited the same-document case, and a sabotage pass
+// found that NEITHER guard could be made to fail a test — because mongoose
+// already issues no write for an unmodified document. Measured against the test
+// harness: an unmodified save() makes 0 collection.updateOne calls, including
+// immediately after a save that did write. Guards no test can distinguish are
+// worse than none: they read as load-bearing and get preserved through refactors
+// that no longer need them.
+//
+// Account first. A handler that changes both is changing a person's details and
+// their entry; if the second write fails the half that landed is the less
+// surprising one to see. Neither order can leave an account with NO franchise —
+// this path only ever updates an existing pair — which matters because that
+// particular half-state changes decideInvite's answer (see modules/invite-bind.js).
+async function saveBoth(ctx) {
+    if (!ctx) return;
+    await ctx.account.save();
+    // `same` rather than === between two mongoose documents: loadForWrite knows
+    // which shape it built, so it says, instead of this inferring it.
+    if (!ctx.same && ctx.franchise) await ctx.franchise.save();
+}
+
+// A surgical update of ACCOUNT-side fields — the $set/$pull/$unset writes that
+// deliberately avoid hydrating a ~100KB document to change one key.
+//
+// `filter` narrows the match, and for one caller it is the entire safety
+// mechanism rather than an optimisation: modules/auth-sub-backfill.js fills
+// authSub only when it is still blank, expressed as a condition in the filter so
+// that two concurrent requests cannot fight over it and an existing binding is
+// never overwritten. Moved into an update body it would stop being atomic.
+async function updateAccount(accountId, update, { filter } = {}) {
+    const Model = writesToFranchises() ? Account : User;
+    return Model.updateOne(Object.assign({ _id: accountId }, filter || {}), update);
+}
+
+// The same for FRANCHISE-side fields.
+//
+// `filter` exists for one caller and is load-bearing for it: routes/scores.js
+// writes 'seasons.$.weeklyScore', and the positional $ resolves against the
+// array element matched IN THE FILTER. Dropping that condition does not error —
+// it makes the positional operator match nothing, so the H2H bonus is silently
+// not stored. The route already logs a matchedCount of 0 for exactly this.
+//
+// Note the key change that comes free with the collection change: a Franchise is
+// found by `accountId`, not by `_id`. A write that kept using { _id } would
+// match nothing on the new path and report success at the driver level.
+async function updateFranchise(accountId, update, { league, filter } = {}) {
+    if (!writesToFranchises()) {
+        return User.updateOne(Object.assign({ _id: accountId }, filter || {}), update);
+    }
+    const base = { accountId };
+    if (league) base.league = league;
+    return Franchise.updateOne(Object.assign(base, filter || {}), update);
+}
+
+// Every entry that has a roster, as MUTABLE documents, for the one bulk write in
+// the app: routes/teams.js propagating refreshed team fields (logos, school,
+// colours) into the denormalised copies on each roster.
+//
+// No account side at all — this touches seasons[].teams and nothing else — so
+// there is nothing to assemble and the caller saves each document directly. That
+// is also why it returns documents rather than a loadForWrite context: the
+// caller already loops, and wrapping each one in a two-key object it would never
+// use would be ceremony.
+async function rosteredForWrite() {
+    const Model = writesToFranchises() ? Franchise : User;
+    return Model.find({ 'seasons.teams.0': { $exists: true } });
+}
+
+// Create a manager: one person and their entry in one league.
+//
+// NOT a transaction, deliberately. Atlas would support one, but the test harness
+// runs a standalone mongod (tests/helpers/mongo.js), where transactions are
+// unavailable — so a transactional path would be the one path the suite could
+// never exercise, which is worse than not having it. Instead the franchise
+// failing compensates by deleting the account it just made.
+//
+// Leaving the orphan behind is not an option worth taking. An Account with no
+// Franchise is not an inert half-record: decideInvite reads a missing league as
+// "no league constraint", so an orphan is an account that can claim an invite
+// minted for ANY league. The compensating delete is safe precisely because the
+// account is one call old and nothing points at it yet.
+async function createManager(fields) {
+    if (!writesToFranchises()) {
+        const user = new User(fields);
+        return user.save();
+    }
+    const accountFields = {};
+    const franchiseFields = {};
+    Object.keys(fields).forEach(k => {
+        if (ACCOUNT_FIELDS.includes(k) || k === '_id') accountFields[k] = fields[k];
+        else if (k === 'league' || k === 'seasons' || FRANCHISE_FIELDS.includes(k)) franchiseFields[k] = fields[k];
+        else throw new Error(`createManager: '${k}' is routed to neither document — `
+            + `add it to ACCOUNT_FIELDS or FRANCHISE_FIELDS, or it is silently dropped`);
+    });
+
+    const account = await Account.create(accountFields);
+    let franchise;
+    try {
+        franchise = await Franchise.create(Object.assign({ accountId: account._id }, franchiseFields));
+    } catch (e) {
+        // Loud if the compensation ITSELF fails. The orphan this is removing is
+        // an invite-hijack vector (see the note above), so "we tried" is not a
+        // state anyone should have to infer from its absence.
+        await Account.deleteOne({ _id: account._id }).catch((delErr) => {
+            console.error(`createManager: franchise write failed AND the rollback failed — `
+                + `account ${account._id} is an ORPHAN and can claim an invite for any league. `
+                + `Delete it by hand. rollback error: ${delErr && delErr.message}`);
+        });
+        throw e;
+    }
+    // In User shape, because every caller reads .league and ._id off the result —
+    // and built from the CREATED documents, not from the input. Echoing the
+    // input back skips schema defaults, casting and subdocument ids, so the
+    // response would differ from what a read returns a moment later.
+    return toUserShape(account.toObject(), franchise.toObject());
+}
+
 // Trim an assembled document to the fields a caller asked for, `_id` always
 // surviving because every caller keys on it.
 function keepOnly(doc, fields) {
@@ -701,5 +963,6 @@ module.exports = {
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
+    writesToFranchises, loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

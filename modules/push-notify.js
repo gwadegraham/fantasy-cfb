@@ -30,7 +30,6 @@
 
 const webpush = require('web-push');
 const franchiseRepo = require('./franchise-repo');
-const User = require('../models/user');
 const Game = require('../models/game');
 const { activeSeason } = require('./active-season');
 const scoringModule = require('./scoring');
@@ -299,8 +298,8 @@ async function sendToUser(user, payload) {
 
     if (dead.length) {
         try {
-            await User.updateOne(
-                { _id: user._id },
+            await franchiseRepo.updateAccount(
+                user._id,
                 { $pull: { pushSubscriptions: { endpoint: { $in: dead } } } }
             );
         } catch (e) { /* non-fatal: retried on the next send */ }
@@ -573,8 +572,14 @@ async function notifyCaptainLocks(nowMs) {
             // writing the row anyway would mean they never are.
             if (res.sent) {
                 try {
-                    await User.updateOne({ _id: user._id },
-                        { $push: { captainReminders: { season, week: focus.week, sentAt: new Date() } } });
+                    // The ledger is a FRANCHISE field, and the read above
+                    // already comes from there. This is the pairing the flag
+                    // used to break: read the ledger from one place, write it to
+                    // another, and the dedupe never sees its own writes — every
+                    // eligible manager is reminded again on every tick.
+                    await franchiseRepo.updateFranchise(user._id,
+                        { $push: { captainReminders: { season, week: focus.week, sentAt: new Date() } } },
+                        { league: user.league });
                 } catch (e) {
                     // The send already happened; failing to log it risks one
                     // duplicate next tick, which the payload's tag collapses.
@@ -666,8 +671,12 @@ async function notifyRecapReady(nowMs) {
             // has not been told, and a row here would mean they never are.
             if (res.sent) {
                 try {
-                    await User.updateOne({ _id: user._id },
-                        { $push: { recapNotices: { season, week: recap.week, sentAt: new Date() } } });
+                    // Franchise-side, and per-league on purpose: the dedupe key
+                    // is {season, week} with no league in it, so a shared ledger
+                    // would let the football recap silence the basketball one.
+                    await franchiseRepo.updateFranchise(user._id,
+                        { $push: { recapNotices: { season, week: recap.week, sentAt: new Date() } } },
+                        { league: user.league });
                 } catch (e) {
                     console.log(`Push: could not log recap notice for ${user._id}: ${e && e.message}`);
                 }

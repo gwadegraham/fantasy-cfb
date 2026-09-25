@@ -106,6 +106,51 @@ const capsOf = async () => (await User.findById(user._id).lean()).seasons[0].cap
 beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { jest.restoreAllMocks(); });
 
+// The audit row is about a PERSON — their name, and an id that resolves to
+// them. Under #313 the name lives on the account and the roster on the franchise,
+// so a handler that reads identity off the franchise writes "undefined undefined"
+// and a franchise id that points at nothing.
+//
+// Everything below runs with FRANCHISE_READS unset, where the two are one
+// document and that mistake is invisible. This block is why it is not.
+describe('the row names the person, from either source (#313 phase 3)', () => {
+    const migration = require('../modules/account-migration');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    test.each([['false'], ['true']])('a self-serve pick, with the flag %s', async (flag) => {
+        await seed();
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+
+        const res = await request(selfApp()).patch('/users/me/captain').send({ week: 3, teamId: PITT });
+        expect(res.status).toBe(200);
+
+        const [row] = await rows('captain.set');
+        expect(row.summary).toBe('Brock McCord set Week 3 captain: Pittsburgh');
+        expect(row.league).toBe(LEAGUE);
+        // The ACCOUNT id. A franchise id here is a pointer to nothing, and the
+        // trail exists precisely to be looked up later.
+        expect(row.meta.userId).toBe(String(user._id));
+    });
+
+    test.each([['false'], ['true']])('an admin override, with the flag %s', async (flag) => {
+        await seed();
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+
+        await request(adminApp()).patch(`/users/${user._id}/captain`).send({ week: 3, teamId: PITT });
+
+        const [row] = await rows('captain.set');
+        expect(row.summary).toMatch(/^Brock McCord set Week 3 captain: Pittsburgh/);
+        expect(row.summary).toMatch(/admin override$/);
+        expect(row.meta.userId).toBe(String(user._id));
+    });
+});
+
 describe('a pick the manager makes', () => {
     test('records the team by name, with the league and season', async () => {
         await seed();

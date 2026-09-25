@@ -524,8 +524,26 @@ async function main() {
     if (unknown.length) {
         problems.push(`listed but not exported by the repo: ${unknown.join(', ')}`);
     }
+    // The write half of the repo (#313 phase 3) is not compared here and must be
+    // listed, not silently tolerated. This script's whole job is to answer "do
+    // both sources return the same thing", which is a question about reads — a
+    // write is verified by the tests that read it back, not by diffing two
+    // sources against a third.
+    //
+    // Enumerated rather than matched on a name prefix, so that adding a read
+    // still trips the guard below. A prefix rule would let `updateSomething`
+    // that happens to read slip through unnoticed, which is the exact failure
+    // this guard exists for.
+    const WRITE_METHODS = ['writesToFranchises', 'loadForWrite', 'saveBoth',
+        'updateAccount', 'updateFranchise', 'createManager', 'rosteredForWrite'];
+    const missingWrites = WRITE_METHODS.filter(m => typeof repo[m] !== 'function');
+    if (missingWrites.length) {
+        problems.push(`listed as a write but not exported: ${missingWrites.join(', ')}`);
+    }
+
     const exportedReads = Object.keys(repo).filter(k =>
         typeof repo[k] === 'function' && !READ_METHODS.includes(k) &&
+        !WRITE_METHODS.includes(k) &&
         !['toUserShape', 'hydrate', 'keepOnly', 'asProjection', 'seasonScopedProjection',
           'franchiseSideOf', 'userProjection', 'readsFromFranchises'].includes(k));
     if (exportedReads.length) {
