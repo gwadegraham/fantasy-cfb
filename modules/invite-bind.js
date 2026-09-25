@@ -273,8 +273,11 @@ function inviteBind(deps) {
                     userId: String(invite.userId),
                     league: leagueFlagFor(record.league || invite.league || '')
                 });
-                await User.updateOne(
-                    { _id: invite.userId },
+                // Both ACCOUNT fields, and now written where they are read
+                // from. This was the last place in the app that read through the
+                // repo and wrote past it.
+                await repo.updateAccount(
+                    invite.userId,
                     { $set: { authSub: sub, email: record.email || oidcUser.email } }
                 );
             } catch (e) {

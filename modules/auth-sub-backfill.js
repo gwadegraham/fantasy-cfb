@@ -26,15 +26,20 @@ function shouldRecord(record, sub) {
 // Writes the sub only if the record still has none. Returns true if this call
 // is the one that filled it in. Never throws — a failed backfill is a cosmetic
 // loss (one row stays unmarked), not a reason to fail the request it rode in on.
-async function recordAuthSub(User, userId, sub) {
-    if (!User || !userId || !sub) return false;
+async function recordAuthSub(repo, userId, sub) {
+    if (!repo || !userId || !sub) return false;
     try {
-        const res = await User.updateOne(
-            {
-                _id: userId,
-                $or: [{ authSub: { $exists: false } }, { authSub: null }, { authSub: '' }]
-            },
-            { $set: { authSub: sub } }
+        // authSub is an ACCOUNT field, so this goes through the repo rather than
+        // the User model (#313 phase 3) and lands wherever the reads come from.
+        //
+        // The blank-only condition stays in the FILTER. That is what makes this
+        // atomic: an existing binding is never overwritten and two concurrent
+        // requests cannot fight over it. Expressed in the update body instead,
+        // it would become read-then-write and lose both properties.
+        const res = await repo.updateAccount(
+            userId,
+            { $set: { authSub: sub } },
+            { filter: { $or: [{ authSub: { $exists: false } }, { authSub: null }, { authSub: '' }] } }
         );
         return (res.modifiedCount || res.nModified || 0) === 1;
     } catch (e) {

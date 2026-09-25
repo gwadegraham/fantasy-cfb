@@ -205,7 +205,9 @@ router.delete('/me/push', async (req, res) => {
         const update = endpoint
             ? { $pull: { pushSubscriptions: { endpoint } } }
             : { $set: { pushSubscriptions: [] } };
-        await User.updateOne({ _id: userId }, update);
+        // pushSubscriptions is an ACCOUNT field — devices follow the person, not
+        // their entry in one league.
+        await franchiseRepo.updateAccount(userId, update);
         const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions'] });
         res.json({ deviceCount: ((user && user.pushSubscriptions) || []).length });
     } catch (err) {
@@ -766,7 +768,8 @@ router.delete('/:id/invite-link', async (req, res) => {
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
-        await User.updateOne({ _id: user._id }, { $unset: { authSub: '' } });
+        // authSub is the Auth0 subject, which belongs to the person.
+        await franchiseRepo.updateAccount(user._id, { $unset: { authSub: '' } });
         await audit.record(req, {
             action: 'user.invite',
             league: user.league, season: String(activeSeason('football')),

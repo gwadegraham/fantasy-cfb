@@ -567,7 +567,7 @@ describe('auth-sub backfill', () => {
 
     test('fills a blank binding', async () => {
         const u = await User.create(player());
-        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(true);
+        expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(true);
         expect((await User.findById(u._id).lean()).authSub).toBe('auth0|seen');
     });
 
@@ -575,19 +575,19 @@ describe('auth-sub backfill', () => {
     // login can't quietly take over a franchise someone already claimed.
     test('refuses to overwrite a binding that already exists', async () => {
         const u = await User.create(player({ authSub: 'auth0|first' }));
-        expect(await recordAuthSub(User, u._id, 'auth0|second')).toBe(false);
+        expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|second')).toBe(false);
         expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');
     });
 
     test('is idempotent — the second sighting writes nothing', async () => {
         const u = await User.create(player());
-        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(true);
-        expect(await recordAuthSub(User, u._id, 'auth0|seen')).toBe(false);
+        expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(true);
+        expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(false);
     });
 
     test('never throws on bad input or a broken model', async () => {
-        expect(await recordAuthSub(User, null, 'auth0|1')).toBe(false);
-        expect(await recordAuthSub(User, 'not-an-objectid', 'auth0|1')).toBe(false);
+        expect(await recordAuthSub(franchiseRepo, null, 'auth0|1')).toBe(false);
+        expect(await recordAuthSub(franchiseRepo, 'not-an-objectid', 'auth0|1')).toBe(false);
         expect(await recordAuthSub(null, 'x', 'auth0|1')).toBe(false);
     });
 });

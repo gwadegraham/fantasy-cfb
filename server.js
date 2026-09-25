@@ -165,7 +165,7 @@ app.use(async (req, res, next) => {
                     // after identity-guard, so this session is already vouched
                     // for, and only ever fills a blank. See auth-sub-backfill.
                     if (authSubBackfill.shouldRecord(u, req.oidc.user.sub)) {
-                        await authSubBackfill.recordAuthSub(User, innerMeta.userId, req.oidc.user.sub);
+                        await authSubBackfill.recordAuthSub(franchiseRepo, innerMeta.userId, req.oidc.user.sub);
                     }
                 }
             }

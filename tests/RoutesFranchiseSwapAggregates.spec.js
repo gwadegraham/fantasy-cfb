@@ -27,6 +27,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const SportSeason = require('../models/sportSeason');
 const activeSeason = require('../modules/active-season');
 const migration = require('../modules/account-migration');
+const franchiseRepo = require('../modules/franchise-repo');
 const standingsRouter = require('../routes/standings');
 const gamesRouter = require('../routes/games');
 const scoresRouter = require('../routes/scores');
@@ -238,9 +239,17 @@ describe('POST /scores/h2h-bonus — a read that feeds a write', () => {
         const res = await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
         expect(res.status).toBe(200);
 
-        const users = await User.find({ league: LEAGUE }, { firstName: 1, 'seasons.season': 1, 'seasons.weeklyScore': 1 }).lean();
+        // Read back through the repo, which follows the same flag the write
+        // did (#313 phase 3). Reading `users` directly here was right while
+        // writes always went there; now it would report the flag-on run as
+        // having awarded nothing, because the bonus landed on the franchise.
+        //
+        // The assertion is stronger for it: this is the whole round trip —
+        // read the managers, compute the awards, write them back, read them
+        // again — and it has to come out the same from either source.
+        const users = await franchiseRepo.byLeague(LEAGUE, { fields: ['firstName', 'seasons'] });
         return strip(users)
-            .map(u => ({ firstName: u.firstName, seasons: u.seasons }))
+            .map(u => ({ firstName: u.firstName, seasons: (u.seasons || []).map(sn => ({ season: sn.season, weeklyScore: sn.weeklyScore })) }))
             .sort((a, b) => a.firstName.localeCompare(b.firstName));
     }
 
@@ -267,6 +276,21 @@ describe('POST /scores/h2h-bonus — a read that feeds a write', () => {
         // plausible-looking ObjectId that points at nothing.
         expect(String(week1(garrett).h2hOpponentId)).toBe(String(BROCK));
         expect(String(week1(brock).h2hOpponentId)).toBe(String(GARRETT));
+    });
+
+    test('flag ON writes the bonus to the FRANCHISE and leaves `users` alone', async () => {
+        // Without this, "identical from either source" could be satisfied by
+        // both runs writing to the same collection — which is exactly what was
+        // true before the write moved.
+        const Franchise = require('../models/franchise');
+        await storedAfterPass('true');
+        const fr = await Franchise.findOne({ league: LEAGUE, accountId: GARRETT }).lean();
+        const frWeek1 = fr.seasons.find(s => s.season === SEASON).weeklyScore.find(w => w.week === 1);
+        expect(frWeek1.h2hBonus).toBe(5);
+
+        const u = await User.findById(GARRETT).lean();
+        const userWeek1 = u.seasons.find(s => s.season === SEASON).weeklyScore.find(w => w.week === 1);
+        expect(userWeek1.h2hBonus).toBeFalsy();
     });
 
     test('scoreByTeam survives the pass — the read must not trim what the write puts back', async () => {

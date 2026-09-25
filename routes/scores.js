@@ -295,9 +295,15 @@ async function applyH2HBonuses(season) {
             // (round1 of baseWeekScore, which floors a missing one to 0) and
             // copies week through untouched — but an entry that was already
             // malformed now persists instead of being rejected here.
-            const res = await User.updateOne(
-                { _id: user._id, 'seasons.season': seasonNum },
-                { $set: { 'seasons.$.weeklyScore': next.weeklyScore } }
+            // The season condition stays in the FILTER, not the update: the
+            // positional $ resolves against the array element the filter
+            // matched. Without it the operator matches nothing, the bonus is
+            // silently not stored, and the only sign is the matchedCount check
+            // below.
+            const res = await franchiseRepo.updateFranchise(
+                user._id,
+                { $set: { 'seasons.$.weeklyScore': next.weeklyScore } },
+                { league, filter: { 'seasons.season': seasonNum } }
             );
             if (!res.matchedCount) {
                 // Loud: a manager whose bonus could not be written is a standings

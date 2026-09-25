@@ -779,9 +779,15 @@ async function saveBoth(ctx) {
 
 // A surgical update of ACCOUNT-side fields — the $set/$pull/$unset writes that
 // deliberately avoid hydrating a ~100KB document to change one key.
-async function updateAccount(accountId, update) {
+//
+// `filter` narrows the match, and for one caller it is the entire safety
+// mechanism rather than an optimisation: modules/auth-sub-backfill.js fills
+// authSub only when it is still blank, expressed as a condition in the filter so
+// that two concurrent requests cannot fight over it and an existing binding is
+// never overwritten. Moved into an update body it would stop being atomic.
+async function updateAccount(accountId, update, { filter } = {}) {
     const Model = writesToFranchises() ? Account : User;
-    return Model.updateOne({ _id: accountId }, update);
+    return Model.updateOne(Object.assign({ _id: accountId }, filter || {}), update);
 }
 
 // The same for FRANCHISE-side fields.
