@@ -17,12 +17,13 @@
 // settled. Doing both at once means a bug could be in either and you cannot
 // tell which.
 //
-// ---- reads only ----
+// ---- reads AND writes ----
 //
-// Nothing here writes. Writes stay on `users` until the whole app reads from
-// here, because the issue forbids dual-writing: two competing sources of truth
-// for live scoring is worse than the problem being solved. The write swap is a
-// single later step, and it is the irreversible one.
+// This said "nothing here writes" through phase 2, and stopped being true in
+// phase 3. Both halves now go through this module and both follow the same
+// switch, so there is one source of truth at any moment and the two can never
+// disagree about which it is. Dual-writing is still forbidden and still does
+// not happen — nothing here writes to both collections.
 
 const Account = require('../models/account');
 const Franchise = require('../models/franchise');
@@ -68,9 +69,13 @@ const User = require('../models/user');
 //      --apply verifies and fingerprints on its own, so a separate --verify pass
 //      is optional. --yes matters: without a TTY the database-name prompt exits
 //      1 having written NOTHING, which reads like a no-op and is not one.
-//   4. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
-//   5. node scripts/diff-franchise-reads.js against a dev copy synced from prod
-//      — positive confirmation, rather than only watching for symptoms.
+//   4. node scripts/diff-franchise-reads.js against a dev copy synced from
+//      prod. BEFORE the flip, not after: the script diffs flag-off against
+//      flag-on within ONE database, so it is only meaningful while both
+//      collections still hold the same thing. Run it after step 5 and the first
+//      scoring pass makes `users` stale, the script reports real divergence,
+//      and an operator reads a successful cutover as a failed one.
+//   5. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
 //   6. Then watch. A block from modules/identity-guard.js, a second Captain
 //      reminder inside one week, or a standings table that stops moving all mean
 //      flip back: heroku config:unset FRANCHISE_READS -a fantasy-cfb.
@@ -147,7 +152,10 @@ const LIST_FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated'];
 // One manager, in User shape.
 //
 // `_id` comes from the ACCOUNT, not the franchise — it is the id Auth0 points
-// at and the id every existing client, link and localStorage key already holds.
+// at, the id every existing client, link and localStorage key already holds,
+// and the id a draft pick records. Handing back the franchise's own id here
+// breaks logins, every /userHome?user= URL in the wild, and any write keyed on
+// a manager.
 // Using the franchise's own id here would break logins and every /userHome?user=
 // URL in the wild.
 function toUserShape(account, franchise, { list = false, explicit = false } = {}) {
@@ -671,8 +679,7 @@ async function h2hManagers(league, season) {
 
 // Join each franchise to its account and return documents in User shape:
 // `_id` is the ACCOUNT's id, because that is what Auth0 points at, what every
-// client holds, and — until the write cutover — what routes/scores.js keys its
-// User.updateOne on.
+// client holds, and what routes/scores.js keys its weeklyScore write on.
 //
 // Franchises with no account are dropped, matching toUserShape.
 function accountJoin(fields) {
@@ -908,10 +915,11 @@ async function rosteredForWrite() {
 // minted for ANY league. The compensating delete is safe precisely because the
 // account is one call old and nothing points at it yet.
 async function createManager(fields) {
-    if (!writesToFranchises()) {
-        const user = new User(fields);
-        return user.save();
-    }
+    // Routed FIRST, on both paths, so the guard fires in development instead of
+    // at the cutover. Inside the flag-on branch it only ran where nothing runs
+    // today: a field added between now and the flip would look fine — mongoose
+    // drops unknown keys silently in strict mode — and POST /users would start
+    // 400ing the moment someone set the config var.
     const accountFields = {};
     const franchiseFields = {};
     Object.keys(fields).forEach(k => {
@@ -920,6 +928,11 @@ async function createManager(fields) {
         else throw new Error(`createManager: '${k}' is routed to neither document — `
             + `add it to ACCOUNT_FIELDS or FRANCHISE_FIELDS, or it is silently dropped`);
     });
+
+    if (!writesToFranchises()) {
+        const user = new User(fields);
+        return user.save();
+    }
 
     const account = await Account.create(accountFields);
     let franchise;
@@ -940,7 +953,12 @@ async function createManager(fields) {
     // and built from the CREATED documents, not from the input. Echoing the
     // input back skips schema defaults, casting and subdocument ids, so the
     // response would differ from what a read returns a moment later.
-    return toUserShape(account.toObject(), franchise.toObject());
+    const shaped = toUserShape(account.toObject(), franchise.toObject());
+    // __v, for the same reason the two PATCH responses carry it: flag-off this
+    // route echoed a mongoose document, and "merging changes nothing" should be
+    // literally true rather than nearly true.
+    if (franchise.__v !== undefined) shaped.__v = franchise.__v;
+    return shaped;
 }
 
 // Trim an assembled document to the fields a caller asked for, `_id` always

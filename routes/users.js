@@ -891,6 +891,8 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
 
     var date = new Date();
     var centralTime = date.toLocaleString("en-US", {timeZone: "America/Chicago"});
+
+    try {
     res.user.lastUpdated = centralTime;
 
     if (req.body.season != null && req.body.teams != null) {
@@ -907,7 +909,6 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
         }
     }
 
-    try {
         await franchiseRepo.saveBoth(res.ctx);
         // Re-assembled rather than echoing one document: the response has always
         // carried the person's name and colour alongside the season, and with
@@ -925,6 +926,10 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
         if (franchiseDoc && franchiseDoc.__v !== undefined) body.__v = franchiseDoc.__v;
         res.status(200).json(body);
     } catch (err) {
+        // Wraps the mutations too, not just the save. A TypeError above used to
+        // escape an async handler and send NO response at all — the request hung
+        // rather than failing. A 400 is the difference between a draft pick that
+        // visibly failed and one that silently never happened.
         res.status(400).json({message: err.message});
     }
 });
@@ -1041,8 +1046,7 @@ router.patch('/:id/roster-team', async (req, res) => {
         // `identity` and `user` are named apart on purpose. An earlier version
         // aliased `user = ctx.franchise`, which put the FRANCHISE's own _id
         // everywhere the ACCOUNT's was meant — the same value with the flag off,
-        // a different one with it on. See the roster-team handler below for what
-        // that cost.
+        // a different one with it on. Here that meant no draft pick matched.
         const ctx = await franchiseRepo.loadForWrite(req.params.id);
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
         const { account: identity, franchise: user } = ctx;
@@ -1186,7 +1190,18 @@ async function getUser(req, res, next) {
 async function getUserNewSeason(req, res, next) {
     try {
         const ctx = await franchiseRepo.loadForWrite(req.params.id, { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
-        if (ctx == null) {
+        // BOTH halves. getUser above asks for a season, so loadForWrite returns
+        // null when no entry matches and `ctx == null` is the whole check. This
+        // one asks for no season — the draft handler pushes an entry that does
+        // not exist yet — so an account with NO franchise comes back as
+        // { account, franchise: null }, which is not null.
+        //
+        // Letting that through set res.user = null, and the handler's first
+        // statement writes to it OUTSIDE its try/catch: the request then hangs
+        // with nothing written and nothing logged. That is the failure the
+        // comment on PATCH /:id warns about, and this endpoint is where every
+        // draft pick is persisted (modules/draft-socket.js).
+        if (ctx == null || ctx.franchise == null) {
             return res.status(404).json({message: 'Cannot find user'});
         }
         res.ctx = ctx;

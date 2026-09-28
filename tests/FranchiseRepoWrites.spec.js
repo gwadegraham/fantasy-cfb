@@ -55,6 +55,29 @@ async function seed(over = {}) {
 // a write landed somewhere the app will actually read it back from.
 const readBack = (id) => repo.byAccountId(id);
 
+describe('the field-routing lists cannot drift', () => {
+    // modules/franchise-repo.js and modules/account-migration.js each carry
+    // their own copy, and the repo's comment says "kept in sync deliberately" —
+    // which until now was a promise with nothing behind it.
+    //
+    // The cost of drift went up in phase 3. The migration's lists decide what
+    // gets COPIED; the repo's now also decide where a write GOES (createManager)
+    // and how a document is split for editing (loadForWrite). A field added to
+    // one side only would migrate correctly and then be unroutable — or be
+    // routed and never migrated.
+    const migration = require('../modules/account-migration');
+
+    test('the repo and the migration agree on both lists', () => {
+        expect([...repo.ACCOUNT_FIELDS].sort()).toEqual([...migration.ACCOUNT_FIELDS].sort());
+        expect([...repo.FRANCHISE_FIELDS].sort()).toEqual([...migration.FRANCHISE_FIELDS].sort());
+    });
+
+    test('and no field is claimed by both', () => {
+        const both = repo.ACCOUNT_FIELDS.filter(f => repo.FRANCHISE_FIELDS.includes(f));
+        expect(both).toEqual([]);
+    });
+});
+
 describe('the flag governs writes as well as reads', () => {
     test('writesToFranchises is the SAME switch as readsFromFranchises', () => {
         // Not decoration. Two independent variables would let reads and writes
@@ -387,6 +410,20 @@ describe('createManager', () => {
             .rejects.toThrow('franchise write failed');
 
         boom.mockRestore(); noDelete.mockRestore();
+    });
+
+    test('an unrouted field is refused on BOTH flag positions', async () => {
+        // The guard used to live inside the flag-on branch, so it only fired
+        // where nothing runs today. A field added between now and the cutover
+        // would look fine — mongoose drops unknown keys silently in strict mode
+        // — and POST /users would start 400ing the moment the var was set.
+        for (const on of [false, true]) {
+            await expect(withFlag(on, () => repo.createManager(
+                Object.assign({}, NEW, { favouriteSnack: 'pretzels' })
+            ))).rejects.toThrow(/routed to neither/);
+            expect(await User.countDocuments({})).toBe(0);
+            expect(await Account.countDocuments({})).toBe(0);
+        }
     });
 
     test('a field routed to neither document is refused, not dropped', async () => {
