@@ -147,7 +147,38 @@ describe('decideInvite', () => {
     });
 
     test('a league-less invite is not treated as a mismatch', () => {
+        // The INVITE carrying no league means the commissioner minted it without
+        // one. Nothing to compare, so nothing to refuse.
         expect(decide({ invite: { userId: 'u1', league: '' } }).action).toBe('bind');
+    });
+
+    // The RECORD carrying no league is the opposite situation and must not get
+    // the same pass (#313 phase 3).
+    //
+    // The guard used to read `invite.league && record.league && they differ`, so
+    // a record with no league made the whole condition false and the claim went
+    // through — "no league on the record" was treated as "no constraint" rather
+    // than as something wrong.
+    //
+    // Harmless while every record had a league, which was true for as long as a
+    // manager WAS a row in `users`. After the Account/Franchise split, league
+    // lives on the franchise, so an account with no franchise has none — and
+    // would have been able to claim an invite minted for ANY league.
+    test('refuses a record with NO league when the invite names one', () => {
+        for (const missing of [null, undefined, '']) {
+            expect(decide({ record: Object.assign({}, record, { league: missing }) }))
+                .toEqual({ action: 'refuse', reason: 'league-mismatch' });
+        }
+    });
+
+    test('but a league-less invite AND a league-less record is still a bind', () => {
+        // Neither side is asserting a league, so there is still nothing to
+        // compare. This is the case the original middle clause was protecting,
+        // and it keeps working — the `invite.league &&` clause covers it.
+        expect(decide({
+            invite: { userId: 'u1', league: '' },
+            record: Object.assign({}, record, { league: null })
+        }).action).toBe('bind');
     });
 });
 

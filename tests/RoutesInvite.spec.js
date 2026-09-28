@@ -580,10 +580,12 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
         }
     });
 
-    // Documented, not asserted-as-correct. This is a KNOWN gap on the flag-on
-    // path, and it exists here so that flipping the flag fails a test instead of
-    // failing an invite.
-    test('an account with NO franchise loses the league-mismatch refusal under flag-on', async () => {
+    // This test was added in #460 to DOCUMENT a gap rather than assert it was
+    // correct: an account with no franchise has no league, and decideInvite used
+    // to read that as "no league constraint", so such an account could claim an
+    // invite minted for any league. It was written so that closing the gap would
+    // break it. #461 closed it, and this is what it looks like now.
+    test('an account with NO franchise is REFUSED an invite for any league', async () => {
         const Account = require('../models/account');
         const { decideInvite } = require('../modules/invite-bind');
         const a = await Account.create({ firstName: 'Hoops', lastName: 'Only', email: 'hoops@example.com' });
@@ -595,18 +597,23 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
         const rec = await franchiseRepo.byAccountId(a._id,
             { fields: ['email', 'league', 'authSub', 'firstName'] });
 
-        // The whole mechanism in one line: no franchise, so no league, and
-        // decideInvite reads a missing league as "no constraint".
+        // No franchise, so no league — and that is now a refusal rather than a
+        // reason to skip the check.
         expect(rec.league).toBeUndefined();
         expect(decideInvite(Object.assign({ invite, record: rec }, args)))
-            .toEqual({ action: 'bind', reason: 'verified' });
-
-        // What the same invite does when the league IS known — the behaviour the
-        // production path gives today, and the one that has to survive the
-        // cutover.
-        const withFranchise = Object.assign({}, rec, { league: LEAGUE });
-        expect(decideInvite(Object.assign({ invite, record: withFranchise }, args)))
             .toEqual({ action: 'refuse', reason: 'league-mismatch' });
+
+        // A record whose league is known and DIFFERENT is refused for the same
+        // reason, which is the behaviour that already worked.
+        const otherLeague = Object.assign({}, rec, { league: LEAGUE });
+        expect(decideInvite(Object.assign({ invite, record: otherLeague }, args)))
+            .toEqual({ action: 'refuse', reason: 'league-mismatch' });
+
+        // And the matching league still binds, so the refusal above is the
+        // league check firing rather than everything being refused.
+        const sameLeague = Object.assign({}, rec, { league: OTHER });
+        expect(decideInvite(Object.assign({ invite, record: sameLeague }, args)))
+            .toEqual({ action: 'bind', reason: 'verified' });
     });
 
     test('and the record itself carries all four fields, from either source', async () => {

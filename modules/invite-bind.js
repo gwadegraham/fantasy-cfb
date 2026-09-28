@@ -57,7 +57,24 @@ function decideInvite({ invite, sub, tokenEmail, sessionUserId, record, lookupEr
 
     if (!record) return { action: 'refuse', reason: 'no-record' };
 
-    if (invite.league && record.league && invite.league !== record.league) {
+    // A record with NO league is a refusal, not a free pass.
+    //
+    // This used to read `invite.league && record.league && they differ`, so a
+    // record carrying no league made the condition false and the claim went
+    // through. That was safe for exactly as long as a manager WAS a row in
+    // `users`, where league was always populated.
+    //
+    // After the Account/Franchise split (#313) league lives on the franchise, so
+    // an account with no franchise has none — a basketball-only manager, or one
+    // whose franchise was removed. Under the old reading such an account could
+    // claim an invite minted for ANY league, silently, because the check simply
+    // did not run. There is no legitimate claim to make against a league the
+    // record cannot be shown to belong to.
+    //
+    // `invite.league &&` still short-circuits, so an invite minted without a
+    // league is unaffected — that is a commissioner choosing not to constrain
+    // it, which is different from us being unable to check.
+    if (invite.league && invite.league !== record.league) {
         return { action: 'refuse', reason: 'league-mismatch' };
     }
 
