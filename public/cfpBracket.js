@@ -182,10 +182,77 @@
                '</div>';
     }
 
+    // ---- season switching -----------------------------------------------
+    //
+    // SEASON is the league's active season, from the server. `?season=` in the
+    // URL overrides it, so a switched view is a link somebody can send. The
+    // switcher only ever offers what /seasons returns — a stored twelve-team
+    // bracket, or the active season served as a projection.
+    var seasonList = [];
+    var viewSeason = (function () {
+        try {
+            var q = new URLSearchParams(window.location.search).get('season');
+            if (q && /^\d{4}$/.test(q)) return q;
+        } catch (e) { /* no URLSearchParams: fall through to the active season */ }
+        return String(SEASON);
+    })();
+
+    function leagueCode() {
+        return (typeof ccLeague !== 'undefined' && ccLeague.code()) || LEAGUE;
+    }
+
+    // Best-effort: a page with no switcher still renders its season, so a
+    // failure here is not worth an error card.
+    async function loadSeasons() {
+        try {
+            var res = await fetch('/playoffs/bracket/' + leagueCode() + '/seasons');
+            if (!res.ok) return;
+            var body = await res.json();
+            seasonList = (body && body.seasons) || [];
+            // A ?season= for a year the switcher does not offer (an unreadable
+            // format, a hand-typed URL) would otherwise render one bracket with
+            // no pill selected.
+            if (seasonList.length && !seasonList.some(function (s) { return String(s.season) === viewSeason; })) {
+                viewSeason = String(body.active || seasonList[0].season);
+            }
+        } catch (e) { /* leave seasonList empty; the switcher just won't draw */ }
+    }
+
+    function seasonSwitcherHtml() {
+        if (seasonList.length < 2) return '';
+        return '<div class="cfp-seasons" role="group" aria-label="Season">' +
+            seasonList.map(function (s) {
+                var on = String(s.season) === viewSeason;
+                return '<button type="button" class="cfp-season-pill' + (on ? ' active' : '') + '"' +
+                       ' data-season="' + s.season + '"' + (on ? ' aria-current="true"' : '') + '>' +
+                       s.season + (s.projected ? '<span class="cfp-season-dot" title="Projected — the field is not set yet"></span>' : '') +
+                       '</button>';
+            }).join('') + '</div>';
+    }
+
+    function bindSeasonPills() {
+        container.querySelectorAll('.cfp-season-pill').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var next = btn.getAttribute('data-season');
+                if (next === viewSeason) return;
+                viewSeason = next;
+                // The live-refresh timer belongs to the season being left.
+                clearTimeout(cfpTimer);
+                try {
+                    var url = new URL(window.location.href);
+                    url.searchParams.set('season', next);
+                    window.history.replaceState({}, '', url);
+                } catch (e) { /* the switch still works without a tidy URL */ }
+                container.innerHTML = '<div class="cfp-loading">Loading bracket...</div>';
+                load();
+            });
+        });
+    }
+
     async function load() {
         try {
-            var activeLeague = (typeof ccLeague !== 'undefined' && ccLeague.code()) || LEAGUE;
-            var res = await fetch('/playoffs/bracket/' + SEASON + '/' + activeLeague);
+            if (!seasonList.length) await loadSeasons();
+            var res = await fetch('/playoffs/bracket/' + viewSeason + '/' + leagueCode());
             if (!res.ok) {
                 var err = await res.json().catch(function () { return {}; });
                 throw new Error(err.message || 'Failed to load bracket');
@@ -195,10 +262,15 @@
             render(data);
             cfpSchedule(data);
         } catch (e) {
-            container.innerHTML = '<div class="cfp-error">' +
+            // Keep the switcher on screen: a season with no bracket is the most
+            // likely way to get here, and taking the pills away with it would
+            // strand the reader on the year that failed.
+            container.innerHTML = seasonSwitcherHtml() +
+                '<div class="cfp-error">' +
                 '<i class="fas fa-football-ball"></i>' +
                 '<p>' + escapeHtml(e.message) + '</p>' +
                 '<a href="/standings">Back to Standings</a></div>';
+            bindSeasonPills();
         }
     }
 
@@ -227,11 +299,16 @@
     }
 
     async function cfpRefresh() {
+        // The season being viewed, not the active one: a past bracket is all
+        // finals, so cfpAnyLive never arms the timer for it — but a tick already
+        // queued when the reader switched away must not repaint the old season's
+        // scores over the one now on screen.
+        var forSeason = viewSeason;
         try {
-            var activeLeague = (typeof ccLeague !== 'undefined' && ccLeague.code()) || LEAGUE;
-            var res = await fetch('/playoffs/bracket/' + SEASON + '/' + activeLeague);
+            var res = await fetch('/playoffs/bracket/' + forSeason + '/' + leagueCode());
             if (!res.ok) throw new Error('refresh failed');
             var data = await res.json();
+            if (forSeason !== viewSeason) return;
 
             // The bracket is a fixed-height grid of matchups, so a repaint moves
             // nothing — but put the scroll position back anyway, since the
@@ -267,6 +344,7 @@
                     '</span>';
         }
         html += '</div>';
+        html += seasonSwitcherHtml();
         html += '</div>';
 
         // Sort games by round/order
@@ -456,6 +534,9 @@
         html += '</tbody></table></div></div>';
 
         container.innerHTML = html;
+        // Re-bound on every paint: the live refresh replaces the whole subtree,
+        // so listeners attached to the previous pills are gone with it.
+        bindSeasonPills();
     }
 
     load();

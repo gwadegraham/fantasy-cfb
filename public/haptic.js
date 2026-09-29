@@ -10,7 +10,7 @@
     document.addEventListener('click', function (e) {
         var el = e.target.closest(
             '.btn-primary, .btn-secondary, .btn-ghost, ' +
-            '.uh-season-pill, .uh-tile, ' +
+            '.uh-season-pill, .cfp-season-pill, .uh-tile, ' +
             '.welcome-actions button, .modal-actions button, ' +
             '.standings-row, .h2h-card, .uh-edit'
         );

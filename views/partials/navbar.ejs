@@ -124,6 +124,14 @@
             <li><a href="/hall-of-fame">Hall of Fame</a></li>
             <li><a href="/rules">Scoring</a></li>
             <li><a href="/draft-room">Draft Room</a></li>
+            <%# Admin-only for now. The page itself has always been reachable at
+                its URL by any member; this just stops it being reachable only by
+                someone who already knows the URL, without putting a mostly-empty
+                bracket in front of the league for the nine months a year the
+                field is a projection. %>
+            <% if (_role === 'Admin') { %>
+            <li><a href="/cfp-bracket">CFP Bracket</a></li>
+            <% } %>
             <% if (typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember) { %>
             <li><a href="/betting">Betting</a></li>
             <% } %>

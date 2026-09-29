@@ -73,25 +73,51 @@ function payload(overrides) {
     }, overrides || {});
 }
 
-async function renderPage(body) {
+// The page makes two calls — the season list and the bracket itself — so the
+// mock routes on URL. `seasons` defaults to empty, which is the no-switcher
+// case every test below that isn't about the switcher wants.
+//
+// `bySeason` lets a test hand back a different bracket per year, which is the
+// only way to prove a pill click actually changed what is on screen rather than
+// just repainting the same payload.
+async function renderPage(body, opts) {
+    const o = opts || {};
     jest.resetModules();
     document.body.innerHTML = '<div id="cfp-bracket"><div class="cfp-loading">Loading bracket...</div></div>';
-    global.SEASON = String(SEASON);
+    global.SEASON = String(o.activeSeason || SEASON);
     global.LEAGUE = 'graham-league';
     global.userState = { user_metadata: { metadata: { userId: 'u1' } } };
     window.ccLogo = (logos) => (logos && logos[0]) || '';
     window.ccKickoff = { parts: () => ({ monthShort: 'Dec', day: 20 }) };
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(body) }));
+    window.history.replaceState({}, '', o.url || '/cfp-bracket');
+
+    const seasons = o.seasons || [];
+    global.fetch = jest.fn((url) => {
+        if (String(url).endsWith('/seasons')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({
+                league: 'graham-league', active: Number(o.activeSeason || SEASON), seasons
+            }) });
+        }
+        const year = String(url).split('/').slice(-2)[0];
+        const served = (o.bySeason && o.bySeason[year]) || body;
+        if (!served) {
+            return Promise.resolve({ ok: false, json: () => Promise.resolve({ message: `No bracket for ${year}` }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(served) });
+    });
 
     require('../public/cfpBracket.js');
     await new Promise(r => setTimeout(r, 0));
     return document.getElementById('cfp-bracket');
 }
 
+const settle = () => new Promise(r => setTimeout(r, 0));
+
 afterEach(() => {
     jest.restoreAllMocks();
     delete global.fetch;
     delete global.userState;
+    window.history.replaceState({}, '', '/');
 });
 
 describe('the bracket grid', () => {
@@ -175,6 +201,102 @@ describe('the points-by-round table', () => {
             .map(r => r.textContent);
         expect(rows.some(t => t.includes('First Round (exit)') && t.includes('7'))).toBe(true);
         expect(rows.some(t => t === 'First Round0')).toBe(false);
+    });
+});
+
+describe('the season switcher', () => {
+    const SEASONS = [
+        { season: 2026, format: null, status: 'projected', projected: true },
+        { season: 2025, format: 'twelve_team_2025', status: 'completed', projected: false },
+        { season: 2024, format: 'twelve_team_2024', status: 'completed', projected: false }
+    ];
+    const pills = (el) => [...el.querySelectorAll('.cfp-season-pill')]
+        .map(p => p.getAttribute('data-season'));
+
+    test('draws a pill per season, with the active one selected', async () => {
+        const el = await renderPage(payload(), { seasons: SEASONS, activeSeason: 2026 });
+        expect(pills(el)).toEqual(['2026', '2025', '2024']);
+        expect(el.querySelector('.cfp-season-pill.active').getAttribute('data-season')).toBe('2026');
+        // The projected year is marked so you know before you click it.
+        expect(el.querySelector('[data-season="2026"] .cfp-season-dot')).not.toBeNull();
+        expect(el.querySelector('[data-season="2025"] .cfp-season-dot')).toBeNull();
+    });
+
+    // One season is not a choice, and a lone pill reads as a broken control.
+    test('stays hidden when there is only one season', async () => {
+        const el = await renderPage(payload(), { seasons: [SEASONS[0]], activeSeason: 2026 });
+        expect(el.querySelector('.cfp-seasons')).toBeNull();
+    });
+
+    test('clicking a pill loads that season and moves the selection', async () => {
+        const el = await renderPage(null, {
+            seasons: SEASONS, activeSeason: 2026,
+            bySeason: {
+                2026: payload({ season: 2026, projected: true }),
+                2024: payload({ season: 2024, champion: { teamId: 84, school: 'Indiana' } })
+            }
+        });
+        expect(el.querySelector('.cfp-subtitle').textContent).toContain('2026');
+
+        el.querySelector('[data-season="2024"]').click();
+        await settle();
+
+        const after = document.getElementById('cfp-bracket');
+        expect(after.querySelector('.cfp-subtitle').textContent).toContain('2024');
+        expect(after.querySelector('.cfp-season-pill.active').getAttribute('data-season')).toBe('2024');
+        expect(global.fetch).toHaveBeenCalledWith('/playoffs/bracket/2024/graham-league');
+    });
+
+    // So a switched view is a link somebody can send.
+    test('the chosen season goes into the URL', async () => {
+        const el = await renderPage(null, {
+            seasons: SEASONS, activeSeason: 2026,
+            bySeason: { 2026: payload({ season: 2026 }), 2025: payload({ season: 2025 }) }
+        });
+        el.querySelector('[data-season="2025"]').click();
+        await settle();
+        expect(new URLSearchParams(window.location.search).get('season')).toBe('2025');
+    });
+
+    test('a ?season= in the URL decides what loads', async () => {
+        await renderPage(null, {
+            url: '/cfp-bracket?season=2024', seasons: SEASONS, activeSeason: 2026,
+            bySeason: { 2024: payload({ season: 2024 }) }
+        });
+        expect(global.fetch).toHaveBeenCalledWith('/playoffs/bracket/2024/graham-league');
+        const el = document.getElementById('cfp-bracket');
+        expect(el.querySelector('.cfp-season-pill.active').getAttribute('data-season')).toBe('2024');
+    });
+
+    // A hand-typed year, or one whose bracket the page cannot draw, would
+    // otherwise render a bracket with no pill selected at all.
+    test('a season the switcher does not offer falls back to the active one', async () => {
+        await renderPage(null, {
+            url: '/cfp-bracket?season=2023', seasons: SEASONS, activeSeason: 2026,
+            bySeason: { 2026: payload({ season: 2026 }) }
+        });
+        expect(global.fetch).toHaveBeenCalledWith('/playoffs/bracket/2026/graham-league');
+        expect(global.fetch).not.toHaveBeenCalledWith('/playoffs/bracket/2023/graham-league');
+    });
+
+    // Taking the pills away with the error would strand the reader on the year
+    // that failed, with nothing on screen to get them back.
+    test('the pills survive a season that fails to load', async () => {
+        const el = await renderPage(null, {
+            seasons: SEASONS, activeSeason: 2026,
+            bySeason: { 2026: payload({ season: 2026 }) }
+        });
+        el.querySelector('[data-season="2025"]').click();
+        await settle();
+
+        const after = document.getElementById('cfp-bracket');
+        expect(after.querySelector('.cfp-error')).not.toBeNull();
+        expect(pills(after)).toEqual(['2026', '2025', '2024']);
+
+        // And clicking back out of it works.
+        after.querySelector('[data-season="2026"]').click();
+        await settle();
+        expect(document.getElementById('cfp-bracket').querySelector('.cfp-error')).toBeNull();
     });
 });
 

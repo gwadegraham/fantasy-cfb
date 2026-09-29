@@ -67,6 +67,50 @@ html.cfp-page, .cfp-page body {
 }
 .cfp-projected-badge i { margin-right: 4px; }
 
+/* ---- Season switcher ----
+   Same pill treatment as the My Team season pills (.uh-season-pill), so the two
+   places you change which season you are looking at look and feel alike.
+   Scrolls rather than wraps: the list grows by one every December, and a header
+   that reflows to two rows halfway through a decade is worse than a swipe. */
+.cfp-seasons {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+}
+.cfp-seasons::-webkit-scrollbar { display: none; }
+.cfp-season-pill {
+    all: unset;
+    cursor: pointer;
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--cc-r-pill);
+    border: 1px solid var(--cc-border);
+    color: var(--cc-muted-2);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.cfp-season-pill:hover { color: var(--cc-text); border-color: var(--cc-muted); }
+.cfp-season-pill.active { background: var(--cc-text); color: var(--cc-bg); border-color: var(--cc-text); }
+.cfp-season-pill:focus-visible { outline: 2px solid var(--cc-info); outline-offset: 2px; }
+/* The season whose field is still a projection. A dot rather than a word: the
+   header already spells it out under the title for the season on screen, and
+   this only has to mark the pill you have not selected yet. */
+.cfp-season-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    margin-left: 5px;
+    vertical-align: middle;
+    border-radius: 50%;
+    background: var(--cc-interactive);
+}
+.cfp-season-pill.active .cfp-season-dot { background: var(--cc-bg); }
+
 /* ---- Bracket grid (desktop) ---- */
 .cfp-bracket-wrap {
     overflow-x: auto;

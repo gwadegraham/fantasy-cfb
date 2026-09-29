@@ -24,6 +24,8 @@ const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
 const User = require('../models/user');
 const { deriveBracket } = require('../modules/cfp-bracket');
+const SportSeason = require('../models/sportSeason');
+const activeSeason = require('../modules/active-season');
 const playoffsRouter = require('../routes/playoffs');
 
 const raw2025 = require('./fixtures/cfp-bracket-2025.json');
@@ -334,6 +336,81 @@ describe('the franchise summary', () => {
         // Indiana: QF + bye + SF + title. Alabama: first round + the
         // quarterfinal it lost to Indiana.
         expect(f.maxPoints).toBe((QUARTER + BYE_BONUS + SEMI + TITLE) + (FIRST_ROUND + QUARTER));
+    });
+});
+
+// What the year switcher on the page is allowed to offer.
+describe('GET /playoffs/bracket/:league/seasons', () => {
+    const ACTIVE = 2026;
+
+    beforeEach(async () => {
+        activeSeason._reset();
+        await SportSeason.create({ sport: 'football', season: ACTIVE, status: 'in-season' });
+        await activeSeason.prime();
+    });
+    afterEach(() => activeSeason._reset());
+
+    const seasonsFor = (league = GRAHAM) =>
+        request(app).get(`/playoffs/bracket/${league}/seasons`);
+
+    test('lists a stored bracket and the active season, newest first', async () => {
+        await CfpBracket.create(Object.assign({}, derived, { season: SEASON }));
+        const res = await seasonsFor();
+
+        expect(res.status).toBe(200);
+        expect(res.body.active).toBe(ACTIVE);
+        expect(res.body.seasons.map(s => s.season)).toEqual([ACTIVE, SEASON]);
+    });
+
+    // The active season has no bracket document until selection day — it is
+    // served as a projection — so it has to be on the list on its own account.
+    test('the active season is offered with no bracket on file', async () => {
+        const res = await seasonsFor();
+        expect(res.body.seasons).toHaveLength(1);
+        expect(res.body.seasons[0]).toMatchObject({ season: ACTIVE, projected: true });
+    });
+
+    test('the active season is not listed twice once its bracket lands', async () => {
+        await CfpBracket.create(Object.assign({}, derived, { season: ACTIVE, teamCount: 12 }));
+        const res = await seasonsFor();
+        expect(res.body.seasons.map(s => s.season)).toEqual([ACTIVE]);
+        expect(res.body.seasons[0].projected).toBe(false);
+    });
+
+    // The page draws four columns and scores off a twelve-team tree. 2023 is
+    // really on file as `four_team`, and run through that tree every one of its
+    // four teams is credited a first round, a quarterfinal and a bye bonus the
+    // format never had — 28 points against a real ceiling of 16. Offering the
+    // year is worse than not offering it.
+    test('a bracket the page cannot draw is left out', async () => {
+        await CfpBracket.create({
+            season: 2023, format: 'four_team', teamCount: 4, status: 'completed',
+            participants: [1, 2, 3, 4].map(n => ({ teamId: n, school: `T${n}`, seed: n })),
+            games: [{ gameId: 901, round: 'championship' }]
+        });
+        const res = await seasonsFor();
+        expect(res.body.seasons.map(s => s.season)).not.toContain(2023);
+    });
+
+    // teamCount is what the check reads, but an older document written before
+    // the field existed has to fall back to counting the field.
+    test('a twelve-team bracket with no teamCount is still offered', async () => {
+        const noCount = Object.assign({}, derived, { season: SEASON });
+        delete noCount.teamCount;
+        await CfpBracket.create(noCount);
+        const res = await seasonsFor();
+        expect(res.body.seasons.map(s => s.season)).toContain(SEASON);
+    });
+
+    // /bracket/:league/seasons and /bracket/:season/:league are the same shape;
+    // only the literal last segment tells them apart, and the order they are
+    // registered in decides which wins.
+    test('the bracket route still answers for a real season and league', async () => {
+        await CfpBracket.create(Object.assign({}, derived, { season: SEASON }));
+        await seedCommon();
+        const res = await get(GRAHAM);
+        expect(res.status).toBe(200);
+        expect(res.body.participants).toHaveLength(12);
     });
 });
 
