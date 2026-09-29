@@ -95,7 +95,24 @@ describe('PATCH /users/draft/:id', () => {
             bodies[flag] = strip(res.body);
             await User.deleteMany({}); await Account.deleteMany({}); await Franchise.deleteMany({});
         }
-        expect(bodies.true).toEqual(bodies.false);
+
+        // lastUpdated excluded, and ONLY lastUpdated: the handler stamps it from
+        // the wall clock to the SECOND, and this fires two requests, so the two
+        // disagree whenever they straddle a second boundary. It passed locally
+        // and on one CI run before failing on the next with 12:26:25 against
+        // 12:26:26 — a flake I wrote, of exactly the kind this suite keeps
+        // catching elsewhere.
+        //
+        // Everything the flag could actually change is still compared.
+        const withoutStamp = (b) => { const o = Object.assign({}, b); delete o.lastUpdated; return o; };
+        expect(withoutStamp(bodies.true)).toEqual(withoutStamp(bodies.false));
+
+        // But it must still be THERE, and be a stamp, on both — dropping the
+        // field entirely would otherwise pass this.
+        for (const flag of ['false', 'true']) {
+            expect(typeof bodies[flag].lastUpdated).toBe('string');
+            expect(Number.isNaN(Date.parse(bodies[flag].lastUpdated))).toBe(false);
+        }
     });
 
     test('an unknown id is 404 on both flags', async () => {
