@@ -674,7 +674,8 @@ html.cfp-page, .cfp-page body {
     color: var(--cc-muted-2);
 }
 
-.cfp-bye-tag {
+.cfp-bye-tag,
+.cfp-out-tag {
     font-size: 0.6rem;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -684,6 +685,14 @@ html.cfp-page, .cfp-page body {
     color: var(--cc-interactive);
     vertical-align: middle;
     margin-left: 4px;
+}
+
+/* Why a team's Max Pts stopped where it did. Muted rather than alarming: being
+   knocked out of the playoff is the normal end of the road for eleven of the
+   twelve, not an error state. */
+.cfp-out-tag {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--cc-muted-2);
 }
 
 .cfp-auto-bid {
