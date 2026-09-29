@@ -8,6 +8,7 @@ const Game = require('../models/game');
 const Ranking = require('../models/ranking');
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig, overridesFromDoc, modelForLeague } = require('../modules/scoring-defaults');
+const activeSeason = require('../modules/active-season');
 
 // The CFP bracket, one document per season. Scoring reads it to classify
 // postseason rounds by game id instead of parsing CFBD's `notes` prose — see
@@ -244,6 +245,23 @@ function projectBracketFromRankings(rankedTeams) {
         participants: field,
         games: games
     };
+}
+
+// The page draws four columns and scores off BRACKET_TREE, both of which are
+// twelve-team shapes. A stored bracket in any other format is not something it
+// can render honestly: 2023 is on file as `four_team`, and pushed through the
+// twelve-team tree every one of its four teams is credited a first round, a
+// quarterfinal and a bye bonus that format never had — 28 points against a real
+// ceiling of 16. Better to leave that season out of the switcher than to offer
+// a year whose every number is wrong.
+//
+// Keyed off teamCount rather than the `format` string so a rename of
+// "twelve_team_2025" doesn't silently drop a season the page handles fine.
+function pageCanRender(bracket) {
+    if (!bracket) return false;
+    const n = bracket.teamCount != null ? bracket.teamCount
+        : (bracket.participants || []).length;
+    return n === 12;
 }
 
 // 12-team CFP bracket tree for max-points DP. Each internal node is a game;
@@ -604,6 +622,36 @@ function normalizeBidType(bidType) {
     if (b === 'at-large' || b === 'at_large' || b === 'atlarge') return 'at-large';
     return bidType || null;
 }
+
+// Which seasons the bracket page can offer, newest first. Drives the year
+// switcher, so it answers one question: what can this page actually draw?
+//
+// That is a stored twelve-team bracket, plus the league's own active season —
+// which has no bracket at all until selection day and is served as a projection
+// from the polls, so it belongs on the list whether or not a document exists.
+router.get('/bracket/:league/seasons', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const active = activeSeason.seasonForLeague(league);
+
+        const stored = await CfpBracket.find(
+            {}, { season: 1, format: 1, status: 1, teamCount: 1, 'participants.teamId': 1 }
+        ).lean();
+
+        const seasons = stored
+            .filter(pageCanRender)
+            .map(b => ({ season: b.season, format: b.format, status: b.status, projected: false }));
+
+        if (active != null && !seasons.some(s => s.season === Number(active))) {
+            seasons.push({ season: Number(active), format: null, status: 'projected', projected: true });
+        }
+
+        seasons.sort((a, b) => b.season - a.season);
+        return res.status(200).json({ league, active: active != null ? Number(active) : null, seasons });
+    } catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+});
 
 router.get('/bracket/:season/:league', async (req, res) => {
     const season = req.params.season;
