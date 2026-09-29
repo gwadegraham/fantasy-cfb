@@ -227,6 +227,48 @@ const patch = (id, body) => request(app)
 beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { jest.restoreAllMocks(); });
 
+// Everything in this file runs with FRANCHISE_READS unset, which is how a real
+// bug survived a full green suite: with the flag off the account and the
+// franchise are ONE document, so `_id` means both things at once. Flag on they
+// are different ids, and a handler that took the franchise's would stop
+// matching the draft — silently, with a 200 and a success toast.
+describe('the correction reaches the draft from either source (#313 phase 3)', () => {
+    const migration = require('../modules/account-migration');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    it.each([['false'], ['true']])('rewrites the draft pick too, with the flag %s', async (flag) => {
+        await Team.create([fullTeam(1, 'Iowa'), fullTeam(2, 'Duke'), fullTeam(9, 'Oregon')]);
+        const u = await manager('Ann', [fullTeam(1, 'Iowa'), fullTeam(2, 'Duke')]);
+        await Draft.create({
+            league: LEAGUE, season: SEASON, draftOrder: [u._id],
+            picks: [
+                { round: 1, overall: 1, userId: u._id, team: { id: 1, school: 'Iowa' } },
+                { round: 2, overall: 2, userId: u._id, team: { id: 2, school: 'Duke' } }
+            ]
+        });
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+
+        const res = await patch(u._id, { fromTeamId: 2, toTeamId: 9 });
+        expect(res.status).toBe(200);
+
+        // draft.picks[].userId holds the ACCOUNT id. A handler reading the
+        // franchise's own _id here matches no pick, reports draftUpdated:false,
+        // and leaves draft grades, the draft board and Draft Steal showing the
+        // team the manager no longer has.
+        expect(res.body.draftUpdated).toBe(true);
+        const draft = await Draft.findOne({ league: LEAGUE, season: SEASON }).lean();
+        expect(draft.picks.map(p => p.team.school)).toEqual(['Iowa', 'Oregon']);
+
+        // And the identity on the response and the audit row is the account's.
+        expect(String(res.body.userId)).toBe(String(u._id));
+    });
+});
+
 describe('PATCH /users/:id/roster-team', () => {
     test('swaps the roster team and the matching draft pick together', async () => {
         await Team.create([fullTeam(1, 'Iowa'), fullTeam(2, 'Duke'), fullTeam(9, 'Oregon')]);

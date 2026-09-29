@@ -130,6 +130,60 @@ describe('notifyRecapReady — who gets one', () => {
     });
 });
 
+// The dedupe has to survive the #313 phase 3 cutover, and that is not implied
+// by the tests below — they all run with FRANCHISE_READS unset, where the
+// account and the franchise are the same document and a misrouted write is
+// invisible.
+//
+// This is the single write in the app whose failure cannot be undone. The ledger
+// is read from the franchise; if it is written to the ACCOUNT instead, the
+// dedupe never sees its own writes and EVERY eligible manager is told their
+// recap is ready again on every tick, forever. Flipping the flag back does not
+// unsend them.
+//
+// Verified as a gap first: routing this write to the account passed all 94 tests
+// in the four specs that touch it.
+describe('the send ledger dedupes from either source (#313 phase 3)', () => {
+    const migration = require('../modules/account-migration');
+    const Franchise = require('../models/franchise');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    it.each([['false'], ['true']])('a second tick sends nothing, with the flag %s', async (flag) => {
+        await manager('Ann');
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+
+        const first = await push.notifyRecapReady(MONDAY);
+        const second = await push.notifyRecapReady(MONDAY + 12 * 3600 * 1000);
+
+        expect(first.sent).toBe(1);
+        expect(second).toMatchObject({ due: 0, sent: 0 });
+        expect(payloads()).toHaveLength(1);
+    });
+
+    it('flag ON records the notice on the FRANCHISE, where the read looks', async () => {
+        // The dedupe test above would also pass if the ledger were written
+        // somewhere the read happens to reach by accident. This pins the
+        // document, which is the thing that actually has to be right.
+        const ann = await manager('Ann');
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = 'true';
+
+        await push.notifyRecapReady(MONDAY);
+
+        const fr = await Franchise.findOne({ accountId: ann._id }).lean();
+        expect(fr.recapNotices).toHaveLength(1);
+        expect(fr.recapNotices[0]).toMatchObject({ season: SEASON, week: 4 });
+
+        const acct = await require('../models/account').findById(ann._id).lean();
+        expect(acct.recapNotices).toBeUndefined();
+    });
+});
+
 describe('notifyRecapReady — exactly once per week', () => {
     it('does not tell the same manager twice about one recap', async () => {
         await manager('Ann');

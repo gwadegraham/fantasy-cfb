@@ -298,6 +298,24 @@ describe('findManagers — conditions split across both documents', () => {
     });
 });
 
+describe('byAccountId picks WHICH franchise', () => {
+    test('league selects one of two, and without it either is a valid answer', async () => {
+        // No caller passes `league` yet — one person holds one franchise — so
+        // dropping the filter breaks nothing today and was covered by nothing.
+        // It stops being harmless the moment Hardwood gives someone a football
+        // team and a basketball team: findOne then returns whichever sorts first
+        // in natural order, and the caller silently gets the wrong sport.
+        const user = await seedManager();
+        await Franchise.create({ accountId: user._id, league: 'hoops-league', seasons: [] });
+
+        expect((await repo.byAccountId(user._id, { league: 'graham-league' })).league).toBe('graham-league');
+        expect((await repo.byAccountId(user._id, { league: 'hoops-league' })).league).toBe('hoops-league');
+        // Unfiltered is ambiguous by construction — assert it returns ONE of
+        // them rather than pinning an order the database does not promise.
+        expect(['graham-league', 'hoops-league']).toContain((await repo.byAccountId(user._id)).league);
+    });
+});
+
 describe('byAccountId trims to the fields asked for', () => {
     test('adds no key the caller did not request, on either path', async () => {
         // It was the only fields-taking read that skipped keepOnly, so flag-on

@@ -255,6 +255,49 @@ describe('notifyCaptainLocks — each manager\'s own lead', () => {
     });
 });
 
+// The same property as the recap ledger, and the same reason it needs its own
+// block: everything else here runs with FRANCHISE_READS unset, where the account
+// and the franchise are one document and a misrouted write cannot be seen.
+//
+// captainReminders is read from the franchise. Written to the account instead,
+// the dedupe never sees its own writes and every eligible manager is reminded
+// again on every tick — and those sends cannot be recalled by flipping back.
+describe('the reminder ledger dedupes from either source (#313 phase 3)', () => {
+    const migration = require('../modules/account-migration');
+    const Franchise = require('../models/franchise');
+    const ORIGINAL = process.env.FRANCHISE_READS;
+    afterEach(() => {
+        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+        else process.env.FRANCHISE_READS = ORIGINAL;
+    });
+
+    it.each([['false'], ['true']])('a second tick reminds nobody, with the flag %s', async (flag) => {
+        await manager('Ann', [MIAMI]);
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = flag;
+
+        const first = await push.notifyCaptainLocks(LOCK - 1 * H);
+        const second = await push.notifyCaptainLocks(LOCK - 30 * 60000);
+
+        expect(first.sent).toBe(1);
+        expect(second).toMatchObject({ due: 0, sent: 0 });
+        expect(payloads()).toHaveLength(1);
+    });
+
+    it('flag ON records the send on the FRANCHISE, where the read looks', async () => {
+        const ann = await manager('Ann', [MIAMI]);
+        await migration.migrate({ apply: true });
+        process.env.FRANCHISE_READS = 'true';
+
+        await push.notifyCaptainLocks(LOCK - 1 * H);
+
+        const fr = await Franchise.findOne({ accountId: ann._id }).lean();
+        expect(fr.captainReminders).toHaveLength(1);
+        expect(fr.captainReminders[0]).toMatchObject({ season: SEASON, week: 4 });
+        expect((await require('../models/account').findById(ann._id).lean()).captainReminders).toBeUndefined();
+    });
+});
+
 describe('notifyCaptainLocks — exactly once per week', () => {
     it('does not remind the same manager twice for the same week', async () => {
         await manager('Ann', [MIAMI]);

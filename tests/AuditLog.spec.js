@@ -125,6 +125,45 @@ describe('entries are written by the actions themselves', () => {
         expect(rows[0].meta).toMatchObject({ from: 1, to: 9 });
     });
 
+    // Every row in this file is written flag-off, where the account and the
+    // franchise are one document and `_id` means both things at once. These two
+    // pin the person's name and id on the path where they are two documents —
+    // a row naming "undefined undefined" against an id that resolves to nothing
+    // is a trail that exists and cannot be used.
+    describe.each([['false'], ['true']])('with FRANCHISE_READS %s (#313 phase 3)', (flag) => {
+        const migration = require('../modules/account-migration');
+        const ORIGINAL = process.env.FRANCHISE_READS;
+        afterEach(() => {
+            if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
+            else process.env.FRANCHISE_READS = ORIGINAL;
+        });
+
+        test('a membership change names the person and their account id', async () => {
+            const u = await manager('Ann', []);
+            await migration.migrate({ apply: true });
+            process.env.FRANCHISE_READS = flag;
+
+            await request(adminApp).post(`/users/${u._id}/season-membership`).set(TOKEN).send({ included: false });
+            const [row] = await AuditLog.find({ action: 'season.membership' }).lean();
+            expect(row.summary).toBe('Removed Ann Test');
+            expect(row.meta.userId).toBe(String(u._id));
+        });
+
+        test('a roster correction names the person and their account id', async () => {
+            await Team.create([fullTeam(1, 'Iowa'), fullTeam(9, 'Oregon')]);
+            const u = await manager('Ann', [fullTeam(1, 'Iowa')]);
+            await migration.migrate({ apply: true });
+            process.env.FRANCHISE_READS = flag;
+
+            const res = await request(adminApp).patch(`/users/${u._id}/roster-team`)
+                .set(TOKEN).send({ fromTeamId: 1, toTeamId: 9 });
+            expect(res.status).toBe(200);
+            const [row] = await AuditLog.find({ action: 'roster.correct' }).lean();
+            expect(row.summary).toBe('Ann Test: Iowa → Oregon');
+            expect(row.meta.userId).toBe(String(u._id));
+        });
+    });
+
     test('adding and removing a season member both record', async () => {
         const u = await manager('Ann', []);
         await request(adminApp).post(`/users/${u._id}/season-membership`).set(TOKEN).send({ included: false });

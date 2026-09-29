@@ -57,7 +57,24 @@ function decideInvite({ invite, sub, tokenEmail, sessionUserId, record, lookupEr
 
     if (!record) return { action: 'refuse', reason: 'no-record' };
 
-    if (invite.league && record.league && invite.league !== record.league) {
+    // A record with NO league is a refusal, not a free pass.
+    //
+    // This used to read `invite.league && record.league && they differ`, so a
+    // record carrying no league made the condition false and the claim went
+    // through. That was safe for exactly as long as a manager WAS a row in
+    // `users`, where league was always populated.
+    //
+    // After the Account/Franchise split (#313) league lives on the franchise, so
+    // an account with no franchise has none — a basketball-only manager, or one
+    // whose franchise was removed. Under the old reading such an account could
+    // claim an invite minted for ANY league, silently, because the check simply
+    // did not run. There is no legitimate claim to make against a league the
+    // record cannot be shown to belong to.
+    //
+    // `invite.league &&` still short-circuits, so an invite minted without a
+    // league is unaffected — that is a commissioner choosing not to constrain
+    // it, which is different from us being unable to check.
+    if (invite.league && invite.league !== record.league) {
         return { action: 'refuse', reason: 'league-mismatch' };
     }
 
@@ -152,19 +169,13 @@ function renderRefusalPage(reason) {
         + '</div></div></body></html>';
 }
 
-// Middleware factory. deps: { repo, User, management, secret, inviteToken }.
+// Middleware factory. deps: { repo, management, secret, inviteToken }.
 //
-// BOTH a repo and a model, on purpose and only for now. The READ moved to
-// modules/franchise-repo.js with #313 phase 2; the WRITE below still goes to
-// `users`, because the write cutover is a single later step and dual-writing
-// two sources of truth mid-season is the thing that step exists to avoid.
-//
-// While FRANCHISE_READS is unset — which it is, in production — both halves
-// resolve to the same collection and nothing is split. When the writes move,
-// `User` leaves this file and `repo` is all that is left.
+// The model dep is gone: phase 2 moved the read here and phase 3 moved the
+// write, so both halves go through modules/franchise-repo.js and land wherever
+// the flag says. This file no longer knows which collection that is.
 function inviteBind(deps) {
     const repo = deps.repo;
-    const User = deps.User;
     const management = deps.management;
     const inviteToken = deps.inviteToken;
 
@@ -204,28 +215,19 @@ function inviteBind(deps) {
                     // ACCOUNT's, league is the FRANCHISE's. byAccountId is what
                     // knows which is which.
                     //
-                    // ⚠️ AND IT ONLY ANSWERS `league` WHEN A FRANCHISE EXISTS.
-                    // decideInvite reads a MISSING league as "no league
-                    // constraint" rather than as a mismatch, so an account with
-                    // no franchise — a basketball-only manager, or one
-                    // mid-onboarding — takes the league-mismatch refusal off the
-                    // table entirely. Measured, not theorised: flag-on, a
-                    // franchise-less account handed an invite minted for the
-                    // OTHER league returns {action:'bind'} where flag-off
-                    // returns {action:'refuse', reason:'league-mismatch'}.
+                    // An account with NO franchise answers no league, and that
+                    // is now a REFUSAL rather than a free pass — decideInvite
+                    // was tightened in #461 so a missing league fails the check
+                    // instead of skipping it. Before that, such an account could
+                    // claim an invite minted for any league.
                     //
-                    // Not reachable today: the flag is unset, and every migrated
-                    // account has exactly one franchise. It becomes reachable
-                    // the moment the write cutover lands, which is why
-                    // decideInvite's `record.league &&` guard has to be settled
-                    // as part of that step and not after it.
-                    //
-                    // Passing `league: invite.league` here is NOT the fix, and
-                    // looks like one. It filters the franchise lookup by the
-                    // league being claimed, so a genuinely mismatched invite
-                    // finds no franchise, the record comes back with no league,
-                    // and decideInvite binds it — turning the refusal this read
-                    // exists to make into the bind it exists to prevent.
+                    // Still do NOT pass `league: invite.league` here. It filters
+                    // the franchise lookup by the league being claimed, so a
+                    // genuinely mismatched invite would find no franchise — and
+                    // while that now refuses rather than binds, it refuses for
+                    // the wrong reason and would also refuse a manager whose
+                    // franchise is simply in another league. The comparison has
+                    // to be against the league the record ACTUALLY holds.
                     record = await repo.byAccountId(invite.userId,
                         { fields: ['email', 'league', 'authSub', 'firstName'] });
                 } catch (e) {
@@ -273,8 +275,11 @@ function inviteBind(deps) {
                     userId: String(invite.userId),
                     league: leagueFlagFor(record.league || invite.league || '')
                 });
-                await User.updateOne(
-                    { _id: invite.userId },
+                // Both ACCOUNT fields, and now written where they are read
+                // from. This was the last place in the app that read through the
+                // repo and wrote past it.
+                await repo.updateAccount(
+                    invite.userId,
                     { $set: { authSub: sub, email: record.email || oidcUser.email } }
                 );
             } catch (e) {

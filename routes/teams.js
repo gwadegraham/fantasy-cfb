@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
-const User = require('../models/user');
+const franchiseRepo = require('../modules/franchise-repo');
 const Draft = require('../models/draft');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
 const MarketSnapshot = require('../models/marketSnapshot');
@@ -644,8 +644,10 @@ router.post('/refresh', async (req, res) => {
             const map = teamsById(allTeams);
 
             let rostersSynced = 0;
-            const users = await User.find({ 'seasons.teams.0': { $exists: true } });
-            for (const u of users) {
+            // Franchise-side: rosters live on the season entry. Saved directly
+            // rather than through saveBoth — nothing here touches the account.
+            const rosters = await franchiseRepo.rosteredForWrite();
+            for (const u of rosters) {
                 let changed = 0;
                 (u.seasons || []).forEach(s => { changed += applyTeamFields(s.teams, map); });
                 if (changed) { await u.save(); rostersSynced++; }
