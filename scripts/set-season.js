@@ -153,7 +153,14 @@ async function main() {
             console.error(`(audit entry not written: ${err.message})`);
         }
         console.log('\nRunning dynos pick this up within a minute — no restart needed.');
-        if (process.env.YEAR && season != null && Number(process.env.YEAR) !== season) {
+        // Only for FOOTBALL. modules/active-season.js compares process.env.YEAR
+        // against DEFAULT_SPORT and nothing else, so this note was wrong for any
+        // other sport — and actively harmful: setting basketball to 2027 advised
+        // setting YEAR=2027, which would then make the boot check start erroring
+        // about football being stored as 2026. Hit for real the first time a
+        // second sport existed (#314).
+        if (sport === 'football' && process.env.YEAR && season != null
+            && Number(process.env.YEAR) !== season) {
             console.log(
                 `\nNote: the YEAR config var still says ${process.env.YEAR}. It no longer\n` +
                 `drives anything, but boot logs an error while the two disagree — clear it\n` +
