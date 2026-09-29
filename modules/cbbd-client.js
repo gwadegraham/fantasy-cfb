@@ -158,4 +158,38 @@ async function fetchTeams(season) {
     return cbbdGet('/teams', { season });
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
+// Which of these ESPN ids the CFBD logo CDN actually serves.
+//
+// NOT every one. The CDN hosts schools CFBD knows about — football schools —
+// so a basketball-only program has nothing there. Measured across all 365 teams
+// for 2027: 101 miss, including Gonzaga, Marquette, Creighton, Seton Hall,
+// Saint Mary's and Siena. Synthesising the URL from sourceId regardless gave
+// those teams 16 links that every render site turns into a broken image.
+//
+// Sizes resolve all-or-nothing per team — verified on Alabama, Duke, Siena and
+// Gonzaga across 500/128/16 in both light and dark — so one HEAD per team
+// settles all sixteen.
+//
+// Free: a CDN request, not a CBBD call, so it costs nothing against the quota.
+// Batched because 365 sequential round trips would run past Heroku's ceiling.
+const LOGO_PROBE = 'https://cdn.collegefootballdata.com/logos/16/';
+async function logoIdsThatExist(sourceIds, { batch = 25, fetchImpl } = {}) {
+    const doFetch = fetchImpl || fetch;
+    const ids = [...new Set(sourceIds.filter(Boolean).map(String))];
+    const found = new Set();
+    for (let i = 0; i < ids.length; i += batch) {
+        const slice = ids.slice(i, i + batch);
+        await Promise.all(slice.map(async (id) => {
+            try {
+                const r = await doFetch(`${LOGO_PROBE}${id}.png`, { method: 'HEAD' });
+                if (r && r.ok) found.add(id);
+            } catch (e) {
+                // A probe that errors is treated as "no logo". Storing a URL we
+                // could not confirm is the failure this function exists to stop.
+            }
+        }));
+    }
+    return found;
+}
+
+module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoIdsThatExist, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };

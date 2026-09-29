@@ -11,6 +11,8 @@ const { useMongo } = require('./helpers/mongo');
 const HoopsTeam = require('../models/hoopsTeam');
 const teamsRouter = require('../routes/hoopsTeams');
 const client = require('../modules/cbbd-client');
+const SportSeason = require('../models/sportSeason');
+const activeSeason = require('../modules/active-season');
 const { pickLogo } = require('../public/logo.js');
 
 const app = express();
@@ -18,8 +20,22 @@ app.use(express.json());
 app.use('/hoops/teams', teamsRouter);
 
 useMongo();
-beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
+const SEASON = 2027;
+
+beforeEach(async () => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    activeSeason._reset();
+    await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' },
+                               { sport: 'basketball', season: SEASON, status: 'preseason' }]);
+    await activeSeason.prime();
+    // Default: every fixture team has a logo. Tests that care override it.
+    jest.spyOn(client, 'logoIdsThatExist').mockImplementation(async (ids) => new Set(ids.filter(Boolean).map(String)));
+});
 afterEach(() => jest.restoreAllMocks());
+
+// Every buildUpsertOp call now needs the season and the verified-logo set.
+const HAVE_ALL = { has: () => true };
+const HAVE_NONE = { has: () => false };
 
 const team = (over = {}) => Object.assign({
     id: 264, sourceId: '2561', school: 'Siena', mascot: 'Saints', abbreviation: 'SIE',
@@ -33,7 +49,7 @@ const stub = (data) => jest.spyOn(client, 'fetchTeams')
     .mockResolvedValue({ data, remainingCalls: 28852 });
 
 describe('buildUpsertOp', () => {
-    const build = teamsRouter.buildUpsertOp;
+    const build = (t, have = HAVE_ALL) => teamsRouter.buildUpsertOp(t, SEASON, have);
 
     test('colours gain the # prefix CBBD omits', () => {
         // Every renderer in public/ and every stored football row expects it.
@@ -69,11 +85,38 @@ describe('buildUpsertOp', () => {
     });
 
     test('a team with no sourceId gets no logos rather than a broken URL', () => {
-        // The property is that no URL is synthesised, not which empty shape is
-        // stored — pickLogo treats an absent array and an empty one alike.
         const logos = build(team({ sourceId: null })).updateOne.update.$set.logos || [];
         expect(logos).toHaveLength(0);
         expect(pickLogo(logos)).toBe('');
+    });
+
+    // ⚠️ The finding this file got wrong first time round.
+    test('a team the CDN does not serve gets NO logos, not 16 dead URLs', () => {
+        // The CFBD CDN only hosts schools CFBD knows about — football schools.
+        // 101 of 365 basketball teams have nothing there: Gonzaga, Marquette,
+        // Seton Hall, Saint Mary's, and Siena, which is this file's own fixture.
+        // Synthesising anyway gave them 16 links that all 403, and every render
+        // site emits a bare <img> with no onerror, so the row showed a broken
+        // image rather than falling back.
+        const logos = build(team(), HAVE_NONE).updateOne.update.$set.logos;
+        expect(logos).toEqual([]);
+        expect(pickLogo(logos)).toBe('');
+    });
+
+    test('the season is part of the document AND the upsert key', () => {
+        // /teams answers for ANY season and 27 teams change conference between
+        // 2026 and 2027, so an id-only key let the wrong season rewrite live rows.
+        const op = build(team());
+        expect(op.updateOne.update.$set.season).toBe(SEASON);
+        expect(op.updateOne.filter).toEqual({ id: 264, season: SEASON });
+    });
+
+    test('a field CBBD stops sending is UNSET, not left stale', () => {
+        // Deleting the key from $set only skips it: a team whose wrong secondary
+        // colour is corrected upstream would keep the wrong value forever.
+        const op = build(team({ secondaryColor: null }));
+        expect(op.updateOne.update.$set.alt_color).toBeUndefined();
+        expect(op.updateOne.update.$unset).toHaveProperty('alt_color');
     });
 
     test('sourceId stays a string', () => {
@@ -88,8 +131,7 @@ describe('buildUpsertOp', () => {
         expect(build(null)).toBeNull();
     });
 
-    test('upserts on the CBBD id', () => {
-        expect(build(team()).updateOne.filter).toEqual({ id: 264 });
+    test('upserts rather than inserting', () => {
         expect(build(team()).updateOne.upsert).toBe(true);
     });
 });
@@ -97,7 +139,7 @@ describe('buildUpsertOp', () => {
 describe('POST /:season/ingest', () => {
     test('ingests and reports counts off the write result', async () => {
         stub([team(), team({ id: 2, school: 'Duke', sourceId: '150' })]);
-        const res = await request(app).post('/hoops/teams/2027/ingest').send({});
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ season: 2027, created: 2, updated: 0, teams: 2 });
         expect(await HoopsTeam.countDocuments({})).toBe(2);
@@ -105,22 +147,80 @@ describe('POST /:season/ingest', () => {
 
     test('re-running updates in place', async () => {
         stub([team()]);
-        await request(app).post('/hoops/teams/2027/ingest').send({});
-        const res = await request(app).post('/hoops/teams/2027/ingest').send({});
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.body).toMatchObject({ created: 0, updated: 1 });
         expect(await HoopsTeam.countDocuments({})).toBe(1);
     });
 
-    test('an empty team list is a 422 naming the ending-year trap', async () => {
-        stub([]);
+    // ⚠️ The guard that used to be here could never fire.
+    test('a season that is not the stored basketball season is refused', async () => {
+        // The old guard checked for an EMPTY response, copied from /games. But
+        // /teams returns 365 teams for season=2026 and even 40 for 1900, so it
+        // never fired for the off-by-one it named — while 27 teams carry a
+        // different conference in 2026, silently poisoning the (school,
+        // conference) key the Torvik pool import is built on.
+        const spy = stub([team()]);
         const res = await request(app).post('/hoops/teams/2026/ingest').send({});
         expect(res.status).toBe(422);
+        expect(res.body).toMatchObject({ requested: 2026, expected: SEASON });
         expect(res.body.message).toMatch(/ENDING year/);
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    test('but ?force=1 allows a deliberate backfill', async () => {
+        stub([team()]);
+        const res = await request(app).post('/hoops/teams/2026/ingest?force=1').send({});
+        expect(res.status).toBe(200);
+        expect((await HoopsTeam.findOne({ id: 264 }).lean()).season).toBe(2026);
+    });
+
+    test('and a forced other-season ingest does NOT touch the live rows', async () => {
+        stub([team({ conference: 'Metro' })]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        stub([team({ conference: 'WRONG' })]);
+        await request(app).post('/hoops/teams/2026/ingest?force=1').send({});
+
+        expect((await HoopsTeam.findOne({ id: 264, season: 2027 }).lean()).conference).toBe('Metro');
+        expect((await HoopsTeam.findOne({ id: 264, season: 2026 }).lean()).conference).toBe('WRONG');
+        expect(await HoopsTeam.countDocuments({})).toBe(2);
+    });
+
+    test('an empty response is a 500 — the endpoint changed, not the season', async () => {
+        stub([]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/never/);
+    });
+
+    test('teams without a CDN logo are counted and stored empty', async () => {
+        client.logoIdsThatExist.mockResolvedValue(new Set(['150']));
+        stub([team({ id: 1, sourceId: '150', school: 'Duke' }), team({ id: 2, sourceId: '2561', school: 'Siena' })]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.body.withLogos).toBe(1);
+        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toHaveLength(16);
+        expect((await HoopsTeam.findOne({ school: 'Siena' }).lean()).logos).toEqual([]);
+    });
+
+    test('a failed logo probe stores no logos rather than unverified ones', async () => {
+        client.logoIdsThatExist.mockRejectedValue(new Error('CDN down'));
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.status).toBe(200);
+        expect((await HoopsTeam.findOne({ id: 264 }).lean()).logos).toEqual([]);
+    });
+
+    test('a CBBD 429 or 5xx is a 502, not a 400', async () => {
+        const e = new Error('CBBD /teams 429: slow down'); e.status = 429;
+        jest.spyOn(client, 'fetchTeams').mockRejectedValue(e);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.status).toBe(502);
+        expect(res.body.upstreamStatus).toBe(429);
     });
 
     test('teams that all fail to map are a 500, not a silent success', async () => {
         stub([{ school: 'Duke' }, { id: 5 }]);
-        const res = await request(app).post('/hoops/teams/2027/ingest').send({});
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.status).toBe(500);
         expect(res.body.message).toMatch(/response shape changed/);
     });
@@ -128,7 +228,7 @@ describe('POST /:season/ingest', () => {
     test('an unreachable CBBD is a 502', async () => {
         const e = new Error('Could not reach CBBD'); e.unreachable = true;
         jest.spyOn(client, 'fetchTeams').mockRejectedValue(e);
-        expect((await request(app).post('/hoops/teams/2027/ingest').send({})).status).toBe(502);
+        expect((await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({})).status).toBe(502);
     });
 
     test('a non-numeric season is refused before any fetch', async () => {
@@ -143,7 +243,7 @@ describe('POST /:season/ingest', () => {
         err.result = { upsertedCount: 1, matchedCount: 0 };
         err.writeErrors = [{ code: 11000 }];
         jest.spyOn(HoopsTeam, 'bulkWrite').mockRejectedValue(err);
-        const res = await request(app).post('/hoops/teams/2027/ingest').send({});
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.status).toBe(200);
         expect(res.body.created).toBe(1);
     });
@@ -161,7 +261,7 @@ describe('the names the Torvik pool import will have to match', () => {
             team({ id: 43, school: 'Miami', conference: 'ACC' }),
             team({ id: 44, school: 'Miami (OH)', conference: 'MAC' })
         ]);
-        await request(app).post('/hoops/teams/2027/ingest').send({});
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
 
         const byName = async (s) => HoopsTeam.findOne({ school: s }).lean();
         expect((await byName('UConn')).conference).toBe('Big East');

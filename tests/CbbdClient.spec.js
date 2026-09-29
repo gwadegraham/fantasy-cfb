@@ -206,6 +206,69 @@ describe('fetchTeams', () => {
     });
 });
 
+describe('logoIdsThatExist', () => {
+    // The function this whole finding was about. The CFBD logo CDN only hosts
+    // schools CFBD knows — football schools — so 101 of 365 basketball teams
+    // have nothing there, and synthesising the URL anyway gave them 16 links
+    // that all 403. Nothing detected it, because the check that existed
+    // measured array length, which is 16 for anyone with a sourceId.
+    const okFor = (ids) => async (url) => ({ ok: ids.some(id => url.includes(`/${id}.png`)) });
+
+    test('keeps only the ids the CDN actually serves', async () => {
+        const found = await client.logoIdsThatExist(['333', '2561'], { fetchImpl: okFor(['333']) });
+        expect([...found]).toEqual(['333']);
+    });
+
+    test('a probe that throws counts as no logo, not as a logo', async () => {
+        // Storing a URL we could not confirm is the failure this exists to stop.
+        const found = await client.logoIdsThatExist(['333'], {
+            fetchImpl: async () => { throw new Error('CDN unreachable'); }
+        });
+        expect(found.size).toBe(0);
+    });
+
+    test('drops falsy ids and de-duplicates', async () => {
+        const seen = [];
+        await client.logoIdsThatExist(['333', '333', null, undefined, ''], {
+            fetchImpl: async (u) => { seen.push(u); return { ok: true }; }
+        });
+        expect(seen).toHaveLength(1);
+    });
+
+    test('probes one size per team, because sizes resolve all-or-nothing', async () => {
+        // Verified on Alabama, Duke, Siena and Gonzaga across 500/128/16 in
+        // both light and dark: a team either has every size or none.
+        const seen = [];
+        await client.logoIdsThatExist(['333'], {
+            fetchImpl: async (u, o) => { seen.push([u, o.method]); return { ok: true }; }
+        });
+        expect(seen).toHaveLength(1);
+        expect(seen[0][0]).toContain('/logos/16/333.png');
+        expect(seen[0][1]).toBe('HEAD');
+    });
+
+    test('batches rather than firing 365 at once', async () => {
+        let inFlight = 0, peak = 0;
+        const ids = Array.from({ length: 12 }, (_, i) => String(i));
+        await client.logoIdsThatExist(ids, {
+            batch: 4,
+            fetchImpl: async () => {
+                inFlight++; peak = Math.max(peak, inFlight);
+                await new Promise(r => setTimeout(r, 1));
+                inFlight--; return { ok: true };
+            }
+        });
+        expect(peak).toBeLessThanOrEqual(4);
+    });
+
+    test('an empty list makes no requests', async () => {
+        const seen = [];
+        const found = await client.logoIdsThatExist([], { fetchImpl: async (u) => { seen.push(u); return { ok: true }; } });
+        expect(seen).toHaveLength(0);
+        expect(found.size).toBe(0);
+    });
+});
+
 describe('seasonRange', () => {
     test('starts in the PREVIOUS calendar year, because CBBD labels by ending year', () => {
         const { start, end } = client.seasonRange(2027);
