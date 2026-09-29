@@ -20,7 +20,8 @@ const mongoose = require('mongoose');
 
 const hoopsGameSchema = new mongoose.Schema({
     // CBBD's own id. The upsert key — re-running an ingest updates in place.
-    id: { type: Number, required: true, unique: true, index: true },
+    // `unique` already creates the index; declaring both reads as two.
+    id: { type: Number, required: true, unique: true },
 
     // The ESPN id, and ALSO the id CFBD's logo CDN is keyed on, so basketball
     // team logos come free off the existing CDN. A STRING from the API
@@ -38,16 +39,16 @@ const hoopsGameSchema = new mongoose.Schema({
     //
     // models/sportSeason.js must therefore hold 2027 for basketball while
     // football holds 2026. They are not the same number and never will be.
-    season: { type: Number, required: true, index: true },
+    season: { type: Number, required: true },
     seasonLabel: { type: String },
     seasonType: { type: String, required: true },
 
-    startDate: { type: Date, required: true, index: true },
+    startDate: { type: Date, required: true },
     startTimeTbd: { type: Boolean, default: false },
 
     // 'scheduled' | 'final' (and whatever else CBBD adds). NOT derived from the
     // points — see the note on homePoints.
-    status: { type: String, index: true },
+    status: { type: String },
 
     neutralSite: { type: Boolean, default: false },
     conferenceGame: { type: Boolean, default: false },
@@ -57,7 +58,7 @@ const hoopsGameSchema = new mongoose.Schema({
     attendance: { type: Number },
     excitement: { type: Number },
 
-    homeTeamId: { type: Number, index: true },
+    homeTeamId: { type: Number },
     homeTeam: { type: String },
     homeConferenceId: { type: Number },
     homeConference: { type: String },
@@ -75,12 +76,15 @@ const hoopsGameSchema = new mongoose.Schema({
     // `status` is the discriminator. `homeWinner` is the other reliable one —
     // it is null until the game is decided.
     homePoints: { type: Number },
-    homePeriodPoints: { type: [Number] },   // halves
+    // Halves. CBBD sends null on a scheduled game, and $set: null bypasses the
+    // array default — a reader doing .length on the schema's word would throw
+    // on every unplayed game. buildUpsertOp drops nulls so the default applies.
+    homePeriodPoints: { type: [Number] },
     homeWinner: { type: Boolean },
     homeTeamEloStart: { type: Number },
     homeTeamEloEnd: { type: Number },
 
-    awayTeamId: { type: Number, index: true },
+    awayTeamId: { type: Number },
     awayTeam: { type: String },
     awayConferenceId: { type: Number },
     awayConference: { type: String },
@@ -99,6 +103,9 @@ const hoopsGameSchema = new mongoose.Schema({
 
 // The two reads the ingest and every surface will do: a night's slate, and one
 // team's season.
+// Compound only. A bare { season: 1 } is a redundant prefix of the first of
+// these, and dev and prod share one free-tier cluster where the ingest is 5,000
+// upserts in one shot — write amplification is not free.
 hoopsGameSchema.index({ season: 1, startDate: 1 });
 hoopsGameSchema.index({ season: 1, homeTeamId: 1 });
 hoopsGameSchema.index({ season: 1, awayTeamId: 1 });

@@ -16,7 +16,46 @@ const HoopsGame = require('../models/hoopsGame');
 // first version of the tests spied on the client and the route went to the real
 // API anyway, failing with a 400 that looked like a routing bug.
 const cbbd = require('../modules/cbbd-client');
-const { seasonRange, PAGE_CAP } = cbbd;
+// PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
+// destructuring it here would re-arm the very trap the note above describes.
+const { PAGE_CAP } = cbbd;
+
+// One bulkWrite, with the partial-failure handling routes/games.js:897 works
+// out the hard way.
+//
+// With { ordered: false } a partial failure still THROWS, but the successful
+// ops did write and err.result carries their counts. Reporting 0/0 and a 500
+// would tell the cron a run failed when it wrote 5,014 of 5,015 games.
+//
+// And a duplicate-key loss (11000) to a concurrent run is not a failure at all:
+// the other run wrote that game. Two overlapping runs are realistic here —
+// the full ingest measured 14.5s against Heroku's 30s ceiling, and an H12
+// leaves the handler running while the caller retries.
+async function writeGames(ops, label) {
+    if (!ops.length) return { created: 0, updated: 0, failure: null };
+    try {
+        const write = await HoopsGame.bulkWrite(ops, { ordered: false });
+        return { created: write.upsertedCount || 0, updated: write.matchedCount || 0, failure: null };
+    } catch (err) {
+        const partial = (err && err.result) || null;
+        const created = partial ? (partial.upsertedCount || 0) : 0;
+        const updated = partial ? (partial.matchedCount || 0) : 0;
+
+        const writeErrors = (err && err.writeErrors) || [];
+        const code = (e) => (e.err ? e.err.code : e.code);
+        const duplicates = writeErrors.filter(e => code(e) === 11000);
+        const unexpected = writeErrors.filter(e => code(e) !== 11000);
+        if (duplicates.length) {
+            console.log(`${label}: lost ${duplicates.length} of ${ops.length} upserts to a concurrent run`);
+        }
+        // No writeErrors at all means the whole batch failed for some other
+        // reason, which is a genuine loss and must surface as a non-2xx — the
+        // caller distinguishes healthy from not only by the status.
+        const failure = (!writeErrors.length || unexpected.length) ? err.message : null;
+        if (failure) console.log(`${label}: bulk write error: ${failure}`);
+        return { created, updated, failure };
+    }
+}
 
 // One upsert op per game, keyed on CBBD's id so re-running is safe.
 //
@@ -76,7 +115,10 @@ function buildUpsertOp(g) {
         doc.awayPoints = g.awayPoints;
     }
 
-    Object.keys(doc).forEach(k => { if (doc[k] === undefined) delete doc[k]; });
+    // undefined AND null. A null period array would be stored as null, past the
+    // [Number] default, and a reader doing .homePeriodPoints.length on the
+    // schema's word throws on every scheduled game.
+    Object.keys(doc).forEach(k => { if (doc[k] === undefined || doc[k] === null) delete doc[k]; });
     return { updateOne: { filter: { id: g.id }, update: { $set: doc }, upsert: true } };
 }
 
@@ -92,7 +134,7 @@ router.post('/:season/schedule', async (req, res) => {
     }
     const season = Number(req.params.season);
     const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
-    const { start, end } = seasonRange(season);
+    const { start, end } = cbbd.seasonRange(season);
 
     let result;
     try {
@@ -134,6 +176,16 @@ router.post('/:season/schedule', async (req, res) => {
     }
 
     const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    // Games came back but none could be mapped — CBBD renamed `id`, or the rows
+    // are a shape buildUpsertOp does not recognise. Without this the bulkWrite
+    // threw "Invalid BulkOperation, Batch cannot be empty", a cryptic 500 for
+    // what is actually a field rename.
+    if (!ops.length) {
+        return res.status(500).json({
+            message: `CBBD returned ${result.games.length} game(s) for season ${season}, `
+                + 'none of which carried an id — the response shape changed.'
+        });
+    }
 
     // Counts come off the WRITE RESULT, never off the ops assembled — a
     // bulkWrite that wrote nothing would otherwise still answer "6079 updated"
@@ -141,14 +193,11 @@ router.post('/:season/schedule', async (req, res) => {
     // healthy. matchedCount rather than modifiedCount, because a game whose
     // CBBD row is byte-identical to the stored one modifies nothing and would
     // read as a partial failure on every quiet day.
-    let created = 0, updated = 0;
-    try {
-        const write = await HoopsGame.bulkWrite(ops, { ordered: false });
-        created = write.upsertedCount || 0;
-        updated = write.matchedCount || 0;
-    } catch (err) {
-        console.log(`Hoops schedule write failed: ${err.message}`);
-        return res.status(500).json({ message: err.message });
+    const { created, updated, failure } = await writeGames(ops, `Hoops schedule · ${season}`);
+    if (failure) {
+        // The counts still go out: a partial write is not a no-op, and the cron
+        // needs to know what landed before it retries.
+        return res.status(500).json({ season, seasonType, created, updated, message: `Schedule write failed: ${failure}` });
     }
 
     console.log(`Hoops schedule · ${season} ${seasonType}: ${created} created, ${updated} updated `
@@ -194,29 +243,46 @@ router.post('/refresh', async (req, res) => {
         return res.status(500).json({ message: `CBBD hit the ${PAGE_CAP}-record cap for ${result.capHits.join(', ')}.` });
     }
 
-    // No empty guard here, unlike /schedule. A refresh window with no games is
-    // an ordinary quiet night — the season guard belongs on the whole-season
-    // pull, where empty can only mean the season number is wrong.
-    const ops = result.games.map(buildUpsertOp).filter(Boolean);
-    let created = 0, updated = 0;
-    if (ops.length) {
-        try {
-            const write = await HoopsGame.bulkWrite(ops, { ordered: false });
-            created = write.upsertedCount || 0;
-            updated = write.matchedCount || 0;
-        } catch (err) {
-            console.log(`Hoops refresh write failed: ${err.message}`);
-            return res.status(500).json({ message: err.message });
+    // An empty window is USUALLY an ordinary quiet night — but this is the route
+    // that runs unattended ~150 times a season, so "usually" is where the
+    // ending-year trap would hide for months.
+    //
+    // The discriminator is what we already stored: if the schedule says games
+    // were due in this window and CBBD returned none, that is not a quiet night.
+    // Wired with the football season number (2026 rather than 2027), every
+    // nightly refresh would otherwise answer 200 {games: 0} from November to
+    // March and no score would ever be ingested.
+    if (!result.games.length) {
+        const due = await HoopsGame.countDocuments({ season, startDate: { $gte: start, $lte: end } });
+        if (due > 0) {
+            return res.status(422).json({
+                message: `CBBD returned no ${seasonType} games for season ${season} between `
+                    + `${start.toISOString().slice(0, 10)} and ${end.toISOString().slice(0, 10)}, `
+                    + `but ${due} are on the stored schedule. CBBD numbers a split season by its `
+                    + 'ENDING year — the 2026-27 season is season 2027.',
+                season, expected: due, returned: 0
+            });
         }
     }
+    const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    const { created, updated, failure } = await writeGames(ops, `Hoops refresh · ${season}`);
+    if (failure) {
+        return res.status(500).json({ season, seasonType, created, updated, message: `Refresh write failed: ${failure}` });
+    }
 
-    const finals = result.games.filter(g => g.status === 'final').length;
+    // `games` and `finals` count what was WRITABLE, not what was fetched. Off
+    // the fetch they were the one pair of numbers here that could report a
+    // healthy run while nothing landed — if CBBD renamed `id`, every op would
+    // be null and the response still said "1463 games, 1463 final".
+    const finals = result.games.filter(g => g.status === 'final' && g.id != null).length;
     console.log(`Hoops refresh · ${season} ${seasonType} `
         + `${start.toISOString().slice(0, 10)}..${end.toISOString().slice(0, 10)}: `
-        + `${result.games.length} game(s), ${finals} final, ${created} created, ${updated} updated`);
+        + `${ops.length} writable of ${result.games.length} fetched, ${finals} final, `
+        + `${created} created, ${updated} updated`);
     return res.status(200).json({
         season, seasonType, created, updated,
-        games: result.games.length, finals, remainingCalls: result.remainingCalls
+        games: ops.length, fetched: result.games.length, finals,
+        remainingCalls: result.remainingCalls
     });
 });
 

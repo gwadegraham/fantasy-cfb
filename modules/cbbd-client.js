@@ -49,7 +49,16 @@ async function cbbdGet(path, params = {}) {
 
     const remHeader = res.headers.get('x-calllimit-remaining');
     const data = await res.json();
-    return { data: Array.isArray(data) ? data : [], remainingCalls: remHeader != null ? Number(remHeader) : null };
+    // A non-array 200 is a RESPONSE SHAPE CHANGE, not an empty result. Coercing
+    // it to [] would surface as "a quiet night" on the refresh and, on the
+    // schedule pull, as a 422 blaming the ending-year trap for something else
+    // entirely.
+    if (!Array.isArray(data)) {
+        const e = new Error(`CBBD ${path} returned ${typeof data}, expected an array — the response shape changed.`);
+        e.status = res.status;
+        throw e;
+    }
+    return { data, remainingCalls: remHeader != null ? Number(remHeader) : null };
 }
 
 // ⚠️ /games CAPS AT 3,000 RECORDS AND SAYS NOTHING ABOUT IT.
@@ -62,11 +71,20 @@ async function cbbdGet(path, params = {}) {
 // So the season is pulled in date windows, and each window ASSERTS its own
 // completeness: if a window comes back at the cap, it cannot be trusted to be
 // the whole window, and the caller is told rather than silently under-ingesting.
-// Windows are conservative (a month) — the busiest real day is 152 games and a
-// month of those is far under 3000, so hitting the cap means something changed
-// about the API, not about the schedule.
+// Windows are a month. The headroom is real but not as large as "152 games a
+// day" arithmetic suggests — 152 x 30 is 4,560, ABOVE the cap. The busiest
+// window the client actually issues was MEASURED instead: 2025-10-31..2025-11-29
+// returns 1,463 games, so a 30-day window runs at roughly half the cap. Do not
+// raise WINDOW_DAYS on the strength of the peak-day figure; measure again.
 const PAGE_CAP = 3000;
 const WINDOW_DAYS = 30;
+// A ceiling on how many windows one call may issue. /games is BILLABLE, and
+// fetchGamesInRange loops until it reaches the end date — an unbounded range is
+// an unbounded spend inside a single HTTP request. Measured: a 2000-01-01 to
+// 2026-01-01 range issues 317 sequential calls, well past Heroku's 30s ceiling
+// and a real dent in a 30k/mo pool. A season is 8 windows; 16 leaves room for a
+// longer season without leaving room for a typo.
+const MAX_WINDOWS = 16;
 
 function addDays(d, n) {
     const out = new Date(d.getTime());
@@ -90,6 +108,12 @@ async function fetchGamesInRange(season, seasonType, start, end) {
     const last = new Date(end);
 
     while (from <= last) {
+        if (windows >= MAX_WINDOWS) {
+            const e = new Error(`Range ${iso(start)}..${iso(end)} needs more than ${MAX_WINDOWS} `
+                + `${WINDOW_DAYS}-day windows. /games is billable; narrow the range.`);
+            e.rangeTooWide = true;
+            throw e;
+        }
         // -1 so windows are inclusive on both ends without overlapping by a day.
         let to = addDays(from, WINDOW_DAYS - 1);
         if (to > last) to = last;
@@ -99,7 +123,13 @@ async function fetchGamesInRange(season, seasonType, start, end) {
         });
         windows += 1;
         if (rem != null) remainingCalls = rem;
-        if (data.length >= PAGE_CAP) capHits.push(`${iso(from)}..${iso(to)}`);
+        if (data.length >= PAGE_CAP) {
+            // Stop here. The caller refuses the whole ingest on any cap hit, so
+            // fetching the remaining windows would burn billable calls to build
+            // a result that is about to be discarded.
+            capHits.push(`${iso(from)}..${iso(to)}`);
+            return { games: [...games.values()], windows, remainingCalls, capHits };
+        }
 
         // Keyed by id: windows are inclusive, and a game exactly on a boundary
         // would otherwise be counted twice.
@@ -122,4 +152,4 @@ function seasonRange(season) {
     return { start: new Date(Date.UTC(season - 1, 9, 1)), end: new Date(Date.UTC(season, 3, 30)) };
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS };
+module.exports = { cbbdGet, fetchGamesInRange, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };

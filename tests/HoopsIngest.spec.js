@@ -36,6 +36,12 @@ const game = (over = {}) => Object.assign({
     excitement: null, venueId: 1, venue: 'Minges Coliseum', city: 'Greenville', state: 'NC'
 }, over);
 
+// A row already in the database, in the shape buildUpsertOp writes.
+const buildDoc = () => ({
+    id: 900, season: 2027, seasonType: 'regular',
+    startDate: new Date('2026-11-03T00:00:00Z'), status: 'scheduled'
+});
+
 const final = (over = {}) => game(Object.assign({
     status: 'final', homePoints: 117, awayPoints: 55,
     homePeriodPoints: [67, 50], awayPeriodPoints: [30, 25],
@@ -190,6 +196,108 @@ describe('POST /refresh', () => {
         const res = await request(app).post('/hoops/games/refresh')
             .send({ season: 2027, start: '2026-11-05', end: '2026-11-01' });
         expect(res.status).toBe(400);
+    });
+});
+
+describe('a partial bulkWrite', () => {
+    // { ordered: false } still THROWS on a partial failure, but the successful
+    // ops did write and err.result carries their counts. routes/games.js:897
+    // works this out; the first version of this route did not, and would have
+    // told the cron a run failed when it wrote 5,014 of 5,015 games.
+    function bulkError({ upserted = 0, matched = 0, codes = [11000] }) {
+        const err = new Error('E11000 duplicate key error collection: hoopsgames index: id_1');
+        err.result = { upsertedCount: upserted, matchedCount: matched };
+        err.writeErrors = codes.map(code => ({ code }));
+        return err;
+    }
+
+    test('a duplicate-key loss to a concurrent run is a SUCCESS with real counts', async () => {
+        stubFetch({ games: [game(), game({ id: 2 })] });
+        jest.spyOn(HoopsGame, 'bulkWrite').mockRejectedValue(bulkError({ upserted: 1, codes: [11000] }));
+
+        const res = await request(app).post('/hoops/games/2027/schedule').send({});
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ created: 1 });
+    });
+
+    test('a non-duplicate write error is a 500 that still reports what landed', async () => {
+        stubFetch({ games: [game(), game({ id: 2 })] });
+        jest.spyOn(HoopsGame, 'bulkWrite').mockRejectedValue(bulkError({ upserted: 1, codes: [121] }));
+
+        const res = await request(app).post('/hoops/games/2027/schedule').send({});
+        expect(res.status).toBe(500);
+        // The counts go out with the failure: a partial write is not a no-op,
+        // and the cron needs to know what landed before it retries.
+        expect(res.body).toMatchObject({ created: 1 });
+    });
+
+    test('a batch that failed wholesale, with no writeErrors, is a 500', async () => {
+        stubFetch({ games: [game()] });
+        const err = new Error('connection timed out');
+        jest.spyOn(HoopsGame, 'bulkWrite').mockRejectedValue(err);
+        const res = await request(app).post('/hoops/games/2027/schedule').send({});
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/timed out/);
+    });
+
+    test('the same tolerance applies on /refresh', async () => {
+        stubFetch({ games: [game()] });
+        jest.spyOn(HoopsGame, 'bulkWrite').mockRejectedValue(bulkError({ upserted: 1, codes: [11000] }));
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        expect(res.status).toBe(200);
+    });
+});
+
+describe('the guards on the route that runs unattended', () => {
+    test('/refresh 422s when the stored schedule says games were due', async () => {
+        // The ending-year trap would otherwise hide here for months: wired with
+        // the FOOTBALL season number, every nightly refresh answers 200
+        // {games: 0} from November to March and no score is ever ingested.
+        await HoopsGame.create(Object.assign(buildDoc(), { id: 900, season: 2027,
+            startDate: new Date('2026-11-03T00:00:00Z') }));
+        stubFetch({ games: [] });
+
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2026-11-02', end: '2026-11-04' });
+        expect(res.status).toBe(422);
+        expect(res.body).toMatchObject({ expected: 1, returned: 0 });
+        expect(res.body.message).toMatch(/ENDING year/);
+    });
+
+    test('but a genuinely quiet night with nothing scheduled is still a 200', async () => {
+        stubFetch({ games: [] });
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2027-07-01', end: '2027-07-02' });
+        expect(res.status).toBe(200);
+    });
+
+    test('/schedule 500s when games came back but none could be mapped', async () => {
+        // CBBD renames `id`: every op is null. The unguarded bulkWrite threw
+        // "Invalid BulkOperation, Batch cannot be empty", a cryptic 500 for
+        // what is a field rename.
+        stubFetch({ games: [{ season: 2027, homeTeam: 'Duke' }, { season: 2027 }] });
+        const res = await request(app).post('/hoops/games/2027/schedule').send({});
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/none of which carried an id/);
+    });
+
+    test('/refresh reports what was WRITABLE, not what was fetched', async () => {
+        // The one pair of numbers in this route that could report a healthy run
+        // while nothing landed.
+        stubFetch({ games: [{ season: 2027, status: 'final' }, game({ id: 5 })] });
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+        expect(res.body).toMatchObject({ games: 1, fetched: 2, finals: 0 });
+    });
+
+    test('an over-wide refresh range is a 400 naming the reason', async () => {
+        const e = new Error('Range 2000-01-01..2026-01-01 needs more than 16 30-day windows. '
+            + '/games is billable; narrow the range.');
+        e.rangeTooWide = true;
+        jest.spyOn(client, 'fetchGamesInRange').mockRejectedValue(e);
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2000-01-01', end: '2026-01-01' });
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/billable/);
     });
 });
 
