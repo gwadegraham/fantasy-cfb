@@ -84,6 +84,18 @@ module.exports = {
         // branches 90. A second entry here was silently overridden by it, since
         // the later key wins in an object literal, so it was a threshold that
         // looked like a promise and enforced nothing.)
+        // The second module in this app that spends against a billable API, and
+        // it fails in the direction of spending money: an unbounded range loops
+        // until it reaches the end date, and the 3,000-record cap returns a
+        // short answer with no error. A review measured the first version of
+        // this file at 12% — every route test stubbed it — so the paging, the
+        // cap detection and the error typing had no coverage at all.
+        "./modules/cbbd-client.js": {
+            statements: 95,
+            branches: 88,
+            functions: 85,
+            lines: 95
+        },
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.

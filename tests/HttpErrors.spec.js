@@ -44,6 +44,30 @@ let consoleError;
 beforeEach(() => { consoleError = jest.spyOn(console, 'error').mockImplementation(() => {}); });
 afterEach(() => { consoleError.mockRestore(); });
 
+describe('API_PREFIXES — every JSON router must be listed', () => {
+    const { isApiPath } = require('../modules/http-errors');
+
+    // This list is the SECOND one a new router has to join; the other is the
+    // non-GET authorization tier in server.js. #314 added /hoops/games,
+    // remembered the auth list, and missed this one — so every hoops 404 and
+    // 500 answered with the branded HTML page and the calling cron's res.json()
+    // threw a parse error instead of surfacing the status.
+    test.each([
+        ['/hoops/games/2027/schedule'],
+        ['/hoops/games/refresh'],
+        ['/games/2026/schedule'],
+        ['/users/me/profile'],
+        ['/scores/update']
+    ])('%s is an API path', (path) => {
+        expect(isApiPath(path)).toBe(true);
+    });
+
+    test('a page route is not', () => {
+        expect(isApiPath('/standings-page')).toBe(false);
+        expect(isApiPath('/')).toBe(false);
+    });
+});
+
 describe('prefersJson / isApiPath', () => {
     test('recognizes mounted router prefixes, and only on a path boundary', () => {
         expect(isApiPath('/users')).toBe(true);

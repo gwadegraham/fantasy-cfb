@@ -15,8 +15,15 @@
 // Every prefix that server.js mounts a JSON router on. A request falling
 // through under one of these was an API call, so it gets JSON even when the
 // caller sent no Accept header (fetch's default is "*/*").
+//
+// ⚠️ THIS IS THE SECOND LIST A NEW ROUTER HAS TO JOIN. The other is the
+// non-GET authorization tier in server.js. #314 added /hoops/games, remembered
+// the auth list, and missed this one — so every hoops 404 and 500 answered with
+// the branded HTML page and the calling cron's res.json() threw a parse error
+// instead of surfacing the status, which is the exact failure this module was
+// written to fix.
 const API_PREFIXES = [
-    '/users', '/teams', '/games', '/rankings', '/scores', '/recruiting',
+    '/users', '/teams', '/games', '/hoops', '/rankings', '/scores', '/recruiting',
     '/records', '/betting', '/draft', '/scoring-config', '/leagues',
     '/job-runs', '/audit-log', '/standings', '/history',
     '/calculate-team-score', '/dev'
