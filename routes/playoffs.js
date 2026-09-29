@@ -278,45 +278,147 @@ const BRACKET_TREE = {
     }
 };
 
-// Compute the maximum fantasy points a franchise can earn from the bracket,
-// accounting for mutual exclusivity (if two franchise teams meet, only one advances).
+// Every seed sitting under a node of BRACKET_TREE.
+function seedsUnder(node) {
+    if (node.seed !== undefined) return [node.seed];
+    return seedsUnder(node.left).concat(seedsUnder(node.right));
+}
+
+// The best total a franchise can still end the bracket on: what its teams have
+// already banked, plus the most they can add from what's left. It accounts for
+// mutual exclusivity (if two franchise teams meet, only one advances) AND for
+// games that have already been played.
+//
+// `elimRound` is { seed: round-it-actually-lost-in }, built from the bracket's
+// completed games. A node whose game is settled has no choice left in it: the
+// team that really won advances and the other side is out, however many points
+// the hypothetical would have been worth. Without this the page kept selling a
+// finished bracket as still winnable — a completed 2025 bracket still had
+// Oregon "bulldozing through the field" after it lost the semifinal 22-56.
+//
+// A projected bracket has no completed games, so `elimRound` is empty and every
+// node falls through to the all-outcomes-open search.
+//
 // Returns { points, wins, elims } where:
 //   wins  = [{ round, seed }]  — franchise teams winning each round
 //   elims = [{ seed, round, by }] — franchise teams eliminated (and by whom)
-function computeMaxFranchisePoints(franchiseSeeds, pointsByRound, model) {
+function computeMaxFranchisePoints(franchiseSeeds, pointsByRound, model, elimRound) {
+    const lost = elimRound || {};
+    const byeBonus = pointsByRound.quarterfinalByeBonus || 0;
+    // Graham's `nationalChampionshipWin` is the one CFP rule that pays for a
+    // WIN. Every other rule in both models — "CFP Quarterfinal appearance",
+    // "CFP Semifinal appearance", Claunts' "National Championship appearance" —
+    // pays for turning up. Crediting them to the winner instead cost a team the
+    // round it went out in: 2025 Ohio State, a top-4 bye knocked out in the
+    // quarterfinal, really banked 12 and was scored 0.
+    const champOnWin = pointsByRound.championshipMode === 'win';
+
+    // Banked by anyone who reaches this round's game, win or lose.
+    function enterPts(round, seed) {
+        if (round === 'championship' && champOnWin) return 0;
+        let p = pointsByRound[round] || 0;
+        if (round === 'quarterfinal' && seed <= 4) p += byeBonus;
+        return p;
+    }
+    function winPts(round) {
+        return (round === 'championship' && champOnWin) ? (pointsByRound.championship || 0) : 0;
+    }
+    // Claunts pays `cfpAppearance` for a first-round EXIT specifically, so
+    // losing the opener is worth more there than winning it. The search has to
+    // weigh that against everything winning unlocks downstream.
+    function losePts(round) {
+        return round === 'first_round' ? (pointsByRound.first_round_loss || 0) : 0;
+    }
+
+    // Seeds under `node` that were still playing once `round` was over. Exactly
+    // one of them survives a settled game; two or more means the game (or a
+    // game feeding it) hasn't been played, so the outcome is still open.
+    function aliveAfter(node, round) {
+        return seedsUnder(node).filter(s => {
+            const r = lost[s];
+            return r === undefined || ROUND_ORDER[r] > ROUND_ORDER[round];
+        });
+    }
+
     function dp(node) {
         if (node.seed !== undefined) {
             return { points: 0, advancer: franchiseSeeds.has(node.seed) ? node.seed : null, wins: [], elims: [] };
         }
         const L = dp(node.left);
         const R = dp(node.right);
-        const winPts = pointsByRound[node.round] || 0;
-        const byeBonus = (node.round === 'quarterfinal' && pointsByRound.quarterfinalByeBonus) || 0;
+        const round = node.round;
         const baseWins = [...L.wins, ...R.wins];
         const baseElims = [...L.elims, ...R.elims];
 
-        let best = { points: L.points + R.points, advancer: null, wins: baseWins, elims: baseElims };
+        // Appearance credit is settled before the game is: it goes to every
+        // franchise team that got here, whichever way the game goes.
+        let entered = L.points + R.points;
+        if (L.advancer !== null) entered += enterPts(round, L.advancer);
+        if (R.advancer !== null) entered += enterPts(round, R.advancer);
 
-        const candidates = [];
-        if (L.advancer !== null) {
-            let pts = L.points + R.points + winPts;
-            if (L.advancer <= 4 && node.round === 'quarterfinal') pts += byeBonus;
+        // This game is settled — take the result instead of searching. Note a
+        // franchise team knocked out here is recorded even when the team that
+        // beat it belongs to nobody, which the open branch below can't see (it
+        // only ever pairs two franchise teams against each other).
+        const alive = aliveAfter(node, round);
+        if (alive.length === 1) {
+            const won = alive[0];
+            let pts = entered;
+            let wins = baseWins;
             const elims = [...baseElims];
-            if (R.advancer !== null) elims.push({ seed: R.advancer, round: node.round, by: L.advancer });
-            candidates.push({ points: pts, advancer: L.advancer, wins: [...baseWins, { round: node.round, seed: L.advancer }], elims });
-        }
-        if (R.advancer !== null) {
-            let pts = L.points + R.points + winPts;
-            if (R.advancer <= 4 && node.round === 'quarterfinal') pts += byeBonus;
-            const elims = [...baseElims];
-            if (L.advancer !== null) elims.push({ seed: L.advancer, round: node.round, by: R.advancer });
-            candidates.push({ points: pts, advancer: R.advancer, wins: [...baseWins, { round: node.round, seed: R.advancer }], elims });
-        }
-        // Pick highest points; tie-break by higher seed (lower number = more realistic)
-        for (const c of candidates) {
-            if (c.points > best.points || (c.points === best.points && c.advancer < (best.advancer || Infinity))) {
-                best = c;
+            for (const side of [L, R]) {
+                if (side.advancer === null) continue;
+                if (side.advancer === won) {
+                    pts += winPts(round);
+                    wins = [...wins, { round: round, seed: won }];
+                } else {
+                    pts += losePts(round);
+                    elims.push({ seed: side.advancer, round: round, by: won });
+                }
             }
+            return {
+                points: pts,
+                advancer: franchiseSeeds.has(won) ? won : null,
+                wins: wins,
+                elims: elims
+            };
+        }
+
+        const options = [];
+        for (const [side, other] of [[L, R], [R, L]]) {
+            if (side.advancer === null) continue;
+            let pts = entered + winPts(round);
+            const elims = [...baseElims];
+            if (other.advancer !== null) {
+                pts += losePts(round);
+                elims.push({ seed: other.advancer, round: round, by: side.advancer });
+            }
+            options.push({
+                points: pts,
+                advancer: side.advancer,
+                wins: [...baseWins, { round: round, seed: side.advancer }],
+                elims: elims
+            });
+        }
+        // Nobody from this franchise comes out of this game. Only on the table
+        // when at most one franchise team is IN it — two of them can't both
+        // lose, and under Claunts' first-round rule the search would happily
+        // bank the exit bonus twice if it could.
+        const inThisGame = [L, R].filter(s => s.advancer !== null);
+        if (inThisGame.length <= 1) {
+            options.push({
+                points: entered + (inThisGame.length ? losePts(round) : 0),
+                advancer: null, wins: baseWins, elims: baseElims
+            });
+        }
+
+        // Highest points; on a tie prefer a team that's still alive, then the
+        // better seed (lower number = the likelier run).
+        let best = options[0];
+        for (const o of options) {
+            if (o.points > best.points) { best = o; continue; }
+            if (o.points === best.points && o.advancer !== null &&
+                (best.advancer === null || o.advancer < best.advancer)) best = o;
         }
         return best;
     }
@@ -331,7 +433,21 @@ const ROUND_LABELS_SHORT = {
 const ROUND_ORDER = { first_round: 0, quarterfinal: 1, semifinal: 2, championship: 3 };
 
 function buildNarrative(wins, elims, seedToSchool, variantIdx) {
-    if (!wins.length) return '';
+    // Nothing won, but the bracket has been played: every team this franchise
+    // had is already out. Before results were read this branch only came up
+    // pre-selection, so an empty string was fine; now it is the whole story for
+    // a knocked-out franchise, and a card with no sentence at all reads as a
+    // page that failed to load.
+    if (!wins.length) {
+        if (!elims || !elims.length) return '';
+        const name = s => seedToSchool[s] || `#${s}`;
+        const outs = elims
+            .slice()
+            .sort((a, b) => ROUND_ORDER[b.round] - ROUND_ORDER[a.round])
+            .map(e => `${name(e.seed)} went out in ${ROUND_LABELS_SHORT[e.round]} to ${name(e.by)}`);
+        if (outs.length === 1) return outs[0] + '.';
+        return outs.slice(0, -1).join('. ') + ', and ' + outs[outs.length - 1] + '.';
+    }
 
     const journeys = {};
     wins.forEach(w => {
@@ -401,7 +517,13 @@ function buildNarrative(wins, elims, seedToSchool, variantIdx) {
             if (rounds.length === 1 && rounds[0] === 'first_round') {
                 parts.push(`${cycle(frWinPhrases)(school)} before ${elimVerb} in ${exitRound}`);
             } else {
-                parts.push(`${school} reaches ${ROUND_LABELS_SHORT[last]} before ${elimVerb}`);
+                // The round it went OUT in, not the last one it won. `last` is a
+                // round the team WON, so naming it here read a round early and
+                // claimed matchups the bracket forbids — "Alabama reaches the
+                // Semis before bowing out against Ole Miss" for seeds 9 and 6,
+                // which sit in opposite halves and can only ever meet in the
+                // final.
+                parts.push(`${school} reaches ${exitRound} before ${elimVerb}`);
             }
         } else {
             parts.push(`${school} advances through ${ROUND_LABELS_SHORT[last]}`);
@@ -433,37 +555,54 @@ function buildPointsByRound(cfg, model) {
         if (!disabled.has('nationalChampionshipWin'))   pts.championship = v.nationalChampionship || 0;
         // Top-4 bye bonus stacks on quarterfinal
         if (!disabled.has('cfpQuarterfinalTop4Bonus'))  pts.quarterfinalByeBonus = v.cfpQuarterfinalTop4Bonus || 0;
+        // Graham's rule is `nationalChampionshipWin` — losing the title game
+        // pays nothing. Claunts' is an appearance. The DP has to know which.
+        pts.championshipMode = 'win';
     } else {
         // Claunts: first-round loss → cfpAppearance, otherwise each round is its own value
         if (!disabled.has('cfpFirstRoundLoss'))         pts.first_round_loss = v.cfpAppearance || 0;
         if (!disabled.has('cfpQuarterfinal'))            pts.quarterfinal = v.cfpQuarterfinal || 0;
         if (!disabled.has('cfpSemifinal'))               pts.semifinal = v.cfpSemifinal || 0;
         if (!disabled.has('nationalChampionship'))       pts.championship = v.nationalChampionship || 0;
+        pts.championshipMode = 'enter';
     }
 
     return pts;
 }
 
-// Max points a team could earn running the table from a given seed
-function maxPointsForSeed(seed, pointsByRound, model) {
-    let total = 0;
-    const hasBye = seed <= 4;
+// Max points one team could still earn from a given seed. Runs the same DP as a
+// franchise summary over a one-team set, so a team's own ceiling and the
+// franchise ceiling it feeds can never disagree — and so a team that has
+// already been knocked out stops advertising a run it can no longer make.
+function maxPointsForSeed(seed, pointsByRound, model, elimRound) {
+    return computeMaxFranchisePoints(new Set([seed]), pointsByRound, model, elimRound).points;
+}
 
-    if (model === 'graham') {
-        if (!hasBye) total += pointsByRound.first_round || 0;
-        total += pointsByRound.quarterfinal || 0;
-        if (hasBye && pointsByRound.quarterfinalByeBonus) total += pointsByRound.quarterfinalByeBonus;
-        total += pointsByRound.semifinal || 0;
-        total += pointsByRound.championship || 0;
-    } else {
-        // Claunts: first-match gives QF/SF/Champ points (not first-round appearance)
-        // Non-bye teams: if they win R1 they get QF, not first-round-loss
-        total += pointsByRound.quarterfinal || 0;
-        total += pointsByRound.semifinal || 0;
-        total += pointsByRound.championship || 0;
+// { seed: the round the team actually lost in }, from the bracket's finished
+// games. Only settled games count: a game still in progress leaves both its
+// teams alive, which is what the projection wants anyway.
+function elimRoundsFromGames(games) {
+    const out = {};
+    for (const g of games || []) {
+        const played = g.game && g.game.completed;
+        const teams = (g.teams || []).filter(t => t && t.seed != null && t.score != null);
+        if (!played || teams.length !== 2) continue;
+        if (teams[0].score === teams[1].score) continue;   // no ties in the CFP, but don't guess
+        const loser = teams[0].score < teams[1].score ? teams[0] : teams[1];
+        out[loser.seed] = g.round;
     }
+    return out;
+}
 
-    return total;
+// CFBD writes 'automatic' / 'at_large'; the projection below writes 'auto' /
+// 'at-large'. The page renders one of them, so settle it here rather than make
+// every reader know both spellings — left as-is, every real bracket labelled
+// its automatic qualifiers "At-Large".
+function normalizeBidType(bidType) {
+    const b = String(bidType || '').toLowerCase();
+    if (b === 'auto' || b === 'automatic') return 'auto';
+    if (b === 'at-large' || b === 'at_large' || b === 'atlarge') return 'at-large';
+    return bidType || null;
 }
 
 router.get('/bracket/:season/:league', async (req, res) => {
@@ -500,8 +639,14 @@ router.get('/bracket/:season/:league', async (req, res) => {
             });
         });
 
-        // Try to load the real bracket
-        let bracket = await CfpBracket.findOne({ season: seasonNum });
+        // Try to load the real bracket. .lean() is load-bearing, not an
+        // optimization: the enrichment below spreads participants and games
+        // ({ ...p }), and spreading a Mongoose subdocument copies its internals
+        // ($__parent, _doc, __parentArray) instead of its schema fields — every
+        // school/seed/round comes out undefined and the whole payload balloons.
+        // The projected branch already builds plain objects; this makes the two
+        // paths the same shape.
+        let bracket = await CfpBracket.findOne({ season: seasonNum }).lean();
         let projected = false;
 
         if (!bracket || !bracket.games || !bracket.games.length) {
@@ -604,23 +749,6 @@ router.get('/bracket/:season/:league', async (req, res) => {
         const gameMap = {};
         gameDocs.forEach(g => { gameMap[g.id] = g; });
 
-        // Build enriched response
-        const enrichedParticipants = (bracket.participants || []).map(p => {
-            const t = teamMap[p.teamId] || {};
-            const owner = teamOwnerMap[p.teamId];
-            return {
-                ...p,
-                mascot: t.mascot,
-                abbreviation: t.abbreviation,
-                conference: p.conference || t.conference,
-                color: t.color,
-                altColor: t.alt_color,
-                logos: t.logos,
-                owner: owner || null,
-                maxPoints: maxPointsForSeed(p.seed, pointsByRound, model)
-            };
-        });
-
         const enrichedGames = (bracket.games || []).map(g => {
             const gameDoc = g.gameId ? gameMap[g.gameId] : null;
             const teams = (g.teams || []).map(gt => {
@@ -680,6 +808,35 @@ router.get('/bracket/:season/:league', async (req, res) => {
             };
         });
 
+        // Built from the enriched games (they carry the per-team scores), so it
+        // has to come after them — which is why participants are enriched below
+        // rather than above.
+        const elimRound = elimRoundsFromGames(enrichedGames);
+
+        const enrichedParticipants = (bracket.participants || []).map(p => {
+            const t = teamMap[p.teamId] || {};
+            const owner = teamOwnerMap[p.teamId];
+            return {
+                ...p,
+                mascot: t.mascot,
+                abbreviation: t.abbreviation,
+                conference: p.conference || t.conference,
+                color: t.color,
+                altColor: t.alt_color,
+                logos: t.logos,
+                bidType: normalizeBidType(p.bidType),
+                // The Field table prints one rank column. A projection ranks by
+                // the poll it was built from; a real bracket only ever carries
+                // the committee's rank, so without this every real-bracket team
+                // showed "NR" — including the ones worth seeing (2025 Tulane is
+                // the 11 seed at committee rank 20).
+                rank: p.rank != null ? p.rank : p.committeeRank,
+                owner: owner || null,
+                eliminatedIn: elimRound[p.seed] || null,
+                maxPoints: maxPointsForSeed(p.seed, pointsByRound, model, elimRound)
+            };
+        });
+
         // Points summary per franchise — uses bracket tree DP to handle
         // mutual exclusivity (two franchise teams can't both win out)
         const franchiseSummary = {};
@@ -707,7 +864,7 @@ router.get('/bracket/:season/:league', async (req, res) => {
         enrichedParticipants.forEach(p => { seedToSchool[p.seed] = p.school; });
 
         Object.values(franchiseSummary).forEach((f, idx) => {
-            const result = computeMaxFranchisePoints(f.seeds, pointsByRound, model);
+            const result = computeMaxFranchisePoints(f.seeds, pointsByRound, model, elimRound);
             f.maxPoints = result.points;
             f.narrative = buildNarrative(result.wins, result.elims, seedToSchool, idx);
             delete f.seeds;

@@ -343,7 +343,10 @@
         if (data.franchiseSummary && data.franchiseSummary.length) {
             html += '<div class="cfp-stakes-section">';
             html += '<h2 class="cfp-stakes-title"><i class="fas fa-trophy"></i> Playoff Stakes</h2>';
-            html += '<p class="cfp-stakes-subtitle">Maximum potential points if teams run the table</p>';
+            // Not "if teams run the table" any more: the number now counts what
+            // a franchise's teams have already banked and adds only what the
+            // games still to come can pay.
+            html += '<p class="cfp-stakes-subtitle">Points banked, plus the most still on the table</p>';
 
             var currentUserId = (typeof userState !== 'undefined' && userState && userState.user_metadata && userState.user_metadata.metadata) ? (userState.user_metadata.metadata.userId || '') : '';
             var myFranchise = data.franchiseSummary.find(function (f) { return f.userId === currentUserId; });
@@ -404,8 +407,11 @@
         var roundNames = { first_round: 'First Round', quarterfinal: 'Quarterfinal', semifinal: 'Semifinal', championship: 'Championship' };
         roundKeys.forEach(function (rk) {
             var pts = data.pointsByRound[rk];
-            if (pts == null && rk === 'first_round' && data.pointsByRound.first_round_loss != null) {
-                // Claunts model: show first-round exit value
+            // Claunts pays for a first-round EXIT, not for turning up, so it
+            // reports first_round: 0 alongside a first_round_loss. The test used
+            // to be `pts == null`, which that 0 never satisfies — so the table
+            // printed "First Round 0" and the exit value was never shown at all.
+            if (rk === 'first_round' && !pts && data.pointsByRound.first_round_loss) {
                 html += '<tr><td>First Round (exit)</td><td class="cfp-pts-val">' + data.pointsByRound.first_round_loss + '</td></tr>';
                 return;
             }
@@ -428,7 +434,10 @@
 
         (data.participants || []).sort(function (a, b) { return a.seed - b.seed; }).forEach(function (p) {
             var teamColor = colorHex(p.color) || 'var(--cc-muted-2)';
-            var byeBadge = p.firstRoundBye ? ' <span class="cfp-bye-tag">BYE</span>' : '';
+            // BYE and OUT are mutually exclusive in practice — a bye team that
+            // loses is out — so show the one that still says something.
+            var byeBadge = p.eliminatedIn ? ' <span class="cfp-out-tag">OUT</span>'
+                : (p.firstRoundBye ? ' <span class="cfp-bye-tag">BYE</span>' : '');
             var ownerName = p.owner ? '<a href="/userHome?user=' + p.owner.userId + '" class="cfp-field-owner" style="color:' + (colorHex(p.owner.color) || 'var(--cc-interactive)') + '">' + escapeHtml(p.owner.franchise) + '</a>' : '<span class="cfp-undrafted-tag">—</span>';
             var bidLabel = p.bidType === 'auto' ? '<span class="cfp-auto-bid">Auto</span>' : '<span class="cfp-at-large">At-Large</span>';
 
