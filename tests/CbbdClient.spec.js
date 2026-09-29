@@ -184,6 +184,28 @@ describe('cbbdGet — error typing', () => {
     });
 });
 
+describe('fetchTeams', () => {
+    test('is a single call with the season, not a paged range', async () => {
+        // 365 rows, well under the 3,000 cap that forces /games to page, so
+        // this needs none of that machinery.
+        const calls = stubFetch([{ id: 1, school: 'Duke' }]);
+        const r = await client.fetchTeams(2027);
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toContain('/teams?season=2027');
+        expect(r.data).toHaveLength(1);
+    });
+
+    test('surfaces the remaining call allowance', async () => {
+        stubFetch([], { remaining: '28852' });
+        expect((await client.fetchTeams(2027)).remainingCalls).toBe(28852);
+    });
+
+    test('an unreachable host is typed, like every other call', async () => {
+        stubFetch([], { reject: new TypeError('fetch failed') });
+        await expect(client.fetchTeams(2027)).rejects.toMatchObject({ unreachable: true });
+    });
+});
+
 describe('seasonRange', () => {
     test('starts in the PREVIOUS calendar year, because CBBD labels by ending year', () => {
         const { start, end } = client.seasonRange(2027);

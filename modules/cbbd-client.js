@@ -152,4 +152,10 @@ function seasonRange(season) {
     return { start: new Date(Date.UTC(season - 1, 9, 1)), end: new Date(Date.UTC(season, 3, 30)) };
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
+// Every D-I team for a season. One call, 365 rows — well under the 3,000 cap
+// that forces /games to page, so this needs none of that machinery.
+async function fetchTeams(season) {
+    return cbbdGet('/teams', { season });
+}
+
+module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
