@@ -16,6 +16,7 @@ const HoopsGame = require('../models/hoopsGame');
 // first version of the tests spied on the client and the route went to the real
 // API anyway, failing with a 400 that looked like a routing bug.
 const cbbd = require('../modules/cbbd-client');
+const calendar = require('../modules/hoops-calendar');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -63,7 +64,10 @@ async function writeGames(ops, label) {
 // the schema names 34 of them, so a blind $set would store whatever the API
 // adds next under a name nothing reads. Mapping explicitly means a NEW field
 // arrives as a schema change, deliberately, rather than as silent drift.
-function buildUpsertOp(g) {
+// `seasonStart` is the Monday of the week containing the season's first game.
+// Passed in rather than derived per game, because deriving it from the row
+// being written would make every game its own week 1.
+function buildUpsertOp(g, seasonStart) {
     if (!g || g.id == null) return null;
 
     const played = g.status === 'final';
@@ -76,6 +80,9 @@ function buildUpsertOp(g) {
         seasonType: g.seasonType,
         startDate: g.startDate,
         startTimeTbd: !!g.startTimeTbd,
+        // Derived here so the whole app can query by week without repeating
+        // the derivation (#315). null before week 1 rather than 0.
+        week: seasonStart ? calendar.weekOf(g.startDate, seasonStart) : undefined,
         status: g.status,
         neutralSite: !!g.neutralSite,
         conferenceGame: !!g.conferenceGame,
@@ -120,6 +127,24 @@ function buildUpsertOp(g) {
     // schema's word throws on every scheduled game.
     Object.keys(doc).forEach(k => { if (doc[k] === undefined || doc[k] === null) delete doc[k]; });
     return { updateOne: { filter: { id: g.id }, update: { $set: doc }, upsert: true } };
+}
+
+// Week 1's Monday for a season, from the earliest game we know about — stored
+// or incoming, whichever is earlier.
+//
+// Reading the database matters for /refresh: its window is a day or two, so the
+// earliest game IN THE BATCH is not the season's first game, and deriving from
+// the batch would restart the numbering every night. Reading the incoming batch
+// matters for the first /schedule ingest, when the database is still empty.
+async function resolveSeasonStart(season, incoming) {
+    const stored = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 })
+        .sort({ startDate: 1 }).lean();
+    const dates = [];
+    if (stored && stored.startDate) dates.push(new Date(stored.startDate));
+    incoming.forEach(g => { if (g && g.startDate) dates.push(new Date(g.startDate)); });
+    const valid = dates.filter(d => !Number.isNaN(d.getTime()));
+    if (!valid.length) return null;
+    return calendar.seasonStartFrom(new Date(Math.min(...valid.map(d => d.getTime()))));
 }
 
 // Ingest a whole season's schedule. Safe to re-run — upserts by game id.
@@ -175,7 +200,8 @@ router.post('/:season/schedule', async (req, res) => {
         });
     }
 
-    const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    const seasonStart = await resolveSeasonStart(season, result.games);
+    const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     // Games came back but none could be mapped — CBBD renamed `id`, or the rows
     // are a shape buildUpsertOp does not recognise. Without this the bulkWrite
     // threw "Invalid BulkOperation, Batch cannot be empty", a cryptic 500 for
@@ -264,7 +290,8 @@ router.post('/refresh', async (req, res) => {
             });
         }
     }
-    const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    const seasonStart = await resolveSeasonStart(season, result.games);
+    const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     const { created, updated, failure } = await writeGames(ops, `Hoops refresh · ${season}`);
     if (failure) {
         return res.status(500).json({ season, seasonType, created, updated, message: `Refresh write failed: ${failure}` });
@@ -288,3 +315,4 @@ router.post('/refresh', async (req, res) => {
 
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
+module.exports.resolveSeasonStart = resolveSeasonStart;
