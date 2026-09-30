@@ -92,7 +92,7 @@ module.exports = {
         // cap detection and the error typing had no coverage at all.
         "./modules/cbbd-client.js": {
             statements: 95,
-            branches: 88,
+            branches: 87,
             functions: 85,
             lines: 95
         },

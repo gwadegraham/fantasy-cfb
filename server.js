@@ -703,9 +703,10 @@ app.use('/teams', (req, res, next) => {
 });
 // A NEW ROUTER MUST BE ADDED TO THIS LIST, not just mounted below. The mount
 // only applies requireAuthOrToken; without an entry here a state-changing call
-// is open to any authenticated member. '/hoops/games' ingests a whole season on
-// POST, so it belongs in the Admin tier beside '/games'.
-app.use(['/scores', '/records', '/games', '/hoops/games', '/betting-lines', '/team-season-stats', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log', '/betting-groups'], (req, res, next) => {
+// is open to any authenticated member. '/hoops' is the PREFIX rather than each
+// router: /hoops/games was listed individually and /hoops/teams would then have
+// been open, which is the same omission one level down.
+app.use(['/scores', '/records', '/games', '/hoops', '/betting-lines', '/team-season-stats', '/rankings', '/playoffs', '/recruiting', '/job-runs', '/audit-log', '/betting-groups'], (req, res, next) => {
     if (req.method === 'GET') return next();
     return requireAdmin(req, res, next);
 });
@@ -733,11 +734,13 @@ app.use('/teams', requireAuthOrToken, teamsRouter);
 
 const gamesRouter = require('./routes/games');
 const hoopsGamesRouter = require('./routes/hoopsGames');
+const hoopsTeamsRouter = require('./routes/hoopsTeams');
 app.use('/games', requireAuthOrToken, gamesRouter);
 // Basketball ingest (#314). A parallel tree, not a sport param on /games — see
 // the header of routes/hoopsGames.js. Its Admin gate is in the path list above;
 // this mount only authenticates.
 app.use('/hoops/games', requireAuthOrToken, hoopsGamesRouter);
+app.use('/hoops/teams', requireAuthOrToken, hoopsTeamsRouter);
 
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', requireAuthOrToken, rankingsRouter);

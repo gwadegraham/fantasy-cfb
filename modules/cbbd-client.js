@@ -152,4 +152,46 @@ function seasonRange(season) {
     return { start: new Date(Date.UTC(season - 1, 9, 1)), end: new Date(Date.UTC(season, 3, 30)) };
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
+// Every D-I team for a season. One call, 365 rows — well under the 3,000 cap
+// that forces /games to page, so this needs none of that machinery.
+async function fetchTeams(season) {
+    return cbbdGet('/teams', { season });
+}
+
+// Which of these ESPN ids actually have a logo, checked before any URL is
+// stored.
+//
+// Kept even though ESPN currently serves all 365, because the reason it exists
+// has not gone away: the first version of this ingest synthesised URLs from
+// sourceId and 101 of 365 were dead, and nothing noticed because the check
+// measured array length. A probe is the only thing that distinguishes "we have
+// a logo" from "we built a string".
+//
+// One HEAD settles it because ESPN serves exactly one size, light and dark
+// together — verified on Gonzaga across eight sizes, only 500 exists.
+//
+// Free: a CDN request, not a CBBD call, so it costs nothing against the quota.
+// Batched because 365 sequential round trips would run past Heroku's ceiling.
+// 500, because it is the ONLY size ESPN serves. Probing /16/ — football's
+// smallest — would have 404'd for every team and stored no logos at all.
+const LOGO_PROBE = 'https://a.espncdn.com/i/teamlogos/ncaa/500/';
+async function logoIdsThatExist(sourceIds, { batch = 25, fetchImpl } = {}) {
+    const doFetch = fetchImpl || fetch;
+    const ids = [...new Set(sourceIds.filter(Boolean).map(String))];
+    const found = new Set();
+    for (let i = 0; i < ids.length; i += batch) {
+        const slice = ids.slice(i, i + batch);
+        await Promise.all(slice.map(async (id) => {
+            try {
+                const r = await doFetch(`${LOGO_PROBE}${id}.png`, { method: 'HEAD' });
+                if (r && r.ok) found.add(id);
+            } catch (e) {
+                // A probe that errors is treated as "no logo". Storing a URL we
+                // could not confirm is the failure this function exists to stop.
+            }
+        }));
+    }
+    return found;
+}
+
+module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoIdsThatExist, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
