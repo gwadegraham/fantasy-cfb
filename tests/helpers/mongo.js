@@ -34,4 +34,21 @@ function useMongo() {
     afterAll(disconnect);
 }
 
-module.exports = { useMongo, connect, disconnect, clear };
+// Reads all go through the franchises collection now (#313), so a suite that
+// seeds `users` and stops has seeded nothing the app can see. This is the same
+// copy prod ran once at the cutover: call it after the last User.create in a
+// seed, before the first request.
+//
+// migrate() returns `applied: false` instead of throwing when the schemas have
+// drifted apart, which would surface here as an unexplained 404 in whichever
+// suite happened to run first. Fail loudly instead.
+async function mirrorUsers() {
+    const { migrate } = require('../../modules/account-migration');
+    const result = await migrate({ apply: true });
+    if (!result.applied) {
+        throw new Error('mirrorUsers: migration did not apply — ' + JSON.stringify(result.problems || result));
+    }
+    return result;
+}
+
+module.exports = { useMongo, connect, disconnect, clear, mirrorUsers };

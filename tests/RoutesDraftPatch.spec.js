@@ -13,7 +13,6 @@ const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
 const Account = require('../models/account');
-const Franchise = require('../models/franchise');
 const migration = require('../modules/account-migration');
 const usersRouter = require('../routes/users');
 
@@ -26,16 +25,12 @@ app.use('/users', usersRouter);
 
 useMongo();
 
-const ORIGINAL = process.env.FRANCHISE_READS;
 beforeEach(() => {
-    delete process.env.FRANCHISE_READS;
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => {
     jest.restoreAllMocks();
-    if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-    else process.env.FRANCHISE_READS = ORIGINAL;
 });
 
 const LOC = { venue_id: 7, name: 'Autzen', city: 'Eugene', state: 'OR', zip: '97401',
@@ -57,9 +52,8 @@ async function seed(seasons) {
 const strip = (v) => JSON.parse(JSON.stringify(v, (k, val) => (k === '_id' || k === '__v' ? undefined : val)));
 
 describe('PATCH /users/draft/:id', () => {
-    test.each([['false'], ['true']])('writes the drafted teams into an existing season, flag %s', async (flag) => {
+    test('writes the drafted teams into an existing season', async () => {
         const user = await seed();
-        process.env.FRANCHISE_READS = flag;
 
         const res = await request(app).patch(`/users/draft/${user._id}`)
             .send({ season: SEASON, teams: [team(1, 'Iowa'), team(2, 'Duke')] });
@@ -73,9 +67,8 @@ describe('PATCH /users/draft/:id', () => {
         expect(s.cumulativeScore).toBe(12);
     });
 
-    test.each([['false'], ['true']])('pushes a season the manager did not have, flag %s', async (flag) => {
+    test('pushes a season the manager did not have', async () => {
         const user = await seed([{ season: 2025, franchiseName: 'Last Year', teams: [] }]);
-        process.env.FRANCHISE_READS = flag;
 
         const res = await request(app).patch(`/users/draft/${user._id}`)
             .send({ season: SEASON, teams: [team(1, 'Iowa')] });
@@ -85,43 +78,24 @@ describe('PATCH /users/draft/:id', () => {
         expect(back.seasons.map(x => Number(x.season)).sort()).toEqual([2025, SEASON]);
     });
 
-    test('the response is the same shape on both flags', async () => {
-        const bodies = {};
-        for (const flag of ['false', 'true']) {
-            const user = await seed();
-            process.env.FRANCHISE_READS = flag;
-            const res = await request(app).patch(`/users/draft/${user._id}`)
-                .send({ season: SEASON, teams: [team(1, 'Iowa')] });
-            bodies[flag] = strip(res.body);
-            await User.deleteMany({}); await Account.deleteMany({}); await Franchise.deleteMany({});
-        }
+    test('the response is the User shape the draft room reads', async () => {
+        const user = await seed();
+        const res = await request(app).patch(`/users/draft/${user._id}`)
+            .send({ season: SEASON, teams: [team(1, 'Iowa')] });
 
-        // lastUpdated excluded, and ONLY lastUpdated: the handler stamps it from
-        // the wall clock to the SECOND, and this fires two requests, so the two
-        // disagree whenever they straddle a second boundary. It passed locally
-        // and on one CI run before failing on the next with 12:26:25 against
-        // 12:26:26 — a flake I wrote, of exactly the kind this suite keeps
-        // catching elsewhere.
-        //
-        // Everything the flag could actually change is still compared.
-        const withoutStamp = (b) => { const o = Object.assign({}, b); delete o.lastUpdated; return o; };
-        expect(withoutStamp(bodies.true)).toEqual(withoutStamp(bodies.false));
-
-        // But it must still be THERE, and be a stamp, on both — dropping the
-        // field entirely would otherwise pass this.
-        for (const flag of ['false', 'true']) {
-            expect(typeof bodies[flag].lastUpdated).toBe('string');
-            expect(Number.isNaN(Date.parse(bodies[flag].lastUpdated))).toBe(false);
-        }
+        const body = strip(res.body);
+        expect(body).toMatchObject({ firstName: 'Ann', league: LEAGUE });
+        expect(body.seasons.find(x => Number(x.season) === SEASON).teams.map(t => t.school))
+            .toEqual(['Iowa']);
+        // Stamped from the wall clock, so assert it is a date rather than a value.
+        expect(typeof body.lastUpdated).toBe('string');
+        expect(Number.isNaN(Date.parse(body.lastUpdated))).toBe(false);
     });
 
-    test('an unknown id is 404 on both flags', async () => {
+    test('an unknown id is 404', async () => {
         const ghost = new mongoose.Types.ObjectId();
-        for (const flag of ['false', 'true']) {
-            process.env.FRANCHISE_READS = flag;
-            const res = await request(app).patch(`/users/draft/${ghost}`).send({ season: SEASON, teams: [] });
-            expect(res.status).toBe(404);
-        }
+        const res = await request(app).patch(`/users/draft/${ghost}`).send({ season: SEASON, teams: [] });
+        expect(res.status).toBe(404);
     });
 
     // The bug this file was written for.
@@ -139,7 +113,6 @@ describe('PATCH /users/draft/:id', () => {
     // and the draft room waits on a promise that never settles.
     test('an account with NO franchise is 404, not a hung request', async () => {
         const account = await Account.create({ firstName: 'Hoops', lastName: 'Only', color: '#fff' });
-        process.env.FRANCHISE_READS = 'true';
 
         const res = await request(app).patch(`/users/draft/${account._id}`)
             .send({ season: SEASON, teams: [team(1, 'Iowa')] });

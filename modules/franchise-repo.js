@@ -27,106 +27,21 @@
 
 const Account = require('../models/account');
 const Franchise = require('../models/franchise');
-const User = require('../models/user');
 
-// ---- the switch -------------------------------------------------------------
+// ---- the switch is gone ----
 //
-// Which collection managers are read from AND written to. UNSET MEANS USERS —
-// the old path — so deploying this changes nothing.
+// FRANCHISE_READS chose between `users` and `accounts`+`franchises` while both
+// were live. It was set in production on 29 Sep 2026 (v467), ran a full
+// unattended scoring cycle, and has now been removed along with every `users`
+// branch below — which is what it was always for. Two sources of truth for
+// live scoring is the thing this change existed to end; the flag was
+// scaffolding.
 //
-// This comment used to say, in capitals, never to set it in production. That was
-// correct then and is not now, and the difference is the whole of #313 phase 3.
-// It said so because the flag governed READS while writes always went to
-// `users`: flag-on meant reading a migration-era snapshot and writing somewhere
-// else, which for routes/scores.js destroys data rather than merely misreporting
-// it (applyAwards returns weeklyScore as a COMPLETE replacement, so a manager
-// with five scored weeks whose snapshot holds three is left with three).
+// `users` is frozen, not dropped: it is the pre-cutover record and nothing
+// writes to it. Anything still reading it is a bug.
 //
-// Writes now follow the flag. There is one source of truth at any moment and the
-// two halves cannot disagree about which. Nothing dual-writes.
-//
-// ---- what it still is NOT --------------------------------------------------
-//
-// Not reversible in general. Flip on, let an hour of scoring run, and flipping
-// back silently reverts that hour — `users` will not have seen any of it, and
-// nothing errors to say so. The window in which flipping back is cheap is
-// measured in seconds, not hours.
-//
-// Not safe to flip against a stale copy. `accounts` and `franchises` hold
-// whatever scripts/migrate-accounts.js last wrote. It upserts by
-// (accountId, league) and UPDATES existing rows, so re-running it re-syncs —
-// and it must be re-run immediately before the flip or the app starts serving
-// however far behind they are.
-//
-// ---- the cutover -----------------------------------------------------------
-//
-//   1. Deploy this code with the var unset. Nothing changes; verify that.
-//   2. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js"
-//      Dry run. Read the drift: every manager should show accountAction
-//      'update', and the field-routing guards must pass. QUOTE THE WHOLE
-//      COMMAND — unquoted, the heroku CLI eats the flags as its own.
-//   3. heroku run -a fantasy-cfb "node scripts/migrate-accounts.js --apply --yes"
-//      --apply verifies and fingerprints on its own, so a separate --verify pass
-//      is optional. --yes matters: without a TTY the database-name prompt exits
-//      1 having written NOTHING, which reads like a no-op and is not one.
-//   4. node scripts/diff-franchise-reads.js against a dev copy synced from
-//      prod. BEFORE the flip, not after: the script diffs flag-off against
-//      flag-on within ONE database, so it is only meaningful while both
-//      collections still hold the same thing. Run it after step 5 and the first
-//      scoring pass makes `users` stale, the script reports real divergence,
-//      and an operator reads a successful cutover as a failed one.
-//   5. heroku config:set FRANCHISE_READS=true -a fantasy-cfb
-//   6. Then watch. A block from modules/identity-guard.js, a second Captain
-//      reminder inside one week, or a standings table that stops moving all mean
-//      flip back: heroku config:unset FRANCHISE_READS -a fantasy-cfb.
-//      ⚠️ Flipping back REVERTS everything written since the flip — `users` has
-//      not seen any of it and nothing errors to say so. Minutes are cheap;
-//      hours are not.
-//
-// ---- WHEN ------------------------------------------------------------------
-//
-// Step 4 restarts the dyno. In-flight requests are SIGTERMed and any job mid-run
-// dies where it stands, so the hour matters as much as the day. From
-// modules/scheduler.js:
-//
-//   daily-scores      23:00 CT nightly      the heaviest write in the app
-//   captain-reminder  :00 and :30, always   writes the franchise ledger
-//   recap-notice      Mon 07:05 and 19:05
-//
-// So: midweek, never a game day, and flip at around :10 past an hour that is not
-// 23:00 — that is the widest clear gap between reminder ticks. A flip at 23:05
-// on a Wednesday kills the nightly pass mid-loop with some managers written and
-// the rest not.
-//
-// One web dyno today, so there is no window where two dynos disagree about the
-// flag. That stops being true the moment the app scales out, and a rolling
-// restart that splits reads and writes across collections is the exact
-// divergence this module spends forty lines warning about.
-//
-// ONE definition, read PER CALL. Both deliberate: this repo has been bitten by
-// LIVE_POLL_ENABLED, where modules/scheduler.js treated unset as OFF and
-// modules/live-poll.js treated it as ON, so the poller believed it was enabled
-// while never being scheduled and nothing logged a word.
-function readsFromFranchises() {
-    return process.env.FRANCHISE_READS === 'true';
-}
-
-// The SAME switch, under a name that reads correctly at a write call site.
-//
-// An alias, and it must stay one. It is tempting to give the write side its own
-// `process.env.FRANCHISE_WRITES` so the two could be staged independently — that
-// is exactly the bug this module already warns about a few lines up, where
-// modules/scheduler.js and modules/live-poll.js disagreed about LIVE_POLL_ENABLED
-// and the poller believed it was enabled while never being scheduled.
-//
-// Here the consequence is worse than a silent no-op. Reads and writes pointing
-// at different collections is precisely the divergence the whole cutover exists
-// to avoid: with reads on the new source and writes on the old, the H2H pass
-// overwrites a live weeklyScore with a stale one. One variable, one answer, both
-// halves.
-function writesToFranchises() {
-    return readsFromFranchises();
-}
+// The history, if the reasoning is ever needed again: #313, and the runbook
+// that lived here is in that issue.
 
 // Fields that live on the Account, mirroring modules/account-migration.js.
 // Kept in sync deliberately: if the migration routes a field somewhere, this
@@ -182,14 +97,6 @@ function toUserShape(account, franchise, { list = false, explicit = false } = {}
 // index straight into seasons[0] via public/season-of.js, and a full seasons
 // array would silently hand them the wrong year.
 async function byLeagueAndSeason(league, season, { projectSeason = true, fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find(
-            { league, 'seasons.season': season },
-            fields
-                ? (projectSeason ? seasonScopedProjection(fields, season) : asProjection(fields))
-                : (projectSeason ? userProjection(season) : null)
-        ).lean();
-    }
     // This was the one method whose flag-on branch ignored `fields` and
     // hardcoded its projection, so a caller asking for captainReminders got
     // them with the flag off and not with it on — and `projectSeason: false`
@@ -221,14 +128,6 @@ function seasonScopedProjection(fields, season) {
 // Everyone with an entry for `season`, any league. Replaces
 // GET /users/season/:year, which the scoring pass and the ingest read.
 async function bySeason(season, { projectSeason = true, fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find(
-            { 'seasons.season': season },
-            fields
-                ? (projectSeason ? seasonScopedProjection(fields, season) : asProjection(fields))
-                : (projectSeason ? userProjection(season) : null)
-        ).lean();
-    }
     // Asking for `seasons` by name must NOT lose the season narrowing — callers
     // index seasons[0] through public/season-of.js, so returning every season
     // silently serves the wrong year. byLeagueAndSeason already did this; this
@@ -261,9 +160,6 @@ async function byAccountId(accountId, { league, fields } = {}) {
     // because of that (see the note on GET /users/me/push). Dropping the
     // projection while moving the storage would undo deliberate work on a
     // free-tier cluster that also serves a 30-second poller.
-    if (!readsFromFranchises()) {
-        return User.findById(accountId, fields ? asProjection(fields) : null).lean();
-    }
 
     // Matched on the ROOT of a dotted path, via the same helper the other reads
     // use. Comparing whole strings meant 'seasons.season' was not recognised as
@@ -305,10 +201,6 @@ async function byAccountId(accountId, { league, fields } = {}) {
 // scalar per manager and byLeague returns whole documents — which here would be
 // megabytes of roster to choose a hex code.
 async function usedColors(league) {
-    if (!readsFromFranchises()) {
-        const users = await User.find({ league }, { color: 1 }).lean();
-        return users.map(u => u.color).filter(Boolean);
-    }
     const franchises = await Franchise.find({ league }, { accountId: 1, _id: 0 }).lean();
     if (!franchises.length) return [];
     const accounts = await Account.find(
@@ -344,14 +236,10 @@ function asProjection(fields) {
 // flag a non-event. The pre-existing over-exposure on those two is worth fixing
 // on its own, where the change is visible as a change.
 // No `list` option, deliberately. It used to take one, no caller passed it, and
-// the two paths disagreed about what it meant — flag-off returned
-// userProjection(), which has no `seasons` key at all, while flag-on returned
-// every season. A parameter nobody uses and nobody agrees on is a trap for
-// whoever tries it first.
+// the two sources disagreed about what it meant — one returned no `seasons` key
+// at all, the other every season. A parameter nobody uses and nobody agrees on
+// is a trap for whoever tries it first.
 async function byLeague(league, { fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find({ league }, fields ? asProjection(fields) : null).lean();
-    }
     // Projected at the query. Narrowing only in keepOnly afterwards still pulled
     // whole franchises — rosters, weekly scores and all — so the admin roster
     // read was fixed on the flag-off path and left heavy on this one.
@@ -377,11 +265,6 @@ async function byLeague(league, { fields } = {}) {
 // push-notify runs this once per game per tick against a cluster capped around
 // 85 KB/s, and says so in its own comments.
 async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields } = {}) {
-    if (!readsFromFranchises()) {
-        // One document, so the two halves recombine into a single query.
-        const merged = Object.assign({}, accountFilter, franchiseFilter);
-        return User.find(merged, fields ? asProjection(fields) : null).lean();
-    }
 
     const franchises = await Franchise.find(
         franchiseFilter,
@@ -424,12 +307,6 @@ async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields }
 // the same answer and reads ~4x the bytes, which is the sort of thing that only
 // shows up as a slow Saturday.
 async function byLeagueAndSeasonForAccount(accountId, season, { fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find(
-            { _id: accountId, 'seasons.season': season },
-            fields ? seasonScopedProjection(fields, season) : userProjection(season)
-        ).lean();
-    }
     const franchise = await Franchise.findOne(
         { accountId, 'seasons.season': season },
         fields
@@ -443,9 +320,6 @@ async function byLeagueAndSeasonForAccount(accountId, season, { fields } = {}) {
 // Specific managers by account id — the betting-group membership read, which
 // is keyed on ids rather than on a league.
 async function byIds(ids, { fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find({ _id: { $in: ids } }, fields ? asProjection(fields) : null).lean();
-    }
     // Franchise-side fields projected at the query, dotted paths included, so a
     // caller asking for seasons.franchiseName does not get every roster.
     const franchises = await Franchise.find(
@@ -467,9 +341,6 @@ function franchiseSideOf(fields) {
 // Every manager, any league. The bare GET /users listing.
 // Same: no `list` option. See byLeague.
 async function all({ fields } = {}) {
-    if (!readsFromFranchises()) {
-        return User.find({}, fields ? asProjection(fields) : null).lean();
-    }
     const franchises = await Franchise.find(
         {},
         fields ? asProjection(franchiseSideOf(fields).concat('accountId')) : null
@@ -483,36 +354,14 @@ async function all({ fields } = {}) {
 // it needs no account at all — and `exists` stops at the first match instead of
 // pulling documents that are ~100KB each.
 async function anyFranchise(franchiseFilter) {
-    if (!readsFromFranchises()) return !!(await User.exists(franchiseFilter));
     return !!(await Franchise.exists(franchiseFilter));
 }
 
 // Every league a person plays in. The query this whole split exists to make
 // possible, and the replacement for the Auth0 'gg'/'cl' flag.
 async function leaguesFor(accountId) {
-    if (!readsFromFranchises()) {
-        // One league per person on the old path, by construction — that is the
-        // limitation the split removes.
-        const user = await User.findById(accountId, { league: 1 }).lean();
-        return user && user.league ? [user.league] : [];
-    }
     const franchises = await Franchise.find({ accountId }, { league: 1, _id: 0 }).lean();
     return franchises.map(f => f.league);
-}
-
-// The projection the /users routes have always used. Callers index seasons[0]
-// through public/season-of.js, so both paths must narrow to one season or the
-// wrong year is served.
-function userProjection(season) {
-    const projection = {
-        firstName: 1, lastName: 1, email: 1, league: 1, lastUpdated: 1, color: 1,
-        avatarUrl: 1, profilePrompted: 1, isUpdated: 1
-    };
-    // Omit the season filter entirely when none is asked for — a membership
-    // read wants every season, and `$elemMatch: { season: undefined }` would
-    // quietly match nothing.
-    if (season !== undefined) projection.seasons = { $elemMatch: { season } };
-    return projection;
 }
 
 // Attach each franchise's account in one round trip rather than per document.
@@ -606,12 +455,6 @@ async function projectionManagers(league, season) {
         }
     });
 
-    if (!readsFromFranchises()) {
-        return User.aggregate([
-            { $match: { league, 'seasons.season': season } },
-            { $project: { firstName: 1, lastName: 1, avatarUrl: 1, color: 1, seasons } }
-        ]);
-    }
     return Franchise.aggregate([
         { $match: { league, 'seasons.season': season } },
         { $project: { accountId: 1, seasons } },
@@ -658,12 +501,6 @@ async function h2hManagers(league, season) {
         }
     });
 
-    if (!readsFromFranchises()) {
-        return User.aggregate([
-            { $match: { league, 'seasons.season': season } },
-            { $project: { seasons } }
-        ]);
-    }
     // The join costs a keyed _id lookup per manager and returns nothing but the
     // id — this read wants no account field at all. It is here for MEMBERSHIP,
     // not for data: every other read drops a franchise whose account is missing
@@ -726,7 +563,7 @@ function accountJoin(fields) {
 // meaning, so this is a deliberate narrowing rather than a silent one: an
 // unordered result is a flake waiting to happen in the comparison script.
 async function leaguesWithSeason(season) {
-    const Model = readsFromFranchises() ? Franchise : User;
+    const Model = Franchise;
     const leagues = await Model.distinct('league', { 'seasons.season': season });
     // filter(Boolean) is a CONTRACT, not tidying: routes/scores.js used to carry
     // its own `if (!league) continue;` and that guard was removed on the
@@ -737,43 +574,27 @@ async function leaguesWithSeason(season) {
 
 // ---- writes -----------------------------------------------------------------
 //
-// THE FLAG NOW GATES WRITES TOO, AND THAT IS THE WHOLE POINT.
+// WRITES GO WHERE THE READS COME FROM, AND THAT IS THE WHOLE POINT.
 //
-// Until this block existed, FRANCHISE_READS chose where reads came from while
-// writes always went to `users`. That is why the comment above says never to set
-// it in production: flag-on meant reading a snapshot and writing somewhere else,
-// and the two diverge immediately — in one case destructively (see the
-// applyH2HBonuses note).
+// For one phase, reads came from accounts/franchises while writes still went to
+// `users`. Reading a snapshot and writing somewhere else diverges immediately —
+// in one case destructively (see the applyH2HBonuses note) — which is why the
+// two were only ever allowed to move together.
 //
-// Everything below moves the write to the SAME place the read came from. There
-// is still exactly one source of truth at any moment; which one it is depends on
-// the flag, and reads and writes can never disagree about it. That is not
-// dual-writing, which remains forbidden — nothing here writes both.
-//
-// What it buys: the cutover stops being a deploy. This code ships inert, gets
-// verified in production changing nothing, and then someone sets one config var
-// at a chosen moment. A flip that goes wrong is flipped back in seconds, losing
-// only the writes made in between, instead of needing a revert and a redeploy.
-//
-// It does NOT make the cutover reversible in general. Flip on, let an hour of
-// scoring run, and flipping back silently reverts that hour — `users` will not
-// have seen it. The window is small, not absent. Re-run
-// scripts/migrate-accounts.js before flipping, or the new collections answer
-// from whenever they were last synced.
+// There is exactly one source of truth, and reads and writes cannot disagree
+// about it. That is not dual-writing, which remains forbidden — nothing here
+// writes both.
 
 // One manager, as MUTABLE documents, for a handler that will change and save.
 //
-// Always returns the same two-key shape, and this is the trick that keeps the
-// callers free of flag checks: with the flag OFF, `account` and `franchise` are
-// THE SAME User document. Setting account.avatarUrl and franchise.seasons both
-// mutate the one doc, saveBoth notices they are the same object and saves it
-// once, and the result is byte-for-byte the single-document write the route did
-// before. With the flag ON they are two documents and both are saved.
+// Always returns the same two-key shape. A handler reads naturally
+// (`account.email`, `franchise.seasons`) and documents at its mutation site
+// which document each field belongs to — which is the thing that used to be
+// invisible, and the reason a field ever gets routed to the wrong place.
 //
-// So a handler is written once, reads naturally (`account.email`,
-// `franchise.seasons`), and documents at its mutation site which document each
-// field belongs to — which is the thing that was previously invisible and is the
-// reason a field ever gets routed to the wrong place.
+// It carried a third key, `same`, for the phase when both halves could be one
+// `users` document. Nothing branches on it now, so it is gone rather than left
+// as a constant that reads like a decision.
 //
 // `franchise` is null for an account with no entry in `league`. Callers that
 // need one must say so; they are the same callers that 404 today.
@@ -783,8 +604,7 @@ async function leaguesWithSeason(season) {
 // PATCH /:id records that mongoose REFUSES to save a document that both edits a
 // scalar and replaces an array wholesale under an $elemMatch projection, so a
 // body carrying cumulativeScore AND weeklyScore throws instead of writing half.
-// tests/RosterCorrection.spec.js pins all four combinations. Reproducing the
-// projection on both flag positions is what keeps that true.
+// tests/RosterCorrection.spec.js pins all four combinations.
 //
 // `season` also narrows the FILTER, not just the projection: those middlewares
 // 404 when the manager has no entry for the season being written, and that 404
@@ -792,18 +612,6 @@ async function leaguesWithSeason(season) {
 async function loadForWrite(accountId, { league, fields, season } = {}) {
     const scoped = (list) => (season !== undefined ? seasonScopedProjection(list, season) : asProjection(list));
 
-    if (!writesToFranchises()) {
-        if (!fields) {
-            const user = await User.findById(accountId);
-            if (!user) return null;
-            return { account: user, franchise: user, same: true };
-        }
-        const filter = { _id: accountId };
-        if (season !== undefined) filter['seasons.season'] = season;
-        const user = await User.findOne(filter, scoped(fields));
-        if (!user) return null;
-        return { account: user, franchise: user, same: true };
-    }
 
     const roots = fields && new Set(fields.map(f => f.split('.')[0]));
     const account = await Account.findById(
@@ -823,11 +631,10 @@ async function loadForWrite(accountId, { league, fields, season } = {}) {
         filter,
         fields ? (franchiseFields.length ? scoped(franchiseFields) : { _id: 1 }) : null
     );
-    // A season-scoped load is a load OF THAT SEASON. No entry means the caller's
-    // 404, not a document with an empty roster — which is what the flag-off
-    // filter above does, and the two have to agree.
+    // A season-scoped load is a load OF THAT SEASON. No entry means the
+    // caller's 404, not a document with an empty roster.
     if (season !== undefined && !franchise) return null;
-    return { account, franchise, same: false };
+    return { account, franchise };
 }
 
 // Persist whatever loadForWrite handed back.
@@ -849,9 +656,9 @@ async function loadForWrite(accountId, { league, fields, season } = {}) {
 async function saveBoth(ctx) {
     if (!ctx) return;
     await ctx.account.save();
-    // `same` rather than === between two mongoose documents: loadForWrite knows
-    // which shape it built, so it says, instead of this inferring it.
-    if (!ctx.same && ctx.franchise) await ctx.franchise.save();
+    // Null for an account with no entry in the league — a normal state once one
+    // login holds two sports, not an error.
+    if (ctx.franchise) await ctx.franchise.save();
 }
 
 // A surgical update of ACCOUNT-side fields — the $set/$pull/$unset writes that
@@ -863,7 +670,7 @@ async function saveBoth(ctx) {
 // that two concurrent requests cannot fight over it and an existing binding is
 // never overwritten. Moved into an update body it would stop being atomic.
 async function updateAccount(accountId, update, { filter } = {}) {
-    const Model = writesToFranchises() ? Account : User;
+    const Model = Account;
     return Model.updateOne(Object.assign({ _id: accountId }, filter || {}), update);
 }
 
@@ -879,9 +686,6 @@ async function updateAccount(accountId, update, { filter } = {}) {
 // found by `accountId`, not by `_id`. A write that kept using { _id } would
 // match nothing on the new path and report success at the driver level.
 async function updateFranchise(accountId, update, { league, filter } = {}) {
-    if (!writesToFranchises()) {
-        return User.updateOne(Object.assign({ _id: accountId }, filter || {}), update);
-    }
     const base = { accountId };
     if (league) base.league = league;
     return Franchise.updateOne(Object.assign(base, filter || {}), update);
@@ -897,7 +701,7 @@ async function updateFranchise(accountId, update, { league, filter } = {}) {
 // caller already loops, and wrapping each one in a two-key object it would never
 // use would be ceremony.
 async function rosteredForWrite() {
-    const Model = writesToFranchises() ? Franchise : User;
+    const Model = Franchise;
     return Model.find({ 'seasons.teams.0': { $exists: true } });
 }
 
@@ -929,10 +733,6 @@ async function createManager(fields) {
             + `add it to ACCOUNT_FIELDS or FRANCHISE_FIELDS, or it is silently dropped`);
     });
 
-    if (!writesToFranchises()) {
-        const user = new User(fields);
-        return user.save();
-    }
 
     const account = await Account.create(accountFields);
     let franchise;
@@ -977,10 +777,9 @@ function keepOnly(doc, fields) {
 }
 
 module.exports = {
-    readsFromFranchises, userProjection,
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
-    writesToFranchises, loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
+    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

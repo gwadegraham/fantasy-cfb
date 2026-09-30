@@ -13,8 +13,9 @@
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const SportSeason = require('../models/sportSeason');
 const activeSeason = require('../modules/active-season');
 const usersRouter = require('../routes/users');
@@ -39,6 +40,7 @@ beforeEach(async () => {
             { season: 2027, cumulativeScore: 0, weeklyScore: [] }
         ]
     });
+    await mirrorUsers();
     userId = String(user._id);
 
     // This dyno has already rolled over; the scoring pass has not.
@@ -49,7 +51,7 @@ beforeEach(async () => {
 afterEach(() => jest.restoreAllMocks());
 
 const seasonEntry = async (year) => {
-    const doc = await User.findById(userId).lean();
+    const doc = await Franchise.findOne({ accountId: userId }).lean();
     return doc.seasons.find(s => s.season === year);
 };
 

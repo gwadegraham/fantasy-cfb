@@ -16,7 +16,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -93,6 +93,7 @@ async function seedH2H() {
         firstName: 'Bob', lastName: 'Test', league: LEAGUE,
         seasons: [{ season: SEASON, teams: [fullTeam(DUKE, 'Duke'), fullTeam(MIAMI, 'Miami')], weeklyScore: [{ week: 1, score: 0, scoreByTeam: [] }], cumulativeScore: 0 }]
     });
+    await mirrorUsers();
     return ann;
 }
 function rowsFor(body, annId) {
@@ -149,6 +150,7 @@ describe('opponent ranks on the Captain slate', () => {
             firstName: 'Ann', lastName: 'Test', league: LEAGUE,
             seasons: [{ season: SEASON, teams: [fullTeam(LSU, 'LSU'), fullTeam(TEXAS, 'Texas')], weeklyScore: [], cumulativeScore: 0 }]
         });
+        await mirrorUsers();
         const app = express();
         app.use(express.json());
         app.use((req, res, next) => {

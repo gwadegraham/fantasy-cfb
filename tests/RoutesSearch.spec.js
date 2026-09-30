@@ -12,7 +12,7 @@
 const express = require('express');
 const request = require('supertest');
 const mongoose = require('mongoose');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const { restoreEnv } = require('./helpers/env');
 const Team = require('../models/team');
 const User = require('../models/user');
@@ -87,6 +87,7 @@ beforeEach(async () => {
         league: 'claunts-league', color: '#22C37A',
         seasons: [{ season: SEASON, franchiseName: 'Claunts Crew' }]
     }]);
+    await mirrorUsers();
 });
 
 const get = (app) => request(app).get('/search/index');
@@ -149,6 +150,7 @@ describe('managers', () => {
             firstName: 'Past', lastName: 'Member', email: 'pm@example.com',
             league: 'graham-league', seasons: [{ season: SEASON - 1, franchiseName: 'Gone' }]
         });
+        await mirrorUsers();
         const res = await get(asGraham);
         const past = res.body.managers.find((m) => m.name === 'Past Member');
         expect(past.sub).toBe('');                 // NOT last season's "Gone"

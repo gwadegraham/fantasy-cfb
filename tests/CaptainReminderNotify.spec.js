@@ -27,8 +27,10 @@ process.env.VAPID_PUBLIC_KEY = 'test-public-key';
 process.env.VAPID_PRIVATE_KEY = 'test-private-key';
 
 const webpush = require('web-push');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Account = require('../models/account');
+const Franchise = require('../models/franchise');
 const Game = require('../models/game');
 const scoring = require('../modules/scoring');
 const push = require('../modules/push-notify');
@@ -58,16 +60,18 @@ const device = (tag) => ({
     userAgent: 'iPhone', createdAt: new Date()
 });
 
-function manager(first, teams, extra = {}) {
+async function manager(first, teams, extra = {}) {
     const season = Object.assign(
         { season: SEASON, teams: teams.map(t => fullTeam(t, `Team${t}`)) },
         extra.season || {}
     );
-    return User.create(Object.assign({
+    const seeded = await User.create(Object.assign({
         firstName: first, lastName: 'Test', league: LEAGUE,
         pushSubscriptions: [device(first)],
         seasons: [season]
     }, extra.user || {}));
+    await mirrorUsers();
+    return seeded;
 }
 
 // A week-4 slate: Miami kicks at 23:30Z, Georgia later, Oregon on the Friday.
@@ -249,32 +253,25 @@ describe('notifyCaptainLocks — each manager\'s own lead', () => {
     // assume no such document can exist.
     it('falls back to the default when the stored lead is unusable', async () => {
         const ann = await manager('Ann', [MIAMI]);
-        await User.collection.updateOne({ _id: ann._id }, { $set: { 'pushPrefs.captainLockLeadMinutes': 0 } });
+        // The ACCOUNT, because that is where pushPrefs lives and where the
+        // reminder reads it from. Poisoning the left-behind users row instead
+        // leaves the schema default in place and this asserts nothing.
+        await Account.collection.updateOne({ _id: ann._id }, { $set: { 'pushPrefs.captainLockLeadMinutes': 0 } });
 
         expect(await push.notifyCaptainLocks(LOCK - 1 * H)).toMatchObject({ due: 1, sent: 1 });
     });
 });
 
 // The same property as the recap ledger, and the same reason it needs its own
-// block: everything else here runs with FRANCHISE_READS unset, where the account
-// and the franchise are one document and a misrouted write cannot be seen.
+// block: while the account and the franchise were one document, a misrouted
+// write could not be seen.
 //
 // captainReminders is read from the franchise. Written to the account instead,
 // the dedupe never sees its own writes and every eligible manager is reminded
 // again on every tick — and those sends cannot be recalled by flipping back.
-describe('the reminder ledger dedupes from either source (#313 phase 3)', () => {
-    const migration = require('../modules/account-migration');
-    const Franchise = require('../models/franchise');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
-
-    it.each([['false'], ['true']])('a second tick reminds nobody, with the flag %s', async (flag) => {
+describe('the reminder ledger dedupes off the FRANCHISE (#313 phase 3)', () => {
+    it('a second tick reminds nobody', async () => {
         await manager('Ann', [MIAMI]);
-        await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = flag;
 
         const first = await push.notifyCaptainLocks(LOCK - 1 * H);
         const second = await push.notifyCaptainLocks(LOCK - 30 * 60000);
@@ -284,17 +281,15 @@ describe('the reminder ledger dedupes from either source (#313 phase 3)', () => 
         expect(payloads()).toHaveLength(1);
     });
 
-    it('flag ON records the send on the FRANCHISE, where the read looks', async () => {
+    it('the send is recorded on the FRANCHISE, where the read looks', async () => {
         const ann = await manager('Ann', [MIAMI]);
-        await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = 'true';
 
         await push.notifyCaptainLocks(LOCK - 1 * H);
 
         const fr = await Franchise.findOne({ accountId: ann._id }).lean();
         expect(fr.captainReminders).toHaveLength(1);
         expect(fr.captainReminders[0]).toMatchObject({ season: SEASON, week: 4 });
-        expect((await require('../models/account').findById(ann._id).lean()).captainReminders).toBeUndefined();
+        expect((await Account.findById(ann._id).lean()).captainReminders).toBeUndefined();
     });
 });
 
@@ -314,7 +309,7 @@ describe('notifyCaptainLocks — exactly once per week', () => {
         const ann = await manager('Ann', [MIAMI]);
         await push.notifyCaptainLocks(LOCK - 1 * H);
 
-        const saved = await User.findById(ann._id).lean();
+        const saved = await Franchise.findOne({ accountId: ann._id }).lean();
         expect(saved.captainReminders).toHaveLength(1);
         expect(saved.captainReminders[0]).toMatchObject({ season: SEASON, week: 4 });
     });
@@ -340,7 +335,7 @@ describe('notifyCaptainLocks — exactly once per week', () => {
         const res = await push.notifyCaptainLocks(LOCK - 1 * H);
 
         expect(res.sent).toBe(0);
-        const saved = await User.findById(ann._id).lean();
+        const saved = await Franchise.findOne({ accountId: ann._id }).lean();
         expect(saved.captainReminders || []).toHaveLength(0);
     });
 });

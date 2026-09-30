@@ -13,7 +13,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -50,6 +50,7 @@ async function seed() {
         firstName: 'Ann', lastName: 'Test', league: LEAGUE,
         seasons: [{ season: SEASON, teams: [fullTeam(OREGON, 'Oregon'), fullTeam(USC, 'USC')], weeklyScore: [], cumulativeScore: 0 }]
     });
+    await mirrorUsers();
     await Team.create([
         Object.assign(fullTeam(SJSU, 'San Jose State'), { abbreviation: 'SJSU' }),
         Object.assign(fullTeam(FRESNO, 'Fresno State'), { abbreviation: 'FRES' }),

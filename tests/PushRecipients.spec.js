@@ -14,7 +14,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const push = require('../modules/push-notify');
 const usersRouter = require('../routes/users');
@@ -41,10 +41,14 @@ const device = (tag) => ({
 });
 
 // `subscribed` false = never turned alerts on, which is the normal state.
-const manager = (first, teams, { subscribed = true, season = SEASON } = {}) => User.create(Object.assign({
-    firstName: first, lastName: 'Test', league: LEAGUE,
-    seasons: [{ season, teams: teams.map(t => fullTeam(t, `Team${t}`)) }]
-}, subscribed ? { pushSubscriptions: [device(first)] } : {}));
+const manager = async (first, teams, { subscribed = true, season = SEASON } = {}) => {
+    const u = await User.create(Object.assign({
+        firstName: first, lastName: 'Test', league: LEAGUE,
+        seasons: [{ season, teams: teams.map(t => fullTeam(t, `Team${t}`)) }]
+    }, subscribed ? { pushSubscriptions: [device(first)] } : {}));
+    await mirrorUsers();
+    return u;
+};
 
 const withAllowlist = async (value, fn) => {
     const before = process.env.PUSH_RECIPIENT_IDS;

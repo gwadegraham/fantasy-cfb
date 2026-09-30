@@ -15,9 +15,10 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const AuditLog = require('../models/auditLog');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const Game = require('../models/game');
 const audit = require('../modules/audit-log');
 const usersRouter = require('../routes/users');
@@ -63,6 +64,7 @@ async function seed({ locked = false, captains = [] } = {}) {
             weeklyScore: [], cumulativeScore: 0
         }]
     });
+    await mirrorUsers();
     await Game.create(locked ? weekGames(PAST_THU, PAST_SAT) : weekGames(FUTURE_THU, FUTURE_SAT));
     return user;
 }
@@ -101,7 +103,7 @@ function adminApp() {
 }
 
 const rows = (action) => AuditLog.find(action ? { action } : {}, null, { sort: { createdAt: 1 } }).lean();
-const capsOf = async () => (await User.findById(user._id).lean()).seasons[0].captains;
+const capsOf = async () => (await Franchise.findOne({ accountId: user._id }).lean()).seasons[0].captains;
 
 beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { jest.restoreAllMocks(); });
@@ -111,20 +113,12 @@ afterEach(() => { jest.restoreAllMocks(); });
 // so a handler that reads identity off the franchise writes "undefined undefined"
 // and a franchise id that points at nothing.
 //
-// Everything below runs with FRANCHISE_READS unset, where the two are one
-// document and that mistake is invisible. This block is why it is not.
-describe('the row names the person, from either source (#313 phase 3)', () => {
-    const migration = require('../modules/account-migration');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
+// While one document stood in for both, that mistake was invisible — `_id`
+// meant the person and the league entry at once. This block is why it is not.
+describe('the row names the person, not the franchise (#313 phase 3)', () => {
 
-    test.each([['false'], ['true']])('a self-serve pick, with the flag %s', async (flag) => {
+    test('a self-serve pick', async () => {
         await seed();
-        await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = flag;
 
         const res = await request(selfApp()).patch('/users/me/captain').send({ week: 3, teamId: PITT });
         expect(res.status).toBe(200);
@@ -137,10 +131,8 @@ describe('the row names the person, from either source (#313 phase 3)', () => {
         expect(row.meta.userId).toBe(String(user._id));
     });
 
-    test.each([['false'], ['true']])('an admin override, with the flag %s', async (flag) => {
+    test('an admin override', async () => {
         await seed();
-        await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = flag;
 
         await request(adminApp()).patch(`/users/${user._id}/captain`).send({ week: 3, teamId: PITT });
 
@@ -215,6 +207,7 @@ describe('a pick the lock refuses', () => {
             firstName: 'Brock', lastName: 'McCord', league: LEAGUE,
             seasons: [{ season: SEASON, captains: [{ week: 3, teamId: BAMA }], teams: [fullTeam(PITT, 'Pittsburgh'), fullTeam(BAMA, 'Alabama')], weeklyScore: [], cumulativeScore: 0 }]
         });
+        await mirrorUsers();
         // No parseable kickoff at all, but the week has a completed game — the
         // backstop that stops a played week being retro-edited.
         await Game.create([{

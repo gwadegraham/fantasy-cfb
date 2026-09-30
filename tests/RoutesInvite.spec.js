@@ -14,8 +14,9 @@ process.env.URL = 'https://campusclash.io';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Account = require('../models/account');
 const usersRouter = require('../routes/users');
 const inviteToken = require('../modules/invite-token');
 const franchiseRepo = require('../modules/franchise-repo');
@@ -67,24 +68,16 @@ function scoredSeason() {
 // missing league as "no league constraint", so an orphan is an account that can
 // claim an invite minted for any league.
 //
-// Its own block because everything above runs with FRANCHISE_READS unset, where
-// createManager is still `new User(...)` and the routing is not exercised at all.
-// Verified as a gap: passing an unrouted field through the route passed all 47
-// tests here, because mongoose silently drops unknown keys in strict mode and
-// the throw only exists on the flag-on path.
-describe('POST /users creates the pair from either source (#313 phase 3)', () => {
-    const Account = require('../models/account');
+// Its own block because the rest of the file only cares that a manager EXISTS.
+// Which half of the split each field landed on was a real gap: passing an
+// unrouted field through the route once passed all 47 tests here, because
+// mongoose silently drops unknown keys in strict mode.
+describe('POST /users creates the pair (#313 phase 3)', () => {
     const Franchise = require('../models/franchise');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
 
     const body = { firstName: 'Ann', lastName: 'Lee', league: LEAGUE, email: 'ann@example.com' };
 
-    test.each([['false'], ['true']])('the response is User-shaped with the flag %s', async (flag) => {
-        process.env.FRANCHISE_READS = flag;
+    test('the response is User-shaped', async () => {
         const res = await request(managerApp).post('/users').send(body);
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({ firstName: 'Ann', lastName: 'Lee', league: LEAGUE, email: 'ann@example.com' });
@@ -92,8 +85,7 @@ describe('POST /users creates the pair from either source (#313 phase 3)', () =>
         expect(res.body.seasons).toHaveLength(1);
     });
 
-    test('flag ON writes each field to its own document, and nothing to `users`', async () => {
-        process.env.FRANCHISE_READS = 'true';
+    test('each field goes to its own document, and nothing to `users`', async () => {
         const res = await request(managerApp).post('/users').send(body);
 
         const account = await Account.findById(res.body._id).lean();
@@ -108,6 +100,7 @@ describe('POST /users creates the pair from either source (#313 phase 3)', () =>
         expect(franchise.seasons).toHaveLength(1);
         expect(franchise.lastUpdated).toBeTruthy();
 
+        // The left-behind collection must not gain a row.
         expect(await User.countDocuments({ firstName: 'Ann' })).toBe(0);
     });
 
@@ -115,7 +108,6 @@ describe('POST /users creates the pair from either source (#313 phase 3)', () =>
         // A created pair that the app cannot read back is the same bug as not
         // creating it. This is what the admin roster and the invite flow hit
         // one request later.
-        process.env.FRANCHISE_READS = 'true';
         const res = await request(managerApp).post('/users').send(body);
         const back = await require('../modules/franchise-repo').byAccountId(res.body._id);
         expect(back).toMatchObject({ firstName: 'Ann', league: LEAGUE, email: 'ann@example.com' });
@@ -123,7 +115,6 @@ describe('POST /users creates the pair from either source (#313 phase 3)', () =>
     });
 
     test('a franchise that cannot be written leaves NO orphan account behind', async () => {
-        process.env.FRANCHISE_READS = 'true';
         const boom = jest.spyOn(Franchise, 'create').mockRejectedValueOnce(new Error('write failed'));
 
         const res = await request(managerApp).post('/users').send(body);
@@ -138,6 +129,7 @@ describe('POST /users creates the pair from either source (#313 phase 3)', () =>
 describe('POST /users/:id/invite-link', () => {
     test('returns a signed link that resolves back to the franchise', async () => {
         const u = await User.create(player());
+        await mirrorUsers();
         const res = await request(managerApp).post(`/users/${u._id}/invite-link`);
 
         expect(res.status).toBe(200);
@@ -157,18 +149,21 @@ describe('POST /users/:id/invite-link', () => {
 
     test('a League Manager cannot mint a link for another league', async () => {
         const u = await User.create(player({ league: OTHER }));
+        await mirrorUsers();
         const res = await request(managerApp).post(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(403);
     });
 
     test('an Admin can mint a link for any league', async () => {
         const u = await User.create(player({ league: OTHER }));
+        await mirrorUsers();
         const res = await request(adminApp).post(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(200);
     });
 
     test('a plain member cannot mint a link at all', async () => {
         const u = await User.create(player());
+        await mirrorUsers();
         const res = await request(memberApp).post(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(403);
     });
@@ -177,6 +172,7 @@ describe('POST /users/:id/invite-link', () => {
     // to their login in week 6 and needs a way back in.
     test('still works once the season is underway', async () => {
         const u = await User.create(player({ seasons: scoredSeason() }));
+        await mirrorUsers();
         const res = await request(managerApp).post(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(200);
         expect(res.body.link).toBeDefined();
@@ -184,6 +180,7 @@ describe('POST /users/:id/invite-link', () => {
 
     test('flags a franchise that already has a login bound', async () => {
         const u = await User.create(player({ authSub: 'auth0|existing' }));
+        await mirrorUsers();
         const res = await request(managerApp).post(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(200);
         expect(res.body.alreadyClaimed).toBe(true);
@@ -193,16 +190,18 @@ describe('POST /users/:id/invite-link', () => {
 describe('DELETE /users/:id/invite-link', () => {
     test('clears the binding so a fresh invite can be claimed', async () => {
         const u = await User.create(player({ authSub: 'auth0|old' }));
+        await mirrorUsers();
         const res = await request(managerApp).delete(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(200);
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+        expect((await Account.findById(u._id).lean()).authSub).toBeUndefined();
     });
 
     test('a League Manager cannot reset another league', async () => {
         const u = await User.create(player({ league: OTHER, authSub: 'auth0|old' }));
+        await mirrorUsers();
         const res = await request(managerApp).delete(`/users/${u._id}/invite-link`);
         expect(res.status).toBe(403);
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|old');
+        expect((await Account.findById(u._id).lean()).authSub).toBe('auth0|old');
     });
 });
 
@@ -211,7 +210,7 @@ describe('POST /users', () => {
         const res = await request(managerApp).post('/users')
             .send({ firstName: 'Ann', lastName: 'Lee', league: LEAGUE, email: '  Ann@Example.COM ' });
         expect(res.status).toBe(201);
-        expect((await User.findById(res.body._id).lean()).email).toBe('ann@example.com');
+        expect((await Account.findById(res.body._id).lean()).email).toBe('ann@example.com');
     });
 
     // Without an email, invite-bind has nothing to check a claimer against and
@@ -222,7 +221,7 @@ describe('POST /users', () => {
             .send({ firstName: 'Bo', lastName: 'Fox', league: LEAGUE });
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/email is required/i);
-        expect(await User.countDocuments({ firstName: 'Bo' })).toBe(0);
+        expect(await Account.countDocuments({ firstName: 'Bo' })).toBe(0);
     });
 
     // canManageLeague() waves an Admin through whatever it's handed, undefined
@@ -237,7 +236,7 @@ describe('POST /users', () => {
             .send({ firstName: 'Rae', lastName: 'Tester', email: 'rae@example.com', league });
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/valid league/i);
-        expect(await User.countDocuments({ firstName: 'Rae' })).toBe(0);
+        expect(await Account.countDocuments({ firstName: 'Rae' })).toBe(0);
     });
 
     test('refuses a blank or whitespace-only email', async () => {
@@ -252,15 +251,17 @@ describe('POST /users', () => {
         // season-roster edit, so it gets the same lock.
         test('a League Manager is locked out with 423', async () => {
             await User.create(player({ seasons: scoredSeason() }));
+            await mirrorUsers();
             const res = await request(managerApp).post('/users')
                 .send({ firstName: 'Late', lastName: 'Joiner', league: LEAGUE });
             expect(res.status).toBe(423);
             expect(res.body.message).toMatch(/locked once the season is underway/i);
-            expect(await User.countDocuments({ firstName: 'Late' })).toBe(0);
+            expect(await Account.countDocuments({ firstName: 'Late' })).toBe(0);
         });
 
         test('an Admin may still add (they can rescore afterwards)', async () => {
             await User.create(player({ seasons: scoredSeason() }));
+            await mirrorUsers();
             const res = await request(adminApp).post('/users')
                 .send({ firstName: 'Late', lastName: 'Joiner', league: LEAGUE, email: 'late@example.com' });
             expect(res.status).toBe(201);
@@ -269,6 +270,7 @@ describe('POST /users', () => {
         // The lock is per-league: the other league being underway is irrelevant.
         test('a manager can still add to a league that has not started', async () => {
             await User.create(player({ league: OTHER, seasons: scoredSeason() }));
+            await mirrorUsers();
             const res = await request(managerApp).post('/users')
                 .send({ firstName: 'Early', lastName: 'Bird', league: LEAGUE, email: 'early@example.com' });
             expect(res.status).toBe(201);
@@ -311,6 +313,7 @@ describe('inviteBind middleware', () => {
 
     test('binds the signed-in identity to the franchise and re-logins for a fresh token', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = okManagement();
 
         const res = await request(bindApp(session(), management))
@@ -332,7 +335,7 @@ describe('inviteBind middleware', () => {
             userId: String(u._id),
             league: 'gg'
         });
-        const saved = await User.findById(u._id).lean();
+        const saved = await Account.findById(u._id).lean();
         expect(saved.authSub).toBe('auth0|new');
     });
 
@@ -347,6 +350,7 @@ describe('inviteBind middleware', () => {
         ['claunts-league', 'cl']
     ])('what it writes for %s round-trips back through the app read path', async (league, flag) => {
         const u = await User.create(player({ league, email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = okManagement();
 
         await request(bindApp(session(), management))
@@ -363,10 +367,11 @@ describe('inviteBind middleware', () => {
     });
 
     test('records the email on first use when the franchise had none', async () => {
-        const u = await User.create(player());   // no email
+        const u = await User.create(player());
+        await mirrorUsers();   // no email
         await request(bindApp(session({ email: 'new@example.com' }), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
-        expect((await User.findById(u._id).lean()).email).toBe('new@example.com');
+        expect((await Account.findById(u._id).lean()).email).toBe('new@example.com');
     });
 
     // A password invitee binds on the spot now — no inbox round trip.
@@ -374,6 +379,7 @@ describe('inviteBind middleware', () => {
     // rode in on — the middleware runs on every page for everyone.
     test('leaves the invite alone when the lookup fails, rather than spending it', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const app = express();
         app.use((req, res, next) => {
             req.oidc = { isAuthenticated: () => true, user: session() };
@@ -411,14 +417,16 @@ describe('inviteBind middleware', () => {
 
     test('binds a password identity straight away', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const res = await request(bindApp(session(), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
         expect(res.status).toBe(302);
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|new');
+        expect((await Account.findById(u._id).lean()).authSub).toBe('auth0|new');
     });
 
     test('refuses a forwarded link claimed from a different address', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = okManagement();
 
         const res = await request(bindApp(session({ email: 'mallory@example.com' }), management))
@@ -427,23 +435,25 @@ describe('inviteBind middleware', () => {
         expect(res.status).toBe(403);
         expect(res.text).toContain('Wrong email address');
         expect(management.patchUserMetadata).not.toHaveBeenCalled();
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+        expect((await Account.findById(u._id).lean()).authSub).toBeUndefined();
     });
 
     test('refuses a link that has already been spent', async () => {
         const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|first' }));
+        await mirrorUsers();
         const res = await request(bindApp(session({ sub: 'auth0|second' }), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
 
         expect(res.status).toBe(403);
         expect(res.text).toContain('already been used');
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');   // unchanged
+        expect((await Account.findById(u._id).lean()).authSub).toBe('auth0|first');   // unchanged
     });
 
     // Auth0 rejecting the write must not look like success, and must not leave a
     // half-bound record behind.
     test('surfaces a Management API failure without binding', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = { patchUserMetadata: jest.fn(async () => { throw new Error('boom'); }) };
 
         const res = await request(bindApp(session(), management))
@@ -451,11 +461,12 @@ describe('inviteBind middleware', () => {
 
         expect(res.status).toBe(500);
         expect(res.text).toContain('couldn’t finish setting up');
-        expect((await User.findById(u._id).lean()).authSub).toBeUndefined();
+        expect((await Account.findById(u._id).lean()).authSub).toBeUndefined();
     });
 
     test('waits for the login instead of acting on a logged-out request', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = okManagement();
         const res = await request(bindApp(null, management))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
@@ -473,6 +484,7 @@ describe('inviteBind middleware', () => {
 
     test('never repoints a session that already resolves to a franchise', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const management = okManagement();
         const linked = session({ user_metadata: { metadata: { userId: 'someone-else' } } });
 
@@ -487,6 +499,7 @@ describe('inviteBind middleware', () => {
     // successfully claimed the franchise.
     test('is a no-op for the identity that already owns the franchise', async () => {
         const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|new' }));
+        await mirrorUsers();
         const res = await request(bindApp(session(), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenFor(u)}`);
         expect(res.status).toBe(200);
@@ -499,14 +512,8 @@ describe('inviteBind middleware', () => {
 // email and authSub are the Account's, league is the Franchise's. Every refusal
 // decideInvite can reach is a field it read off one of them, so a half-wired
 // projection does not error — it quietly stops refusing.
-describe('inviteBind reads the same record from either source (#313 phase 2)', () => {
+describe('inviteBind reads one record out of both documents (#313 phase 2)', () => {
     const { inviteBind, COOKIE } = require('../modules/invite-bind');
-    const migration = require('../modules/account-migration');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
 
     const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
     const session = (over) => Object.assign(
@@ -528,56 +535,45 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
         return app;
     }
 
-    // Seeded once, then replayed under each flag. The bind WRITES, so each run
-    // needs its own record — a bound franchise refuses the second time round,
-    // which would read as a flag difference and is not one.
-    async function attempt(flag, seed, tokenOverride) {
-        process.env.FRANCHISE_READS = 'false';
+    // The bind WRITES, so each case seeds its own record — a bound franchise
+    // refuses the second time round.
+    async function attempt(seed, tokenOverride) {
         const u = await User.create(seed());
-        await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = flag;
+        await mirrorUsers();
         const res = await request(bindApp(session(), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenOverride ? tokenOverride(u) : tokenFor(u)}`);
         return { status: res.status, text: res.text, location: res.headers.location };
     }
 
-    test('a good invite binds from either source', async () => {
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com' }));
-            expect(got.status).toBe(302);
-            expect(got.location).toBe('/login?returnTo=%2Fstandings');
-        }
+    test('a good invite binds', async () => {
+        const got = await attempt(() => player({ email: 'ann@example.com' }));
+        expect(got.status).toBe(302);
+        expect(got.location).toBe('/login?returnTo=%2Fstandings');
     });
 
-    test('a spent link is refused by both — authSub is an ACCOUNT field', async () => {
+    test('a spent link is refused — authSub is an ACCOUNT field', async () => {
         // If the read stopped returning authSub, decideInvite would fall through
         // to the email gate and hand an already-claimed franchise to whoever
         // opened the link second. It would not error; it would just bind.
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
-            // Status only. renderRefusalPage titles every refusal "Invite", so
-            // matching the body cannot tell WHICH refusal fired and would read
-            // as evidence it is not. The 403 is the real assertion: dropping
-            // authSub falls through to the email gate and yields a 302.
-            expect(got.status).toBe(403);
-        }
+        const got = await attempt(() => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
+        // Status only. renderRefusalPage titles every refusal "Invite", so
+        // matching the body cannot tell WHICH refusal fired and would read as
+        // evidence it is not. The 403 is the real assertion: dropping authSub
+        // falls through to the email gate and yields a 302.
+        expect(got.status).toBe(403);
     });
 
-    test('a token minted for the other league is refused by both — league is a FRANCHISE field', async () => {
+    test('a token minted for the other league is refused — league is a FRANCHISE field', async () => {
         // The asymmetric one. decideInvite reads a MISSING league as "no league
         // constraint" rather than as a mismatch, so a read that fetched only the
         // account would stop refusing forwarded invites instead of erroring.
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com' }), (u) => tokenFor(u, OTHER));
-            expect(got.status).toBe(403);
-        }
+        const got = await attempt(() => player({ email: 'ann@example.com' }), (u) => tokenFor(u, OTHER));
+        expect(got.status).toBe(403);
     });
 
-    test('a claimer signing in with a different address is refused by both', async () => {
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'someone.else@example.com' }));
-            expect(got.status).toBe(403);
-        }
+    test('a claimer signing in with a different address is refused', async () => {
+        const got = await attempt(() => player({ email: 'someone.else@example.com' }));
+        expect(got.status).toBe(403);
     });
 
     // This test was added in #460 to DOCUMENT a gap rather than assert it was
@@ -586,14 +582,12 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
     // invite minted for any league. It was written so that closing the gap would
     // break it. #461 closed it, and this is what it looks like now.
     test('an account with NO franchise is REFUSED an invite for any league', async () => {
-        const Account = require('../models/account');
         const { decideInvite } = require('../modules/invite-bind');
         const a = await Account.create({ firstName: 'Hoops', lastName: 'Only', email: 'hoops@example.com' });
 
         const invite = { userId: a._id, league: OTHER };
         const args = { sub: 'auth0|new', tokenEmail: 'hoops@example.com', sessionUserId: null };
 
-        process.env.FRANCHISE_READS = 'true';
         const rec = await franchiseRepo.byAccountId(a._id,
             { fields: ['email', 'league', 'authSub', 'firstName'] });
 
@@ -616,21 +610,20 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
             .toEqual({ action: 'bind', reason: 'verified' });
     });
 
-    test('and the record itself carries all four fields, from either source', async () => {
+    test('and the record itself carries all four fields', async () => {
         // Directly, because three of the four assertions above are 403s and a
-        // 403 does not say WHICH refusal fired.
+        // 403 does not say WHICH refusal fired. The four are split across the
+        // two documents — email/authSub/firstName on the account, league on the
+        // franchise — so one read has to assemble them.
         const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|held' }));
-        await migration.migrate({ apply: true });
-        for (const flag of ['false', 'true']) {
-            process.env.FRANCHISE_READS = flag;
-            const rec = await franchiseRepo.byAccountId(u._id,
-                { fields: ['email', 'league', 'authSub', 'firstName'] });
-            expect(rec).toMatchObject({
-                email: 'ann@example.com', league: LEAGUE,
-                authSub: 'auth0|held', firstName: 'Ann'
-            });
-            expect(String(rec._id)).toBe(String(u._id));
-        }
+        await mirrorUsers();
+        const rec = await franchiseRepo.byAccountId(u._id,
+            { fields: ['email', 'league', 'authSub', 'firstName'] });
+        expect(rec).toMatchObject({
+            email: 'ann@example.com', league: LEAGUE,
+            authSub: 'auth0|held', firstName: 'Ann'
+        });
+        expect(String(rec._id)).toBe(String(u._id));
     });
 });
 
@@ -647,20 +640,23 @@ describe('auth-sub backfill', () => {
 
     test('fills a blank binding', async () => {
         const u = await User.create(player());
+        await mirrorUsers();
         expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(true);
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|seen');
+        expect((await Account.findById(u._id).lean()).authSub).toBe('auth0|seen');
     });
 
     // The guard lives in the update filter, not just the predicate, so a second
     // login can't quietly take over a franchise someone already claimed.
     test('refuses to overwrite a binding that already exists', async () => {
         const u = await User.create(player({ authSub: 'auth0|first' }));
+        await mirrorUsers();
         expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|second')).toBe(false);
-        expect((await User.findById(u._id).lean()).authSub).toBe('auth0|first');
+        expect((await Account.findById(u._id).lean()).authSub).toBe('auth0|first');
     });
 
     test('is idempotent — the second sighting writes nothing', async () => {
         const u = await User.create(player());
+        await mirrorUsers();
         expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(true);
         expect(await recordAuthSub(franchiseRepo, u._id, 'auth0|seen')).toBe(false);
     });
@@ -676,6 +672,7 @@ describe('GET /users/league/:league/roster', () => {
     test('reports who has a login bound, without leaking the sub', async () => {
         await User.create(player({ firstName: 'Linked', authSub: 'auth0|1', email: 'a@b.com' }));
         await User.create(player({ firstName: 'Unlinked' }));
+        await mirrorUsers();
 
         const res = await request(managerApp).get(`/users/league/${LEAGUE}/roster`);
         expect(res.status).toBe(200);
@@ -706,6 +703,7 @@ describe('GET /users/league/:league/roster', () => {
         await User.create(player({ firstName: 'Brandnew' }));
         await User.create(player({ firstName: 'Claimed', authSub: 'auth0|1',
             seasons: [{ season: SEASON, teams: [TEAM] }] }));
+        await mirrorUsers();
 
         const res = await request(managerApp).get(`/users/league/${LEAGUE}/roster`);
         const by = (n) => res.body.players.find(p => p.firstName === n);
@@ -719,6 +717,7 @@ describe('GET /users/league/:league/roster', () => {
     // before adding someone onto an empty roster — so the two are separate flags.
     test('reports seasonUnderway separately from locked', async () => {
         await User.create(player({ seasons: scoredSeason() }));
+        await mirrorUsers();
 
         const asManager = await request(managerApp).get(`/users/league/${LEAGUE}/roster`);
         expect(asManager.body.seasonUnderway).toBe(true);

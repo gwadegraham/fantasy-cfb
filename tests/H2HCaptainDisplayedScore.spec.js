@@ -24,7 +24,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -99,6 +99,7 @@ async function seed({ captainEnabled = true, h2hBonus = 0 } = {}) {
             cumulativeScore: 1
         }]
     });
+    await mirrorUsers();
     await Game.create([finishedGame(101, OREGON, 99), finishedGame(102, USC, 98), finishedGame(103, DUKE, 97), finishedGame(104, MIAMI, 96)]);
     return ann;
 }

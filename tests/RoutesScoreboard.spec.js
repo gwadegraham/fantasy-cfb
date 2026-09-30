@@ -7,7 +7,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const Game = require('../models/game');
 const User = require('../models/user');
 const Team = require('../models/team');
@@ -111,6 +111,7 @@ async function seed() {
             }]
         }]
     });
+    await mirrorUsers();
 
     // A second league's manager owns Texas. Nothing of theirs may appear.
     await User.create({
@@ -120,6 +121,7 @@ async function seed() {
             weeklyScore: [{ week: 2, score: 9, scoreByTeam: [{ team: 'Texas', teamId: TEX, gameId: 401, score: 9 }] }]
         }]
     });
+    await mirrorUsers();
 }
 
 beforeEach(seed);

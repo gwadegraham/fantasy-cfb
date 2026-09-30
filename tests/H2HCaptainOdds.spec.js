@@ -24,8 +24,9 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const Game = require('../models/game');
 const Team = require('../models/team');
 const ScoringConfig = require('../models/scoringConfig');
@@ -82,6 +83,7 @@ async function seed(annCaptains, cfgOver) {
         firstName: 'Bob', lastName: 'Test', league: LEAGUE,
         seasons: [{ season: SEASON, teams: [fullTeam(DUKE, 'Duke'), fullTeam(MIAMI, 'Miami')], weeklyScore: [{ week: 1, score: 0, scoreByTeam: [] }], cumulativeScore: 0 }]
     });
+    await mirrorUsers();
     await Game.create([game(101, OREGON, 99, false), game(102, USC, 98, false), game(103, DUKE, 97, false), game(104, MIAMI, 96, false)]);
     return ann;
 }
@@ -117,7 +119,7 @@ describe('the win bar counts the Captain', () => {
         const ann = await seed([{ week: 1, teamId: USC }]);
         const onUsc = await odds(ann);
 
-        await User.updateOne({ _id: ann._id }, { $set: { 'seasons.0.captains': [{ week: 1, teamId: OREGON }] } });
+        await Franchise.updateOne({ accountId: ann._id }, { $set: { 'seasons.0.captains': [{ week: 1, teamId: OREGON }] } });
         const onOregon = await odds(ann);
 
         expect(onOregon).toBeGreaterThan(onUsc);
@@ -161,6 +163,7 @@ describe('the win bar counts the Captain', () => {
             firstName: 'Bob', lastName: 'Test', league: LEAGUE,
             seasons: [{ season: SEASON, teams: [fullTeam(DUKE, 'Duke')], weeklyScore: [{ week: 1, score: 20, scoreByTeam: [{ team: 'Duke', teamId: DUKE, gameId: 103, score: 20 }] }], cumulativeScore: 20 }]
         });
+        await mirrorUsers();
         await Game.create([game(101, OREGON, 99, true), game(102, USC, 98, true), game(103, DUKE, 97, true)]);
 
         const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
