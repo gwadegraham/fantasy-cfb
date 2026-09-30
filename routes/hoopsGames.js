@@ -16,6 +16,7 @@ const HoopsGame = require('../models/hoopsGame');
 // first version of the tests spied on the client and the route went to the real
 // API anyway, failing with a 400 that looked like a routing bug.
 const cbbd = require('../modules/cbbd-client');
+const calendar = require('../modules/hoops-calendar');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -63,7 +64,10 @@ async function writeGames(ops, label) {
 // the schema names 34 of them, so a blind $set would store whatever the API
 // adds next under a name nothing reads. Mapping explicitly means a NEW field
 // arrives as a schema change, deliberately, rather than as silent drift.
-function buildUpsertOp(g) {
+// `seasonStart` is the Monday of the week containing the season's first game.
+// Passed in rather than derived per game, because deriving it from the row
+// being written would make every game its own week 1.
+function buildUpsertOp(g, seasonStart) {
     if (!g || g.id == null) return null;
 
     const played = g.status === 'final';
@@ -76,6 +80,9 @@ function buildUpsertOp(g) {
         seasonType: g.seasonType,
         startDate: g.startDate,
         startTimeTbd: !!g.startTimeTbd,
+        // Derived here so the whole app can query by week without repeating
+        // the derivation (#315). null before week 1 rather than 0.
+        week: seasonStart ? calendar.weekOf(g.startDate, seasonStart) : undefined,
         status: g.status,
         neutralSite: !!g.neutralSite,
         conferenceGame: !!g.conferenceGame,
@@ -115,11 +122,143 @@ function buildUpsertOp(g) {
         doc.awayPoints = g.awayPoints;
     }
 
-    // undefined AND null. A null period array would be stored as null, past the
-    // [Number] default, and a reader doing .homePeriodPoints.length on the
-    // schema's word throws on every scheduled game.
+    // undefined AND null get stripped from $set — EXCEPT `week`.
+    //
+    // A null period array would otherwise be stored as null, past the [Number]
+    // default, and a reader doing .homePeriodPoints.length would throw on every
+    // scheduled game.
+    //
+    // `week` is $unset rather than skipped when it has no value, so a stale
+    // number cannot outlive the date that produced it.
+    //
+    // Unreachable through a normal ingest — the origin is the earliest game we
+    // know of, so moving a game earlier re-anchors the season rather than
+    // putting the game before week 1 (there is a test for exactly that). This
+    // covers the case where seasonStart could not be derived at all, where
+    // skipping the key would leave whatever was there before.
+    const unsetWeek = doc.week === null || doc.week === undefined;
     Object.keys(doc).forEach(k => { if (doc[k] === undefined || doc[k] === null) delete doc[k]; });
-    return { updateOne: { filter: { id: g.id }, update: { $set: doc }, upsert: true } };
+    const update = { $set: doc };
+    if (unsetWeek) update.$unset = { week: '' };
+    return { updateOne: { filter: { id: g.id }, update, upsert: true } };
+}
+
+// Week 1's Monday for a season, from the earliest game we know about — stored
+// or incoming, whichever is earlier.
+//
+// Reading the database matters for /refresh: its window is a day or two, so the
+// earliest game IN THE BATCH is not the season's first game, and deriving from
+// the batch would restart the numbering every night. Reading the incoming batch
+// matters for the first /schedule ingest, when the database is still empty.
+// A single bad date must not renumber a season.
+//
+// The anchor is a min(), so ONE row with a typo'd year moves week 1 back a year
+// and every game jumps ~52 weeks. Not hypothetical: CFBD shipped a year typo in
+// its 2025 calendar (see the project notes on the calendar week-loop risk), and
+// this runs unattended.
+//
+// A season is ~26 weeks, so a backwards jump implying a longer one is a bad row
+// rather than a long season. The outlier is ignored and the anchor left where
+// it was; the row is still stored, it just does not get to define week 1.
+//
+// Used by BOTH the pre-write and post-write anchors. The first version guarded
+// only the pre-write one, and the post-write re-derivation — added to catch a
+// forward move — read the bad row straight back out of the database and
+// reinstated it.
+const MAX_SEASON_WEEKS = 30;
+function plausibleAnchor(candidate, previous, season) {
+    if (!previous || !candidate || candidate.getTime() >= previous.getTime()) return candidate;
+    const jumpWeeks = (previous.getTime() - candidate.getTime()) / (7 * 86400000);
+    if (jumpWeeks <= MAX_SEASON_WEEKS) return candidate;
+    console.log(`Hoops ${season}: ignoring an anchor jump of ${Math.round(jumpWeeks)} weeks `
+        + `(${candidate.toISOString().slice(0, 10)}) — keeping ${previous.toISOString().slice(0, 10)}. `
+        + 'A single mis-dated game must not renumber a season.');
+    return previous;
+}
+
+async function resolveSeasonStart(season, incoming) {
+    // `startDate: { $ne: null }` is load-bearing. Mongo sorts a missing field
+    // FIRST, so one dateless row for the season becomes the "earliest game",
+    // line below sees it falsy, and the whole read-the-database mechanism is
+    // skipped — the anchor then falls back to the earliest game in the BATCH,
+    // which on /refresh is a two-day window. Measured: one dateless row made an
+    // ordinary nightly refresh re-anchor the season on 21 December, unset the
+    // week on every earlier game, and answer 200.
+    //
+    // A dateless row is reachable: bulkWrite does not run `required`
+    // validators, so a CBBD row with a null startDate upserts anyway.
+    const stored = await HoopsGame.findOne({ season, startDate: { $ne: null } }, { startDate: 1, _id: 0 })
+        .sort({ startDate: 1 }).lean();
+    const dates = [];
+    if (stored && stored.startDate) dates.push(new Date(stored.startDate));
+    incoming.forEach(g => { if (g && g.startDate) dates.push(new Date(g.startDate)); });
+    const valid = dates.filter(d => !Number.isNaN(d.getTime()));
+    if (!valid.length) return { seasonStart: null, moved: false };
+
+    const earliest = new Date(Math.min(...valid.map(d => d.getTime())));
+    const previous = stored && stored.startDate ? calendar.seasonStartFrom(stored.startDate) : null;
+
+    // A single bad date must not renumber a season.
+    //
+    // The anchor is a min(), so ONE row with a typo'd year moves week 1 back a
+    // year and every game jumps ~52 weeks. That is not hypothetical here: CFBD
+    // shipped a year typo in its 2025 calendar (see the project notes on the
+    // calendar week-loop risk), and this runs unattended.
+    //
+    // A season is ~26 weeks, so anything implying a longer one is a bad row
+    // rather than a long season. The outlier is ignored and the anchor left
+    // where it was; the row is still stored, just not trusted to define week 1.
+    const seasonStart = plausibleAnchor(calendar.seasonStartFrom(earliest), previous, season);
+    // Did the origin move BACKWARDS? Only then do the already-stored rows carry
+    // the wrong numbering.
+    const moved = !!(previous && seasonStart && previous.getTime() !== seasonStart.getTime());
+
+    // Also re-stamp when anything is UNNUMBERED. Games ingested before #315
+    // existed have no week at all, and `moved` is false for them — so a
+    // /refresh would leave the rest of the season blank forever while
+    // numbering only the handful of rows in its own window. A countDocuments
+    // is cheap; a season half-numbered is not.
+    const unnumbered = await HoopsGame.countDocuments({ season, week: { $in: [null, undefined] } });
+    return { seasonStart, moved: moved || unnumbered > 0, previous };
+}
+
+// The anchor AFTER the write, which is not always the one computed before it.
+//
+// `moved` is derived from pre-write state, so it cannot see a FORWARD move —
+// the season opener being postponed. Measured: postponing game 1 from 2 Nov to
+// 30 Nov left week 1 empty and every other game a week off, with restamped=0,
+// and a rebuild of the same data would have numbered them differently. The
+// numbering has to be a function of the data, not of ingest history.
+async function anchorAfterWrite(season, trusted) {
+    const first = await HoopsGame.findOne({ season, startDate: { $ne: null } }, { startDate: 1, _id: 0 })
+        .sort({ startDate: 1 }).lean();
+    const derived = first && first.startDate ? calendar.seasonStartFrom(first.startDate) : null;
+    // Through the same clamp: the bad row is in the database by now, so an
+    // unguarded re-derivation would simply read it back.
+    return plausibleAnchor(derived, trusted, season);
+}
+
+// Re-stamp every stored game for a season against a (possibly new) origin.
+//
+// The origin is min(earliest stored, earliest incoming), so a game earlier than
+// anything we hold — an exhibition, a foreign-tournament opener, a rescheduled
+// game, or simply ingesting the POSTSEASON before the regular season — shifts
+// week 1 backwards. Only the batch being written gets the new numbering, so
+// without this the collection ends up holding two numbering schemes at once
+// with nothing to detect it: opening night and the Sweet Sixteen both labelled
+// week 1, and standings, H2H and Captain mixing two slates under one number.
+async function restampSeason(season, seasonStart) {
+    const games = await HoopsGame.find({ season }, { startDate: 1, week: 1 }).lean();
+    const ops = games.map(g => {
+        const week = calendar.weekOf(g.startDate, seasonStart);
+        if (week === g.week) return null;
+        return week == null
+            ? { updateOne: { filter: { _id: g._id }, update: { $unset: { week: '' } } } }
+            : { updateOne: { filter: { _id: g._id }, update: { $set: { week } } } };
+    }).filter(Boolean);
+    if (!ops.length) return 0;
+    const res = await HoopsGame.bulkWrite(ops, { ordered: false });
+    return res.modifiedCount || 0;
 }
 
 // Ingest a whole season's schedule. Safe to re-run — upserts by game id.
@@ -175,7 +314,20 @@ router.post('/:season/schedule', async (req, res) => {
         });
     }
 
-    const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    // Guarded, like every other await in this file. Express 4 does not route an
+    // async handler's rejection and there is no process-level
+    // unhandledRejection handler, so a transient Mongo error here sends NO
+    // response and takes the dyno down — for every user, not just the ingest.
+    // The comment 30 lines above says exactly this; these four awaits were
+    // added without it.
+    let seasonStart, moved;
+    try {
+        ({ seasonStart, moved } = await resolveSeasonStart(season, result.games));
+    } catch (err) {
+        console.log(`Hoops schedule · ${season}: could not resolve the season anchor: ${err.message}`);
+        return res.status(500).json({ message: `Could not resolve the season anchor: ${err.message}` });
+    }
+    const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     // Games came back but none could be mapped — CBBD renamed `id`, or the rows
     // are a shape buildUpsertOp does not recognise. Without this the bulkWrite
     // threw "Invalid BulkOperation, Batch cannot be empty", a cryptic 500 for
@@ -200,10 +352,22 @@ router.post('/:season/schedule', async (req, res) => {
         return res.status(500).json({ season, seasonType, created, updated, message: `Schedule write failed: ${failure}` });
     }
 
+    // After the write, so the rows just inserted are numbered too. A failure
+    // here is NOT fatal to the ingest — the games landed, only the numbering
+    // is behind — so it is reported rather than thrown.
+    let restamped = 0, restampError = null;
+    try {
+        const after = await anchorAfterWrite(season, seasonStart);
+        const shifted = after && seasonStart && after.getTime() !== seasonStart.getTime();
+        if (moved || shifted) restamped = await restampSeason(season, after || seasonStart);
+    } catch (err) { restampError = err.message; console.log(`Hoops schedule · ${season}: re-stamp failed: ${err.message}`); }
+    if (restamped) console.log(`Hoops schedule · ${season}: anchor moved — re-stamped ${restamped} game(s)`);
+
     console.log(`Hoops schedule · ${season} ${seasonType}: ${created} created, ${updated} updated `
         + `(${result.games.length} games, ${result.windows} window(s))`);
     return res.status(200).json({
-        season, seasonType, created, updated,
+        season, seasonType, created, updated, restamped,
+        ...(restampError ? { restampError } : {}),
         games: result.games.length, windows: result.windows,
         remainingCalls: result.remainingCalls
     });
@@ -264,7 +428,14 @@ router.post('/refresh', async (req, res) => {
             });
         }
     }
-    const ops = result.games.map(buildUpsertOp).filter(Boolean);
+    let seasonStart, moved;
+    try {
+        ({ seasonStart, moved } = await resolveSeasonStart(season, result.games));
+    } catch (err) {
+        console.log(`Hoops refresh · ${season}: could not resolve the season anchor: ${err.message}`);
+        return res.status(500).json({ message: `Could not resolve the season anchor: ${err.message}` });
+    }
+    const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     const { created, updated, failure } = await writeGames(ops, `Hoops refresh · ${season}`);
     if (failure) {
         return res.status(500).json({ season, seasonType, created, updated, message: `Refresh write failed: ${failure}` });
@@ -274,13 +445,22 @@ router.post('/refresh', async (req, res) => {
     // the fetch they were the one pair of numbers here that could report a
     // healthy run while nothing landed — if CBBD renamed `id`, every op would
     // be null and the response still said "1463 games, 1463 final".
+    let restamped = 0, restampError = null;
+    try {
+        const after = await anchorAfterWrite(season, seasonStart);
+        const shifted = after && seasonStart && after.getTime() !== seasonStart.getTime();
+        if (moved || shifted) restamped = await restampSeason(season, after || seasonStart);
+    } catch (err) { restampError = err.message; console.log(`Hoops refresh · ${season}: re-stamp failed: ${err.message}`); }
+    if (restamped) console.log(`Hoops refresh · ${season}: anchor moved — re-stamped ${restamped} game(s)`);
+
     const finals = result.games.filter(g => g.status === 'final' && g.id != null).length;
     console.log(`Hoops refresh · ${season} ${seasonType} `
         + `${start.toISOString().slice(0, 10)}..${end.toISOString().slice(0, 10)}: `
         + `${ops.length} writable of ${result.games.length} fetched, ${finals} final, `
         + `${created} created, ${updated} updated`);
     return res.status(200).json({
-        season, seasonType, created, updated,
+        season, seasonType, created, updated, restamped,
+        ...(restampError ? { restampError } : {}),
         games: ops.length, fetched: result.games.length, finals,
         remainingCalls: result.remainingCalls
     });
@@ -288,3 +468,5 @@ router.post('/refresh', async (req, res) => {
 
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
+module.exports.resolveSeasonStart = resolveSeasonStart;
+module.exports.restampSeason = restampSeason;

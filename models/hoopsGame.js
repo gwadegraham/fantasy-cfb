@@ -44,6 +44,23 @@ const hoopsGameSchema = new mongoose.Schema({
     seasonType: { type: String, required: true },
 
     startDate: { type: Date, required: true },
+
+    // DERIVED, not from CBBD — there is no week field and no /calendar, which
+    // is the whole of #315. modules/hoops-calendar.js buckets Monday-to-Sunday
+    // on the EASTERN calendar and the ingest stamps it here, because the app's
+    // spine queries by week (weeklyScore, standings, H2H, Captain, the recap)
+    // and a date-range query at every one of those sites would be the same
+    // derivation repeated and eventually disagreeing with itself.
+    //
+    // Always >= 1 once the season has any games, and that is a property of the
+    // ORIGIN rather than of this field: week 1 is anchored on the earliest game
+    // known for the season, so a game that arrives earlier moves the anchor and
+    // the whole season is re-stamped. Nothing can sit before week 1.
+    //
+    // An earlier version of this comment promised "null for a game before week
+    // 1". That state is unreachable, and the ingest never wrote the null
+    // anyway — a claim with no code and no test behind it.
+    week: { type: Number },
     startTimeTbd: { type: Boolean, default: false },
 
     // 'scheduled' | 'final' (and whatever else CBBD adds). NOT derived from the
@@ -107,6 +124,8 @@ const hoopsGameSchema = new mongoose.Schema({
 // these, and dev and prod share one free-tier cluster where the ingest is 5,000
 // upserts in one shot — write amplification is not free.
 hoopsGameSchema.index({ season: 1, startDate: 1 });
+// The query shape the whole app uses: one league's slate for one week.
+hoopsGameSchema.index({ season: 1, week: 1 });
 hoopsGameSchema.index({ season: 1, homeTeamId: 1 });
 hoopsGameSchema.index({ season: 1, awayTeamId: 1 });
 

@@ -84,6 +84,16 @@ module.exports = {
         // branches 90. A second entry here was silently overridden by it, since
         // the later key wins in an object literal, so it was a threshold that
         // looked like a promise and enforced nothing.)
+        // Every basketball week number in the app comes from here, and CBBD
+        // gives no week field to check against — a wrong bucket silently scores
+        // the wrong slate with nothing to compare it to. The Eastern bucketing
+        // and the DST arithmetic are the two properties that fail quietly.
+        "./modules/hoops-calendar.js": {
+            statements: 95,
+            branches: 90,
+            functions: 100,
+            lines: 95
+        },
         // The second module in this app that spends against a billable API, and
         // it fails in the direction of spending money: an unbounded range loops
         // until it reaches the end date, and the 3,000-record cap returns a
