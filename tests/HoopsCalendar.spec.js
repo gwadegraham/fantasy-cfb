@@ -96,10 +96,42 @@ describe('weekOf — a week is 7 days across a DST change', () => {
         expect(cal.weekOf(new Date(iso), START)).toBe(expected);
     });
 
-    test('every week bound is exactly 7 days, DST or not', () => {
-        for (let w = 1; w <= 25; w++) {
+    test('a week is 7 Eastern DAYS, which is not always 168 hours', () => {
+        // The original version of this test asserted "exactly 7 days, DST or
+        // not" and passed only because easternMidnight was an hour late during
+        // EDT. A Monday-to-Monday Eastern week that spans spring-forward is
+        // genuinely 167 real hours. The test was written to the implementation
+        // rather than to the property; this is the property.
+        const hours = (w) => {
             const b = cal.weekBounds(w, START);
-            expect((b.end - b.start) / 86400000).toBe(7);
+            return (b.end - b.start) / 3600000;
+        };
+        expect(hours(18)).toBe(168);
+        expect(hours(19)).toBe(167);   // clocks go forward 14 March 2027
+        expect(hours(20)).toBe(168);
+    });
+
+    test('and every bound really is Eastern midnight', () => {
+        // The bug: the offset search validated the DAY and not the HOUR, so
+        // +5h during EDT landed at 01:00 on the right day and was accepted.
+        const at = (d) => d.toLocaleTimeString('en-US', { timeZone: cal.ZONE, hour12: false });
+        for (let w = 1; w <= 26; w++) {
+            const b = cal.weekBounds(w, START);
+            expect(at(b.start)).toBe('00:00:00');
+            expect(at(b.end)).toBe('00:00:00');
+        }
+    });
+
+    test('weekOf and weekBounds agree at every boundary, all season', () => {
+        // The invariant the two halves of this module have to share, and the
+        // one that would have caught the DST bug on its own: a game at the
+        // first instant of week N must be in week N, and one a millisecond
+        // before the end must still be.
+        for (let w = 1; w <= 26; w++) {
+            const b = cal.weekBounds(w, START);
+            expect(cal.weekOf(b.start, START)).toBe(w);
+            expect(cal.weekOf(new Date(b.end.getTime() - 1), START)).toBe(w);
+            expect(cal.weekOf(b.end, START)).toBe(w + 1);
         }
     });
 });

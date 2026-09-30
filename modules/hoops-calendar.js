@@ -72,21 +72,34 @@ function weekOf(when, seasonStart) {
 
 // The real UTC instant at which an Eastern calendar day begins.
 //
-// The day markers above are UTC midnight, which is a convenient thing to do
-// arithmetic on and the WRONG thing to compare a game's startDate against —
-// 2026-11-16T00:00Z is 19:00 on the 15th in Eastern. A bound built that way is
-// five hours early and sweeps the previous evening's games into the week.
+// The day markers above are UTC midnight, which is convenient to do arithmetic
+// on and the WRONG thing to compare a game's startDate against —
+// 2026-11-16T00:00Z is 19:00 on the 15th in Eastern.
 //
 // Eastern is UTC-5 or UTC-4 depending on DST, so the offset is found rather
-// than assumed: try both and keep the one that lands on the intended day.
+// than assumed. VALIDATE THE HOUR, NOT JUST THE DAY: the first version checked
+// only that the candidate landed on the intended day, and +5h during EDT is
+// 01:00 on the right day, so it was accepted and the -4 branch never ran. That
+// made every bound from 15 Mar 2027 onward an hour late — and a midnight-ET
+// game (the startTimeTbd placeholder 75% of the schedule carries) then fell
+// outside its own week's bounds and inside the previous week's.
 function easternMidnight(dayMarker) {
     const want = dayMarker.toISOString().slice(0, 10);
-    for (const offsetHours of [5, 4]) {
+    for (const offsetHours of [4, 5]) {
         const candidate = new Date(dayMarker.getTime() + offsetHours * 3600000);
-        const got = easternDay(candidate);
-        if (got && got.toISOString().slice(0, 10) === want) return candidate;
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        }).formatToParts(candidate).reduce((o, p) => (o[p.type] = p.value, o), {});
+        const day = `${parts.year}-${parts.month}-${parts.day}`;
+        // '24' is how some ICU builds spell midnight; both mean the day's start.
+        const atMidnight = (parts.hour === '00' || parts.hour === '24') && parts.minute === '00';
+        if (day === want && atMidnight) return candidate;
     }
-    return new Date(dayMarker.getTime() + 5 * 3600000);
+    // Unreachable for any real US date — one of UTC-4/-5 always lands on
+    // Eastern midnight. Kept so a zone change fails loudly rather than
+    // returning an hour that only looks right.
+    throw new Error(`Could not resolve Eastern midnight for ${want}`);
 }
 
 // The [start, end) bounds of a week as real instants, so they can be compared

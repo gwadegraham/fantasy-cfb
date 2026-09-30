@@ -52,9 +52,14 @@ const hoopsGameSchema = new mongoose.Schema({
     // and a date-range query at every one of those sites would be the same
     // derivation repeated and eventually disagreeing with itself.
     //
-    // Nullable on purpose: a game before week 1 (an exhibition, or a schedule
-    // that grew backwards) gets null rather than 0 or a negative, either of
-    // which reads as a real week to a caller indexing an array.
+    // Always >= 1 once the season has any games, and that is a property of the
+    // ORIGIN rather than of this field: week 1 is anchored on the earliest game
+    // known for the season, so a game that arrives earlier moves the anchor and
+    // the whole season is re-stamped. Nothing can sit before week 1.
+    //
+    // An earlier version of this comment promised "null for a game before week
+    // 1". That state is unreachable, and the ingest never wrote the null
+    // anyway — a claim with no code and no test behind it.
     week: { type: Number },
     startTimeTbd: { type: Boolean, default: false },
 

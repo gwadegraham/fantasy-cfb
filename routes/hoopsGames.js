@@ -122,11 +122,25 @@ function buildUpsertOp(g, seasonStart) {
         doc.awayPoints = g.awayPoints;
     }
 
-    // undefined AND null. A null period array would be stored as null, past the
-    // [Number] default, and a reader doing .homePeriodPoints.length on the
-    // schema's word throws on every scheduled game.
+    // undefined AND null get stripped from $set — EXCEPT `week`.
+    //
+    // A null period array would otherwise be stored as null, past the [Number]
+    // default, and a reader doing .homePeriodPoints.length would throw on every
+    // scheduled game.
+    //
+    // `week` is $unset rather than skipped when it has no value, so a stale
+    // number cannot outlive the date that produced it.
+    //
+    // Unreachable through a normal ingest — the origin is the earliest game we
+    // know of, so moving a game earlier re-anchors the season rather than
+    // putting the game before week 1 (there is a test for exactly that). This
+    // covers the case where seasonStart could not be derived at all, where
+    // skipping the key would leave whatever was there before.
+    const unsetWeek = doc.week === null || doc.week === undefined;
     Object.keys(doc).forEach(k => { if (doc[k] === undefined || doc[k] === null) delete doc[k]; });
-    return { updateOne: { filter: { id: g.id }, update: { $set: doc }, upsert: true } };
+    const update = { $set: doc };
+    if (unsetWeek) update.$unset = { week: '' };
+    return { updateOne: { filter: { id: g.id }, update, upsert: true } };
 }
 
 // Week 1's Monday for a season, from the earliest game we know about — stored
@@ -143,8 +157,44 @@ async function resolveSeasonStart(season, incoming) {
     if (stored && stored.startDate) dates.push(new Date(stored.startDate));
     incoming.forEach(g => { if (g && g.startDate) dates.push(new Date(g.startDate)); });
     const valid = dates.filter(d => !Number.isNaN(d.getTime()));
-    if (!valid.length) return null;
-    return calendar.seasonStartFrom(new Date(Math.min(...valid.map(d => d.getTime()))));
+    if (!valid.length) return { seasonStart: null, moved: false };
+
+    const seasonStart = calendar.seasonStartFrom(new Date(Math.min(...valid.map(d => d.getTime()))));
+    const previous = stored && stored.startDate ? calendar.seasonStartFrom(stored.startDate) : null;
+    // Did the origin move BACKWARDS? Only then do the already-stored rows carry
+    // the wrong numbering.
+    const moved = !!(previous && seasonStart && previous.getTime() !== seasonStart.getTime());
+
+    // Also re-stamp when anything is UNNUMBERED. Games ingested before #315
+    // existed have no week at all, and `moved` is false for them — so a
+    // /refresh would leave the rest of the season blank forever while
+    // numbering only the handful of rows in its own window. A countDocuments
+    // is cheap; a season half-numbered is not.
+    const unnumbered = await HoopsGame.countDocuments({ season, week: { $in: [null, undefined] } });
+    return { seasonStart, moved: moved || unnumbered > 0 };
+}
+
+// Re-stamp every stored game for a season against a (possibly new) origin.
+//
+// The origin is min(earliest stored, earliest incoming), so a game earlier than
+// anything we hold — an exhibition, a foreign-tournament opener, a rescheduled
+// game, or simply ingesting the POSTSEASON before the regular season — shifts
+// week 1 backwards. Only the batch being written gets the new numbering, so
+// without this the collection ends up holding two numbering schemes at once
+// with nothing to detect it: opening night and the Sweet Sixteen both labelled
+// week 1, and standings, H2H and Captain mixing two slates under one number.
+async function restampSeason(season, seasonStart) {
+    const games = await HoopsGame.find({ season }, { startDate: 1, week: 1 }).lean();
+    const ops = games.map(g => {
+        const week = calendar.weekOf(g.startDate, seasonStart);
+        if (week === g.week) return null;
+        return week == null
+            ? { updateOne: { filter: { _id: g._id }, update: { $unset: { week: '' } } } }
+            : { updateOne: { filter: { _id: g._id }, update: { $set: { week } } } };
+    }).filter(Boolean);
+    if (!ops.length) return 0;
+    const res = await HoopsGame.bulkWrite(ops, { ordered: false });
+    return res.modifiedCount || 0;
 }
 
 // Ingest a whole season's schedule. Safe to re-run — upserts by game id.
@@ -200,7 +250,7 @@ router.post('/:season/schedule', async (req, res) => {
         });
     }
 
-    const seasonStart = await resolveSeasonStart(season, result.games);
+    const { seasonStart, moved } = await resolveSeasonStart(season, result.games);
     const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     // Games came back but none could be mapped — CBBD renamed `id`, or the rows
     // are a shape buildUpsertOp does not recognise. Without this the bulkWrite
@@ -226,10 +276,14 @@ router.post('/:season/schedule', async (req, res) => {
         return res.status(500).json({ season, seasonType, created, updated, message: `Schedule write failed: ${failure}` });
     }
 
+    // After the write, so the rows just inserted are numbered too.
+    const restamped = moved ? await restampSeason(season, seasonStart) : 0;
+    if (restamped) console.log(`Hoops schedule · ${season}: week 1 moved — re-stamped ${restamped} game(s)`);
+
     console.log(`Hoops schedule · ${season} ${seasonType}: ${created} created, ${updated} updated `
         + `(${result.games.length} games, ${result.windows} window(s))`);
     return res.status(200).json({
-        season, seasonType, created, updated,
+        season, seasonType, created, updated, restamped,
         games: result.games.length, windows: result.windows,
         remainingCalls: result.remainingCalls
     });
@@ -290,7 +344,7 @@ router.post('/refresh', async (req, res) => {
             });
         }
     }
-    const seasonStart = await resolveSeasonStart(season, result.games);
+    const { seasonStart, moved } = await resolveSeasonStart(season, result.games);
     const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     const { created, updated, failure } = await writeGames(ops, `Hoops refresh · ${season}`);
     if (failure) {
@@ -301,13 +355,16 @@ router.post('/refresh', async (req, res) => {
     // the fetch they were the one pair of numbers here that could report a
     // healthy run while nothing landed — if CBBD renamed `id`, every op would
     // be null and the response still said "1463 games, 1463 final".
+    const restamped = moved ? await restampSeason(season, seasonStart) : 0;
+    if (restamped) console.log(`Hoops refresh · ${season}: week 1 moved — re-stamped ${restamped} game(s)`);
+
     const finals = result.games.filter(g => g.status === 'final' && g.id != null).length;
     console.log(`Hoops refresh · ${season} ${seasonType} `
         + `${start.toISOString().slice(0, 10)}..${end.toISOString().slice(0, 10)}: `
         + `${ops.length} writable of ${result.games.length} fetched, ${finals} final, `
         + `${created} created, ${updated} updated`);
     return res.status(200).json({
-        season, seasonType, created, updated,
+        season, seasonType, created, updated, restamped,
         games: ops.length, fetched: result.games.length, finals,
         remainingCalls: result.remainingCalls
     });
@@ -316,3 +373,4 @@ router.post('/refresh', async (req, res) => {
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
 module.exports.resolveSeasonStart = resolveSeasonStart;
+module.exports.restampSeason = restampSeason;
