@@ -118,8 +118,20 @@ async function fetchGamesInRange(season, seasonType, start, end) {
         let to = addDays(from, WINDOW_DAYS - 1);
         if (to > last) to = last;
 
+        // endDateRange is asked for the day AFTER the window, because CBBD
+        // applies it as `startDate <= <date>T00:00Z` — so naming the window's
+        // own last day returns only that day's midnight games and drops the
+        // rest. Measured: endDateRange=2026-11-29 returns 1 game on the 29th;
+        // endDateRange=2026-11-30 returns all 39.
+        //
+        // Since `from` still advances to `to + 1`, consecutive windows overlap
+        // by the midnight games of one day. Harmless — fetchGamesInRange keys
+        // by id and de-duplicates.
+        //
+        // This dropped ~271 of ~5,286 games (5%) across the four in-season
+        // window boundaries, and did it silently: every window looked full.
         const { data, remainingCalls: rem } = await cbbdGet('/games', {
-            season, seasonType, startDateRange: iso(from), endDateRange: iso(to)
+            season, seasonType, startDateRange: iso(from), endDateRange: iso(addDays(to, 1))
         });
         windows += 1;
         if (rem != null) remainingCalls = rem;

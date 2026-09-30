@@ -398,6 +398,84 @@ describe('the week stamped at ingest (#315)', () => {
         expect(byId).toEqual({ 90: 1, 91: 2, 92: 3 });
     });
 
+    // ⚠️ One dateless row used to destroy a season's numbering and return 200.
+    test('a game with no startDate does not re-anchor the season', async () => {
+        // Mongo sorts a missing field FIRST, so a dateless row became the
+        // "earliest game", the DB read was skipped, and the anchor fell back to
+        // the refresh window — unsetting the week on everything before it.
+        // Reachable because bulkWrite does not run `required` validators.
+        stubFetch({ games: [on('2026-11-02T05:00:00Z', { id: 1 }), on('2026-11-10T05:00:00Z', { id: 2 })] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+        await HoopsGame.collection.insertOne({ id: 77, season: 2027, seasonType: 'regular', status: 'scheduled' });
+
+        stubFetch({ games: [on('2026-12-21T05:00:00Z', { id: 3 })] });
+        const res = await request(app).post('/hoops/games/refresh')
+            .send({ season: 2027, start: '2026-12-21', end: '2026-12-22' });
+
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries((await HoopsGame.find({ id: { $ne: 77 } }).lean()).map(g => [g.id, g.week]));
+        expect(byId).toEqual({ 1: 1, 2: 2, 3: 8 });
+    });
+
+    // ⚠️ A single typo'd year must not renumber a season.
+    test('an implausible anchor jump is ignored, not applied', async () => {
+        // CFBD has shipped a year typo in a calendar before; this job is
+        // unattended. A season is ~26 weeks, so a jump implying a longer one is
+        // a bad row rather than a long season.
+        stubFetch({ games: [on('2026-11-02T05:00:00Z', { id: 1 }), on('2026-11-10T05:00:00Z', { id: 2 })] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+
+        stubFetch({ games: [on('2025-11-03T05:00:00Z', { id: 99 })] });   // year typo
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
+        expect(byId[1]).toBe(1);   // the real season keeps its numbering
+        expect(byId[2]).toBe(2);
+        expect(byId[99] == null).toBe(true);   // and the bad row gets no week
+    });
+
+    // ⚠️ A FORWARD move was invisible: `moved` is computed before the write.
+    test('postponing the season opener renumbers from the new opener', async () => {
+        stubFetch({ games: [
+            on('2026-11-02T05:00:00Z', { id: 1 }), on('2026-11-10T05:00:00Z', { id: 2 }), on('2026-11-17T05:00:00Z', { id: 3 })
+        ] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+
+        stubFetch({ games: [on('2026-11-30T05:00:00Z', { id: 1 })] });   // opener postponed
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+
+        expect(res.status).toBe(200);
+        const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
+        // Week 1 must not be left empty, and the numbering must be a function
+        // of the data rather than of ingest history.
+        expect(byId).toEqual({ 2: 1, 3: 2, 1: 4 });
+    });
+
+    test('a Mongo failure while re-stamping does not hang or crash the request', async () => {
+        // Express 4 does not route an async rejection and there is no
+        // process-level handler, so an unguarded throw here sends NO response
+        // and takes the dyno down. The games landed; only the numbering is
+        // behind, so it reports rather than fails.
+        stubFetch({ games: [on('2026-11-02T05:00:00Z', { id: 1 })] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+
+        jest.spyOn(HoopsGame, 'find').mockImplementationOnce(() => { throw new Error('connection reset'); });
+        stubFetch({ games: [on('2026-10-26T05:00:00Z', { id: 5 })] });
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.restampError).toMatch(/connection reset/);
+    });
+
+    test('a Mongo failure resolving the anchor is a 500, not a hang', async () => {
+        jest.spyOn(HoopsGame, 'findOne').mockImplementationOnce(() => { throw new Error('anchor read failed'); });
+        stubFetch({ games: [on('2026-11-02T05:00:00Z', { id: 1 })] });
+        const res = await request(app).post('/hoops/games/2027/schedule').send({});
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/season anchor/);
+    });
+
     test('the stored week always matches a weekBounds query', async () => {
         // The invariant the two halves of hoops-calendar must share. A
         // midnight-ET game in an EDT week used to fall outside its own bounds.

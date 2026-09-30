@@ -43,14 +43,41 @@ describe('fetchGamesInRange — the windows', () => {
         expect(r.windows).toBe(calls.length);
         const ranges = calls.map(u => [q(u, 'startDateRange'), q(u, 'endDateRange')]);
         expect(ranges[0][0]).toBe('2026-10-01');
-        expect(ranges[ranges.length - 1][1]).toBe('2027-04-30');
+        // One past the season end, so the final day is not truncated.
+        expect(ranges[ranges.length - 1][1]).toBe('2027-05-01');
 
-        // No gaps and no overlaps: each window starts the day after the last ended.
-        for (let i = 1; i < ranges.length; i++) {
-            const prevEnd = new Date(ranges[i - 1][1] + 'T00:00:00Z');
+        // No gaps: each window STARTS exactly WINDOW_DAYS after the last one.
+        //
+        // Compared on startDateRange, not endDateRange — the end is asked for
+        // one day long on purpose (CBBD truncates its own last day), so the
+        // requested ranges overlap by a day even though the windows they cover
+        // do not. Asserting contiguity on the END was asserting the bug.
+        for (let i = 1; i < ranges.length - 1; i++) {
+            const prevStart = new Date(ranges[i - 1][0] + 'T00:00:00Z');
             const thisStart = new Date(ranges[i][0] + 'T00:00:00Z');
-            expect((thisStart - prevEnd) / 86400000).toBe(1);
+            expect((thisStart - prevStart) / 86400000).toBe(client.WINDOW_DAYS);
         }
+    });
+
+    test('asks for the day AFTER each window, because endDateRange truncates', async () => {
+        // ⚠️ CBBD applies endDateRange as `startDate <= <date>T00:00Z`, so
+        // naming the window's own last day returns only that day's midnight
+        // games. Measured live: endDateRange=2026-11-29 returns 1 game on the
+        // 29th; endDateRange=2026-11-30 returns all 39.
+        //
+        // This silently dropped ~271 of ~5,286 games (5%) across the four
+        // in-season window boundaries — every window looked full.
+        const calls = stubFetch([]);
+        const { start, end } = client.seasonRange(2027);
+        await client.fetchGamesInRange(2027, 'regular', start, end);
+
+        // The signature of the fix: each window's requested END is the next
+        // window's START. With the bug they differed by a day, and that day's
+        // games were requested by nobody.
+        for (let i = 1; i < calls.length; i++) {
+            expect(q(calls[i - 1], 'endDateRange')).toBe(q(calls[i], 'startDateRange'));
+        }
+        expect(calls.length).toBeGreaterThan(1);
     });
 
     test('passes the season and seasonType through on every window', async () => {
@@ -80,7 +107,8 @@ describe('fetchGamesInRange — the windows', () => {
         expect(r.windows).toBe(1);
         expect(calls.length).toBe(1);
         expect(q(calls[0], 'startDateRange')).toBe('2026-11-03');
-        expect(q(calls[0], 'endDateRange')).toBe('2026-11-03');
+        // The day after, so the 3rd's own games are not truncated away.
+        expect(q(calls[0], 'endDateRange')).toBe('2026-11-04');
     });
 
     test('reports the remaining call allowance from the last window', async () => {
