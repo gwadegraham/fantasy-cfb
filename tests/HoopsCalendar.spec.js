@@ -111,14 +111,26 @@ describe('weekOf — a week is 7 days across a DST change', () => {
         expect(hours(20)).toBe(168);
     });
 
-    test('and every bound really is Eastern midnight', () => {
-        // The bug: the offset search validated the DAY and not the HOUR, so
-        // +5h during EDT landed at 01:00 on the right day and was accepted.
-        const at = (d) => d.toLocaleTimeString('en-US', { timeZone: cal.ZONE, hour12: false });
+    test('and every bound really is the FIRST instant of an Eastern day', () => {
+        // The bug this guards: the offset search validated the DAY and not the
+        // HOUR, so +5h during EDT landed at 01:00 on the right day and passed.
+        //
+        // Asserted structurally rather than by formatting the clock. The first
+        // version compared toLocaleTimeString to '00:00:00' and failed on CI
+        // but not locally, because Node 20's ICU spells midnight '24:00:00'
+        // and Node 26's spells it '00:00:00'. easternMidnight already handles
+        // both — the test did not, which is the module being more careful than
+        // its own test.
+        //
+        // "First instant of a day" needs no clock formatting: the bound is on
+        // one Eastern day and the millisecond before it is on the previous one.
+        const day = (d) => cal.easternDay(d).toISOString().slice(0, 10);
         for (let w = 1; w <= 26; w++) {
             const b = cal.weekBounds(w, START);
-            expect(at(b.start)).toBe('00:00:00');
-            expect(at(b.end)).toBe('00:00:00');
+            for (const edge of [b.start, b.end]) {
+                expect(day(new Date(edge.getTime() - 1))).not.toBe(day(edge));
+                expect(day(new Date(edge.getTime() + 1))).toBe(day(edge));
+            }
         }
     });
 
