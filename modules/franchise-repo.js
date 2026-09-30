@@ -236,10 +236,9 @@ function asProjection(fields) {
 // flag a non-event. The pre-existing over-exposure on those two is worth fixing
 // on its own, where the change is visible as a change.
 // No `list` option, deliberately. It used to take one, no caller passed it, and
-// the two paths disagreed about what it meant — flag-off returned
-// userProjection(), which has no `seasons` key at all, while flag-on returned
-// every season. A parameter nobody uses and nobody agrees on is a trap for
-// whoever tries it first.
+// the two sources disagreed about what it meant — one returned no `seasons` key
+// at all, the other every season. A parameter nobody uses and nobody agrees on
+// is a trap for whoever tries it first.
 async function byLeague(league, { fields } = {}) {
     // Projected at the query. Narrowing only in keepOnly afterwards still pulled
     // whole franchises — rosters, weekly scores and all — so the admin roster
@@ -363,21 +362,6 @@ async function anyFranchise(franchiseFilter) {
 async function leaguesFor(accountId) {
     const franchises = await Franchise.find({ accountId }, { league: 1, _id: 0 }).lean();
     return franchises.map(f => f.league);
-}
-
-// The projection the /users routes have always used. Callers index seasons[0]
-// through public/season-of.js, so both paths must narrow to one season or the
-// wrong year is served.
-function userProjection(season) {
-    const projection = {
-        firstName: 1, lastName: 1, email: 1, league: 1, lastUpdated: 1, color: 1,
-        avatarUrl: 1, profilePrompted: 1, isUpdated: 1
-    };
-    // Omit the season filter entirely when none is asked for — a membership
-    // read wants every season, and `$elemMatch: { season: undefined }` would
-    // quietly match nothing.
-    if (season !== undefined) projection.seasons = { $elemMatch: { season } };
-    return projection;
 }
 
 // Attach each franchise's account in one round trip rather than per document.
@@ -600,31 +584,17 @@ async function leaguesWithSeason(season) {
 // There is exactly one source of truth, and reads and writes cannot disagree
 // about it. That is not dual-writing, which remains forbidden — nothing here
 // writes both.
-//
-// What it buys: the cutover stops being a deploy. This code ships inert, gets
-// verified in production changing nothing, and then someone sets one config var
-// at a chosen moment. A flip that goes wrong is flipped back in seconds, losing
-// only the writes made in between, instead of needing a revert and a redeploy.
-//
-// It does NOT make the cutover reversible in general. Flip on, let an hour of
-// scoring run, and flipping back silently reverts that hour — `users` will not
-// have seen it. The window is small, not absent. Re-run
-// scripts/migrate-accounts.js before flipping, or the new collections answer
-// from whenever they were last synced.
 
 // One manager, as MUTABLE documents, for a handler that will change and save.
 //
-// Always returns the same two-key shape, and this is the trick that keeps the
-// callers free of flag checks: with the flag OFF, `account` and `franchise` are
-// THE SAME User document. Setting account.avatarUrl and franchise.seasons both
-// mutate the one doc, saveBoth notices they are the same object and saves it
-// once, and the result is byte-for-byte the single-document write the route did
-// before. With the flag ON they are two documents and both are saved.
+// Always returns the same two-key shape. A handler reads naturally
+// (`account.email`, `franchise.seasons`) and documents at its mutation site
+// which document each field belongs to — which is the thing that used to be
+// invisible, and the reason a field ever gets routed to the wrong place.
 //
-// So a handler is written once, reads naturally (`account.email`,
-// `franchise.seasons`), and documents at its mutation site which document each
-// field belongs to — which is the thing that was previously invisible and is the
-// reason a field ever gets routed to the wrong place.
+// It carried a third key, `same`, for the phase when both halves could be one
+// `users` document. Nothing branches on it now, so it is gone rather than left
+// as a constant that reads like a decision.
 //
 // `franchise` is null for an account with no entry in `league`. Callers that
 // need one must say so; they are the same callers that 404 today.
@@ -634,8 +604,7 @@ async function leaguesWithSeason(season) {
 // PATCH /:id records that mongoose REFUSES to save a document that both edits a
 // scalar and replaces an array wholesale under an $elemMatch projection, so a
 // body carrying cumulativeScore AND weeklyScore throws instead of writing half.
-// tests/RosterCorrection.spec.js pins all four combinations. Reproducing the
-// projection on both flag positions is what keeps that true.
+// tests/RosterCorrection.spec.js pins all four combinations.
 //
 // `season` also narrows the FILTER, not just the projection: those middlewares
 // 404 when the manager has no entry for the season being written, and that 404
@@ -662,11 +631,10 @@ async function loadForWrite(accountId, { league, fields, season } = {}) {
         filter,
         fields ? (franchiseFields.length ? scoped(franchiseFields) : { _id: 1 }) : null
     );
-    // A season-scoped load is a load OF THAT SEASON. No entry means the caller's
-    // 404, not a document with an empty roster — which is what the flag-off
-    // filter above does, and the two have to agree.
+    // A season-scoped load is a load OF THAT SEASON. No entry means the
+    // caller's 404, not a document with an empty roster.
     if (season !== undefined && !franchise) return null;
-    return { account, franchise, same: false };
+    return { account, franchise };
 }
 
 // Persist whatever loadForWrite handed back.
@@ -688,9 +656,9 @@ async function loadForWrite(accountId, { league, fields, season } = {}) {
 async function saveBoth(ctx) {
     if (!ctx) return;
     await ctx.account.save();
-    // `same` rather than === between two mongoose documents: loadForWrite knows
-    // which shape it built, so it says, instead of this inferring it.
-    if (!ctx.same && ctx.franchise) await ctx.franchise.save();
+    // Null for an account with no entry in the league — a normal state once one
+    // login holds two sports, not an error.
+    if (ctx.franchise) await ctx.franchise.save();
 }
 
 // A surgical update of ACCOUNT-side fields — the $set/$pull/$unset writes that
@@ -809,7 +777,6 @@ function keepOnly(doc, fields) {
 }
 
 module.exports = {
-    userProjection,
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,

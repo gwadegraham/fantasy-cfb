@@ -512,9 +512,8 @@ describe('inviteBind middleware', () => {
 // email and authSub are the Account's, league is the Franchise's. Every refusal
 // decideInvite can reach is a field it read off one of them, so a half-wired
 // projection does not error — it quietly stops refusing.
-describe('inviteBind reads the same record from either source (#313 phase 2)', () => {
+describe('inviteBind reads one record out of both documents (#313 phase 2)', () => {
     const { inviteBind, COOKIE } = require('../modules/invite-bind');
-    const migration = require('../modules/account-migration');
 
     const okManagement = () => ({ patchUserMetadata: jest.fn(async () => ({})) });
     const session = (over) => Object.assign(
@@ -536,55 +535,45 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
         return app;
     }
 
-    // Seeded once, then replayed under each flag. The bind WRITES, so each run
-    // needs its own record — a bound franchise refuses the second time round,
-    // which would read as a flag difference and is not one.
-    async function attempt(flag, seed, tokenOverride) {
+    // The bind WRITES, so each case seeds its own record — a bound franchise
+    // refuses the second time round.
+    async function attempt(seed, tokenOverride) {
         const u = await User.create(seed());
         await mirrorUsers();
-        await migration.migrate({ apply: true });
         const res = await request(bindApp(session(), okManagement()))
             .get('/anything').set('Cookie', `${COOKIE}=${tokenOverride ? tokenOverride(u) : tokenFor(u)}`);
         return { status: res.status, text: res.text, location: res.headers.location };
     }
 
-    test('a good invite binds from either source', async () => {
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com' }));
-            expect(got.status).toBe(302);
-            expect(got.location).toBe('/login?returnTo=%2Fstandings');
-        }
+    test('a good invite binds', async () => {
+        const got = await attempt(() => player({ email: 'ann@example.com' }));
+        expect(got.status).toBe(302);
+        expect(got.location).toBe('/login?returnTo=%2Fstandings');
     });
 
-    test('a spent link is refused by both — authSub is an ACCOUNT field', async () => {
+    test('a spent link is refused — authSub is an ACCOUNT field', async () => {
         // If the read stopped returning authSub, decideInvite would fall through
         // to the email gate and hand an already-claimed franchise to whoever
         // opened the link second. It would not error; it would just bind.
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
-            // Status only. renderRefusalPage titles every refusal "Invite", so
-            // matching the body cannot tell WHICH refusal fired and would read
-            // as evidence it is not. The 403 is the real assertion: dropping
-            // authSub falls through to the email gate and yields a 302.
-            expect(got.status).toBe(403);
-        }
+        const got = await attempt(() => player({ email: 'ann@example.com', authSub: 'auth0|someone-else' }));
+        // Status only. renderRefusalPage titles every refusal "Invite", so
+        // matching the body cannot tell WHICH refusal fired and would read as
+        // evidence it is not. The 403 is the real assertion: dropping authSub
+        // falls through to the email gate and yields a 302.
+        expect(got.status).toBe(403);
     });
 
-    test('a token minted for the other league is refused by both — league is a FRANCHISE field', async () => {
+    test('a token minted for the other league is refused — league is a FRANCHISE field', async () => {
         // The asymmetric one. decideInvite reads a MISSING league as "no league
         // constraint" rather than as a mismatch, so a read that fetched only the
         // account would stop refusing forwarded invites instead of erroring.
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'ann@example.com' }), (u) => tokenFor(u, OTHER));
-            expect(got.status).toBe(403);
-        }
+        const got = await attempt(() => player({ email: 'ann@example.com' }), (u) => tokenFor(u, OTHER));
+        expect(got.status).toBe(403);
     });
 
-    test('a claimer signing in with a different address is refused by both', async () => {
-        for (const flag of ['false', 'true']) {
-            const got = await attempt(flag, () => player({ email: 'someone.else@example.com' }));
-            expect(got.status).toBe(403);
-        }
+    test('a claimer signing in with a different address is refused', async () => {
+        const got = await attempt(() => player({ email: 'someone.else@example.com' }));
+        expect(got.status).toBe(403);
     });
 
     // This test was added in #460 to DOCUMENT a gap rather than assert it was
@@ -621,21 +610,20 @@ describe('inviteBind reads the same record from either source (#313 phase 2)', (
             .toEqual({ action: 'bind', reason: 'verified' });
     });
 
-    test('and the record itself carries all four fields, from either source', async () => {
+    test('and the record itself carries all four fields', async () => {
         // Directly, because three of the four assertions above are 403s and a
-        // 403 does not say WHICH refusal fired.
+        // 403 does not say WHICH refusal fired. The four are split across the
+        // two documents — email/authSub/firstName on the account, league on the
+        // franchise — so one read has to assemble them.
         const u = await User.create(player({ email: 'ann@example.com', authSub: 'auth0|held' }));
         await mirrorUsers();
-        await migration.migrate({ apply: true });
-        for (const flag of ['false', 'true']) {
-            const rec = await franchiseRepo.byAccountId(u._id,
-                { fields: ['email', 'league', 'authSub', 'firstName'] });
-            expect(rec).toMatchObject({
-                email: 'ann@example.com', league: LEAGUE,
-                authSub: 'auth0|held', firstName: 'Ann'
-            });
-            expect(String(rec._id)).toBe(String(u._id));
-        }
+        const rec = await franchiseRepo.byAccountId(u._id,
+            { fields: ['email', 'league', 'authSub', 'firstName'] });
+        expect(rec).toMatchObject({
+            email: 'ann@example.com', league: LEAGUE,
+            authSub: 'auth0|held', firstName: 'Ann'
+        });
+        expect(String(rec._id)).toBe(String(u._id));
     });
 });
 

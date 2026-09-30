@@ -237,9 +237,7 @@ afterEach(() => { jest.restoreAllMocks(); });
 // different ids now, and a handler that took the franchise's stops matching the
 // draft — silently, with a 200 and a success toast.
 describe('the correction reaches the draft by ACCOUNT id (#313 phase 3)', () => {
-    const migration = require('../modules/account-migration');
-
-    it.each([['false'], ['true']])('rewrites the draft pick too, with the flag %s', async (flag) => {
+    it('rewrites the draft pick too', async () => {
         await Team.create([fullTeam(1, 'Iowa'), fullTeam(2, 'Duke'), fullTeam(9, 'Oregon')]);
         const u = await manager('Ann', [fullTeam(1, 'Iowa'), fullTeam(2, 'Duke')]);
         await Draft.create({
@@ -249,7 +247,6 @@ describe('the correction reaches the draft by ACCOUNT id (#313 phase 3)', () => 
                 { round: 2, overall: 2, userId: u._id, team: { id: 2, school: 'Duke' } }
             ]
         });
-        await migration.migrate({ apply: true });
 
         const res = await patch(u._id, { fromTeamId: 2, toTeamId: 9 });
         expect(res.status).toBe(200);

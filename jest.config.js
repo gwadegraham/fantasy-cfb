@@ -55,12 +55,10 @@ module.exports = {
             functions: 100,
             lines: 90
         },
-        // Every manager read in the app goes through here, and it answers from
-        // one of two collections depending on a flag. Both branches have to stay
-        // covered: the flag-off branch is what production runs today, and the
-        // flag-on branch is what the write cutover will make permanent. Three of
-        // the four QA rounds on #458 found evidence that only reached one of
-        // them.
+        // Every manager read AND write in the app goes through here, and it
+        // assembles one answer out of two collections. `functions: 100` is the
+        // load-bearing figure: the dual-source phase left a helper reachable
+        // only from the branch that was deleted, and this is what said so.
         "./modules/franchise-repo.js": {
             statements: 95,
             branches: 82,

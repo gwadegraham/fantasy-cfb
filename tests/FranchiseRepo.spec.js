@@ -532,8 +532,8 @@ describe('the aggregation reads — standings projections and the H2H pass', () 
 describe('the reads that assemble themselves outside the two main finds', () => {
     test('an explicit field list still narrows to ONE season', async () => {
         // The gap a QA pass found in #458. routes/games.js asks for `seasons`
-        // by NAME, which routes through seasonScopedProjection rather than
-        // userProjection — a different code path, and the one that PR put on
+        // by NAME, which routes through seasonScopedProjection rather than the
+        // /users projection — a different code path, and the one that PR put on
         // the scoreboard. Replacing its $elemMatch with `seasons: 1` left every
         // test added there green; only the pre-existing /users suite caught it.
         //

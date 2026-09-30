@@ -6,9 +6,9 @@
 // flag-off vs flag-on; the flag is gone, so what is held here instead is the
 // stronger version of the same property: each route's response is diffed against
 // the ORIGINAL `users` query it replaced, written out verbatim. The seeded
-// `users` documents are still there to diff against, and a widening that would
-// have affected both flag positions equally — how five call sites regressed
-// while every check stayed green — is visible from this side.
+// `users` documents are still there to diff against, and a widening that the
+// old flag-off-vs-flag-on comparison could not see — how five call sites
+// regressed while every check stayed green — is visible from this side.
 
 const express = require('express');
 const request = require('supertest');

@@ -42,13 +42,12 @@ const SEASON = 2026;
 const LEAGUE = 'graham-league';
 const MINE = 1, YOURS = 2;
 
-// FIXED ids, so the two runs of the H2H pass below seed identical documents.
+// FIXED ids, so the H2H assertions below can name the manager they expect.
 //
 // Not just tidiness. applyH2HBonuses stores h2hOpponentId — the OTHER manager's
 // _id — on each weekly entry, so that field is a live assertion that the read
-// returned account ids rather than franchise ids. With generated ids the two
-// runs would differ for a reason that has nothing to do with the flag, and the
-// only way to get the comparison passing would be to stop comparing the field.
+// returned account ids rather than franchise ids. A generated id could only be
+// compared against itself, which is the assertion going quiet.
 const GARRETT = new mongoose.Types.ObjectId('000000000000000000000001');
 const BROCK = new mongoose.Types.ObjectId('000000000000000000000002');
 

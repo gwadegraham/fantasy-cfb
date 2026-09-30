@@ -147,9 +147,8 @@ describe('notifyRecapReady — who gets one', () => {
 describe('the send ledger dedupes off the FRANCHISE (#313 phase 3)', () => {
     const migration = require('../modules/account-migration');
 
-    it.each([['false'], ['true']])('a second tick sends nothing, with the flag %s', async (flag) => {
+    it('a second tick sends nothing', async () => {
         await manager('Ann');
-        await migration.migrate({ apply: true });
 
         const first = await push.notifyRecapReady(MONDAY);
         const second = await push.notifyRecapReady(MONDAY + 12 * 3600 * 1000);
@@ -159,12 +158,11 @@ describe('the send ledger dedupes off the FRANCHISE (#313 phase 3)', () => {
         expect(payloads()).toHaveLength(1);
     });
 
-    it('flag ON records the notice on the FRANCHISE, where the read looks', async () => {
+    it('the notice is recorded on the FRANCHISE, where the read looks', async () => {
         // The dedupe test above would also pass if the ledger were written
         // somewhere the read happens to reach by accident. This pins the
         // document, which is the thing that actually has to be right.
         const ann = await manager('Ann');
-        await migration.migrate({ apply: true });
 
         await push.notifyRecapReady(MONDAY);
 

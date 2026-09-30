@@ -100,11 +100,9 @@ describe('writes land where the reads come from', () => {
 
 describe('loadForWrite / saveBoth', () => {
     test('it hands back two documents and saves each to its own collection', async () => {
-        // `same` stays on the context because callers branch on it; with one
-        // source it is always false, and a handler that reads it still compiles.
         const user = await seed();
         const ctx = await repo.loadForWrite(user._id);
-        expect(ctx.same).toBe(false);
+        expect(ctx.account).not.toBe(ctx.franchise);
         ctx.account.avatarUrl = 'https://x/two.png';
         ctx.franchise.isUpdated = false;
         await repo.saveBoth(ctx);
