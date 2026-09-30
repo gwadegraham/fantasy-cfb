@@ -70,18 +70,22 @@ describe('buildUpsertOp', () => {
         expect(doc.color).toBe('#037961');
     });
 
-    test('logos are synthesised from sourceId in football\'s exact shape', () => {
+    test('logos come from ESPN, at the ONE size ESPN serves', () => {
+        // Measured on Gonzaga across 500/256/128/96/64/48/32/16: only 500
+        // exists, light and dark. Copying football's eight-size ladder would
+        // have reproduced the original bug — 14 of every 16 URLs dead.
         const doc = build(team()).updateOne.update.$set;
-        expect(doc.logos).toHaveLength(16);
-        expect(doc.logos).toContain('https://cdn.collegefootballdata.com/logos/500/2561.png');
-        expect(doc.logos).toContain('https://cdn.collegefootballdata.com/logos-dark/16/2561.png');
+        expect(doc.logos).toEqual([
+            'https://a.espncdn.com/i/teamlogos/ncaa/500/2561.png',
+            'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2561.png'
+        ]);
     });
 
-    test('and the football logo helper picks one unchanged', () => {
-        // The whole point of mirroring the shape: no sport branch in public/.
+    test('and the football logo helper picks from them unchanged', () => {
+        // The point of keeping the array shape: no sport branch in public/.
         const doc = build(team()).updateOne.update.$set;
-        expect(pickLogo(doc.logos, { dark: true })).toMatch(/logos-dark\/500\/2561\.png$/);
-        expect(pickLogo(doc.logos, { dark: false })).toMatch(/logos\/500\/2561\.png$/);
+        expect(pickLogo(doc.logos, { dark: true })).toMatch(/500-dark\/2561\.png$/);
+        expect(pickLogo(doc.logos, { dark: false })).toMatch(/ncaa\/500\/2561\.png$/);
     });
 
     test('a team with no sourceId gets no logos rather than a broken URL', () => {
@@ -198,7 +202,7 @@ describe('POST /:season/ingest', () => {
         stub([team({ id: 1, sourceId: '150', school: 'Duke' }), team({ id: 2, sourceId: '2561', school: 'Siena' })]);
         const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.body.withLogos).toBe(1);
-        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toHaveLength(16);
+        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toHaveLength(2);
         expect((await HoopsTeam.findOne({ school: 'Siena' }).lean()).logos).toEqual([]);
     });
 

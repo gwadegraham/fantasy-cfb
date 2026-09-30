@@ -158,21 +158,23 @@ async function fetchTeams(season) {
     return cbbdGet('/teams', { season });
 }
 
-// Which of these ESPN ids the CFBD logo CDN actually serves.
+// Which of these ESPN ids actually have a logo, checked before any URL is
+// stored.
 //
-// NOT every one. The CDN hosts schools CFBD knows about — football schools —
-// so a basketball-only program has nothing there. Measured across all 365 teams
-// for 2027: 101 miss, including Gonzaga, Marquette, Creighton, Seton Hall,
-// Saint Mary's and Siena. Synthesising the URL from sourceId regardless gave
-// those teams 16 links that every render site turns into a broken image.
+// Kept even though ESPN currently serves all 365, because the reason it exists
+// has not gone away: the first version of this ingest synthesised URLs from
+// sourceId and 101 of 365 were dead, and nothing noticed because the check
+// measured array length. A probe is the only thing that distinguishes "we have
+// a logo" from "we built a string".
 //
-// Sizes resolve all-or-nothing per team — verified on Alabama, Duke, Siena and
-// Gonzaga across 500/128/16 in both light and dark — so one HEAD per team
-// settles all sixteen.
+// One HEAD settles it because ESPN serves exactly one size, light and dark
+// together — verified on Gonzaga across eight sizes, only 500 exists.
 //
 // Free: a CDN request, not a CBBD call, so it costs nothing against the quota.
 // Batched because 365 sequential round trips would run past Heroku's ceiling.
-const LOGO_PROBE = 'https://cdn.collegefootballdata.com/logos/16/';
+// 500, because it is the ONLY size ESPN serves. Probing /16/ — football's
+// smallest — would have 404'd for every team and stored no logos at all.
+const LOGO_PROBE = 'https://a.espncdn.com/i/teamlogos/ncaa/500/';
 async function logoIdsThatExist(sourceIds, { batch = 25, fetchImpl } = {}) {
     const doFetch = fetchImpl || fetch;
     const ids = [...new Set(sourceIds.filter(Boolean).map(String))];

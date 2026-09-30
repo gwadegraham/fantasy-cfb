@@ -235,15 +235,15 @@ describe('logoIdsThatExist', () => {
         expect(seen).toHaveLength(1);
     });
 
-    test('probes one size per team, because sizes resolve all-or-nothing', async () => {
-        // Verified on Alabama, Duke, Siena and Gonzaga across 500/128/16 in
-        // both light and dark: a team either has every size or none.
+    test('probes one size per team, at the size that exists', async () => {
         const seen = [];
         await client.logoIdsThatExist(['333'], {
             fetchImpl: async (u, o) => { seen.push([u, o.method]); return { ok: true }; }
         });
         expect(seen).toHaveLength(1);
-        expect(seen[0][0]).toContain('/logos/16/333.png');
+        // 500 because it is the only size ESPN serves — probing football's /16/
+        // would 404 for every team and store no logos at all.
+        expect(seen[0][0]).toContain('/ncaa/500/333.png');
         expect(seen[0][1]).toBe('HEAD');
     });
 

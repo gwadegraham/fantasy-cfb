@@ -8,20 +8,45 @@ const HoopsTeam = require('../models/hoopsTeam');
 const cbbd = require('../modules/cbbd-client');
 const { activeSeason } = require('../modules/active-season');
 
-// The CFBD logo CDN, keyed on the ESPN id — which is what CBBD calls sourceId.
-// Verified: Alabama is sourceId 333 and /logos/500/333.png returns 200, the
-// same id football's Alabama row already stores.
+// Basketball logos come from ESPN's CDN, keyed on sourceId — which IS the ESPN
+// id, so no mapping is invented, only the image host is borrowed.
 //
-// The 16-entry shape mirrors models/team.js exactly (light and dark at eight
-// sizes) so public/logo.js pickLogo picks a basketball logo by the same rules
-// it picks a football one, with no sport branch.
-const LOGO_SIZES = [500, 256, 128, 96, 64, 48, 32, 16];
+// ⚠️ THIS IS A STOPGAP WITH A KNOWN DESTINATION. The CBBD maintainer confirmed
+// the API returns no logos for basketball teams anywhere today, and has a
+// ticket open for future support. When that ships, this function is the only
+// thing that changes — edit it and re-run POST /hoops/teams/:season/ingest.
+// No migration, no schema change.
+//
+// Why not CFBD's CDN, which football already uses. Measured across all 365
+// teams for 2027:
+//
+//   cdn.collegefootballdata.com/logos/     (sourceId)  264/365
+//   cdn.collegefootballdata.com/cbb-logos/ (CBB id)    251/365
+//   both paths combined                                339/365
+//   a.espncdn.com/i/teamlogos/ncaa/        (sourceId)  365/365
+//
+// Both CFBD paths are partial mirrors — /logos only covers schools with a
+// football programme, and cbb-logos misses 26 including Gonzaga and Xavier
+// (403 at every size) and has no dark variants at all. ESPN is the origin the
+// ids belong to, and has both light and dark for every team.
+//
+// ⚠️ ESPN SERVES ONE SIZE: 500, light and dark. Every other size 404s —
+// measured on Gonzaga across 256/128/96/64/48/32/16, all missing in both
+// variants. Football's 16-entry ladder (eight sizes) does NOT exist here.
+//
+// Copying that ladder anyway would have reproduced the original bug exactly:
+// 14 of every 16 URLs dead. Two entries is the honest answer, and pickLogo
+// handles a short array fine — it filters by the dark preference, takes the
+// largest, and falls back to the whole list when the preferred variant is
+// absent.
+const LOGO_SIZES = [500];
+const ESPN_LOGOS = 'https://a.espncdn.com/i/teamlogos/ncaa';
 function logosFor(sourceId) {
     if (!sourceId) return [];
     const out = [];
     LOGO_SIZES.forEach(size => {
-        out.push(`https://cdn.collegefootballdata.com/logos/${size}/${sourceId}.png`);
-        out.push(`https://cdn.collegefootballdata.com/logos-dark/${size}/${sourceId}.png`);
+        out.push(`${ESPN_LOGOS}/${size}/${sourceId}.png`);
+        out.push(`${ESPN_LOGOS}/${size}-dark/${sourceId}.png`);
     });
     return out;
 }
