@@ -11,9 +11,10 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const BettingGroup = require('../models/bettingGroup');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const groupsRouter = require('../routes/betting-groups');
 
 const app = express();
@@ -27,7 +28,7 @@ const SEASON = 2026;
 // Four seasons per manager, so a test fails if the route starts hauling them all
 // back again — the shape that made this slow in the first place.
 async function manager(firstName, franchiseByYear) {
-    return User.create({
+    const seeded = await User.create({
         firstName, lastName: 'Test', league: 'graham-league',
         avatarUrl: 'http://x/a.png',
         seasons: [2023, 2024, 2025, 2026].map(y => ({
@@ -37,6 +38,8 @@ async function manager(firstName, franchiseByYear) {
             weeklyScore: [{ week: 1, score: 10 }]
         }))
     });
+    await mirrorUsers();
+    return seeded;
 }
 
 describe('GET /betting-groups', () => {
@@ -67,7 +70,9 @@ describe('GET /betting-groups', () => {
         const ann = await manager('Ann', { 2026: 'Hogs Gone Wild' });
         await BettingGroup.create({ active: true, season: SEASON, members: [ann._id] });
 
-        const spy = jest.spyOn(User, 'find');
+        // The roster and its franchise names live on the franchise now, so this
+        // is the query the projection has to stay narrow on.
+        const spy = jest.spyOn(Franchise, 'find');
         await request(app).get('/betting-groups');
 
         const projection = spy.mock.calls[0][1];

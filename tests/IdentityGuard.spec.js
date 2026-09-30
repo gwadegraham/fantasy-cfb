@@ -17,7 +17,7 @@
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const franchiseRepo = require('../modules/franchise-repo');
 const identityGuard = require('../modules/identity-guard');
@@ -98,6 +98,7 @@ describe('decideIdentity — the pure verdict', () => {
 describe('the middleware, against a real record', () => {
     test('a matching login is served', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const res = await request(guardedApp(session(u._id, 'ann@example.com'))).get('/standings');
         expect(res.status).toBe(200);
         expect(res.text).toBe('reached');
@@ -110,6 +111,7 @@ describe('the middleware, against a real record', () => {
         await User.create(player({ email: 'ann@example.com' }));
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com',
                                                league: 'claunts-league' }));
+        await mirrorUsers();
         const res = await request(guardedApp(session(bob._id, 'ann@example.com'))).get('/standings');
         expect(res.status).toBe(403);
     });
@@ -118,6 +120,7 @@ describe('the middleware, against a real record', () => {
         // It renders before the static middleware, so it cannot rely on
         // styles.css — and Log Out is the ONLY escape from a hard gate.
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
+        await mirrorUsers();
         const res = await request(guardedApp(session(bob._id, 'ann@example.com')))
             .get('/standings').set('Accept', 'text/html');
         expect(res.status).toBe(403);
@@ -128,6 +131,7 @@ describe('the middleware, against a real record', () => {
 
     test('a non-HTML request gets JSON, not a page', async () => {
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
+        await mirrorUsers();
         const res = await request(guardedApp(session(bob._id, 'ann@example.com')))
             .get('/users/me').set('Accept', 'application/json');
         expect(res.status).toBe(403);
@@ -137,12 +141,14 @@ describe('the middleware, against a real record', () => {
     test('a record with no email on file is served, not blocked', async () => {
         // Every record predating the invite flow is in this state.
         const u = await User.create(player());
+        await mirrorUsers();
         const res = await request(guardedApp(session(u._id, 'ann@example.com'))).get('/standings');
         expect(res.status).toBe(200);
     });
 
     test('a login carrying no email is served, not blocked', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         const res = await request(guardedApp(session(u._id, undefined))).get('/standings');
         expect(res.status).toBe(200);
     });
@@ -165,6 +171,7 @@ describe('it never locks anyone out by accident', () => {
         // The whole league behind one failed query is worse than the mismatch
         // this guard exists to catch. Note the record here WOULD mismatch.
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
+        await mirrorUsers();
         const app = guardedApp(session(bob._id, 'ann@example.com'), {
             repo: { byAccountId: () => Promise.reject(new Error('db down')) }
         });
@@ -206,26 +213,19 @@ describe('it never locks anyone out by accident', () => {
     });
 });
 
-describe('the verdict is the same from either source (#313 phase 2)', () => {
-    // Everything above runs with FRANCHISE_READS unset, which is the production
-    // path — and therefore proves nothing about the source the cutover will make
-    // permanent. Reviews of #458 kept finding evidence that only reached one
-    // branch; this is the other one.
+describe('the verdict survives the account/franchise split (#313 phase 2)', () => {
+    // Reviews of #458 kept finding evidence that only reached one of the two
+    // sources. These pin the verdict against the ids the split actually hands
+    // the middleware.
     //
     // For THIS middleware the stakes are not a wrong number on a page. A verdict
     // that differs between the two sources is either a manager locked out of the
     // app or a session served someone else's franchise.
     const migration = require('../modules/account-migration');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
 
     async function statusBothWays(userId, email, path) {
         const out = {};
         for (const flag of ['false', 'true']) {
-            process.env.FRANCHISE_READS = flag;
             out[flag] = (await request(guardedApp(session(userId, email))).get(path || '/standings')).status;
         }
         return out;
@@ -233,6 +233,7 @@ describe('the verdict is the same from either source (#313 phase 2)', () => {
 
     test('a matching login is served from accounts too', async () => {
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         await migration.migrate({ apply: true });
         const got = await statusBothWays(u._id, 'ann@example.com');
         expect(got).toEqual({ false: 200, true: 200 });
@@ -241,6 +242,7 @@ describe('the verdict is the same from either source (#313 phase 2)', () => {
     test('a mismatched login is blocked by both', async () => {
         await User.create(player({ email: 'ann@example.com' }));
         const bob = await User.create(player({ firstName: 'Bob', email: 'bob@example.com' }));
+        await mirrorUsers();
         await migration.migrate({ apply: true });
         const got = await statusBothWays(bob._id, 'ann@example.com');
         expect(got).toEqual({ false: 403, true: 403 });
@@ -253,6 +255,7 @@ describe('the verdict is the same from either source (#313 phase 2)', () => {
         // that; this one catches the opposite, a dropped field turning into a
         // block for every pre-invite-era record in the league.
         const u = await User.create(player());
+        await mirrorUsers();
         await migration.migrate({ apply: true });
         const got = await statusBothWays(u._id, 'ann@example.com');
         expect(got).toEqual({ false: 200, true: 200 });
@@ -261,6 +264,7 @@ describe('the verdict is the same from either source (#313 phase 2)', () => {
     test('a pointer resolving to nothing is blocked by both', async () => {
         const mongoose = require('mongoose');
         await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         await migration.migrate({ apply: true });
         const got = await statusBothWays(new mongoose.Types.ObjectId(), 'ann@example.com');
         expect(got).toEqual({ false: 403, true: 403 });
@@ -270,9 +274,9 @@ describe('the verdict is the same from either source (#313 phase 2)', () => {
         // Directly, rather than only through a status code: a 200 can mean
         // "matched" or "nothing to compare", and those are very different.
         const u = await User.create(player({ email: 'ann@example.com' }));
+        await mirrorUsers();
         await migration.migrate({ apply: true });
         for (const flag of ['false', 'true']) {
-            process.env.FRANCHISE_READS = flag;
             const rec = await franchiseRepo.byAccountId(u._id, { fields: ['email'] });
             expect(rec.email).toBe('ann@example.com');
             expect(String(rec._id)).toBe(String(u._id));

@@ -14,7 +14,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const scoresRouter = require('../routes/scores');
@@ -40,10 +40,12 @@ function team(id, school) {
 
 // Army is drafted; nobody has team 99.
 async function manager() {
-    return User.create({
+    const seeded = await User.create({
         firstName: 'Ann', lastName: 'Test', league: 'graham-league',
         seasons: [{ season: SEASON, teams: [team(2, 'Army')], weeklyScore: [] }]
     });
+    await mirrorUsers();
+    return seeded;
 }
 
 const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();

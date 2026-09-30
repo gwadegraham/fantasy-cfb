@@ -265,7 +265,7 @@ process.env.INTERNAL_API_TOKEN = 'test-internal-token';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const Team = require('../models/team');
 const Game = require('../models/game');
 const User = require('../models/user');
@@ -391,6 +391,7 @@ describe('GET /scores/readiness/:season', () => {
             { firstName: 'B', lastName: 'B', league: 'graham-league', seasons: [{ season: 2026 }] },
             { firstName: 'C', lastName: 'C', league: 'claunts-league', seasons: [{ season: 2025 }] }
         ]);
+        await mirrorUsers();
         await Draft.create({
             league: 'graham-league', season: 2026,
             draftOrder: [], scheduledAt: new Date('2026-08-15'), totalRounds: 10

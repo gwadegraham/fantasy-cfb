@@ -15,7 +15,7 @@
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const Team = require('../models/team');
 const User = require('../models/user');
 const Game = require('../models/game');
@@ -57,6 +57,7 @@ async function seed() {
         firstName: 'Pat', lastName: 'Tester', league: LEAGUE,
         seasons: [{ season: SEASON, cumulativeScore: 0, teams: [fullTeam(MINE, 'Mine U')] }]
     });
+    await mirrorUsers();
 }
 
 async function projectedFinal() {

@@ -15,16 +15,6 @@ const repo = require('../modules/franchise-repo');
 
 useMongo();
 
-// Default the flag ON for the body of this file — these tests are about the new
-// source. The switch itself gets its own block at the bottom, where both
-// positions are exercised against the same data.
-const ORIGINAL_FLAG = process.env.FRANCHISE_READS;
-beforeEach(() => { process.env.FRANCHISE_READS = 'true'; });
-afterEach(() => {
-    if (ORIGINAL_FLAG === undefined) delete process.env.FRANCHISE_READS;
-    else process.env.FRANCHISE_READS = ORIGINAL_FLAG;
-});
-
 async function seedManager(overrides = {}) {
     const user = await User.create(Object.assign({
         firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com',
@@ -161,15 +151,12 @@ describe('projections are preserved, because the documents are heavy', () => {
     // down to a few keys precisely for that reason, and dropping the projection
     // while moving the storage would undo deliberate work on a free-tier
     // cluster that also serves a 30-second poller.
-    test('fields narrows the document on BOTH flag positions', async () => {
+    test('fields narrows the document', async () => {
         const user = await seedManager();
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const got = await repo.byAccountId(user._id, { fields: ['pushSubscriptions', 'pushPrefs'] });
-            expect(got.firstName).toBeUndefined();
-            expect(got.seasons).toBeUndefined();
-            expect(got.authSub).toBeUndefined();
-        }
+        const got = await repo.byAccountId(user._id, { fields: ['pushSubscriptions', 'pushPrefs'] });
+        expect(got.firstName).toBeUndefined();
+        expect(got.seasons).toBeUndefined();
+        expect(got.authSub).toBeUndefined();
     });
 
     test('a franchise-side field can be asked for alongside an account-side one', async () => {
@@ -183,10 +170,7 @@ describe('projections are preserved, because the documents are heavy', () => {
     test('usedColors reads colours, not rosters', async () => {
         await seedManager();
         await seedManager({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com', color: '#71D28D' });
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            expect((await repo.usedColors('graham-league')).sort()).toEqual(['#71D28D', '#ED5858']);
-        }
+        expect((await repo.usedColors('graham-league')).sort()).toEqual(['#71D28D', '#ED5858']);
     });
 
     test('usedColors is empty for a league nobody is in', async () => {
@@ -201,12 +185,9 @@ describe('projectSeason: false means the whole document', () => {
         // break as on the two listing endpoints, just quieter — nothing would
         // fail, a caller would simply stop seeing a field.
         const user = await seedManager();
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const [got] = await repo.bySeason(2026, { projectSeason: false });
-            expect(got.authSub).toBe('google-oauth2|123');
-            expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
-        }
+        const [got] = await repo.bySeason(2026, { projectSeason: false });
+        expect(got.authSub).toBe('google-oauth2|123');
+        expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
         expect(user).toBeDefined();
     });
 
@@ -231,19 +212,16 @@ describe('findManagers — conditions split across both documents', () => {
         }, over));
     }
 
-    test('requires BOTH halves, on both flag positions', async () => {
+    test('requires BOTH halves', async () => {
         await seedSubscribed();                                   // subscribed + rostered
         await seedManager({ firstName: 'NoSub', lastName: 'Here', email: 'n@example.com' });
 
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const got = await repo.findManagers({
-                accountFilter: subscribed,
-                franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } },
-                fields: ['firstName', 'pushSubscriptions']
-            });
-            expect(got.map(u => u.firstName)).toEqual(['Garrett']);
-        }
+        const got = await repo.findManagers({
+            accountFilter: subscribed,
+            franchiseFilter: { seasons: { $elemMatch: { season: 2026 } } },
+            fields: ['firstName', 'pushSubscriptions']
+        });
+        expect(got.map(u => u.firstName)).toEqual(['Garrett']);
     });
 
     test('an account failing its filter drops its franchise too', async () => {
@@ -317,26 +295,20 @@ describe('byAccountId picks WHICH franchise', () => {
 });
 
 describe('byAccountId trims to the fields asked for', () => {
-    test('adds no key the caller did not request, on either path', async () => {
-        // It was the only fields-taking read that skipped keepOnly, so flag-on
-        // carried a `seasons: []` that flag-off did not. A silent widening, and
+    test('adds no key the caller did not request', async () => {
+        // It was the only fields-taking read that skipped keepOnly, so it
+        // carried a `seasons: []` the User read did not. A silent widening, and
         // the one fix in its commit with no test — reverting it left every spec
         // green and only the offline script noticed.
         const user = await seedManager();
         const fields = ['league', 'firstName', 'lastName', 'authSub'];
-        const shapes = [];
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            shapes.push(Object.keys(await repo.byAccountId(user._id, { fields })).sort());
-        }
-        expect(shapes[1]).toEqual(shapes[0]);
-        expect(shapes[0]).toEqual(['_id', 'authSub', 'firstName', 'lastName', 'league']);
+        const got = await repo.byAccountId(user._id, { fields });
+        expect(Object.keys(got).sort()).toEqual(['_id', 'authSub', 'firstName', 'lastName', 'league']);
     });
 
     test('still trims when only account-side fields are asked for', async () => {
         // The branch that skips the franchise query entirely.
         const user = await seedManager();
-        process.env.FRANCHISE_READS = 'true';
         const got = await repo.byAccountId(user._id, { fields: ['firstName', 'color'] });
         expect(Object.keys(got).sort()).toEqual(['_id', 'color', 'firstName']);
     });
@@ -353,16 +325,12 @@ describe('an explicit field list beats the list default', () => {
     // byIds is the read that exercises this — it hydrates with list: true.
     test('byIds returns authSub when authSub is asked for', async () => {
         const user = await seedManager();
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const [got] = await repo.byIds([user._id], { fields: ['firstName', 'authSub'] });
-            expect(got.authSub).toBe('google-oauth2|123');
-        }
+        const [got] = await repo.byIds([user._id], { fields: ['firstName', 'authSub'] });
+        expect(got.authSub).toBe('google-oauth2|123');
     });
 
     test('but a caller that names nothing still gets the narrow list', async () => {
         const user = await seedManager();
-        process.env.FRANCHISE_READS = 'true';
         const [got] = await repo.byIds([user._id]);
         expect(got.authSub).toBeUndefined();
         expect(got.pushSubscriptions).toBeUndefined();
@@ -387,17 +355,14 @@ describe('subfield projections survive', () => {
         // "418KB -> 1KB, 4.4s -> 75ms". Widening it to `seasons` would undo that
         // silently, with every test still green.
         const user = await seedManager();
-        for (const on of [false, true]) {
-            process.env.FRANCHISE_READS = on ? 'true' : 'false';
-            const [got] = await repo.byIds([user._id],
-                { fields: ['firstName', 'league', 'seasons.season', 'seasons.franchiseName'] });
-            expect(got.firstName).toBe('Garrett');
-            expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
-            expect(got.seasons[0].franchiseName).toBeDefined();
-            // The expensive part must NOT be there.
-            expect(got.seasons[0].weeklyScore).toBeUndefined();
-            expect(got.seasons[0].teams).toBeUndefined();
-        }
+        const [got] = await repo.byIds([user._id],
+            { fields: ['firstName', 'league', 'seasons.season', 'seasons.franchiseName'] });
+        expect(got.firstName).toBe('Garrett');
+        expect(got.seasons.map(sn => sn.season).sort()).toEqual([2025, 2026]);
+        expect(got.seasons[0].franchiseName).toBeDefined();
+        // The expensive part must NOT be there.
+        expect(got.seasons[0].weeklyScore).toBeUndefined();
+        expect(got.seasons[0].teams).toBeUndefined();
     });
 
     test('byIds returns only the accounts asked for', async () => {
@@ -475,17 +440,17 @@ describe('the aggregation reads — standings projections and the H2H pass', () 
     // These two are the only reads that run a $lookup rather than assembling a
     // document from two finds, so they can fail in ways the rest cannot.
 
-    test('projectionManagers answers identically from either source', async () => {
+    test('projectionManagers returns every manager in the league', async () => {
         await seedManager();
         await seedManager({ firstName: 'Brock', lastName: 'McCord', email: 'b@example.com',
             color: '#f9a857', authSub: 'auth0|9',
             seasons: [{ season: 2026, cumulativeScore: 12, franchiseName: 'Second Best',
                         teams: [rosterTeam({ id: 333, school: 'Georgia' })] }] });
 
-        const off = await withFlag(false, () => repo.projectionManagers('graham-league', 2026));
-        const on = await withFlag(true, () => repo.projectionManagers('graham-league', 2026));
-        expect(on.length).toBe(2);
-        expect(sortByName(on)).toEqual(sortByName(off));
+        const got = await repo.projectionManagers('graham-league', 2026);
+        expect(got.map(m => m.firstName).sort()).toEqual(['Brock', 'Garrett']);
+        expect(got.map(m => m.seasons[0].franchiseName).sort())
+            .toEqual(['Name, Image, & Sadness', 'Second Best']);
     });
 
     test('projectionManagers keeps _id as the ACCOUNT id', async () => {
@@ -543,13 +508,6 @@ describe('the aggregation reads — standings projections and the H2H pass', () 
         expect(String(got._id)).toBe(String(user._id));
     });
 
-    test('h2hManagers answers identically from either source', async () => {
-        await seedManager();
-        const off = await withFlag(false, () => repo.h2hManagers('graham-league', 2026));
-        const on = await withFlag(true, () => repo.h2hManagers('graham-league', 2026));
-        expect(strip(on)).toEqual(strip(off));
-    });
-
     test('a franchise whose account vanished is dropped from both aggregates', async () => {
         // Membership, not decoration. The H2H pass PAIRS managers against each
         // other, so an extra entry does not add a row — it re-partners everyone
@@ -560,135 +518,62 @@ describe('the aggregation reads — standings projections and the H2H pass', () 
         expect(await repo.projectionManagers('graham-league', 2026)).toEqual([]);
     });
 
-    test('leaguesWithSeason agrees across both sources and skips empty leagues', async () => {
+    test('leaguesWithSeason skips a league with no entry for that season', async () => {
         await seedManager();
         await seedManager({ firstName: 'Jeff', lastName: 'Claunts', email: 'j@example.com',
             league: 'claunts-league', authSub: 'auth0|7',
             seasons: [{ season: 2025, cumulativeScore: 1 }] });
 
-        const off = await withFlag(false, () => repo.leaguesWithSeason(2026));
-        const on = await withFlag(true, () => repo.leaguesWithSeason(2026));
-        expect(on).toEqual(off);
         // claunts-league has a 2025 entry and no 2026 one, so it must not appear.
-        expect(on).toEqual(['graham-league']);
+        expect(await repo.leaguesWithSeason(2026)).toEqual(['graham-league']);
     });
 });
 
-describe('the switch', () => {
-    test('UNSET reads from users — so deploying this changes nothing', async () => {
-        // The property the whole rollout rests on: shipping the flag is inert.
-        const user = await seedManager();
-        delete process.env.FRANCHISE_READS;
-        expect(repo.readsFromFranchises()).toBe(false);
-
-        // Prove it is genuinely the users collection by making the two disagree.
-        await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
-        const got = await repo.byAccountId(user._id);
-        expect(got.league).toBe('graham-league');
-    });
-
-    test('only the exact string "true" turns it on', async () => {
-        for (const value of ['1', 'yes', 'TRUE', 'on', '']) {
-            process.env.FRANCHISE_READS = value;
-            expect(repo.readsFromFranchises()).toBe(false);
-        }
-        process.env.FRANCHISE_READS = 'true';
-        expect(repo.readsFromFranchises()).toBe(true);
-    });
-
-    test('is read PER CALL, so a flip needs no module reload', async () => {
-        const user = await seedManager();
-        await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
-
-        process.env.FRANCHISE_READS = 'false';
-        expect((await repo.byAccountId(user._id)).league).toBe('graham-league');
-        process.env.FRANCHISE_READS = 'true';
-        expect((await repo.byAccountId(user._id)).league).toBe('tampered-league');
-    });
-
-    test('an explicit field list still narrows to ONE season, on both positions', async () => {
-        // The gap a QA pass found in this PR. routes/games.js now asks for
-        // `seasons` by NAME, which routes through seasonScopedProjection rather
-        // than userProjection — a different code path, and the one this PR put
-        // on the scoreboard. Replacing its $elemMatch with `seasons: 1` left
-        // every test added here green; only the pre-existing /users suite
-        // caught it.
+describe('the reads that assemble themselves outside the two main finds', () => {
+    test('an explicit field list still narrows to ONE season', async () => {
+        // The gap a QA pass found in #458. routes/games.js asks for `seasons`
+        // by NAME, which routes through seasonScopedProjection rather than
+        // userProjection — a different code path, and the one that PR put on
+        // the scoreboard. Replacing its $elemMatch with `seasons: 1` left every
+        // test added there green; only the pre-existing /users suite caught it.
         //
         // It matters because callers index seasons[0] via public/season-of.js.
         // The scoreboard itself happens to survive — modules/league-scoreboard.js
         // resolves the entry by value, not by position — but the projection is
         // shared, and the next caller to use it will not.
-        const user = await seedManager();   // holds 2025 AND 2026
+        await seedManager();   // holds 2025 AND 2026
         const fields = ['firstName', 'color', 'seasons'];
 
-        for (const flag of [false, true]) {
-            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2026, { fields }));
-            expect(got.seasons.map(sn => sn.season)).toEqual([2026]);
-            expect(got.seasons[0].franchiseName).toBe('Name, Image, & Sadness');
-        }
+        const [current] = await repo.byLeagueAndSeason('graham-league', 2026, { fields });
+        expect(current.seasons.map(sn => sn.season)).toEqual([2026]);
+        expect(current.seasons[0].franchiseName).toBe('Name, Image, & Sadness');
 
         // And the past season projects the past season, not the active one.
-        for (const flag of [false, true]) {
-            const [got] = await withFlag(flag, () => repo.byLeagueAndSeason('graham-league', 2025, { fields }));
-            expect(got.seasons.map(sn => sn.season)).toEqual([2025]);
-        }
-        expect(String(user._id)).toBeTruthy();
+        const [past] = await repo.byLeagueAndSeason('graham-league', 2025, { fields });
+        expect(past.seasons.map(sn => sn.season)).toEqual([2025]);
     });
 
-    test('anyFranchise and leaguesFor answer from users when the flag is off', async () => {
-        // These two were the last uncovered lines in the module, and both were
-        // the FLAG-OFF branch — the one running in production right now. A
-        // suite that only exercises the new source proves nothing about the
-        // path that is actually live.
+    test('anyFranchise and leaguesFor read the franchise, not the account', async () => {
         const user = await seedManager();
 
-        expect(await withFlag(false, () => repo.anyFranchise({ league: 'graham-league' }))).toBe(true);
-        expect(await withFlag(false, () => repo.anyFranchise({ league: 'nobody-league' }))).toBe(false);
-        expect(await withFlag(false, () => repo.leaguesFor(user._id))).toEqual(['graham-league']);
-        expect(await withFlag(true, () => repo.anyFranchise({ league: 'graham-league' }))).toBe(true);
-        expect(await withFlag(true, () => repo.anyFranchise({ league: 'nobody-league' }))).toBe(false);
+        expect(await repo.anyFranchise({ league: 'graham-league' })).toBe(true);
+        expect(await repo.anyFranchise({ league: 'nobody-league' })).toBe(false);
+        expect(await repo.leaguesFor(user._id)).toEqual(['graham-league']);
 
-        // Prove it is genuinely reading users, not franchises, by making the
-        // two disagree — otherwise this passes whichever branch runs.
+        // The left-behind users row must not be able to answer for them: this
+        // is the assertion that would have caught a read still pointed at it.
         await Franchise.updateOne({ accountId: user._id }, { $set: { league: 'tampered-league' } });
-        expect(await withFlag(false, () => repo.leaguesFor(user._id))).toEqual(['graham-league']);
-        expect(await withFlag(true, () => repo.leaguesFor(user._id))).toEqual(['tampered-league']);
+        expect(await repo.leaguesFor(user._id)).toEqual(['tampered-league']);
     });
 
-    test('leaguesFor is empty for an unknown account on the users path too', async () => {
+    test('leaguesFor is empty for an unknown account', async () => {
         const mongoose = require('mongoose');
-        expect(await withFlag(false, () => repo.leaguesFor(new mongoose.Types.ObjectId()))).toEqual([]);
-    });
-
-    test('both positions return the same thing on real, untampered data', async () => {
-        // The assertion the offline diff makes against prod, held here so a
-        // regression fails CI rather than waiting for someone to run a script.
-        await seedManager();
-        await seedManager({ firstName: 'Jeff', lastName: 'Claunts', email: 'j@example.com',
-            league: 'claunts-league', seasons: [{ season: 2026, cumulativeScore: 1 }] });
-
-        const off = await withFlag(false, () => repo.bySeason(2026));
-        const on = await withFlag(true, () => repo.bySeason(2026));
-        expect(strip(on)).toEqual(strip(off));
-
-        const offLeague = await withFlag(false, () => repo.byLeagueAndSeason('graham-league', 2026));
-        const onLeague = await withFlag(true, () => repo.byLeagueAndSeason('graham-league', 2026));
-        expect(strip(onLeague)).toEqual(strip(offLeague));
+        expect(await repo.leaguesFor(new mongoose.Types.ObjectId())).toEqual([]);
     });
 });
 
-function withFlag(on, fn) {
-    process.env.FRANCHISE_READS = on ? 'true' : 'false';
-    return Promise.resolve(fn());
-}
 
-// Subdocument ids differ between the two copies and are referenced nowhere.
+// Subdocument ids are regenerated by the copy and are referenced nowhere.
 function strip(value) {
     return JSON.parse(JSON.stringify(value, (k, v) => (k === '_id' || k === '__v' ? undefined : v)));
-}
-
-// projectionManagers returns managers in whatever order the collection yields,
-// and the two sources are two different collections.
-function sortByName(docs) {
-    return strip(docs).slice().sort((a, b) => String(a.firstName).localeCompare(String(b.firstName)));
 }

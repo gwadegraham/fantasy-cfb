@@ -13,8 +13,9 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
 const scoresRouter = require('../routes/scores');
@@ -42,7 +43,7 @@ function team(id, school) {
 
 // A manager with one weekly entry per (week, score) pair given.
 async function manager(firstName, teams, weeks) {
-    return User.create({
+    const seeded = await User.create({
         firstName, lastName: 'Test', league: LEAGUE,
         seasons: [{
             season: SEASON,
@@ -51,6 +52,8 @@ async function manager(firstName, teams, weeks) {
             cumulativeScore: weeks.reduce((s, [, score]) => s + score, 0)
         }]
     });
+    await mirrorUsers();
+    return seeded;
 }
 
 function game(id, week, homeId, awayId, completed) {
@@ -74,7 +77,7 @@ async function enableH2H({ winBonus = 3, tieBonus = 0 } = {}) {
 // Recompute cumulativeScore the way modules/scoring.js updateCumulativeScores
 // does — sum weeklyScore[].score. This is the seam the whole fix relies on.
 async function sumCumulative(userId) {
-    const u = await User.findById(userId).lean();
+    const u = await Franchise.findOne({ accountId: userId }).lean();
     return (u.seasons[0].weeklyScore || []).reduce((s, e) => s + (e.score || 0), 0);
 }
 
@@ -91,8 +94,8 @@ describe('POST /scores/h2h-bonus', () => {
         const res = await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
         expect(res.status).toBe(200);
 
-        const winner = await User.findById(a._id).lean();
-        const loser = await User.findById(b._id).lean();
+        const winner = await Franchise.findOne({ accountId: a._id }).lean();
+        const loser = await Franchise.findOne({ accountId: b._id }).lean();
         const wk = (u) => u.seasons[0].weeklyScore[0];
 
         expect(wk(winner)).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
@@ -126,8 +129,8 @@ describe('POST /scores/h2h-bonus', () => {
         // Now reproduce the drift: strip the bonus off the weekly row (what a
         // rescore does) but leave cumulativeScore at the post-bonus value (what
         // the aborted pass left behind).
-        await User.updateOne(
-            { _id: a._id },
+        await Franchise.updateOne(
+            { accountId: a._id },
             { $set: { 'seasons.0.weeklyScore.0.score': 20, 'seasons.0.cumulativeScore': 23 },
               $unset: { 'seasons.0.weeklyScore.0.h2hBonus': '' } });
 
@@ -232,7 +235,7 @@ describe('POST /scores/h2h-bonus', () => {
 
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const winner = await User.findById(a._id).lean();
+        const winner = await Franchise.findOne({ accountId: a._id }).lean();
         expect(winner.seasons[0].weeklyScore[0].score).toBe(20);
         expect(winner.seasons[0].weeklyScore[0].h2hBonus).toBeUndefined();
     });
@@ -261,7 +264,7 @@ describe('POST /scores/h2h-bonus', () => {
         expect(await sumCumulative(a._id)).toBe(23);
 
         // A rescore lands: Bob's week is corrected upward past Ann's.
-        await User.updateOne({ _id: b._id }, { $set: { 'seasons.0.weeklyScore.0.score': 40 } });
+        await Franchise.updateOne({ accountId: b._id }, { $set: { 'seasons.0.weeklyScore.0.score': 40 } });
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
         expect(await sumCumulative(a._id)).toBe(20);   // bonus removed
@@ -294,7 +297,7 @@ describe('POST /scores/h2h-bonus', () => {
             { $set: { 'engagementBySeason.2026.h2hEnabled': false } });
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const back = await User.findById(a._id).lean();
+        const back = await Franchise.findOne({ accountId: a._id }).lean();
         expect(back.seasons[0].weeklyScore[0].score).toBe(20);
         expect(back.seasons[0].weeklyScore[0].h2hBonus).toBeUndefined();
     });
@@ -316,12 +319,13 @@ describe('POST /scores/h2h-bonus', () => {
             seasons: [{ season: SEASON, teams: [team(1, 'Oregon')],
                 weeklyScore: [{ week: 1, score: 26, captainTeamId: 1, captainBonus: 6 }] }]
         });
+        await mirrorUsers();
         await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
         await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
 
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const wk = (await User.findById(a._id).lean()).seasons[0].weeklyScore[0];
+        const wk = (await Franchise.findOne({ accountId: a._id }).lean()).seasons[0].weeklyScore[0];
         expect(wk).toMatchObject({ score: 29, captainBonus: 6, h2hBonus: 3 });
     });
 });
@@ -347,7 +351,7 @@ describe('GET /standings/h2h agrees with what was persisted', () => {
 
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
         // Mirror updateCumulativeScores, which runs right after the pass.
-        await User.updateOne({ _id: a._id }, { $set: { 'seasons.0.cumulativeScore': await sumCumulative(a._id) } });
+        await Franchise.updateOne({ accountId: a._id }, { $set: { 'seasons.0.cumulativeScore': await sumCumulative(a._id) } });
 
         const after = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}?standingsOnly=1`);
         expect(totalsOf(after.body)).toEqual({ Ann: 23, Bob: 14 });
@@ -423,8 +427,8 @@ describe('the H2H roster is pinned once a week settles', () => {
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
         const wk = (u) => u.seasons[0].weeklyScore[0];
-        expect(wk(await User.findById(a._id).lean())).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
-        expect(wk(await User.findById(b._id).lean()).h2hBonus).toBeUndefined();
+        expect(wk(await Franchise.findOne({ accountId: a._id }).lean())).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
+        expect(wk(await Franchise.findOne({ accountId: b._id }).lean()).h2hBonus).toBeUndefined();
         expect(await sumCumulative(a._id)).toBe(23);
         expect(await sumCumulative(b._id)).toBe(14);
     });
@@ -437,7 +441,7 @@ describe('the H2H roster is pinned once a week settles', () => {
         await Game.create(game(104, 1, 4, 97, true));
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const cal = await User.findById(c._id).lean();
+        const cal = await Franchise.findOne({ accountId: c._id }).lean();
         expect(cal.seasons[0].weeklyScore[0].h2hBonus).toBeUndefined();
         expect(cal.seasons[0].weeklyScore[0].h2hResult).toBeUndefined();
     });
@@ -478,9 +482,9 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
         expect(gl.managersUpdated).toBe(2);
         expect(gl.bonusAwarded).toBe(3);
 
-        const winner = await User.findById(a._id).lean();
+        const winner = await Franchise.findOne({ accountId: a._id }).lean();
         expect(winner.seasons[0].weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3, h2hResult: 'W' });
-        const loser = await User.findById(b._id).lean();
+        const loser = await Franchise.findOne({ accountId: b._id }).lean();
         expect(loser.seasons[0].weeklyScore[0].score).toBe(14);
     });
 
@@ -591,7 +595,7 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
         // being scored is the LAST element — and a wrong filter whose positional
         // match lands on seasons[0] would slip past a fixture built the other
         // way round.
-        await User.updateOne({ _id: a._id }, { $push: { seasons: {
+        await Franchise.updateOne({ accountId: a._id }, { $push: { seasons: {
             $each: [{
                 season: 2025, teams: [team(7, 'Texas')],
                 weeklyScore: [{ week: 1, score: 40, h2hBonus: 3, h2hResult: 'W' }],
@@ -599,15 +603,15 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
             }],
             $position: 0
         } } });
-        const before = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        const before = (await Franchise.findOne({ accountId: a._id }).lean()).seasons.find(s => s.season === 2025);
         await Game.create([game(101, 1, 1, 99, true), game(102, 1, 2, 98, true)]);
 
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const after = (await User.findById(a._id).lean()).seasons.find(s => s.season === 2025);
+        const after = (await Franchise.findOne({ accountId: a._id }).lean()).seasons.find(s => s.season === 2025);
         expect(after).toEqual(before);
         // ...and the scored season really was written.
-        const scored = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON);
+        const scored = (await Franchise.findOne({ accountId: a._id }).lean()).seasons.find(s => s.season === SEASON);
         expect(scored.weeklyScore[0]).toMatchObject({ score: 23, h2hBonus: 3 });
     });
 
@@ -619,7 +623,7 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
         await enableH2H();
         const a = await manager('Ann', [team(1, 'Oregon')], [[1, 20]]);
         const b = await manager('Bob', [team(2, 'Duke')], [[1, 14]]);
-        await User.updateOne({ _id: a._id, 'seasons.season': SEASON }, { $set: {
+        await Franchise.updateOne({ accountId: a._id, 'seasons.season': SEASON }, { $set: {
             'seasons.$.weeklyScore': [{
                 week: 1, score: 20,
                 scoreByTeam: [{ team: 'Oregon', teamId: 1, gameId: 101, score: 20 }],
@@ -630,7 +634,7 @@ describe('POST /scores/h2h-bonus — the aggregate read', () => {
 
         await request(app).post('/scores/h2h-bonus').send({ season: SEASON });
 
-        const wk = (await User.findById(a._id).lean()).seasons.find(s => s.season === SEASON).weeklyScore[0];
+        const wk = (await Franchise.findOne({ accountId: a._id }).lean()).seasons.find(s => s.season === SEASON).weeklyScore[0];
         expect(wk.h2hBonus).toBe(3);
         expect(wk.score).toBe(23);
         // Untouched by the bonus write.

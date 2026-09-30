@@ -13,7 +13,7 @@
 // lock. A basketball league created before its season row (exactly the ordering
 // #313 introduces) would have let a League Manager rewrite scoring mid-season.
 
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const { hasScoredGames } = require('../modules/season-status');
 
@@ -38,6 +38,7 @@ async function seedScored(season) {
             weeklyScore: [{ week: 1, score: 12, scoreByTeam: [{ teamId: 333, gameId: 1, score: 12 }] }]
         }]
     });
+    await mirrorUsers();
 }
 
 describe('the ordinary cases', () => {
@@ -51,6 +52,7 @@ describe('the ordinary cases', () => {
             firstName: 'James', lastName: 'McMain', league: LEAGUE,
             seasons: [{ season: 2026, weeklyScore: [] }]
         });
+        await mirrorUsers();
         expect(await hasScoredGames(LEAGUE, 2026)).toBe(false);
     });
 

@@ -21,7 +21,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -51,10 +51,12 @@ function rosterTeam(id, school) {
 }
 
 async function manager(firstName, teams, weeklyScore) {
-    return User.create({
+    const seeded = await User.create({
         firstName, lastName: 'Test', league: LEAGUE,
         seasons: [{ season: SEASON, teams, weeklyScore, cumulativeScore: weeklyScore.reduce((s, e) => s + e.score, 0) }]
     });
+    await mirrorUsers();
+    return seeded;
 }
 
 const OPENING = '2099-08-29T23:00:00.000Z';     // far future so it never drifts past

@@ -17,7 +17,7 @@ process.env.YEAR = '2026';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
 const Game = require('../models/game');
 const ScoringConfig = require('../models/scoringConfig');
@@ -41,7 +41,7 @@ function team(id, school) {
 }
 
 async function manager(firstName, teams, weeks) {
-    return User.create({
+    const seeded = await User.create({
         firstName, lastName: 'Test', league: LEAGUE,
         seasons: [{
             season: SEASON, teams,
@@ -49,6 +49,8 @@ async function manager(firstName, teams, weeks) {
             cumulativeScore: weeks.reduce((s, [, score]) => s + score, 0)
         }]
     });
+    await mirrorUsers();
+    return seeded;
 }
 
 // `startDate` decides live-vs-upcoming at read time, so the unplayed weeks use a

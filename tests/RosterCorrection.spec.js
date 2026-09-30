@@ -179,8 +179,9 @@ describe('replaceDraftPick', () => {
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const Team = require('../models/team');
 const Draft = require('../models/draft');
 const usersRouter = require('../routes/users');
@@ -213,10 +214,14 @@ function fullTeam(id, school, o) {
         location: { venue_id: id, name: 'V', city: 'C', state: 'ST', zip: '1', latitude: 1, longitude: 1, capacity: 100, grass: true, dome: false }
     }, o);
 }
-const manager = (first, teams, extra) => User.create(Object.assign({
-    firstName: first, lastName: 'Test', league: LEAGUE,
-    seasons: [{ season: SEASON, teams }]
-}, extra || {}));
+const manager = async (first, teams, extra) => {
+    const seeded = await User.create(Object.assign({
+        firstName: first, lastName: 'Test', league: LEAGUE,
+        seasons: [{ season: SEASON, teams }]
+    }, extra || {}));
+    await mirrorUsers();
+    return seeded;
+};
 
 // The internal token clears canManageLeague and reads as a commissioner.
 const patch = (id, body) => request(app)
@@ -227,18 +232,12 @@ const patch = (id, body) => request(app)
 beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { jest.restoreAllMocks(); });
 
-// Everything in this file runs with FRANCHISE_READS unset, which is how a real
-// bug survived a full green suite: with the flag off the account and the
-// franchise are ONE document, so `_id` means both things at once. Flag on they
-// are different ids, and a handler that took the franchise's would stop
-// matching the draft — silently, with a 200 and a success toast.
-describe('the correction reaches the draft from either source (#313 phase 3)', () => {
+// How a real bug survived a full green suite: while one document stood in for
+// both, `_id` meant the person and their league entry at once. They are
+// different ids now, and a handler that took the franchise's stops matching the
+// draft — silently, with a 200 and a success toast.
+describe('the correction reaches the draft by ACCOUNT id (#313 phase 3)', () => {
     const migration = require('../modules/account-migration');
-    const ORIGINAL = process.env.FRANCHISE_READS;
-    afterEach(() => {
-        if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-        else process.env.FRANCHISE_READS = ORIGINAL;
-    });
 
     it.each([['false'], ['true']])('rewrites the draft pick too, with the flag %s', async (flag) => {
         await Team.create([fullTeam(1, 'Iowa'), fullTeam(2, 'Duke'), fullTeam(9, 'Oregon')]);
@@ -251,7 +250,6 @@ describe('the correction reaches the draft from either source (#313 phase 3)', (
             ]
         });
         await migration.migrate({ apply: true });
-        process.env.FRANCHISE_READS = flag;
 
         const res = await patch(u._id, { fromTeamId: 2, toTeamId: 9 });
         expect(res.status).toBe(200);
@@ -287,7 +285,7 @@ describe('PATCH /users/:id/roster-team', () => {
         expect(res.body.from).toMatchObject({ id: 2, school: 'Duke' });
         expect(res.body.to).toMatchObject({ id: 9, school: 'Oregon' });
 
-        const after = await User.findById(u._id).lean();
+        const after = await Franchise.findOne({ accountId: u._id }).lean();
         expect(after.seasons[0].teams.map(t => t.school)).toEqual(['Iowa', 'Oregon']);
         const draft = await Draft.findOne({ league: LEAGUE, season: SEASON }).lean();
         expect(draft.picks.map(p => p.team.school)).toEqual(['Iowa', 'Oregon']);
@@ -303,7 +301,7 @@ describe('PATCH /users/:id/roster-team', () => {
         const res = await patch(ann._id, { fromTeamId: 1, toTeamId: 2 });
         expect(res.status).toBe(409);
         expect(res.body.message).toBe("Duke is already on Bob Test's roster.");
-        const after = await User.findById(ann._id).lean();
+        const after = await Franchise.findOne({ accountId: ann._id }).lean();
         expect(after.seasons[0].teams[0].school).toBe('Iowa');   // untouched
     });
 
@@ -320,7 +318,7 @@ describe('PATCH /users/:id/roster-team', () => {
         const res = await patch(u._id, { fromTeamId: 1, toTeamId: 9 });
         expect(res.status).toBe(200);
         expect(res.body.draftUpdated).toBe(false);
-        expect((await User.findById(u._id).lean()).seasons[0].teams[0].school).toBe('Oregon');
+        expect((await Franchise.findOne({ accountId: u._id }).lean()).seasons[0].teams[0].school).toBe('Oregon');
     });
 
     test('leaves other managers\' picks alone', async () => {
@@ -374,7 +372,7 @@ describe('PATCH /users/:id/roster-team', () => {
             const res = await request(app).patch(`/users/${u._id}/roster-team`)
                 .send({ fromTeamId: 1, toTeamId: 9 });
             expect([403, 423]).toContain(res.status);
-            expect((await User.findById(u._id).lean()).seasons[0].teams[0].school).toBe('Iowa');
+            expect((await Franchise.findOne({ accountId: u._id }).lean()).seasons[0].teams[0].school).toBe('Iowa');
         });
 
         test('an Admin may proceed and is told a re-score is needed', async () => {
@@ -385,7 +383,7 @@ describe('PATCH /users/:id/roster-team', () => {
             expect(res.status).toBe(200);
             // Every scored week was computed against the old roster.
             expect(res.body.rescoreNeeded).toBe(true);
-            expect((await User.findById(u._id).lean()).seasons[0].teams[0].school).toBe('Oregon');
+            expect((await Franchise.findOne({ accountId: u._id }).lean()).seasons[0].teams[0].school).toBe('Oregon');
         });
     });
 });
@@ -443,7 +441,7 @@ describe('PATCH /users/:id (score writes)', () => {
     });
     const send = (id, body) => request(app).patch(`/users/${id}`)
         .set('X-Internal-Token', 'test-internal-token').send(body);
-    const season = async (id, yr) => (await User.findById(id).lean()).seasons.find(s => s.season === yr);
+    const season = async (id, yr) => (await Franchise.findOne({ accountId: id }).lean()).seasons.find(s => s.season === yr);
 
     test('a body with neither score field leaves weeklyScore intact', async () => {
         const u = await scored();
@@ -452,7 +450,7 @@ describe('PATCH /users/:id (score writes)', () => {
         const s = await season(u._id, SEASON);
         expect(s.weeklyScore).toHaveLength(1);
         expect(s.weeklyScore[0].score).toBe(12);
-        expect((await User.findById(u._id).lean()).isUpdated).toBe(true);
+        expect((await Franchise.findOne({ accountId: u._id }).lean()).isUpdated).toBe(true);
     });
 
     test('weeklyScore alone writes, and leaves other seasons alone', async () => {

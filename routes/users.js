@@ -1,8 +1,8 @@
 const express = require('express');
 const { activeSeason } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
-// Reads go through the repo, which decides its source from FRANCHISE_READS.
-// Unset means the users collection, so this swap is inert until the flag flips.
+// Reads and writes both go through the repo, which owns the account/franchise
+// split (#313) — no handler here touches either collection directly.
 const franchiseRepo = require('../modules/franchise-repo');
 const router = express.Router();
 const Game = require('../models/game');

@@ -16,7 +16,7 @@
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const CfpBracket = require('../models/cfpBracket');
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -107,7 +107,7 @@ async function seedCommon() {
 async function seedManager(league, franchiseName, schools, extra) {
     const bySchool = {};
     derived.participants.forEach(p => { bySchool[p.school] = p; });
-    return User.create(Object.assign({
+    const seeded = await User.create(Object.assign({
         firstName: franchiseName, lastName: 'Manager',
         email: `${franchiseName.replace(/\W/g, '')}@example.com`,
         league: league, color: '#ed5858',
@@ -116,6 +116,8 @@ async function seedManager(league, franchiseName, schools, extra) {
             teams: schools.map(s => teamDoc(bySchool[s]))
         }]
     }, extra || {}));
+    await mirrorUsers();
+    return seeded;
 }
 
 const get = (league, season = SEASON) =>

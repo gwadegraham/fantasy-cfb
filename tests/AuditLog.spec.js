@@ -11,9 +11,10 @@ process.env.INTERNAL_API_TOKEN = 'test-internal-token';
 
 const express = require('express');
 const request = require('supertest');
-const { useMongo } = require('./helpers/mongo');
+const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const AuditLog = require('../models/auditLog');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const Team = require('../models/team');
 const League = require('../models/league');
 const audit = require('../modules/audit-log');
@@ -55,9 +56,13 @@ function fullTeam(id, school) {
         location: { venue_id: id, name: 'V', city: 'C', state: 'ST', zip: '1', latitude: 1, longitude: 1, capacity: 100, grass: true, dome: false }
     };
 }
-const manager = (first, teams) => User.create({
-    firstName: first, lastName: 'Test', league: LEAGUE, seasons: [{ season: SEASON, teams }]
-});
+const manager = async (first, teams) => {
+    const u = await User.create({
+        firstName: first, lastName: 'Test', league: LEAGUE, seasons: [{ season: SEASON, teams }]
+    });
+    await mirrorUsers();
+    return u;
+};
 
 beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
 afterEach(() => { jest.restoreAllMocks(); });
@@ -125,24 +130,13 @@ describe('entries are written by the actions themselves', () => {
         expect(rows[0].meta).toMatchObject({ from: 1, to: 9 });
     });
 
-    // Every row in this file is written flag-off, where the account and the
-    // franchise are one document and `_id` means both things at once. These two
-    // pin the person's name and id on the path where they are two documents —
-    // a row naming "undefined undefined" against an id that resolves to nothing
-    // is a trail that exists and cannot be used.
-    describe.each([['false'], ['true']])('with FRANCHISE_READS %s (#313 phase 3)', (flag) => {
-        const migration = require('../modules/account-migration');
-        const ORIGINAL = process.env.FRANCHISE_READS;
-        afterEach(() => {
-            if (ORIGINAL === undefined) delete process.env.FRANCHISE_READS;
-            else process.env.FRANCHISE_READS = ORIGINAL;
-        });
-
+    // The person and the league entry are two documents now (#313), so these
+    // two pin the name and the id a row is written with: a row naming
+    // "undefined undefined" against an id that resolves to nothing is a trail
+    // that exists and cannot be used.
+    describe('the actor and subject survive the account/franchise split', () => {
         test('a membership change names the person and their account id', async () => {
             const u = await manager('Ann', []);
-            await migration.migrate({ apply: true });
-            process.env.FRANCHISE_READS = flag;
-
             await request(adminApp).post(`/users/${u._id}/season-membership`).set(TOKEN).send({ included: false });
             const [row] = await AuditLog.find({ action: 'season.membership' }).lean();
             expect(row.summary).toBe('Removed Ann Test');
@@ -152,9 +146,6 @@ describe('entries are written by the actions themselves', () => {
         test('a roster correction names the person and their account id', async () => {
             await Team.create([fullTeam(1, 'Iowa'), fullTeam(9, 'Oregon')]);
             const u = await manager('Ann', [fullTeam(1, 'Iowa')]);
-            await migration.migrate({ apply: true });
-            process.env.FRANCHISE_READS = flag;
-
             const res = await request(adminApp).patch(`/users/${u._id}/roster-team`)
                 .set(TOKEN).send({ fromTeamId: 1, toTeamId: 9 });
             expect(res.status).toBe(200);
@@ -202,7 +193,7 @@ describe('entries are written by the actions themselves', () => {
         const res = await request(adminApp).patch(`/users/${u._id}/roster-team`)
             .set(TOKEN).send({ fromTeamId: 1, toTeamId: 9 });
         expect(res.status).toBe(200);
-        expect((await User.findById(u._id).lean()).seasons[0].teams[0].school).toBe('Oregon');
+        expect((await Franchise.findOne({ accountId: u._id }).lean()).seasons[0].teams[0].school).toBe('Oregon');
         expect(await AuditLog.countDocuments()).toBe(0);
     });
 });
