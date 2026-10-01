@@ -552,6 +552,10 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .xwins-fill { height: 100%; background: var(--cc-success); display: block; }
 
 .drafted-chip { background: #2a2f42; color: var(--cc-muted-2); border-radius: 6px; padding: 4px 12px; font-size: 0.85em; }
+/* A pool that cannot be built says why — "run the Torvik import", "run the
+   teams ingest" — rather than rendering an empty table that reads as a
+   loading bug. Centred and muted so it is plainly a message, not a row. */
+.pool-error { padding: 24px 16px; text-align: center; color: var(--cc-muted-2); font-size: 0.95em; }
 
 /* ---------- Mobile pool cards (Sleeper-style; shown <=768px) ---------- */
 .pool-cards { display: none; }   /* desktop uses the table */

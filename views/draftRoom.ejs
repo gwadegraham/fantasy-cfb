@@ -15,6 +15,9 @@
     <script src="draft-fx.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="draftGrades.js"></script>
+    <!-- Before draftRoom.js, which reads ccDraftPool at load. Not deferred
+         separately for ordering: defer preserves document order. -->
+    <script defer src="draft-pool-view.js"></script>
     <script defer src="draftRoom.js"></script>
     <title data-league-title="Draft Room">Draft Room · Campus Clash</title>
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
