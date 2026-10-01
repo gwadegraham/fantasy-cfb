@@ -12,6 +12,10 @@ var isCommish = false;
 var leagueCode;
 var leagueVersion = 'V2';
 var season = Number(window.APP_YEAR) || new Date().getFullYear();   // active season, not wall clock
+// Which sport this league drafts, and therefore which columns the pool shows.
+// Answered by GET /draft/pool/:league rather than assumed — APP_YEAR is
+// football's season, so a basketball league cannot be inferred from it.
+var poolSport = 'football';
 var isMobile = false;
 var countdownTimer;
 var justPickedKey = null;    // "userId-round" of the pick to animate in once
@@ -119,53 +123,69 @@ async function getRecruitingRankings() {
     return res.json().catch(() => []);
 }
 
+// The DRAFTABLE teams, which is not the same as every team.
+//
+// Was `/teams`, which can only ever answer football and has no notion of a
+// cap. The pool endpoint resolves the sport from the league and applies the
+// commissioner's cap server-side (#320), so the room renders what can actually
+// be picked — and a team outside the pool is refused at make-pick anyway.
 async function getTeams() {
-    const res = await fetch('/teams', { headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    teamList = data;
-    data.forEach(t => { teamsById[String(t.id)] = t; });
+    // NO season parameter, deliberately. `season` here is window.APP_YEAR,
+    // which is FOOTBALL's — a basketball league plays a different year, and
+    // passing this would ask the pool for the wrong one. The endpoint resolves
+    // the season from the league (#312), and the answer is adopted below so
+    // the socket and the grades use it too; this runs before connectSocket().
+    const res = await fetch('/draft/pool/' + encodeURIComponent(leagueCode),
+        { headers: { 'Accept': 'application/json' } });
+    const payload = await res.json().catch(() => null);
 
-    const recruiting = await getRecruitingRankings();
-    buildPool(data, recruiting);
+    if (!res.ok || !payload || !payload.teams) {
+        // A pool that cannot be built is a precondition failure with something
+        // specific to do about it — "run the Torvik import", "run the teams
+        // ingest" — so the message is shown rather than swallowed into an
+        // empty table that reads as a loading bug.
+        showPoolError((payload && payload.message) || 'Could not load the draft pool.');
+        return;
+    }
+
+    poolSport = payload.sport || 'football';
+    // The league's own season wins over APP_YEAR. For football they agree;
+    // for a basketball league APP_YEAR is simply the wrong sport's year.
+    if (Number.isFinite(Number(payload.season))) season = Number(payload.season);
+    teamList = payload.teams;
+    teamList.forEach(t => { teamsById[String(t.id)] = t; });
+
+    // Recruiting rankings are a football signal and a CFBD call; basketball's
+    // equivalent is already in the pool rows.
+    const recruiting = poolSport === 'basketball' ? [] : await getRecruitingRankings();
+    buildPool(teamList, recruiting);
     populateConfFilter();
     renderPool();
 }
 
+function showPoolError(message) {
+    var body = document.querySelector('[user-table-body]');
+    if (body) body.innerHTML = '<tr><td colspan="8" class="pool-error">' + escapeHtml(message) + '</td></tr>';
+    var cards = document.getElementById('pool-cards');
+    if (cards) cards.innerHTML = '<div class="pool-error">' + escapeHtml(message) + '</div>';
+}
+
+// Delegated to public/draft-pool-view.js so it can be TESTED: this file is a
+// browser global with no exports, and the football half was ported there
+// verbatim and diffed against this implementation over 582 input shapes
+// before the old one was deleted.
 function buildPool(teams, recruiting) {
-    var yr = season;   // active season (window.APP_YEAR), not wall clock
-    pool = teams.map(t => {
-        var conf = '-', score = null, xwins = 0, sp = null, spRank = null;
-        if (t.seasons && t.seasons.length) {
-            var prev = t.seasons.find(s => s.season == (yr - 1));
-            var cur = t.seasons.find(s => s.season == yr);
-            conf = t.seasons.at(-1).conference;
-            if (prev) score = (leagueVersion == 'V1') ? prev.cumulativeScoreV1 : prev.cumulativeScoreV2;
-            if (cur) {
-                xwins = cur.expectedWins || 0;
-                if (cur.spRating != null) sp = cur.spRating;
-                if (cur.spRank != null) spRank = cur.spRank;
-            }
-            // Preseason fallback: before the upcoming season's ratings publish,
-            // use last season's final SP+ as the draft signal.
-            if (sp == null && prev) {
-                if (prev.spRating != null) sp = prev.spRating;
-                if (prev.spRank != null) spRank = prev.spRank;
-            }
-        }
-        var rank = null;
-        if (recruiting && recruiting.length) {
-            var r = recruiting.filter(o => o.team == t.school || (t.alternateNames || []).includes(o.team))[0];
-            if (r) rank = r.rank;
-        }
-        return { id: t.id, name: t.school, logo: (t.logos || []).length ? ccLogo(t.logos) : '', conf, score, xwins, rank, sp, spRank, scoreYear: prev ? prev.season : null };
-    });
+    pool = ccDraftPool.buildPool(poolSport, teams, recruiting, season, leagueVersion)
+        .map(function (p) {
+            p.logo = (p.logos && p.logos.length) ? ccLogo(p.logos) : '';
+            return p;
+        });
+
     var xw = pool.map(p => p.xwins).filter(v => v > 0);
     xwMin = xw.length ? Math.min(...xw) : 0;
     xwMax = xw.length ? Math.max(...xw) : 0;
 
-    // Once SP+ is populated (enrichment job has run), default the draft sort to
-    // it — a truer team-strength signal than recruiting/xWins.
-    if (pool.some(p => p.sp != null)) poolSort = { key: 'sp', dir: -1 };
+    poolSort = ccDraftPool.defaultSort(poolSport, pool);
 }
 
 function barWidth(x) {
@@ -192,15 +212,7 @@ function populateConfFilter() {
     });
 }
 
-function sortVal(p, k) {
-    if (k === 'name') return p.name.toLowerCase();
-    if (k === 'conf') return (p.conf || '').toLowerCase();
-    if (k === 'rank') return p.rank == null ? 999 : p.rank;
-    if (k === 'score') return p.score == null ? -1 : p.score;
-    if (k === 'xwins') return p.xwins == null ? -1 : p.xwins;
-    if (k === 'sp') return p.sp == null ? -Infinity : p.sp;   // higher SP+ = better
-    return 0;
-}
+const sortVal = (p, k) => ccDraftPool.sortValue(p, k);
 
 function sortPool(key) {
     if (poolSort.key === key) {
@@ -211,6 +223,37 @@ function sortPool(key) {
         poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank') ? 1 : -1;
     }
     renderPool();
+}
+
+// One cell. Football's markup is unchanged — the SP+ badge, the recruiting
+// badge's top10/top25 classes and the xWins bar all render exactly as before.
+function poolCell(p, key, action) {
+    if (key === 'draft') return action;
+    if (key === 'name') {
+        return `<a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener">`
+            + `<span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>`;
+    }
+    if (key === 'conf') return escapeHtml(p.conf);
+    if (key === 'sp') {
+        return p.spRank == null ? '<span class="muted">—</span>'
+            : `<span class="sp-badge" title="SP+ rating ${p.sp}">#${p.spRank}</span>`;
+    }
+    if (key === 'rank') {
+        return p.rank == null ? '<span class="muted">—</span>'
+            : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">#${p.rank}</span>`;
+    }
+    if (key === 'score') return p.score == null ? '-' : p.score;
+    if (key === 'xwins') {
+        return `<span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar">`
+            + `<span class="xwins-fill" style="width:${barWidth(p.xwins)}%;background:${barColor(p.xwins)}"></span></span></span>`;
+    }
+    // Basketball. barthag is a win probability against an average team, which
+    // reads better as a percentage than as 0.9629.
+    if (key === 'barthag') return p.barthag == null ? '-' : Math.round(p.barthag * 100) + '%';
+    if (key === 'adjOE') return p.adjOE == null ? '-' : p.adjOE;
+    if (key === 'adjDE') return p.adjDE == null ? '-' : p.adjDE;
+    if (key === 'proj') return escapeHtml(p.projectedRecord || '-');
+    return '';
 }
 
 function renderPool() {
@@ -235,34 +278,25 @@ function renderPool() {
     var k = poolSort.key, dir = poolSort.dir;
     rows.sort((a, b) => { var av = sortVal(a, k), bv = sortVal(b, k); return (av < bv ? -1 : av > bv ? 1 : 0) * dir; });
 
-    var cols = [['name', 'Team'], ['conf', 'Conference'], ['sp', 'SP+'], ['rank', 'Recruiting'], ['score', 'Last Season'], ['xwins', 'xWins'], ['draft', '']];
-    document.getElementById('pool-head').innerHTML = cols.map(([key, label]) => {
-        var numCls = (key === 'rank' || key === 'score' || key === 'xwins' || key === 'sp') ? 'num' : '';
-        var sorted = key === poolSort.key;
-        var arrow = key === 'draft' ? '' : `<span class="arrow">${sorted ? (poolSort.dir < 0 ? '▼' : '▲') : '↕'}</span>`;
-        var onclick = key === 'draft' ? '' : `onclick="sortPool('${key}')"`;
-        return `<th class="${numCls} ${sorted ? 'sorted' : ''}" ${onclick}>${label}${arrow}</th>`;
+    // Columns come from the sport, not from this file. Football's list is
+    // unchanged; basketball has no SP+, no recruiting class and no expected
+    // wins, and rendering empty cells for them would read as missing data
+    // rather than as the wrong question.
+    var cols = ccDraftPool.columnsFor(poolSport);
+    document.getElementById('pool-head').innerHTML = cols.map(col => {
+        var sorted = col.key === poolSort.key;
+        var arrow = col.key === 'draft' ? '' : `<span class="arrow">${sorted ? (poolSort.dir < 0 ? '▼' : '▲') : '↕'}</span>`;
+        var onclick = col.key === 'draft' ? '' : `onclick="sortPool('${col.key}')"`;
+        return `<th class="${col.num ? 'num' : ''} ${sorted ? 'sorted' : ''}" ${onclick}>${col.label}${arrow}</th>`;
     }).join('');
 
     body.innerHTML = rows.map(p => {
         var drafted = draftedIds.has(String(p.id));
-        var badge = p.rank == null ? '<span class="muted">—</span>' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">#${p.rank}</span>`;
-        var bw = barWidth(p.xwins);
         var action = drafted
             ? '<span class="drafted-chip">Drafted</span>'
             : `<button class="draft-pick-btn" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
-        var spCell = p.spRank == null
-            ? '<span class="muted">—</span>'
-            : `<span class="sp-badge" title="SP+ rating ${p.sp}">#${p.spRank}</span>`;
-        return `<tr class="${drafted ? 'drafted' : ''}">
-            <td><a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a></td>
-            <td>${escapeHtml(p.conf)}</td>
-            <td class="num">${spCell}</td>
-            <td class="num">${badge}</td>
-            <td class="num">${p.score == null ? '-' : p.score}</td>
-            <td class="num"><span class="xwins-wrap">${p.xwins || '-'}<span class="xwins-bar"><span class="xwins-fill" style="width:${bw}%;background:${barColor(p.xwins)}"></span></span></span></td>
-            <td class="num">${action}</td>
-        </tr>`;
+        var cells = cols.map(col => `<td class="${col.num ? 'num' : ''}">${poolCell(p, col.key, action)}</td>`).join('');
+        return `<tr class="${drafted ? 'drafted' : ''}">${cells}</tr>`;
     }).join('');
 
     // Mobile card list (CSS shows this instead of the table at <=768px). Built
@@ -273,7 +307,8 @@ function renderPool() {
             var drafted = draftedIds.has(String(p.id));
             // Labelled "Rec" so it's clearly the recruiting-class rank, not a
             // team-strength ranking (e.g. recruiting has Arkansas above Kentucky).
-            var badge = p.rank == null ? '' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">Rec #${p.rank}</span>`;
+            var badgeLabel = poolSport === 'basketball' ? '#' : 'Rec #';
+            var badge = p.rank == null ? '' : `<span class="rank-badge ${p.rank <= 10 ? 'top10' : p.rank <= 25 ? 'top25' : ''}">${badgeLabel}${p.rank}</span>`;
             var action = drafted
                 ? '<span class="drafted-chip">Drafted</span>'
                 : `<button class="draft-pick-btn card-draft" onclick="makePick(${p.id})" ${canAct ? '' : 'disabled'}>Draft</button>`;
@@ -282,17 +317,22 @@ function renderPool() {
                 ? `<img class="pc-conf-logo" src="${cl}" alt="${escapeHtml(p.conf)}" title="${escapeHtml(p.conf)}">`
                 : `<span class="pc-conf">${escapeHtml(p.conf)}</span>`;
             var ptsLabel = p.scoreYear ? `'${String(p.scoreYear).slice(-2)} pts` : 'pts';
+            // Basketball's three stats in place of football's. Same markup, so
+            // the card keeps its layout; only what it measures changes.
+            var stats = poolSport === 'basketball'
+                ? `<span><b>${p.rank == null ? '-' : '#' + p.rank}</b><small>T-Rank</small></span>`
+                  + `<span><b>${p.barthag == null ? '-' : Math.round(p.barthag * 100) + '%'}</b><small>Power</small></span>`
+                  + `<span><b>${escapeHtml(p.projectedRecord || '-')}</b><small>Proj.</small></span>`
+                : `${p.spRank != null ? `<span title="SP+ rating ${p.sp}"><b>#${p.spRank}</b><small>SP+</small></span>` : ''}`
+                  + `<span><b>${p.xwins || '-'}</b><small>xWins</small></span>`
+                  + `<span><b>${p.score == null ? '-' : p.score}</b><small>${ptsLabel}</small></span>`;
             return `<div class="pool-card${drafted ? ' drafted' : ''}">
                 ${action}
                 <div class="pool-card-main">
                     <a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>
                     <span class="pool-card-meta">${confHtml}${badge}</span>
                 </div>
-                <div class="pool-card-stats">
-                    ${p.spRank != null ? `<span title="SP+ rating ${p.sp}"><b>#${p.spRank}</b><small>SP+</small></span>` : ''}
-                    <span><b>${p.xwins || '-'}</b><small>xWins</small></span>
-                    <span><b>${p.score == null ? '-' : p.score}</b><small>${ptsLabel}</small></span>
-                </div>
+                <div class="pool-card-stats">${stats}</div>
             </div>`;
         }).join('');
     }
