@@ -184,10 +184,16 @@ function matchTeams(ratings, teams) {
 // right even though the conferences differ" — it does NOT suppress a different
 // disagreement on the same team later, because the expected pair is recorded.
 const KNOWN_CONFERENCE_DRIFT = {
-    // CBBD's 2027 row says Sun Belt; Torvik has it in CUSA, alongside the other
-    // ten CUSA members both sources agree on. One of the two is stale. The
-    // names match exactly — no alias is involved — so the RATING is right
-    // whichever conference is, and the pool is unaffected.
+    // RESOLVED: CBBD is right and Torvik is stale. Louisiana Tech moved from
+    // Conference USA to the Sun Belt for 2026-27 (latechsports.com), and
+    // Torvik's preseason table still has them in CUSA alongside the ten
+    // members both sources agree on.
+    //
+    // The names match exactly, so no alias is involved and the RATING is
+    // right either way — this entry exists only to stop the swapped-pair
+    // check firing on a disagreement we have already looked at. Drop it once
+    // Torvik's table catches up; the test below fails if it is left behind
+    // while the data no longer needs it.
     'Louisiana Tech': { torvik: 'CUSA', cbbd: 'Sun Belt' }
 };
 
