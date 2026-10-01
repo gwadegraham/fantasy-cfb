@@ -512,9 +512,13 @@
 
         (data.participants || []).sort(function (a, b) { return a.seed - b.seed; }).forEach(function (p) {
             var teamColor = colorHex(p.color) || 'var(--cc-muted-2)';
-            // BYE and OUT are mutually exclusive in practice — a bye team that
-            // loses is out — so show the one that still says something.
-            var byeBadge = p.eliminatedIn ? ' <span class="cfp-out-tag">OUT</span>'
+            // BYE, OUT and CHAMP are mutually exclusive in practice, so show the
+            // one that still says something. CHAMP comes first: once a bracket
+            // has been won, the winner is the only team left with no elimination
+            // round, and labelling it BYE described a round it had long outlived.
+            var isChampion = !!(data.champion && data.champion.teamId === p.teamId);
+            var byeBadge = isChampion ? ' <span class="cfp-champ-tag">CHAMP</span>'
+                : p.eliminatedIn ? ' <span class="cfp-out-tag">OUT</span>'
                 : (p.firstRoundBye ? ' <span class="cfp-bye-tag">BYE</span>' : '');
             var ownerName = p.owner ? '<a href="/userHome?user=' + p.owner.userId + '" class="cfp-field-owner" style="color:' + (colorHex(p.owner.color) || 'var(--cc-interactive)') + '">' + escapeHtml(p.owner.franchise) + '</a>' : '<span class="cfp-undrafted-tag">—</span>';
             var bidLabel = p.bidType === 'auto' ? '<span class="cfp-auto-bid">Auto</span>' : '<span class="cfp-at-large">At-Large</span>';
