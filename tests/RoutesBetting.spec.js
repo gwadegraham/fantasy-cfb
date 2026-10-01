@@ -10,6 +10,7 @@ const { useMongo } = require('./helpers/mongo');
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
 const Account = require('../models/account');
+const AuditLog = require('../models/auditLog');
 const Game = require('../models/game');
 const bettingRouter = require('../routes/betting');
 
@@ -516,6 +517,107 @@ describe('PATCH /betting/:id/legs — kickoff lock', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.legs[0].gameId).toBe(700002);
+    });
+});
+
+// Backfilling a leg nobody ever submitted.
+//
+// A parlay seeds one empty leg per member at creation, so a week where someone
+// forgot resolves with their leg blank — and the "already resolved" guard then
+// made that permanent, leaving them a game short on the Bettors board forever.
+// An admin may fill a leg that is still EMPTY. A leg that carries a pick stays
+// closed to everyone, so a settled bet can never be rewritten into another one.
+describe('PATCH /betting/:id/legs — backfilling a settled slip', () => {
+    const OTHER = new mongoose.Types.ObjectId();
+    let parlay;
+
+    const makeParlay = (legs, status = 'lost') => Parlay.create({
+        group: group._id, season: 2026, week: 5, wager: 20, status, legs
+    });
+
+    const patch = (agent, body) => request(agent)
+        .patch(`/betting/${parlay._id}/legs`)
+        .send(Object.assign({ contributor: MEMBER.toString() }, body));
+
+    test('an admin fills a leg that was never submitted', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER }, { contributor: OTHER, selection: 'Ohio State ML', odds: -200, result: 'loss' }]);
+
+        const res = await patch(adminApp, { betType: 'moneyline', selection: 'SMU ML', odds: -155, teamSide: 'home' });
+
+        expect(res.status).toBe(200);
+        const stored = await Parlay.findById(parlay._id).lean();
+        const filled = stored.legs.find(l => String(l.contributor) === String(MEMBER));
+        expect(filled.selection).toBe('SMU ML');
+        expect(filled.odds).toBe(-155);
+        // Left for the resolver, which scans on legs.result and not on parlay
+        // status — so it grades on the next run and re-derives from the full set.
+        expect(filled.result).toBe('pending');
+        // The slip's own verdict is not this route's to change.
+        expect(stored.status).toBe('lost');
+    });
+
+    test('a member cannot backfill their own leg once the slip has settled', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER }]);
+
+        const res = await patch(app, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/already resolved/i);
+    });
+
+    // The line between filling a hole and rewriting history.
+    test('an admin cannot touch a leg that already carries a pick', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER, selection: 'Oklahoma ML', odds: -205, result: 'loss' }]);
+
+        const res = await patch(adminApp, { selection: 'Texas ML', odds: -150 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/already resolved/i);
+        const stored = await Parlay.findById(parlay._id).lean();
+        expect(stored.legs[0].selection).toBe('Oklahoma ML');
+    });
+
+    // A graded leg with no selection text is still graded, and a result is the
+    // thing that must not be reachable — emptiness is about the pick AND the
+    // grade, not the pick alone.
+    test('an admin cannot touch a blank leg that was already graded', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER, result: 'loss' }]);
+
+        const res = await patch(adminApp, { selection: 'SMU ML', odds: -155 });
+
+        expect(res.status).toBe(400);
+    });
+
+    test('a pending slip is unaffected — a member still edits their own leg', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER }], 'pending');
+
+        const res = await patch(app, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.legs[0].selection).toBe('SMU ML');
+    });
+
+    describe('audit trail', () => {
+        test('a backfill leaves a row naming the week and the slip', async () => {
+            parlay = await makeParlay([{ contributor: MEMBER }]);
+
+            await patch(adminApp, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+            const rows = await AuditLog.find({ action: 'parlay.backfill' }).lean();
+            expect(rows).toHaveLength(1);
+            expect(rows[0].summary).toMatch(/week 5/);
+            expect(rows[0].season).toBe('2026');
+            expect(rows[0].meta.contributor).toBe(MEMBER.toString());
+        });
+
+        // A row per pick per member per week would bury the handful that matter.
+        test('an ordinary in-week edit leaves none', async () => {
+            parlay = await makeParlay([{ contributor: MEMBER }], 'pending');
+
+            await patch(app, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+            expect(await AuditLog.countDocuments({ action: 'parlay.backfill' })).toBe(0);
+        });
     });
 });
 

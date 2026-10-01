@@ -14,6 +14,7 @@ const { effectiveRoles } = require('../modules/dev-role');
 const { combinedAmericanOdds, settledPayout } = require('../modules/parlay-calc');
 const { deriveParlayStatus } = require('../modules/parlay-resolve');
 const { contributorStats, superlatives } = require('../modules/parlay-stats');
+const audit = require('../modules/audit-log');
 
 // Maintenance endpoint, called by the weekly enrichment job — not a member
 // action. It re-grades stat legs whose box scores weren't available when the
@@ -332,9 +333,6 @@ router.patch('/:id/legs', async (req, res) => {
     try {
         const parlay = await Parlay.findById(req.params.id);
         if (!parlay) return res.status(404).json({ message: 'Parlay not found' });
-        if (parlay.status !== 'pending') {
-            return res.status(400).json({ message: 'Parlay is already resolved' });
-        }
 
         const { contributor, gameId, betType, selection, line, odds, teamSide, statCategory, statTeamSide } = req.body;
         if (!contributor) return res.status(400).json({ message: 'Contributor is required' });
@@ -346,6 +344,31 @@ router.patch('/:id/legs', async (req, res) => {
 
         const leg = parlay.legs.find(l => l.contributor && l.contributor.toString() === contributor);
         if (!leg) return res.status(404).json({ message: 'No leg found for this contributor' });
+
+        // A settled slip is closed — with one hole left open deliberately: an
+        // admin filling a leg that was NEVER filled in.
+        //
+        // A parlay seeds one empty leg per group member at creation, so a week
+        // where someone forgot to submit resolves with their leg blank. The
+        // slip's own result is already decided and nothing here changes it, but
+        // that member's row on the Bettors board is short a game for good,
+        // because the leg can never be filled after the fact. That is the only
+        // case this opens. A leg that already carries a pick — graded or not —
+        // stays closed to everyone, so a settled bet can never be rewritten
+        // into a different one.
+        //
+        // Checked AFTER the leg lookup, because "is this leg empty" is a
+        // question about the leg. The resolver takes it from here: it scans on
+        // `legs.result: 'pending'` and not on parlay.status, so a leg added now
+        // grades on the next run and the status and payout re-derive off the
+        // full set. On a slip that already WON that recomputes the payout with
+        // the new leg's odds — correct, because the recorded payout was the one
+        // missing a leg.
+        const isEmptyLeg = !leg.selection && leg.gameId == null && leg.result === 'pending';
+        const backfilling = parlay.status !== 'pending' && isAdmin(req) && isEmptyLeg;
+        if (parlay.status !== 'pending' && !backfilling) {
+            return res.status(400).json({ message: 'Parlay is already resolved' });
+        }
 
         if (gameId != null) {
             const game = await Game.findOne({ id: gameId }).lean();
@@ -403,6 +426,21 @@ router.patch('/:id/legs', async (req, res) => {
 
         parlay.updatedAt = new Date();
         await parlay.save();
+
+        // A leg added to a slip that had already settled is the one edit here
+        // that rewrites a finished week, so it leaves a row — the same reason
+        // roster corrections and captain locks do. Ordinary in-week edits do
+        // not: that would be a row per pick per member per week, burying the
+        // handful that matter. Best-effort, and after the save.
+        if (backfilling) {
+            await audit.record(req, {
+                action: 'parlay.backfill',
+                season: String(parlay.season),
+                summary: `Filled a missing week ${parlay.week} leg on a ${parlay.status} parlay`,
+                meta: { parlayId: String(parlay._id), week: parlay.week, contributor: String(contributor) }
+            });
+        }
+
         res.json(parlay);
     } catch (err) {
         res.status(500).json({ message: err.message });
