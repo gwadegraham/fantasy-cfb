@@ -1,7 +1,8 @@
 const Draft = require('../models/draft');
+const draftPool = require('./draft-pool');
 const engine = require('./draft-engine');
 const draftToken = require('./draft-token');
-const { internalFetch } = require('./internal-api');
+const { internalFetch, failureMessage } = require('./internal-api');
 
 function roomKey(league, season) {
     return `draft:${league}:${season}`;
@@ -30,6 +31,7 @@ function publicState(draft) {
         status: d.status,
         snake: d.snake,
         totalRounds: d.totalRounds,
+        poolSize: d.poolSize == null ? null : d.poolSize,
         scheduledAt: d.scheduledAt,
         callUrl: d.callUrl || null,
         draftOrder: (d.draftOrder || []).map(String),
@@ -55,13 +57,32 @@ async function persistTeamsToUsers(draft) {
         teamsByUser[uid].push(team);
     }
 
+    // ⚠️ THE RESPONSE IS READ. It was discarded, and that is what would have
+    // made every other failure here invisible: the PATCH answers 400 when a
+    // rostered team is missing a required field, and the draft still completed,
+    // the confetti still fired, draft-complete still broadcast, and every
+    // roster was empty with nothing in any log.
+    //
+    // Not thrown: by this point the picks are made and the draft is over, so
+    // the useful thing is a loud record of WHICH manager did not get a roster,
+    // not an exception that strands the room.
+    const failed = [];
     for (const userId of Object.keys(teamsByUser)) {
-        await internalFetch(`${process.env.URL}/users/draft/${userId}`, {
-            method: 'PATCH',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: draft.season, teams: teamsByUser[userId] })
-        });
+        try {
+            const res = await internalFetch(`${process.env.URL}/users/draft/${userId}`, {
+                method: 'PATCH',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify({ season: draft.season, teams: teamsByUser[userId] })
+            });
+            if (!res.ok) failed.push(`${userId}: ${res.status} ${await failureMessage(res)}`);
+        } catch (err) {
+            failed.push(`${userId}: ${err.message}`);
+        }
     }
+    if (failed.length) {
+        console.error(`draft ${draft.league}/${draft.season}: ${failed.length} roster(s) FAILED to persist — ${failed.join(' | ')}`);
+    }
+    return { failed };
 }
 
 module.exports = function registerDraftSockets(io) {
@@ -155,11 +176,25 @@ module.exports = function registerDraftSockets(io) {
                     return socket.emit('draft-error', { message: "It's not your turn" });
                 }
 
+                // The team has to be IN the pool, and the row we store is the
+                // one we looked up — never the object the client sent. The
+                // board is the thing being bypassed here, so nothing it
+                // supplies is trusted beyond the id, and even that is
+                // re-resolved: a string "1" validated as team 1 and was then
+                // written as "1", which the duplicate guard below compares
+                // against stored NUMBERS, so two managers got the same team.
+                const resolved = await draftPool.draftableTeam(league, {
+                    teamId: team.id, poolSize: draft.poolSize, season
+                });
+                if (!resolved) {
+                    return socket.emit('draft-error', { message: 'That team is not in the draft pool' });
+                }
+
                 const pick = {
                     round: turn.round,
                     overall: turn.overall,
                     userId: turn.userId,
-                    team,
+                    team: resolved,
                     pickedAt: new Date(),
                     pickedByCommissioner: String(socket.user.userId) !== turn.userId
                 };
@@ -171,7 +206,9 @@ module.exports = function registerDraftSockets(io) {
                         _id: draft._id,
                         status: 'active',
                         currentOverall: turn.overall,
-                        'picks.team.id': { $ne: team.id }
+                        // resolved.id, not team.id: the client's value may be a
+                        // string, and "1" !== 1 against the stored numbers.
+                        'picks.team.id': { $ne: resolved.id }
                     },
                     { $push: { picks: pick }, $inc: { currentOverall: 1 }, $set: { updatedAt: new Date() } },
                     { new: true }

@@ -24,6 +24,25 @@ const baseDraft = (extra = {}) => Object.assign({
 }, extra);
 
 describe('publicState', () => {
+    // The whitelist, pinned exhaustively. toMatchObject below cannot see a
+    // field that is MISSING, which is the failure this file was written for —
+    // the call link reached the admin form and the database and then simply
+    // never arrived in the room. A new Draft setting now fails HERE.
+    it('carries every field the room is given, and no more', () => {
+        expect(Object.keys(publicState(baseDraft())).sort()).toEqual([
+            '_id', 'callUrl', 'currentOverall', 'draftOrder', 'league',
+            'onTheClock', 'picks', 'poolSize', 'scheduledAt', 'season',
+            'snake', 'status', 'totalRounds'
+        ]);
+    });
+
+    it('carries the pool cap, so the room can say what it is drafting from', () => {
+        expect(publicState(baseDraft({ poolSize: 120 })).poolSize).toBe(120);
+        // Absent on every football draft, and null is what "all teams" means
+        // on the wire — undefined would drop out of the JSON entirely.
+        expect(publicState(baseDraft()).poolSize).toBeNull();
+    });
+
     it('broadcasts every commissioner-configured setting the room renders', () => {
         const state = publicState(baseDraft());
         expect(state).toMatchObject({
