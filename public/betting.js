@@ -406,7 +406,14 @@ function renderCurrentParlay() {
 
         if (!leg.gameId) {
             var isMine = leg.contributor === myUserId;
-            if (isMine) {
+            // Only an admin may fill an empty leg once the slip has settled, so
+            // only an admin gets the button then. Offering it to the member and
+            // answering their submit with "Parlay is already resolved" is the
+            // same dead end they already walked into once — and every other
+            // admin affordance on this page (the edit pencil, the odds editor,
+            // the wager panel) is status-gated the same way.
+            var open = parlay.status === 'pending';
+            if (isMine && open) {
                 return renderLegPickCTA(leg, parlay._id, i, name, color, init);
             }
             if (window.IS_ADMIN) {
