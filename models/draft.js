@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const draftPickSchema = new mongoose.Schema({
     round: { type: Number, required: true },
     overall: { type: Number, required: true },   // 1-based overall pick number
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'Account', required: true },
     team: { type: mongoose.Schema.Types.Mixed, required: true },
     pickedAt: { type: Date },
     pickedByCommissioner: { type: Boolean, default: false },
@@ -45,7 +45,9 @@ const draftSchema = new mongoose.Schema({
         default: 'standings'
     },
     // participant user ids, in pick order (slot 1 first)
-    draftOrder: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // Account ids, like picks[].userId above — see the note in
+    // models/parlay.js for why these may not say 'User'.
+    draftOrder: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Account' }],
 
     // --- live draft state ---
     picks: { type: [draftPickSchema], default: [] },

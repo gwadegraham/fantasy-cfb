@@ -1,9 +1,21 @@
 const mongoose = require('mongoose');
 
+// `ref: 'Account'`, not 'User', here and on placedBy below.
+//
+// Both hold account ids — the migration kept each User's _id on their Account,
+// and every id stored in production resolves in `accounts` and in none of them
+// is a franchise id. But the declaration said 'User', and nothing in the web
+// process loads models/user.js any more: #313 retired the last `users` read, so
+// Mongoose has no such schema registered. Any .populate() on one of these threw
+// MissingSchemaError and 500ed the route.
+//
+// That is not hypothetical. It is what broke the betting page's whole parlay
+// list (#471) — a ref nobody could populate, pointing at a collection that is
+// frozen. These now name the model the ids actually belong to.
 const legSchema = new mongoose.Schema({
     contributor: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'Account'
     },
     gameId: {
         type: Number
@@ -97,7 +109,7 @@ const parlaySchema = new mongoose.Schema({
     },
     placedBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'Account'
     },
     legs: [legSchema],
     createdAt: {

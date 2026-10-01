@@ -5,9 +5,11 @@ const bettingGroupSchema = new mongoose.Schema({
         type: String,
         default: 'Betting Group'
     },
+    // Account ids. See the note in models/parlay.js: 'User' is a model the web
+    // process no longer registers, so that ref could only ever 500 a populate.
     members: [{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'Account'
     }],
     season: {
         type: Number,
