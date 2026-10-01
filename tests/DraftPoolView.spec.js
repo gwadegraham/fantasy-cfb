@@ -76,8 +76,11 @@ describe('football — unchanged, field for field', () => {
     test('the columns are the ones the table shows today', () => {
         expect(view.columnsFor('football').map(c => c.key))
             .toEqual(['name', 'conf', 'sp', 'rank', 'score', 'xwins', 'draft']);
+        // `draft` included: it carries no number, but .num is what
+        // right-aligns the Draft button, and dropping it moved every button
+        // in the table to the left.
         expect(view.columnsFor('football').filter(c => c.num).map(c => c.key))
-            .toEqual(['sp', 'rank', 'score', 'xwins']);
+            .toEqual(['sp', 'rank', 'score', 'xwins', 'draft']);
     });
 
     test('an unknown sport falls back to football, never to an empty table', () => {
@@ -115,6 +118,9 @@ describe('sorting', () => {
         expect(view.sortValue({ score: null }, 'score')).toBeLessThan(view.sortValue({ score: 0 }, 'score'));
         expect(view.sortValue({ rank: null }, 'rank')).toBeGreaterThan(view.sortValue({ rank: 300 }, 'rank'));
         expect(view.sortValue({ sp: null }, 'sp')).toBeLessThan(view.sortValue({ sp: -50 }, 'sp'));
+        // xWins is football's, and its sentinel was the one left untested —
+        // flipping it to 999 kept all seventeen tests green.
+        expect(view.sortValue({ xwins: null }, 'xwins')).toBeLessThan(view.sortValue({ xwins: 0 }, 'xwins'));
     });
 
     test('name and conference sort case-insensitively', () => {
@@ -136,9 +142,15 @@ describe('sorting', () => {
 describe('the column the table opens on', () => {
     test('football waits for SP+ to exist before defaulting to it', () => {
         // Before the enrichment job runs, every rating is null and sorting on
-        // it is meaningless — so it stays on recruiting, as it does today.
+        // it is meaningless — so it stays on xWins, which is where the table
+        // has always opened.
+        //
+        // The first version of this test asserted `rank` and described that
+        // as the existing behaviour. It was not: origin/main initialises
+        // poolSort to { xwins, -1 } and only ever upgrades it to sp. The test
+        // was pinning a regression it was written to prevent.
         const unrated = [{ sp: null }, { sp: null }];
-        expect(view.defaultSort('football', unrated)).toEqual({ key: 'rank', dir: 1 });
+        expect(view.defaultSort('football', unrated)).toEqual({ key: 'xwins', dir: -1 });
         expect(view.defaultSort('football', [{ sp: null }, { sp: 12 }])).toEqual({ key: 'sp', dir: -1 });
     });
 

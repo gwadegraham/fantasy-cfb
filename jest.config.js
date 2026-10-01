@@ -35,6 +35,7 @@ module.exports = {
         "modules/**/*.js",
         "routes/**/*.js",
         "*-job.js",
+        "public/draft-pool-view.js",
         "public/season-of.js",
         "public/standings-insights.js",
         "public/standings.js",

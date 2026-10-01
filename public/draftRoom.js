@@ -151,7 +151,12 @@ async function getTeams() {
     poolSport = payload.sport || 'football';
     // The league's own season wins over APP_YEAR. For football they agree;
     // for a basketball league APP_YEAR is simply the wrong sport's year.
-    if (Number.isFinite(Number(payload.season))) season = Number(payload.season);
+    // Not Number.isFinite alone: Number(null) is 0 and isFinite(0) is true,
+    // so a league with no season would have set season = 0 — and that flows
+    // into join-draft, make-pick and /draft/grades/.../0, all of which run
+    // after this. seasonForLeague CAN return null.
+    var fromPool = Number(payload.season);
+    if (Number.isInteger(fromPool) && fromPool > 2000) season = fromPool;
     teamList = payload.teams;
     teamList.forEach(t => { teamsById[String(t.id)] = t; });
 
@@ -163,11 +168,28 @@ async function getTeams() {
     renderPool();
 }
 
+// Held in state, not just painted once.
+//
+// The first version wrote the message and returned — and then window.onload
+// carried on to connectSocket(), whose first draft-state calls renderPool(),
+// which unconditionally rewrites the table from an empty pool. The actionable
+// message flashed for about a second and the commissioner was left with
+// exactly the empty table it exists to prevent.
+var poolError = null;
+
 function showPoolError(message) {
+    poolError = message;
+    renderPoolError();
+}
+
+function renderPoolError() {
+    var span = ccDraftPool.columnsFor(poolSport).length;
     var body = document.querySelector('[user-table-body]');
-    if (body) body.innerHTML = '<tr><td colspan="8" class="pool-error">' + escapeHtml(message) + '</td></tr>';
+    if (body) body.innerHTML = '<tr><td colspan="' + span + '" class="pool-error">' + escapeHtml(poolError) + '</td></tr>';
     var cards = document.getElementById('pool-cards');
-    if (cards) cards.innerHTML = '<div class="pool-error">' + escapeHtml(message) + '</div>';
+    if (cards) cards.innerHTML = '<div class="pool-error">' + escapeHtml(poolError) + '</div>';
+    var head = document.getElementById('pool-head');
+    if (head) head.innerHTML = '';
 }
 
 // Delegated to public/draft-pool-view.js so it can be TESTED: this file is a
@@ -220,7 +242,11 @@ function sortPool(key) {
     } else {
         poolSort.key = key;
         // Names/conference/recruiting read best ascending; stats descending.
-        poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank') ? 1 : -1;
+            // Ascending for the columns where a SMALLER number is better: the
+        // two ranks, and basketball's defensive efficiency. Opening Defense
+        // descending would list the worst defences first, against the whole
+        // point of its sort sentinel.
+    poolSort.dir = (key === 'name' || key === 'conf' || key === 'rank' || key === 'adjDE' || key === 'proj') ? 1 : -1;
     }
     renderPool();
 }
@@ -259,6 +285,9 @@ function poolCell(p, key, action) {
 function renderPool() {
     var body = document.querySelector('[user-table-body]');
     if (!body) return;
+    // A pool that could not be built keeps saying so. renderPool runs again on
+    // every socket update, and without this each one would wipe the message.
+    if (poolError) return renderPoolError();
 
     var draftedIds = new Set((draft && draft.picks ? draft.picks : []).map(p => String(p.team.id)));
     var oc = (draft && draft.onTheClock) || {};

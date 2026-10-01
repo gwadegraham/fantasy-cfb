@@ -28,7 +28,12 @@
             { key: 'rank', label: 'Recruiting', num: true },
             { key: 'score', label: 'Last Season', num: true },
             { key: 'xwins', label: 'xWins', num: true },
-            { key: 'draft', label: '' }
+            // `num` on the ACTION column too. It carries no number, but
+            // .pool-table tbody td.num is what right-aligns it, and dropping
+            // the flag moved every Draft button and Drafted chip to the left
+            // edge of its cell. Caught by a jsdom diff against the old
+            // rendering, not by any of the data tests.
+            { key: 'draft', label: '', num: true }
         ],
         basketball: [
             { key: 'name', label: 'Team' },
@@ -38,7 +43,7 @@
             { key: 'adjOE', label: 'Offense', num: true },
             { key: 'adjDE', label: 'Defense', num: true },
             { key: 'proj', label: 'Proj.' },
-            { key: 'draft', label: '' }
+            { key: 'draft', label: '', num: true }
         ]
     };
 
@@ -79,7 +84,12 @@
     function defaultSort(sport, pool) {
         if (sport === 'basketball') return { key: 'rank', dir: 1 };
         if (pool.some(function (p) { return p.sp != null; })) return { key: 'sp', dir: -1 };
-        return { key: 'rank', dir: 1 };
+        // xWins, which is where the table has always opened before the
+        // enrichment job publishes ratings. The first version of this returned
+        // the recruiting rank and described that as the existing behaviour —
+        // it was not, and the test asserting it was pinning the change rather
+        // than catching it.
+        return { key: 'xwins', dir: -1 };
     }
 
     // One row per draftable team.
