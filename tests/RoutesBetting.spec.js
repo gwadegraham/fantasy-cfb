@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
+const Account = require('../models/account');
 const Game = require('../models/game');
 const bettingRouter = require('../routes/betting');
 
@@ -150,6 +151,97 @@ describe('GET /betting/contributor-stats/:season', () => {
         expect(res.status).toBe(200);
         expect(res.body.slips).toBe(0);
         expect(res.body.rows.every(r => r.decided === 0)).toBe(true);
+    });
+});
+
+// The route the whole bottom half of the betting page is built from.
+//
+// It had no test, and in production it 500ed for any season holding a slip
+// with a `placedBy` — which is every real one. `placedBy` is declared
+// `ref: 'User'`, and once #313 retired the last `users` read nothing in the web
+// process required models/user.js, so `.populate('placedBy')` threw
+// MissingSchemaError. The page read the 500 as an empty season.
+//
+// This file deliberately does NOT require models/user — that is the point. It
+// reproduces the web process's module graph, where 'User' is unregistered. Every
+// parlay below carries a placedBy for the same reason: without one, Mongoose has
+// no id to look up and never reaches the missing schema, so the bug hides.
+describe('GET /betting/list', () => {
+    // The premise above, made mechanical. A comment cannot stop a later edit
+    // from pulling models/user into this file's module graph — and the moment
+    // something does, these tests go green against the broken route and stop
+    // describing the web process at all.
+    test('runs in the web process\'s module graph, with no User model registered', () => {
+        expect(mongoose.models.User).toBeUndefined();
+    });
+
+    test('returns the season\'s parlays, newest week first', async () => {
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 1, wager: 20, placedBy: MEMBER, legs: [] },
+            { group: group._id, season: 2026, week: 3, wager: 20, placedBy: MEMBER, legs: [] },
+            { group: group._id, season: 2025, week: 9, wager: 20, placedBy: MEMBER, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body.map(p => p.week)).toEqual([3, 1]);
+    });
+
+    test('resolves placedBy against Account rather than the frozen users model', async () => {
+        const account = await Account.create({
+            _id: MEMBER, firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com'
+        });
+        await Parlay.create({ group: group._id, season: 2026, week: 2, placedBy: account._id, legs: [] });
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body[0].placedBy).toMatchObject({
+            _id: String(account._id), firstName: 'Garrett', lastName: 'Graham'
+        });
+        // Those three keys and NOTHING else. toMatchObject alone is permissive,
+        // so dropping the projection on the Account read would leave this green
+        // while the route started shipping authSub and pushSubscriptions — the
+        // Auth0 subject, every push endpoint and its encryption keys — to every
+        // member's browser. modules/franchise-repo.js narrows its own list reads
+        // for exactly this reason.
+        expect(Object.keys(res.body[0].placedBy).sort()).toEqual(['_id', 'firstName', 'lastName']);
+    });
+
+    // The real-data mix: of the four slips in the production group, one was
+    // placed before the field existed and has none. Neither the empty-ids
+    // short-circuit nor the per-parlay falsy guard was covered by the tests
+    // above, because every parlay in them carries a placedBy.
+    test('leaves a parlay with no placedBy alone while resolving the others', async () => {
+        const account = await Account.create({
+            _id: MEMBER, firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com'
+        });
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 5, placedBy: account._id, legs: [] },
+            { group: group._id, season: 2026, week: 6, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        const [week6, week5] = res.body;
+        // Absent, not null: the route must not invent the key.
+        expect('placedBy' in week6).toBe(false);
+        expect(week5.placedBy.firstName).toBe('Garrett');
+    });
+
+    // A slip placed by someone since removed from the group still has to render
+    // its week row. The id survives so the client can fall back to its own
+    // member names; nulling it would drop the "placed by" line entirely.
+    test('leaves an unresolvable placedBy as the bare id', async () => {
+        const gone = new mongoose.Types.ObjectId();
+        await Parlay.create({ group: group._id, season: 2026, week: 4, placedBy: gone, legs: [] });
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body[0].placedBy).toBe(String(gone));
     });
 });
 
