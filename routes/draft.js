@@ -4,6 +4,7 @@ const router = express.Router();
 const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const Team = require('../models/team');
+const draftPool = require('../modules/draft-pool');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
@@ -145,6 +146,35 @@ router.post('/grades/:league/:season/freeze', async (req, res) => {
 // the client also recomputes it locally on each socket pick so the page reacts
 // without a round trip.
 const boardCache = new Map();     // `${league}:${season}` -> { projections, rankedSource }
+
+// What this league can draft, in board order.
+//
+// Replaces the draft room's direct /teams fetch, which can only ever answer
+// with football. The sport is resolved from the league, so the room asks the
+// same question regardless of which one it is drafting.
+//
+// Everything inside one try: an async handler that throws before its try sends
+// NO response at all under Express 4 and the request hangs — the same shape as
+// the PATCH /users/draft/:id hang in #461 and the hoops teams ingest in #317.
+router.get('/pool/:league', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const draft = await Draft.findOne({ league }, { poolSize: 1, season: 1 })
+            .sort({ season: -1 }).lean();
+        const asked = Number(req.query.poolSize);
+        const poolSize = Number.isFinite(asked) ? asked : (draft ? draft.poolSize : null);
+
+        const pool = await draftPool.poolFor(league, { poolSize, season: req.query.season });
+        return res.json(pool);
+    } catch (err) {
+        // A pool that cannot be built is a precondition failure with something
+        // specific to do about it, so the message is the point — don't flatten
+        // it into a bare 500.
+        const status = err.status || 500;
+        if (status === 500) console.log(`Draft pool failed for ${req.params.league}: ${err.message}`);
+        return res.status(status).json({ message: err.message });
+    }
+});
 
 router.get('/board/:league/:season', async (req, res) => {
     try {

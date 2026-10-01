@@ -39,6 +39,18 @@ const draftSchema = new mongoose.Schema({
     callUrl: { type: String, default: null },
     snake: { type: Boolean, default: true },
     totalRounds: { type: Number, default: 10 },
+
+    // How many teams are draftable, best-rated first. Null means the whole
+    // universe, which is what every football draft has always been and stays.
+    //
+    // Basketball needs it: 365 D-I programs is more than anyone wants to scroll,
+    // and everything below the cap scores near zero anyway, so a cap removes
+    // picks nobody wants rather than choices they would miss (#320).
+    //
+    // ⚠️ It has to clear managers x totalRounds, or the pool empties on the
+    // final pick and the last manager has no choice to make. The check lives in
+    // the route rather than here, because the manager count is a query.
+    poolSize: { type: Number, default: null },
     orderMethod: {
         type: String,
         enum: ['standings', 'random', 'manual'],

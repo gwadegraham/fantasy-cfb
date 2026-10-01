@@ -110,6 +110,15 @@ module.exports = {
         // The draft pool is ranked entirely from this module's output, and its
         // failure mode is a team quietly absent from the pool rather than an
         // error. 100% is affordable — it is pure, and it has no I/O.
+        // The draft pool's failure mode is a list that renders, drafts, and is
+        // missing the teams anyone wanted — so every refusal path has to be
+        // exercised, not just the happy one.
+        "./modules/draft-pool.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
         "./modules/torvik-pool.js": {
             statements: 100,
             branches: 100,
