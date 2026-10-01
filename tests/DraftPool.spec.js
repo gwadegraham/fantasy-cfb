@@ -67,7 +67,7 @@ describe('poolFor — basketball', () => {
 
         const pool = await draftPool.poolFor(HOOPS, { poolSize: 2 });
         expect(pool.teams.map(t => t.school)).toEqual(['Best', 'Middle']);
-        expect(pool).toMatchObject({ sport: 'basketball', season: SEASON, poolSize: 2, total: 2 });
+        expect(pool).toMatchObject({ sport: 'basketball', season: SEASON, poolSize: 2, count: 2, seasonTotal: 3 });
     });
 
     test('rank rides along, because the cap is "the top N" and the board shows it', async () => {
@@ -86,22 +86,59 @@ describe('poolFor — basketball', () => {
     // takes them. The pool is the right size, in a plausible order, and the
     // best teams are absent.
     test('unranked teams cannot displace ranked ones at the top of the pool', async () => {
-        await leagues();
+        // Direct, because poolFor refuses this season as a half-finished
+        // import before it ever sorts — so the front door cannot show whether
+        // the filter does anything.
         await HoopsTeam.create([
             hoops(1, 'Unranked A', null), hoops(2, 'Unranked B', null),
             hoops(3, 'Best', 1), hoops(4, 'Second', 2)
         ]);
 
-        const pool = await draftPool.poolFor(HOOPS, { poolSize: 2 });
-        expect(pool.teams.map(t => t.school)).toEqual(['Best', 'Second']);
+        const teams = await draftPool.basketballPool(SEASON, 2);
+        expect(teams.map(t => t.school)).toEqual(['Best', 'Second']);
     });
 
-    test('no cap means every ranked team', async () => {
+    test('and the same holds for an explicit null rank, not just a missing one', async () => {
+        await HoopsTeam.create([
+            { ...hoops(1, 'Null rank', null), preseason: { rank: null } },
+            hoops(2, 'Best', 1)
+        ]);
+        expect((await draftPool.basketballPool(SEASON, 1)).map(t => t.school)).toEqual(['Best']);
+    });
+
+    test('no cap means every team, in rank order', async () => {
         await leagues();
-        await HoopsTeam.create([hoops(1, 'A', 2), hoops(2, 'B', 1), hoops(3, 'No rank', null)]);
+        await HoopsTeam.create([hoops(1, 'A', 2), hoops(2, 'B', 1)]);
         const pool = await draftPool.poolFor(HOOPS, { poolSize: null });
         expect(pool.teams.map(t => t.school)).toEqual(['B', 'A']);
         expect(pool.poolSize).toBeNull();
+    });
+
+    // This refusal used to live inside `if (poolSize && ...)`, which switched
+    // it off in the only state a real league can currently be in — nothing
+    // writes poolSize yet, so every pool is uncapped. The module's main
+    // refusal was unreachable in practice.
+    test('a half-finished import is refused even with NO cap', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 2), hoops(3, 'No rank', null)]);
+        await expect(draftPool.poolFor(HOOPS, { poolSize: null }))
+            .rejects.toThrow(/Only 2 of the 3 teams for 2027 carry a preseason rank/);
+    });
+
+    // BSON sorts numbers before strings, so a rank of "1" lands at the END of
+    // an ascending sort while still looking ranked to a presence check — the
+    // best team in the season, missing from a pool of the right size.
+    test('a rank stored as a string is not treated as ranked', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Ten', 10), hoops(2, 'Twenty', 20)]);
+        await HoopsTeam.collection.insertOne({
+            id: 3, season: SEASON, school: 'StringOne', conference: 'Test',
+            preseason: { rank: '1' }
+        });
+        // Counted as unranked, so the half-import guard fires rather than the
+        // pool quietly coming back without it.
+        await expect(draftPool.poolFor(HOOPS, { poolSize: 2 }))
+            .rejects.toThrow(/Only 2 of the 3 teams/);
     });
 
     test('only this season is drafted', async () => {
@@ -140,7 +177,7 @@ describe('poolFor — basketball', () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 2), hoops(3, 'No rank', null)]);
         await expect(draftPool.poolFor(HOOPS, { poolSize: 3 }))
-            .rejects.toThrow(/Only 2 of the 3 teams for 2027 carry a preseason rank, fewer than the pool of 3 — re-run/);
+            .rejects.toThrow(/Only 2 of the 3 teams for 2027 carry a preseason rank — re-run/);
     });
 
     test('exactly enough ranked teams is fine', async () => {
@@ -173,6 +210,7 @@ describe('poolFor — football is unchanged', () => {
         await Team.create([fbs(1, 'Zebra State'), fbs(2, 'Alpha Tech')]);
         const pool = await draftPool.poolFor(BALL, { poolSize: 1 });
         expect(pool.teams.map(t => t.school)).toEqual(['Alpha Tech', 'Zebra State']);
+        expect(pool.count).toBe(2);
         // The cap is ignored, deliberately: the football pool IS the universe.
         expect(pool.poolSize).toBeNull();
         expect(pool.sport).toBe('football');
@@ -234,6 +272,87 @@ describe('GET /draft/pool/:league', () => {
         const res = await request(app).get(`/draft/pool/${HOOPS}`);
         expect(res.status).toBe(200);
         expect(res.body.teams).toHaveLength(2);
+    });
+
+    // S1: the lookup used to take the NEWEST draft by sort({season:-1}) and
+    // apply its cap to whatever season was asked for. Every league here has
+    // four drafts, so this was the normal case.
+    test('the cap comes from the draft for the season being asked about', async () => {
+        await leagues();
+        await HoopsTeam.create([
+            hoops(1, 'A26', 1), hoops(2, 'B26', 2), hoops(3, 'C26', 3)
+        ].map(t => ({ ...t, season: 2026 })));
+        await HoopsTeam.create([hoops(4, 'A27', 1), hoops(5, 'B27', 2), hoops(6, 'C27', 3)]);
+        // 2027 inserted FIRST on purpose. The original bug took the newest
+        // draft by sort({season:-1}); a lookup with no season filter and no
+        // sort would take this one too, by natural order. Seeded this way the
+        // test fails for either mistake, not just the one that shipped.
+        await Draft.create([
+            { league: HOOPS, season: SEASON, poolSize: 1 },
+            { league: HOOPS, season: 2026, poolSize: 3 }
+        ]);
+
+        // BOTH seasons asserted, so the test does not rest on which document a
+        // season-blind lookup happens to return — any single-lookup
+        // implementation gets one of the two wrong whatever Mongo's order is.
+        const older = await request(app).get(`/draft/pool/${HOOPS}?season=2026`);
+        expect(older.body.poolSize).toBe(3);
+        expect(older.body.teams.map(t => t.school)).toEqual(['A26', 'B26', 'C26']);
+
+        const current = await request(app).get(`/draft/pool/${HOOPS}?season=${SEASON}`);
+        expect(current.body.poolSize).toBe(1);
+        expect(current.body.teams.map(t => t.school)).toEqual(['A27']);
+    });
+
+    // S2: Number('') is 0 and Number.isFinite(0) is true, so an empty admin
+    // field passed the check and then read as falsy at the cap — answering
+    // with the whole universe while the body said poolSize: null.
+    test.each([['0'], [''], ['-3'], ['2.5']])('?poolSize=%s is a 400, not a silently uncapped pool', async (value) => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 2), hoops(3, 'C', 3)]);
+        await Draft.create({ league: HOOPS, season: SEASON, poolSize: 1 });
+
+        const res = await request(app).get(`/draft/pool/${HOOPS}?poolSize=${value}`);
+        if (value === '') {
+            // An absent value means "use the stored cap", which is the one
+            // reading of it that is not a mistake.
+            expect(res.status).toBe(200);
+            expect(res.body.teams).toHaveLength(1);
+        } else {
+            expect(res.status).toBe(400);
+            expect(res.body.message).toMatch(/poolSize must be a whole number of 1 or more/);
+        }
+    });
+
+    test('a non-numeric season is a 400, not a misleading "no season set"', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1)]);
+        const res = await request(app).get(`/draft/pool/${HOOPS}?season=abc`);
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/season must be a year/);
+    });
+
+    test('a pool too small to finish the draft is reported, not refused', async () => {
+        // It fails loudly at the last pick, unlike a pool holding the wrong
+        // teams — so the job is to show it before draft night, not to block.
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 2)]);
+        const mgr = () => new (require('mongoose').Types.ObjectId)();
+        await Draft.create({ league: HOOPS, season: SEASON, poolSize: 2, totalRounds: 10, draftOrder: [mgr(), mgr()] });
+
+        const res = await request(app).get(`/draft/pool/${HOOPS}`);
+        expect(res.status).toBe(200);
+        expect(res.body.shortfall).toEqual({ picksNeeded: 20, available: 2 });
+    });
+
+    test('a pool that covers the draft carries no shortfall', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 2), hoops(3, 'C', 3), hoops(4, 'D', 4)]);
+        const mgr = () => new (require('mongoose').Types.ObjectId)();
+        await Draft.create({ league: HOOPS, season: SEASON, poolSize: 4, totalRounds: 2, draftOrder: [mgr(), mgr()] });
+
+        const res = await request(app).get(`/draft/pool/${HOOPS}`);
+        expect(res.body.shortfall).toBeUndefined();
     });
 
     test('a pool that cannot be built is a 409 that says what to run', async () => {

@@ -5,6 +5,7 @@ const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const Team = require('../models/team');
 const draftPool = require('../modules/draft-pool');
+const { seasonForLeague } = require('../modules/active-season');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
@@ -159,12 +160,50 @@ const boardCache = new Map();     // `${league}:${season}` -> { projections, ran
 router.get('/pool/:league', async (req, res) => {
     try {
         const league = req.params.league;
-        const draft = await Draft.findOne({ league }, { poolSize: 1, season: 1 })
-            .sort({ season: -1 }).lean();
-        const asked = Number(req.query.poolSize);
-        const poolSize = Number.isFinite(asked) ? asked : (draft ? draft.poolSize : null);
 
-        const pool = await draftPool.poolFor(league, { poolSize, season: req.query.season });
+        // THE SEASON IS RESOLVED ONCE, AND THE DRAFT IS LOOKED UP FOR IT.
+        //
+        // The first version took the newest draft by `sort({ season: -1 })` and
+        // then applied its cap to whatever season the caller asked for. Every
+        // league here already has four drafts, so that was the normal case, not
+        // an edge: ?season=2026 answered 2026's teams under 2027's cap, and a
+        // pool two thirds smaller than configured renders and drafts fine.
+        const askedSeason = req.query.season;
+        const given = askedSeason != null && askedSeason !== '';
+        const season = given ? Number(askedSeason) : seasonForLeague(league);
+        if (given && !Number.isFinite(season)) {
+            return res.status(400).json({ message: `season must be a year, got "${askedSeason}"` });
+        }
+
+        const draft = await Draft.findOne({ league, season },
+            { poolSize: 1, totalRounds: 1, draftOrder: 1 }).lean();
+
+        // Validated, not just finite. `Number('')` is 0 and `Number.isFinite(0)`
+        // is true, so an empty admin field arriving as ?poolSize= used to pass
+        // the check and then read as falsy at the cap — silently answering with
+        // the whole 365-team universe while the body still said poolSize: null.
+        // A negative reached Mongo's .limit(), where it means something else
+        // entirely, and skipped the cannot-be-filled guard on the way.
+        let poolSize = draft ? draft.poolSize : null;
+        const askedSize = req.query.poolSize;
+        if (askedSize != null && askedSize !== '') {
+            const n = Number(askedSize);
+            if (!Number.isInteger(n) || n < 1) {
+                return res.status(400).json({ message: `poolSize must be a whole number of 1 or more, got "${askedSize}"` });
+            }
+            poolSize = n;
+        }
+
+        const pool = await draftPool.poolFor(league, { poolSize, season });
+
+        // Enough teams to finish the draft? Reported rather than refused: a
+        // pool too small runs out LOUDLY, at the last pick, which is a very
+        // different failure from one holding the wrong teams silently. The
+        // admin screen is what needs to say so, before draft night.
+        const picksNeeded = draft ? (draft.draftOrder || []).length * (draft.totalRounds || 0) : 0;
+        if (picksNeeded && pool.count < picksNeeded) {
+            pool.shortfall = { picksNeeded, available: pool.count };
+        }
         return res.json(pool);
     } catch (err) {
         // A pool that cannot be built is a precondition failure with something
