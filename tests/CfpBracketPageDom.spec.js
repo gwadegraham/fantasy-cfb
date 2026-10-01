@@ -154,18 +154,34 @@ describe('the bracket grid', () => {
 });
 
 describe('the field table', () => {
-    test('marks a bye, an elimination and the committee rank', async () => {
+    test('marks the champion, an elimination and the committee rank', async () => {
         const el = await renderPage(payload());
         const rows = [...el.querySelectorAll('.cfp-field-row')];
         const rowFor = (school) => rows.find(r => r.textContent.includes(school));
 
-        expect(rowFor('Indiana').querySelector('.cfp-bye-tag').textContent).toBe('BYE');
+        // The winner is the one team in a finished bracket with no elimination
+        // round, so it used to fall through to its first-round bye and get
+        // labelled BYE — a round it had long outlived.
+        expect(rowFor('Indiana').querySelector('.cfp-champ-tag').textContent).toBe('CHAMP');
+        expect(rowFor('Indiana').querySelector('.cfp-bye-tag')).toBeNull();
         // A bye team that lost shows why its points stopped, not the bye it had.
         expect(rowFor('Ohio State').querySelector('.cfp-out-tag').textContent).toBe('OUT');
         expect(rowFor('Ohio State').querySelector('.cfp-bye-tag')).toBeNull();
         expect(rowFor('Tulane').querySelector('.cfp-out-tag')).not.toBeNull();
         // Committee rank 20 for the 11 seed — the row that used to read "NR".
         expect(rowFor('Tulane').querySelector('.cfp-field-rank').textContent).toBe('#20');
+    });
+
+    // CHAMP replaced BYE only for a bracket that has been won. While one is
+    // still being played the bye is the live fact about a top-4 seed, and the
+    // badge has to keep saying so.
+    test('a bracket still in progress keeps the bye badge', async () => {
+        const el = await renderPage(payload({ champion: null, status: 'in_progress' }));
+        const rows = [...el.querySelectorAll('.cfp-field-row')];
+        const indiana = rows.find(r => r.textContent.includes('Indiana'));
+
+        expect(indiana.querySelector('.cfp-bye-tag').textContent).toBe('BYE');
+        expect(indiana.querySelector('.cfp-champ-tag')).toBeNull();
     });
 
     test('labels an automatic qualifier as Auto', async () => {
