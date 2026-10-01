@@ -440,7 +440,30 @@ router.patch('/:id', async (req, res) => {
             parlay[field] = n;
         }
         if (req.body.seasonType != null) parlay.seasonType = req.body.seasonType;
-        if (req.body.placedBy != null) parlay.placedBy = req.body.placedBy || null;
+
+        // The same write-once bug the numeric fields were fixed for, left behind
+        // on this one. The admin "Placed by" select offers a `—` option with an
+        // empty value and public/betting.js sends `{ placedBy: null }` for it —
+        // which `!= null` skips, so clearing a wrongly-attributed slip did
+        // nothing at all. Worse than nothing: the route still returned 200, so
+        // the page popped "Placed by updated" and re-rendered the old name.
+        //
+        // A non-id is refused rather than handed to Mongoose, which would throw
+        // a CastError that the catch below reports as a 500 — a server fault for
+        // a bad request, the same shape GET /:id already guards against. Group
+        // membership is deliberately NOT enforced: an admin re-attributing an
+        // old slip to someone who has since left the group is a real thing, and
+        // the client only ever offers current members anyway.
+        if (req.body.placedBy !== undefined) {
+            const raw = req.body.placedBy;
+            if (raw === null || raw === '') {
+                parlay.placedBy = null;
+            } else if (mongoose.Types.ObjectId.isValid(String(raw))) {
+                parlay.placedBy = String(raw);
+            } else {
+                return res.status(400).json({ message: 'placedBy must be a member id' });
+            }
+        }
         parlay.updatedAt = new Date();
         await parlay.save();
         res.json(parlay);
