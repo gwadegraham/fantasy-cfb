@@ -162,9 +162,24 @@ const teamSchema = new mongoose.Schema({
     twitter: {
         type: String
     },
+    // OPTIONAL, because a basketball team has no football venue (#320).
+    //
+    // locationSchema requires lat/long, capacity, grass and dome — a stadium
+    // shape. A hoopsTeam carries a venue name, city and state and nothing
+    // else, so requiring this meant a basketball draft could run to completion
+    // and persist ZERO rosters: every PATCH 400s on the missing field.
+    //
+    // Optional, NOT loosened. Every subfield inside locationSchema is still
+    // required, so a location is either absent or complete — a half-filled
+    // one would be a football shape asserted about a basketball arena, which
+    // is the version of this that is painful to unpick later.
+    //
+    // This is a step toward not embedding the team at all: a roster entry
+    // should be a reference resolved against the per-sport collection, which
+    // removes the shared shape, the ~100KB documents and the stale copies
+    // together. See the tech-debt issue; nothing here makes that harder.
     location: {
-        type: locationSchema,
-        required: true
+        type: locationSchema
     }
 });
 

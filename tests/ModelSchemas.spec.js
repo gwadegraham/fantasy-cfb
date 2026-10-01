@@ -119,6 +119,71 @@ describe('User schema', () => {
     });
 });
 
+describe('a rostered team, across two sports (#320)', () => {
+    // A roster entry is a full copy of the team document, and that copy has to
+    // satisfy one schema for both sports. Requiring `location` meant it could
+    // not: a basketball draft ran to completion and persisted ZERO rosters,
+    // because every PATCH 400d on a field no hoopsTeam has.
+    const LOC = { venue_id: 7, name: 'Bryant-Denny', city: 'Tuscaloosa', state: 'AL',
+                  zip: '35487', latitude: 33.2, longitude: -87.5,
+                  capacity: 100077, grass: true, dome: false };
+    const base = (over = {}) => Object.assign({
+        id: 333, school: 'Alabama', mascot: 'Crimson Tide', abbreviation: 'ALA',
+        conference: 'SEC', color: '#9E1B32', logos: ['a.png']
+    }, over);
+    const roster = (team) => new User({
+        firstName: 'Ann', lastName: 'Test', league: 'graham-league',
+        seasons: [{ season: 2026, teams: [team] }]
+    });
+
+    test('a football team with its venue still validates', async () => {
+        await expect(roster(base({ location: LOC })).validate()).resolves.toBeUndefined();
+    });
+
+    test('a basketball team with NO venue validates — this is the fix', async () => {
+        // hoopsTeam carries currentVenue/currentCity/currentState and nothing
+        // resembling lat/long, capacity, grass or dome.
+        await expect(roster(base({
+            id: 2, school: 'Gonzaga', mascot: 'Bulldogs', abbreviation: 'GON',
+            conference: 'Pac-12', color: '#002967', logos: ['b.png']
+        })).validate()).resolves.toBeUndefined();
+    });
+
+    // OPTIONAL IS NOT LOOSENED, and the difference matters.
+    //
+    // A half-filled location is a football shape asserted about a basketball
+    // arena. Absent says "this sport has no stadium record"; partial says
+    // "it has one, and these numbers are it" — which is a lie that something
+    // downstream eventually reads.
+    test('a PARTIAL venue is still refused', async () => {
+        await expect(roster(base({
+            location: { name: 'The Kennel', city: 'Spokane', state: 'WA' }
+        })).validate()).rejects.toThrow(/location/);
+    });
+
+    test('the fields BOTH sports have are still required', async () => {
+        for (const missing of ['id', 'school', 'mascot', 'abbreviation', 'conference', 'color']) {
+            const team = base({ location: LOC });
+            delete team[missing];
+            await expect(roster(team).validate()).rejects.toThrow(new RegExp(missing));
+        }
+    });
+
+    // `logos: { type: [String], required: true }` does NOT require a logo.
+    //
+    // Mongoose defaults a missing array to [], and `required` is satisfied by
+    // an empty one — so the declaration reads as a guarantee and is not.
+    // Recorded rather than fixed: tightening it would reject a team that
+    // genuinely has no logo, which 101 of the 365 basketball programs were
+    // until the ingest moved to the ESPN CDN. Pinned so the next person
+    // reading the schema does not trust it the way I did.
+    test('logos is declared required and is not enforced', async () => {
+        const team = base({ location: LOC });
+        delete team.logos;
+        await expect(roster(team).validate()).resolves.toBeUndefined();
+    });
+});
+
 describe('Game schema', () => {
     test('core identity/scheduling fields are required', () => {
         const err = new Game({}).validateSync();
