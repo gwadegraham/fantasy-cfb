@@ -2173,6 +2173,41 @@ function localInputToIso(val) {
     return new Date(val).toISOString();
 }
 
+// What the configured cap actually yields, shown under the field.
+//
+// The number alone is not the useful fact. A cap of 120 with 10 managers and
+// 12 rounds empties the pool on the final pick — the last manager picks the
+// only team left, which is not a pick. The endpoint reports that shortfall and
+// this is where a commissioner can see it before draft night rather than on it.
+async function describeDraftPool() {
+    var note = document.querySelector('[draft-pool-note]');
+    if (!note) return;
+    var league = getDraftLeagueCode();
+    var season = getSelectedDraftSeason();
+    if (!league || !season) { note.textContent = ''; return; }
+
+    var size = parseInt(document.querySelector('[draft-poolsize]').value, 10);
+    var qs = '?season=' + encodeURIComponent(season) + (size > 0 ? '&poolSize=' + size : '');
+    try {
+        var res = await fetch('/draft/pool/' + encodeURIComponent(league) + qs,
+            { headers: { Accept: 'application/json' } });
+        var data = await res.json();
+        if (!res.ok) { note.textContent = data.message || 'Pool unavailable'; note.className = 'pool-warn'; return; }
+
+        var text = data.count + ' of ' + data.seasonTotal + ' teams draftable';
+        if (data.shortfall) {
+            text += ' — too few: ' + data.shortfall.picksNeeded + ' picks needed, '
+                 + data.shortfall.available + ' available';
+            note.className = 'pool-warn';
+        } else {
+            note.className = '';
+        }
+        note.textContent = text;
+    } catch (e) {
+        note.textContent = '';
+    }
+}
+
 function populateDraftFormFields() {
     var status = currentDraft ? currentDraft.status : 'not configured';
     var statusEl = document.querySelector('[draft-status]');
@@ -2180,6 +2215,17 @@ function populateDraftFormFields() {
     statusEl.className = 'draft-status-badge status-' + status.replace(/\s/g, '-');
 
     document.querySelector('[draft-rounds]').value = (currentDraft && currentDraft.totalRounds) || 10;
+    // Blank, not 0 — the field means "how many teams are draftable" and empty
+    // is the real default. A 0 in a number input reads as a cap of none.
+    var poolInput = document.querySelector('[draft-poolsize]');
+    poolInput.value = (currentDraft && currentDraft.poolSize) ? currentDraft.poolSize : '';
+    // Bound once — populateDraftFormFields runs on every league and season
+    // change, and a listener added each time would fire N requests per keypress.
+    if (!poolInput.dataset.bound) {
+        poolInput.addEventListener('change', describeDraftPool);
+        poolInput.dataset.bound = '1';
+    }
+    describeDraftPool();
     document.querySelector('[draft-type]').value = (currentDraft && currentDraft.snake === false) ? 'linear' : 'snake';
     document.querySelector('[draft-autoopen]').checked = (currentDraft && currentDraft.autoOpen) || false;
     document.querySelector('[draft-datetime]').value =
@@ -2238,6 +2284,9 @@ if (draftConfigForm) {
             callUrl: document.querySelector('[draft-callurl]').value.trim(),
             snake: document.querySelector('[draft-type]').value === 'snake',
             totalRounds: parseInt(document.querySelector('[draft-rounds]').value, 10) || 10,
+            // Null, never 0 or NaN: the route reads a falsy poolSize as
+            // "uncapped" and an empty field has to mean exactly that.
+            poolSize: parseInt(document.querySelector('[draft-poolsize]').value, 10) || null,
             orderMethod: 'manual',
             draftOrder: draftOrder
         };

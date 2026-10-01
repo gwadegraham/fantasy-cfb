@@ -240,6 +240,124 @@ describe('poolFor — football is unchanged', () => {
     });
 });
 
+describe('isDraftable — what makes the cap real', () => {
+    // Until this existed the cap was decoration: modules/draft-socket.js takes
+    // the team object from the client on make-pick and stores it as sent, so a
+    // client could pick the 300th-rated program and have it land on a roster.
+    test('a team inside the cap is draftable', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2), hoops(3, 'Out', 3)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 1, poolSize: 2 })).toBe(true);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 2 })).toBe(true);
+    });
+
+    test('a team outside the cap is NOT', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2), hoops(3, 'Out', 3)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 3, poolSize: 2 })).toBe(false);
+    });
+
+    test('it counts teams AHEAD rather than trusting rank <= poolSize', async () => {
+        // The importer guarantees contiguous 1..N ranks, so the shortcut would
+        // be right today — and would silently disagree with poolFor's
+        // sort-and-limit the first time a season shipped with a gap. Ranks
+        // 10/20/30 with a cap of 2: the first two are in, by position.
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 10), hoops(2, 'B', 20), hoops(3, 'C', 30)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 1, poolSize: 2 })).toBe(true);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 2 })).toBe(true);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 3, poolSize: 2 })).toBe(false);
+    });
+
+    test('an unranked team is never draftable, cap or no cap', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Ranked', 1), hoops(2, 'Unranked', null)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: null })).toBe(false);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 5 })).toBe(false);
+    });
+
+    test('with no cap, any ranked team is draftable', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 300)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: null })).toBe(true);
+    });
+
+    test('a team id in no pool at all is refused', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'A', 1)]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 999, poolSize: null })).toBe(false);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 'nonsense', poolSize: null })).toBe(false);
+    });
+
+    test('a team from ANOTHER season is not draftable in this one', async () => {
+        await leagues();
+        await HoopsTeam.create([{ ...hoops(7, 'Last year', 1), season: 2026 }]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 7 })).toBe(false);
+    });
+
+    test('the no-arguments call is false, not a crash', async () => {
+        // Socket payloads are client-controlled; `make-pick` with no team at
+        // all must be a refusal, not an exception inside the handler.
+        await leagues();
+        expect(await draftPool.isDraftable(HOOPS)).toBe(false);
+    });
+
+    test('an explicit season is honoured over the league\'s own', async () => {
+        await leagues();
+        await HoopsTeam.create([{ ...hoops(7, 'Last year', 1), season: 2026 }]);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 7, season: 2026 })).toBe(true);
+        expect(await draftPool.isDraftable(HOOPS, { teamId: 7, season: SEASON })).toBe(false);
+    });
+
+    test('a basketball league with no season set refuses rather than throwing', async () => {
+        await League.create({ code: 'seasonless', name: 'No Season', sport: 'basketball' });
+        await activeSeason.prime();
+        expect(await draftPool.isDraftable('seasonless', { teamId: 1 })).toBe(false);
+    });
+
+    test('football asks only whether the team is FBS', async () => {
+        await leagues();
+        await Team.create([fbs(1, 'Real'), fbs(2, 'Reference', { classification: 'fcs' })]);
+        expect(await draftPool.isDraftable(BALL, { teamId: 1 })).toBe(true);
+        expect(await draftPool.isDraftable(BALL, { teamId: 2 })).toBe(false);
+        // The cap is meaningless for football and must not start applying.
+        expect(await draftPool.isDraftable(BALL, { teamId: 1, poolSize: 0 })).toBe(true);
+    });
+});
+
+describe('the pool carries what the board ranks on', () => {
+    test('basketball rows carry the preseason metrics, flattened', async () => {
+        await leagues();
+        await HoopsTeam.create([Object.assign(hoops(1, 'Best', 1), {
+            preseason: { rank: 1, barthag: 0.96, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6' }
+        })]);
+        const [team] = (await draftPool.poolFor(HOOPS, {})).teams;
+        expect(team).toMatchObject({
+            school: 'Best', rank: 1, barthag: 0.96, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6'
+        });
+        expect(team.preseason).toBeUndefined();
+    });
+
+    test('football rows keep the seasons subtree the board already reads', async () => {
+        // buildPool() derives SP+, last season's points and expected wins from
+        // it, with prev/current fallbacks and a per-league scoring version.
+        // Dropping it here would blank four columns.
+        await leagues();
+        await Team.create([fbs(1, 'Real', {
+            alternateNames: ['Realsville'],
+            seasons: [
+                { season: 2025, conference: 'SEC', cumulativeScoreV2: 180, spRating: 12.3, spRank: 9 },
+                { season: 2026, conference: 'SEC', expectedWins: 9.4, spRating: 14.1, spRank: 7 }
+            ]
+        })]);
+        const [team] = (await draftPool.poolFor(BALL, {})).teams;
+        expect(team.alternateNames).toEqual(['Realsville']);
+        expect(team.seasons.map(s => s.season)).toEqual([2025, 2026]);
+        expect(team.seasons[1]).toMatchObject({ expectedWins: 9.4, spRating: 14.1, spRank: 7 });
+        expect(team.seasons[0].cumulativeScoreV2).toBe(180);
+    });
+});
+
 describe('GET /draft/pool/:league', () => {
     test('answers the pool for a basketball league', async () => {
         await leagues();

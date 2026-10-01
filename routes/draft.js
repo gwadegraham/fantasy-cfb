@@ -377,7 +377,21 @@ router.post('/', async (req, res) => {
         // with the message the admin form shows.
         const callUrl = sanitizeCallUrl(req.body.callUrl);
 
+        // Null means "every team", which is what football has always been and
+        // what an empty field in the form means. Anything else has to be a
+        // real count — a 0 saved here would read as uncapped everywhere
+        // downstream, so the form's empty box and a deliberate zero would
+        // become the same thing.
+        let poolSize = null;
+        if (req.body.poolSize != null && req.body.poolSize !== '') {
+            poolSize = Number(req.body.poolSize);
+            if (!Number.isInteger(poolSize) || poolSize < 1) {
+                return res.status(400).json({ message: `poolSize must be a whole number of 1 or more, got "${req.body.poolSize}"` });
+            }
+        }
+
         const update = {
+            poolSize,
             league,
             season,
             scheduledAt: req.body.scheduledAt || null,

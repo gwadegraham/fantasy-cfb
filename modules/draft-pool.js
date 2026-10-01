@@ -15,16 +15,34 @@ const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('./team-scope');
 const { sportForLeague, seasonForLeague } = require('./active-season');
 
-// The fields a draft board renders, and nothing else. A rostered team document
-// is heavy — see the note in models/hoopsTeam.js about logos — and the pool is
-// every team at once, which is the one read where that multiplies.
+// What identifies a team on the board, in either sport.
 const CARD = { _id: 0, id: 1, school: 1, mascot: 1, abbreviation: 1, conference: 1, color: 1, alt_color: 1, logos: 1 };
+
+// The board also ranks what it lists, and the two sports have nothing in
+// common there: football sorts on SP+, recruiting, last season's points and
+// expected wins; basketball has none of those and sorts on a preseason rating.
+//
+// So the metrics ride along per sport rather than being normalised into some
+// shared vocabulary that would fit neither. public/draftRoom.js picks its
+// columns off the `sport` in the response.
+//
+// Football keeps the `seasons` subtree the board already reads, rather than
+// having this module pre-compute the columns: the client's buildPool() derives
+// them with prev/current fallbacks and a per-league scoring version, and moving
+// that here to change nothing would be a behaviour risk taken for tidiness. The
+// projection is still far narrower than the /teams it replaces.
+const FOOTBALL_METRICS = {
+    alternateNames: 1,       // the recruiting-rankings name match
+    'seasons.season': 1, 'seasons.conference': 1,
+    'seasons.cumulativeScoreV1': 1, 'seasons.cumulativeScoreV2': 1,
+    'seasons.expectedWins': 1, 'seasons.spRating': 1, 'seasons.spRank': 1
+};
 
 // Football has no cap: the pool IS the FBS universe, and that has been true of
 // every draft the app has run. A cap only exists because 365 D-I basketball
 // programs is more than anyone wants to scroll past the first hundred.
 async function footballPool() {
-    const teams = await Team.find(FBS_ONLY, CARD).lean();
+    const teams = await Team.find(FBS_ONLY, { ...CARD, ...FOOTBALL_METRICS }).lean();
     return teams.sort((a, b) => String(a.school).localeCompare(String(b.school)));
 }
 
@@ -50,14 +68,24 @@ const RANKED = { $type: 'number' };
 async function basketballPool(season, poolSize) {
     const query = HoopsTeam.find(
         { season, 'preseason.rank': RANKED },
-        { ...CARD, 'preseason.rank': 1 }
+        { ...CARD, preseason: 1 }
     ).sort({ 'preseason.rank': 1 });
     if (poolSize) query.limit(poolSize);
 
     const teams = await query.lean();
+    // Flattened off the subdocument: the board should not have to know that
+    // these live under `preseason`, and the football rows it renders beside
+    // them carry their metrics at the top level too.
     return teams.map(t => {
         const { preseason, ...rest } = t;
-        return { ...rest, rank: preseason.rank };
+        return {
+            ...rest,
+            rank: preseason.rank,
+            barthag: preseason.barthag,
+            adjOE: preseason.adjOE,
+            adjDE: preseason.adjDE,
+            projectedRecord: preseason.projectedRecord
+        };
     });
 }
 
@@ -128,10 +156,45 @@ async function poolFor(league, { poolSize = null, season } = {}) {
     return { sport, season: year, poolSize: poolSize || null, count: teams.length, seasonTotal: inSeason, teams };
 }
 
+// Is this team in the pool right now?
+//
+// The cap was advisory until this existed: modules/draft-socket.js takes the
+// team object from the client on make-pick and stores it, so a client could
+// pick the 300th-rated program — or a team id that is in no pool at all — and
+// it would be accepted, persisted, and show up on a roster.
+//
+// NOT `rank <= poolSize`, though the importer's contiguous 1..N ranks would
+// make that true today. Counting the teams ahead of this one is the same
+// question poolFor's sort-and-limit actually asks, so the two cannot drift
+// apart if a season ever ships with a gap in its ranks. One count, no pool
+// build — this runs on every pick.
+async function isDraftable(league, { teamId, poolSize = null, season } = {}) {
+    const sport = sportForLeague(league);
+    const id = Number(teamId);
+    if (!Number.isFinite(id)) return false;
+
+    if (sport !== 'basketball') {
+        return !!(await Team.exists({ id, ...FBS_ONLY }));
+    }
+
+    const year = season != null ? Number(season) : seasonForLeague(league);
+    if (!Number.isFinite(year)) return false;
+
+    const team = await HoopsTeam.findOne({ season: year, id }, { 'preseason.rank': 1 }).lean();
+    const rank = team && team.preseason && team.preseason.rank;
+    if (typeof rank !== 'number') return false;      // unranked is not draftable
+    if (!poolSize) return true;                      // uncapped: any ranked team
+
+    const ahead = await HoopsTeam.countDocuments({
+        season: year, 'preseason.rank': { $type: 'number', $lt: rank }
+    });
+    return ahead < poolSize;
+}
+
 // basketballPool is exported for its own test, not for callers.
 //
 // The sort trap it guards can only be observed in isolation: through poolFor,
 // a season with unranked teams is refused as a half-finished import before the
 // ordering is ever reached, so the one test that proves the filter does
 // anything cannot go through the front door.
-module.exports = { poolFor, basketballPool, CARD };
+module.exports = { poolFor, isDraftable, basketballPool, CARD };

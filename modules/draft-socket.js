@@ -1,4 +1,5 @@
 const Draft = require('../models/draft');
+const draftPool = require('./draft-pool');
 const engine = require('./draft-engine');
 const draftToken = require('./draft-token');
 const { internalFetch } = require('./internal-api');
@@ -30,6 +31,7 @@ function publicState(draft) {
         status: d.status,
         snake: d.snake,
         totalRounds: d.totalRounds,
+        poolSize: d.poolSize == null ? null : d.poolSize,
         scheduledAt: d.scheduledAt,
         callUrl: d.callUrl || null,
         draftOrder: (d.draftOrder || []).map(String),
@@ -153,6 +155,21 @@ module.exports = function registerDraftSockets(io) {
                 // pick for whoever is on the clock (absent member).
                 if (String(socket.user.userId) !== turn.userId && !commish) {
                     return socket.emit('draft-error', { message: "It's not your turn" });
+                }
+
+                // The team has to be IN the pool, which until now nothing
+                // checked. `team` arrives from the client and is stored as
+                // sent, so without this the cap is decoration: a client could
+                // pick the 300th-rated program, or an id in no pool at all,
+                // and it would be accepted and persisted onto a roster.
+                //
+                // Checked here rather than trusted from the board because the
+                // board is the thing being bypassed.
+                const draftable = await draftPool.isDraftable(league, {
+                    teamId: team.id, poolSize: draft.poolSize, season
+                });
+                if (!draftable) {
+                    return socket.emit('draft-error', { message: 'That team is not in the draft pool' });
                 }
 
                 const pick = {
