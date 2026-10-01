@@ -359,15 +359,31 @@ router.patch('/:id/legs', async (req, res) => {
         //
         // Checked AFTER the leg lookup, because "is this leg empty" is a
         // question about the leg. The resolver takes it from here: it scans on
-        // `legs.result: 'pending'` and not on parlay.status, so a leg added now
-        // grades on the next run and the status and payout re-derive off the
-        // full set. On a slip that already WON that recomputes the payout with
-        // the new leg's odds — correct, because the recorded payout was the one
-        // missing a leg.
+        // `legs.result: 'pending'` and NOT on parlay.status, so a leg added now
+        // grades on the next run.
+        //
+        // `=== 'lost'` rather than `!== 'pending'`, which is narrower than it
+        // looks: deriveParlayStatus answers 'lost' on any loss before it tests
+        // for pending legs, so a slip still carrying an empty leg can only ever
+        // be 'lost' or 'pending' — never 'won' or 'push'. Naming 'lost' costs
+        // nothing today and means status and payout cannot move: the slip was
+        // lost on a leg that already lost, and stays lost however this one
+        // grades. Were a 'won' slip ever to acquire an empty leg by some other
+        // route, a backfill grading 'loss' would zero a real recorded payout.
         const isEmptyLeg = !leg.selection && leg.gameId == null && leg.result === 'pending';
-        const backfilling = parlay.status !== 'pending' && isAdmin(req) && isEmptyLeg;
+        const backfilling = parlay.status === 'lost' && isAdmin(req) && isEmptyLeg;
         if (parlay.status !== 'pending' && !backfilling) {
             return res.status(400).json({ message: 'Parlay is already resolved' });
+        }
+
+        // A leg with no game is one the resolver cannot see: it filters on
+        // `l.gameId` as well as the result. Accepting one would answer 200 and
+        // write an audit row saying the week was fixed, for a leg that stays
+        // pending forever and never reaches the Bettors board. The client always
+        // sends a game; a backfill is by definition hand-made, so the route is
+        // where this has to be caught.
+        if (backfilling && gameId == null) {
+            return res.status(400).json({ message: 'A backfilled leg needs a game, or nothing will grade it' });
         }
 
         if (gameId != null) {

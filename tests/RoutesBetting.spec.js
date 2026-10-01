@@ -531,8 +531,10 @@ describe('PATCH /betting/:id/legs — backfilling a settled slip', () => {
     const OTHER = new mongoose.Types.ObjectId();
     let parlay;
 
-    const makeParlay = (legs, status = 'lost') => Parlay.create({
-        group: group._id, season: 2026, week: 5, wager: 20, status, legs
+    // week is a parameter because {group, season, week} is uniquely indexed, so
+    // a test that needs two slips needs two weeks.
+    const makeParlay = (legs, status = 'lost', week = 5) => Parlay.create({
+        group: group._id, season: 2026, week, wager: 20, status, legs
     });
 
     const patch = (agent, body) => request(agent)
@@ -542,7 +544,7 @@ describe('PATCH /betting/:id/legs — backfilling a settled slip', () => {
     test('an admin fills a leg that was never submitted', async () => {
         parlay = await makeParlay([{ contributor: MEMBER }, { contributor: OTHER, selection: 'Ohio State ML', odds: -200, result: 'loss' }]);
 
-        const res = await patch(adminApp, { betType: 'moneyline', selection: 'SMU ML', odds: -155, teamSide: 'home' });
+        const res = await patch(adminApp, { gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155, teamSide: 'home' });
 
         expect(res.status).toBe(200);
         const stored = await Parlay.findById(parlay._id).lean();
@@ -588,6 +590,62 @@ describe('PATCH /betting/:id/legs — backfilling a settled slip', () => {
         expect(res.status).toBe(400);
     });
 
+    // The realistic case: a commissioner filling in for the member who forgot.
+    // Every other test here runs as an admin who IS the contributor, because
+    // adminApp stubs the same id for both — so this is the only one that
+    // exercises filling someone else's leg, and the 403 that now precedes the
+    // "already resolved" 400 for a member who tries the same thing.
+    test('an admin fills a leg belonging to someone else', async () => {
+        parlay = await makeParlay([
+            { contributor: MEMBER, selection: 'Oklahoma ML', odds: -205, result: 'loss' },
+            { contributor: OTHER }
+        ]);
+
+        const res = await request(adminApp)
+            .patch(`/betting/${parlay._id}/legs`)
+            .send({ contributor: OTHER.toString(), gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+        expect(res.status).toBe(200);
+        const stored = await Parlay.findById(parlay._id).lean();
+        expect(stored.legs.find(l => String(l.contributor) === String(OTHER)).selection).toBe('SMU ML');
+    });
+
+    test('a member reaching for someone else\'s leg is told that, not that the slip is resolved', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER }, { contributor: OTHER }]);
+
+        const res = await request(app)
+            .patch(`/betting/${parlay._id}/legs`)
+            .send({ contributor: OTHER.toString(), selection: 'SMU ML' });
+
+        expect(res.status).toBe(403);
+    });
+
+    // A leg with no game is invisible to the resolver, which filters on gameId
+    // as well as result. Accepting one answers 200 and writes an audit row
+    // saying the week was fixed, for a leg that never grades.
+    test('refuses a backfill with no game', async () => {
+        parlay = await makeParlay([{ contributor: MEMBER }]);
+
+        const res = await patch(adminApp, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/needs a game/i);
+        expect(await AuditLog.countDocuments({ action: 'parlay.backfill' })).toBe(0);
+    });
+
+    // deriveParlayStatus answers 'lost' on any loss BEFORE it tests for pending
+    // legs, so a slip carrying an empty leg can only be 'lost' or 'pending'.
+    // A 'won' slip with one is unreachable today — and if it ever became
+    // reachable, a backfill grading 'loss' would zero a real recorded payout.
+    test('refuses a slip that is not lost, even with a genuinely empty leg', async () => {
+        for (const [i, status] of ['won', 'push'].entries()) {
+            parlay = await makeParlay([{ contributor: MEMBER }], status, 10 + i);
+            const res = await patch(adminApp, { gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+            expect(res.status).toBe(400);
+            expect(res.body.message).toMatch(/already resolved/i);
+        }
+    });
+
     test('a pending slip is unaffected — a member still edits their own leg', async () => {
         parlay = await makeParlay([{ contributor: MEMBER }], 'pending');
 
@@ -597,17 +655,82 @@ describe('PATCH /betting/:id/legs — backfilling a settled slip', () => {
         expect(res.body.legs[0].selection).toBe('SMU ML');
     });
 
+    // End to end, because the route alone fixes nothing. The change is only
+    // worth anything if the backfilled leg GRADES — contributorStats moves
+    // wins/losses on a settled result and counts a pending leg as pending — and
+    // the claim that it will grade rested entirely on a comment until now:
+    // resolveParlays is mocked out everywhere else in the suite.
+    describe('once the resolver runs', () => {
+        const { resolveParlays } = require('../modules/parlay-resolve');
+        const { contributorStats } = require('../modules/parlay-stats');
+        const members = [{ id: MEMBER.toString() }, { id: OTHER.toString() }];
+
+        beforeEach(async () => {
+            await Game.create({
+                id: 700050, season: 2026, week: 5, seasonType: 'regular',
+                homeId: 1, awayId: 2, homeTeam: 'SMU', awayTeam: 'Rice',
+                startDate: new Date(Date.now() - 48 * 60 * 60 * 1000),
+                startTimeTbd: false, neutralSite: false, conferenceGame: true,
+                completed: true, homePoints: 31, awayPoints: 17
+            });
+            parlay = await makeParlay([
+                { contributor: OTHER, selection: 'Oklahoma ML', odds: -205, result: 'loss' },
+                { contributor: MEMBER }
+            ]);
+        });
+
+        test('grades the backfilled leg and leaves the slip lost', async () => {
+            const before = contributorStats([await Parlay.findById(parlay._id).lean()], members);
+            expect(before.find(r => r.contributor === MEMBER.toString()).decided).toBe(0);
+
+            await patch(adminApp, { gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155, teamSide: 'home' });
+            await resolveParlays();
+
+            const stored = await Parlay.findById(parlay._id).lean();
+            const filled = stored.legs.find(l => String(l.contributor) === String(MEMBER));
+            expect(filled.result).toBe('win');
+
+            // The slip lost on a leg that had already lost, and stays lost
+            // however this one grades — which is why the guard names 'lost'.
+            expect(stored.status).toBe('lost');
+            expect(stored.payout).toBe(0);
+
+            // The entire point: the member's row is no longer a game short.
+            const after = contributorStats([stored], members);
+            const row = after.find(r => r.contributor === MEMBER.toString());
+            expect(row.decided).toBe(1);
+            expect(row.wins).toBe(1);
+        });
+
+        // A backfill does not only move the forgetful member's row. A blank leg
+        // disqualifies the whole slip from having a solo killer, so filling it
+        // can hand one to whoever lost — a real change to somebody else's
+        // record, from an edit made on behalf of a third person.
+        test('can hand the loser a solo kill they did not have before', async () => {
+            const before = contributorStats([await Parlay.findById(parlay._id).lean()], members);
+            expect(before.find(r => r.contributor === OTHER.toString()).soloKills).toBe(0);
+
+            await patch(adminApp, { gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155, teamSide: 'home' });
+            await resolveParlays();
+
+            const after = contributorStats([await Parlay.findById(parlay._id).lean()], members);
+            expect(after.find(r => r.contributor === OTHER.toString()).soloKills).toBe(1);
+        });
+    });
+
     describe('audit trail', () => {
         test('a backfill leaves a row naming the week and the slip', async () => {
             parlay = await makeParlay([{ contributor: MEMBER }]);
 
-            await patch(adminApp, { betType: 'moneyline', selection: 'SMU ML', odds: -155 });
+            await patch(adminApp, { gameId: 700050, betType: 'moneyline', selection: 'SMU ML', odds: -155 });
 
             const rows = await AuditLog.find({ action: 'parlay.backfill' }).lean();
             expect(rows).toHaveLength(1);
             expect(rows[0].summary).toMatch(/week 5/);
             expect(rows[0].season).toBe('2026');
             expect(rows[0].meta.contributor).toBe(MEMBER.toString());
+            // Naming a person is the row's whole reason to exist.
+            expect(rows[0].actorRole).toBe('Admin');
         });
 
         // A row per pick per member per week would bury the handful that matter.
