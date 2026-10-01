@@ -39,6 +39,20 @@ const draftSchema = new mongoose.Schema({
     callUrl: { type: String, default: null },
     snake: { type: Boolean, default: true },
     totalRounds: { type: Number, default: 10 },
+
+    // How many teams are draftable, best-rated first. Null means the whole
+    // universe, which is what every football draft has always been and stays.
+    //
+    // Basketball needs it: 365 D-I programs is more than anyone wants to scroll,
+    // and everything below the cap scores near zero anyway, so a cap removes
+    // picks nobody wants rather than choices they would miss (#320).
+    //
+    // A pool smaller than managers x totalRounds empties on the final pick and
+    // the last manager has no choice to make. GET /draft/pool/:league REPORTS
+    // that as a `shortfall` rather than refusing: unlike a pool holding the
+    // wrong teams, this one fails loudly and visibly on draft night, so the job
+    // is to show it on the admin screen beforehand, not to block the read.
+    poolSize: { type: Number, default: null },
     orderMethod: {
         type: String,
         enum: ['standings', 'random', 'manual'],
