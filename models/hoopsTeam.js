@@ -31,9 +31,11 @@ const hoopsTeamSchema = new mongoose.Schema({
     // season silently rewrote the live rows' conferences and answered
     // "365 created".
     //
-    // That is not a cosmetic field: the Torvik draft-pool import matches on
-    // (school, conference) precisely because bare names are ambiguous, so a
-    // poisoned conference corrupts the key the pool is built from.
+    // That is not a cosmetic field. The Torvik draft-pool import matches on
+    // `school` and then CROSS-CHECKS the conference — a swapped pair of name
+    // aliases is invisible to every other check it makes, and two swapped
+    // schools are almost always in different leagues. A poisoned conference
+    // turns that guard into noise.
     season: { type: Number, required: true },
 
     // The ESPN id, and the id CFBD's logo CDN is keyed on — which is why
@@ -81,14 +83,39 @@ const hoopsTeamSchema = new mongoose.Schema({
     currentVenueId: { type: Number },
     currentVenue: { type: String },
     currentCity: { type: String },
-    currentState: { type: String }
+    currentState: { type: String },
+
+    // Bart Torvik's preseason T-Rank for THIS season (#320).
+    //
+    // Here rather than in its own collection because it is one flat record per
+    // team per season, which is exactly this row's key, and the draft pool
+    // wants it alongside the name and logo it is already reading.
+    //
+    // NOT where the in-season ratings will live. Those refresh weekly and have
+    // to be kept as a series, because CBBD serves only a current value and no
+    // history (#318) — overwriting this field every week would leave us unable
+    // to say what a team was rated when it was drafted.
+    preseason: {
+        // 1..365, Torvik's own ordering. The draft pool is the top N of this.
+        rank: { type: Number },
+        adjOE: { type: Number },
+        adjDE: { type: Number },
+        // Torvik's headline number: probability of beating an average D-I team.
+        barthag: { type: Number },
+        projectedRecord: { type: String },
+        // Which paste this came from, so a stale import is visible rather than
+        // inferred from the numbers looking wrong.
+        source: { type: String },
+        importedAt: { type: String }
+    }
 }, { collection: 'hoopsteams' });
 
 // One row per team per season, enforced rather than assumed.
 hoopsTeamSchema.index({ season: 1, id: 1 }, { unique: true });
-// The Torvik pool import's key. Unique because the whole argument for using
-// (school, conference) is that it is unambiguous — if it ever is not, that
-// should fail the ingest rather than let findOne pick one of two arbitrarily.
+// Unique because a duplicated (school, conference) should fail the ingest
+// rather than let findOne pick one of two arbitrarily. Originally added as the
+// Torvik pool import's key; that import matches on `school` alone, which is
+// unique by itself — see the note at the top of modules/torvik-pool.js.
 hoopsTeamSchema.index({ season: 1, school: 1, conference: 1 }, { unique: true });
 hoopsTeamSchema.index({ season: 1, conference: 1 });
 

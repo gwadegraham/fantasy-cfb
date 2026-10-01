@@ -107,6 +107,15 @@ module.exports = {
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.
+        // The draft pool is ranked entirely from this module's output, and its
+        // failure mode is a team quietly absent from the pool rather than an
+        // error. 100% is affordable — it is pure, and it has no I/O.
+        "./modules/torvik-pool.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         "./modules/active-season.js": {
             statements: 90,
             branches: 85,
