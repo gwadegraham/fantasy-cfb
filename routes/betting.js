@@ -3,6 +3,7 @@ const { activeSeason } = require('../modules/active-season');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Parlay = require('../models/parlay');
+const Account = require('../models/account');
 const Game = require('../models/game');
 const Team = require('../models/team');
 const BettingLine = require('../models/bettingLine');
@@ -50,13 +51,48 @@ function isAdmin(req) {
     return effectiveRoles(req).includes('Admin');
 }
 
+// Every parlay the group has placed this season. This is the whole bottom half
+// of the betting page — the week history AND the current week's slip.
+//
+// It used to end `.populate('placedBy', 'firstName lastName')`, and `placedBy`
+// is declared `ref: 'User'`. Nothing in the web process loads models/user.js:
+// #313 retired the last `users` read, and the only remaining require is in
+// modules/account-migration.js, which only the CLI migration script pulls in.
+// So Mongoose had no 'User' schema to populate against and threw
+// MissingSchemaError on EVERY call — a 500 the client treats as "no parlays".
+//
+// The page then showed "No parlays yet this season" while offering to create
+// the current week's slip, and creating it came back 409 from the parlay that
+// was there all along. The season summary and Bettors board kept working,
+// because neither populates, which is what made it look like a partial outage.
+//
+// placedBy is an ACCOUNT id — the migration kept the User's _id on the account
+// — so the name is read from Account, in the same { _id, firstName, lastName }
+// shape the client already renders.
 router.get('/list', async (req, res) => {
     try {
         const season = req.query.season || activeSeason('football');
         const parlays = await Parlay.find({
             group: req.bettingGroup._id,
             season: Number(season)
-        }).sort({ week: -1 }).populate('placedBy', 'firstName lastName').lean();
+        }).sort({ week: -1 }).lean();
+
+        const ids = [...new Set(parlays.filter(p => p.placedBy).map(p => String(p.placedBy)))];
+        if (ids.length) {
+            const accounts = await Account.find(
+                { _id: { $in: ids } },
+                { firstName: 1, lastName: 1 }
+            ).lean();
+            const byId = new Map(accounts.map(a => [String(a._id), a]));
+            // An id with no account left is handed back as the bare id rather
+            // than nulled: public/betting.js falls back to the group's own
+            // member names for that shape, so the slip keeps its "placed by".
+            parlays.forEach(p => {
+                const account = p.placedBy && byId.get(String(p.placedBy));
+                if (account) p.placedBy = account;
+            });
+        }
+
         res.json(parlays);
     } catch (err) {
         res.status(500).json({ message: err.message });

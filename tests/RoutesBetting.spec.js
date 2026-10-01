@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
+const Account = require('../models/account');
 const Game = require('../models/game');
 const bettingRouter = require('../routes/betting');
 
@@ -150,6 +151,60 @@ describe('GET /betting/contributor-stats/:season', () => {
         expect(res.status).toBe(200);
         expect(res.body.slips).toBe(0);
         expect(res.body.rows.every(r => r.decided === 0)).toBe(true);
+    });
+});
+
+// The route the whole bottom half of the betting page is built from.
+//
+// It had no test, and in production it 500ed for any season holding a slip
+// with a `placedBy` — which is every real one. `placedBy` is declared
+// `ref: 'User'`, and once #313 retired the last `users` read nothing in the web
+// process required models/user.js, so `.populate('placedBy')` threw
+// MissingSchemaError. The page read the 500 as an empty season.
+//
+// This file deliberately does NOT require models/user — that is the point. It
+// reproduces the web process's module graph, where 'User' is unregistered. Every
+// parlay below carries a placedBy for the same reason: without one, Mongoose has
+// no id to look up and never reaches the missing schema, so the bug hides.
+describe('GET /betting/list', () => {
+    test('returns the season\'s parlays, newest week first', async () => {
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 1, wager: 20, placedBy: MEMBER, legs: [] },
+            { group: group._id, season: 2026, week: 3, wager: 20, placedBy: MEMBER, legs: [] },
+            { group: group._id, season: 2025, week: 9, wager: 20, placedBy: MEMBER, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body.map(p => p.week)).toEqual([3, 1]);
+    });
+
+    test('resolves placedBy against Account rather than the frozen users model', async () => {
+        const account = await Account.create({
+            _id: MEMBER, firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com'
+        });
+        await Parlay.create({ group: group._id, season: 2026, week: 2, placedBy: account._id, legs: [] });
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body[0].placedBy).toMatchObject({
+            _id: String(account._id), firstName: 'Garrett', lastName: 'Graham'
+        });
+    });
+
+    // A slip placed by someone since removed from the group still has to render
+    // its week row. The id survives so the client can fall back to its own
+    // member names; nulling it would drop the "placed by" line entirely.
+    test('leaves an unresolvable placedBy as the bare id', async () => {
+        const gone = new mongoose.Types.ObjectId();
+        await Parlay.create({ group: group._id, season: 2026, week: 4, placedBy: gone, legs: [] });
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        expect(res.body[0].placedBy).toBe(String(gone));
     });
 });
 
