@@ -2186,13 +2186,24 @@ async function describeDraftPool() {
     var season = getSelectedDraftSeason();
     if (!league || !season) { note.textContent = ''; return; }
 
+    // An empty box means UNCAPPED, and omitting the param makes the endpoint
+    // fall back to the SAVED cap — so clearing the field left the note still
+    // describing the cap you just removed.
     var size = parseInt(document.querySelector('[draft-poolsize]').value, 10);
-    var qs = '?season=' + encodeURIComponent(season) + (size > 0 ? '&poolSize=' + size : '');
+    var qs = '?season=' + encodeURIComponent(season)
+        + (size > 0 ? '&poolSize=' + size : '&uncapped=1');
     try {
         var res = await fetch('/draft/pool/' + encodeURIComponent(league) + qs,
             { headers: { Accept: 'application/json' } });
         var data = await res.json();
         if (!res.ok) { note.textContent = data.message || 'Pool unavailable'; note.className = 'pool-warn'; return; }
+
+        // A cap means nothing to football — poolFor ignores it and the route
+        // refuses to save one — so the field is hidden rather than offered and
+        // then rejected. The sport comes back with the pool, so this costs no
+        // extra request.
+        var field = document.querySelector('[draft-poolsize]').closest('.draft-field');
+        if (field) field.style.display = (data.sport === 'basketball') ? '' : 'none';
 
         var text = data.count + ' of ' + data.seasonTotal + ' teams draftable';
         if (data.shortfall) {

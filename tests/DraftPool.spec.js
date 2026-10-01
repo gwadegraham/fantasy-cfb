@@ -240,21 +240,21 @@ describe('poolFor — football is unchanged', () => {
     });
 });
 
-describe('isDraftable — what makes the cap real', () => {
+describe('draftableTeam — what makes the cap real', () => {
     // Until this existed the cap was decoration: modules/draft-socket.js takes
     // the team object from the client on make-pick and stores it as sent, so a
     // client could pick the 300th-rated program and have it land on a roster.
     test('a team inside the cap is draftable', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2), hoops(3, 'Out', 3)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 1, poolSize: 2 })).toBe(true);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 2 })).toBe(true);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 1, poolSize: 2 })).toBeTruthy();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 2, poolSize: 2 })).toBeTruthy();
     });
 
     test('a team outside the cap is NOT', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2), hoops(3, 'Out', 3)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 3, poolSize: 2 })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 3, poolSize: 2 })).toBeNull();
     });
 
     test('it counts teams AHEAD rather than trusting rank <= poolSize', async () => {
@@ -264,64 +264,78 @@ describe('isDraftable — what makes the cap real', () => {
         // 10/20/30 with a cap of 2: the first two are in, by position.
         await leagues();
         await HoopsTeam.create([hoops(1, 'A', 10), hoops(2, 'B', 20), hoops(3, 'C', 30)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 1, poolSize: 2 })).toBe(true);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 2 })).toBe(true);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 3, poolSize: 2 })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 1, poolSize: 2 })).toBeTruthy();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 2, poolSize: 2 })).toBeTruthy();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 3, poolSize: 2 })).toBeNull();
     });
 
     test('an unranked team is never draftable, cap or no cap', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'Ranked', 1), hoops(2, 'Unranked', null)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: null })).toBe(false);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: 5 })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 2, poolSize: null })).toBeNull();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 2, poolSize: 5 })).toBeNull();
     });
 
     test('with no cap, any ranked team is draftable', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'A', 1), hoops(2, 'B', 300)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 2, poolSize: null })).toBe(true);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 2, poolSize: null })).toBeTruthy();
     });
 
     test('a team id in no pool at all is refused', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'A', 1)]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 999, poolSize: null })).toBe(false);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 'nonsense', poolSize: null })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 999, poolSize: null })).toBeNull();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 'nonsense', poolSize: null })).toBeNull();
     });
 
     test('a team from ANOTHER season is not draftable in this one', async () => {
         await leagues();
         await HoopsTeam.create([{ ...hoops(7, 'Last year', 1), season: 2026 }]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 7 })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 7 })).toBeNull();
     });
 
     test('the no-arguments call is false, not a crash', async () => {
         // Socket payloads are client-controlled; `make-pick` with no team at
         // all must be a refusal, not an exception inside the handler.
         await leagues();
-        expect(await draftPool.isDraftable(HOOPS)).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS)).toBeNull();
     });
 
     test('an explicit season is honoured over the league\'s own', async () => {
         await leagues();
         await HoopsTeam.create([{ ...hoops(7, 'Last year', 1), season: 2026 }]);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 7, season: 2026 })).toBe(true);
-        expect(await draftPool.isDraftable(HOOPS, { teamId: 7, season: SEASON })).toBe(false);
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 7, season: 2026 })).toBeTruthy();
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 7, season: SEASON })).toBeNull();
     });
 
     test('a basketball league with no season set refuses rather than throwing', async () => {
         await League.create({ code: 'seasonless', name: 'No Season', sport: 'basketball' });
         await activeSeason.prime();
-        expect(await draftPool.isDraftable('seasonless', { teamId: 1 })).toBe(false);
+        expect(await draftPool.draftableTeam('seasonless', { teamId: 1 })).toBeNull();
+    });
+
+    test('an UNPRIMED season cache refuses rather than guessing football', async () => {
+        // sportForLeague falls back to 'football' for an unknown league or a
+        // cold cache, so a basketball pick would be checked against the FBS
+        // table and match a same-numbered team. That fails OPEN, and silently
+        // — the cap simply disappears.
+        await Team.create([fbs(1, 'Alabama')]);
+        await HoopsTeam.create([hoops(2, 'Best', 1)]);
+        activeSeason._reset();
+        expect(activeSeason.primed()).toBe(false);
+
+        expect(await draftPool.draftableTeam(HOOPS, { teamId: 1, poolSize: 1 })).toBeNull();
+        expect(await draftPool.draftableTeam(BALL, { teamId: 1 })).toBeNull();
     });
 
     test('football asks only whether the team is FBS', async () => {
         await leagues();
         await Team.create([fbs(1, 'Real'), fbs(2, 'Reference', { classification: 'fcs' })]);
-        expect(await draftPool.isDraftable(BALL, { teamId: 1 })).toBe(true);
-        expect(await draftPool.isDraftable(BALL, { teamId: 2 })).toBe(false);
+        expect(await draftPool.draftableTeam(BALL, { teamId: 1 })).toBeTruthy();
+        expect(await draftPool.draftableTeam(BALL, { teamId: 2 })).toBeNull();
         // The cap is meaningless for football and must not start applying.
-        expect(await draftPool.isDraftable(BALL, { teamId: 1, poolSize: 0 })).toBe(true);
+        expect(await draftPool.draftableTeam(BALL, { teamId: 1, poolSize: 0 })).toBeTruthy();
     });
 });
 

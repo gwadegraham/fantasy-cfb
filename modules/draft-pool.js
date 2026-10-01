@@ -13,7 +13,7 @@
 const Team = require('../models/team');
 const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('./team-scope');
-const { sportForLeague, seasonForLeague } = require('./active-season');
+const { sportForLeague, seasonForLeague, primed } = require('./active-season');
 
 // What identifies a team on the board, in either sport.
 const CARD = { _id: 0, id: 1, school: 1, mascot: 1, abbreviation: 1, conference: 1, color: 1, alt_color: 1, logos: 1 };
@@ -69,7 +69,7 @@ async function basketballPool(season, poolSize) {
     const query = HoopsTeam.find(
         { season, 'preseason.rank': RANKED },
         { ...CARD, preseason: 1 }
-    ).sort({ 'preseason.rank': 1 });
+    ).sort({ 'preseason.rank': 1, id: 1 });
     if (poolSize) query.limit(poolSize);
 
     const teams = await query.lean();
@@ -156,39 +156,64 @@ async function poolFor(league, { poolSize = null, season } = {}) {
     return { sport, season: year, poolSize: poolSize || null, count: teams.length, seasonTotal: inSeason, teams };
 }
 
-// Is this team in the pool right now?
+// The team a pick is allowed to store, or null.
 //
-// The cap was advisory until this existed: modules/draft-socket.js takes the
-// team object from the client on make-pick and stores it, so a client could
-// pick the 300th-rated program — or a team id that is in no pool at all — and
-// it would be accepted, persisted, and show up on a roster.
+// Returns the DOCUMENT, not a boolean, and that is the point. The cap was
+// decoration before this existed — modules/draft-socket.js took the team object
+// from the client on make-pick and stored it as sent — and a boolean would have
+// closed only half of that. Three failures fall out of one lookup:
 //
-// NOT `rank <= poolSize`, though the importer's contiguous 1..N ranks would
-// make that true today. Counting the teams ahead of this one is the same
-// question poolFor's sort-and-limit actually asks, so the two cannot drift
-// apart if a season ever ships with a gap in its ranks. One count, no pool
-// build — this runs on every pick.
-async function isDraftable(league, { teamId, poolSize = null, season } = {}) {
+//   the id is CANONICAL. `Number(teamId)` accepted "1", which validated as team
+//   1 and was then written as the string "1". The duplicate guard compares
+//   `'picks.team.id': { $ne: team.id }` against stored numbers, and "1" !== 1 in
+//   BSON — so two managers ended up holding the same team. Measured.
+//
+//   the body is OURS. A valid id with a fabricated name and logo URL used to be
+//   stored verbatim and reach the roster, the board, grades and Draft Steal.
+//
+//   the shape is COMPLETE. models/schemas/season.js requires location on a
+//   rostered team, and the pool projection does not carry it; storing a
+//   projected row would 400 every roster write at the end of the draft.
+//
+// Full documents, no projection: this is what gets persisted.
+async function draftableTeam(league, { teamId, poolSize = null, season } = {}) {
+    // An unprimed cache answers 'football' for every league, which would check
+    // a basketball pick against the FBS table and find a same-numbered team.
+    // Fails OPEN, and silently, so it is refused rather than guessed.
+    if (!primed()) return null;
+
     const sport = sportForLeague(league);
-    const id = Number(teamId);
-    if (!Number.isFinite(id)) return false;
+    // Not Number(): that accepts "1", " 1 ", [1] and true. The id written has to
+    // be the id checked, so anything that is not already a plain integer is a
+    // refusal rather than a coercion.
+    const id = typeof teamId === 'number' ? teamId
+        : (typeof teamId === 'string' && /^\d+$/.test(teamId) ? Number(teamId) : NaN);
+    if (!Number.isInteger(id)) return null;
 
     if (sport !== 'basketball') {
-        return !!(await Team.exists({ id, ...FBS_ONLY }));
+        return Team.findOne({ id, ...FBS_ONLY }).lean();
     }
 
     const year = season != null ? Number(season) : seasonForLeague(league);
-    if (!Number.isFinite(year)) return false;
+    if (!Number.isFinite(year)) return null;
 
-    const team = await HoopsTeam.findOne({ season: year, id }, { 'preseason.rank': 1 }).lean();
+    const team = await HoopsTeam.findOne({ season: year, id }).lean();
     const rank = team && team.preseason && team.preseason.rank;
-    if (typeof rank !== 'number') return false;      // unranked is not draftable
-    if (!poolSize) return true;                      // uncapped: any ranked team
+    if (typeof rank !== 'number') return null;       // unranked is not draftable
+    if (!poolSize) return team;                      // uncapped: any ranked team
 
+    // Counting what is ahead, rather than `rank <= poolSize`, because that is
+    // the question poolFor's sort-and-limit actually asks — and the two must
+    // not disagree. Ties broken by id in BOTH, or a tied pair at the cap
+    // boundary is on the board in one and draftable in the other.
     const ahead = await HoopsTeam.countDocuments({
-        season: year, 'preseason.rank': { $type: 'number', $lt: rank }
+        season: year,
+        $or: [
+            { 'preseason.rank': { $type: 'number', $lt: rank } },
+            { 'preseason.rank': rank, id: { $lt: id } }
+        ]
     });
-    return ahead < poolSize;
+    return ahead < poolSize ? team : null;
 }
 
 // basketballPool is exported for its own test, not for callers.
@@ -197,4 +222,4 @@ async function isDraftable(league, { teamId, poolSize = null, season } = {}) {
 // a season with unranked teams is refused as a half-finished import before the
 // ordering is ever reached, so the one test that proves the filter does
 // anything cannot go through the front door.
-module.exports = { poolFor, isDraftable, basketballPool, CARD };
+module.exports = { poolFor, draftableTeam, basketballPool, CARD };

@@ -5,7 +5,7 @@ const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const Team = require('../models/team');
 const draftPool = require('../modules/draft-pool');
-const { seasonForLeague } = require('../modules/active-season');
+const { seasonForLeague, sportForLeague } = require('../modules/active-season');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');
 const Ranking = require('../models/ranking');
@@ -184,7 +184,10 @@ router.get('/pool/:league', async (req, res) => {
         // the whole 365-team universe while the body still said poolSize: null.
         // A negative reached Mongo's .limit(), where it means something else
         // entirely, and skipped the cannot-be-filled guard on the way.
-        let poolSize = draft ? draft.poolSize : null;
+        // ?uncapped=1 is how the admin preview says "no cap" — without it,
+        // an absent poolSize means "use the saved one", so there is no way to
+        // preview removing a cap that is already stored.
+        let poolSize = req.query.uncapped === '1' ? null : (draft ? draft.poolSize : null);
         const askedSize = req.query.poolSize;
         if (askedSize != null && askedSize !== '') {
             const n = Number(askedSize);
@@ -377,21 +380,39 @@ router.post('/', async (req, res) => {
         // with the message the admin form shows.
         const callUrl = sanitizeCallUrl(req.body.callUrl);
 
-        // Null means "every team", which is what football has always been and
-        // what an empty field in the form means. Anything else has to be a
-        // real count — a 0 saved here would read as uncapped everywhere
-        // downstream, so the form's empty box and a deliberate zero would
-        // become the same thing.
-        let poolSize = null;
-        if (req.body.poolSize != null && req.body.poolSize !== '') {
-            poolSize = Number(req.body.poolSize);
-            if (!Number.isInteger(poolSize) || poolSize < 1) {
-                return res.status(400).json({ message: `poolSize must be a whole number of 1 or more, got "${req.body.poolSize}"` });
+        // ABSENT AND EXPLICITLY-UNCAPPED ARE NOT THE SAME INPUT.
+        //
+        // This used to default to null and go into the $set unconditionally, so
+        // any POST that did not mention poolSize wiped a configured cap. The
+        // admin form always sends the key, but the route is reachable with an
+        // internal token and by any Admin with curl, and a setting that
+        // survives only while every future caller remembers it is not saved.
+        const sent = Object.prototype.hasOwnProperty.call(req.body, 'poolSize');
+        let poolSize;
+        if (sent) {
+            const raw = req.body.poolSize;
+            if (raw == null || raw === '') {
+                poolSize = null;              // deliberately uncapped
+            } else if (typeof raw === 'number' || (typeof raw === 'string' && /^\d+$/.test(raw.trim()))) {
+                // Not Number() alone: that turns true into 1, [5] into 5 and
+                // "1e3" into 1000, none of which anyone typed.
+                poolSize = Number(raw);
+                if (!Number.isInteger(poolSize) || poolSize < 1) {
+                    return res.status(400).json({ message: `poolSize must be a whole number of 1 or more, got "${raw}"` });
+                }
+            } else {
+                return res.status(400).json({ message: `poolSize must be a whole number of 1 or more, got "${raw}"` });
+            }
+
+            // A cap means nothing to football — poolFor ignores it — but
+            // publicState would still broadcast it to the room, which is a cap
+            // that is decoration all over again, on the other sport.
+            if (poolSize != null && sportForLeague(league) !== 'basketball') {
+                return res.status(400).json({ message: 'A pool size only applies to a basketball draft; football drafts the whole FBS universe' });
             }
         }
 
         const update = {
-            poolSize,
             league,
             season,
             scheduledAt: req.body.scheduledAt || null,
@@ -404,6 +425,7 @@ router.post('/', async (req, res) => {
             status: req.body.scheduledAt ? 'scheduled' : 'pending',
             updatedAt: new Date()
         };
+        if (sent) update.poolSize = poolSize;
 
         const draft = await Draft.findOneAndUpdate(
             { league, season },
