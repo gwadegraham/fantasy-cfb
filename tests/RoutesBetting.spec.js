@@ -167,6 +167,14 @@ describe('GET /betting/contributor-stats/:season', () => {
 // parlay below carries a placedBy for the same reason: without one, Mongoose has
 // no id to look up and never reaches the missing schema, so the bug hides.
 describe('GET /betting/list', () => {
+    // The premise above, made mechanical. A comment cannot stop a later edit
+    // from pulling models/user into this file's module graph — and the moment
+    // something does, these tests go green against the broken route and stop
+    // describing the web process at all.
+    test('runs in the web process\'s module graph, with no User model registered', () => {
+        expect(mongoose.models.User).toBeUndefined();
+    });
+
     test('returns the season\'s parlays, newest week first', async () => {
         await Parlay.create([
             { group: group._id, season: 2026, week: 1, wager: 20, placedBy: MEMBER, legs: [] },
@@ -192,6 +200,35 @@ describe('GET /betting/list', () => {
         expect(res.body[0].placedBy).toMatchObject({
             _id: String(account._id), firstName: 'Garrett', lastName: 'Graham'
         });
+        // Those three keys and NOTHING else. toMatchObject alone is permissive,
+        // so dropping the projection on the Account read would leave this green
+        // while the route started shipping authSub and pushSubscriptions — the
+        // Auth0 subject, every push endpoint and its encryption keys — to every
+        // member's browser. modules/franchise-repo.js narrows its own list reads
+        // for exactly this reason.
+        expect(Object.keys(res.body[0].placedBy).sort()).toEqual(['_id', 'firstName', 'lastName']);
+    });
+
+    // The real-data mix: of the four slips in the production group, one was
+    // placed before the field existed and has none. Neither the empty-ids
+    // short-circuit nor the per-parlay falsy guard was covered by the tests
+    // above, because every parlay in them carries a placedBy.
+    test('leaves a parlay with no placedBy alone while resolving the others', async () => {
+        const account = await Account.create({
+            _id: MEMBER, firstName: 'Garrett', lastName: 'Graham', email: 'g@example.com'
+        });
+        await Parlay.create([
+            { group: group._id, season: 2026, week: 5, placedBy: account._id, legs: [] },
+            { group: group._id, season: 2026, week: 6, legs: [] }
+        ]);
+
+        const res = await request(app).get('/betting/list?season=2026');
+
+        expect(res.status).toBe(200);
+        const [week6, week5] = res.body;
+        // Absent, not null: the route must not invent the key.
+        expect('placedBy' in week6).toBe(false);
+        expect(week5.placedBy.firstName).toBe('Garrett');
     });
 
     // A slip placed by someone since removed from the group still has to render
