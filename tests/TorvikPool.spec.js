@@ -5,7 +5,7 @@
 // being in it with another program's rating. Both are invisible in the output.
 
 const path = require('path');
-const { NAME_ALIASES, normaliseSchool, parseTRank, matchTeams } = require('../modules/torvik-pool');
+const { NAME_ALIASES, KNOWN_CONFERENCE_DRIFT, normaliseSchool, parseTRank, matchTeams, conferenceMismatches } = require('../modules/torvik-pool');
 
 // One row in Torvik's real shape: positional cells, the school in the link's
 // query string rather than the cell text, and a national rank sharing the
@@ -71,6 +71,15 @@ describe('parseTRank', () => {
         expect(parseTRank('<tr><th>Rk</th><th>Team</th></tr>')).toEqual([]);
     });
 
+    test('a row tag carrying attributes still parses', () => {
+        // The <td> pattern already allowed them. A bare-<tr>-only pattern
+        // turns one added class into zero rows, and the import then reports
+        // 365 teams with no rating and tells the operator to add them all to
+        // the alias table.
+        expect(parseTRank(row().replace('<tr>', '<tr class="dark" id="t2">'))).toHaveLength(1);
+        expect(parseTRank(row().replace('<tr>', '<TR>').replace('</tr>', '</TR>'))).toHaveLength(1);
+    });
+
     test('several rows come back in page order', () => {
         const html = row({ rank: 1, team: 'Duke' }) + row({ rank: 2, team: 'Arizona' });
         expect(parseTRank(html).map(r => r.rank)).toEqual([1, 2]);
@@ -86,10 +95,15 @@ describe('normaliseSchool', () => {
         expect(normaliseSchool('Weber St.')).toBe(normaliseSchool('Weber State'));
     });
 
-    test('but a leading St. in a saint name is not mangled into a state', () => {
-        // "St. Thomas" -> "State Thomas" is wrong, and it is why that one is in
-        // the alias table rather than relying on the rewrite.
-        expect(normaliseSchool('St. Thomas')).not.toBe(normaliseSchool('St Thomas'));
+    test('a LEADING St. is mangled too, which is why saint names need aliases', () => {
+        // The rewrite is blind to position, so "St. Thomas" becomes "State
+        // Thomas". That is not a bug to fix here — narrowing it would change
+        // nothing for the saints, which CBBD spells differently anyway
+        // ("St. Thomas-Minnesota") — but it has to be WRITTEN DOWN, because
+        // the obvious patch silently moves those rows and only the alias
+        // table catches them.
+        expect(normaliseSchool('St. Thomas')).toBe('state thomas');
+        expect(NAME_ALIASES['St. Thomas']).toBe('St. Thomas-Minnesota');
     });
 
     test('accents fold, so San José State meets San Jose St.', () => {
@@ -184,6 +198,68 @@ describe('matchTeams', () => {
     });
 });
 
+describe('conferenceMismatches — the only check that sees a SWAPPED pair', () => {
+    // A single wrong alias shows up in matchTeams as a double-claim plus an
+    // unclaimed team. A swapped PAIR does not: send "Miami FL" to Miami (OH)
+    // and "Miami OH" to Miami and the bijection is still perfect — 365
+    // matched, 0 of everything else. Measured on the real data. The pool then
+    // ranks Miami (OH) 18th and reports a clean import.
+    //
+    // Two swapped schools are almost always in different leagues, which is
+    // what this turns into a failure.
+    const pair = (school, conference, torvikConf, rank) =>
+        ({ team: { school, conference }, rating: { school, conference: torvikConf, rank } });
+
+    // Enough of each conference that one odd row is never its own majority.
+    const league = (abbr, full, n, from = 0) => Array.from({ length: n }, (_, i) =>
+        pair(`${abbr}${from + i}`, full, abbr, from + i + 1));
+
+    test('agreeing pairs are silent', () => {
+        expect(conferenceMismatches([...league('ACC', 'ACC', 8), ...league('MAC', 'MAC', 8)])).toEqual([]);
+    });
+
+    test('a swapped pair is caught, both halves of it', () => {
+        const matched = [...league('ACC', 'ACC', 8), ...league('MAC', 'MAC', 8)];
+        // Exchange the two ratings, exactly as a swapped alias entry would.
+        matched.push({ team: { school: 'Miami', conference: 'ACC' }, rating: { school: 'Miami OH', conference: 'MAC', rank: 102 } });
+        matched.push({ team: { school: 'Miami (OH)', conference: 'MAC' }, rating: { school: 'Miami FL', conference: 'ACC', rank: 18 } });
+
+        const got = conferenceMismatches(matched);
+        expect(got.map(g => g.school).sort()).toEqual(['Miami', 'Miami (OH)']);
+    });
+
+    test('the mapping is derived, so no conference table has to be maintained', () => {
+        // Nothing names "B12" anywhere in the module. The MAJORITY of its own
+        // members is what says it means "Big 12" — the odd row goes FIRST
+        // here on purpose, because taking whichever conference was seen first
+        // would make the impostor the definition and flag the eight real
+        // members instead.
+        const matched = [pair('Impostor', 'Mountain West', 'B12', 99), ...league('B12', 'Big 12', 8)];
+        expect(conferenceMismatches(matched)).toEqual([
+            { school: 'Impostor', torvik: 'B12', expected: 'Big 12', cbbd: 'Mountain West' }
+        ]);
+    });
+
+    test('a recorded drift is allowed, but only the exact pair recorded', () => {
+        const matched = league('CUSA', 'CUSA', 8);
+        matched.push(pair('Louisiana Tech', 'Sun Belt', 'CUSA', 150));
+        expect(conferenceMismatches(matched)).toEqual([]);
+
+        // The same school disagreeing in some OTHER way is still a finding —
+        // the allowlist records a known pair, not a blanket exemption.
+        const moved = league('CUSA', 'CUSA', 8);
+        moved.push(pair('Louisiana Tech', 'Big Ten', 'CUSA', 150));
+        expect(conferenceMismatches(moved)).toHaveLength(1);
+    });
+
+    test('every recorded drift still describes the live data', () => {
+        // An entry left here after the source fixes its row silently excuses a
+        // real mismatch later.
+        expect(Object.keys(KNOWN_CONFERENCE_DRIFT)).toEqual(['Louisiana Tech']);
+        expect(KNOWN_CONFERENCE_DRIFT['Louisiana Tech']).toEqual({ torvik: 'CUSA', cbbd: 'Sun Belt' });
+    });
+});
+
 describe('the committed 2027 file', () => {
     // It is the input to a once-a-year import that runs days before the draft,
     // so a bad re-paste should fail here rather than at the keyboard.
@@ -224,11 +300,28 @@ describe('the committed 2027 file', () => {
         expect(first.adjDE).toBeLessThan(last.adjDE);
     });
 
-    test('every alias is still needed, and still points somewhere real', () => {
+    test('every alias is still needed', () => {
         // An alias whose Torvik name is absent from the file is dead weight
         // that will be copied forward into next season's table.
         const names = new Set(stored.teams.map(t => t.school));
-        const unused = Object.keys(NAME_ALIASES).filter(k => !names.has(k));
-        expect(unused).toEqual([]);
+        expect(Object.keys(NAME_ALIASES).filter(k => !names.has(k))).toEqual([]);
+    });
+
+    test('no alias target is itself a Torvik name', () => {
+        // The shape of a wrong alias that the counts cannot see: pointing one
+        // Torvik row at a school that has its own row. Here it is checkable
+        // without the database, because the two name sets barely overlap on
+        // the 28 renamed schools — 'Mississippi': 'Alabama' is caught by this,
+        // where the spec previously only checked the KEY existed.
+        const names = new Set(stored.teams.map(t => t.school));
+        const collisions = Object.entries(NAME_ALIASES)
+            .filter(([, target]) => names.has(target))
+            .map(([k, v]) => `${k} -> ${v}`);
+        expect(collisions).toEqual([]);
+    });
+
+    test('no two aliases point at the same school', () => {
+        const targets = Object.values(NAME_ALIASES);
+        expect(new Set(targets).size).toBe(targets.length);
     });
 });

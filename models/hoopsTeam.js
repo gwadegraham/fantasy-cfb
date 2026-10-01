@@ -31,9 +31,11 @@ const hoopsTeamSchema = new mongoose.Schema({
     // season silently rewrote the live rows' conferences and answered
     // "365 created".
     //
-    // That is not a cosmetic field: the Torvik draft-pool import matches on
-    // (school, conference) precisely because bare names are ambiguous, so a
-    // poisoned conference corrupts the key the pool is built from.
+    // That is not a cosmetic field. The Torvik draft-pool import matches on
+    // `school` and then CROSS-CHECKS the conference — a swapped pair of name
+    // aliases is invisible to every other check it makes, and two swapped
+    // schools are almost always in different leagues. A poisoned conference
+    // turns that guard into noise.
     season: { type: Number, required: true },
 
     // The ESPN id, and the id CFBD's logo CDN is keyed on — which is why

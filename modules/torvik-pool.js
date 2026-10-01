@@ -12,23 +12,33 @@
 // ---- matching Torvik's names to CBBD's ----
 //
 // Measured against the live 2027 rows, both sides hold exactly 365 teams, so
-// the mapping is a BIJECTION and that is the property worth enforcing. Raw
-// string equality gets 272; the deterministic rewrites below get 336; the
-// remaining 29 are genuine renames and are listed one by one.
+// the mapping is a BIJECTION. Raw string equality gets 272; the deterministic
+// rewrites below get 337; the remaining 28 are genuine renames, listed one by
+// one.
 //
 // No fuzzy distance, deliberately. The near-misses here are not typos, they are
 // DIFFERENT SCHOOLS: Torvik ships "Miami FL" and "Miami OH" against CBBD's
 // "Miami" and "Miami (OH)", and "Connecticut" sits next to a real "Central
 // Connecticut". Anything that scores candidates by similarity substitutes one
-// for the other and the pool silently ranks the wrong program — which is why
-// matchTeams refuses on an unmatched row or a team claimed twice rather than
-// importing 364 of 365 and reporting success.
+// for the other and the pool silently ranks the wrong program.
 //
-// models/hoopsTeam.js says this match is on (school, conference). It is not,
-// and the comment predates the measurement: `school` is already unique across
-// all 365 rows, while Torvik abbreviates conferences ("B12", "Slnd") and CBBD
-// spells them out, so keying on the pair would need a second alias table to buy
-// nothing. The bijection check below is the stronger guarantee.
+// ---- WHAT THE BIJECTION DOES NOT CATCH ----
+//
+// A single wrong alias shows up as a double-claim plus an unclaimed team. A
+// SWAPPED PAIR does not: send "Miami FL" to Miami (OH) and "Miami OH" to Miami
+// and the result is still 365 matched, 0 unmatched, 0 double-claimed, 0
+// unclaimed. Measured. The pool then ranks Miami (OH) 18th and Miami 102nd and
+// reports a clean import.
+//
+// conferenceMismatches() is the check that closes it, and it needs no second
+// alias table: the abbreviation-to-name mapping is DERIVED from the matches
+// themselves by majority, so a pair whose conference disagrees with the rest of
+// its group is flagged. On the committed data it flags exactly one row, and
+// that row is a genuine source disagreement — see KNOWN_CONFERENCE_DRIFT.
+//
+// models/hoopsTeam.js used to say this match is on (school, conference). It is
+// not: `school` is already unique across all 365 rows, so conference is a
+// VALIDATION here, never a key.
 
 // Torvik's name -> CBBD's name, for the 29 the rewrites cannot reach.
 // Alphabetical by Torvik's spelling. Every entry was confirmed against the
@@ -94,8 +104,12 @@ function normaliseSchool(name) {
 // than trust here.
 function parseTRank(html) {
     const rows = [];
-    for (const block of String(html).match(/<tr>[\s\S]*?<\/tr>/g) || []) {
-        const cells = block.match(/<td[^>]*>[\s\S]*?<\/td>/g) || [];
+    // Attributes allowed on BOTH tags. Torvik's current page emits a bare
+    // <tr>, but the sibling <td[^>]*> already tolerates them, and a bare-only
+    // <tr> pattern turns one added class into 0 rows and a refusal message
+    // telling the operator to add 365 names to NAME_ALIASES.
+    for (const block of String(html).match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || []) {
+        const cells = block.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || [];
         if (cells.length < 8) continue;                  // header and spacer rows
 
         // The school comes from the LINK's query string, not the cell text:
@@ -163,4 +177,51 @@ function matchTeams(ratings, teams) {
     return { matched, unmatched, doubleClaimed, unclaimed };
 }
 
-module.exports = { NAME_ALIASES, normaliseSchool, parseTRank, matchTeams };
+// Conference disagreements that are real, not alias errors.
+//
+// Keyed by CBBD's school name, with what the two sources each say, so a wrong
+// entry is obvious on sight. An entry here means "we looked, and the pairing is
+// right even though the conferences differ" — it does NOT suppress a different
+// disagreement on the same team later, because the expected pair is recorded.
+const KNOWN_CONFERENCE_DRIFT = {
+    // CBBD's 2027 row says Sun Belt; Torvik has it in CUSA, alongside the other
+    // ten CUSA members both sources agree on. One of the two is stale. The
+    // names match exactly — no alias is involved — so the RATING is right
+    // whichever conference is, and the pool is unaffected.
+    'Louisiana Tech': { torvik: 'CUSA', cbbd: 'Sun Belt' }
+};
+
+// Pairs whose two sources disagree about the conference.
+//
+// The point is NOT to police conference data. It is the only available check on
+// a swapped pair of aliases, which the bijection cannot see: two schools whose
+// ratings have been exchanged almost always sit in different leagues, and that
+// shows up here as two flagged rows.
+//
+// The abbreviation-to-name mapping is derived by majority from the matches, so
+// nothing has to be maintained by hand. The smallest real conference holds
+// eight teams, so one mismatched row never becomes its own group's majority.
+function conferenceMismatches(matched) {
+    const tally = new Map();
+    for (const { team, rating } of matched) {
+        if (!tally.has(rating.conference)) tally.set(rating.conference, new Map());
+        const inner = tally.get(rating.conference);
+        inner.set(team.conference, (inner.get(team.conference) || 0) + 1);
+    }
+    const expected = new Map();
+    for (const [abbr, inner] of tally) {
+        expected.set(abbr, [...inner].sort((a, b) => b[1] - a[1])[0][0]);
+    }
+
+    const out = [];
+    for (const { team, rating } of matched) {
+        const want = expected.get(rating.conference);
+        if (want === team.conference) continue;
+        const known = KNOWN_CONFERENCE_DRIFT[team.school];
+        if (known && known.torvik === rating.conference && known.cbbd === team.conference) continue;
+        out.push({ school: team.school, torvik: rating.conference, expected: want, cbbd: team.conference });
+    }
+    return out;
+}
+
+module.exports = { NAME_ALIASES, KNOWN_CONFERENCE_DRIFT, normaliseSchool, parseTRank, matchTeams, conferenceMismatches };
