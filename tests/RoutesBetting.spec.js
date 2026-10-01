@@ -344,6 +344,100 @@ describe('PATCH /betting/:id — wager and boost', () => {
     });
 });
 
+// placedBy was left on the `!= null` gate when the numeric fields above were
+// moved off it, so it kept the same write-once bug for one more field — and
+// this one could not be worked around by typing a different value, because the
+// only way to undo a wrong attribution is to clear it.
+describe('PATCH /betting/:id — placed by', () => {
+    const OTHER = new mongoose.Types.ObjectId();
+    let parlay;
+    beforeEach(async () => {
+        await BettingGroup.findByIdAndUpdate(group._id, { members: [MEMBER, OTHER] });
+        parlay = await Parlay.create({
+            group: group._id, season: 2026, week: 2, wager: 20, placedBy: MEMBER
+        });
+    });
+
+    const patch = body => request(adminApp).patch(`/betting/${parlay._id}`).send(body);
+
+    test('reassigns the slip to another member', async () => {
+        const res = await patch({ placedBy: String(OTHER) });
+
+        expect(res.status).toBe(200);
+        expect(String(res.body.placedBy)).toBe(String(OTHER));
+    });
+
+    // The bug. public/betting.js renders a `—` option with an empty value and
+    // sends `{ placedBy: null }` for it; `!= null` skipped that, so the write
+    // never happened — and the route still answered 200, so the page popped
+    // "Placed by updated" and re-rendered the name it had just failed to clear.
+    test('clears the attribution when the admin picks the empty option', async () => {
+        const res = await patch({ placedBy: null });
+
+        expect(res.status).toBe(200);
+        expect(res.body.placedBy == null).toBe(true);
+
+        // Re-read, because a route that answers 200 off an unsaved document is
+        // precisely the failure being fixed.
+        const stored = await Parlay.findById(parlay._id).lean();
+        expect(stored.placedBy == null).toBe(true);
+    });
+
+    // Not a regression — `'' != null` is true, so the empty string was the one
+    // way to clear this field that DID work. The client never sent it (it sends
+    // `value || null`), so nobody could reach it from the page. Pinned so the
+    // rewrite above keeps both spellings meaning the same thing.
+    test('treats an empty string as a clear too', async () => {
+        const res = await patch({ placedBy: '' });
+
+        expect(res.status).toBe(200);
+        const stored = await Parlay.findById(parlay._id).lean();
+        expect(stored.placedBy == null).toBe(true);
+    });
+
+    test('leaves the attribution alone when the body never mentions it', async () => {
+        const res = await patch({ boostCap: 5 });
+
+        expect(res.status).toBe(200);
+        expect(String(res.body.placedBy)).toBe(String(MEMBER));
+    });
+
+    // A CastError out of save() surfaces as a 500 — a server fault for a bad
+    // request. GET /:id already guards the same shape.
+    test('refuses a non-id instead of 500ing', async () => {
+        const res = await patch({ placedBy: 'nobody' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/member id/i);
+        const stored = await Parlay.findById(parlay._id).lean();
+        expect(String(stored.placedBy)).toBe(String(MEMBER));
+    });
+});
+
+// The refs these ids are declared against decide whether a future .populate()
+// works or 500s. 'User' is a model the web process does not register — that is
+// what broke GET /betting/list (#471) — and every id stored in production under
+// all five of these resolves in `accounts`.
+describe('manager references name a model the server actually registers', () => {
+    const Draft = require('../models/draft');
+
+    test.each([
+        ['Parlay', 'placedBy'],
+        ['Parlay', 'legs.contributor'],
+        ['BettingGroup', 'members'],
+        ['Draft', 'draftOrder'],
+        ['Draft', 'picks.userId']
+    ])('%s.%s refs Account', (modelName, path) => {
+        const model = { Parlay, BettingGroup, Draft }[modelName];
+        const schemaPath = model.schema.path(path);
+        // An array of ObjectIds carries its ref on the caster, not on the array
+        // path itself — members and draftOrder are both arrays.
+        const ref = schemaPath.options.ref
+            || (schemaPath.caster && schemaPath.caster.options.ref);
+        expect(ref).toBe('Account');
+    });
+});
+
 describe('PATCH /betting/:id/legs — correcting the odds', () => {
     let parlay;
     beforeEach(async () => {
