@@ -4,6 +4,7 @@ const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
 const franchiseRepo = require('../modules/franchise-repo');
+const { rosterSize } = require('../modules/roster-teams');
 const router = express.Router();
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -568,7 +569,11 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
             // new. Anyone who has ever been drafted a team plainly has a working
             // login — you can't draft without one — so that's the honest signal
             // while `authSub` catches up.
-            const hasPlayed = (u.seasons || []).some(x => (x.teams || []).length > 0);
+            // rosterSize, not `x.teams.length`: a basketball roster is stored
+            // as teamRefs (#478), so counting only the embedded copies reports
+            // every hoops manager as never having been drafted — which this
+            // panel then renders as "no login", the opposite of the truth.
+            const hasPlayed = (u.seasons || []).some(x => rosterSize({ seasons: [x] }, x.season) > 0);
             return {
                 _id: u._id, firstName: u.firstName, lastName: u.lastName, color: u.color,
                 inSeason: !!s, scored, linked: !!u.authSub, hasPlayed, email: u.email || null
@@ -895,17 +900,35 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
     try {
     res.user.lastUpdated = centralTime;
 
-    if (req.body.season != null && req.body.teams != null) {
+    // `teams` is football's roster — a full copy of each team. `teamRefs` is
+    // basketball's — { id, sport } resolved against that season's team row
+    // (#478). One field or the other, never both: a roster stored two ways is
+    // a roster with two answers.
+    // Hoisted above the season check: sending both with no season used to
+    // answer 200 and write nothing, which reads as success.
+    if (req.body.teams != null && req.body.teamRefs != null) {
+        return res.status(400).json({ message: 'Send teams or teamRefs, not both' });
+    }
+    const rosterField = req.body.teamRefs != null ? 'teamRefs'
+        : (req.body.teams != null ? 'teams' : null);
+    if (req.body.season != null && rosterField) {
+        const otherField = rosterField === 'teams' ? 'teamRefs' : 'teams';
         var seasonExist = res.user.seasons.findIndex(x => x.season == req.body.season);
 
         if (seasonExist > -1) {
             // Merge: replace only the drafted teams and keep the rest of the
             // season (franchiseName, captains, cumulativeScore, weeklyScore,
             // draftPosition). Overwriting the whole subdoc wiped those.
-            res.user.seasons[seasonExist].teams = req.body.teams;
+            res.user.seasons[seasonExist][rosterField] = req.body[rosterField];
+            // AND CLEAR THE OTHER SHAPE. A roster stored two ways has two
+            // answers, and rosterTeams prefers `teams` — so a hoops league
+            // that drafted before #478 (possible since #477 made a basketball
+            // team storable) would keep resolving to the stale copies forever,
+            // silently, however many times the draft was re-run.
+            res.user.seasons[seasonExist][otherField] = undefined;
             res.user.markModified('seasons');
         } else {
-            res.user.seasons.push({ season: req.body.season, teams: req.body.teams });
+            res.user.seasons.push({ season: req.body.season, [rosterField]: req.body[rosterField] });
         }
     }
 

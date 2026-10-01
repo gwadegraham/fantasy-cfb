@@ -529,6 +529,54 @@ describe('the aggregation reads — standings projections and the H2H pass', () 
     });
 });
 
+describe('asking for the roster means asking for BOTH shapes (#478)', () => {
+    // A basketball roster is seasons.teamRefs; football's is seasons.teams.
+    // Four callers name 'seasons.teams.id' to keep a ~100KB document off the
+    // wire — routes/scores.js, the admin roster, and two push-notify reads.
+    // Projected literally, each one sees a basketball manager with an empty
+    // roster and reports it as one.
+    //
+    // A field that exists in the database and is missing from a projection is
+    // the bug that bit six times across #313, and it fails by being ABSENT,
+    // which nothing notices. These pin the widening rather than trusting four
+    // call sites — and a fifth, next year — to remember.
+    test('a narrow seasons.teams request also returns teamRefs', async () => {
+        const user = await seedManager();
+        await Franchise.updateOne({ accountId: user._id },
+            { $set: { 'seasons.0.teamRefs': [{ id: 10, sport: 'basketball' }] } });
+
+        const got = await repo.byAccountId(user._id, { fields: ['seasons.season', 'seasons.teams.id'] });
+        const entry = got.seasons.find(s => s.teamRefs && s.teamRefs.length);
+        expect(entry).toBeDefined();
+        expect(entry.teamRefs[0]).toMatchObject({ id: 10, sport: 'basketball' });
+    });
+
+    test('and it does NOT widen a request that never mentioned the roster', async () => {
+        // Scoped: a caller asking for push preferences must not start dragging
+        // rosters along, which is the cost these narrow field lists exist to
+        // avoid. Asserted on the PROJECTION rather than the result — an
+        // absence in the result is also true when the widening does nothing,
+        // so that version of this test passed against a no-op.
+        const user = await seedManager();
+        const spy = jest.spyOn(Franchise, 'findOne');
+        await repo.byAccountId(user._id, { fields: ['pushPrefs', 'seasons.season'] });
+        const projection = spy.mock.calls[0][1];
+        expect(projection['seasons.teamRefs']).toBeUndefined();
+        expect(projection['seasons.season']).toBe(1);
+        spy.mockRestore();
+    });
+
+    test('and the widening is in the PROJECTION, not just the answer', async () => {
+        // Same reason: the field arriving could be Mongo returning a subtree
+        // rather than this module asking for it.
+        const user = await seedManager();
+        const spy = jest.spyOn(Franchise, 'findOne');
+        await repo.byAccountId(user._id, { fields: ['seasons.season', 'seasons.teams.id'] });
+        expect(spy.mock.calls[0][1]['seasons.teamRefs']).toBe(1);
+        spy.mockRestore();
+    });
+});
+
 describe('the reads that assemble themselves outside the two main finds', () => {
     test('an explicit field list still narrows to ONE season', async () => {
         // The gap a QA pass found in #458. routes/games.js asks for `seasons`
