@@ -229,11 +229,19 @@ const seasonSchema = new mongoose.Schema({
     // collection. A copy is an accidental backup — an ingest run against the
     // wrong season (see the warning in models/hoopsTeam.js) would corrupt
     // every historical roster at once here, where copies would survive it.
+    //
+    // `default: undefined` like `captains` below, and this is not cosmetic:
+    // without it mongoose materialises `teamRefs: []` on EVERY football season,
+    // in storage and in the PATCH /users/draft/:id response — and a
+    // byte-identical response is the contract modules/franchise-repo.js states
+    // four times that it preserves. The nightly scoring write would have
+    // backfilled the empty array across every franchise.
     teamRefs: {
         type: [new mongoose.Schema({
             id: { type: Number, required: true },
             sport: { type: String, enum: ['football', 'basketball'], required: true }
-        }, { _id: false })]
+        }, { _id: false })],
+        default: undefined
     },
     cumulativeScore: {
         type: Number

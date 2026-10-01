@@ -49,24 +49,37 @@ async function rosterTeams(franchise, season) {
     if (!refs.length) return [];
 
     const year = Number(season);
-    const ids = refs.map(r => Number(r.id));
-    // The sport is on each ref rather than inferred from the league, so a
-    // roster stays readable without the season cache being primed — the
-    // failure that let a basketball pick match a football team in #476.
-    const hoops = refs.some(r => r.sport === 'basketball');
+    // GROUPED BY SPORT, not `refs.some(...)`. The sport is on each REF, which
+    // is what lets a roster be read without the season cache being primed —
+    // the failure that let a basketball pick match a football team in #476 —
+    // and an all-or-nothing branch threw that away: one basketball ref sent
+    // the whole list to HoopsTeam and silently dropped every football one,
+    // logging it as a missing basketball team.
+    //
+    // No mixed roster exists today. It is the shape the per-ref field promises
+    // and the shape #478 produces while football is half migrated.
+    const hoopsIds = refs.filter(r => r.sport === 'basketball').map(r => Number(r.id));
+    const otherIds = refs.filter(r => r.sport !== 'basketball').map(r => Number(r.id));
 
-    const rows = hoops
-        ? await HoopsTeam.find({ season: year, id: { $in: ids } }).lean()
-        : await Team.find({ id: { $in: ids } }).lean();
+    const [hoopsRows, footballRows] = await Promise.all([
+        hoopsIds.length ? HoopsTeam.find({ season: year, id: { $in: hoopsIds } }).lean() : [],
+        otherIds.length ? Team.find({ id: { $in: otherIds } }).lean() : []
+    ]);
 
-    const byId = new Map(rows.map(t => [Number(t.id), t]));
+    // Keyed by sport as well as id: the two collections number teams
+    // independently, so football 1 and basketball 1 are different programs.
+    const key = (sport, id) => `${sport === 'basketball' ? 'b' : 'f'}:${Number(id)}`;
+    const byId = new Map([
+        ...hoopsRows.map(t => [key('basketball', t.id), t]),
+        ...footballRows.map(t => [key('football', t.id), t])
+    ]);
     // A ref that resolves to nothing is DROPPED, not left as a hole. A null in
     // a roster array reaches every renderer as a crash; a team that is simply
     // absent reads as what it is. It is logged because it should not happen —
     // the rows are per-season and never deleted.
     const out = [];
     for (const ref of refs) {
-        const team = byId.get(Number(ref.id));
+        const team = byId.get(key(ref.sport, ref.id));
         if (team) out.push(team);
         else console.log(`roster: ${ref.sport} team ${ref.id} has no ${year} row — dropped from the roster`);
     }
@@ -90,8 +103,13 @@ function rosterSize(franchise, season) {
 // until #478 moves it. One function so the decision lives in one place rather
 // than being re-made at each call site.
 function rosterEntryFor(team, sport) {
-    if (sport === 'basketball') return { id: Number(team.id), sport: 'basketball' };
-    return team;
+    if (sport !== 'basketball') return team;
+    const id = Number(team && team.id);
+    // A ref carrying NaN fails validation for the WHOLE manager, and
+    // persistTeamsToUsers only logs that — so one unusable pick costs someone
+    // their entire roster. Refuse to build it; the caller drops the pick.
+    if (!Number.isInteger(id)) return null;
+    return { id, sport: 'basketball' };
 }
 
 module.exports = { rosterTeams, rosterSize, rosterEntryFor, entryFor };

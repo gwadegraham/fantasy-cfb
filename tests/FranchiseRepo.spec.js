@@ -552,20 +552,28 @@ describe('asking for the roster means asking for BOTH shapes (#478)', () => {
     });
 
     test('and it does NOT widen a request that never mentioned the roster', async () => {
-        // The widening is scoped: a caller asking for push preferences must
-        // not start dragging rosters along, which is the cost these narrow
-        // field lists exist to avoid.
+        // Scoped: a caller asking for push preferences must not start dragging
+        // rosters along, which is the cost these narrow field lists exist to
+        // avoid. Asserted on the PROJECTION rather than the result — an
+        // absence in the result is also true when the widening does nothing,
+        // so that version of this test passed against a no-op.
         const user = await seedManager();
-        const got = await repo.byAccountId(user._id, { fields: ['pushPrefs', 'seasons.season'] });
-        expect(got.seasons.every(s => s.teamRefs === undefined)).toBe(true);
+        const spy = jest.spyOn(Franchise, 'findOne');
+        await repo.byAccountId(user._id, { fields: ['pushPrefs', 'seasons.season'] });
+        const projection = spy.mock.calls[0][1];
+        expect(projection['seasons.teamRefs']).toBeUndefined();
+        expect(projection['seasons.season']).toBe(1);
+        spy.mockRestore();
     });
 
-    test('a whole-seasons request carries it without being asked', async () => {
+    test('and the widening is in the PROJECTION, not just the answer', async () => {
+        // Same reason: the field arriving could be Mongo returning a subtree
+        // rather than this module asking for it.
         const user = await seedManager();
-        await Franchise.updateOne({ accountId: user._id },
-            { $set: { 'seasons.0.teamRefs': [{ id: 10, sport: 'basketball' }] } });
-        const got = await repo.byAccountId(user._id);
-        expect(got.seasons.some(s => (s.teamRefs || []).length)).toBe(true);
+        const spy = jest.spyOn(Franchise, 'findOne');
+        await repo.byAccountId(user._id, { fields: ['seasons.season', 'seasons.teams.id'] });
+        expect(spy.mock.calls[0][1]['seasons.teamRefs']).toBe(1);
+        spy.mockRestore();
     });
 });
 

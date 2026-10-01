@@ -113,6 +113,30 @@ describe('basketball rosters resolve', () => {
             franchise(2026, { teamRefs: [{ id: 1, sport: 'football' }] }), 2026);
         expect(team.school).toBe('Alabama');
     });
+
+    // The first version branched on `refs.some(r => r.sport === 'basketball')`,
+    // so ONE basketball ref sent the whole list to HoopsTeam and silently
+    // dropped every football one — logging it as a missing basketball team.
+    // That is the shape #478 produces while football is half migrated.
+    test('a MIXED list resolves each ref against its own sport', async () => {
+        await Team.create([fbs(1, 'Alabama')]);
+        await HoopsTeam.create([hoops(10, 'Duke', 2026, 'ACC')]);
+        const got = await rosterTeams(franchise(2026, { teamRefs: [
+            { id: 1, sport: 'football' }, { id: 10, sport: 'basketball' }
+        ] }), 2026);
+        expect(got.map(t => t.school)).toEqual(['Alabama', 'Duke']);
+    });
+
+    test('the two collections number teams independently, and ids do not cross', async () => {
+        // Football 1 and basketball 1 are different programs. Keyed on id
+        // alone, one would answer for the other.
+        await Team.create([fbs(1, 'Alabama')]);
+        await HoopsTeam.create([hoops(1, 'Duke', 2026, 'ACC')]);
+        const got = await rosterTeams(franchise(2026, { teamRefs: [
+            { id: 1, sport: 'basketball' }, { id: 1, sport: 'football' }
+        ] }), 2026);
+        expect(got.map(t => t.school)).toEqual(['Duke', 'Alabama']);
+    });
 });
 
 describe('the empty and mixed cases', () => {
@@ -149,6 +173,17 @@ describe('rosterSize counts without resolving', () => {
         expect(rosterSize({}, 2026)).toBe(0);
     });
 
+    test('it agrees with rosterTeams on a half-migrated document', async () => {
+        // Both functions must read the same roster. rosterTeams prefers the
+        // embedded copy; a rosterSize that preferred refs would report two
+        // teams for a manager whose roster resolves to one.
+        const f = franchise(2026, {
+            teams: [fbs(1, 'Alabama')],
+            teamRefs: [{ id: 10, sport: 'basketball' }, { id: 20, sport: 'basketball' }]
+        });
+        expect(rosterSize(f, 2026)).toBe(1);
+    });
+
     test('and it queries nothing — that is the whole reason it exists', async () => {
         const spy = jest.spyOn(HoopsTeam, 'find');
         rosterSize(franchise(2027, { teamRefs: [{ id: 1, sport: 'basketball' }] }), 2027);
@@ -166,6 +201,16 @@ describe('rosterEntryFor decides the shape once', () => {
     test('football keeps storing the whole document', () => {
         const team = fbs(1, 'Alabama');
         expect(rosterEntryFor(team, 'football')).toBe(team);
+    });
+
+    test('an unusable id yields NO ref, rather than one carrying NaN', () => {
+        // { id: NaN } fails validation for the WHOLE manager, and
+        // persistTeamsToUsers only logs that — so one bad pick would cost
+        // someone their entire roster.
+        expect(rosterEntryFor({ id: 'abc' }, 'basketball')).toBeNull();
+        expect(rosterEntryFor({}, 'basketball')).toBeNull();
+        expect(rosterEntryFor({ id: 1.5 }, 'basketball')).toBeNull();
+        expect(rosterEntryFor({ id: '10' }, 'basketball')).toEqual({ id: 10, sport: 'basketball' });
     });
 
     test('an unknown sport is treated as football, never as a lossy ref', () => {

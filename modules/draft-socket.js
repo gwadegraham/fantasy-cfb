@@ -60,7 +60,13 @@ async function persistTeamsToUsers(draft) {
             team.location.venue_id = team.location.id;
             delete team.location.id;
         }
-        teamsByUser[uid].push(rosterEntryFor(team, sport));
+        // null means the id was unusable. Dropping that ONE pick beats sending
+        // a ref carrying NaN, which fails validation for the whole manager —
+        // and persistTeamsToUsers only logs that, so one bad pick would cost
+        // someone their entire roster.
+        const entry = rosterEntryFor(team, sport);
+        if (entry) teamsByUser[uid].push(entry);
+        else console.error(`draft ${draft.league}/${draft.season}: pick ${pick.overall} has an unusable team id (${JSON.stringify(team && team.id)}) — dropped`);
     }
 
     // ⚠️ THE RESPONSE IS READ. It was discarded, and that is what would have
@@ -251,3 +257,8 @@ module.exports = function registerDraftSockets(io) {
 
 module.exports.roomKey = roomKey;
 module.exports.publicState = publicState;
+// Exported for its own test. It had NO coverage: replacing the sport branch so
+// it always sent `teams`, and deleting the PATCH's teamRefs handling, each left
+// the whole suite green — the same gap as the pool gate in #476, in this same
+// file, one PR later.
+module.exports.persistTeamsToUsers = persistTeamsToUsers;
