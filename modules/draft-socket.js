@@ -1,5 +1,7 @@
 const Draft = require('../models/draft');
 const draftPool = require('./draft-pool');
+const { rosterEntryFor } = require('./roster-teams');
+const { sportForLeague } = require('./active-season');
 const engine = require('./draft-engine');
 const draftToken = require('./draft-token');
 const { internalFetch, failureMessage } = require('./internal-api');
@@ -44,6 +46,10 @@ function publicState(draft) {
 // On completion, write each member's drafted teams onto their season, reusing
 // the existing PATCH /users/draft/:id endpoint (server-to-server, token auth).
 async function persistTeamsToUsers(draft) {
+    // Basketball rosters store a REFERENCE; football still stores the whole
+    // document (#478). The sport decides, once, here — rosterEntryFor is the
+    // only place that choice is made.
+    const sport = sportForLeague(draft.league);
     const teamsByUser = {};
     for (const pick of draft.picks) {
         const uid = String(pick.userId);
@@ -54,7 +60,7 @@ async function persistTeamsToUsers(draft) {
             team.location.venue_id = team.location.id;
             delete team.location.id;
         }
-        teamsByUser[uid].push(team);
+        teamsByUser[uid].push(rosterEntryFor(team, sport));
     }
 
     // ⚠️ THE RESPONSE IS READ. It was discarded, and that is what would have
@@ -69,10 +75,13 @@ async function persistTeamsToUsers(draft) {
     const failed = [];
     for (const userId of Object.keys(teamsByUser)) {
         try {
+            const payload = sport === 'basketball'
+                ? { season: draft.season, teamRefs: teamsByUser[userId] }
+                : { season: draft.season, teams: teamsByUser[userId] };
             const res = await internalFetch(`${process.env.URL}/users/draft/${userId}`, {
                 method: 'PATCH',
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ season: draft.season, teams: teamsByUser[userId] })
+                body: JSON.stringify(payload)
             });
             if (!res.ok) failed.push(`${userId}: ${res.status} ${await failureMessage(res)}`);
         } catch (err) {

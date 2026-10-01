@@ -107,6 +107,15 @@ module.exports = {
         // What 94 call sites now route through for "what season is it?", and it
         // fails soft by design (an unprimed cache answers from process.env.YEAR),
         // so the fallback paths have to stay covered or a regression is silent.
+        // Two roster storage shapes, one answer. Its failure mode is a roster
+        // that comes back EMPTY or describing the wrong season — both of which
+        // render perfectly well, so every branch has to be exercised.
+        "./modules/roster-teams.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The draft pool's failure mode is a list that renders, drafts, and is
         // missing the teams anyone wanted — so every refusal path has to be
         // exercised, not just the happy one.

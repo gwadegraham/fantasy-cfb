@@ -195,8 +195,45 @@ const seasonSchema = new mongoose.Schema({
     draftPosition: {
         type: Number
     },
+    // FOOTBALL's roster: a full copy of each team document.
+    //
+    // Kept as-is deliberately. Every football reader expects these objects,
+    // the scoring pass writes them nightly, and converting that mid-season is
+    // the job filed as #478 — for an offseason, not for now.
     teams: {
         type: [teamSchema]
+    },
+
+    // BASKETBALL's roster: a pointer, resolved against the per-sport team
+    // collection for THIS season.
+    //
+    // Why basketball starts here rather than copying football:
+    //
+    //   - there is no shared shape to satisfy. teamSchema demands football
+    //     facts — a stadium's coordinates, capacity, grass, dome — which an
+    //     arena does not have. #477 relaxed `location` so a hoops team could
+    //     be stored at all; a reference removes the question instead.
+    //   - a copy goes stale. It is frozen at DRAFT time, in October, and the
+    //     hoopsTeam model records 27 teams carrying a different conference in
+    //     2027 than 2026. A reference resolves to that season's own row.
+    //   - basketball's readers do not exist yet. Scoring, My Team and
+    //     standings are all still to be written, so they get written against
+    //     this and never need converting. Football's dozen callers would.
+    //
+    // HISTORY STILL WORKS, because the lookup is keyed on season as well as
+    // id and the season is this very subdocument's. `hoopsteams` is one row
+    // per (season, id) and an ingest upserts on that key, so 2027's ACC row
+    // survives 2028 moving that team to the SEC.
+    //
+    // The cost, recorded honestly: a reference shares fate with the team
+    // collection. A copy is an accidental backup — an ingest run against the
+    // wrong season (see the warning in models/hoopsTeam.js) would corrupt
+    // every historical roster at once here, where copies would survive it.
+    teamRefs: {
+        type: [new mongoose.Schema({
+            id: { type: Number, required: true },
+            sport: { type: String, enum: ['football', 'basketball'], required: true }
+        }, { _id: false })]
     },
     cumulativeScore: {
         type: Number

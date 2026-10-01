@@ -120,6 +120,9 @@ async function byLeagueAndSeason(league, season, { projectSeason = true, fields 
 // wire; honouring that is the difference between moving the storage and
 // quietly making every standings read heavier.
 function seasonScopedProjection(fields, season) {
+    // asProjection adds seasons.teamRefs for a roster request; the $elemMatch
+    // branch below replaces the whole subtree anyway, so this only matters for
+    // the narrow 'seasons.teams.id' callers — which is exactly who needs it.
     const projection = asProjection(fields.filter(f => f !== 'seasons'));
     if (fields.includes('seasons')) projection.seasons = { $elemMatch: { season } };
     return projection;
@@ -218,7 +221,26 @@ function asProjection(fields) {
     // all of it", which is how a narrowed read quietly becomes a full one.
     // `_id` alone is the honest encoding of an empty request.
     if (!fields.length) return { _id: 1 };
-    return fields.reduce((acc, f) => Object.assign(acc, { [f]: 1 }), {});
+    return withRoster(fields).reduce((acc, f) => Object.assign(acc, { [f]: 1 }), {});
+}
+
+// ASKING FOR THE ROSTER MEANS ASKING FOR IT IN EITHER SHAPE.
+//
+// A basketball roster is `seasons.teamRefs`, football's is `seasons.teams`
+// (#478), and four callers name `seasons.teams.id` to keep a ~100KB document
+// off the wire — routes/scores.js, the admin roster in routes/users.js and two
+// reads in modules/push-notify.js. Projected literally, every one of them sees
+// a basketball manager with no teams and reports it as an empty roster.
+//
+// Widened HERE rather than at those four call sites, because a field that
+// exists in the database and is missing from a projection is exactly the bug
+// that bit six times across #313 — and it fails by being absent, which nothing
+// notices. A fifth caller added next year gets this for free; a comment asking
+// them to remember would not.
+function withRoster(fields) {
+    const wantsRoster = fields.some(f => f === 'seasons' || f.startsWith('seasons.teams'));
+    if (!wantsRoster || fields.includes('seasons') || fields.includes('seasons.teamRefs')) return fields;
+    return fields.concat('seasons.teamRefs');
 }
 
 // Everyone in a league, whatever season — the roster views and colour picker,

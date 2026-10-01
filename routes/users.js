@@ -895,17 +895,26 @@ router.patch('/draft/:id', getUserNewSeason, async (req, res) => {
     try {
     res.user.lastUpdated = centralTime;
 
-    if (req.body.season != null && req.body.teams != null) {
+    // `teams` is football's roster — a full copy of each team. `teamRefs` is
+    // basketball's — { id, sport } resolved against that season's team row
+    // (#478). One field or the other, never both: a roster stored two ways is
+    // a roster with two answers.
+    const rosterField = req.body.teamRefs != null ? 'teamRefs'
+        : (req.body.teams != null ? 'teams' : null);
+    if (req.body.season != null && rosterField) {
+        if (req.body.teams != null && req.body.teamRefs != null) {
+            return res.status(400).json({ message: 'Send teams or teamRefs, not both' });
+        }
         var seasonExist = res.user.seasons.findIndex(x => x.season == req.body.season);
 
         if (seasonExist > -1) {
             // Merge: replace only the drafted teams and keep the rest of the
             // season (franchiseName, captains, cumulativeScore, weeklyScore,
             // draftPosition). Overwriting the whole subdoc wiped those.
-            res.user.seasons[seasonExist].teams = req.body.teams;
+            res.user.seasons[seasonExist][rosterField] = req.body[rosterField];
             res.user.markModified('seasons');
         } else {
-            res.user.seasons.push({ season: req.body.season, teams: req.body.teams });
+            res.user.seasons.push({ season: req.body.season, [rosterField]: req.body[rosterField] });
         }
     }
 
