@@ -56,7 +56,7 @@ describe('PATCH /users/draft/:id', () => {
         const user = await seed();
 
         const res = await request(app).patch(`/users/draft/${user._id}`)
-            .send({ season: SEASON, teams: [team(1, 'Iowa'), team(2, 'Duke')] });
+            .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa'), team(2, 'Duke')] });
 
         expect(res.status).toBe(200);
         const back = await require('../modules/franchise-repo').byAccountId(user._id);
@@ -71,7 +71,7 @@ describe('PATCH /users/draft/:id', () => {
         const user = await seed([{ season: 2025, franchiseName: 'Last Year', teams: [] }]);
 
         const res = await request(app).patch(`/users/draft/${user._id}`)
-            .send({ season: SEASON, teams: [team(1, 'Iowa')] });
+            .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         expect(res.status).toBe(200);
         const back = await require('../modules/franchise-repo').byAccountId(user._id);
@@ -81,7 +81,7 @@ describe('PATCH /users/draft/:id', () => {
     test('the response is the User shape the draft room reads', async () => {
         const user = await seed();
         const res = await request(app).patch(`/users/draft/${user._id}`)
-            .send({ season: SEASON, teams: [team(1, 'Iowa')] });
+            .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         const body = strip(res.body);
         expect(body).toMatchObject({ firstName: 'Ann', league: LEAGUE });
@@ -94,7 +94,7 @@ describe('PATCH /users/draft/:id', () => {
 
     test('an unknown id is 404', async () => {
         const ghost = new mongoose.Types.ObjectId();
-        const res = await request(app).patch(`/users/draft/${ghost}`).send({ season: SEASON, teams: [] });
+        const res = await request(app).patch(`/users/draft/${ghost}`).send({ league: LEAGUE, season: SEASON, teams: [] });
         expect(res.status).toBe(404);
     });
 
@@ -115,7 +115,7 @@ describe('PATCH /users/draft/:id', () => {
         const account = await Account.create({ firstName: 'Hoops', lastName: 'Only', color: '#fff' });
 
         const res = await request(app).patch(`/users/draft/${account._id}`)
-            .send({ season: SEASON, teams: [team(1, 'Iowa')] });
+            .send({ league: LEAGUE, season: SEASON, teams: [team(1, 'Iowa')] });
 
         expect(res.status).toBe(404);
     });

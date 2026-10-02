@@ -136,6 +136,78 @@ describe('basketball writes references', () => {
     });
 });
 
+describe('a manager who holds TWO franchises', () => {
+    // THE BUG THIS BLOCK EXISTS FOR, found by a dry draft in dev.
+    //
+    // PATCH /users/draft/:id loaded the franchise by account id with no
+    // league, so loadForWrite took whichever findOne returned first. A
+    // basketball draft wrote its roster onto the manager's FOOTBALL
+    // franchise: graham-league grew a 2027 season holding three basketball
+    // teamRefs while the basketball franchise stayed empty — and the draft
+    // reported complete, with confetti.
+    //
+    // Unreachable until one account held two franchises, which is the entire
+    // point of #313 and became true the same day.
+    async function twoFranchises() {
+        const u = await manager(BALL, 2026);               // football
+        await Franchise.create({
+            accountId: u._id, league: HOOPS,
+            seasons: [{ season: 2027, franchiseName: 'Hoops Me' }]
+        });
+        return u;
+    }
+
+    test('a basketball draft writes to the BASKETBALL franchise', async () => {
+        const u = await twoFranchises();
+        await HoopsTeam.create([hoops(10, 'Duke', 2027), hoops(20, 'Arizona', 2027)]);
+
+        const { failed } = await persistTeamsToUsers(
+            draftOf(HOOPS, 2027, u._id, [hoops(10, 'Duke', 2027), hoops(20, 'Arizona', 2027)]));
+        expect(failed).toEqual([]);
+
+        const hoopsFr = await Franchise.findOne({ accountId: u._id, league: HOOPS }).lean();
+        expect(hoopsFr.seasons.find(s => s.season === 2027).teamRefs)
+            .toEqual([{ id: 10, sport: 'basketball' }, { id: 20, sport: 'basketball' }]);
+    });
+
+    test('and leaves the FOOTBALL franchise completely alone', async () => {
+        const u = await twoFranchises();
+        await HoopsTeam.create([hoops(10, 'Duke', 2027)]);
+        await persistTeamsToUsers(draftOf(HOOPS, 2027, u._id, [hoops(10, 'Duke', 2027)]));
+
+        const ballFr = await Franchise.findOne({ accountId: u._id, league: BALL }).lean();
+        expect(ballFr.seasons.map(s => s.season)).toEqual([2026]);     // no 2027 appeared
+        expect(ballFr.seasons.some(s => (s.teamRefs || []).length)).toBe(false);
+    });
+
+    test('and the football draft still writes to the football one', async () => {
+        const u = await twoFranchises();
+        await persistTeamsToUsers(draftOf(BALL, 2026, u._id, [fbs(1, 'Alabama')]));
+
+        const ballFr = await Franchise.findOne({ accountId: u._id, league: BALL }).lean();
+        expect(ballFr.seasons.find(s => s.season === 2026).teams.map(t => t.school)).toEqual(['Alabama']);
+        const hoopsFr = await Franchise.findOne({ accountId: u._id, league: HOOPS }).lean();
+        expect((hoopsFr.seasons.find(s => s.season === 2027).teams || [])).toEqual([]);
+    });
+
+    test('a write that names NO league is refused, not guessed', async () => {
+        // Guessing is what made this silent. A caller that cannot say which
+        // franchise is asking the wrong question.
+        const request = require('supertest');
+        const app2 = express();
+        app2.use(express.json());
+        app2.use((req, res, next) => { req.headers['x-internal-token'] = process.env.INTERNAL_API_TOKEN; next(); });
+        app2.use('/users', usersRouter);
+
+        const u = await twoFranchises();
+        const res = await request(app2).patch(`/users/draft/${u._id}`)
+            .send({ season: 2027, teamRefs: [{ id: 10, sport: 'basketball' }] });
+
+        expect(res.status).toBe(400);
+        expect(res.body.message).toMatch(/league is required/);
+    });
+});
+
 describe('a roster that cannot be written is reported, not swallowed', () => {
     test('the failed manager is named', async () => {
         // The response used to be discarded entirely, which is how a draft
@@ -178,7 +250,7 @@ describe('PATCH /users/draft/:id', () => {
         // and wrote nothing — which reads as success.
         const u = await manager(BALL, 2026);
         const res = await request(app).patch(`/users/draft/${u._id}`)
-            .send({ teams: [fbs(1, 'Alabama')], teamRefs: [{ id: 10, sport: 'basketball' }] });
+            .send({ league: BALL, teams: [fbs(1, 'Alabama')], teamRefs: [{ id: 10, sport: 'basketball' }] });
         expect(res.status).toBe(400);
         expect(res.body.message).toMatch(/not both/);
     });
@@ -187,7 +259,7 @@ describe('PATCH /users/draft/:id', () => {
         const u = await manager(HOOPS, 2027);
         await HoopsTeam.create([hoops(10, 'Duke', 2028)]);
         const res = await request(app).patch(`/users/draft/${u._id}`)
-            .send({ season: 2028, teamRefs: [{ id: 10, sport: 'basketball' }] });
+            .send({ league: HOOPS, season: 2028, teamRefs: [{ id: 10, sport: 'basketball' }] });
         expect(res.status).toBe(200);
 
         const fr = await Franchise.findOne({ accountId: u._id }).lean();
@@ -197,7 +269,7 @@ describe('PATCH /users/draft/:id', () => {
     test('neither shape leaves the roster alone', async () => {
         const u = await manager(BALL, 2026);
         await Franchise.updateOne({ accountId: u._id }, { $set: { 'seasons.0.teams': [fbs(1, 'Alabama')] } });
-        const res = await request(app).patch(`/users/draft/${u._id}`).send({ season: 2026 });
+        const res = await request(app).patch(`/users/draft/${u._id}`).send({ league: BALL, season: 2026 });
         expect(res.status).toBe(200);
 
         const fr = await Franchise.findOne({ accountId: u._id }).lean();
