@@ -190,14 +190,32 @@ async function viewerContext(req, leagues) {
     // ugly and visible — better than silently absent. Sorted, because the
     // set's own order is Mongo's.
     const seen = new Set(offered.map(l => l.code));
-    for (const extra of [...mine].filter(c => !seen.has(c)).sort()) {
-        offered.push({ code: extra, name: extra, sport: 'football' });
+    const extras = [...mine].filter(c => !seen.has(c)).sort();
+    if (extras.length) {
+        // Resolved against the ARCHIVED-INCLUSIVE list. Retiring a league
+        // removes it from the catalog, but the people still in it keep their
+        // franchise — so without this their own switcher would show them a
+        // raw slug for a league they are actively playing in.
+        const byCode = new Map((await leagueCatalog.named(req)).map(l => [l.code, l]));
+        for (const extra of extras) {
+            offered.push(byCode.get(extra) || { code: extra, name: extra });
+        }
     }
+
+    // The list the CLIENT seed is built from (ccLeague.name(), the page
+    // labels, the <title>). It must name everything `offered` does, or a
+    // member holding an archived league sees its name resolve to '' and every
+    // [league-label] on their pages goes blank — on a league they still play
+    // in. Assembled here rather than in the middleware because the inline
+    // version could be deleted with the whole suite green.
+    const listed = new Set((leagues || []).map(l => l.code));
+    const all = (leagues || []).concat(offered.filter(l => !listed.has(l.code)));
 
     const admin = isAdmin(req);
     return {
         code,
         leagues: offered,
+        all,
         // Derived from the list actually rendered, so a flag saying "you may
         // switch" and a list with nothing to switch to cannot disagree.
         canSwitch: admin || offered.length > 1,

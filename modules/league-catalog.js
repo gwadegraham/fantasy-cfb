@@ -3,75 +3,107 @@
 // This used to be `LEAGUES.map(...)` in server.js — the hardcoded list from
 // scoring-defaults, with names overridden from Mongo. A map, not a union, so
 // **a league that exists only in the database was dropped entirely**: no name,
-// no switcher entry, and no way for an Admin to select it. models/league.js
-// says as much in a comment ("the league switcher is still built from the
-// hardcoded scoring-defaults LEAGUES list", "stored but INERT"), which was
-// fine while the only two leagues were the two in the array.
+// no switcher entry, and no code an Admin could select. models/league.js says
+// as much in a comment ("the league switcher is still built from the hardcoded
+// scoring-defaults LEAGUES list", "stored but INERT"), which was fine while
+// the only two leagues were the two in the array.
 //
 // It stops being fine the moment a basketball league exists, since that league
 // is created in Mongo and will never be in scoring-defaults — the hardcoded
 // list is tied to the SCORING MODELS (modelForLeague), which is a different
 // question from "which leagues exist".
 //
-// So: a union. The hardcoded entries keep their order and act as the fallback
-// when the database is unreachable; anything else in the collection follows.
+// Deliberately NOT carried here: the league's SPORT. active-season's primed
+// cache answers that (sportForLeague), and it is what modules/draft-pool.js
+// and modules/draft-socket.js already read — so a copy here would be a second
+// source that can disagree with the draft. It would also be stale in the
+// opposite direction: this reads per request, that cache refreshes on an
+// interval, so a league inserted mid-run would be offered with one sport by
+// the switcher and scored with another by the draft. One source.
+//
+// Two views, deliberately:
+//
+//   catalog() — the leagues on OFFER. Archived ones are gone.
+//   named()   — every league that has ever had a name, archived included.
+//
+// The split exists because archiving must not degrade the people still in
+// that league: they keep their franchise, so they keep seeing its name on
+// their pages and in their switcher, while nobody else is offered it.
 
 const League = require('../models/league');
 const { LEAGUES } = require('./scoring-defaults');
 
-const DEFAULTS = LEAGUES.map(l => ({ code: l.code, name: l.name, sport: 'football' }));
+// Frozen: the merged list is built from these, and several entries are
+// returned by identity when Mongo has nothing to say about that code. A
+// caller mutating one would corrupt the fallback for every later request.
+const DEFAULTS = Object.freeze(
+    LEAGUES.map(l => Object.freeze({ code: l.code, name: l.name }))
+);
 
-// Archived leagues are kept for history and must not be offered for play —
-// the field has existed on the schema since #312 and nothing has ever read it.
-// Honouring it here is what makes "retire a league" a thing you can do without
-// deleting anyone's history.
-function usable(doc) {
-    return doc.status !== 'archived';
-}
+// A league with no code cannot be selected (maySelect rejects the empty
+// string) and renders as a blank, unclickable <option>. Both documents in the
+// real collection were created by direct insert, so the schema's `required`
+// is not a guarantee here.
+const valid = (doc) => typeof doc.code === 'string' && doc.code.trim() !== '';
 
-// Merged list, in display order: the hardcoded leagues first (so the two
-// football leagues keep the order they have always rendered in), then anything
-// the database adds.
-//
-// Cached on the request. server.js needs the names and league-selection needs
-// the codes, both on the same render, and this is a database round trip on a
+// One read per request. server.js needs the names, league-selection needs the
+// codes, and four routes need one or the other — all on the same render, on a
 // free tier where latency tracks bytes.
-async function catalog(req) {
-    if (req && req._ccCatalog) return req._ccCatalog;
-
-    let merged = DEFAULTS;
+async function docsFor(req) {
+    if (req && req._ccLeagueDocs) return req._ccLeagueDocs;
+    let docs = [];
     try {
-        const docs = await League.find({}, { code: 1, name: 1, sport: 1, status: 1, _id: 0 }).lean();
-        const byCode = new Map(docs.filter(usable).map(d => [d.code, d]));
-
-        // A hardcoded league that has been ARCHIVED in the database drops out;
-        // one that is simply absent from the collection keeps its default,
-        // because an empty collection must not empty the navbar.
-        const archived = new Set(docs.filter(d => !usable(d)).map(d => d.code));
-
-        merged = DEFAULTS
-            .filter(d => !archived.has(d.code))
-            .map(d => {
-                const doc = byCode.get(d.code);
-                return doc ? { code: d.code, name: doc.name || d.name, sport: doc.sport || d.sport } : d;
-            });
-
-        const seen = new Set(merged.map(l => l.code));
-        for (const doc of byCode.values()) {
-            if (seen.has(doc.code)) continue;
-            merged.push({ code: doc.code, name: doc.name || doc.code, sport: doc.sport || 'football' });
-        }
+        docs = (await League.find({}, { code: 1, name: 1, status: 1, _id: 0 }).lean())
+            .filter(valid);
     } catch (e) {
         // The navbar renders on defaults rather than not at all.
         console.error(`league-catalog: ${e.message}`);
     }
+    if (req) req._ccLeagueDocs = docs;
+    return docs;
+}
 
-    if (req) req._ccCatalog = merged;
+function merge(docs, { includeArchived = false } = {}) {
+    const byCode = new Map(docs.map(d => [d.code, d]));
+    const archived = new Set(
+        includeArchived ? [] : docs.filter(d => d.status === 'archived').map(d => d.code)
+    );
+
+    // Hardcoded leagues keep their order — the two football leagues have
+    // always rendered in it — and act as the fallback when the collection is
+    // empty or unreachable. An archived one drops out, or it could never be
+    // retired; one merely absent keeps its default, or an empty collection
+    // would empty the navbar.
+    const merged = DEFAULTS
+        .filter(d => !archived.has(d.code))
+        .map(d => {
+            const doc = byCode.get(d.code);
+            return doc ? { code: d.code, name: doc.name || d.name } : d;
+        });
+
+    const seen = new Set(merged.map(l => l.code));
+    for (const doc of byCode.values()) {
+        if (seen.has(doc.code) || archived.has(doc.code)) continue;
+        merged.push({ code: doc.code, name: doc.name || doc.code });
+    }
     return merged;
+}
+
+// The leagues on offer.
+async function catalog(req) {
+    return merge(await docsFor(req));
+}
+
+// Every league with a name, archived included — for RESOLVING a code someone
+// already holds, never for offering one. A member whose league was archived
+// must not suddenly see a raw slug where its name used to be, nor lose the
+// league label from every page header.
+async function named(req) {
+    return merge(await docsFor(req), { includeArchived: true });
 }
 
 async function codes(req) {
     return (await catalog(req)).map(l => l.code);
 }
 
-module.exports = { catalog, codes, DEFAULTS };
+module.exports = { catalog, named, codes, DEFAULTS };

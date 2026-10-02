@@ -422,6 +422,40 @@ describe('viewerContext — what the navbar is built from', () => {
         expect(ctx.canSwitch).toBe(true);
     });
 
+    test('an ARCHIVED league you still play in keeps its name', async () => {
+        // Archiving removes a league from the catalog, but the people in it
+        // keep their franchise. Without resolving against the archived-
+        // inclusive list their own switcher shows them a raw slug for the
+        // league they are actively playing in — and the page labels, which
+        // read the same list, go blank.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', status: 'archived' });
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), [CATALOG[1]]);
+        const hoops = ctx.leagues.find(l => l.code === HOOPS);
+        expect(hoops.name).toBe('Hardwood Heroes');
+        expect(hoops.name).not.toBe(HOOPS);
+    });
+
+    test('ctx.all names everything ctx.leagues offers', async () => {
+        // ccLeague.name(), the page labels and the <title> are all resolved
+        // from this list. A league in the switcher but not in it renders as
+        // a blank label on every page of that league.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', status: 'archived' });
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), [CATALOG[1]]);
+
+        const named = new Set(ctx.all.map(l => l.code));
+        for (const lg of ctx.leagues) expect(named.has(lg.code)).toBe(true);
+        expect(ctx.all.find(l => l.code === HOOPS).name).toBe('Hardwood Heroes');
+    });
+
+    test('and ctx.all does not duplicate a league already in the catalog', async () => {
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        const codes = ctx.all.map(l => l.code);
+        expect(new Set(codes).size).toBe(codes.length);
+    });
+
     test('the offered list always contains the league being VIEWED', async () => {
         // Otherwise the switcher renders with nothing selected and the page
         // claims a league the dropdown does not list.
@@ -541,6 +575,8 @@ describe('the server wiring', () => {
         // every test still green.
         expect(src).toContain('leagueSelection.viewerContext(req');
         expect(src).not.toMatch(/viewerLeagues = res\.locals\.leagues;/);
+        // The seed list too: assembling it inline is how it escaped coverage.
+        expect(src).toContain('res.locals.leagues = viewer.all;');
     });
 
     test('canSwitch and isAdmin are seeded SEPARATELY', () => {

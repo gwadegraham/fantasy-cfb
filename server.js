@@ -27,7 +27,7 @@ const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
-const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
+const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
 const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
@@ -75,7 +75,9 @@ const config = {
 };
 
 // Expose the league list to every view (the navbar switcher renders from it).
-app.locals.leagues = LEAGUES;
+// A pre-request fallback only; every rendered page replaces it from the
+// catalog in the locals middleware below.
+app.locals.leagues = leagueCatalog.DEFAULTS;
 
 // auth router attaches /login, /logout, and /callback routes to the baseURL
 app.use(auth(config));
@@ -150,13 +152,20 @@ app.use(async (req, res, next) => {
     res.locals.viewerLeagueCode = '';
     res.locals.viewerLeagues = [];
     res.locals.viewerCanSwitch = false;
-    let viewer = { code: '', leagues: [], canSwitch: false, isAdmin: false };
+    // isAdmin/canSwitch default to the ROLE, not to false: if viewerContext
+    // ever throws, an Admin should keep the switcher they have always had
+    // rather than silently losing it.
+    const admin = devRole.effectiveRoles(req).includes('Admin');
+    let viewer = { code: '', leagues: [], canSwitch: admin, isAdmin: admin };
     if (isHtmlGet) {
         try {
             viewer = await leagueSelection.viewerContext(req, res.locals.leagues);
             res.locals.viewerLeagueCode = viewer.code;
             res.locals.viewerLeagues = viewer.leagues;
             res.locals.viewerCanSwitch = viewer.canSwitch;
+            // Names everything the switcher offers, including a league the
+            // catalog no longer lists but the viewer still holds.
+            res.locals.leagues = viewer.all;
         } catch (e) {
             console.error(`league-selection: ${e.message}`);
         }
@@ -176,7 +185,6 @@ app.use(async (req, res, next) => {
     // against the full league list rather than the viewer's franchises, so a
     // two-franchise member inheriting it on a shared browser would be shown a
     // league they do not play in.
-    const admin = viewer.isAdmin || devRole.effectiveRoles(req).includes('Admin');
     const canSwitch = res.locals.viewerCanSwitch;
     res.locals.leagueSeed = safeJson({
         code: res.locals.viewerLeagueCode,
@@ -453,7 +461,7 @@ app.get('/invite/:token', async (req, res, next) => {
             });
         }
 
-        const league = (res.locals.leagues || LEAGUES).find(l => l.code === user.league);
+        const league = (res.locals.leagues || leagueCatalog.DEFAULTS).find(l => l.code === user.league);
 
         // Lax so it survives the redirect back from Auth0; httpOnly because
         // nothing in the browser needs to read it. The token inside is already

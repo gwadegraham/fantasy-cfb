@@ -42,10 +42,17 @@ describe('the merged list', () => {
         expect((await named())['hoops-league']).toBe('Hardwood Heroes');
     });
 
-    test('its sport comes through, so the chrome can follow it', async () => {
+    test('it does NOT carry the league’s sport', async () => {
+        // active-season's primed cache answers that, and draft-pool and
+        // draft-socket already read it. A copy here would be a second source
+        // that can disagree with the draft — and stale in the other
+        // direction, since this reads per request and that refreshes on an
+        // interval. An earlier version carried `sport` and nothing read it.
         await League.create({ code: 'hoops-league', name: 'Hoops', sport: 'basketball' });
         const hoops = (await catalog.catalog()).find(l => l.code === 'hoops-league');
-        expect(hoops.sport).toBe('basketball');
+        expect(hoops.name).toBe('Hoops');
+        expect(hoops.sport).toBeUndefined();
+        expect((await catalog.catalog()).every(l => !('sport' in l))).toBe(true);
     });
 
     test('a rename in Mongo wins over the hardcoded name', async () => {
@@ -69,22 +76,12 @@ describe('documents missing fields', () => {
     // written before #312 added `sport`, so neither has the field at all.
     // A `.lean()` read does NOT apply schema defaults, so these come back
     // undefined rather than 'football'.
-    test('a hardcoded league with no sport stored keeps its default', async () => {
-        await League.create({ code: BALL, name: 'The Polar Depressed' });
-        await League.updateOne({ code: BALL }, { $unset: { sport: 1 } });
-        const doc = await League.findOne({ code: BALL }).lean();
-        expect(doc.sport).toBeUndefined();                 // the real shape
-
-        const entry = (await catalog.catalog()).find(l => l.code === BALL);
-        expect(entry.sport).toBe('football');
-        expect(entry.name).toBe('The Polar Depressed');
-    });
-
-    test('a Mongo-only league with no sport stored defaults to football', async () => {
-        await League.create({ code: 'new-league', name: 'New' });
-        await League.updateOne({ code: 'new-league' }, { $unset: { sport: 1 } });
-        const entry = (await catalog.catalog()).find(l => l.code === 'new-league');
-        expect(entry.sport).toBe('football');
+    test('a document written before #312 added `sport` still resolves', async () => {
+        // Not hypothetical: both league documents in the real database were
+        // written by direct insert and have no `sport` field at all, and a
+        // `.lean()` read does not apply schema defaults.
+        await League.collection.insertOne({ code: BALL, name: 'The Polar Depressed' });
+        expect((await catalog.catalog()).find(l => l.code === BALL).name).toBe('The Polar Depressed');
     });
 
     test('an empty name falls back rather than rendering a blank option', async () => {
@@ -121,6 +118,44 @@ describe('archived leagues', () => {
     });
 });
 
+describe('named() — resolving a code someone already holds', () => {
+    // Archiving must not degrade the people still IN that league. They keep
+    // their franchise, so they keep seeing the league's name; what archiving
+    // does is stop it being OFFERED to anyone else.
+    test('an archived league keeps its name here, but is not offered', async () => {
+        await League.create({ code: 'old-league', name: 'Retired Rovers', status: 'archived' });
+        expect((await catalog.catalog()).map(l => l.code)).not.toContain('old-league');
+        const entry = (await catalog.named()).find(l => l.code === 'old-league');
+        expect(entry.name).toBe('Retired Rovers');
+    });
+
+    test('and so does an archived HARDCODED league', async () => {
+        // Without this a member still in it sees a raw slug where the league
+        // name used to be, on a league they are actively playing in.
+        await League.create({ code: OTHER, name: 'Goofballers', status: 'archived' });
+        expect((await catalog.codes())).not.toContain(OTHER);
+        expect((await catalog.named()).find(l => l.code === OTHER).name).toBe('Goofballers');
+    });
+
+    test('named() is otherwise the same list', async () => {
+        await League.create({ code: 'hoops-league', name: 'Hoops' });
+        expect((await catalog.named()).map(l => l.code)).toEqual([OTHER, BALL, 'hoops-league']);
+    });
+});
+
+describe('malformed documents', () => {
+    test('a league with no code is ignored, not rendered as a blank option', async () => {
+        // Both real documents were created by direct insert, so the schema's
+        // `required` is not a guarantee. A blank <option value=""> is
+        // invisible and unselectable.
+        await League.collection.insertOne({ name: 'Nameless' });
+        await League.collection.insertOne({ code: '   ', name: 'Spaces' });
+        const list = await catalog.catalog();
+        expect(list.map(l => l.code)).toEqual([OTHER, BALL]);
+        expect(list.every(l => l.code.trim() !== '')).toBe(true);
+    });
+});
+
 describe('failure and caching', () => {
     test('an unreachable collection falls back to the defaults', async () => {
         const boom = jest.spyOn(League, 'find').mockImplementationOnce(() => { throw new Error('mongo down'); });
@@ -149,11 +184,29 @@ describe('failure and caching', () => {
         expect((await named({}))[BALL]).toBe('Second');
     });
 
-    test('DEFAULTS is not mutated by a call that adds leagues', async () => {
-        // The merged array is built from DEFAULTS; pushing onto it directly
-        // would leak one request's leagues into every later fallback.
+    test('DEFAULTS cannot be mutated by a caller', async () => {
+        // The merged array is built from DEFAULTS, and an entry is returned
+        // BY IDENTITY when Mongo has nothing to say about that code — so a
+        // caller renaming what it got back would corrupt the fallback for
+        // every later request. Frozen, not merely copied.
         await League.create({ code: 'hoops-league', name: 'Hoops' });
-        await catalog.catalog();
+        const list = await catalog.catalog();
         expect(catalog.DEFAULTS.map(l => l.code)).toEqual([OTHER, BALL]);
+
+        expect(Object.isFrozen(catalog.DEFAULTS)).toBe(true);
+        expect(catalog.DEFAULTS.every(Object.isFrozen)).toBe(true);
+        const shared = list.find(l => l.code === BALL);
+        expect(() => { 'use strict'; shared.name = 'hijacked'; }).toThrow();
+        expect(catalog.DEFAULTS.find(l => l.code === BALL).name).toBe('Graham League');
+    });
+
+    test('both views share ONE read', async () => {
+        const req = {};
+        const spy = jest.spyOn(League, 'find');
+        await catalog.catalog(req);
+        await catalog.named(req);
+        await catalog.codes(req);
+        expect(spy).toHaveBeenCalledTimes(1);
+        spy.mockRestore();
     });
 });

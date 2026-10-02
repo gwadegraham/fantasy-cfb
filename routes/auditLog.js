@@ -3,7 +3,7 @@ const router = express.Router();
 const AuditLog = require('../models/auditLog');
 const { toRow, MANAGER_ACTIONS } = require('../modules/audit-log');
 const { canManageLeague } = require('../modules/league-access');
-const { LEAGUES } = require('../modules/scoring-defaults');
+const leagueCatalog = require('../modules/league-catalog');
 
 // Recent activity, newest first.
 //
@@ -22,11 +22,12 @@ const { LEAGUES } = require('../modules/scoring-defaults');
 router.get('/', async (req, res) => {
     try {
         const limit = Math.min(Number(req.query.limit) || 25, 100);
-        const visible = LEAGUES.map(l => l.code).filter(code => canManageLeague(req, code));
+        const all = await leagueCatalog.codes(req);
+        const visible = all.filter(code => canManageLeague(req, code));
         if (!visible.length) return res.json({ entries: [], scope: [] });
 
         // An Admin (every league visible) also sees league-less entries.
-        const seesAll = visible.length === LEAGUES.length;
+        const seesAll = visible.length === all.length;
         const query = seesAll
             ? {}
             : { league: { $in: visible } };
