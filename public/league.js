@@ -19,10 +19,17 @@
     // Step 2 is Admin-gated on purpose: leagueCode outlives a logout, so a
     // member signing in on a shared browser must not inherit the last Admin's
     // pick. It mirrors how the pages already choose which league's data to load.
+    //
+    // isAdmin, NOT canSwitch. #319 gave canSwitch to any member holding two
+    // franchises, and reusing it here would have handed that member the
+    // override this comment exists to prevent — worse, `all()` is the full
+    // league list, not their franchises, so the inherited league could be one
+    // they do not play in. The server's answer is already validated; theirs
+    // is not.
     function code() {
         var pinned = document.body && document.body.getAttribute('data-league-code');
         if (pinned) return pinned;
-        if (SEED.canSwitch) {
+        if (SEED.isAdmin) {
             var stored = null;
             try { stored = window.localStorage.getItem('leagueCode'); } catch (e) { stored = null; }
             if (stored && all().some(function (l) { return l.code === stored; })) return stored;

@@ -37,8 +37,11 @@ function load({ seed, html = '', pinned = null, stored = null } = {}) {
     return window.ccLeague;
 }
 
-const member = { code: 'graham-league', canSwitch: false, all: ALL };
-const admin = { code: 'graham-league', canSwitch: true, all: ALL };
+const member = { code: 'graham-league', canSwitch: false, isAdmin: false, all: ALL };
+const admin = { code: 'graham-league', canSwitch: true, isAdmin: true, all: ALL };
+// #319: a member holding two franchises is OFFERED a switcher, but is not an
+// Admin — the two were one flag and had to be split.
+const twoFranchise = { code: 'graham-league', canSwitch: true, isAdmin: false, all: ALL };
 
 describe('which league a page is about', () => {
     it('is the viewer’s own league for a member', () => {
@@ -282,5 +285,32 @@ describe('switching league', () => {
         cc.paint();
         await pick('claunts-league');
         expect(posts).toHaveLength(1);
+    });
+});
+
+describe('the sticky league override is ADMIN-only, not switcher-only', () => {
+    // leagueCode outlives a logout and is validated against the FULL league
+    // list rather than the viewer's franchises. #319 gave canSwitch to any
+    // member holding two franchises; if the override had kept reading that
+    // flag, such a member signing in on a shared browser would inherit the
+    // last Admin's pick — possibly a league they do not play in at all.
+    it('an Admin still follows their sticky selection', () => {
+        expect(load({ seed: admin, stored: 'claunts-league' }).code()).toBe('claunts-league');
+    });
+
+    it('a two-franchise member does NOT, even though they can switch', () => {
+        const cc = load({ seed: twoFranchise, stored: 'claunts-league' });
+        expect(cc.code()).toBe('graham-league');
+    });
+
+    it('and a plain member does not either', () => {
+        expect(load({ seed: member, stored: 'claunts-league' }).code()).toBe('graham-league');
+    });
+
+    it('a server-pinned page still beats all of it', () => {
+        // /rules and /draft-board pin the league on <body>, carrying an
+        // Admin's ?league= that storage knows nothing about.
+        const cc = load({ seed: admin, stored: 'graham-league', pinned: 'claunts-league' });
+        expect(cc.code()).toBe('claunts-league');
     });
 });

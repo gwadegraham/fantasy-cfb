@@ -29,7 +29,12 @@ const HOOPS = 'hoops-league';
 
 // A request as express-openid-connect leaves it: the account id lives in the
 // inner metadata, which is the only link between a login and a franchise.
-const reqFor = (accountId, { league = 'gg', roles = [], cookie, authed = true } = {}) => {
+// `cookie` is encoded on the way in, as a browser would. `rawCookie` is NOT,
+// which is the only way to test a malformed value — the first version of the
+// undecodable-cookie tests passed `%` through encodeURIComponent, so it
+// arrived as `%25`, decoded back to `%` without throwing, and stayed green
+// with the guard deleted. The fixture was sanitising the thing under test.
+const reqFor = (accountId, { league = 'gg', roles = [], cookie, rawCookie, authed = true } = {}) => {
     // On oidc.user, because that is what dev-role's effectiveUser reads —
     // req.effUser is derived FROM it by middleware, not the other way round.
     const user = {
@@ -37,7 +42,9 @@ const reqFor = (accountId, { league = 'gg', roles = [], cookie, authed = true } 
     };
     return {
         oidc: { isAuthenticated: () => authed, user },
-        headers: cookie ? { cookie: `${selection.COOKIE}=${encodeURIComponent(cookie)}` } : {},
+        headers: rawCookie !== undefined
+            ? { cookie: `${selection.COOKIE}=${rawCookie}` }
+            : (cookie ? { cookie: `${selection.COOKIE}=${encodeURIComponent(cookie)}` } : {}),
         effUser: user,
         get: () => undefined
     };
@@ -52,6 +59,67 @@ async function manager(league, { second } = {}) {
 
 beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
 afterEach(() => jest.restoreAllMocks());
+
+// Everything below that says "Admin" leans on this: an Admin's viewable set
+// is every known league, not their franchises.
+const adminReq = (opts = {}) => reqFor(new mongoose.Types.ObjectId(), Object.assign({ roles: ['Admin'] }, opts));
+
+describe('a cookie that cannot be decoded', () => {
+    // THE DYNO-KILLER. decodeURIComponent throws URIError on any malformed
+    // percent-escape, this runs from an async middleware on every request,
+    // Express 4 does not catch a rejected promise, nothing handles
+    // unhandledRejection and Node 20 exits on one. A single
+    // `document.cookie = 'cc_league=%'` in devtools would restart-loop the
+    // dyno for EVERYONE — and the cookie is 180-day persistent, so the holder
+    // could not reload their way out of it.
+    test.each([['%'], ['%E0%A4%A'], ['%zz'], ['graham-league%']])('%s is survived, not thrown', async (junk) => {
+        const u = await manager(BALL);
+        const req = reqFor(u._id, { rawCookie: junk });   // RAW: encoding it would defuse the test
+        // Not `rejects` — the point is that nothing escapes at all.
+        await expect(selection.selectedLeague(req)).resolves.toBe(BALL);
+        await expect(selection.maySelect(req, junk)).resolves.toBe(false);
+        await expect(selection.canSwitch(req)).resolves.toBe(false);
+    });
+
+    test('the raw cookie is passed through, so it fails the membership check', async () => {
+        // An undecodable value must be IGNORED like any unrecognised league,
+        // not treated as a match for anything.
+        const u = await manager(BALL, { second: HOOPS });
+        expect(await selection.selectedLeague(reqFor(u._id, { rawCookie: '%hoops-league' }))).toBe(BALL);
+    });
+});
+
+describe('an Admin sees every league', () => {
+    // An Admin has switched leagues from the navbar since long before this
+    // module existed. The first version of it validated against franchises
+    // only, so the Admin — the one person with the control — got a 403 and a
+    // dropdown that snapped back and did nothing on all eight pages.
+    test('can select a league they hold no franchise in', async () => {
+        expect(await selection.maySelect(adminReq(), OTHER)).toBe(true);
+        expect(await selection.selectedLeague(adminReq({ cookie: OTHER }))).toBe(OTHER);
+    });
+
+    test('and is offered the switcher without owning two franchises', async () => {
+        expect(await selection.canSwitch(adminReq())).toBe(true);
+    });
+
+    test('but still cannot select a league that does not exist', async () => {
+        // Validated against the known list, not accepted outright: the value
+        // goes on to scope real queries.
+        for (const junk of ['', 'nonsense', '{"$ne":null}', 'graham-league ']) {
+            expect(await selection.maySelect(adminReq(), junk)).toBe(false);
+        }
+        expect(await selection.selectedLeague(adminReq({ cookie: 'nonsense' }))).toBe(BALL);
+    });
+
+    test('a NON-admin gets none of that', async () => {
+        // The separation the whole module is about: being able to see a league
+        // is a role, not a cookie.
+        const u = await manager(BALL);
+        expect(await selection.maySelect(reqFor(u._id), OTHER)).toBe(false);
+        expect(await selection.canSwitch(reqFor(u._id))).toBe(false);
+    });
+});
 
 describe('selectedLeague', () => {
     test('one franchise means that league, cookie or no cookie', async () => {
@@ -248,31 +316,105 @@ describe('MANAGING is not SELECTING', () => {
 });
 
 describe('POST /league/select', () => {
+    // Mounts the REAL handler. The first version of this re-implemented the
+    // route body inline, so deleting the whole maySelect guard from server.js
+    // left every test in the suite green — the endpoint that turns a POST body
+    // into a cookie the server then trusts had no coverage at all.
     const app = express();
     app.use(express.json());
     app.use((req, res, next) => { Object.assign(req, app.locals._req); next(); });
-    app.post('/league/select', async (req, res) => {
-        if (!await selection.maySelect(req, (req.body || {}).league)) {
-            return res.status(403).json({ message: 'Not one of your leagues' });
-        }
-        res.cookie(selection.COOKIE, req.body.league, selection.COOKIE_OPTS);
-        res.json({ ok: true, league: req.body.league });
-    });
+    app.post('/league/select', selection.selectHandler);
+
+    const post = (body) => request(app).post('/league/select').send(body);
 
     test('sets the cookie for a league you hold', async () => {
         const u = await manager(BALL, { second: HOOPS });
         app.locals._req = reqFor(u._id);
-        const res = await request(app).post('/league/select').send({ league: HOOPS });
+        const res = await post({ league: HOOPS });
         expect(res.status).toBe(200);
+        expect(res.body).toEqual({ ok: true, league: HOOPS });
         expect(res.headers['set-cookie'][0]).toContain(`${selection.COOKIE}=${HOOPS}`);
         expect(res.headers['set-cookie'][0]).toContain('HttpOnly');
+        expect(res.headers['set-cookie'][0]).toContain('SameSite=Lax');
     });
 
-    test('refuses one you do not', async () => {
+    test('refuses one you do not, and sets nothing', async () => {
         const u = await manager(BALL);
         app.locals._req = reqFor(u._id);
-        const res = await request(app).post('/league/select').send({ league: OTHER });
+        const res = await post({ league: OTHER });
         expect(res.status).toBe(403);
         expect(res.headers['set-cookie']).toBeUndefined();
+    });
+
+    test('an Admin may set any KNOWN league', async () => {
+        app.locals._req = adminReq();
+        expect((await post({ league: OTHER })).status).toBe(200);
+        expect((await post({ league: 'nonsense' })).status).toBe(403);
+    });
+
+    test('a junk body cannot set a cookie', async () => {
+        // req.body.league is whatever JSON arrived: an object, an array, a
+        // number. `includes` is strict equality against values that came out
+        // of Mongo, so all of it fails closed — but the route must not throw
+        // on the way there either.
+        const u = await manager(BALL);
+        app.locals._req = reqFor(u._id);
+        for (const body of [{}, { league: null }, { league: { $ne: null } }, { league: [BALL] }, { league: 7 }]) {
+            const res = await post(body);
+            expect(res.status).toBe(403);
+            expect(res.headers['set-cookie']).toBeUndefined();
+        }
+    });
+
+    test('what the POST accepts is exactly what a GET then honours', async () => {
+        // A switcher that sets a cookie the next render ignores looks broken.
+        const u = await manager(BALL, { second: HOOPS });
+        app.locals._req = reqFor(u._id);
+        for (const lg of [BALL, HOOPS, OTHER, 'nonsense']) {
+            const accepted = (await post({ league: lg })).status === 200;
+            const honoured = await selection.selectedLeague(reqFor(u._id, { cookie: lg })) === lg;
+            expect(accepted).toBe(honoured);
+        }
+    });
+});
+
+describe('the server wiring', () => {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+
+    test('mounts the real handler rather than a second copy of it', () => {
+        expect(src).toContain('leagueSelection.selectHandler');
+        // An inline body here is how the guard became untestable the first time.
+        expect(src).not.toMatch(/'\/league\/select'[\s\S]{0,200}maySelect/);
+    });
+
+    test('and keeps it behind requiresAuth', () => {
+        expect(src).toMatch(/'\/league\/select',\s*requiresAuth\(\)/);
+    });
+
+    test('the league lookup is gated to HTML GETs', () => {
+        // express.static is mounted BELOW this middleware, so an ungated
+        // lookup is a Franchise.find per asset — ~20 per page view on a free
+        // Atlas tier. identity-guard.js skips assets for the same reason.
+        const call = /text\/html[\s\S]{0,900}?selectedLeague\(req\)/.exec(src);
+        expect(call).not.toBeNull();
+        // ...and specifically inside a guard, not merely after one.
+        const near = src.slice(Math.max(0, src.indexOf('selectedLeague(req)') - 400), src.indexOf('selectedLeague(req)'));
+        expect(near).toMatch(/req\.method === 'GET'/);
+    });
+
+    test('and cannot take the dyno down when it throws', () => {
+        // Express 4 does not catch a rejected promise from async middleware,
+        // nothing handles unhandledRejection, and Node 20 exits on one.
+        const near = src.slice(Math.max(0, src.indexOf('selectedLeague(req)') - 400), src.indexOf('selectedLeague(req)'));
+        expect(near).toContain('try {');
+    });
+
+    test('canSwitch and isAdmin are seeded SEPARATELY', () => {
+        // Reusing canSwitch for the client's sticky-localStorage override
+        // would hand a two-franchise member the Admin-only behaviour that
+        // public/league.js documents against.
+        const seed = /leagueSeed = safeJson\(\{([\s\S]*?)\}\)/.exec(src)[1];
+        expect(seed).toMatch(/canSwitch/);
+        expect(seed).toMatch(/isAdmin/);
     });
 });

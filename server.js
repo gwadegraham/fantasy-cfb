@@ -132,7 +132,25 @@ app.use(async (req, res, next) => {
     // more than one franchise (#319). Validated against what they actually
     // play in — the cookie behind it is client-supplied. Authority is a
     // separate question and stays on canManageLeague.
-    res.locals.viewerLeagueCode = await leagueSelection.selectedLeague(req);
+    //
+    // HTML GETs only, like the League.find above it, and for the same reason:
+    // this is a database round trip, express.static is mounted BELOW this
+    // middleware, and one page view pulls ~20 assets through here. On a free
+    // Atlas tier that is 20 pointless Franchise.find calls per page.
+    // modules/identity-guard.js skips assets by extension for the same reason.
+    //
+    // Wrapped, because an async middleware that throws takes the dyno with it:
+    // Express 4 does not catch a rejected promise, nothing handles
+    // unhandledRejection, and Node 20 exits. Falling back to no league renders
+    // the football default rather than a dead process.
+    res.locals.viewerLeagueCode = '';
+    if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+        try {
+            res.locals.viewerLeagueCode = await leagueSelection.selectedLeague(req);
+        } catch (e) {
+            console.error(`league-selection: ${e.message}`);
+        }
+    }
     // Which SPORT the viewer is looking at, for the favicon set and the accent
     // token (#319). Derived from the league rather than carried separately, so
     // there is one answer and it cannot drift from the league being shown.
@@ -142,11 +160,21 @@ app.use(async (req, res, next) => {
     // showing a basketball mark on a football league is the error that matters.
     res.locals.viewerSport = res.locals.viewerLeagueCode
         ? seasons.sportForLeague(res.locals.viewerLeagueCode) : 'football';
+    // canSwitch: whether to OFFER a switcher. isAdmin: whether the sticky
+    // localStorage choice may override the server's answer. They were one flag
+    // and must not be: leagueCode outlives a logout, and it is validated
+    // against the full league list rather than the viewer's franchises, so a
+    // two-franchise member inheriting it on a shared browser would be shown a
+    // league they do not play in.
+    const admin = devRole.effectiveRoles(req).includes('Admin');
+    let canSwitch = admin;
+    try {
+        canSwitch = admin || await leagueSelection.canSwitch(req);
+    } catch (e) { /* offering no switcher is the safe failure */ }
     res.locals.leagueSeed = safeJson({
         code: res.locals.viewerLeagueCode,
-        // An Admin gets the all-leagues picker; anyone holding two franchises
-        // gets a switcher between their own.
-        canSwitch: devRole.effectiveRoles(req).includes('Admin') || await leagueSelection.canSwitch(req),
+        canSwitch,
+        isAdmin: admin,
         all: res.locals.leagues
     });
     next();
@@ -823,16 +851,10 @@ app.use('/seasons', requireAuthOrToken, seasonsRouter);
 // holds before the cookie is set, and read back through the same check, so a
 // hand-written cookie cannot widen what anyone sees. Managing a league is a
 // separate question and is not affected — see modules/league-access.js.
-app.post('/league/select', requiresAuth(), async (req, res) => {
-    const league = (req.body && req.body.league) || '';
-    if (!await leagueSelection.maySelect(req, league)) {
-        // 403 rather than 400: the input is well-formed, the person simply
-        // does not play in that league.
-        return res.status(403).json({ message: 'Not one of your leagues' });
-    }
-    res.cookie(leagueSelection.COOKIE, league, leagueSelection.COOKIE_OPTS);
-    res.json({ ok: true, league });
-});
+// The handler itself lives in modules/league-selection.js so a test can mount
+// the REAL one; an inline copy here was re-implemented in its own spec, and
+// deleting this authorization check left the whole suite green.
+app.post('/league/select', requiresAuth(), leagueSelection.selectHandler);
 
 app.post('/dev/spoof', (req, res) => {
     if (!devRole.DEV || !devRole.isRealAdmin(req)) return res.status(404).end();

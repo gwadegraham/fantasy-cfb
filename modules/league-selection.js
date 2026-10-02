@@ -34,7 +34,8 @@
 
 const franchiseRepo = require('./franchise-repo');
 const { leagueCodeFor } = require('./league-access');
-const { effectiveUser } = require('./dev-role');
+const { effectiveUser, effectiveRoles } = require('./dev-role');
+const { LEAGUES } = require('./scoring-defaults');
 
 const COOKIE = 'cc_league';
 
@@ -43,11 +44,23 @@ const COOKIE = 'cc_league';
 // it out of reach of anything injected into a page.
 const COOKIE_OPTS = { sameSite: 'lax', httpOnly: true, path: '/', maxAge: 180 * 24 * 60 * 60 * 1000 };
 
+// MUST NOT THROW. decodeURIComponent raises URIError on any malformed
+// percent-escape ('cc_league=%' is enough), and this is reached from an async
+// middleware on EVERY request. Express 4 does not catch a rejected promise
+// from async middleware, there is no process-level unhandledRejection handler,
+// and Node 20 exits on an unhandled rejection — so one bad cookie would
+// restart-loop the dyno for everybody, not just the browser holding it. The
+// cookie is 180-day persistent, so the holder could not reload their way out.
+//
+// An undecodable value is returned raw, which then fails the membership check
+// below and is ignored like any other unrecognised league.
 function readCookie(req, name) {
     const raw = (req && req.headers && req.headers.cookie) || '';
     for (const part of raw.split(';')) {
         const [k, ...v] = part.trim().split('=');
-        if (k === name) return decodeURIComponent(v.join('='));
+        if (k !== name) continue;
+        const value = v.join('=');
+        try { return decodeURIComponent(value); } catch (e) { return value; }
     }
     return null;
 }
@@ -82,6 +95,29 @@ async function leaguesOf(req) {
     return req._ccLeagues;
 }
 
+// An Admin sees every league, and has been able to switch between them from
+// the navbar since long before this module existed. That is the same answer
+// canManageLeague gives, and deliberately so: for an Admin the viewing and
+// managing questions genuinely do coincide, because the role already carries
+// authority over every league. It is only the LEAGUE MANAGER case where the
+// two must stay apart, and that is the branch this module never touches.
+//
+// Validated against the known leagues rather than accepted outright, so a
+// hand-written cookie still cannot put an arbitrary string into every query
+// the page then runs.
+const KNOWN = LEAGUES.map(l => l.code);
+
+function isAdmin(req) {
+    return effectiveRoles(req).includes('Admin');
+}
+
+// Every league this person may look at. For an Admin that is all of them; for
+// everyone else it is exactly the franchises they hold.
+async function viewableBy(req) {
+    if (isAdmin(req)) return KNOWN;
+    return leaguesOf(req);
+}
+
 // The league to render, for this request.
 //
 // Order matters: an explicit, VALID choice wins; then their HOME league if
@@ -101,7 +137,7 @@ async function leaguesOf(req) {
 async function selectedLeague(req) {
     if (!(req && req.oidc && req.oidc.isAuthenticated())) return '';
 
-    const mine = await leaguesOf(req);
+    const mine = await viewableBy(req);
     const chosen = readCookie(req, COOKIE);
     if (chosen && mine.includes(chosen)) return chosen;
 
@@ -114,7 +150,7 @@ async function selectedLeague(req) {
 // May this person choose that league? The same validation the read does, so a
 // POST cannot set a cookie that a GET would then ignore.
 async function maySelect(req, league) {
-    const mine = await leaguesOf(req);
+    const mine = await viewableBy(req);
     return !!league && mine.includes(league);
 }
 
@@ -122,7 +158,28 @@ async function maySelect(req, league) {
 // gets the all-leagues picker regardless — that is league-access's business,
 // not this module's.
 async function canSwitch(req) {
-    return (await leaguesOf(req)).length > 1;
+    return (await viewableBy(req)).length > 1;
 }
 
-module.exports = { COOKIE, COOKIE_OPTS, selectedLeague, maySelect, canSwitch, leaguesOf, accountIdFor };
+// POST /league/select, as a handler rather than inline in server.js — the
+// first version of this was re-implemented inside its own spec, so deleting
+// the authorization check from the real route left every test green.
+//
+// It grants nothing: the league is checked before the cookie is set and again
+// on every read, so a hand-written cookie cannot widen what anyone sees.
+async function selectHandler(req, res) {
+    const league = (req.body && req.body.league) || '';
+    if (!await maySelect(req, league)) {
+        // 403 rather than 400: the input is well-formed, the person simply
+        // does not play in that league.
+        return res.status(403).json({ message: 'Not one of your leagues' });
+    }
+    res.cookie(COOKIE, league, COOKIE_OPTS);
+    return res.json({ ok: true, league });
+}
+
+module.exports = {
+    COOKIE, COOKIE_OPTS, KNOWN,
+    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler,
+    leaguesOf, accountIdFor
+};
