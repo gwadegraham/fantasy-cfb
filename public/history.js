@@ -222,14 +222,8 @@
             el.innerHTML = '<p class="hof-empty">Couldn’t load league history. Please refresh.</p>';
         }
 
-        var _lSel = document.querySelector('[league-select]');
-        if (_lSel) {
-            _lSel.addEventListener('change', function () {
-                var opt = this.options[this.selectedIndex];
-                window.sessionStorage.setItem('league', opt.text);
-                window.localStorage.setItem('leagueCode', opt.value);
-                window.location.reload();
-            });
-        }
+        // The league switcher's change handler lives in public/league.js, bound once
+        // for every page by the navbar partial (#319). It was duplicated in eight
+        // files, and none of the copies told the server.
     });
 })();

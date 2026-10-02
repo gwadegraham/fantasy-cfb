@@ -21,6 +21,7 @@ const inviteToken = require('./modules/invite-token');
 const auth0Management = require('./modules/auth0-management');
 const authSubBackfill = require('./modules/auth-sub-backfill');
 const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
+const leagueSelection = require('./modules/league-selection');
 const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
 const seasons = require('./modules/active-season');
@@ -127,7 +128,11 @@ app.use(async (req, res, next) => {
     // Also exposed unwrapped, so navbar.ejs can mark the matching <option>
     // `selected`. Without it the switcher renders on LEAGUES[0] (Claunts) no
     // matter whose page it is, and only corrects once public/league.js runs.
-    res.locals.viewerLeagueCode = (req.oidc && req.oidc.isAuthenticated()) ? leagueCodeFor(req.effUser) : '';
+    // The league being VIEWED, which is the viewer's choice once they hold
+    // more than one franchise (#319). Validated against what they actually
+    // play in — the cookie behind it is client-supplied. Authority is a
+    // separate question and stays on canManageLeague.
+    res.locals.viewerLeagueCode = await leagueSelection.selectedLeague(req);
     // Which SPORT the viewer is looking at, for the favicon set and the accent
     // token (#319). Derived from the league rather than carried separately, so
     // there is one answer and it cannot drift from the league being shown.
@@ -139,7 +144,9 @@ app.use(async (req, res, next) => {
         ? seasons.sportForLeague(res.locals.viewerLeagueCode) : 'football';
     res.locals.leagueSeed = safeJson({
         code: res.locals.viewerLeagueCode,
-        canSwitch: devRole.effectiveRoles(req).includes('Admin'),
+        // An Admin gets the all-leagues picker; anyone holding two franchises
+        // gets a switcher between their own.
+        canSwitch: devRole.effectiveRoles(req).includes('Admin') || await leagueSelection.canSwitch(req),
         all: res.locals.leagues
     });
     next();
@@ -210,6 +217,11 @@ app.get('/profile', requiresAuth(), (req, res) => {
 app.get('/draft-token', requiresAuth(), (req, res) => {
   const ctx = buildUserContext(req.effUser);
   const token = draftToken.sign(
+    // leagueCodeFor, NOT the selected league — this is the second escalation
+    // door. modules/draft-socket.js's isCommissionerOf does
+    // `role === 'League Manager' && user.league === league`, so a token
+    // carrying a league the viewer PICKED would hand a League Manager
+    // commissioner powers in another league's draft room.
     { userId: ctx.userId, role: ctx.role, name: ctx.firstName, league: leagueCodeFor(req.effUser) },
     process.env.AUTH_SECRET
   );
@@ -539,7 +551,9 @@ app.get('/rules', async (req, res) => {
         // mirroring the Admin-only league switcher on the other pages — so a URL
         // can't reveal a league the user isn't entitled to. Render the rules from
         // the resolved config so the page can never drift from the engine.
-        const ownLeague = leagueCodeFor(req.effUser);
+        // The league being viewed. Safe to follow the selection: the ?league
+        // override below is gated by canManageLeague, which does not.
+        const ownLeague = res.locals.viewerLeagueCode;
         const requested = req.query.league;
         const canView = LEAGUES.some(l => l.code === requested) && canManageLeague(req, requested);
         const leagueCode = canView ? requested : ownLeague;
@@ -582,7 +596,7 @@ app.get('/draft-board', (req, res) => {
     const user = buildUserContext(req.effUser);
     res.render('draftBoard', {
         user, userState: safeJson(req.effUser),
-        year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser)
+        year: seasons.activeSeason('football'), leagueCode: res.locals.viewerLeagueCode
     });
 });
 
@@ -607,7 +621,7 @@ app.get('/scoreboard', (req, res) => {
         user,
         userState: safeJson(req.effUser),
         year: seasons.activeSeason('football'),
-        leagueCode: leagueCodeFor(req.effUser)
+        leagueCode: res.locals.viewerLeagueCode
     });
 });
 
@@ -687,7 +701,7 @@ app.get('/cfp-bracket', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
-        res.render('cfpBracket', { user, userState, year: seasons.activeSeason('football'), leagueCode: leagueCodeFor(req.effUser) });
+        res.render('cfpBracket', { user, userState, year: seasons.activeSeason('football'), leagueCode: res.locals.viewerLeagueCode });
     } else {
         res.redirect("/login");
     }
@@ -799,6 +813,27 @@ app.use('/seasons', requireAuthOrToken, seasonsRouter);
 // as a League Manager or a regular member to test permissions. Sets/clears the
 // cookie the effective-roles resolver reads. Returns 404 in production or for
 // anyone who isn't a real Admin, so it can never be an escalation path.
+// Choose which of YOUR leagues to view (#319).
+//
+// The switcher used to write localStorage and reload, which the server never
+// saw — so a server-rendered page kept showing the viewer's own league no
+// matter what the dropdown said. This is the half the server can act on.
+//
+// It grants nothing. The league is matched against the franchises this account
+// holds before the cookie is set, and read back through the same check, so a
+// hand-written cookie cannot widen what anyone sees. Managing a league is a
+// separate question and is not affected — see modules/league-access.js.
+app.post('/league/select', requiresAuth(), async (req, res) => {
+    const league = (req.body && req.body.league) || '';
+    if (!await leagueSelection.maySelect(req, league)) {
+        // 403 rather than 400: the input is well-formed, the person simply
+        // does not play in that league.
+        return res.status(403).json({ message: 'Not one of your leagues' });
+    }
+    res.cookie(leagueSelection.COOKIE, league, leagueSelection.COOKIE_OPTS);
+    res.json({ ok: true, league });
+});
+
 app.post('/dev/spoof', (req, res) => {
     if (!devRole.DEV || !devRole.isRealAdmin(req)) return res.status(404).end();
     const role = (req.body && req.body.role) || '';   // 'Admin' | 'League Manager' | 'member'

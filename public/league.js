@@ -77,6 +77,10 @@
     function paint(root) {
         var label = name();
         syncSwitcher(root);
+        // A page that renders its navbar late calls paint(); without this it
+        // would get a correctly-populated dropdown that does nothing. Binding
+        // is idempotent, so calling it twice is free.
+        bindSwitcher();
         var nodes = (root || document).querySelectorAll('[league-label]');
         for (var i = 0; i < nodes.length; i++) {
             nodes[i].textContent = label;
@@ -86,7 +90,47 @@
         if (t) document.title = title(t.getAttribute('data-league-title'));
     }
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher };
+    // Switching league. BOUND ONCE, HERE.
+    //
+    // Eight pages each carried their own copy of this handler, and every copy
+    // did the same thing: write localStorage and reload. The server never saw
+    // any of it — so a server-rendered page kept showing the viewer's own
+    // league however the dropdown looked, which is exactly the bug #319 is
+    // about. Telling the server is one POST, and doing it in eight places
+    // meant eight chances to forget.
+    //
+    // localStorage is still written, because the client helpers above read it
+    // and several pages fetch by league code. The cookie is what the SERVER
+    // reads, and it is the authority on the next render.
+    function bindSwitcher() {
+        var sel = document.querySelector('[league-select]');
+        if (!sel || sel.dataset.ccBound) return;
+        sel.dataset.ccBound = '1';
+        sel.addEventListener('change', async function () {
+            var opt = this.options[this.selectedIndex];
+            if (!opt) return;
+            try {
+                var res = await fetch('/league/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ league: opt.value })
+                });
+                // A refusal means it is not one of your leagues — put the
+                // dropdown back rather than reloading into the same page and
+                // looking like nothing happened.
+                if (!res.ok) { syncSwitcher(); return; }
+            } catch (e) {
+                // Offline: the local choice still applies to client-side reads.
+            }
+            try {
+                window.sessionStorage.setItem('league', opt.text);
+                window.localStorage.setItem('leagueCode', opt.value);
+            } catch (e) { /* private window */ }
+            window.location.reload();
+        });
+    }
 
-    document.addEventListener('DOMContentLoaded', function () { paint(); });
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher };
+
+    document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); });
 })();

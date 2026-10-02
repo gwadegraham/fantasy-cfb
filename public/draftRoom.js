@@ -703,14 +703,6 @@ function renderOnTheClock() {
 // successToast / failToast are shared globals defined in public/toast.js
 // (loaded by the navbar partial). Set .options.text then call .showToast().
 
-setTimeout(() => {
-    var _lSel = document.querySelector('[league-select]');
-    if (_lSel) {
-        _lSel.addEventListener('change', function () {
-            var opt = this.options[this.selectedIndex];
-            window.sessionStorage.setItem("league", opt.text);
-            window.localStorage.setItem("leagueCode", opt.value);
-            window.location.reload();
-        });
-    }
-}, 200);
+// The league switcher's change handler lives in public/league.js, bound once
+// for every page by the navbar partial (#319). It was duplicated here, and in
+// seven other files, and none of the copies told the server.

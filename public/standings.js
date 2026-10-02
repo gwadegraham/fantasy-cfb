@@ -1529,17 +1529,9 @@ if (_rivalryWeekEl) {
     });
 }
 
-setTimeout(() => {
-    var leagueSel = document.querySelector('[league-select]');
-    if (leagueSel) {
-        leagueSel.addEventListener('change', function () {
-            var opt = this.options[this.selectedIndex];
-            window.sessionStorage.setItem("league", opt.text);
-            window.localStorage.setItem("leagueCode", opt.value);
-            window.location.reload();
-        });
-    }
-}, 200);
+// The league switcher's change handler lives in public/league.js, bound once
+// for every page by the navbar partial (#319). It was duplicated here, and in
+// seven other files, and none of the copies told the server.
 
 
 const noGamesMessages = [

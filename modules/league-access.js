@@ -3,6 +3,19 @@ const { effectiveRoles, effectiveUser } = require('./dev-role');
 
 // The league a user belongs to, from their Auth0 inner metadata flag
 // ('gg' -> graham-league, anything else -> claunts-league).
+//
+// ⚠️ THIS IS AUTHORITY, NOT A VIEW. It answers "which league is this person
+// OF", and canManageLeague below decides a League Manager's permissions with
+// it. It must never become the league they are currently LOOKING AT — that is
+// modules/league-selection.js, which is a cookie the viewer controls, and
+// wiring it in here would let a League Manager select the other league and
+// manage it. The two answers are separate on purpose.
+//
+// Binary, and the default branch is why it cannot express a third league: a
+// basketball league resolves to claunts-league. Retiring it in favour of
+// franchise membership is the rest of #319; it survives here because
+// permissions are the one place a wrong answer is a security bug rather than
+// a wrong page.
 function leagueCodeFor(oidcUser) {
     const inner = (oidcUser && oidcUser.user_metadata && oidcUser.user_metadata.metadata) || {};
     return inner.league === 'gg' ? 'graham-league' : 'claunts-league';
@@ -30,6 +43,11 @@ function tokenOk(req) {
 // May the caller manage this league? Trusted server-to-server calls (internal
 // token) and Admins: any league. League Managers: only their own. Uses
 // effective roles/user so it honors a dev role-spoof.
+//
+// ⚠️ DELIBERATELY NOT modules/league-selection.js. That module answers which
+// league the viewer picked, from a cookie they control — and a League Manager
+// who could pick their way into managing another league is an escalation, not
+// a feature. Authority stays on the Auth0 flag.
 function canManageLeague(req, league) {
     if (tokenOk(req)) return true;
     const roles = effectiveRoles(req);

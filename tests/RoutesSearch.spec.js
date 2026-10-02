@@ -16,20 +16,36 @@ const { useMongo, mirrorUsers } = require('./helpers/mongo');
 const { restoreEnv } = require('./helpers/env');
 const Team = require('../models/team');
 const User = require('../models/user');
+const Franchise = require('../models/franchise');
 const searchRouter = require('../routes/search');
 
 const SEASON = 2026;
 
 // Mounts the router behind a middleware that fakes an authenticated session for
 // the given league, mirroring what server.js's devRole middleware sets.
-function appAs(leagueFlag) {
+// A real ObjectId by default, not a placeholder string: an unparseable one
+// makes the franchise lookup THROW, so every test below would quietly run the
+// error-recovery path instead of the normal one (and print a cast error for
+// each request). A valid id with no franchise is the honest "account the repo
+// does not know yet" case these tests mean.
+const NO_FRANCHISE = new mongoose.Types.ObjectId();
+
+function appAs(leagueFlag, { accountId = NO_FRANCHISE, cookie } = {}) {
     const app = express();
     app.use(express.json());
     app.use((req, res, next) => {
-        req.effUser = {
+        const user = {
             sub: 'auth0|spec',
-            user_metadata: { roles: [], metadata: { league: leagueFlag, userId: 'spec' } }
+            user_metadata: { roles: [], metadata: { league: leagueFlag, userId: String(accountId) } }
         };
+        // Both halves, because a real request has both: express-openid-connect
+        // sets req.oidc and server.js derives req.effUser FROM oidc.user. An
+        // earlier version of this faked only effUser, so the route's league
+        // came back empty and every manager assertion passed vacuously on an
+        // empty list.
+        req.oidc = { isAuthenticated: () => true, user };
+        req.effUser = user;
+        if (cookie) req.headers.cookie = `cc_league=${cookie}`;
         next();
     });
     app.use('/search', searchRouter);
@@ -190,5 +206,33 @@ describe('league scoping', () => {
         // league into the handler.
         const res = await request(asGraham).get('/search/index?league=claunts-league&code=claunts-league');
         expect(res.body.managers.map((m) => m.name)).toEqual(['Garrett Graham']);
+    });
+
+    // #319 — the route now scopes to the league the caller is VIEWING, which
+    // arrives in a cookie. A cookie is as client-supplied as the query string
+    // above; the ONLY thing separating these two tests is that the cookie is
+    // checked against the franchises the account actually holds.
+    test('a selected league you hold scopes the managers to it', async () => {
+        const cole = await User.findOne({ firstName: 'Cole' }).lean();
+        // Give Cole's account a second franchise, in graham-league.
+        await Franchise.create({ accountId: cole._id, league: 'graham-league', seasons: [{ season: SEASON }] });
+
+        // Garrett AND Cole, because Cole now really is a member of the league
+        // he is viewing — scoping to it is not the same as hiding himself.
+        const viewing = appAs('cl', { accountId: cole._id, cookie: 'graham-league' });
+        const names = (await get(viewing)).body.managers.map((m) => m.name).sort();
+        expect(names).toEqual(['Cole Smith', 'Garrett Graham']);
+
+        // And without the cookie the same account sees only claunts.
+        const home = appAs('cl', { accountId: cole._id });
+        expect((await get(home)).body.managers.map((m) => m.name)).toEqual(['Cole Smith']);
+    });
+
+    test('and a selected league you DO NOT hold is ignored, not honoured', async () => {
+        // The escalation this route would otherwise hand over: Cole holds only
+        // claunts-league, so asking for graham's members gets him his own.
+        const cole = await User.findOne({ firstName: 'Cole' }).lean();
+        const viewing = appAs('cl', { accountId: cole._id, cookie: 'graham-league' });
+        expect((await get(viewing)).body.managers.map((m) => m.name)).toEqual(['Cole Smith']);
     });
 });

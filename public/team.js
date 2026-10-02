@@ -45,16 +45,10 @@ window.onload = function() {
     loadTeamPage();
 };
 
-function initLeagueSelector() {
-    var sel = document.querySelector('[league-select]');
-    if (!sel) return;
-    sel.addEventListener('change', function () {
-        var opt = this.options[this.selectedIndex];
-        window.sessionStorage.setItem("league", opt.text);
-        window.localStorage.setItem("leagueCode", opt.value);
-        window.location.reload();
-    });
-}
+// Kept as a no-op: public/league.js binds the switcher once for every page
+// via the navbar partial (#319), and the copy that used to live here did not
+// tell the server which league had been chosen.
+function initLeagueSelector() {}
 
 // ---------------------------------------------------------------------------
 // Page orchestration: fetch the team doc once, then fan out the dependent

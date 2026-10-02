@@ -35,17 +35,9 @@ window.onload = function () {
 
 // Picking a league navigates to that league's rules via the server param (the
 // page is server-rendered, so a plain reload wouldn't switch it).
-setTimeout(function () {
-    var _lSel = document.querySelector('[league-select]');
-    if (_lSel) {
-        _lSel.addEventListener('change', function () {
-            var opt = this.options[this.selectedIndex];
-            window.sessionStorage.setItem('league', opt.text);
-            window.localStorage.setItem('leagueCode', opt.value);
-            window.location.href = '/rules?league=' + encodeURIComponent(opt.value);
-        });
-    }
-}, 200);
+// The league switcher's change handler lives in public/league.js, bound once
+// for every page by the navbar partial (#319). It was duplicated in eight
+// files, and none of the copies told the server.
 
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).

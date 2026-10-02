@@ -176,3 +176,111 @@ describe('painting', () => {
         expect(document.title).toBe('Standings · CFB Sickos · Campus Clash');
     });
 });
+
+// Switching league — the handler that used to be copy-pasted into eight pages.
+//
+// Every copy wrote localStorage and reloaded, and the SERVER never heard about
+// any of it, so a server-rendered page kept showing the viewer's own league
+// however the dropdown looked. That is the bug #319 exists to fix, and the
+// reason the handler now lives here and nowhere else: one place to tell the
+// server, instead of eight chances to forget. These tests were lifted out of
+// StandingsPage.spec.js when the copy there was deleted.
+describe('switching league', () => {
+    let posts;
+
+    // The reload itself is NOT asserted: jsdom's location.reload is read-only
+    // and cannot be replaced or spied on (`delete`, defineProperty and
+    // jest.spyOn all refuse), and jsdom only logs "Not implemented: navigation"
+    // when it is called — hence the console.error mute below. What the tests
+    // check instead is the difference the user actually experiences between
+    // the accepted and refused paths: whether the choice was written down and
+    // whether the dropdown stayed moved.
+    beforeEach(() => {
+        posts = [];
+        window.sessionStorage.clear();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        global.fetch = jest.fn(async (url, opts) => {
+            posts.push({ url, body: JSON.parse(opts.body) });
+            return { ok: true, json: async () => ({ ok: true }) };
+        });
+    });
+    afterEach(() => { delete global.fetch; jest.restoreAllMocks(); });
+
+    const SELECT = '<select league-select>'
+        + '<option value="graham-league">CFB Sickos</option>'
+        + '<option value="claunts-league">Claunts League</option>'
+        + '</select>';
+
+    const pick = async (value) => {
+        const sel = document.querySelector('[league-select]');
+        sel.value = value;
+        sel.dispatchEvent(new window.Event('change'));
+        await new Promise(r => setTimeout(r, 0));     // the handler awaits the POST
+        return sel;
+    };
+
+    it('tells the SERVER, and stores the choice', async () => {
+        load({ seed: admin, html: SELECT });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        await pick('claunts-league');
+
+        // The POST is the whole point: without it the next server render is
+        // still the viewer's own league, however the dropdown looks.
+        expect(posts).toHaveLength(1);
+        expect(posts[0].url).toBe('/league/select');
+        expect(posts[0].body).toEqual({ league: 'claunts-league' });
+
+        // localStorage is still written, because the client helpers above and
+        // several by-league fetches read it.
+        expect(window.localStorage.getItem('leagueCode')).toBe('claunts-league');
+        expect(window.sessionStorage.getItem('league')).toBe('Claunts League');
+    });
+
+    it('a REFUSED league puts the dropdown back and records nothing', async () => {
+        // 403 means it is not one of your leagues. Writing the choice anyway
+        // would leave the client reading one league while the server renders
+        // another — the exact split #319 is closing.
+        global.fetch = jest.fn(async () => ({ ok: false, status: 403, json: async () => ({}) }));
+        load({ seed: admin, html: SELECT });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        const sel = await pick('claunts-league');
+
+        expect(sel.value).toBe('graham-league');                 // syncSwitcher put it back
+        expect(window.localStorage.getItem('leagueCode')).not.toBe('claunts-league');
+        expect(window.sessionStorage.getItem('league')).toBeNull();
+    });
+
+    it('offline still applies the choice locally', async () => {
+        // The cookie is the server's authority, but a failed POST should not
+        // strand the client helpers on the old league.
+        global.fetch = jest.fn(async () => { throw new Error('offline'); });
+        load({ seed: admin, html: SELECT });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        const sel = await pick('claunts-league');
+
+        expect(window.localStorage.getItem('leagueCode')).toBe('claunts-league');
+        expect(sel.value).toBe('claunts-league');                // NOT reverted
+    });
+
+    it('binds once, however many times it is called', async () => {
+        // paint() calls bindSwitcher, and pages that render a header late call
+        // paint repeatedly. A second listener would double-POST.
+        const cc = load({ seed: admin, html: SELECT });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        cc.paint();
+        cc.bindSwitcher();
+        await pick('claunts-league');
+        expect(posts).toHaveLength(1);
+    });
+
+    it('a page that renders its navbar late gets a WORKING switcher', async () => {
+        // The gap this closes: paint() used to populate the dropdown without
+        // binding it, so the header arrived looking right and doing nothing.
+        const cc = load({ seed: admin, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));   // nothing to bind yet
+        document.body.innerHTML = SELECT;
+        cc.paint();
+        await pick('claunts-league');
+        expect(posts).toHaveLength(1);
+    });
+});
