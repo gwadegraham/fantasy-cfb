@@ -13,10 +13,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script defer src="draftBoard.js"></script>
     <title data-league-title="Draft Board">Draft Board · Campus Clash</title>
-    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+    <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -25,7 +22,7 @@
 </head>
 <!-- Board is rendered for one league (the commissioner's own), so pin it for
      ccLeague instead of leaning on the sticky navbar selection. -->
-<body data-league-code="<%= leagueCode %>">
+<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>" data-league-code="<%= leagueCode %>">
     <%- include('partials/navbar') %>
     <script>
         window.APP_YEAR = "<%= year %>";

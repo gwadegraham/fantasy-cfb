@@ -128,6 +128,15 @@ app.use(async (req, res, next) => {
     // `selected`. Without it the switcher renders on LEAGUES[0] (Claunts) no
     // matter whose page it is, and only corrects once public/league.js runs.
     res.locals.viewerLeagueCode = (req.oidc && req.oidc.isAuthenticated()) ? leagueCodeFor(req.effUser) : '';
+    // Which SPORT the viewer is looking at, for the favicon set and the accent
+    // token (#319). Derived from the league rather than carried separately, so
+    // there is one answer and it cannot drift from the league being shown.
+    //
+    // Falls back to football for a signed-out page and for a league the season
+    // cache has not seen — which is every league today, and the right default:
+    // showing a basketball mark on a football league is the error that matters.
+    res.locals.viewerSport = res.locals.viewerLeagueCode
+        ? seasons.sportForLeague(res.locals.viewerLeagueCode) : 'football';
     res.locals.leagueSeed = safeJson({
         code: res.locals.viewerLeagueCode,
         canSwitch: devRole.effectiveRoles(req).includes('Admin'),

@@ -22,17 +22,14 @@
     <script defer src="push-alerts.js"></script>
     <script defer src="userHome.js"></script>
     <title data-league-title="My Team">My Team · Campus Clash</title>
-    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+    <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
 </head>
-<body>
+<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>

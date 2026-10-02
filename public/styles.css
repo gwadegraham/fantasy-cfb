@@ -38,6 +38,18 @@
     --cc-r-pill: 999px;
 }
 
+/* ---- the accent follows the sport (#319) ----------------------------------
+   One rule, no component edits — the dividend from the token pass in #269.
+   Everything reading --cc-accent recolours together: active nav, the "YOU"
+   marker, buttons, chart series, the draft board, the win reveal.
+
+   Scoped to [data-sport] on <body>, set server-side from the viewer's league,
+   so a basketball page is orange wherever it renders and a football page is
+   untouched. Nothing else selects on sport; a third one is a line here. */
+[data-sport="basketball"] {
+    --cc-accent: #F0833F;       /* hardwood orange — see design/brand */
+}
+
 * {
     box-sizing: border-box;
     font-family: "Poppins", sans-serif;

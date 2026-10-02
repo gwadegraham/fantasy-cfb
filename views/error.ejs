@@ -10,10 +10,7 @@
          (/foo/bar/baz), where the relative paths the other views use would
          resolve against the wrong directory and 404 in their own right. -->
     <link href="/styles.css" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -85,7 +82,7 @@
     </style>
 </head>
 
-<body>
+<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
     <main class="error-card">
         <a href="/" class="error-brand" aria-label="Campus Clash — home">
             <div class="brand-title">

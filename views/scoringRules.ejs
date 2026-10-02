@@ -14,10 +14,7 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="scoringRules.js"></script>
     <title data-league-title="Scoring Rules">Scoring Rules · Campus Clash</title>
-    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+    <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -26,7 +23,7 @@
 <!-- The rules shown are one league's, resolved server-side (an Admin's ?league=
      included), so pin that league for ccLeague rather than letting it fall back
      to the sticky selection — the two can disagree for a moment on arrival. -->
-<body data-league-code="<%= leagueCode %>">
+<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>" data-league-code="<%= leagueCode %>">
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>

@@ -1,0 +1,20 @@
+<%#
+  The icon set, per sport (#319).
+
+  Was fourteen copies of the same four <link> tags, which is why the hardwood
+  assets shipped in #308 and then went nowhere: adding a sport meant editing
+  every view, and nobody notices the problem until two leagues are open in two
+  tabs — at which point both say "football" and it is very annoying.
+
+  `viewerSport` comes from server.js off the viewer's league, defaulting to
+  football for a signed-out page.
+%>
+<%# Only basketball differs, so the test is for basketball and everything else
+    — unset, signed out, a sport nobody has added yet — gets the football mark.
+    An explicit `|| 'football'` default read as load-bearing and could not be
+    made to fail a test, because an empty sport already yields this suffix. %>
+<% var _sfx = (typeof viewerSport !== 'undefined' && viewerSport) === 'basketball' ? '-hardwood' : ''; %>
+<link rel="icon" type="image/svg+xml" href="/images/favicon<%= _sfx %>.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon<%= _sfx %>-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/images/favicon<%= _sfx %>-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon<%= _sfx %>.png" />
