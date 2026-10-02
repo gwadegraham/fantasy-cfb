@@ -1118,7 +1118,7 @@
     flex: none; letter-spacing: 0.3px;
 }
 .streak-hot { background: rgba(34, 195, 122, 0.16); color: var(--cc-success); }
-.streak-cold { background: rgba(237, 88, 88, 0.16); color: var(--cc-danger-text); }
+.streak-cold { background: rgba(var(--cc-accent-rgb), 0.16); color: var(--cc-danger-text); }
 
 @media (max-width: 600px) {
     .bettor-awards { padding: 0 16px; }

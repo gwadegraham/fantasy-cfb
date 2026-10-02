@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 
 <head>
     <meta charset="UTF-8">
@@ -19,10 +19,7 @@
     <script src="alt-spread.js"></script>
     <script src="betting.js" defer></script>
     <title data-league-title="Betting">Betting · Campus Clash</title>
-    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png" />
+    <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

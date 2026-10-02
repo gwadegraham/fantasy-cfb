@@ -752,9 +752,9 @@ body.uh-drawer-open { overflow: hidden; }
 .uh-mu-opp { color: var(--cc-muted-bright); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .uh-res { font-size: 10px; font-weight: 800; letter-spacing: 0.03em; border-radius: 99px; padding: 1px 7px; flex: none; }
 .uh-res.r-W { color: var(--cc-success); background: rgba(34,195,122,0.12); }
-.uh-res.r-L { color: var(--cc-accent); background: rgba(237,88,88,0.12); }
+.uh-res.r-L { color: var(--cc-accent); background: rgba(var(--cc-accent-rgb),0.12); }
 .uh-res.r-T { color: var(--cc-muted); background: rgba(164,169,194,0.12); }
-.uh-res.r-LIVE { color: var(--cc-accent); background: rgba(237,88,88,0.12); }
+.uh-res.r-LIVE { color: var(--cc-accent); background: rgba(var(--cc-accent-rgb),0.12); }
 .uh-drawer-lead { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-muted-2); font-weight: 700; margin-bottom: 10px; }
 .uh-drawer-cap { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-muted-2); font-weight: 700; margin: 18px 0 10px; }
 .uh-drawer-body .uh-h2h-log { display: flex; flex-direction: column; gap: 8px; }

@@ -318,9 +318,13 @@
 /* original red when a team has no usable colour).                    */
 /* ------------------------------------------------------------------ */
 
+/* On :root so a var() here resolves against :root's own --cc-accent — which
+   is also why [data-sport] lives on <html> (see public/styles.css). The rgb
+   companion follows the accent rather than restating the red, or a basketball
+   page tints an orange foreground with a red wash. */
 :root {
     --team-accent: var(--cc-accent);
-    --team-accent-rgb: 237, 88, 88;
+    --team-accent-rgb: var(--cc-accent-rgb);
     --team-accent-contrast: var(--cc-bg);
 }
 
@@ -376,7 +380,7 @@
    the gradient alone does the identity work (same as .gd-header on Game
    Detail, which is a bare gradient panel). */
 .team-header {
-    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, 237, 88, 88), 0.16), transparent 62%);
+    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.16), transparent 62%);
     border-radius: var(--cc-r-md);
     padding: 0.35em 0.5em;
     margin: -0.35em -0.5em 0;
@@ -457,7 +461,7 @@
 .week-bar-fill {
     width: 60%;
     min-height: 4px;
-    background: linear-gradient(180deg, var(--team-accent, var(--cc-accent)), rgba(var(--team-accent-rgb, 237, 88, 88), 0.45));
+    background: linear-gradient(180deg, var(--team-accent, var(--cc-accent)), rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.45));
     border-radius: 4px 4px 0 0;
     transition: height 0.4s ease;
 }
@@ -474,7 +478,7 @@
     gap: 0.75em;
     margin: 0.75em 0 1em;
     padding: 0.75em 1em;
-    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, 237, 88, 88), 0.18), var(--cc-bg) 70%);
+    background: linear-gradient(90deg, rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.18), var(--cc-bg) 70%);
     border: 1px solid var(--cc-border);
     border-left: 4px solid var(--team-accent, var(--cc-accent));
     border-radius: var(--cc-r-md);
@@ -547,7 +551,7 @@
 
 .season-select:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(var(--team-accent-rgb, 237, 88, 88), 0.4);
+    box-shadow: 0 0 0 2px rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.4);
 }
 
 /* "Drafted by" owner link + Twitter, on one line */
@@ -655,7 +659,7 @@
 
 /* Highlight the viewed team's standings row with a subtle accent wash */
 .viewed-team-row {
-    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
+    background: rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.12);
 }
 
 .viewed-team-row td:first-child {
@@ -674,7 +678,7 @@
     padding: 0.5rem 0.6rem;
     border-radius: var(--cc-r-md);
     border-left: 3px solid var(--team-accent, var(--cc-accent));
-    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
+    background: rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.12);
 }
 
 .standings-peek.is-hidden { display: none; }
@@ -752,7 +756,7 @@
     .team-header.run::after {
         content: "";
         position: absolute; inset: 0;
-        background: linear-gradient(105deg, transparent 34%, rgba(var(--team-accent-rgb, 237,88,88), .22) 50%, transparent 66%);
+        background: linear-gradient(105deg, transparent 34%, rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), .22) 50%, transparent 66%);
         transform: translateX(-120%);
         animation: cc-sweep 1s ease .15s 1;
         pointer-events: none;
@@ -823,8 +827,8 @@
     font-size: 0.8rem;
     font-weight: 700;
     color: var(--team-accent, var(--cc-accent));
-    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
-    border: 1px solid rgba(var(--team-accent-rgb, 237, 88, 88), 0.4);
+    background: rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.12);
+    border: 1px solid rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.4);
     border-radius: var(--cc-r-pill);
     padding: 0.25em 0.7em;
     white-space: nowrap;
@@ -1027,8 +1031,8 @@
 .tv-status--sub,
 .tv-status--pre {
     color: var(--team-accent, var(--cc-accent));
-    background: rgba(var(--team-accent-rgb, 237, 88, 88), 0.12);
-    border: 1px solid rgba(var(--team-accent-rgb, 237, 88, 88), 0.4);
+    background: rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.12);
+    border: 1px solid rgba(var(--team-accent-rgb, var(--cc-accent-rgb)), 0.4);
 }
 
 /* One wrapping line of context (conference / coach / stadium / stadium facts)
