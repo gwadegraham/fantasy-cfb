@@ -19,10 +19,17 @@
     // Step 2 is Admin-gated on purpose: leagueCode outlives a logout, so a
     // member signing in on a shared browser must not inherit the last Admin's
     // pick. It mirrors how the pages already choose which league's data to load.
+    //
+    // isAdmin, NOT canSwitch. #319 gave canSwitch to any member holding two
+    // franchises, and reusing it here would have handed that member the
+    // override this comment exists to prevent — worse, `all()` is the full
+    // league list, not their franchises, so the inherited league could be one
+    // they do not play in. The server's answer is already validated; theirs
+    // is not.
     function code() {
         var pinned = document.body && document.body.getAttribute('data-league-code');
         if (pinned) return pinned;
-        if (SEED.canSwitch) {
+        if (SEED.isAdmin) {
             var stored = null;
             try { stored = window.localStorage.getItem('leagueCode'); } catch (e) { stored = null; }
             if (stored && all().some(function (l) { return l.code === stored; })) return stored;
@@ -77,6 +84,10 @@
     function paint(root) {
         var label = name();
         syncSwitcher(root);
+        // A page that renders its navbar late calls paint(); without this it
+        // would get a correctly-populated dropdown that does nothing. Binding
+        // is idempotent, so calling it twice is free.
+        bindSwitcher();
         var nodes = (root || document).querySelectorAll('[league-label]');
         for (var i = 0; i < nodes.length; i++) {
             nodes[i].textContent = label;
@@ -86,7 +97,47 @@
         if (t) document.title = title(t.getAttribute('data-league-title'));
     }
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher };
+    // Switching league. BOUND ONCE, HERE.
+    //
+    // Eight pages each carried their own copy of this handler, and every copy
+    // did the same thing: write localStorage and reload. The server never saw
+    // any of it — so a server-rendered page kept showing the viewer's own
+    // league however the dropdown looked, which is exactly the bug #319 is
+    // about. Telling the server is one POST, and doing it in eight places
+    // meant eight chances to forget.
+    //
+    // localStorage is still written, because the client helpers above read it
+    // and several pages fetch by league code. The cookie is what the SERVER
+    // reads, and it is the authority on the next render.
+    function bindSwitcher() {
+        var sel = document.querySelector('[league-select]');
+        if (!sel || sel.dataset.ccBound) return;
+        sel.dataset.ccBound = '1';
+        sel.addEventListener('change', async function () {
+            var opt = this.options[this.selectedIndex];
+            if (!opt) return;
+            try {
+                var res = await fetch('/league/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ league: opt.value })
+                });
+                // A refusal means it is not one of your leagues — put the
+                // dropdown back rather than reloading into the same page and
+                // looking like nothing happened.
+                if (!res.ok) { syncSwitcher(); return; }
+            } catch (e) {
+                // Offline: the local choice still applies to client-side reads.
+            }
+            try {
+                window.sessionStorage.setItem('league', opt.text);
+                window.localStorage.setItem('leagueCode', opt.value);
+            } catch (e) { /* private window */ }
+            window.location.reload();
+        });
+    }
 
-    document.addEventListener('DOMContentLoaded', function () { paint(); });
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher };
+
+    document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); });
 })();

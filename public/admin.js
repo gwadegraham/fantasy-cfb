@@ -2006,17 +2006,9 @@ if (typeof window !== 'undefined') {
     window.addEventListener('unhandledrejection', function () { unblock_screen(); });
 }
 
-setTimeout(() => {
-    var _lSel = document.querySelector('[league-select]');
-    if (_lSel) {
-        _lSel.addEventListener('change', function () {
-            var opt = this.options[this.selectedIndex];
-            window.sessionStorage.setItem("league", opt.text);
-            window.localStorage.setItem("leagueCode", opt.value);
-            window.location.reload();
-        });
-    }
-}, 200);
+// The league switcher's change handler lives in public/league.js, bound once
+// for every page by the navbar partial (#319). It was duplicated here, and in
+// seven other files, and none of the copies told the server.
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
 

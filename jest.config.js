@@ -66,6 +66,19 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // Which league the viewer is LOOKING AT (#319). The cookie behind it is
+        // client-supplied, so every path that decides whether to honour it is
+        // security-relevant, and all of them fail SOFT — an unrecognised league
+        // is ignored rather than refused. A guard that stopped checking would
+        // therefore pass every smoke test while handing one league's members
+        // the other league's manager list. `functions: 100` because the module
+        // is four small functions and an uncalled one means a caller was missed.
+        "./modules/league-selection.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
         // The two middlewares that decide whether anyone gets into the app at
         // all, and the only reads whose failure mode is a lockout rather than a
         // wrong number. Both fail OPEN in every ambiguous case, which means the

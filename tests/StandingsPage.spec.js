@@ -1749,26 +1749,11 @@ describe('degrading when upstream calls fail', () => {
     });
 });
 
-describe('league selector', () => {
-    it('stores the picked league and reloads', async () => {
-        const page = await loadStandingsPage({
-            users: [makeUser({ top: { _id: 'a', firstName: 'Alice', lastName: 'Adams' }, weeklyScore: [10] })]
-        });
-
-        const sel = document.createElement('select');
-        sel.setAttribute('league-select', '');
-        sel.innerHTML = '<option value="graham-league">Graham League</option><option value="claunts-league">Claunts League</option>';
-        document.body.appendChild(sel);
-
-        await new Promise(r => setTimeout(r, 300));   // the binding is deferred 200ms
-
-        sel.value = 'claunts-league';
-        sel.dispatchEvent(new Event('change'));
-
-        expect(window.sessionStorage.getItem('league')).toBe('Claunts League');
-        expect(window.localStorage.getItem('leagueCode')).toBe('claunts-league');
-    });
-});
+// The league selector is no longer Standings' business. Eight pages each had
+// their own copy of the handler and none of them told the server, which is the
+// bug #319 fixes; it now lives once in public/league.js and the tests moved to
+// tests/LeagueIdentity.spec.js along with it. Deliberately not re-tested here —
+// a copy of the assertions in this file is how it ended up in eight places.
 
 describe('score breakdown league fallback', () => {
     it('derives the league from Auth0 when storage has none', async () => {

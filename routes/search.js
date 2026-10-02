@@ -5,7 +5,7 @@ const router = express.Router();
 const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
 const { pickLogo } = require('../public/logo.js');
-const { leagueCodeFor } = require('../modules/league-access');
+const { selectedLeague } = require('../modules/league-selection');
 
 // Index behind the app-wide search palette (public/search.js).
 //
@@ -20,11 +20,19 @@ const { leagueCodeFor } = require('../modules/league-access');
 //     wire and keeps the palette's logo identical to the one Standings and the
 //     draft board pick.
 //
-//  2. MANAGERS are scoped to the caller's OWN league, derived from the session
-//     via leagueCodeFor — NOT from a parameter the client sends. A league code
+//  2. MANAGERS are scoped to the league the caller is VIEWING, and the point
+//     is not where that value comes from but that it is CHECKED. A league code
 //     in the URL would be a request to trust the browser about which league it
 //     may read, and the members of the other league would be one edited query
-//     string away. Deriving it here means there is no such request to get wrong.
+//     string away.
+//
+//     selectedLeague is a cookie, so it is just as client-supplied as a query
+//     string — the difference is that it is only honoured after being matched
+//     against the franchises this account actually holds (#319). Someone can
+//     therefore only ever scope search to a league whose members they can
+//     already see, which is the property the original reasoning was after.
+//     Anything that stops validating turns this straight back into the hole
+//     the paragraph above describes.
 //
 // Items share one shape across both types so public/search-match.js can rank
 // them through a single path:
@@ -45,7 +53,7 @@ function teamAliases(t) {
 
 router.get('/index', async (req, res) => {
     try {
-        const league = leagueCodeFor(req.effUser);
+        const league = await selectedLeague(req);
         const season = activeSeason('football');
 
         const [teamDocs, userDocs] = await Promise.all([
