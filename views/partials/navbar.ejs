@@ -104,16 +104,34 @@
             <% if (_role === 'Admin' || _role === 'League Manager') { %>
             <li><a admin-page href="/admin"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
             <% } %>
-            <% if (_role === 'Admin') { %>
+            <%# The switcher, for anyone with more than one league to switch
+                between — an Admin (all of them) or a member holding more than
+                one franchise (#319 part 2). It was Admin-only, which is why a
+                member with a football and a basketball team had no way to
+                reach the second one.
+
+                Options come from viewerLeagues, NOT leagues: the latter is
+                every league there is, so a member's switcher built on it would
+                offer leagues they do not play in — and the server would then
+                refuse the selection with a 403, leaving a control that looks
+                live and does nothing.
+
+                Labelled with the league's own name rather than its sport. The
+                names are commissioner-editable and ccLeague already puts them
+                on every page header and title, so the switcher reads the same
+                as the page it is on; the sport is already carried by the
+                accent colour and the favicon. %>
+            <% var _switch = (typeof viewerCanSwitch !== 'undefined' && viewerCanSwitch); %>
+            <% var _mine = (typeof viewerLeagues !== 'undefined' && viewerLeagues) || []; %>
+            <% if (_switch && _mine.length > 1) { %>
             <li league-selector>
                 <select class="league-select" league-select aria-label="League">
-                    <%# `selected` on the viewer's own league: the list renders in
-                        LEAGUES order, so without it the switcher shows whichever
-                        league happens to be first regardless of what the page is
-                        showing. public/league.js refines this on load for a
-                        server-pinned page or an Admin's sticky choice. %>
+                    <%# `selected` on the league being viewed: without it the
+                        switcher shows whichever league happens to be first
+                        regardless of what the page is showing, and only
+                        corrects once public/league.js runs. %>
                     <% var _vlc = (typeof viewerLeagueCode !== 'undefined' && viewerLeagueCode) || ''; %>
-                    <% (typeof leagues !== 'undefined' && leagues || []).forEach(function (lg) { %>
+                    <% _mine.forEach(function (lg) { %>
                     <option value="<%= lg.code %>"<%= lg.code === _vlc ? ' selected' : '' %>><%= lg.name %></option>
                     <% }) %>
                 </select>

@@ -24,6 +24,7 @@ const { leagueCodeFor, canManageLeague } = require('./modules/league-access');
 const leagueSelection = require('./modules/league-selection');
 const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
+const leagueCatalog = require('./modules/league-catalog');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, LEAGUES, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
@@ -110,17 +111,14 @@ app.use(identityGuard({ repo: franchiseRepo }));
 // Per-request league display names (editable via /leagues) for the navbar
 // switcher — HTML GETs only, falling back to the hardcoded defaults.
 app.use(async (req, res, next) => {
-    res.locals.leagues = LEAGUES;
-    try {
-        if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
-            const docs = await League.find({}, { code: 1, name: 1, _id: 0 }).lean();
-            if (docs.length) {
-                const byCode = {};
-                docs.forEach(d => { byCode[d.code] = d.name; });
-                res.locals.leagues = LEAGUES.map(l => ({ code: l.code, name: byCode[l.code] || l.name }));
-            }
-        }
-    } catch (e) { /* fall back to defaults */ }
+    res.locals.leagues = leagueCatalog.DEFAULTS;
+    const isHtmlGet = req.method === 'GET' && (req.headers.accept || '').includes('text/html');
+    if (isHtmlGet) {
+        // The CATALOG, not a map over the hardcoded list: that dropped any
+        // league existing only in the database, which is how every league
+        // after the first two gets created.
+        res.locals.leagues = await leagueCatalog.catalog(req);
+    }
     // Seed the client helper (public/league.js) off the same names, plus the
     // viewer's own league and whether they may switch. Every page that shows a
     // league name reads it from there, so a rename lands everywhere at once and
@@ -143,10 +141,22 @@ app.use(async (req, res, next) => {
     // Express 4 does not catch a rejected promise, nothing handles
     // unhandledRejection, and Node 20 exits. Falling back to no league renders
     // the football default rather than a dead process.
+    // The leagues to OFFER this viewer, named, and whether to offer them at
+    // all. An Admin gets every league; everyone else gets exactly the
+    // franchises they hold — the navbar used to render res.locals.leagues,
+    // which is every league there is, so a member switcher built on it would
+    // have offered leagues they do not play in and the server would then have
+    // refused the selection with a 403.
     res.locals.viewerLeagueCode = '';
-    if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+    res.locals.viewerLeagues = [];
+    res.locals.viewerCanSwitch = false;
+    let viewer = { code: '', leagues: [], canSwitch: false, isAdmin: false };
+    if (isHtmlGet) {
         try {
-            res.locals.viewerLeagueCode = await leagueSelection.selectedLeague(req);
+            viewer = await leagueSelection.viewerContext(req, res.locals.leagues);
+            res.locals.viewerLeagueCode = viewer.code;
+            res.locals.viewerLeagues = viewer.leagues;
+            res.locals.viewerCanSwitch = viewer.canSwitch;
         } catch (e) {
             console.error(`league-selection: ${e.message}`);
         }
@@ -166,11 +176,8 @@ app.use(async (req, res, next) => {
     // against the full league list rather than the viewer's franchises, so a
     // two-franchise member inheriting it on a shared browser would be shown a
     // league they do not play in.
-    const admin = devRole.effectiveRoles(req).includes('Admin');
-    let canSwitch = admin;
-    try {
-        canSwitch = admin || await leagueSelection.canSwitch(req);
-    } catch (e) { /* offering no switcher is the safe failure */ }
+    const admin = viewer.isAdmin || devRole.effectiveRoles(req).includes('Admin');
+    const canSwitch = res.locals.viewerCanSwitch;
     res.locals.leagueSeed = safeJson({
         code: res.locals.viewerLeagueCode,
         canSwitch,
@@ -583,7 +590,12 @@ app.get('/rules', async (req, res) => {
         // override below is gated by canManageLeague, which does not.
         const ownLeague = res.locals.viewerLeagueCode;
         const requested = req.query.league;
-        const canView = LEAGUES.some(l => l.code === requested) && canManageLeague(req, requested);
+        // Against the CATALOG, not scoring-defaults: the hardcoded array holds
+        // only the two football leagues, so an Admin could not open the rules
+        // for a league that exists solely in the database. canManageLeague is
+        // still what decides authority; this only checks the league is real.
+        const known = (res.locals.leagues || leagueCatalog.DEFAULTS);
+        const canView = known.some(l => l.code === requested) && canManageLeague(req, requested);
         const leagueCode = canView ? requested : ownLeague;
         let cfg;
         try {

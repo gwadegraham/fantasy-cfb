@@ -35,7 +35,7 @@
 const franchiseRepo = require('./franchise-repo');
 const { leagueCodeFor } = require('./league-access');
 const { effectiveUser, effectiveRoles } = require('./dev-role');
-const { LEAGUES } = require('./scoring-defaults');
+const leagueCatalog = require('./league-catalog');
 
 const COOKIE = 'cc_league';
 
@@ -105,16 +105,24 @@ async function leaguesOf(req) {
 // Validated against the known leagues rather than accepted outright, so a
 // hand-written cookie still cannot put an arbitrary string into every query
 // the page then runs.
-const KNOWN = LEAGUES.map(l => l.code);
-
+//
+// From the CATALOG, not from scoring-defaults: that hardcoded array is tied to
+// the scoring models, and a basketball league will never be in it. Reading it
+// directly meant an Admin could not select a league that existed only in the
+// database — which is every league this epic is about.
 function isAdmin(req) {
     return effectiveRoles(req).includes('Admin');
 }
 
 // Every league this person may look at. For an Admin that is all of them; for
 // everyone else it is exactly the franchises they hold.
+//
+// A member's answer is NOT filtered against the catalog: their franchise is
+// the fact, and a league missing from the collection should not strand them
+// outside their own team. The Admin case is the one that needs a list to
+// check against, because it is not derived from anything they own.
 async function viewableBy(req) {
-    if (isAdmin(req)) return KNOWN;
+    if (isAdmin(req)) return leagueCatalog.codes(req);
     return leaguesOf(req);
 }
 
@@ -161,6 +169,42 @@ async function canSwitch(req) {
     return (await viewableBy(req)).length > 1;
 }
 
+// Everything the navbar needs about the viewer's league, in one call.
+//
+// A function rather than six lines in the locals middleware, for the same
+// reason the route handler below is one: the inline version could be reverted
+// — the filter dropped, canSwitch hardcoded to true — with the whole suite
+// green, because the only tests were of the template that consumes it.
+//
+// `leagues` is the catalog, passed in so this does not read it a second time.
+async function viewerContext(req, leagues) {
+    const code = await selectedLeague(req);
+    const mine = new Set(await viewableBy(req));
+
+    // Catalog order first, so the navbar keeps a stable arrangement...
+    const offered = (leagues || []).filter(l => mine.has(l.code));
+
+    // ...then any league the viewer holds that the catalog does not list. A
+    // member's franchise is the fact: a league missing from the collection
+    // must not hide their own team from them. Named by its code, which is
+    // ugly and visible — better than silently absent. Sorted, because the
+    // set's own order is Mongo's.
+    const seen = new Set(offered.map(l => l.code));
+    for (const extra of [...mine].filter(c => !seen.has(c)).sort()) {
+        offered.push({ code: extra, name: extra, sport: 'football' });
+    }
+
+    const admin = isAdmin(req);
+    return {
+        code,
+        leagues: offered,
+        // Derived from the list actually rendered, so a flag saying "you may
+        // switch" and a list with nothing to switch to cannot disagree.
+        canSwitch: admin || offered.length > 1,
+        isAdmin: admin
+    };
+}
+
 // POST /league/select, as a handler rather than inline in server.js — the
 // first version of this was re-implemented inside its own spec, so deleting
 // the authorization check from the real route left every test green.
@@ -179,7 +223,7 @@ async function selectHandler(req, res) {
 }
 
 module.exports = {
-    COOKIE, COOKIE_OPTS, KNOWN,
-    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler,
+    COOKIE, COOKIE_OPTS,
+    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext,
     leaguesOf, accountIdFor
 };
