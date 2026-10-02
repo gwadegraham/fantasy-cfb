@@ -1210,9 +1210,31 @@ async function getUser(req, res, next) {
 
 // No season scoping here, deliberately: the draft handler looks for an existing
 // entry and pushes a new one if there is none, so it needs every season.
+//
+// ⚠️ THE LEAGUE IS REQUIRED, AND IT IS REQUIRED RATHER THAN DEFAULTED.
+//
+// loadForWrite without a league takes whichever franchise findOne returns
+// first. That was harmless while one account held one franchise, and the
+// moment one held two — a football team and a basketball team, the entire
+// point of #313 — a basketball draft wrote its roster onto the FOOTBALL
+// franchise. Observed: graham-league grew a 2027 season holding three
+// basketball teamRefs while the basketball franchise stayed empty, and the
+// draft reported complete.
+//
+// Refused rather than guessed, because guessing is what made it silent. A
+// caller that cannot say which league is asking the wrong question.
 async function getUserNewSeason(req, res, next) {
     try {
-        const ctx = await franchiseRepo.loadForWrite(req.params.id, { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
+        const league = req.body && req.body.league;
+        if (!league) {
+            return res.status(400).json({
+                message: 'league is required — a roster write has to say which franchise it is for'
+            });
+        }
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, {
+            league,
+            fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons']
+        });
         // BOTH halves. getUser above asks for a season, so loadForWrite returns
         // null when no entry matches and `ctx == null` is the whole check. This
         // one asks for no season — the draft handler pushes an entry that does
@@ -1225,7 +1247,7 @@ async function getUserNewSeason(req, res, next) {
         // comment on PATCH /:id warns about, and this endpoint is where every
         // draft pick is persisted (modules/draft-socket.js).
         if (ctx == null || ctx.franchise == null) {
-            return res.status(404).json({message: 'Cannot find user'});
+            return res.status(404).json({ message: `Cannot find a ${league} franchise for that account` });
         }
         res.ctx = ctx;
         res.user = ctx.franchise;

@@ -81,9 +81,15 @@ async function persistTeamsToUsers(draft) {
     const failed = [];
     for (const userId of Object.keys(teamsByUser)) {
         try {
-            const payload = sport === 'basketball'
-                ? { season: draft.season, teamRefs: teamsByUser[userId] }
-                : { season: draft.season, teams: teamsByUser[userId] };
+            // THE LEAGUE TRAVELS WITH THE WRITE. Without it the route loads
+            // whichever franchise comes back first, and a basketball draft
+            // puts its roster on the manager's football team.
+            const payload = Object.assign(
+                { season: draft.season, league: draft.league },
+                sport === 'basketball'
+                    ? { teamRefs: teamsByUser[userId] }
+                    : { teams: teamsByUser[userId] }
+            );
             const res = await internalFetch(`${process.env.URL}/users/draft/${userId}`, {
                 method: 'PATCH',
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
