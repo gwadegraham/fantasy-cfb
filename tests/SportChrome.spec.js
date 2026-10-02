@@ -70,23 +70,76 @@ describe('every asset the partial can name exists on disk', () => {
 });
 
 describe('the views adopted it', () => {
-    const views = fs.readdirSync(VIEWS).filter(f => f.endsWith('.ejs'));
+    // ASSERTED POSITIVELY, over every full-document view.
+    //
+    // The first version checked "no view hardcodes an icon" and "any view that
+    // includes the partial has data-sport" — both of which a view that
+    // includes NEITHER satisfies. Stripping the include and the attribute from
+    // admin.ejs left all thirteen tests green, which is the one failure the
+    // block exists to catch.
+    //
+    // valentine.ejs is excluded on purpose: a joke page with its own icon
+    // (`rel="shortcut icon"`, images/hello.png) and its own relative paths.
+    // Named here so the exclusion is a decision rather than an oversight — and
+    // so that a NEW view cannot join it by accident.
+    const EXCLUDED = ['valentine.ejs'];
+    const docs = fs.readdirSync(VIEWS)
+        .filter(f => f.endsWith('.ejs'))
+        .filter(f => fs.readFileSync(path.join(VIEWS, f), 'utf8').includes('<html'))
+        .filter(f => !EXCLUDED.includes(f));
 
-    test('no view hardcodes an icon link any more', () => {
-        const offenders = views.filter(f =>
-            fs.readFileSync(path.join(VIEWS, f), 'utf8').includes('rel="icon"'));
-        expect(offenders).toEqual([]);
+    test('there are the views we think there are', () => {
+        // A new full-document view has to be considered rather than silently
+        // skipped by the two assertions below.
+        expect(docs).toHaveLength(14);
     });
 
-    test('and every view that includes the partial also carries data-sport', () => {
-        // The accent rule keys off the body attribute. A view with the right
-        // favicon and no data-sport is a page that half-changes sport, which
-        // reads as a bug rather than a theme.
-        const missing = views.filter(f => {
-            const s = fs.readFileSync(path.join(VIEWS, f), 'utf8');
-            return s.includes('partials/favicons') && !s.includes('data-sport');
-        });
+    test('every one includes the favicon partial', () => {
+        const missing = docs.filter(f =>
+            !fs.readFileSync(path.join(VIEWS, f), 'utf8').includes("include('partials/favicons')"));
         expect(missing).toEqual([]);
+    });
+
+    test('every one carries data-sport, and on <html>', () => {
+        // On <html>, not <body>: public/team.css resolves
+        // `--team-accent: var(--cc-accent)` at :root, so a body-scoped
+        // override never reaches it and the Team page keeps the football red.
+        const wrong = docs.filter(f => {
+            const s = fs.readFileSync(path.join(VIEWS, f), 'utf8');
+            return !/<html\b[^>]*\sdata-sport=/.test(s) || /<body\b[^>]*\sdata-sport=/.test(s);
+        });
+        expect(wrong).toEqual([]);
+    });
+
+    test('and none hardcodes an icon link any more', () => {
+        const offenders = docs.filter(f =>
+            /rel="(icon|shortcut icon|apple-touch-icon)"/.test(fs.readFileSync(path.join(VIEWS, f), 'utf8')));
+        expect(offenders).toEqual([]);
+    });
+});
+
+describe('a tint follows its accent', () => {
+    // Twenty rules hardcoded rgba(237, 88, 88, …) beside a tokenised
+    // foreground, so a basketball page would render orange glyphs on red
+    // washes — "everything recolours together" was not true as written.
+    const css = fs.readdirSync(path.join(__dirname, '..', 'public'))
+        .filter(f => f.endsWith('.css'))
+        .map(f => [f, fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8')]);
+
+    test('the brand red is written down exactly once, anywhere', () => {
+        // The literal, in ANY form — not just rgba(...). The first version of
+        // this missed `--team-accent-rgb: 237, 88, 88` in team.css, which is
+        // the declaration that actually kept the Team page red.
+        const hits = css.flatMap(([f, s]) =>
+            [...s.matchAll(/237\s*,\s*88\s*,\s*88/g)].map(() => f));
+        expect(hits).toEqual(['styles.css']);
+    });
+
+    test('and basketball redefines it alongside the accent', () => {
+        const styles = css.find(([f]) => f === 'styles.css')[1];
+        const block = /:root\[data-sport="basketball"\]\s*\{([^}]*)\}/.exec(styles);
+        expect(block[1]).toMatch(/--cc-accent\s*:/);
+        expect(block[1]).toMatch(/--cc-accent-rgb\s*:/);
     });
 });
 
@@ -94,10 +147,12 @@ describe('the accent token', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
 
     test('basketball overrides --cc-accent and nothing else', () => {
-        const block = /\[data-sport="basketball"\]\s*\{([^}]*)\}/.exec(css);
+        const block = /:root\[data-sport="basketball"\]\s*\{([^}]*)\}/.exec(css);
         expect(block).not.toBeNull();
         const declared = [...block[1].matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]);
-        expect(declared).toEqual(['--cc-accent']);
+        // The accent and its rgb companion, and nothing else — the tempting
+        // next step is to start theming individual components in here.
+        expect(declared).toEqual(['--cc-accent', '--cc-accent-rgb']);
     });
 
     test('football keeps the brand red, untouched', () => {

@@ -65,7 +65,7 @@ html.gd-page, .gd-page body {
     color: var(--cc-muted-bright);
 }
 .gd-live {
-    background: rgba(237, 88, 88, 0.18);
+    background: rgba(var(--cc-accent-rgb), 0.18);
     color: var(--cc-accent);
 }
 .gd-scheduled {

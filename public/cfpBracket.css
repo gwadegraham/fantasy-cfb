@@ -216,7 +216,7 @@ html.cfp-page, .cfp-page body {
     border-radius: var(--cc-r-pill);
 }
 .cfp-final { background: var(--cc-surface-3); color: var(--cc-muted-bright); }
-.cfp-live { background: rgba(237, 88, 88, 0.18); color: var(--cc-accent); animation: cfp-pulse 2s infinite; }
+.cfp-live { background: rgba(var(--cc-accent-rgb), 0.18); color: var(--cc-accent); animation: cfp-pulse 2s infinite; }
 .cfp-scheduled { background: transparent; color: var(--cc-muted); }
 .cfp-tbd { background: transparent; color: var(--cc-muted-2); }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 
 <head>
     <meta charset="UTF-8">
@@ -82,7 +82,7 @@
     </style>
 </head>
 
-<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
+<body>
     <main class="error-card">
         <a href="/" class="error-brand" aria-label="Campus Clash — home">
             <div class="brand-title">

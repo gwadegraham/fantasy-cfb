@@ -24,6 +24,7 @@
 
     /* Semantic accents */
     --cc-accent:      #ed5858;  /* brand red — identity/active nav, "YOU", errors */
+    --cc-accent-rgb:  237, 88, 88;  /* the same colour for rgba() tints — see below */
     --cc-interactive: #8E8CF0;  /* interactive/active state: chart tabs, carets */
     --cc-success:     #22C37A;  /* wins / positive */
     --cc-info:        #6C9BFF;  /* info / neutral highlight, focus rings */
@@ -43,11 +44,19 @@
    Everything reading --cc-accent recolours together: active nav, the "YOU"
    marker, buttons, chart series, the draft board, the win reveal.
 
-   Scoped to [data-sport] on <body>, set server-side from the viewer's league,
-   so a basketball page is orange wherever it renders and a football page is
-   untouched. Nothing else selects on sport; a third one is a line here. */
-[data-sport="basketball"] {
+   ⚠️ ON <html>, NOT <body>, AND THAT IS NOT A STYLE CHOICE. public/team.css
+   does `:root { --team-accent: var(--cc-accent) }`, and a var() inside a
+   custom-property declaration resolves AT THE ELEMENT THE DECLARATION SITS
+   ON. On :root that is <html> — so a <body>-scoped override cannot reach it,
+   and the Team page's 37 --team-accent rules kept the football red while
+   everything around them went orange. Measured in a browser before this moved.
+
+   --cc-accent-rgb exists for the same reason the token does: twenty rules
+   hardcoded rgba(var(--cc-accent-rgb), …) next to a tokenised foreground, so an orange
+   glyph sat on a red wash. A tint follows its accent now. */
+:root[data-sport="basketball"] {
     --cc-accent: #F0833F;       /* hardwood orange — see design/brand */
+    --cc-accent-rgb: 240, 131, 63;
 }
 
 * {

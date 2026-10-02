@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -22,7 +22,7 @@
 </head>
 <!-- Board is rendered for one league (the commissioner's own), so pin it for
      ccLeague instead of leaning on the sticky navbar selection. -->
-<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>" data-league-code="<%= leagueCode %>">
+<body data-league-code="<%= leagueCode %>">
     <%- include('partials/navbar') %>
     <script>
         window.APP_YEAR = "<%= year %>";

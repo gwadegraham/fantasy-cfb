@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -23,7 +23,7 @@
 <!-- The rules shown are one league's, resolved server-side (an Admin's ?league=
      included), so pin that league for ccLeague rather than letting it fall back
      to the sticky selection — the two can disagree for a moment on arrival. -->
-<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>" data-league-code="<%= leagueCode %>">
+<body data-league-code="<%= leagueCode %>">
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>

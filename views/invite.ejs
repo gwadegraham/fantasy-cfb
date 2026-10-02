@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 
 <head>
     <meta charset="UTF-8">
@@ -99,7 +99,7 @@
     </style>
 </head>
 
-<body data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
+<body>
     <main class="invite-card">
         <div class="brand-title">
             <div class="brand-campus">CAMPUS</div>
