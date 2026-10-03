@@ -36,6 +36,7 @@ const franchiseRepo = require('./franchise-repo');
 const { leagueCodeFor } = require('./league-access');
 const { effectiveUser, effectiveRoles } = require('./dev-role');
 const leagueCatalog = require('./league-catalog');
+const { sportForLeague } = require('./active-season');
 
 const COOKIE = 'cc_league';
 
@@ -211,6 +212,14 @@ async function viewerContext(req, leagues) {
     const listed = new Set((leagues || []).map(l => l.code));
     const all = (leagues || []).concat(offered.filter(l => !listed.has(l.code)));
 
+    // Each league tagged with its sport, for the switcher's icon and label.
+    //
+    // From sportForLeague — active-season's primed cache — and NOT from the
+    // catalog, which deliberately does not carry a sport. One source: this is
+    // the same answer draft-pool and draft-socket get, so the icon on the
+    // switcher cannot disagree with the game being played.
+    const withSport = offered.map(l => Object.assign({}, l, { sport: sportForLeague(l.code) }));
+
     const admin = isAdmin(req);
 
     // What the client is told, as one object, because the middleware
@@ -222,11 +231,11 @@ async function viewerContext(req, leagues) {
     // in it, or by being an Admin, whose own list is the whole catalog
     // anyway. A league can therefore be built and seeded for weeks before
     // the people in the other league find out it is there.
-    const seed = { code, canSwitch: admin || offered.length > 1, isAdmin: admin, all: offered };
+    const seed = { code, canSwitch: admin || offered.length > 1, isAdmin: admin, all: withSport };
 
     return {
         code,
-        leagues: offered,
+        leagues: withSport,
         all,
         seed,
         // Derived from the list actually rendered, so a flag saying "you may

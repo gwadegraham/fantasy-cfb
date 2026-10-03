@@ -179,6 +179,13 @@ app.use(async (req, res, next) => {
     // showing a basketball mark on a football league is the error that matters.
     res.locals.viewerSport = res.locals.viewerLeagueCode
         ? seasons.sportForLeague(res.locals.viewerLeagueCode) : 'football';
+    // The ball for the sport being viewed, as a Font Awesome class. The
+    // Scores tab and the scoreboard's loading spinner are both literally a
+    // football; on a basketball league they were still a football. One value
+    // so a new surface cannot pick a different answer — views default it to
+    // the football, since the invite and error pages render without this
+    // middleware.
+    res.locals.sportIcon = res.locals.viewerSport === 'basketball' ? 'fa-basketball' : 'fa-football';
     // canSwitch: whether to OFFER a switcher. isAdmin: whether the sticky
     // localStorage choice may override the server's answer. They were one flag
     // and must not be: leagueCode outlives a logout, and it is validated

@@ -263,7 +263,10 @@
             try {
                 const meta = window.userState && window.userState.user_metadata && window.userState.user_metadata.metadata;
                 if (!meta || !meta.userId) return;
-                const league = meta.league === 'gg' ? 'graham-league' : 'claunts-league';
+                // The league being viewed, not the Auth0 flag — a recap for
+                // the league you are not looking at is just confusing.
+                const league = (window.ccLeague && window.ccLeague.code())
+                    || (meta.league === 'gg' ? 'graham-league' : 'claunts-league');
                 const force = new URLSearchParams(location.search).get('recapPopup') === '1';
                 window.ccRecap.maybeShowPopup({ league: league, userId: meta.userId, force: force });
             } catch (e) { /* non-fatal */ }

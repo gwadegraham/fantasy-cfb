@@ -216,9 +216,13 @@
         <i class="fa-solid fa-trophy" aria-hidden="true"></i>
         <span>Standings</span>
     </a>
+    <%# The ball follows the league being viewed — it was a football on a
+        basketball league. Defaulted, because this partial also renders on
+        pages that do not run the locals middleware. %>
+    <% var _ball = (typeof sportIcon !== 'undefined' && sportIcon) || 'fa-football'; %>
     <a class="tab-item" href="/scoreboard">
         <span class="nav-new-wrap">
-            <i class="fa-solid fa-football" aria-hidden="true"></i>
+            <i class="fa-solid <%= _ball %>" aria-hidden="true"></i>
             <span class="nav-new-dot" data-new="scoreboard" hidden></span>
         </span>
         <span>Scores</span>
@@ -237,11 +241,58 @@
         <span>My Team</span>
     </a>
     <% } %>
+    <%# The league switcher, on the phone bar rather than buried in More
+        (#319 part 2). Only for someone with more than one league to switch
+        between, so everybody else keeps today's four tabs.
+
+        ADAPTIVE, on purpose. With exactly two leagues the tab IS the other
+        league — its sport's ball, its sport's name — and one tap goes there,
+        because a sheet to choose between two things one of which you are
+        already in is a wasted tap. With three or more it becomes a neutral
+        switch icon that opens the sheet below.
+
+        Labelled by SPORT here, not by league name, because a tab label is
+        ten pixels wide and "The Polar Depressed" does not fit. The sheet
+        carries the real names. %>
+    <% var _mineTab = (typeof viewerLeagues !== 'undefined' && viewerLeagues) || []; %>
+    <% var _vlcTab = (typeof viewerLeagueCode !== 'undefined' && viewerLeagueCode) || ''; %>
+    <% if ((typeof viewerCanSwitch !== 'undefined' && viewerCanSwitch) && _mineTab.length > 1) { %>
+        <% var _others = _mineTab.filter(function (l) { return l.code !== _vlcTab; }); %>
+        <% var _one = _others.length === 1 ? _others[0] : null; %>
+        <% var _sportName = function (sp) { return sp === 'basketball' ? 'Hoops' : 'Football'; }; %>
+        <% var _sportBall = function (sp) { return sp === 'basketball' ? 'fa-basketball' : 'fa-football'; }; %>
+    <button type="button" class="tab-item tab-league"
+            <% if (_one) { %>data-league-go="<%= _one.code %>"<% } else { %>data-league-sheet="1" aria-haspopup="dialog" aria-expanded="false"<% } %>
+            aria-label="<%= _one ? ('Switch to ' + _one.name) : 'Switch league' %>">
+        <i class="fa-solid <%= _one ? _sportBall(_one.sport) : 'fa-repeat' %>" aria-hidden="true"></i>
+        <span><%= _one ? _sportName(_one.sport) : 'League' %></span>
+    </button>
+    <% } %>
     <button type="button" class="tab-item tab-more" aria-controls="navbar-links" aria-expanded="false">
         <i class="fa-solid fa-bars" aria-hidden="true"></i>
         <span>More</span>
     </button>
 </nav>
+
+<%# The chooser, for three or more leagues. Rendered once, hidden, beside the
+    bar — a native <select> cannot show a sport and is a poor control on a
+    phone. %>
+<% if ((typeof viewerCanSwitch !== 'undefined' && viewerCanSwitch) && _mineTab.length > 2) { %>
+<div class="league-sheet" data-league-sheet-panel hidden>
+    <div class="league-sheet-backdrop" data-league-sheet-close></div>
+    <div class="league-sheet-panel" role="dialog" aria-modal="true" aria-label="Choose a league">
+        <div class="league-sheet-grip" aria-hidden="true"></div>
+        <% _mineTab.forEach(function (lg) { %>
+        <button type="button" class="league-sheet-row<%= lg.code === _vlcTab ? ' on' : '' %>"
+                data-league-go="<%= lg.code %>"<%= lg.code === _vlcTab ? ' aria-current="true"' : '' %>>
+            <i class="fa-solid <%= lg.sport === 'basketball' ? 'fa-basketball' : 'fa-football' %>" aria-hidden="true"></i>
+            <span><%= lg.name %></span>
+            <% if (lg.code === _vlcTab) { %><i class="fa-solid fa-check chk" aria-hidden="true"></i><% } %>
+        </button>
+        <% }) %>
+    </div>
+</div>
+<% } %>
 <script>
     // Navbar behaviors that belong to the navbar itself: wire the hamburger,
     // seed the "My team" link, and highlight the current page. This runs inline

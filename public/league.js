@@ -116,28 +116,107 @@
         sel.addEventListener('change', async function () {
             var opt = this.options[this.selectedIndex];
             if (!opt) return;
-            try {
-                var res = await fetch('/league/select', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                    body: JSON.stringify({ league: opt.value })
-                });
-                // A refusal means it is not one of your leagues — put the
-                // dropdown back rather than reloading into the same page and
-                // looking like nothing happened.
-                if (!res.ok) { syncSwitcher(); return; }
-            } catch (e) {
-                // Offline: the local choice still applies to client-side reads.
-            }
-            try {
-                window.sessionStorage.setItem('league', opt.text);
-                window.localStorage.setItem('leagueCode', opt.value);
-            } catch (e) { /* private window */ }
-            window.location.reload();
+            // A refusal means it is not one of your leagues — put the
+            // dropdown back rather than reloading into the same page and
+            // looking like nothing happened.
+            var ok = await selectLeague(opt.value, opt.text);
+            if (!ok) syncSwitcher();
         });
     }
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher };
+    // Switching from the phone tab bar (#319 part 2).
+    //
+    // Shares selectLeague with the <select>, so the POST, the localStorage
+    // mirror and the reload happen in exactly one place — eight copies of
+    // this handler is the thing part 2 was cleaning up, and adding a second
+    // surface is how a ninth gets written.
+    function selectLeague(codeWanted, label) {
+        return fetch('/league/select', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ league: codeWanted })
+        }).then(function (res) {
+            if (!res.ok) return false;
+            return true;
+        }).catch(function () {
+            // Offline: the local choice still applies to client-side reads.
+            return true;
+        }).then(function (ok) {
+            if (!ok) return false;
+            try {
+                if (label) window.sessionStorage.setItem('league', label);
+                window.localStorage.setItem('leagueCode', codeWanted);
+            } catch (e) { /* private window */ }
+            window.location.reload();
+            return true;
+        });
+    }
 
-    document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); });
+    function sheet() { return document.querySelector('[data-league-sheet-panel]'); }
+
+    function openSheet(open) {
+        var el = sheet();
+        if (!el) return;
+        el.hidden = !open;
+        document.body.classList.toggle('league-sheet-open', open);
+        var btn = document.querySelector('[data-league-sheet]');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    // One delegated listener on the document, so the tab and every sheet row
+    // are covered whether or not the bar was rendered by the time this ran.
+    function bindTab() {
+        if (document.documentElement.dataset.ccLeagueTab) return;
+        document.documentElement.dataset.ccLeagueTab = '1';
+
+        document.addEventListener('click', function (e) {
+            var go = e.target.closest && e.target.closest('[data-league-go]');
+            if (go) {
+                e.preventDefault();
+                var wanted = go.getAttribute('data-league-go');
+                if (wanted === code()) { openSheet(false); return; }
+                var row = go.querySelector('span');
+                selectLeague(wanted, row ? row.textContent : null);
+                return;
+            }
+            if (e.target.closest && e.target.closest('[data-league-sheet]')) {
+                e.preventDefault();
+                openSheet(sheet() ? sheet().hidden : false);
+                return;
+            }
+            if (e.target.closest && e.target.closest('[data-league-sheet-close]')) {
+                openSheet(false);
+            }
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') openSheet(false);
+        });
+    }
+
+    // The league a PAGE should load data for. Exported as a bare global as
+    // well as on ccLeague, because the pages that need it are plain scripts
+    // that run before any module wiring.
+    //
+    // Every one of them used to re-derive this from the Auth0 flag —
+    // `metadata.league == 'gg' ? 'graham-league' : 'claunts-league'` — in
+    // eleven places across seven files, honouring the stored choice only for
+    // an Admin. Two consequences: a member who switched league got new chrome
+    // and the OLD league's data, and no member could ever load a basketball
+    // league at all, the flag having exactly two values.
+    window.ccLeagueCode = function () {
+        var c = code();
+        if (c) return c;
+        // Only reached on a page rendered without the navbar seed.
+        try {
+            var meta = window.userState && window.userState.user_metadata
+                && window.userState.user_metadata.metadata;
+            if (meta && meta.league) return meta.league === 'gg' ? 'graham-league' : 'claunts-league';
+        } catch (e) { /* fall through */ }
+        return '';
+    };
+
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague };
+
+    document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); bindTab(); });
 })();

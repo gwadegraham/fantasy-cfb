@@ -152,11 +152,7 @@ function setUserOptions(data) {
 }
 
 async function getUsers() {
-    var leagueCode = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-
-    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-        leagueCode = window.localStorage.getItem("leagueCode");
-    }
+    var leagueCode = ccLeagueCode();
 
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
@@ -208,10 +204,12 @@ async function getUserProfile() {
     response.json().then(async data => {
         userMetadata = data;
 
-        // Only set leagueCode from metaData if it's not already stored
-        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
-            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-            window.localStorage.setItem("leagueCode", newLeagueCode);
+        // Mirror the league being viewed into storage, which the by-league
+        // fetches below still read. From ccLeague — the server's validated
+        // answer (#319) — not from the Auth0 flag, which is binary and so
+        // could only ever name one of the two football leagues.
+        if (window.ccLeague && window.ccLeague.code()) {
+            try { window.localStorage.setItem("leagueCode", window.ccLeague.code()); } catch (e) {}
         }
 
         if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
@@ -2020,12 +2018,7 @@ var draftMembers = [];    // member objects in current display order
 var currentDraft = null;  // loaded Draft doc for the selected league+season
 
 function getDraftLeagueCode() {
-    var code = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-        var stored = window.localStorage.getItem("leagueCode");
-        if (stored && stored != "undefined") code = stored;
-    }
-    return code;
+    return ccLeagueCode();
 }
 
 function getSelectedDraftSeason() {

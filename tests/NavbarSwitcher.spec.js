@@ -18,9 +18,9 @@ const ejs = require('ejs');
 
 const SRC = path.join(__dirname, '..', 'views', 'partials', 'navbar.ejs');
 
-const BALL = { code: 'graham-league', name: 'The Polar Depressed' };
-const OTHER = { code: 'claunts-league', name: 'Goofballers' };
-const HOOPS = { code: 'hoops-league', name: 'Hardwood Heroes' };
+const BALL = { code: 'graham-league', name: 'The Polar Depressed', sport: 'football' };
+const OTHER = { code: 'claunts-league', name: 'Goofballers', sport: 'football' };
+const HOOPS = { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' };
 
 // Only the locals the switcher reads; everything else the partial touches is
 // optional and guarded by `typeof`.
@@ -30,7 +30,8 @@ function render(locals = {}) {
         leagues: [OTHER, BALL, HOOPS],
         viewerLeagues: [],
         viewerCanSwitch: false,
-        viewerLeagueCode: ''
+        viewerLeagueCode: '',
+        sportIcon: 'fa-football'
     }, locals), { filename: SRC });
 }
 
@@ -106,5 +107,112 @@ describe('what it offers', () => {
             viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: 'gone'
         }));
         expect(opts.some(o => o.selected)).toBe(false);
+    });
+});
+
+// The switcher on the phone tab bar (#319 part 2).
+//
+// Adaptive on purpose: with exactly two leagues the tab IS the other league
+// and one tap goes there, because a sheet to choose between two things one of
+// which you are already in is a wasted tap. Three or more and it becomes a
+// neutral switch icon that opens the sheet.
+describe('the phone tab bar', () => {
+    const tab = (html) => {
+        const m = /<button[^>]*class="tab-item tab-league"[\s\S]*?<\/button>/.exec(html);
+        if (!m) return null;
+        return {
+            html: m[0],
+            goesTo: (/data-league-go="([^"]+)"/.exec(m[0]) || [])[1] || null,
+            opensSheet: m[0].includes('data-league-sheet'),
+            icon: (/fa-solid (fa-[\w-]+)/.exec(m[0]) || [])[1],
+            label: (/<span>([^<]*)<\/span>/.exec(m[0]) || [])[1],
+            ariaLabel: (/aria-label="([^"]*)"/.exec(m[0]) || [])[1]
+        };
+    };
+    const sheetRows = (html) => {
+        const panel = /<div class="league-sheet"[\s\S]*?<\/div>\s*<\/div>/.exec(html);
+        if (!panel) return null;
+        return [...panel[0].matchAll(/data-league-go="([^"]+)"/g)].map(m => m[1]);
+    };
+
+    test('one league gets no switcher tab at all', () => {
+        expect(tab(render({ viewerLeagues: [BALL], viewerCanSwitch: false }))).toBeNull();
+    });
+
+    test('TWO leagues: the tab is the other one, and goes straight there', () => {
+        const t = tab(render({
+            viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
+        }));
+        expect(t.goesTo).toBe(HOOPS.code);
+        expect(t.opensSheet).toBe(false);
+        expect(t.icon).toBe('fa-basketball');
+        expect(t.label).toBe('Hoops');
+        expect(t.ariaLabel).toBe('Switch to Hardwood Heroes');
+    });
+
+    test('and it flips when you are on the other side', () => {
+        const t = tab(render({
+            viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: HOOPS.code
+        }));
+        expect(t.goesTo).toBe(BALL.code);
+        expect(t.icon).toBe('fa-football');
+        expect(t.label).toBe('Football');
+    });
+
+    test('it never points at the league you are already in', () => {
+        for (const here of [BALL.code, HOOPS.code]) {
+            const t = tab(render({ viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: here }));
+            expect(t.goesTo).not.toBe(here);
+        }
+    });
+
+    test('THREE leagues: a neutral icon that opens the sheet', () => {
+        const t = tab(render({
+            viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
+        }));
+        expect(t.opensSheet).toBe(true);
+        expect(t.goesTo).toBeNull();
+        expect(t.icon).toBe('fa-repeat');
+        expect(t.label).toBe('League');
+    });
+
+    test('the sheet lists every league, by NAME, with the current one marked', () => {
+        const html = render({
+            viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
+        });
+        expect(sheetRows(html)).toEqual([OTHER.code, BALL.code, HOOPS.code]);
+        expect(html).toContain('Hardwood Heroes');           // names, not sports
+        expect(html).toMatch(/league-sheet-row on[\s\S]*?graham-league/);
+    });
+
+    test('and there is no sheet when two leagues need no chooser', () => {
+        // Dead markup on every page otherwise, and a dialog nothing opens.
+        expect(sheetRows(render({ viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true }))).toBeNull();
+    });
+
+    test('the sheet starts hidden', () => {
+        const html = render({ viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true });
+        expect(html).toMatch(/class="league-sheet"[^>]*hidden/);
+    });
+});
+
+describe('the ball follows the sport', () => {
+    // The Scores tab was a football on a basketball league.
+    const scoresIcon = (html) => {
+        const m = /<a class="tab-item" href="\/scoreboard">[\s\S]*?<i class="fa-solid (fa-[\w-]+)/.exec(html);
+        return m && m[1];
+    };
+
+    test('football on a football league', () => {
+        expect(scoresIcon(render({ sportIcon: 'fa-football' }))).toBe('fa-football');
+    });
+
+    test('basketball on a basketball league', () => {
+        expect(scoresIcon(render({ sportIcon: 'fa-basketball' }))).toBe('fa-basketball');
+    });
+
+    test('and a football when the page renders without the middleware', () => {
+        // The invite and error pages include this partial with no locals.
+        expect(scoresIcon(render({ sportIcon: undefined }))).toBe('fa-football');
     });
 });

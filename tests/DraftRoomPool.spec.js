@@ -53,8 +53,16 @@ function room({ sport = 'football', pool = [], draft = null } = {}) {
     win.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     win.io = () => ({ on() {}, emit() {}, close() {} });
     try { win.localStorage.setItem('leagueCode', 'graham-league'); } catch (e) { /* not needed to render */ }
+    // The league the server rendered the room for. draftRoom.js asks
+    // ccLeague for it now rather than re-deriving it from the Auth0 flag,
+    // which is binary and so could never name a basketball league (#319
+    // part 2) — league.js is loaded for real here so the page resolves it
+    // exactly as it does in the browser.
+    win.CC_LEAGUE = { code: 'graham-league', canSwitch: false, isAdmin: false, all: [
+        { code: 'graham-league', name: 'Graham League', sport: 'football' }
+    ] };
 
-    for (const file of ['draft-pool-view.js', 'draftRoom.js']) {
+    for (const file of ['league.js', 'draft-pool-view.js', 'draftRoom.js']) {
         const src = fs.readFileSync(path.join(__dirname, '..', 'public', file), 'utf8');
         vm.runInContext(src, dom.getInternalVMContext(), { filename: file });
     }

@@ -697,6 +697,57 @@ body > * { position: relative; z-index: 1; }
 .tab-item[aria-expanded="true"] span:not(.tab-avatar) {
     font-weight: 500;
 }
+/* The league sheet, opened by the switcher tab when someone holds three or
+   more leagues. Two leagues never reach it — that tab goes straight there. */
+.league-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 60;              /* over the tab bar, which sits at 55 */
+}
+.league-sheet[hidden] { display: none; }
+.league-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .5);
+}
+.league-sheet-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* Sits ON the bar, not under it: the bar stays visible so it is obvious
+       what opened this. */
+    bottom: calc(var(--cc-tab-h) + env(safe-area-inset-bottom, 0px));
+    background: var(--cc-surface-2);
+    border-top: 1px solid var(--cc-border);
+    border-radius: var(--cc-r-lg, 14px) var(--cc-r-lg, 14px) 0 0;
+    padding: 8px 8px 12px;
+}
+.league-sheet-grip {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--cc-border);
+    margin: 4px auto 8px;
+}
+.league-sheet-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 10px;
+    border: 0;
+    background: none;
+    border-radius: var(--cc-r-md, 9px);
+    font: inherit;
+    font-size: 15px;
+    text-align: left;
+}
+.league-sheet-row i { color: var(--cc-muted-bright); width: 18px; text-align: center; padding: 0; }
+.league-sheet-row.on { background: rgba(var(--cc-accent-rgb), .13); }
+.league-sheet-row.on i.chk { color: var(--cc-accent); margin-left: auto; }
+/* The sheet scrolls the page behind it otherwise. */
+body.league-sheet-open { overflow: hidden; }
+
 .tab-item.active::before,
 .tab-item[aria-expanded="true"]::before {
     content: "";
