@@ -436,6 +436,23 @@ describe('viewerContext — what the navbar is built from', () => {
         expect(hoops.name).not.toBe(HOOPS);
     });
 
+    test('the seed keeps canSwitch and isAdmin SEPARATE', async () => {
+        // public/league.js gates the sticky-localStorage override on isAdmin:
+        // leagueCode outlives a logout and is validated against the full
+        // league list, not the viewer's franchises. A two-franchise member
+        // may switch, but must not inherit the last Admin's pick.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes' });
+        const u = await manager(BALL, { second: HOOPS });
+
+        const two = (await selection.viewerContext(reqFor(u._id), CATALOG)).seed;
+        expect(two.canSwitch).toBe(true);
+        expect(two.isAdmin).toBe(false);
+
+        const admin = (await selection.viewerContext(adminReq(), CATALOG)).seed;
+        expect(admin.canSwitch).toBe(true);
+        expect(admin.isAdmin).toBe(true);
+    });
+
     test('ctx.all names everything ctx.leagues offers', async () => {
         // ccLeague.name(), the page labels and the <title> are all resolved
         // from this list. A league in the switcher but not in it renders as
@@ -579,12 +596,11 @@ describe('the server wiring', () => {
         expect(src).toContain('res.locals.leagues = viewer.all;');
     });
 
-    test('canSwitch and isAdmin are seeded SEPARATELY', () => {
-        // Reusing canSwitch for the client's sticky-localStorage override
-        // would hand a two-franchise member the Admin-only behaviour that
-        // public/league.js documents against.
-        const seed = /leagueSeed = safeJson\(\{([\s\S]*?)\}\)/.exec(src)[1];
-        expect(seed).toMatch(/canSwitch/);
-        expect(seed).toMatch(/isAdmin/);
+    test('the seed is viewerContext’s, not rebuilt from the catalog', () => {
+        // It used to be assembled inline here. `all` must be the VIEWER'S
+        // leagues: the catalog would publish the name and code of every
+        // league in the database into window.CC_LEAGUE on every page.
+        expect(src).toContain('safeJson(viewer.seed)');
+        expect(src).not.toMatch(/leagueSeed = safeJson\(\{/);
     });
 });

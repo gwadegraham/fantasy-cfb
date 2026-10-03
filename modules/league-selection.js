@@ -212,10 +212,23 @@ async function viewerContext(req, leagues) {
     const all = (leagues || []).concat(offered.filter(l => !listed.has(l.code)));
 
     const admin = isAdmin(req);
+
+    // What the client is told, as one object, because the middleware
+    // assembling it inline could swap `offered` for the full catalog with
+    // every test green — and that swap publishes the name and code of every
+    // league in the database into window.CC_LEAGUE on every page.
+    //
+    // `all` here is the VIEWER'S leagues. You learn a league exists by being
+    // in it, or by being an Admin, whose own list is the whole catalog
+    // anyway. A league can therefore be built and seeded for weeks before
+    // the people in the other league find out it is there.
+    const seed = { code, canSwitch: admin || offered.length > 1, isAdmin: admin, all: offered };
+
     return {
         code,
         leagues: offered,
         all,
+        seed,
         // Derived from the list actually rendered, so a flag saying "you may
         // switch" and a list with nothing to switch to cannot disagree.
         canSwitch: admin || offered.length > 1,

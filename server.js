@@ -185,13 +185,12 @@ app.use(async (req, res, next) => {
     // against the full league list rather than the viewer's franchises, so a
     // two-franchise member inheriting it on a shared browser would be shown a
     // league they do not play in.
-    const canSwitch = res.locals.viewerCanSwitch;
-    res.locals.leagueSeed = safeJson({
-        code: res.locals.viewerLeagueCode,
-        canSwitch,
-        isAdmin: admin,
-        all: res.locals.leagues
-    });
+    //
+    // Built by viewerContext, not here: `all` must be the VIEWER'S leagues
+    // rather than the catalog, and assembling it inline is how that stays one
+    // careless edit from publishing every league in the database into
+    // window.CC_LEAGUE on every page.
+    res.locals.leagueSeed = safeJson(viewer.seed);
     next();
 });
 
