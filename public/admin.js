@@ -152,7 +152,11 @@ function setUserOptions(data) {
 }
 
 async function getUsers() {
-    var leagueCode = ccLeagueCode();
+    // The league being ADMINISTERED, not merely viewed: every write on this
+    // page is gated by canManageLeague, which answers a League Manager on
+    // their Auth0 league. Routing by the viewed league 403s the whole page
+    // for a League Manager who switched.
+    var leagueCode = ccManageLeagueCode();
 
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
@@ -212,18 +216,11 @@ async function getUserProfile() {
             try { window.localStorage.setItem("leagueCode", window.ccLeague.code()); } catch (e) {}
         }
 
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') { 
-            const leagueCode = window.localStorage.getItem("leagueCode");
-
-            if (leagueCode && (leagueCode != "undefined")) {
-                const currentSelectedLeague = window.sessionStorage.getItem("league");
-                if (currentSelectedLeague) {
-                    var _lSel = document.querySelector('[league-select]');
-                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
-                }
-            }
-        }     
-
+        // (An Admin-only block that set the <select> from localStorage used
+        // to sit here, in four identical copies. ccLeague.syncSwitcher()
+        // does it from the SERVER's answer now, which is the validated one —
+        // these could point the dropdown at a stale stored league while the
+        // page rendered a different one.)
         getUsers();
     });
 }
@@ -2018,7 +2015,7 @@ var draftMembers = [];    // member objects in current display order
 var currentDraft = null;  // loaded Draft doc for the selected league+season
 
 function getDraftLeagueCode() {
-    return ccLeagueCode();
+    return ccManageLeagueCode();
 }
 
 function getSelectedDraftSeason() {

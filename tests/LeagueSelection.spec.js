@@ -453,6 +453,37 @@ describe('viewerContext — what the navbar is built from', () => {
         expect(admin.isAdmin).toBe(true);
     });
 
+    test('the seed ALWAYS names the league being viewed', async () => {
+        // seed.all is what ccLeague.name() resolves against. A seed whose
+        // list does not contain `code` blanks the league out of the page
+        // header, the <title> and every [league-label] — while the data
+        // still loads correctly, which is what makes it hard to notice.
+        //
+        // Two live routes in: an account with no franchise row, and — the
+        // realistic one on a free tier — a caught franchise-read failure.
+        // That catch exists so a failed read does not log anyone out of
+        // their own league; it was still taking the league's NAME away.
+        const ghost = reqFor(new mongoose.Types.ObjectId(), { league: 'gg' });
+        const ctx = await selection.viewerContext(ghost, CATALOG);
+        expect(ctx.leagues).toEqual([]);                       // nothing to switch between
+        expect(ctx.seed.all.map(l => l.code)).toContain(ctx.code);
+        expect(ctx.seed.all.find(l => l.code === ctx.code).name).toBe('The Polar Depressed');
+    });
+
+    test('and names it even when the catalog is empty too', async () => {
+        const ghost = reqFor(new mongoose.Types.ObjectId(), { league: 'gg' });
+        const ctx = await selection.viewerContext(ghost, []);
+        expect(ctx.seed.all).toEqual([{ code: BALL, name: BALL }]);
+    });
+
+    test('a failed franchise read keeps the league NAME, not just the code', async () => {
+        const boom = jest.spyOn(Franchise, 'find').mockImplementationOnce(() => { throw new Error('mongo down'); });
+        const ctx = await selection.viewerContext(reqFor(new mongoose.Types.ObjectId(), { league: 'gg' }), CATALOG);
+        expect(ctx.code).toBe(BALL);
+        expect(ctx.seed.all.map(l => l.code)).toContain(BALL);
+        boom.mockRestore();
+    });
+
     test('ctx.all names everything ctx.leagues offers', async () => {
         // ccLeague.name(), the page labels and the <title> are all resolved
         // from this list. A league in the switcher but not in it renders as

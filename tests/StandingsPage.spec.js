@@ -120,9 +120,15 @@ describe('league + week bootstrap', () => {
     // new chrome and the old league's data, and could not reach a basketball
     // league at all (#319 part 2). The server's answer decides now.
     it('loads the league the SERVER rendered the page for', async () => {
-        const page = await loadStandingsPage({ leagueSeed: { code: 'graham-league', all: [] } });
-        expect(page.urls().some(u => u.includes('/users/league/graham-league'))).toBe(true);
-        expect(window.localStorage.getItem('leagueCode')).toBe('graham-league');
+        // The seed must DISAGREE with the Auth0 flag, or the old derivation
+        // returns the same answer and this cannot fail. The fixture's flag is
+        // 'gg' (graham-league), so the seed names the other one.
+        const page = await loadStandingsPage({
+            leagueSeed: { code: 'claunts-league', isAdmin: false, all: [{ code: 'claunts-league', name: 'Goofballers' }] }
+        });
+        expect(page.urls().some(u => u.includes('/users/league/claunts-league'))).toBe(true);
+        expect(page.urls().some(u => u.includes('/users/league/graham-league'))).toBe(false);
+        expect(window.localStorage.getItem('leagueCode')).toBe('claunts-league');
     });
 
     it('follows it to the OTHER league', async () => {
@@ -150,10 +156,19 @@ describe('league + week bootstrap', () => {
 
     it('a stale stored code cannot drag the page to another league', async () => {
         // localStorage is a mirror of the choice now, not a source of it.
+        //
+        // The seed needs isAdmin AND a populated `all`, because that is what
+        // the override it guards against actually required — league.js reads
+        // SEED.isAdmin, never userState.roles, and validated the stored code
+        // against all(). Without both, the first version of this test was
+        // green with the override still in place.
         const page = await loadStandingsPage({
             userState: { user_metadata: { roles: ['Manager', 'Admin'], metadata: { league: 'gg', userId: 'a' } } },
             localStorage: { leagueCode: 'claunts-league', week: 'Week 1', weekCode: 'week-1' },
-            leagueSeed: { code: 'graham-league', all: [] }
+            leagueSeed: {
+                code: 'graham-league', isAdmin: true, canSwitch: true,
+                all: [{ code: 'graham-league', name: 'Graham League' }, { code: 'claunts-league', name: 'Claunts League' }]
+            }
         });
         expect(page.urls().some(u => u.includes('/users/league/graham-league'))).toBe(true);
         expect(page.urls().some(u => u.includes('/users/league/claunts-league'))).toBe(false);

@@ -1,5 +1,5 @@
 const express = require('express');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, seasonForLeague } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
@@ -600,7 +600,12 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
-    const year = req.query.season || activeSeason('football');
+    // The league's OWN season, not football's. This route is now reachable
+    // for a basketball league — #319 part 2 is what made a member able to
+    // ask for one — and it was answering with the football season's roster.
+    // seasonForLeague falls back to the league's sport, so the two football
+    // leagues are unaffected.
+    const year = req.query.season || seasonForLeague(leagueCode) || activeSeason('football');
     try {
         console.log("finding all users in league", leagueCode, "season", year);
         const users = await franchiseRepo.byLeagueAndSeason(leagueCode, year, { fields: [

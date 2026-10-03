@@ -231,7 +231,26 @@ async function viewerContext(req, leagues) {
     // in it, or by being an Admin, whose own list is the whole catalog
     // anyway. A league can therefore be built and seeded for weeks before
     // the people in the other league find out it is there.
-    const seed = { code, canSwitch: admin || offered.length > 1, isAdmin: admin, all: withSport };
+    // seed.all must ALWAYS name `code`. It is what ccLeague.name() resolves
+    // against, so a seed whose list does not contain the league being viewed
+    // blanks the league out of the page header, the <title> and every
+    // [league-label] — while the data loads correctly, which is what makes it
+    // hard to spot.
+    //
+    // `offered` is empty for an account the franchise collection does not
+    // know yet, and — the realistic one on a free-tier cluster — whenever the
+    // franchise read fails and is caught above. That catch exists so a failed
+    // read does not log anyone out of their own league; without this it still
+    // took the league's NAME away everywhere.
+    const named = withSport.some(l => l.code === code)
+        ? withSport
+        : withSport.concat((leagues || []).filter(l => l.code === code));
+    const seed = {
+        code,
+        canSwitch: admin || offered.length > 1,
+        isAdmin: admin,
+        all: named.length ? named : [{ code: code, name: code }]
+    };
 
     return {
         code,

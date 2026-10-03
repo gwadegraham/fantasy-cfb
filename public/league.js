@@ -152,7 +152,17 @@
         });
     }
 
+    // The league the COOKIE holds — which is not always code(). On /rules and
+    // /draft-board the <body data-league-code> pin wins for code(), carrying
+    // an Admin's ?league=; the switcher's own check mark is rendered from the
+    // cookie. Comparing a tap against code() on a pinned page therefore made
+    // the row you wanted a dead no-op and the row marked current the only one
+    // that did anything.
+    function selected() { return SEED.code || ''; }
+
     function sheet() { return document.querySelector('[data-league-sheet-panel]'); }
+
+    var returnFocus = null;
 
     function openSheet(open) {
         var el = sheet();
@@ -161,22 +171,64 @@
         document.body.classList.toggle('league-sheet-open', open);
         var btn = document.querySelector('[data-league-sheet]');
         if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+        // aria-modal="true" tells a screen reader the rest of the page is
+        // gone, so focus has to actually go in and come back out again.
+        if (open) {
+            returnFocus = document.activeElement;
+            var first = el.querySelector('.league-sheet-row');
+            if (first && first.focus) first.focus();
+        } else if (returnFocus && returnFocus.focus) {
+            returnFocus.focus();
+            returnFocus = null;
+        }
+    }
+
+    function sheetOpen() {
+        var el = sheet();
+        return !!el && !el.hidden;
+    }
+
+    // A refusal means it is not one of your leagues. The <select> path puts
+    // the dropdown back for exactly this reason — "looking like nothing
+    // happened" is the failure it names — and the tab path had no equivalent,
+    // so a 403 was indistinguishable from a dead button.
+    function refused() {
+        openSheet(false);
+        if (window.ccToast && window.ccToast.error) {
+            window.ccToast.error('That is not one of your leagues');
+        }
     }
 
     // One delegated listener on the document, so the tab and every sheet row
     // are covered whether or not the bar was rendered by the time this ran.
+    // REPLACES any handler a previous evaluation left behind, rather than
+    // bailing out when one exists. Each evaluation closes over its own SEED,
+    // so a stale listener answers `selected()` with a stale league — and two
+    // live listeners toggle the sheet open and straight back shut. A boolean
+    // guard would have kept the FIRST, which is the wrong one.
     function bindTab() {
-        if (document.documentElement.dataset.ccLeagueTab) return;
-        document.documentElement.dataset.ccLeagueTab = '1';
+        if (window.__ccLeagueTabClick) {
+            document.removeEventListener('click', window.__ccLeagueTabClick);
+        }
+        if (window.__ccLeagueTabKey) {
+            document.removeEventListener('keydown', window.__ccLeagueTabKey);
+        }
 
-        document.addEventListener('click', function (e) {
+        window.__ccLeagueTabClick = function (e) {
             var go = e.target.closest && e.target.closest('[data-league-go]');
             if (go) {
                 e.preventDefault();
                 var wanted = go.getAttribute('data-league-go');
-                if (wanted === code()) { openSheet(false); return; }
-                var row = go.querySelector('span');
-                selectLeague(wanted, row ? row.textContent : null);
+                // selected(), NOT code() — see the note on selected().
+                if (wanted === selected()) { openSheet(false); return; }
+                // The league's NAME, which is what every other writer of
+                // sessionStorage.league stores. On the two-league tab the
+                // only <span> is the SPORT ("Hoops"), so that is read from
+                // the seed instead of scraped out of the button.
+                selectLeague(wanted, name(wanted) || null).then(function (ok) {
+                    if (!ok) refused();
+                });
                 return;
             }
             if (e.target.closest && e.target.closest('[data-league-sheet]')) {
@@ -187,11 +239,19 @@
             if (e.target.closest && e.target.closest('[data-league-sheet-close]')) {
                 openSheet(false);
             }
-        });
+        };
 
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') openSheet(false);
-        });
+        window.__ccLeagueTabKey = function (e) {
+            // Only when it is actually open, so this does not fight the
+            // navbar's own Escape handler for the More panel.
+            if (e.key === 'Escape' && sheetOpen()) {
+                e.stopPropagation();
+                openSheet(false);
+            }
+        };
+
+        document.addEventListener('click', window.__ccLeagueTabClick);
+        document.addEventListener('keydown', window.__ccLeagueTabKey);
     }
 
     // The league a PAGE should load data for. Exported as a bare global as
@@ -216,7 +276,26 @@
         return '';
     };
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague };
+    // The league a page may ADMINISTER, which is not the league it is
+    // VIEWING. An Admin may manage any league, so for them the two coincide;
+    // a League Manager may manage only their own, so theirs stays on the
+    // Auth0 flag — exactly what canManageLeague answers on the server.
+    //
+    // Without this the Admin page routed its WRITES by the cookie, so a
+    // League Manager who held two franchises could switch, and then every
+    // write on that page came back 403 with only a generic toast: roster
+    // blank, create-user refused, rename refused.
+    window.ccManageLeagueCode = function () {
+        if (SEED.isAdmin) return window.ccLeagueCode();
+        try {
+            var meta = window.userState && window.userState.user_metadata
+                && window.userState.user_metadata.metadata;
+            if (meta && meta.league) return meta.league === 'gg' ? 'graham-league' : 'claunts-league';
+        } catch (e) { /* fall through */ }
+        return window.ccLeagueCode();
+    };
+
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague, selected: selected, openSheet: openSheet };
 
     document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); bindTab(); });
 })();

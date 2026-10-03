@@ -702,7 +702,12 @@ body > * { position: relative; z-index: 1; }
 .league-sheet {
     position: fixed;
     inset: 0;
-    z-index: 60;              /* over the tab bar, which sits at 55 */
+    /* Over EVERYTHING, not just the tab bar at 55. At 60 the draft room's
+       mute button (1000, and deliberately moved into this area at phone
+       width) and the recap popup (1100) painted over the panel and took its
+       taps. Switching league is a navigation the viewer just asked for, so it
+       wins. */
+    z-index: 1200;
 }
 .league-sheet[hidden] { display: none; }
 .league-sheet-backdrop {

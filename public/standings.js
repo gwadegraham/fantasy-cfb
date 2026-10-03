@@ -117,18 +117,11 @@ window.onload = async function() {
             try { window.localStorage.setItem("leagueCode", window.ccLeague.code()); } catch (e) {}
         }
 
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-            const leagueCode = window.localStorage.getItem("leagueCode");
-
-            if (leagueCode && (leagueCode != "undefined")) {
-                const currentSelectedLeague = window.sessionStorage.getItem("league");
-                if (currentSelectedLeague) {
-                    var _lSel = document.querySelector('[league-select]');
-                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
-                }
-            }
-        }
-
+        // (An Admin-only block that set the <select> from localStorage used
+        // to sit here, in four identical copies. ccLeague.syncSwitcher()
+        // does it from the SERVER's answer now, which is the validated one —
+        // these could point the dropdown at a stale stored league while the
+        // page rendered a different one.)
         getUsers();
     });
   };

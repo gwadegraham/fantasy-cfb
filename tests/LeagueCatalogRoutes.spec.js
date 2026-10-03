@@ -123,3 +123,48 @@ describe('GET /audit-log — scope', () => {
         expect(res.body.scope === undefined || res.body.scope.includes(HOOPS)).toBe(true);
     });
 });
+
+describe('a basketball league gets its OWN season', () => {
+    // #319 part 2 is what made a member able to ask for a basketball league
+    // at all. GET /users/league/:code answered `activeSeason('football')`
+    // for every league, so the first thing they could reach returned the
+    // football season's roster for a basketball team.
+    //
+    // The REAL season cache is primed here rather than seasonForLeague being
+    // spied on: routes/users.js destructures it at require time, so a spy on
+    // the module object never reaches the route — the first version of this
+    // test mocked it and simply never got called.
+    const franchiseRepo = require('../modules/franchise-repo');
+    const seasons = require('../modules/active-season');
+    const SportSeason = require('../models/sportSeason');
+
+    beforeEach(async () => {
+        await SportSeason.create([
+            { sport: 'football', season: 2026, status: 'in-season' },
+            { sport: 'basketball', season: 2027, status: 'preseason' }
+        ]);
+        await seasons.prime();
+    });
+    afterEach(() => seasons._reset());
+
+    const seasonAskedFor = async (league, qs = '') => {
+        const spy = jest.spyOn(franchiseRepo, 'byLeagueAndSeason').mockResolvedValue([]);
+        await request(asAdmin(require('../routes/users'), '/users')).get(`/users/league/${league}${qs}`);
+        const season = spy.mock.calls.length ? spy.mock.calls[0][1] : null;
+        spy.mockRestore();
+        return season;
+    };
+
+    test('the basketball season for a basketball league', async () => {
+        expect(seasons.sportForLeague(HOOPS)).toBe('basketball');   // the fixture is real
+        expect(await seasonAskedFor(HOOPS)).toBe(2027);
+    });
+
+    test('and the football season is untouched for a football league', async () => {
+        expect(await seasonAskedFor(BALL)).toBe(2026);
+    });
+
+    test('an explicit ?season still wins', async () => {
+        expect(String(await seasonAskedFor(HOOPS, '?season=2025'))).toBe('2025');
+    });
+});
