@@ -12,28 +12,28 @@
 
     // The league this page is about, in priority order:
     //   1. a league the server rendered the page FOR (/rules and /draft-board
-    //      pin it on <body>) — that can carry an Admin's ?league=, which storage
-    //      knows nothing about,
-    //   2. an Admin's sticky selection from the navbar switcher,
-    //   3. the viewer's own league.
-    // Step 2 is Admin-gated on purpose: leagueCode outlives a logout, so a
-    // member signing in on a shared browser must not inherit the last Admin's
-    // pick. It mirrors how the pages already choose which league's data to load.
+    //      pin it on <body>) — that can carry an Admin's ?league=, which the
+    //      cookie knows nothing about,
+    //   2. the server's answer.
     //
-    // isAdmin, NOT canSwitch. #319 gave canSwitch to any member holding two
-    // franchises, and reusing it here would have handed that member the
-    // override this comment exists to prevent — worse, `all()` is the full
-    // league list, not their franchises, so the inherited league could be one
-    // they do not play in. The server's answer is already validated; theirs
-    // is not.
+    // THERE IS NO LONGER A STEP 3. An Admin's sticky localStorage.leagueCode
+    // used to sit between them, because before #319 the server could not know
+    // which league an Admin had picked — the switcher wrote localStorage and
+    // reloaded, and the server rendered the Admin's own league regardless. The
+    // sticky read was how the client patched that up.
+    //
+    // The server knows now: SEED.code is the validated cookie. Keeping the
+    // override would leave the two able to disagree in the OTHER direction,
+    // which is the same bug with the arrow reversed. Seen in dev: a cookie of
+    // hoops-league rendered the basketball accent and favicon server-side
+    // while every league label on the page still read "The Polar Depressed",
+    // because a stale localStorage from before the cookie existed won.
+    //
+    // localStorage.leagueCode is still WRITTEN, because several pages fetch
+    // by it directly — it is a mirror of the choice now, not a source of it.
     function code() {
         var pinned = document.body && document.body.getAttribute('data-league-code');
         if (pinned) return pinned;
-        if (SEED.isAdmin) {
-            var stored = null;
-            try { stored = window.localStorage.getItem('leagueCode'); } catch (e) { stored = null; }
-            if (stored && all().some(function (l) { return l.code === stored; })) return stored;
-        }
         return SEED.code || '';
     }
 

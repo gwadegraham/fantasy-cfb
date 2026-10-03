@@ -156,7 +156,7 @@ app.use(async (req, res, next) => {
     // ever throws, an Admin should keep the switcher they have always had
     // rather than silently losing it.
     const admin = devRole.effectiveRoles(req).includes('Admin');
-    let viewer = { code: '', leagues: [], canSwitch: admin, isAdmin: admin };
+    let viewer = leagueSelection.emptyContext({ admin });
     if (isHtmlGet) {
         try {
             viewer = await leagueSelection.viewerContext(req, res.locals.leagues);
@@ -190,7 +190,12 @@ app.use(async (req, res, next) => {
     // rather than the catalog, and assembling it inline is how that stays one
     // careless edit from publishing every league in the database into
     // window.CC_LEAGUE on every page.
-    res.locals.leagueSeed = safeJson(viewer.seed);
+    // `|| {}` is belt and braces, not the fix: this line runs on EVERY
+    // request, and when the fallback above was missing a `seed` key
+    // safeJson(undefined) threw — inside an async middleware, which takes the
+    // whole process down rather than failing one request. It crashed on every
+    // static asset.
+    res.locals.leagueSeed = safeJson(viewer.seed || {});
     next();
 });
 

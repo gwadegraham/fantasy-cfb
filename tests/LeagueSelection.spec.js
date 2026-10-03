@@ -491,6 +491,66 @@ describe('viewerContext — what the navbar is built from', () => {
     });
 });
 
+describe('emptyContext — the fallback for a request that never asks', () => {
+    // WHY THIS BLOCK EXISTS.
+    //
+    // The locals middleware runs on EVERY request and then unconditionally
+    // serialises `viewer.seed`. The fallback it used for non-HTML requests
+    // was written by hand and did not have a `seed` key — so
+    // safeJson(undefined) threw, inside an async middleware, which takes the
+    // whole Node process down rather than failing one request. express.static
+    // is mounted below that middleware, so it crashed on every stylesheet and
+    // every image: the dev server died on the first page load.
+    //
+    // Nothing caught it, because no test mounts server.js. What IS testable
+    // is the invariant that broke: the fallback must have the same shape as
+    // the real thing.
+    const CATALOG = [{ code: BALL, name: 'The Polar Depressed' }];
+
+    const shape = (o) => {
+        const out = {};
+        for (const k of Object.keys(o).sort()) {
+            out[k] = o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) ? shape(o[k]) : typeof o[k];
+        }
+        return out;
+    };
+
+    test('it has exactly the keys viewerContext returns', async () => {
+        const u = await manager(BALL);
+        const real = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(Object.keys(selection.emptyContext()).sort()).toEqual(Object.keys(real).sort());
+    });
+
+    test('and the same shape, all the way into the seed', async () => {
+        // Key-by-key, not just the top level: `seed` is the one the caller
+        // serialises, and it was the one missing.
+        const u = await manager(BALL);
+        const real = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(shape(selection.emptyContext())).toEqual(shape(real));
+    });
+
+    test('the seed is serialisable, which is all the caller does with it', async () => {
+        for (const admin of [false, true]) {
+            const ctx = selection.emptyContext({ admin });
+            expect(() => JSON.stringify(ctx.seed)).not.toThrow();
+            expect(JSON.parse(JSON.stringify(ctx.seed))).toEqual({
+                code: '', canSwitch: admin, isAdmin: admin, all: []
+            });
+        }
+    });
+
+    test('an Admin keeps the switcher even with no context', async () => {
+        expect(selection.emptyContext({ admin: true }).canSwitch).toBe(true);
+        expect(selection.emptyContext({ admin: true }).seed.canSwitch).toBe(true);
+        expect(selection.emptyContext().canSwitch).toBe(false);
+    });
+
+    test('called with no argument at all', async () => {
+        // The middleware passes an options object; a later caller may not.
+        expect(() => selection.emptyContext()).not.toThrow();
+    });
+});
+
 describe('POST /league/select', () => {
     // Mounts the REAL handler. The first version of this re-implemented the
     // route body inline, so deleting the whole maySelect guard from server.js
@@ -600,7 +660,12 @@ describe('the server wiring', () => {
         // It used to be assembled inline here. `all` must be the VIEWER'S
         // leagues: the catalog would publish the name and code of every
         // league in the database into window.CC_LEAGUE on every page.
-        expect(src).toContain('safeJson(viewer.seed)');
+        expect(src).toMatch(/safeJson\(viewer\.seed/);
+        // And the fallback comes from the module, not a hand-written literal
+        // — writing it by hand is how it lost its `seed` key and crashed the
+        // process on every static asset.
+        expect(src).toContain('leagueSelection.emptyContext(');
+        expect(src).not.toMatch(/let viewer = \{/);
         expect(src).not.toMatch(/leagueSeed = safeJson\(\{/);
     });
 });

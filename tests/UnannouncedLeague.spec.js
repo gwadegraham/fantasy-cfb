@@ -137,7 +137,7 @@ describe('the page actually serialises the scoped seed', () => {
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
 
     test('server.js hands window.CC_LEAGUE viewerContext’s seed, nothing rebuilt', () => {
-        expect(src).toContain('safeJson(viewer.seed)');
+        expect(src).toMatch(/safeJson\(viewer\.seed/);
         // The specific regression: re-assembling the seed from the catalog.
         expect(src).not.toMatch(/leagueSeed = safeJson\(\{/);
         expect(src).not.toMatch(/all: res\.locals\.leagues/);

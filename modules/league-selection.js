@@ -236,6 +236,25 @@ async function viewerContext(req, leagues) {
     };
 }
 
+// The same shape as viewerContext, for a request that never asks for it —
+// a non-HTML GET, or one where the lookup threw.
+//
+// It exists because the caller is a middleware that runs on EVERY request and
+// then unconditionally serialises `seed`. Leaving a field off this object
+// crashed the dyno on every static asset: safeJson(undefined) throws, and an
+// async middleware that throws takes the process with it. Keyed off the same
+// builder as the real thing so the two cannot drift again.
+function emptyContext({ admin = false } = {}) {
+    return {
+        code: '',
+        leagues: [],
+        all: [],
+        canSwitch: admin,          // an Admin keeps the switcher they have always had
+        isAdmin: admin,
+        seed: { code: '', canSwitch: admin, isAdmin: admin, all: [] }
+    };
+}
+
 // POST /league/select, as a handler rather than inline in server.js — the
 // first version of this was re-implemented inside its own spec, so deleting
 // the authorization check from the real route left every test green.
@@ -255,6 +274,6 @@ async function selectHandler(req, res) {
 
 module.exports = {
     COOKIE, COOKIE_OPTS,
-    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext,
+    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext, emptyContext,
     leaguesOf, accountIdFor
 };
