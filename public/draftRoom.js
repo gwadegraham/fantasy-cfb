@@ -104,11 +104,13 @@ function setUserContext() {
     myUserId = meta.metadata && meta.metadata.userId;
     isCommish = roles.includes('Admin') || roles.includes('League Manager');
 
-    leagueCode = (meta.metadata && meta.metadata.league == 'gg') ? 'graham-league' : 'claunts-league';
-    if (roles.at(-1) == 'Admin') {
-        var stored = window.localStorage.getItem('leagueCode');
-        if (stored && stored != 'undefined') leagueCode = stored;
-    }
+    // The league being VIEWED (#319 part 2). It was the Auth0 flag, with the
+    // stored choice honoured only for an Admin — so a member who switched
+    // walked into the wrong league's draft room, and a basketball draft was
+    // unreachable for them, the flag having only two values. The draft's own
+    // AUTHORITY still comes from the socket token, which is minted from the
+    // flag and is not affected by this.
+    leagueCode = ccLeagueCode();
     leagueVersion = (leagueCode == 'claunts-league') ? 'V1' : 'V2';
 }
 

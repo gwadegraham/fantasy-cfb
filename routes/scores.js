@@ -11,7 +11,8 @@ const Draft = require('../models/draft');
 const League = require('../models/league');
 const { computeAdminStatus, pendingRegularWeek } = require('../modules/admin-status');
 const { computeSeasonReadiness } = require('../modules/season-readiness');
-const { engagementForSeason, LEAGUES } = require('../modules/scoring-defaults');
+const { engagementForSeason } = require('../modules/scoring-defaults');
+const leagueCatalog = require('../modules/league-catalog');
 const { canManageLeague } = require('../modules/league-access');
 const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards, pinnedH2HIds } = require('../modules/h2h');
 
@@ -140,7 +141,11 @@ router.get('/readiness/:season', async (req, res) => {
         const nameByCode = {};
         names.forEach(n => { nameByCode[n.code] = n.name; });
 
-        const visible = LEAGUES.filter(l => canManageLeague(req, l.code));
+        // From the catalog: enumerating the hardcoded array silently omitted
+        // a database-only league from the readiness panel, so an Admin read
+        // "ready to score" as a complete answer when a whole league was not
+        // in it.
+        const visible = (await leagueCatalog.catalog(req)).filter(l => canManageLeague(req, l.code));
         const leagues = visible.map(l => {
             const cfg = configs.find(c => c.league === l.code);
             return {

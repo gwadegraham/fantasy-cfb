@@ -57,13 +57,16 @@ describe('which league a page is about', () => {
         expect(cc.code()).toBe('graham-league');
     });
 
-    it('follows an Admin’s sticky selection', () => {
-        const cc = load({ seed: admin, stored: 'claunts-league' });
+    it('follows the SERVER for an Admin, not their sticky selection', () => {
+        // Was "follows an Admin's sticky selection". #319 gave the server a
+        // validated answer (the cookie), so the client no longer patches it
+        // up on read — see the block at the bottom of this file.
+        const cc = load({ seed: { code: 'claunts-league', canSwitch: true, isAdmin: true, all: ALL } });
         expect(cc.code()).toBe('claunts-league');
         expect(cc.name()).toBe('Claunts League');
     });
 
-    it('falls back to the Admin’s own league when the stored code is unknown', () => {
+    it('an unknown stored code cannot drag the page anywhere', () => {
         const cc = load({ seed: admin, stored: 'retired-league' });
         expect(cc.code()).toBe('graham-league');
     });
@@ -116,8 +119,13 @@ describe('the navbar switcher', () => {
         expect(sel().value).toBe('graham-league');
     });
 
-    it('follows an Admin’s sticky selection', () => {
-        const cc = load({ seed: admin, html: SWITCHER, stored: 'claunts-league' });
+    it('points at the league the SERVER rendered', () => {
+        // Was driven by the sticky selection; the cookie is the source now,
+        // and the dropdown must agree with the page it sits on.
+        const cc = load({
+            seed: { code: 'claunts-league', canSwitch: true, isAdmin: true, all: ALL },
+            html: SWITCHER, stored: 'graham-league'
+        });
         cc.paint();
         expect(sel().value).toBe('claunts-league');
     });
@@ -288,29 +296,44 @@ describe('switching league', () => {
     });
 });
 
-describe('the sticky league override is ADMIN-only, not switcher-only', () => {
-    // leagueCode outlives a logout and is validated against the FULL league
-    // list rather than the viewer's franchises. #319 gave canSwitch to any
-    // member holding two franchises; if the override had kept reading that
-    // flag, such a member signing in on a shared browser would inherit the
-    // last Admin's pick — possibly a league they do not play in at all.
-    it('an Admin still follows their sticky selection', () => {
-        expect(load({ seed: admin, stored: 'claunts-league' }).code()).toBe('claunts-league');
-    });
-
-    it('a two-franchise member does NOT, even though they can switch', () => {
-        const cc = load({ seed: twoFranchise, stored: 'claunts-league' });
+describe('the SERVER decides which league a page is about', () => {
+    // There used to be a third source: an Admin's sticky localStorage.
+    // Before #319 the server could not know which league an Admin had
+    // picked — the switcher wrote localStorage and reloaded — so the client
+    // patched it up on read. Now the server's answer IS the validated
+    // cookie, and keeping the override left the two able to disagree in the
+    // other direction.
+    //
+    // Caught in dev: a hoops-league cookie rendered the basketball accent and
+    // favicon server-side while every league label still read "The Polar
+    // Depressed", because a stale localStorage won.
+    it('ignores a stale sticky selection, even for an Admin', () => {
+        const cc = load({ seed: admin, stored: 'claunts-league' });
         expect(cc.code()).toBe('graham-league');
+        expect(cc.name()).toBe('CFB Sickos');
     });
 
-    it('and a plain member does not either', () => {
+    it('and for a two-franchise member', () => {
+        expect(load({ seed: twoFranchise, stored: 'claunts-league' }).code()).toBe('graham-league');
+    });
+
+    it('and for a plain member on a shared browser', () => {
+        // The original reason the override was Admin-gated at all.
         expect(load({ seed: member, stored: 'claunts-league' }).code()).toBe('graham-league');
     });
 
-    it('a server-pinned page still beats all of it', () => {
+    it('a server-PINNED page still wins — that is the one thing storage cannot carry', () => {
         // /rules and /draft-board pin the league on <body>, carrying an
-        // Admin's ?league= that storage knows nothing about.
+        // Admin's ?league=, which the cookie knows nothing about.
         const cc = load({ seed: admin, stored: 'graham-league', pinned: 'claunts-league' });
         expect(cc.code()).toBe('claunts-league');
+    });
+
+    it('the switcher still WRITES localStorage, because pages fetch by it', () => {
+        // It is a mirror of the choice now, not a source of it — removing the
+        // write would break every page that reads leagueCode directly.
+        const src = require('fs').readFileSync(
+            require('path').join(__dirname, '..', 'public', 'league.js'), 'utf8');
+        expect(src).toContain("localStorage.setItem('leagueCode'");
     });
 });

@@ -86,7 +86,9 @@
 
     <div id="scoreboard-content">
         <div class="football-loader">
-            <i class="fa-solid fa-football football-icon"></i>
+            <%# Spins while the slate loads; a football on a hoops league was
+                the most visible place the old hardcoded icon showed up. %>
+            <i class="fa-solid <%= (typeof sportIcon !== 'undefined' && sportIcon) || 'fa-football' %> football-icon"></i>
             <div class="loading-text">Loading the slate…</div>
         </div>
     </div>

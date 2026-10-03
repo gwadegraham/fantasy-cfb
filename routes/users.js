@@ -1,5 +1,5 @@
 const express = require('express');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, seasonForLeague } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
@@ -20,7 +20,7 @@ const { canManageLeague } = require('../modules/league-access');
 const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
-const { LEAGUES } = require('../modules/scoring-defaults');
+const leagueCatalog = require('../modules/league-catalog');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 const { findPoll } = require('../modules/scoring-detectors');
 const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
@@ -600,7 +600,12 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
 //Getting All By League & Current Year
 router.get('/league/:leagueCodeReq', async (req, res) => {
     var leagueCode = req.params.leagueCodeReq;
-    const year = req.query.season || activeSeason('football');
+    // The league's OWN season, not football's. This route is now reachable
+    // for a basketball league — #319 part 2 is what made a member able to
+    // ask for one — and it was answering with the football season's roster.
+    // seasonForLeague falls back to the league's sport, so the two football
+    // leagues are unaffected.
+    const year = req.query.season || seasonForLeague(leagueCode) || activeSeason('football');
     try {
         console.log("finding all users in league", leagueCode, "season", year);
         const users = await franchiseRepo.byLeagueAndSeason(leagueCode, year, { fields: [
@@ -670,7 +675,13 @@ router.post('/', async (req, res) => {
     // undefined, so a client that forgot to send one produced a member belonging
     // to neither league. They then vanish from every league-scoped list while
     // still existing, which is a confusing way to find out.
-    if (!LEAGUES.some(l => l.code === req.body.league)) {
+    // Against the CATALOG, not the hardcoded scoring-defaults array. This is
+    // the ONLY path that creates a franchise, so while it read that array a
+    // league existing solely in the database could be created, named and
+    // selected — and then never have a single member. Which makes the member
+    // league switcher unreachable for exactly the leagues it was built for.
+    const known = await leagueCatalog.codes(req);
+    if (!known.includes(req.body.league)) {
         return res.status(400).json({ message: 'A valid league is required.' });
     }
 

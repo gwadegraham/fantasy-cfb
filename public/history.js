@@ -27,13 +27,7 @@
         catch (e) { return window.localStorage.getItem('userId') || null; }
     }
     function resolveLeague() {
-        var code = window.localStorage.getItem('leagueCode');
-        if (code && code !== 'undefined') return code;
-        try {
-            code = userState.user_metadata.metadata.league === 'gg' ? 'graham-league' : 'claunts-league';
-            window.localStorage.setItem('leagueCode', code);
-            return code;
-        } catch (e) { return 'claunts-league'; }
+        return ccLeagueCode();
     }
 
     function championsHtml(seasons) {

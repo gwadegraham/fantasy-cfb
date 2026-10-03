@@ -17,6 +17,7 @@ const mongoose = require('mongoose');
 const { useMongo } = require('./helpers/mongo');
 const User = require('../models/user');
 const Franchise = require('../models/franchise');
+const League = require('../models/league');
 const migration = require('../modules/account-migration');
 const selection = require('../modules/league-selection');
 const { canManageLeague } = require('../modules/league-access');
@@ -103,6 +104,16 @@ describe('an Admin sees every league', () => {
         expect(await selection.canSwitch(adminReq())).toBe(true);
     });
 
+    test('and can select a league that exists only in the DATABASE', async () => {
+        // #319 part 2. An Admin's viewable set used to come straight from the
+        // hardcoded scoring-defaults array, which holds the two football
+        // leagues and will never hold a basketball one — so the Admin could
+        // not look at the league this whole epic is for.
+        await require('../models/league').create({ code: HOOPS, name: 'Hoops', sport: 'basketball' });
+        expect(await selection.maySelect(adminReq(), HOOPS)).toBe(true);
+        expect(await selection.selectedLeague(adminReq({ cookie: HOOPS }))).toBe(HOOPS);
+    });
+
     test('but still cannot select a league that does not exist', async () => {
         // Validated against the known list, not accepted outright: the value
         // goes on to scope real queries.
@@ -110,6 +121,16 @@ describe('an Admin sees every league', () => {
             expect(await selection.maySelect(adminReq(), junk)).toBe(false);
         }
         expect(await selection.selectedLeague(adminReq({ cookie: 'nonsense' }))).toBe(BALL);
+    });
+
+    test('a member keeps their franchise even if the catalog has not caught up', async () => {
+        // A member's answer is their franchise, not a list lookup: a league
+        // missing from the collection must not strand someone outside their
+        // own team.
+        const u = await User.create({ firstName: 'Di', lastName: 'M', league: 'gg', seasons: [{ season: 2026 }] });
+        await migration.migrate({ apply: true });
+        await Franchise.updateOne({ accountId: u._id }, { $set: { league: 'ghost-league' } });
+        expect(await selection.selectedLeague(reqFor(u._id, { league: 'gg' }))).toBe('ghost-league');
     });
 
     test('a NON-admin gets none of that', async () => {
@@ -315,6 +336,252 @@ describe('MANAGING is not SELECTING', () => {
     });
 });
 
+describe('viewerContext — what the navbar is built from', () => {
+    // Extracted from the locals middleware because the inline version could
+    // be reverted with the whole suite green: the only coverage was of the
+    // template that consumes these values, not of anything that produces them.
+    const CATALOG = [
+        { code: OTHER, name: 'Goofballers', sport: 'football' },
+        { code: BALL, name: 'The Polar Depressed', sport: 'football' },
+        { code: HOOPS, name: 'Hardwood Heroes', sport: 'basketball' }
+    ];
+
+    test('a member is offered ONLY their own leagues', async () => {
+        // The bug: built from the catalog unfiltered, a member's switcher
+        // offers leagues the server then refuses with a 403.
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(ctx.leagues.map(l => l.code)).toEqual([BALL, HOOPS]);
+        expect(ctx.canSwitch).toBe(true);
+        expect(ctx.isAdmin).toBe(false);
+    });
+
+    test('with one league there is nothing to switch to', async () => {
+        const u = await manager(BALL);
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(ctx.leagues.map(l => l.code)).toEqual([BALL]);
+        expect(ctx.canSwitch).toBe(false);
+    });
+
+    test('an Admin is offered the whole catalog', async () => {
+        // The League docs must exist, not just the array: an Admin's viewable
+        // set is read from the catalog, so seeding only the list being
+        // rendered would make the two disagree — which is precisely the thing
+        // the agreement test below forbids.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', sport: 'basketball' });
+        const ctx = await selection.viewerContext(adminReq(), CATALOG);
+        expect(ctx.leagues.map(l => l.code)).toEqual([OTHER, BALL, HOOPS]);
+        expect(ctx.canSwitch).toBe(true);
+        expect(ctx.isAdmin).toBe(true);
+    });
+
+    // THE INVARIANT. Offering a league the POST would refuse is a control
+    // that snaps back and does nothing — the exact failure the Admin
+    // switcher had before part 1's QA pass.
+    test('everything offered is something maySelect ACCEPTS', async () => {
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', sport: 'basketball' });
+        const u = await manager(BALL, { second: HOOPS });
+        for (const req of [reqFor(u._id), adminReq()]) {
+            const ctx = await selection.viewerContext(req, CATALOG);
+            expect(ctx.leagues.length).toBeGreaterThan(0);
+            for (const lg of ctx.leagues) {
+                expect(await selection.maySelect(req, lg.code)).toBe(true);
+            }
+        }
+    });
+
+    test('and an Admin may switch even with a one-league catalog', async () => {
+        // canSwitch is a ROLE for an Admin, not a count.
+        //
+        // Archiving the other league is what makes this test mean anything:
+        // passing a one-entry list is not enough, because the viewable set is
+        // read from the catalog and the "franchise the catalog missed" branch
+        // below puts the second league straight back, giving a list of two.
+        // The first version did exactly that and stayed green with the role
+        // term deleted.
+        await League.create({ code: OTHER, name: 'Goofballers', status: 'archived' });
+        const ctx = await selection.viewerContext(adminReq(), [CATALOG[1]]);
+        expect(ctx.leagues.map(l => l.code)).toEqual([BALL]);     // genuinely one
+        expect(ctx.canSwitch).toBe(true);
+    });
+
+    test('the names come from the catalog, so a rename lands here too', async () => {
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(ctx.leagues.map(l => l.name)).toEqual(['The Polar Depressed', 'Hardwood Heroes']);
+    });
+
+    test('a franchise the catalog does not list is still offered', async () => {
+        // A member's franchise is the fact. A league missing from the
+        // collection must not hide their own team from them — it shows up
+        // named by its code, which is ugly and visible rather than absent.
+        const u = await manager(BALL, { second: 'ghost-league' });
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(ctx.leagues.map(l => l.code)).toEqual([BALL, 'ghost-league']);
+        expect(ctx.leagues[1].name).toBe('ghost-league');
+        expect(ctx.canSwitch).toBe(true);
+    });
+
+    test('an ARCHIVED league you still play in keeps its name', async () => {
+        // Archiving removes a league from the catalog, but the people in it
+        // keep their franchise. Without resolving against the archived-
+        // inclusive list their own switcher shows them a raw slug for the
+        // league they are actively playing in — and the page labels, which
+        // read the same list, go blank.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', status: 'archived' });
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), [CATALOG[1]]);
+        const hoops = ctx.leagues.find(l => l.code === HOOPS);
+        expect(hoops.name).toBe('Hardwood Heroes');
+        expect(hoops.name).not.toBe(HOOPS);
+    });
+
+    test('the seed keeps canSwitch and isAdmin SEPARATE', async () => {
+        // public/league.js gates the sticky-localStorage override on isAdmin:
+        // leagueCode outlives a logout and is validated against the full
+        // league list, not the viewer's franchises. A two-franchise member
+        // may switch, but must not inherit the last Admin's pick.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes' });
+        const u = await manager(BALL, { second: HOOPS });
+
+        const two = (await selection.viewerContext(reqFor(u._id), CATALOG)).seed;
+        expect(two.canSwitch).toBe(true);
+        expect(two.isAdmin).toBe(false);
+
+        const admin = (await selection.viewerContext(adminReq(), CATALOG)).seed;
+        expect(admin.canSwitch).toBe(true);
+        expect(admin.isAdmin).toBe(true);
+    });
+
+    test('the seed ALWAYS names the league being viewed', async () => {
+        // seed.all is what ccLeague.name() resolves against. A seed whose
+        // list does not contain `code` blanks the league out of the page
+        // header, the <title> and every [league-label] — while the data
+        // still loads correctly, which is what makes it hard to notice.
+        //
+        // Two live routes in: an account with no franchise row, and — the
+        // realistic one on a free tier — a caught franchise-read failure.
+        // That catch exists so a failed read does not log anyone out of
+        // their own league; it was still taking the league's NAME away.
+        const ghost = reqFor(new mongoose.Types.ObjectId(), { league: 'gg' });
+        const ctx = await selection.viewerContext(ghost, CATALOG);
+        expect(ctx.leagues).toEqual([]);                       // nothing to switch between
+        expect(ctx.seed.all.map(l => l.code)).toContain(ctx.code);
+        expect(ctx.seed.all.find(l => l.code === ctx.code).name).toBe('The Polar Depressed');
+    });
+
+    test('and names it even when the catalog is empty too', async () => {
+        const ghost = reqFor(new mongoose.Types.ObjectId(), { league: 'gg' });
+        const ctx = await selection.viewerContext(ghost, []);
+        expect(ctx.seed.all).toEqual([{ code: BALL, name: BALL }]);
+    });
+
+    test('a failed franchise read keeps the league NAME, not just the code', async () => {
+        const boom = jest.spyOn(Franchise, 'find').mockImplementationOnce(() => { throw new Error('mongo down'); });
+        const ctx = await selection.viewerContext(reqFor(new mongoose.Types.ObjectId(), { league: 'gg' }), CATALOG);
+        expect(ctx.code).toBe(BALL);
+        expect(ctx.seed.all.map(l => l.code)).toContain(BALL);
+        boom.mockRestore();
+    });
+
+    test('ctx.all names everything ctx.leagues offers', async () => {
+        // ccLeague.name(), the page labels and the <title> are all resolved
+        // from this list. A league in the switcher but not in it renders as
+        // a blank label on every page of that league.
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', status: 'archived' });
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), [CATALOG[1]]);
+
+        const named = new Set(ctx.all.map(l => l.code));
+        for (const lg of ctx.leagues) expect(named.has(lg.code)).toBe(true);
+        expect(ctx.all.find(l => l.code === HOOPS).name).toBe('Hardwood Heroes');
+    });
+
+    test('and ctx.all does not duplicate a league already in the catalog', async () => {
+        const u = await manager(BALL, { second: HOOPS });
+        const ctx = await selection.viewerContext(reqFor(u._id), CATALOG);
+        const codes = ctx.all.map(l => l.code);
+        expect(new Set(codes).size).toBe(codes.length);
+    });
+
+    test('the offered list always contains the league being VIEWED', async () => {
+        // Otherwise the switcher renders with nothing selected and the page
+        // claims a league the dropdown does not list.
+        const u = await manager(BALL, { second: HOOPS });
+        for (const cookie of [undefined, HOOPS, BALL, 'nonsense']) {
+            const ctx = await selection.viewerContext(reqFor(u._id, { cookie }), CATALOG);
+            expect(ctx.leagues.map(l => l.code)).toContain(ctx.code);
+        }
+    });
+
+    test('an empty catalog does not throw', async () => {
+        const u = await manager(BALL);
+        const ctx = await selection.viewerContext(reqFor(u._id), []);
+        expect(ctx.leagues.map(l => l.code)).toEqual([BALL]);
+        expect(await selection.viewerContext(reqFor(u._id), undefined)).toBeTruthy();
+    });
+});
+
+describe('emptyContext — the fallback for a request that never asks', () => {
+    // WHY THIS BLOCK EXISTS.
+    //
+    // The locals middleware runs on EVERY request and then unconditionally
+    // serialises `viewer.seed`. The fallback it used for non-HTML requests
+    // was written by hand and did not have a `seed` key — so
+    // safeJson(undefined) threw, inside an async middleware, which takes the
+    // whole Node process down rather than failing one request. express.static
+    // is mounted below that middleware, so it crashed on every stylesheet and
+    // every image: the dev server died on the first page load.
+    //
+    // Nothing caught it, because no test mounts server.js. What IS testable
+    // is the invariant that broke: the fallback must have the same shape as
+    // the real thing.
+    const CATALOG = [{ code: BALL, name: 'The Polar Depressed' }];
+
+    const shape = (o) => {
+        const out = {};
+        for (const k of Object.keys(o).sort()) {
+            out[k] = o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) ? shape(o[k]) : typeof o[k];
+        }
+        return out;
+    };
+
+    test('it has exactly the keys viewerContext returns', async () => {
+        const u = await manager(BALL);
+        const real = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(Object.keys(selection.emptyContext()).sort()).toEqual(Object.keys(real).sort());
+    });
+
+    test('and the same shape, all the way into the seed', async () => {
+        // Key-by-key, not just the top level: `seed` is the one the caller
+        // serialises, and it was the one missing.
+        const u = await manager(BALL);
+        const real = await selection.viewerContext(reqFor(u._id), CATALOG);
+        expect(shape(selection.emptyContext())).toEqual(shape(real));
+    });
+
+    test('the seed is serialisable, which is all the caller does with it', async () => {
+        for (const admin of [false, true]) {
+            const ctx = selection.emptyContext({ admin });
+            expect(() => JSON.stringify(ctx.seed)).not.toThrow();
+            expect(JSON.parse(JSON.stringify(ctx.seed))).toEqual({
+                code: '', canSwitch: admin, isAdmin: admin, all: []
+            });
+        }
+    });
+
+    test('an Admin keeps the switcher even with no context', async () => {
+        expect(selection.emptyContext({ admin: true }).canSwitch).toBe(true);
+        expect(selection.emptyContext({ admin: true }).seed.canSwitch).toBe(true);
+        expect(selection.emptyContext().canSwitch).toBe(false);
+    });
+
+    test('called with no argument at all', async () => {
+        // The middleware passes an options object; a later caller may not.
+        expect(() => selection.emptyContext()).not.toThrow();
+    });
+});
+
 describe('POST /league/select', () => {
     // Mounts the REAL handler. The first version of this re-implemented the
     // route body inline, so deleting the whole maySelect guard from server.js
@@ -395,11 +662,13 @@ describe('the server wiring', () => {
         // express.static is mounted BELOW this middleware, so an ungated
         // lookup is a Franchise.find per asset — ~20 per page view on a free
         // Atlas tier. identity-guard.js skips assets for the same reason.
-        const call = /text\/html[\s\S]{0,900}?selectedLeague\(req\)/.exec(src);
-        expect(call).not.toBeNull();
-        // ...and specifically inside a guard, not merely after one.
+        // The guard is hoisted into `isHtmlGet` and shared with the catalog
+        // read, so match the variable rather than the literal expression —
+        // and check the definition really is the HTML-GET test, so renaming
+        // the flag to something that is always true cannot pass.
+        expect(src).toMatch(/const isHtmlGet = req\.method === 'GET'[\s\S]{0,80}text\/html/);
         const near = src.slice(Math.max(0, src.indexOf('selectedLeague(req)') - 400), src.indexOf('selectedLeague(req)'));
-        expect(near).toMatch(/req\.method === 'GET'/);
+        expect(near).toMatch(/if \(isHtmlGet\)/);
     });
 
     test('and cannot take the dyno down when it throws', () => {
@@ -409,12 +678,25 @@ describe('the server wiring', () => {
         expect(near).toContain('try {');
     });
 
-    test('canSwitch and isAdmin are seeded SEPARATELY', () => {
-        // Reusing canSwitch for the client's sticky-localStorage override
-        // would hand a two-franchise member the Admin-only behaviour that
-        // public/league.js documents against.
-        const seed = /leagueSeed = safeJson\(\{([\s\S]*?)\}\)/.exec(src)[1];
-        expect(seed).toMatch(/canSwitch/);
-        expect(seed).toMatch(/isAdmin/);
+    test('the navbar locals come from viewerContext, not inline logic', () => {
+        // Inline, the filter could be dropped and canSwitch hardcoded with
+        // every test still green.
+        expect(src).toContain('leagueSelection.viewerContext(req');
+        expect(src).not.toMatch(/viewerLeagues = res\.locals\.leagues;/);
+        // The seed list too: assembling it inline is how it escaped coverage.
+        expect(src).toContain('res.locals.leagues = viewer.all;');
+    });
+
+    test('the seed is viewerContext’s, not rebuilt from the catalog', () => {
+        // It used to be assembled inline here. `all` must be the VIEWER'S
+        // leagues: the catalog would publish the name and code of every
+        // league in the database into window.CC_LEAGUE on every page.
+        expect(src).toMatch(/safeJson\(viewer\.seed/);
+        // And the fallback comes from the module, not a hand-written literal
+        // — writing it by hand is how it lost its `seed` key and crashed the
+        // process on every static asset.
+        expect(src).toContain('leagueSelection.emptyContext(');
+        expect(src).not.toMatch(/let viewer = \{/);
+        expect(src).not.toMatch(/leagueSeed = safeJson\(\{/);
     });
 });
