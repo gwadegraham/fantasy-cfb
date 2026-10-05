@@ -5,9 +5,21 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'player-season-leaders',
-            'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-scores',
+            'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
+    });
+
+    // Basketball scoring is nightly and costs no API calls — the games,
+    // rosters and ratings are all local by the time it runs. 23:30 Central
+    // is after daily-scores at 23:00 and after the late West Coast tips
+    // have gone final.
+    it('scores basketball nightly, after football and after the late tips', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-scores');
+        expect(spec.rule).toEqual({ hour: 23, minute: 30 });
+        const daily = JOB_SCHEDULES.find(s => s.job === 'daily-scores');
+        expect(spec.rule.hour * 60 + spec.rule.minute)
+            .toBeGreaterThan(daily.rule.hour * 60 + daily.rule.minute);
     });
 
     // The reminder lead is six hours, so the sweep only has to be fine-grained

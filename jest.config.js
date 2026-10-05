@@ -66,6 +66,31 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // The nightly basketball job. 95 branches rather than 100: one
+        // fallback is unreachable today — resolveCurrentWeek returns a skip
+        // OR a week, so the "no current week" message is defence against a
+        // shape change — and deleting a real safeguard to buy a round
+        // number is the wrong trade. Everything else here is covered,
+        // including a league that throws and a league that throws a STRING.
+        "./modules/hoops-scores-job.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        // Scoring a week of basketball onto rosters (#316). It WRITES, and
+        // the write is an upsert of one week — a second pass over the same
+        // week is normal (a late final, a corrected roster), and appending
+        // instead of replacing would double every score in the season
+        // total. The refusals matter as much as the scoring: a live game
+        // has points too, and a score banked at time of play is never
+        // revisited.
+        "./modules/hoops-scoring-pass.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // What a team was RANKED when a game was played (#316). Every
         // quadrant is a rank threshold and every score is banked at time of
         // play, so a rank that is wrong on the night is wrong forever. The
