@@ -6,67 +6,111 @@
 //
 // ---- WHAT THE DATA ACTUALLY CARRIES ----
 //
-// Measured against the 5,286 ingested 2027 games before any of this was
-// written, because the issue's postseason design assumed otherwise:
+// MEASURED, not assumed. The 2027 ingest has no postseason yet, so the shape
+// below comes from pulling March 2026 out of CBBD directly. The first
+// version of this file was written against the issue's description and was
+// wrong about nearly all of it.
 //
-//   seasonType   'regular' on EVERY game
-//   gameType     'STD' and 'TRNMNT' only
-//   tournament   empty on every game
-//   homeSeed     absent on every game
-//   schedule     2026-11-02 .. 2027-03-07
+// NCAA tournament        seasonType 'postseason', tournament 'NCAA'
+//                        gameNotes "NCAA Men's Basketball Championship -
+//                        <Region> - 1st Round", and seeds on EVERY game
 //
-// So there is no postseason in the data yet, and there will not be until
-// March. Two consequences the code has to respect:
+// NIT, College Basketball Crown
+//                        ALSO seasonType 'postseason', tournament 'NIT' or
+//                        blank, with round names that look identical:
+//                        "NIT - 1st Round", "NIT - Championship"
 //
-// 1. `gameType: 'TRNMNT'` IS NOT THE NCAA TOURNAMENT. It marks early-season
-//    multi-team events — the Hall of Fame Tip-Off, the Veterans Classic,
-//    Showdown in St. Pete — all 107 of them played in November and December.
-//    Treating TRNMNT as "tournament" would score a November exhibition as an
-//    NCAA appearance, which is worth 7 points and is banked permanently.
+// Conference tournaments seasonType 'REGULAR', conferenceGame true, named
+//                        only in gameNotes: "OVC Championship - Final",
+//                        "MVC Tournament - Final", "Sun Belt Championship -
+//                        2nd Round". 31 finals, one per conference.
 //
-// 2. Round detection REFUSES TO GUESS. It recognises explicit markers only
-//    and otherwise answers null, so an unrecognised shape scores as a
-//    regular-season game rather than silently inventing a tournament run.
-//    When March data lands, the markers get confirmed against it — the
-//    alternative is writing detectors against a shape nobody has seen.
+// gameType               'TRNMNT' on all of the above AND on 107 November
+//                        exhibitions. It distinguishes nothing.
+//
+// Three traps follow, and the first two would each have mis-scored a real
+// game by a wide margin:
+//
+// 1. THE ROUND NAMES ARE NOT THE OBVIOUS ONES. CBBD says "1st Round",
+//    "2nd Round", "Sweet 16", "Elite 8". Written against "First Round" and
+//    "Sweet Sixteen", every single NCAA game fell through to the regular
+//    path and scored as a quadrant win.
+//
+// 2. THE NIT USES THE SAME ROUND NAMES. So the round label can never be the
+//    thing that identifies the NCAA tournament; `tournament === 'NCAA'` is.
+//    An NIT first-round game would otherwise bank 7 permanent points.
+//
+// 3. A CONFERENCE TOURNAMENT IS NOT A POSTSEASON GAME to CBBD. Reading
+//    seasonType alone, every conference tournament game — including the 31
+//    finals — is a regular-season game.
+//
+// FIRST FOUR is a real round and was missing from the model entirely. It is
+// its own rung, worth 0 by default: a First Four winner goes on to play a
+// 1st Round game and would otherwise be paid twice for entering.
 
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 
-// NCAA tournament rounds, in order, with the ladder's own names. The VALUES
-// are configured per league; this is only the vocabulary.
-const NCAA_ROUNDS = ['r64', 'r32', 's16', 'e8', 'f4', 'title'];
+// NCAA tournament rounds, in order. The VALUES are configured per league;
+// this is only the vocabulary.
+const NCAA_ROUNDS = ['ff', 'r64', 'r32', 's16', 'e8', 'f4', 'title'];
 
-// Explicit markers only. Matched case-insensitively against `tournament`,
-// because a feed that spells things four ways has already been met once.
-const NCAA_MARKERS = /\b(ncaa|march\s*madness)\b/i;
-const CONF_TOURNEY_MARKERS = /\bconference\s+tournament\b|\bconf\s*tourn/i;
+// The last " - " segment of gameNotes, which is where CBBD puts the round.
+function roundLabel(game) {
+    const parts = String((game && game.gameNotes) || '').split(' - ');
+    return parts.length > 1 ? parts[parts.length - 1].trim() : '';
+}
+
+// Spellings accepted per round. The left column is what CBBD actually sent
+// in March 2026; the alternatives are cheap insurance against a feed that
+// has already been seen to shout and abbreviate inconsistently elsewhere.
+const ROUND_PATTERNS = [
+    ['title', /^(national\s+championship|championship\s+game|title\s+game)$/i],
+    ['f4', /^(final\s*four|f4)$/i],
+    ['e8', /^(elite\s*(8|eight))$/i],
+    ['s16', /^(sweet\s*(16|sixteen))$/i],
+    ['ff', /^(first\s*four)$/i],
+    ['r32', /^(2nd\s+round|second\s+round|round\s+of\s+32|r32)$/i],
+    ['r64', /^(1st\s+round|first\s+round|round\s+of\s+64|r64)$/i]
+];
 
 // Which round of the NCAA tournament a game is, or null.
 //
-// Null is the common answer and the safe one: it routes the game down the
-// regular-season path, where it scores on its quadrant like any other.
+// `tournament === 'NCAA'` is the ONLY thing that makes a game an NCAA game.
+// The NIT and the College Basketball Crown are also postseason, also carry
+// gameType 'TRNMNT', and also call their rounds "1st Round" and
+// "Championship" — so a round label can identify the round but never the
+// tournament.
 function ncaaRoundFor(game) {
     if (!game) return null;
-    const label = `${game.tournament || ''} ${game.gameNotes || ''}`;
-    // The marker is required. gameType alone is not enough — see the note on
-    // TRNMNT above.
-    if (!NCAA_MARKERS.test(label)) return null;
-
-    if (/\bnational\s+championship\b|\btitle\s+game\b/i.test(label)) return 'title';
-    if (/\bfinal\s*four\b|\bf4\b/i.test(label)) return 'f4';
-    if (/\belite\s*(8|eight)\b|\be8\b/i.test(label)) return 'e8';
-    if (/\bsweet\s*(16|sixteen)\b|\bs16\b/i.test(label)) return 's16';
-    if (/\bsecond\s+round\b|\br32\b/i.test(label)) return 'r32';
-    if (/\bfirst\s+round\b|\br64\b/i.test(label)) return 'r64';
+    if (String(game.tournament || '').trim().toUpperCase() !== 'NCAA') return null;
+    const label = roundLabel(game);
+    for (const [round, re] of ROUND_PATTERNS) {
+        if (re.test(label)) return round;
+    }
+    // An NCAA game whose round we cannot name scores as a regular game
+    // rather than being guessed at.
     return null;
 }
 
 // A conference tournament FINAL — the title game, not every game in it.
+//
+// These are seasonType 'regular' to CBBD, so the discriminator is the notes
+// plus conferenceGame. Postseason is excluded explicitly, or "NIT -
+// Championship" would read as somebody's conference title.
 function isConfTournamentFinal(game) {
     if (!game) return false;
-    const label = `${game.tournament || ''} ${game.gameNotes || ''}`;
-    if (!CONF_TOURNEY_MARKERS.test(label)) return false;
-    return /\bchampionship\b|\bfinal\b|\btitle\b/i.test(label);
+    // A NAMED tournament is somebody else's: 'NCAA', 'NIT'. Conference
+    // tournaments carry no tournament code at all — every one of the 31
+    // finals pulled from March 2026 had the field empty, with the name only
+    // in gameNotes. This replaced a `seasonType !== 'postseason'` guard,
+    // which was both redundant (an NIT game is not a conferenceGame) and a
+    // liability: it would MISS a conference final the day CBBD decides to
+    // file one as postseason.
+    if (String(game.tournament || '').trim()) return false;
+    if (!game.conferenceGame) return false;
+    const notes = String(game.gameNotes || '');
+    if (!/\b(championship|tournament)\b/i.test(notes)) return false;
+    return /^(final|championship)$/i.test(roundLabel(game));
 }
 
 // How many seeds better the winner was than the loser, or 0.
@@ -144,6 +188,9 @@ const HOOPS_CONDITIONS = {
 
     // The NCAA ladder. Each is an APPEARANCE — reaching the round, win or
     // lose — and they stack, so a champion banks every rung beneath them.
+    // The play-in. Worth 0 by default: its winner goes on to play a 1st
+    // Round game and would otherwise be paid twice for entering.
+    ncaaFirstFour: (ctx) => ctx.played && ctx.round === 'ff',
     ncaaR64: (ctx) => ctx.played && ctx.round === 'r64',
     ncaaR32: (ctx) => ctx.played && ctx.round === 'r32',
     ncaaS16: (ctx) => ctx.played && ctx.round === 's16',

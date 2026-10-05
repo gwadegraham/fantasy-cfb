@@ -21,6 +21,26 @@ const game = (o = {}) => Object.assign({
 
 const score = (teamId, g, ranks, c) => evaluate('hoops', teamId, g, ranks || {}, c || cfg());
 
+// Games in the shape CBBD ACTUALLY SENDS, pulled from March 2026 before any
+// of this was written. The first version of these tests invented labels like
+// "NCAA Tournament First Round"; the real feed says "1st Round", and the
+// round lives in gameNotes while `tournament` is the bare code 'NCAA'.
+const NCAA = "NCAA Men's Basketball Championship";
+const ncaa = (round, o = {}) => game(Object.assign({
+    neutralSite: true, seasonType: 'postseason', tournament: 'NCAA', gameType: 'TRNMNT',
+    gameNotes: `${NCAA} - East Region - ${round}`
+}, o));
+// The NIT and the Crown are postseason too, with the SAME round names.
+const nit = (round, o = {}) => game(Object.assign({
+    neutralSite: true, seasonType: 'postseason', tournament: 'NIT', gameType: 'TRNMNT',
+    gameNotes: `NIT - ${round}`
+}, o));
+// A conference tournament is seasonType 'regular' to CBBD.
+const confTourney = (name, round, o = {}) => game(Object.assign({
+    neutralSite: true, seasonType: 'regular', conferenceGame: true, gameType: 'TRNMNT',
+    gameNotes: `${name} - ${round}`
+}, o));
+
 describe('a regular-season win is worth its quadrant', () => {
     test.each([
         ['#10 at home', 1, { 2: 10 }, {}, 5],
@@ -83,64 +103,127 @@ describe('the bad-loss penalty', () => {
 });
 
 describe('the NCAA ladder', () => {
-    const round = (tournament, o = {}) => game(Object.assign({ neutralSite: true, tournament }, o));
+    const RUNGS = [['1st Round', 7], ['2nd Round', 9], ['Sweet 16', 12], ['Elite 8', 16], ['Final Four', 21]];
 
-    const RUNGS = [
-        ['NCAA Tournament First Round', 7],
-        ['NCAA Tournament Second Round', 9],
-        ['NCAA Tournament Sweet Sixteen', 12],
-        ['NCAA Tournament Elite Eight', 16],
-        ['NCAA Tournament Final Four', 21]
-    ];
-
-    test.each(RUNGS)('%s is worth %i, win or lose', (tournament, points) => {
+    test.each(RUNGS)('%s is worth %i, win or lose', (round, points) => {
         // Every rung but the last is an APPEARANCE: reaching the round is
         // what is paid for, because reaching it is what the draft pick did.
-        expect(score(1, round(tournament))).toBe(points);
-        expect(score(1, round(tournament, { homePoints: 60, awayPoints: 70 }))).toBe(points);
+        expect(score(1, ncaa(round))).toBe(points);
+        expect(score(1, ncaa(round, { homePoints: 60, awayPoints: 70 }))).toBe(points);
     });
 
     test('the title game pays for reaching it, and again for winning it', () => {
-        const t = 'NCAA Tournament National Championship';
-        expect(score(1, round(t, { homePoints: 60, awayPoints: 70 }))).toBe(26);
-        expect(score(1, round(t))).toBe(26 + 35);
+        expect(score(1, ncaa('National Championship', { homePoints: 60, awayPoints: 70 }))).toBe(26);
+        expect(score(1, ncaa('National Championship'))).toBe(26 + 35);
     });
 
     test('a champion banks exactly 126 across the six games', () => {
-        // The number the model was designed around, for 12-team rosters.
-        const run = [...RUNGS.map(([t]) => t), 'NCAA Tournament National Championship'];
-        const total = run.reduce((sum, t) => sum + score(1, round(t)), 0);
-        expect(total).toBe(126);
+        const run = [...RUNGS.map(([r]) => r), 'National Championship'];
+        expect(run.reduce((sum, r) => sum + score(1, ncaa(r)), 0)).toBe(126);
     });
 
     test('and a one-and-done banks 7', () => {
-        expect(score(1, round('NCAA Tournament First Round', { homePoints: 60, awayPoints: 70 }))).toBe(7);
+        expect(score(1, ncaa('1st Round', { homePoints: 60, awayPoints: 70 }))).toBe(7);
+    });
+
+    test('the First Four is worth nothing extra', () => {
+        // A real round that was missing from the model entirely. Its winner
+        // goes on to play a 1st Round game and collects the 7 there — paying
+        // both would pay twice for entering.
+        expect(score(1, ncaa('First Four'))).toBe(0);
+        expect(ncaaRoundFor(ncaa('First Four'))).toBe('ff');
+        // The whole path: play in, win, then play the 1st Round.
+        expect(score(1, ncaa('First Four')) + score(1, ncaa('1st Round'))).toBe(7);
     });
 
     test('a tournament game is NOT also scored as a quadrant win', () => {
-        // Beating a #1 seed in the Sweet Sixteen is worth the round, not the
-        // round plus a Q1 win.
-        expect(score(1, round('NCAA Tournament Sweet Sixteen'), { 2: 1 })).toBe(12);
+        expect(score(1, ncaa('Sweet 16'), { 2: 1 })).toBe(12);
+    });
+
+    test('an NCAA game with NO notes at all scores as a regular game', () => {
+        // There is no round to read, so there is no rung to pay.
+        const bare = game({ neutralSite: true, seasonType: 'postseason', tournament: 'NCAA' });
+        expect(ncaaRoundFor(bare)).toBeNull();
+        expect(score(1, bare, { 2: 10 })).toBe(5);
+    });
+
+    test('an NCAA game with an unreadable round scores as a regular game', () => {
+        // Refusing to guess. A round nobody recognises must not be assigned
+        // the nearest rung.
+        const odd = ncaa('Regional Semifinal Something');
+        expect(ncaaRoundFor(odd)).toBeNull();
+        expect(score(1, odd, { 2: 10 })).toBe(5);
+    });
+});
+
+describe('the NIT is not the NCAA tournament', () => {
+    // THE case that makes `tournament === 'NCAA'` the authority rather than
+    // the round label. The NIT is also seasonType 'postseason', also carries
+    // gameType 'TRNMNT', and calls its rounds "1st Round" and
+    // "Championship" — identical strings.
+    test.each([['1st Round'], ['2nd Round'], ['Quarterfinal'], ['Semifinal'], ['Championship']])(
+        'NIT %s banks nothing from the ladder', (round) => {
+            expect(ncaaRoundFor(nit(round))).toBeNull();
+            expect(score(1, nit(round), { 2: 10 })).toBe(5);     // a Q1 win, nothing more
+        });
+
+    test('and neither is the College Basketball Crown', () => {
+        const crown = game({
+            neutralSite: true, seasonType: 'postseason', gameType: 'TRNMNT',
+            gameNotes: 'College Basketball Crown Championship Game'
+        });
+        expect(ncaaRoundFor(crown)).toBeNull();
+        expect(isConfTournamentFinal(crown)).toBe(false);
     });
 });
 
 describe('a conference tournament title', () => {
+    // CBBD files these as seasonType 'regular', named only in gameNotes.
+    // Reading seasonType alone, all 31 finals are regular-season games.
     test('pays for winning the final', () => {
-        expect(score(1, game({ neutralSite: true, tournament: 'ACC Conference Tournament Championship' }))).toBe(10);
+        expect(score(1, confTourney('OVC Championship', 'Final'))).toBe(10);
+        expect(score(1, confTourney('MVC Tournament', 'Final'))).toBe(10);
     });
 
     test('and not for losing it', () => {
-        expect(score(1, game({ neutralSite: true, tournament: 'ACC Conference Tournament Championship', homePoints: 60, awayPoints: 70 }))).toBe(0);
+        expect(score(1, confTourney('OVC Championship', 'Final', { homePoints: 60, awayPoints: 70 }))).toBe(0);
     });
 
     test('an earlier round of the same tournament is a regular game', () => {
-        // Only the FINAL is the title. A quarterfinal scores on quadrant.
-        expect(score(1, game({ neutralSite: true, tournament: 'ACC Conference Tournament Quarterfinal' }), { 2: 10 })).toBe(5);
+        for (const round of ['1st Round', '2nd Round', 'Quarterfinal', 'Semifinal', 'Play-In']) {
+            expect(score(1, confTourney('Sun Belt Championship', round), { 2: 10 })).toBe(5);
+        }
+    });
+
+    test('a non-conference game is never a conference title', () => {
+        // The name has to CONTAIN "Championship" or the notes check rejects
+        // it first and the conferenceGame guard is never reached — which is
+        // how the first version of this test passed with that guard deleted.
+        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { conferenceGame: false }))).toBe(false);
+    });
+
+    test('a NAMED tournament is somebody else’s, however it is marked', () => {
+        // 'NCAA' and 'NIT' set the tournament code; conference tournaments
+        // leave it empty. This is what keeps "NIT - Championship" from
+        // reading as a conference title even if the feed ever marked it a
+        // conference game.
+        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NIT' }))).toBe(false);
+        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NCAA' }))).toBe(false);
+        expect(isConfTournamentFinal(nit('Championship'))).toBe(false);
+    });
+
+    test('and a conference final filed as POSTSEASON is still a title', () => {
+        // The feed files these as regular today. If that ever changes, the
+        // 31 conference titles must not silently stop paying.
+        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { seasonType: 'postseason' }))).toBe(true);
     });
 });
 
 describe('the seed upset bonus', () => {
-    const r64 = (o) => game(Object.assign({ neutralSite: true, tournament: 'NCAA Tournament First Round' }, o));
+    // Restored after a block rewrite dropped it — the coverage ratchet
+    // caught the absence, because nothing else reaches the "no upset"
+    // branch. Seeds are on EVERY NCAA game in the real feed: 67 of 67.
+    const r64 = (o) => ncaa('1st Round', o);
 
     test('adds the seed difference on top of the round', () => {
         // A 12 beating a 5 is seven seeds better: 7 for the round + 7.
@@ -155,16 +238,25 @@ describe('the seed upset bonus', () => {
         expect(score(1, r64({ homeSeed: 12, awaySeed: 5, homePoints: 60, awayPoints: 70 }))).toBe(7);
     });
 
+    test('equal seeds are not an upset', () => {
+        // Not hypothetical: the real First Four game pulled from March 2026
+        // was Howard (16) vs UMBC (16).
+        expect(score(1, r64({ homeSeed: 16, awaySeed: 16 }))).toBe(7);
+        expect(seedUpsetFor(1, game({ homeSeed: 16, awaySeed: 16 }), true)).toBe(0);
+    });
+
     test('and seeds that are simply absent score the round alone', () => {
-        // Which is every game CBBD has given us so far — seeds arrive in March.
         expect(score(1, r64())).toBe(7);
     });
 
     test('it scales, rather than paying a flat bonus', () => {
-        const small = score(1, r64({ homeSeed: 9, awaySeed: 8 }));
-        const big = score(1, r64({ homeSeed: 16, awaySeed: 1 }));
-        expect(small).toBe(7 + 1);
-        expect(big).toBe(7 + 15);
+        expect(score(1, r64({ homeSeed: 9, awaySeed: 8 }))).toBe(7 + 1);
+        expect(score(1, r64({ homeSeed: 16, awaySeed: 1 }))).toBe(7 + 15);
+    });
+
+    test('the away team’s seeds are read the right way round', () => {
+        // A 12 seed on the road beating a 5, which is the common shape.
+        expect(score(2, r64({ homeSeed: 5, awaySeed: 12, homePoints: 60, awayPoints: 70 }))).toBe(14);
     });
 });
 
@@ -204,7 +296,7 @@ describe('gameType TRNMNT is NOT the NCAA tournament', () => {
 
     test('and a conference tournament is not an NCAA round', () => {
         expect(ncaaRoundFor({ tournament: 'ACC Conference Tournament Championship' })).toBeNull();
-        expect(isConfTournamentFinal({ tournament: 'NCAA Tournament First Round' })).toBe(false);
+        expect(isConfTournamentFinal({ tournament: "NCAA Men's Basketball Championship - East Region - 1st Round" })).toBe(false);
     });
 });
 
@@ -223,15 +315,15 @@ describe('the context itself', () => {
         // pinning, because the belt is invisible from here and a future
         // reorder of the walk would quietly remove it.
         const { HOOPS_CONDITIONS } = require('../modules/hoops-detectors');
-        const ctx = buildHoopsContext(1, game({ neutralSite: true, tournament: 'NCAA Tournament Sweet Sixteen' }), { 2: 1 });
+        const ctx = buildHoopsContext(1, ncaa('Sweet 16'), { 2: 1 });
         expect(ctx.quadrant).toBe(1);
         expect(HOOPS_CONDITIONS.q1Win(ctx)).toBe(false);
-        const conf = buildHoopsContext(1, game({ tournament: 'ACC Conference Tournament Championship' }), { 2: 1 });
+        const conf = buildHoopsContext(1, confTourney('ACC Tournament', 'Final'), { 2: 1 });
         expect(HOOPS_CONDITIONS.q1Win(conf)).toBe(false);
     });
 
     test('a tournament game is not a regular-season game', () => {
-        const ctx = buildHoopsContext(1, game({ tournament: 'NCAA Tournament Final Four' }), {});
+        const ctx = buildHoopsContext(1, ncaa('Final Four'), {});
         expect(ctx.round).toBe('f4');
         expect(ctx.isRegular).toBe(false);
     });

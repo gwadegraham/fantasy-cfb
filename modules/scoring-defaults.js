@@ -72,6 +72,11 @@ const HOOPS_DEFAULTS = {
     // A CUMULATIVE ladder: each rung is an appearance and they stack, so a
     // champion banks 7+9+12+16+21+26 for the six games played, plus 35 for
     // winning the last one — 126 in all. Scaled for 12-team rosters.
+    // The play-in round. 0 because its winner then plays a 1st Round game
+    // and collects ncaaR64 for it; paying both would pay twice for
+    // entering. A league that wants to reward reaching the First Four at
+    // all can raise it.
+    ncaaFirstFour: 0,
     ncaaR64: 7,
     ncaaR32: 9,
     ncaaS16: 12,
@@ -175,6 +180,7 @@ const STRUCTURES = {
             { condition: 'ncaaS16', pointsKey: 'ncaaS16', label: 'Reached the Sweet Sixteen', additive: true, displayOrder: 5 },
             { condition: 'ncaaR32', pointsKey: 'ncaaR32', label: 'Reached the second round', additive: true, displayOrder: 4 },
             { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the NCAA tournament', additive: true, displayOrder: 3 },
+            { condition: 'ncaaFirstFour', pointsKey: 'ncaaFirstFour', label: 'Reached the First Four (play-in)', additive: true, displayOrder: 2 },
             { condition: 'confTournamentTitle', pointsKey: 'confTournamentTitle', label: 'Conference tournament title', additive: true, displayOrder: 2 },
             // scaleBy multiplies the rule's points by a NUMBER off the
             // context — the only rule in the app whose value is not fixed.
