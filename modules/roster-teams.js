@@ -112,4 +112,62 @@ function rosterEntryFor(team, sport) {
     return { id, sport: 'basketball' };
 }
 
-module.exports = { rosterTeams, rosterSize, rosterEntryFor, entryFor };
+// Fill `teams` from `teamRefs` across a LIST of managers, in one query per
+// sport, so an API response has exactly one roster shape.
+//
+// Every client reads `season.teams` — public/userHome.js alone does it in
+// fifteen places. A basketball roster is stored as refs, so all fifteen saw
+// an empty roster: My Team rendered "your draft is set up, you pick 1st" for
+// a manager whose ten teams had already been drafted, and no roster appeared
+// anywhere. Resolving in the response rather than teaching each client about
+// refs keeps #478's eventual football migration invisible to them too.
+//
+// BATCHED, not a rosterTeams() per manager: a six-manager league would be six
+// round trips on a cluster capped near 85KB/s.
+async function hydrateRosters(users, season) {
+    const list = Array.isArray(users) ? users : [users];
+    const pending = [];
+    for (const u of list) {
+        const entry = entryFor(u, season);
+        if (!entry) continue;
+        // Football, and anything written before refs existed. Already whole.
+        if (entry.teams && entry.teams.length) continue;
+        if (!(entry.teamRefs || []).length) continue;
+        pending.push(entry);
+    }
+    if (!pending.length) return users;
+
+    const hoopsIds = new Set();
+    const otherIds = new Set();
+    for (const e of pending) {
+        for (const r of e.teamRefs) {
+            (r.sport === 'basketball' ? hoopsIds : otherIds).add(Number(r.id));
+        }
+    }
+
+    const year = Number(season);
+    const [hoopsRows, footballRows] = await Promise.all([
+        hoopsIds.size ? HoopsTeam.find({ season: year, id: { $in: [...hoopsIds] } }).lean() : [],
+        otherIds.size ? Team.find({ id: { $in: [...otherIds] } }).lean() : []
+    ]);
+    // Keyed by sport as well as id — the two collections number teams
+    // independently, so football 1 and basketball 1 are different programs.
+    const key = (sport, id) => `${sport === 'basketball' ? 'b' : 'f'}:${Number(id)}`;
+    const byId = new Map([
+        ...hoopsRows.map(t => [key('basketball', t.id), t]),
+        ...footballRows.map(t => [key('football', t.id), t])
+    ]);
+
+    for (const e of pending) {
+        // Roster ORDER preserved: the draft wrote these in pick order, and
+        // several surfaces show "first pick" without saying so. A ref that
+        // resolves to nothing is dropped rather than left as a null, which
+        // reaches every renderer as a crash.
+        e.teams = e.teamRefs
+            .map(r => byId.get(key(r.sport, r.id)))
+            .filter(Boolean);
+    }
+    return users;
+}
+
+module.exports = { rosterTeams, rosterSize, rosterEntryFor, entryFor, hydrateRosters };

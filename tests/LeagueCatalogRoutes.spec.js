@@ -309,3 +309,126 @@ describe('page renders carry the viewed league’s season', () => {
         expect(src).not.toMatch(/function viewerSeason\(res\)/);
     });
 });
+
+describe('a basketball roster reaches the client as `teams`', () => {
+    // Every client reads season.teams — public/userHome.js alone does it in
+    // fifteen places. A basketball roster is stored as teamRefs, so all
+    // fifteen saw an empty roster: My Team told a manager whose ten teams
+    // were already drafted that "your draft is set up, you pick 1st", and no
+    // roster appeared anywhere in the app.
+    const { hydrateRosters } = require('../modules/roster-teams');
+    const HoopsTeam = require('../models/hoopsTeam');
+    const Team = require('../models/team');
+    const SEASON = 2027;
+
+    beforeEach(async () => {
+        await HoopsTeam.create([
+            { id: 150, season: SEASON, school: 'Duke', conference: 'ACC' },
+            { id: 151, season: SEASON, school: 'UConn', conference: 'Big East' },
+            { id: 152, season: SEASON, school: 'Michigan', conference: 'Big Ten' }
+        ]);
+    });
+
+    const withRefs = (refs) => ([{ seasons: [{ season: SEASON, teamRefs: refs }] }]);
+
+    test('refs are resolved, in roster order', async () => {
+        // Pick order is the roster order, and several surfaces show "first
+        // pick" without saying so.
+        const users = withRefs([
+            { id: 151, sport: 'basketball' },
+            { id: 150, sport: 'basketball' },
+            { id: 152, sport: 'basketball' }
+        ]);
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams.map(t => t.school)).toEqual(['UConn', 'Duke', 'Michigan']);
+    });
+
+    test('a football roster already in `teams` is left alone', async () => {
+        const users = [{ seasons: [{ season: SEASON, teams: [{ id: 8, school: 'Arkansas' }] }] }];
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams).toEqual([{ id: 8, school: 'Arkansas' }]);
+    });
+
+    test('a ref that resolves to nothing is dropped, not left as a hole', async () => {
+        // A null in a roster array reaches every renderer as a crash.
+        const users = withRefs([{ id: 150, sport: 'basketball' }, { id: 999, sport: 'basketball' }]);
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams.map(t => t.school)).toEqual(['Duke']);
+    });
+
+    test('a ref for ANOTHER season does not resolve', async () => {
+        // The rows are per-season; a 2026 lookup must not return 2027 teams.
+        const users = withRefs([{ id: 150, sport: 'basketball' }]);
+        users[0].seasons[0].season = 2026;
+        await hydrateRosters(users, 2026);
+        expect(users[0].seasons[0].teams).toEqual([]);
+    });
+
+    test('six managers cost ONE query, not six', async () => {
+        // A rosterTeams() per manager is six round trips on a cluster capped
+        // near 85KB/s.
+        const users = Array.from({ length: 6 }, () => withRefs([{ id: 150, sport: 'basketball' }])[0]);
+        const spy = jest.spyOn(HoopsTeam, 'find');
+        await hydrateRosters(users, SEASON);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(users.every(u => u.seasons[0].teams.length === 1)).toBe(true);
+        spy.mockRestore();
+    });
+
+    test('football and basketball refs never collide on id', async () => {
+        // The two collections number teams independently, so football 150 and
+        // basketball 150 are different programs.
+        await Team.create({
+            id: 150, school: 'Arkansas', mascot: 'Razorbacks', abbreviation: 'ARK',
+            conference: 'SEC', color: '#9d2235',
+            location: { name: 'Reynolds Razorback Stadium', city: 'Fayetteville', state: 'AR' }
+        });
+        const users = withRefs([{ id: 150, sport: 'basketball' }, { id: 150, sport: 'football' }]);
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams.map(t => t.school)).toEqual(['Duke', 'Arkansas']);
+    });
+
+    test('an existing `teams` is never clobbered, even with refs beside it', async () => {
+        // #478 migrates football to refs, so a season can legitimately carry
+        // BOTH for a while. The already-whole list wins — re-resolving it
+        // would drop any team the collection no longer has.
+        const users = [{ seasons: [{
+            season: SEASON,
+            teams: [{ id: 8, school: 'Arkansas' }],
+            teamRefs: [{ id: 150, sport: 'basketball' }]
+        }] }];
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams.map(t => t.school)).toEqual(['Arkansas']);
+    });
+
+    test('the league route hydrates too, so Standings can show rosters', async () => {
+        // Not just the single-manager reads: the league list feeds Standings
+        // and the roster drawers.
+        const Account = require('../models/account');
+        const acct = await Account.create({ firstName: 'Ann', lastName: 'T', email: 'ann@example.invalid' });
+        await Franchise.create({
+            accountId: acct._id, league: HOOPS,
+            seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams', teamRefs: [{ id: 150, sport: 'basketball' }] }]
+        });
+        const seasons = require('../modules/active-season');
+        const SportSeason = require('../models/sportSeason');
+        await SportSeason.create([
+            { sport: 'football', season: 2026, status: 'in-season' },
+            { sport: 'basketball', season: SEASON, status: 'preseason' }
+        ]);
+        await seasons.prime();
+
+        const res = await request(asAdmin(require('../routes/users'), '/users')).get(`/users/league/${HOOPS}`);
+        seasons._reset();
+        expect(res.status).toBe(200);
+        const mine = res.body.find(u => (u.seasons || []).some(x => x.season === SEASON));
+        expect(mine.seasons[0].teams.map(t => t.school)).toEqual(['Duke']);
+    });
+
+    test('nothing to do is not a query', async () => {
+        const spy = jest.spyOn(HoopsTeam, 'find');
+        await hydrateRosters([{ seasons: [{ season: SEASON }] }], SEASON);
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+});

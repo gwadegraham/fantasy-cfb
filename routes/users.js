@@ -4,7 +4,7 @@ const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
 const franchiseRepo = require('../modules/franchise-repo');
-const { rosterSize } = require('../modules/roster-teams');
+const { rosterSize, hydrateRosters } = require('../modules/roster-teams');
 const router = express.Router();
 const Game = require('../models/game');
 const Team = require('../models/team');
@@ -21,7 +21,7 @@ const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
 const leagueCatalog = require('../modules/league-catalog');
-const { selectedLeague } = require('../modules/league-selection');
+const { selectedLeague, seasonFor } = require('../modules/league-selection');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 const { findPoll } = require('../modules/scoring-detectors');
 const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
@@ -613,6 +613,7 @@ router.get('/league/:leagueCodeReq', async (req, res) => {
             'firstName', 'lastName', 'email', 'league', 'lastUpdated', 'color',
             'avatarUrl', 'profilePrompted', 'seasons'
         ] });
+        await hydrateRosters(users, year);
         res.json(users);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -643,8 +644,12 @@ router.get('/:id', async (req, res) => {
         // under the basketball league's header, with football season pills
         // and a football roster. Same shape as the wrong-league draft write
         // in #481.
-        const one = await franchiseRepo.byAccountId(userId, { league: await selectedLeague(req) });
+        const viewing = await selectedLeague(req);
+        const one = await franchiseRepo.byAccountId(userId, { league: viewing });
         const user = one ? [one] : [];
+        // Refs resolved into `teams`, because every client reads that and
+        // only that — see the note on hydrateRosters.
+        await hydrateRosters(user, seasonFor(viewing));
         res.json(user);
     } catch (err) {
         res.status(500).json({message: err.message});
@@ -672,6 +677,7 @@ router.get('/:id/season', async (req, res) => {
         // most away is ~4x the bytes on a cluster capped near 85KB/s.
         const scoped = await franchiseRepo.byLeagueAndSeasonForAccount(userId, year,
             { league: viewing, fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
+        await hydrateRosters(scoped, year);
         res.json(scoped);
     } catch (err) {
         res.status(500).json({message: err.message});
