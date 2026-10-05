@@ -66,6 +66,18 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // The basketball condition vocabulary (#316). Its defining risk is a
+        // detector that reads a game shape nobody has seen yet — the 2027
+        // ingest has no postseason, no seeds and an empty `tournament`
+        // field — so the branches that REFUSE to recognise a round matter as
+        // much as the ones that do. gameType 'TRNMNT' is 107 November
+        // exhibitions, not the NCAA tournament.
+        "./modules/hoops-detectors.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The basketball scoring table (#316). Pure, and the one place a
         // band edge can be wrong by one — which is invisible in a spot check
         // and permanently mis-banks every game on that line, because

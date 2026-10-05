@@ -13,6 +13,8 @@
 
 // --- default point values (match the historical hardcoded engine exactly) ---
 
+const { sportForLeague } = require('./active-season');
+
 const CLAUNTS_DEFAULTS = {
     nonConfWinUnranked: 1,
     nonConfWinRanked: 3,
@@ -46,6 +48,43 @@ const GRAHAM_DEFAULTS = {
     cfpQuarterfinalTop4Bonus: 6,
     cfpSemifinal: 6,
     nationalChampionship: 10
+};
+
+
+// Basketball (#316). A 31-game season, so flat per-win scoring would make the
+// title an aggregate win-total contest decided at the draft, and would pay the
+// same for hosting a 300-ranked team as for winning at Duke. Quadrants are the
+// sport's own answer — see modules/hoops-quadrants.js for the table.
+//
+// The spread these produce is the design working: a 26-5 top-10 team scores
+// around 57, a 19-12 bubble team around 41, and a 24-7 mid-major around 10.
+const HOOPS_DEFAULTS = {
+    q1Win: 5,
+    q2Win: 3,
+    q3Win: 1,
+    q4Win: 0,
+    // The only rule that subtracts, which is why it is off unless a league
+    // opts in.
+    badLoss: -2,
+
+    confTournamentTitle: 10,
+
+    // A CUMULATIVE ladder: each rung is an appearance and they stack, so a
+    // champion banks 7+9+12+16+21+26 for the six games played, plus 35 for
+    // winning the last one — 126 in all. Scaled for 12-team rosters.
+    ncaaR64: 7,
+    ncaaR32: 9,
+    ncaaS16: 12,
+    ncaaE8: 16,
+    ncaaF4: 21,
+    ncaaTitleGame: 26,
+    ncaaChampion: 35,
+
+    // PER SEED, not a flat bonus: the rule scales by how many seeds better
+    // the beaten team was, so a 12 over a 5 is worth 7. Football structurally
+    // cannot do this rule — the CFP has no comparable seeding spread, and its
+    // bracket needs a notes-string parse where CBBD carries seeds natively.
+    seedUpsetBonus: 1
 };
 
 // --- structural definitions ---------------------------------------------
@@ -111,16 +150,51 @@ const STRUCTURES = {
             { condition: 'bowlWin', pointsKey: 'bowlWin', label: 'Non-playoff bowl win', displayOrder: 2 },
             { condition: 'confChampionship', pointsKey: 'confChampionship', label: 'Conference championship win', displayOrder: 1 }
         ]
+    },
+    hoops: {
+        combineMode: 'sum',
+        // Exactly one quadrant fires per game, and a loss cannot also be a
+        // win, so 'sum' and 'first' would agree today. 'sum' because the
+        // model is additive in spirit and a future bonus should stack.
+        regularWin: [
+            { condition: 'q1Win', pointsKey: 'q1Win', label: 'Quadrant 1 win' },
+            { condition: 'q2Win', pointsKey: 'q2Win', label: 'Quadrant 2 win' },
+            { condition: 'q3Win', pointsKey: 'q3Win', label: 'Quadrant 3 win' },
+            { condition: 'q4Win', pointsKey: 'q4Win', label: 'Quadrant 4 win' },
+            { condition: 'badLoss', pointsKey: 'badLoss', label: 'Quadrant 4 loss (penalty)', toggleable: true, defaultOff: true }
+        ],
+        // ARRAY ORDER IS EVALUATION ORDER. Every rung is additive, so a
+        // tournament game sums what it matches and never falls through to the
+        // quadrant rules beneath — which is correct: a tournament game is
+        // scored by the round it is, not by who the opponent was.
+        postseason: [
+            { condition: 'ncaaChampion', pointsKey: 'ncaaChampion', label: 'NCAA championship win', additive: true, displayOrder: 9, stacksNote: 'Stacks on top of reaching the title game.' },
+            { condition: 'ncaaTitleGame', pointsKey: 'ncaaTitleGame', label: 'Reached the national title game', additive: true, displayOrder: 8 },
+            { condition: 'ncaaF4', pointsKey: 'ncaaF4', label: 'Reached the Final Four', additive: true, displayOrder: 7 },
+            { condition: 'ncaaE8', pointsKey: 'ncaaE8', label: 'Reached the Elite Eight', additive: true, displayOrder: 6 },
+            { condition: 'ncaaS16', pointsKey: 'ncaaS16', label: 'Reached the Sweet Sixteen', additive: true, displayOrder: 5 },
+            { condition: 'ncaaR32', pointsKey: 'ncaaR32', label: 'Reached the second round', additive: true, displayOrder: 4 },
+            { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the NCAA tournament', additive: true, displayOrder: 3 },
+            { condition: 'confTournamentTitle', pointsKey: 'confTournamentTitle', label: 'Conference tournament title', additive: true, displayOrder: 2 },
+            // scaleBy multiplies the rule's points by a NUMBER off the
+            // context — the only rule in the app whose value is not fixed.
+            { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'Adds the seed difference on top of the round reached.' }
+        ]
     }
 };
 
 const MODELS = {
     claunts: { defaults: CLAUNTS_DEFAULTS, structure: STRUCTURES.claunts },
-    graham: { defaults: GRAHAM_DEFAULTS, structure: STRUCTURES.graham }
+    graham: { defaults: GRAHAM_DEFAULTS, structure: STRUCTURES.graham },
+    hoops: { defaults: HOOPS_DEFAULTS, structure: STRUCTURES.hoops }
 };
 
 // Claunts = V1 engine, Graham = V2 engine. Unknown leagues default to Claunts.
 function modelForLeague(league) {
+    // The SPORT decides first. A basketball league scores on quadrants
+    // whatever it is called, and the two football models are named after the
+    // two football leagues only because those are the two that exist.
+    if (sportForLeague(league) === 'basketball') return 'hoops';
     return league === 'graham-league' ? 'graham' : 'claunts';
 }
 

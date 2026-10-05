@@ -2,6 +2,7 @@ const { internalFetch, failureMessage } = require('./internal-api');
 const { activeSeason } = require('./active-season');
 const { resolveConfig, MODELS, engagementForSeason, ruleEnabled, overridesFromDoc } = require('./scoring-defaults');
 const { CONDITIONS, buildContext } = require('./scoring-detectors');
+const { HOOPS_CONDITIONS, buildHoopsContext } = require('./hoops-detectors');
 const { factsForGame } = require('./cfp-bracket');
 const { resolveCaptain, captainWeeklyBonus } = require('./captain');
 const { seasonOrEmpty } = require('../public/season-of.js');
@@ -854,6 +855,21 @@ function pointsOf(values, key) {
     return typeof v === 'number' ? v : 0;
 }
 
+// A rule's points, scaled when the rule says so.
+//
+// `scaleBy` names a NUMBER on the context to multiply by — only the
+// basketball seed-upset bonus uses it, where the points are "per seed" and a
+// 12 beating a 5 is worth seven times the configured value. Every other rule
+// in the app has a fixed value, and a missing or non-numeric scale yields 0
+// rather than the unscaled points, so a rule that asked to be scaled never
+// silently pays out flat.
+function ruleValue(values, rule, ctx) {
+    var base = pointsOf(values, rule.pointsKey);
+    if (!rule.scaleBy) return base;
+    var by = Number(ctx && ctx[rule.scaleBy]);
+    return Number.isFinite(by) ? base * by : 0;
+}
+
 // The single data-driven engine both leagues run through. `model` selects the
 // code-owned structure (rule lists + default combine mode); `cfg` supplies the
 // commissioner's point values, combine-mode override, and disabled postseason
@@ -870,7 +886,14 @@ function evaluate(model, team, game, rankings, cfg, bracket) {
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings, bracket, cfg.powerConferences);
+    // Basketball brings its own context and its own condition vocabulary; the
+    // WALK below is shared and untouched. For hoops, `rankings` is a plain
+    // {teamId: rank} map as of this game — see modules/hoops-detectors.js.
+    var isHoops = model === 'hoops';
+    var conditions = isHoops ? HOOPS_CONDITIONS : CONDITIONS;
+    var ctx = isHoops
+        ? buildHoopsContext(team, game, rankings)
+        : buildContext(team, game, rankings, bracket, cfg.powerConferences);
 
     // 1. Postseason events, in order. Each ON matching rule adds its points; a
     //    non-additive match stops evaluation. This first-match-stop reproduces
@@ -881,9 +904,9 @@ function evaluate(model, team, game, rankings, cfg, bracket) {
     for (var i = 0; i < structure.postseason.length; i++) {
         var pr = structure.postseason[i];
         if (!ruleEnabled(pr, disabled, enabled)) continue;
-        var pd = CONDITIONS[pr.condition];
+        var pd = conditions[pr.condition];
         if (pd && pd(ctx)) {
-            score += pointsOf(values, pr.pointsKey);
+            score += ruleValue(values, pr, ctx);
             matchedPost = true;
             if (!pr.additive) break;
         }
@@ -897,9 +920,9 @@ function evaluate(model, team, game, rankings, cfg, bracket) {
     for (var j = 0; j < structure.regularWin.length; j++) {
         var rr = structure.regularWin[j];
         if (!ruleEnabled(rr, disabled, enabled)) continue;
-        var rd = CONDITIONS[rr.condition];
+        var rd = conditions[rr.condition];
         if (rd && rd(ctx)) {
-            score += pointsOf(values, rr.pointsKey);
+            score += ruleValue(values, rr, ctx);
             if (combineMode !== 'sum') break;
         }
     }
