@@ -139,15 +139,17 @@ describe('the phone tab bar', () => {
         expect(tab(render({ viewerLeagues: [BALL], viewerCanSwitch: false }))).toBeNull();
     });
 
-    test('TWO leagues: the tab is the other one, and goes straight there', () => {
+    // ONE icon, always. A ball inside the switch ring was built and dropped:
+    // at 18px the laces and seams vanish, leaving a tilted ellipse vs a
+    // circle inside a ring, and the Scores tab beside it is also a ball. The
+    // label carries where it goes; the icon just says "switch".
+    test('TWO leagues: the tab goes straight to the other one', () => {
         const t = tab(render({
             viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
         }));
         expect(t.goesTo).toBe(HOOPS.code);
         expect(t.opensSheet).toBe(false);
-        expect(t.icon).toBe('fa-basketball');
-        expect(t.label).toBe('Hoops');
-        expect(t.ariaLabel).toBe('Switch to Hardwood Heroes');
+        expect(t.ariaLabel).toBe('Switch to Hardwood Heroes');   // where it goes, for AT
     });
 
     test('and it flips when you are on the other side', () => {
@@ -155,8 +157,7 @@ describe('the phone tab bar', () => {
             viewerLeagues: [BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: HOOPS.code
         }));
         expect(t.goesTo).toBe(BALL.code);
-        expect(t.icon).toBe('fa-football');
-        expect(t.label).toBe('Football');
+        expect(t.ariaLabel).toBe('Switch to The Polar Depressed');
     });
 
     test('it never points at the league you are already in', () => {
@@ -166,41 +167,28 @@ describe('the phone tab bar', () => {
         }
     });
 
-    test('THREE leagues across two sports: the sheet, neutral icon', () => {
-        // Viewing graham, the others are claunts (football) and hoops
-        // (basketball) — a genuine mix, so no single ball is honest.
+    test('THREE leagues: the same icon, opening the sheet', () => {
         const t = tab(render({
             viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
         }));
         expect(t.opensSheet).toBe(true);
         expect(t.goesTo).toBeNull();
-        expect(t.icon).toBe('fa-repeat');
-        expect(t.label).toBe('League');
     });
 
-    test('THREE leagues but one other SPORT: still a ball', () => {
-        // The Admin case, viewing the basketball league: both leagues you
-        // could switch to are football, so the tab says Football even though
-        // it has to open the chooser. A bare switch icon there said nothing
-        // about where it goes — which is what prompted this.
-        const t = tab(render({
-            viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: HOOPS.code
-        }));
-        expect(t.opensSheet).toBe(true);     // still a chooser: two football leagues
-        expect(t.goesTo).toBeNull();
-        expect(t.icon).toBe('fa-football');
-        expect(t.label).toBe('Football');
-        expect(t.ariaLabel).toBe('Choose a Football league');
-    });
-
-    test('and three leagues in ONE sport is neutral again', () => {
-        // Nothing to say about the sport if it is the one you are in.
-        const t = tab(render({
-            viewerLeagues: [OTHER, BALL, { code: 'third-league', name: 'Third', sport: 'football' }],
-            viewerCanSwitch: true, viewerLeagueCode: BALL.code
-        }));
-        expect(t.icon).toBe('fa-football');
-        expect(t.label).toBe('Football');
+    test('the icon and label never change with the sport', () => {
+        // The thing that kept getting redesigned. Pinned so a future "it
+        // would be nicer as a ball" has to come back through this comment.
+        const cases = [
+            { viewerLeagues: [BALL, HOOPS], viewerLeagueCode: BALL.code },
+            { viewerLeagues: [BALL, HOOPS], viewerLeagueCode: HOOPS.code },
+            { viewerLeagues: [OTHER, BALL, HOOPS], viewerLeagueCode: HOOPS.code },
+            { viewerLeagues: [OTHER, BALL], viewerLeagueCode: BALL.code }
+        ];
+        for (const c of cases) {
+            const t = tab(render(Object.assign({ viewerCanSwitch: true }, c)));
+            expect(t.icon).toBe('fa-repeat');
+            expect(t.label).toBe('League');
+        }
     });
 
     test('the sheet lists every league, by NAME, with the current one marked', () => {

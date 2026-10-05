@@ -259,22 +259,18 @@
     <% if ((typeof viewerCanSwitch !== 'undefined' && viewerCanSwitch) && _mineTab.length > 1) { %>
         <% var _others = _mineTab.filter(function (l) { return l.code !== _vlcTab; }); %>
         <% var _one = _others.length === 1 ? _others[0] : null; %>
-        <%# When the leagues you could switch to all play the SAME sport, the
-            tab can still be that sport's ball even though it has to open the
-            chooser — three leagues across two sports is the shape an Admin
-            sees, and a bare switch icon there says nothing about where it
-            goes. Only a genuine mix of sports among the others falls back to
-            the neutral icon. %>
-        <% var _otherSports = []; %>
-        <% _others.forEach(function (l) { if (_otherSports.indexOf(l.sport) === -1) _otherSports.push(l.sport); }); %>
-        <% var _sport = _one ? _one.sport : (_otherSports.length === 1 ? _otherSports[0] : null); %>
-        <% var _sportName = function (sp) { return sp === 'basketball' ? 'Hoops' : 'Football'; }; %>
-        <% var _sportBall = function (sp) { return sp === 'basketball' ? 'fa-basketball' : 'fa-football'; }; %>
+        <%# ALWAYS the switch icon, never the sport's ball.
+            A ball inside the switch ring was tried and dropped: at the 18px
+            the tab bar renders, the laces and seams disappear and all that
+            survives is a tilted ellipse vs a circle inside a ring — a shape
+            you have to already know to read. The Scores tab next to it is
+            also a ball, which made two adjacent balls to tell apart.
+            One unambiguous glyph, and the label carries the rest. %>
     <button type="button" class="tab-item tab-league"
             <% if (_one) { %>data-league-go="<%= _one.code %>"<% } else { %>data-league-sheet="1" aria-haspopup="dialog" aria-expanded="false"<% } %>
-            aria-label="<%= _one ? ('Switch to ' + _one.name) : (_sport ? ('Choose a ' + _sportName(_sport) + ' league') : 'Switch league') %>">
-        <i class="fa-solid <%= _sport ? _sportBall(_sport) : 'fa-repeat' %>" aria-hidden="true"></i>
-        <span><%= _sport ? _sportName(_sport) : 'League' %></span>
+            aria-label="<%= _one ? ('Switch to ' + _one.name) : 'Switch league' %>">
+        <i class="fa-solid fa-repeat" aria-hidden="true"></i>
+        <span>League</span>
     </button>
     <% } %>
     <button type="button" class="tab-item tab-more" aria-controls="navbar-links" aria-expanded="false">
