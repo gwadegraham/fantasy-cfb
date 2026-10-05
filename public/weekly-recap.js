@@ -234,7 +234,12 @@
     }
     function isRecapSeason(date) { const m = date.getMonth() + 1; return m >= 8 || m === 1; }
 
+    // Per LEAGUE, since #319 let the popup follow the league being viewed.
+    // One global key meant a two-league member got a single recap a week —
+    // for whichever league they happened to open on Monday — and the other
+    // league's recap was suppressed until the next week.
     const SEEN_KEY = 'ccRecapPopupSeen';
+    const seenKeyFor = (league) => league ? SEEN_KEY + ':' + league : SEEN_KEY;
 
     // Decide + show the popup once per recap week. `force` (?recapPopup=1)
     // bypasses the gate for testing.
@@ -245,15 +250,15 @@
         if (!opts.force) {
             if (!isRecapSeason(now)) return;
             if (here === '/userHome') return;                 // already visible there
-            if (localStorage.getItem(SEEN_KEY) === recapWindowKey(now)) return;
+            if (localStorage.getItem(seenKeyFor(opts.league)) === recapWindowKey(now)) return;
         }
         const data = await fetchRecap(opts.league, 'latest', opts.userId);
         if (!data || !(data.recaps || []).length) return;     // nothing to show yet — don't burn the key
         showPopup(data, opts.userId);
-        if (!opts.force) localStorage.setItem(SEEN_KEY, recapWindowKey(now));
+        if (!opts.force) localStorage.setItem(seenKeyFor(opts.league), recapWindowKey(now));
     }
 
-    window.ccRecap = { cardHtml, selectorHtml, fetchRecap, mountInline, showPopup, closePopup, maybeShowPopup, recapWindowKey, isRecapSeason, movement, ordinal };
+    window.ccRecap = { cardHtml, seenKeyFor, selectorHtml, fetchRecap, mountInline, showPopup, closePopup, maybeShowPopup, recapWindowKey, isRecapSeason, movement, ordinal };
 
     // App-wide auto-run: after the page's userState is in scope, offer the
     // weekly popup to the logged-in viewer (their own recap, not the profile
@@ -263,7 +268,10 @@
             try {
                 const meta = window.userState && window.userState.user_metadata && window.userState.user_metadata.metadata;
                 if (!meta || !meta.userId) return;
-                const league = meta.league === 'gg' ? 'graham-league' : 'claunts-league';
+                // The league being viewed, not the Auth0 flag — a recap for
+                // the league you are not looking at is just confusing.
+                const league = (window.ccLeague && window.ccLeague.code())
+                    || (meta.league === 'gg' ? 'graham-league' : 'claunts-league');
                 const force = new URLSearchParams(location.search).get('recapPopup') === '1';
                 window.ccRecap.maybeShowPopup({ league: league, userId: meta.userId, force: force });
             } catch (e) { /* non-fatal */ }

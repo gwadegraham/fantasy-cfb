@@ -6,3 +6,4 @@ main.css
 coverage
 scripts/.sync.env
 sleeper-data/
+scripts/.dev-hoops-demo.js

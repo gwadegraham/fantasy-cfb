@@ -66,6 +66,20 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // Which leagues the app knows about. It replaced a map over a
+        // hardcoded array that silently DROPPED any league existing only in
+        // the database — the failure mode was a league with no name, no
+        // switcher entry and no code an Admin could select, and nothing about
+        // it looked broken. Every branch here is a fallback for a document
+        // shape the real collection actually has (no `sport`, written before
+        // #312 added it), so the soft paths are the ones that must stay
+        // covered.
+        "./modules/league-catalog.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // Which league the viewer is LOOKING AT (#319). The cookie behind it is
         // client-supplied, so every path that decides whether to honour it is
         // security-relevant, and all of them fail SOFT — an unrecognised league

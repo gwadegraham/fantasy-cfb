@@ -228,6 +228,14 @@ async function loadStandingsPage(opts = {}) {
         search = '',
         userAgent,
         localStorage: seedStorage = {},
+        // The league the SERVER rendered the page for — window.CC_LEAGUE in
+        // the browser, emitted by the navbar. Since #319 part 2 this is what
+        // the page loads data for, rather than re-deriving it from the Auth0
+        // flag, so it belongs in the harness rather than being implied.
+        leagueSeed = { code: 'graham-league', canSwitch: false, isAdmin: false, all: [
+            { code: 'graham-league', name: 'Graham League', sport: 'football' },
+            { code: 'claunts-league', name: 'Claunts League', sport: 'football' }
+        ] },
         autoLoad = true
     } = opts;
 
@@ -291,6 +299,15 @@ async function loadStandingsPage(opts = {}) {
     // thing that read a TBD kickoff as the night before, so a stub would put
     // the regression right back out of reach.
     window.ccKickoff = require('../../public/kickoff-day.js');
+    window.CC_LEAGUE = leagueSeed;
+    // The REAL league helper, because standings.js now asks it which league
+    // to load rather than re-deriving it from the Auth0 flag (#319 part 2).
+    // Stubbing it would mean the page under test resolved its league
+    // differently from the page in the browser — which is the exact class of
+    // bug that change exists to remove. league.js is a classic script that
+    // wires itself to window, so it is evaluated rather than required.
+    (0, eval)(require('fs').readFileSync(
+        require('path').join(__dirname, '..', '..', 'public', 'league.js'), 'utf8'));
     global.Chart = class {
         constructor(canvas, config) { charts.push({ canvas, config }); this.destroyed = false; }
         destroy() { this.destroyed = true; }

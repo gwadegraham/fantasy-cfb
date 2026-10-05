@@ -48,24 +48,19 @@ async function getUserProfile() {
             _rwSel.value = window.localStorage.getItem("weekCode");
         }
 
-        // Only set leagueCode from metaData if it's not already stored
-        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
-            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-            window.localStorage.setItem("leagueCode", newLeagueCode);
+        // Mirror the league being viewed into storage, which the by-league
+        // fetches below still read. From ccLeague — the server's validated
+        // answer (#319) — not from the Auth0 flag, which is binary and so
+        // could only ever name one of the two football leagues.
+        if (window.ccLeague && window.ccLeague.code()) {
+            try { window.localStorage.setItem("leagueCode", window.ccLeague.code()); } catch (e) {}
         }
 
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-            const leagueCode = window.localStorage.getItem("leagueCode");
-
-            if (leagueCode && (leagueCode != "undefined")) {
-                const currentSelectedLeague = window.sessionStorage.getItem("league");
-                if (currentSelectedLeague) {
-                    var _lSel = document.querySelector('[league-select]');
-                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
-                }
-            }
-        }    
-
+        // (An Admin-only block that set the <select> from localStorage used
+        // to sit here, in four identical copies. ccLeague.syncSwitcher()
+        // does it from the SERVER's answer now, which is the validated one —
+        // these could point the dropdown at a stale stored league while the
+        // page rendered a different one.)
         getUser();
     });
 }

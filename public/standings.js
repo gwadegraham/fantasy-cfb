@@ -109,34 +109,29 @@ window.onload = async function() {
             weekCode = window.localStorage.setItem("weekCode", "week-1");
         }
 
-        // Only set leagueCode from metaData if it's not already stored
-        if (!window.localStorage.getItem("leagueCode") && data?.user_metadata?.metadata?.league) {
-            var newLeagueCode = (data.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-            window.localStorage.setItem("leagueCode", newLeagueCode);
+        // Mirror the league being viewed into storage, which the by-league
+        // fetches below still read. From ccLeague — the server's validated
+        // answer (#319) — not from the Auth0 flag, which is binary and so
+        // could only ever name one of the two football leagues.
+        if (window.ccLeague && window.ccLeague.code()) {
+            try { window.localStorage.setItem("leagueCode", window.ccLeague.code()); } catch (e) {}
         }
 
-        if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-            const leagueCode = window.localStorage.getItem("leagueCode");
-
-            if (leagueCode && (leagueCode != "undefined")) {
-                const currentSelectedLeague = window.sessionStorage.getItem("league");
-                if (currentSelectedLeague) {
-                    var _lSel = document.querySelector('[league-select]');
-                    if (_lSel) _lSel.value = window.localStorage.getItem("leagueCode");
-                }
-            }
-        }
-
+        // (An Admin-only block that set the <select> from localStorage used
+        // to sit here, in four identical copies. ccLeague.syncSwitcher()
+        // does it from the SERVER's answer now, which is the validated one —
+        // these could point the dropdown at a stale stored league while the
+        // page rendered a different one.)
         getUsers();
     });
   };
 
 async function getUsers() {
-    var leagueCode = (userState.user_metadata.metadata.league == 'gg' ? 'graham-league' : 'claunts-league');
-
-    if (userState.user_metadata.roles?.at(-1) == 'Admin') {
-        leagueCode = window.localStorage.getItem("leagueCode");
-    }
+    // The league being VIEWED. Was derived from the Auth0 flag, with the
+    // stored choice honoured ONLY for an Admin — so a member switching league
+    // changed the page's chrome and nothing else, and no member could ever
+    // load a basketball league, the flag being binary (#319 part 2).
+    var leagueCode = ccLeagueCode();
 
     const response = await fetch(`/users/league/${leagueCode}`, {
         method: 'GET',
@@ -1173,10 +1168,7 @@ document.addEventListener('click', async function (e) {
     if (!table) return;
     var open = table.querySelector('.gc-breakdown-row');
     if (open) { open.remove(); btn.classList.remove('is-open'); return; }
-    var league = window.localStorage.getItem('leagueCode');
-    if (!league || league === 'undefined') {
-        league = (userState && userState.user_metadata.metadata.league == 'gg') ? 'graham-league' : 'claunts-league';
-    }
+    var league = ccLeagueCode();
     var teamId = btn.getAttribute('data-team');
     var gameId = btn.getAttribute('data-game');
     var banked = Number(btn.getAttribute('data-pts'));

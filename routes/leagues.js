@@ -2,17 +2,27 @@ const express = require('express');
 const router = express.Router();
 const audit = require('../modules/audit-log');
 const League = require('../models/league');
-const { LEAGUES } = require('../modules/scoring-defaults');
+const leagueCatalog = require('../modules/league-catalog');
+const { viewableBy } = require('../modules/league-selection');
 const { canManageLeague } = require('../modules/league-access');
 
 // List leagues with their (editable) display names, falling back to the
 // hardcoded defaults for any league without a saved name.
 router.get('/', async (req, res) => {
     try {
-        const docs = await League.find({}, { code: 1, name: 1, _id: 0 }).lean();
-        const byCode = {};
-        docs.forEach(d => { byCode[d.code] = d.name; });
-        const list = LEAGUES.map(l => ({ code: l.code, name: byCode[l.code] || l.name }));
+        // The catalog, so a league that exists only in the database can be
+        // renamed. It was LEAGUES.map, which meant the one editable thing
+        // about a new league — the name shown in the switcher — was stuck at
+        // whatever its insert happened to set.
+        //
+        // Scoped to the caller. The commissioner gate in server.js lets every
+        // GET through, so without this any logged-in member could list the
+        // name and code of every league in the database — including one that
+        // exists but has not been announced yet. An Admin still sees them all.
+        const mine = new Set(await viewableBy(req));
+        const list = (await leagueCatalog.catalog(req))
+            .filter(l => mine.has(l.code))
+            .map(l => ({ code: l.code, name: l.name }));
         res.json(list);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -24,7 +34,8 @@ router.get('/', async (req, res) => {
 router.patch('/:code', async (req, res) => {
     try {
         const code = req.params.code;
-        if (!LEAGUES.some(l => l.code === code)) {
+        const known = await leagueCatalog.codes(req);
+        if (!known.includes(code)) {
             return res.status(404).json({ message: 'Unknown league' });
         }
         if (!canManageLeague(req, code)) {

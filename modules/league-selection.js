@@ -35,7 +35,8 @@
 const franchiseRepo = require('./franchise-repo');
 const { leagueCodeFor } = require('./league-access');
 const { effectiveUser, effectiveRoles } = require('./dev-role');
-const { LEAGUES } = require('./scoring-defaults');
+const leagueCatalog = require('./league-catalog');
+const { sportForLeague } = require('./active-season');
 
 const COOKIE = 'cc_league';
 
@@ -105,16 +106,24 @@ async function leaguesOf(req) {
 // Validated against the known leagues rather than accepted outright, so a
 // hand-written cookie still cannot put an arbitrary string into every query
 // the page then runs.
-const KNOWN = LEAGUES.map(l => l.code);
-
+//
+// From the CATALOG, not from scoring-defaults: that hardcoded array is tied to
+// the scoring models, and a basketball league will never be in it. Reading it
+// directly meant an Admin could not select a league that existed only in the
+// database — which is every league this epic is about.
 function isAdmin(req) {
     return effectiveRoles(req).includes('Admin');
 }
 
 // Every league this person may look at. For an Admin that is all of them; for
 // everyone else it is exactly the franchises they hold.
+//
+// A member's answer is NOT filtered against the catalog: their franchise is
+// the fact, and a league missing from the collection should not strand them
+// outside their own team. The Admin case is the one that needs a list to
+// check against, because it is not derived from anything they own.
 async function viewableBy(req) {
-    if (isAdmin(req)) return KNOWN;
+    if (isAdmin(req)) return leagueCatalog.codes(req);
     return leaguesOf(req);
 }
 
@@ -161,6 +170,119 @@ async function canSwitch(req) {
     return (await viewableBy(req)).length > 1;
 }
 
+// Everything the navbar needs about the viewer's league, in one call.
+//
+// A function rather than six lines in the locals middleware, for the same
+// reason the route handler below is one: the inline version could be reverted
+// — the filter dropped, canSwitch hardcoded to true — with the whole suite
+// green, because the only tests were of the template that consumes it.
+//
+// `leagues` is the catalog, passed in so this does not read it a second time.
+async function viewerContext(req, leagues) {
+    const code = await selectedLeague(req);
+    const mine = new Set(await viewableBy(req));
+
+    // Catalog order first, so the navbar keeps a stable arrangement...
+    const offered = (leagues || []).filter(l => mine.has(l.code));
+
+    // ...then any league the viewer holds that the catalog does not list. A
+    // member's franchise is the fact: a league missing from the collection
+    // must not hide their own team from them. Named by its code, which is
+    // ugly and visible — better than silently absent. Sorted, because the
+    // set's own order is Mongo's.
+    const seen = new Set(offered.map(l => l.code));
+    const extras = [...mine].filter(c => !seen.has(c)).sort();
+    if (extras.length) {
+        // Resolved against the ARCHIVED-INCLUSIVE list. Retiring a league
+        // removes it from the catalog, but the people still in it keep their
+        // franchise — so without this their own switcher would show them a
+        // raw slug for a league they are actively playing in.
+        const byCode = new Map((await leagueCatalog.named(req)).map(l => [l.code, l]));
+        for (const extra of extras) {
+            offered.push(byCode.get(extra) || { code: extra, name: extra });
+        }
+    }
+
+    // The list the CLIENT seed is built from (ccLeague.name(), the page
+    // labels, the <title>). It must name everything `offered` does, or a
+    // member holding an archived league sees its name resolve to '' and every
+    // [league-label] on their pages goes blank — on a league they still play
+    // in. Assembled here rather than in the middleware because the inline
+    // version could be deleted with the whole suite green.
+    const listed = new Set((leagues || []).map(l => l.code));
+    const all = (leagues || []).concat(offered.filter(l => !listed.has(l.code)));
+
+    // Each league tagged with its sport, for the switcher's icon and label.
+    //
+    // From sportForLeague — active-season's primed cache — and NOT from the
+    // catalog, which deliberately does not carry a sport. One source: this is
+    // the same answer draft-pool and draft-socket get, so the icon on the
+    // switcher cannot disagree with the game being played.
+    const withSport = offered.map(l => Object.assign({}, l, { sport: sportForLeague(l.code) }));
+
+    const admin = isAdmin(req);
+
+    // What the client is told, as one object, because the middleware
+    // assembling it inline could swap `offered` for the full catalog with
+    // every test green — and that swap publishes the name and code of every
+    // league in the database into window.CC_LEAGUE on every page.
+    //
+    // `all` here is the VIEWER'S leagues. You learn a league exists by being
+    // in it, or by being an Admin, whose own list is the whole catalog
+    // anyway. A league can therefore be built and seeded for weeks before
+    // the people in the other league find out it is there.
+    // seed.all must ALWAYS name `code`. It is what ccLeague.name() resolves
+    // against, so a seed whose list does not contain the league being viewed
+    // blanks the league out of the page header, the <title> and every
+    // [league-label] — while the data loads correctly, which is what makes it
+    // hard to spot.
+    //
+    // `offered` is empty for an account the franchise collection does not
+    // know yet, and — the realistic one on a free-tier cluster — whenever the
+    // franchise read fails and is caught above. That catch exists so a failed
+    // read does not log anyone out of their own league; without this it still
+    // took the league's NAME away everywhere.
+    const named = withSport.some(l => l.code === code)
+        ? withSport
+        : withSport.concat((leagues || []).filter(l => l.code === code));
+    const seed = {
+        code,
+        canSwitch: admin || offered.length > 1,
+        isAdmin: admin,
+        all: named.length ? named : [{ code: code, name: code }]
+    };
+
+    return {
+        code,
+        leagues: withSport,
+        all,
+        seed,
+        // Derived from the list actually rendered, so a flag saying "you may
+        // switch" and a list with nothing to switch to cannot disagree.
+        canSwitch: admin || offered.length > 1,
+        isAdmin: admin
+    };
+}
+
+// The same shape as viewerContext, for a request that never asks for it —
+// a non-HTML GET, or one where the lookup threw.
+//
+// It exists because the caller is a middleware that runs on EVERY request and
+// then unconditionally serialises `seed`. Leaving a field off this object
+// crashed the dyno on every static asset: safeJson(undefined) throws, and an
+// async middleware that throws takes the process with it. Keyed off the same
+// builder as the real thing so the two cannot drift again.
+function emptyContext({ admin = false } = {}) {
+    return {
+        code: '',
+        leagues: [],
+        all: [],
+        canSwitch: admin,          // an Admin keeps the switcher they have always had
+        isAdmin: admin,
+        seed: { code: '', canSwitch: admin, isAdmin: admin, all: [] }
+    };
+}
+
 // POST /league/select, as a handler rather than inline in server.js — the
 // first version of this was re-implemented inside its own spec, so deleting
 // the authorization check from the real route left every test green.
@@ -179,7 +301,7 @@ async function selectHandler(req, res) {
 }
 
 module.exports = {
-    COOKIE, COOKIE_OPTS, KNOWN,
-    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler,
+    COOKIE, COOKIE_OPTS,
+    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext, emptyContext,
     leaguesOf, accountIdFor
 };
