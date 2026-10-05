@@ -66,6 +66,16 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // The basketball scoring table (#316). Pure, and the one place a
+        // band edge can be wrong by one — which is invisible in a spot check
+        // and permanently mis-banks every game on that line, because
+        // quadrants are banked at TIME OF PLAY and never recomputed.
+        "./modules/hoops-quadrants.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // Which leagues the app knows about. It replaced a map over a
         // hardcoded array that silently DROPPED any league existing only in
         // the database — the failure mode was a league with no name, no
