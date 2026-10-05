@@ -91,10 +91,14 @@ describe('blending two rankings', () => {
         }
     });
 
-    test('a team only one source knows is kept, not dropped', () => {
-        // A team CBBD has not rated yet should slide, not vanish into Q4.
+    test('a team only one source knows keeps its own rank as its score', () => {
+        // A team CBBD has not rated yet should slide, not vanish into Q4 —
+        // and not be PROMOTED either. Asserting only that the keys survive
+        // missed the version that scored a one-sided team as w*rank, which
+        // halves it and jumps the team up the field.
         const out = blendRanks({ 1: 1, 9: 2 }, { 1: 2, 7: 1 }, 0.5);
-        expect(Object.keys(out).sort()).toEqual(['1', '7', '9']);
+        // team1 blends to 1.5; team9 keeps 2; team7 keeps 1.
+        expect(out).toEqual({ 7: 1, 1: 2, 9: 3 });
     });
 
     test('two teams on the same score rank by id, every time', () => {
