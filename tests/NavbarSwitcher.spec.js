@@ -166,7 +166,9 @@ describe('the phone tab bar', () => {
         }
     });
 
-    test('THREE leagues: a neutral icon that opens the sheet', () => {
+    test('THREE leagues across two sports: the sheet, neutral icon', () => {
+        // Viewing graham, the others are claunts (football) and hoops
+        // (basketball) — a genuine mix, so no single ball is honest.
         const t = tab(render({
             viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: BALL.code
         }));
@@ -174,6 +176,31 @@ describe('the phone tab bar', () => {
         expect(t.goesTo).toBeNull();
         expect(t.icon).toBe('fa-repeat');
         expect(t.label).toBe('League');
+    });
+
+    test('THREE leagues but one other SPORT: still a ball', () => {
+        // The Admin case, viewing the basketball league: both leagues you
+        // could switch to are football, so the tab says Football even though
+        // it has to open the chooser. A bare switch icon there said nothing
+        // about where it goes — which is what prompted this.
+        const t = tab(render({
+            viewerLeagues: [OTHER, BALL, HOOPS], viewerCanSwitch: true, viewerLeagueCode: HOOPS.code
+        }));
+        expect(t.opensSheet).toBe(true);     // still a chooser: two football leagues
+        expect(t.goesTo).toBeNull();
+        expect(t.icon).toBe('fa-football');
+        expect(t.label).toBe('Football');
+        expect(t.ariaLabel).toBe('Choose a Football league');
+    });
+
+    test('and three leagues in ONE sport is neutral again', () => {
+        // Nothing to say about the sport if it is the one you are in.
+        const t = tab(render({
+            viewerLeagues: [OTHER, BALL, { code: 'third-league', name: 'Third', sport: 'football' }],
+            viewerCanSwitch: true, viewerLeagueCode: BALL.code
+        }));
+        expect(t.icon).toBe('fa-football');
+        expect(t.label).toBe('Football');
     });
 
     test('the sheet lists every league, by NAME, with the current one marked', () => {
