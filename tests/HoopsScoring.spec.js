@@ -140,31 +140,33 @@ describe('the NCAA ladder', () => {
         expect(score(1, ncaa('Sweet 16'), { 2: 1 })).toBe(12);
     });
 
-    test('an NCAA game with NO notes at all scores as a regular game', () => {
-        // There is no round to read, so there is no rung to pay.
+    test('an NCAA game with NO notes at all is worth nothing', () => {
+        // No round to read, so no rung to pay — and it is still a
+        // postseason game, so it does not fall back to a quadrant win
+        // either. Zero is the safe answer for a game we cannot place.
         const bare = game({ neutralSite: true, seasonType: 'postseason', tournament: 'NCAA' });
         expect(ncaaRoundFor(bare)).toBeNull();
-        expect(score(1, bare, { 2: 10 })).toBe(5);
+        expect(score(1, bare, { 2: 10 })).toBe(0);
     });
 
-    test('an NCAA game with an unreadable round scores as a regular game', () => {
-        // Refusing to guess. A round nobody recognises must not be assigned
-        // the nearest rung.
+    test('an NCAA game with an unreadable round is worth nothing', () => {
+        // Refusing to guess. A round nobody recognises is not assigned the
+        // nearest rung, and is not quietly paid as a quadrant win either.
         const odd = ncaa('Regional Semifinal Something');
         expect(ncaaRoundFor(odd)).toBeNull();
-        expect(score(1, odd, { 2: 10 })).toBe(5);
+        expect(score(1, odd, { 2: 10 })).toBe(0);
     });
 });
 
-describe('the NIT is not the NCAA tournament', () => {
-    // THE case that makes `tournament === 'NCAA'` the authority rather than
-    // the round label. The NIT is also seasonType 'postseason', also carries
-    // gameType 'TRNMNT', and calls its rounds "1st Round" and
-    // "Championship" — identical strings.
+describe('the NIT is not scored at all', () => {
+    // Not "scored as a regular game" — scored as NOTHING. It is not the
+    // real postseason, so a deep NIT run is worth zero, the same as not
+    // being invited. Everything CBBD files as postseason that is not the
+    // NCAA tournament falls here.
     test.each([['1st Round'], ['2nd Round'], ['Quarterfinal'], ['Semifinal'], ['Championship']])(
-        'NIT %s banks nothing from the ladder', (round) => {
+        'NIT %s is worth nothing, even beating a top-10 team', (round) => {
+            expect(score(1, nit(round), { 2: 1 })).toBe(0);
             expect(ncaaRoundFor(nit(round))).toBeNull();
-            expect(score(1, nit(round), { 2: 10 })).toBe(5);     // a Q1 win, nothing more
         });
 
     test('and neither is the College Basketball Crown', () => {
@@ -172,27 +174,58 @@ describe('the NIT is not the NCAA tournament', () => {
             neutralSite: true, seasonType: 'postseason', gameType: 'TRNMNT',
             gameNotes: 'College Basketball Crown Championship Game'
         });
-        expect(ncaaRoundFor(crown)).toBeNull();
+        expect(score(1, crown, { 2: 1 })).toBe(0);
         expect(isConfTournamentFinal(crown)).toBe(false);
+    });
+
+    test('losing in the NIT costs nothing either', () => {
+        // The bad-loss penalty is a regular-season rule; an NIT exit is not
+        // a bad loss, it is a game that does not exist to us.
+        const on = cfg({ enabled: ['badLoss'] });
+        expect(score(1, nit('1st Round', { homePoints: 60, awayPoints: 70 }), { 2: 300 }, on)).toBe(0);
+    });
+
+    test('the marker is CBBD’s seasonType, so an unknown March event is also zero', () => {
+        // Whatever invitational gets invented next: postseason, not NCAA,
+        // worth nothing. Safer than paying out for a tournament nobody
+        // decided should count.
+        const invented = game({
+            neutralSite: true, seasonType: 'postseason', tournament: 'XYZ',
+            gameNotes: 'XYZ Invitational - Final'
+        });
+        expect(score(1, invented, { 2: 1 })).toBe(0);
     });
 });
 
-describe('a conference tournament title', () => {
-    // CBBD files these as seasonType 'regular', named only in gameNotes.
-    // Reading seasonType alone, all 31 finals are regular-season games.
-    test('pays for winning the final', () => {
-        expect(score(1, confTourney('OVC Championship', 'Final'))).toBe(10);
-        expect(score(1, confTourney('MVC Tournament', 'Final'))).toBe(10);
+describe('the conference tournament title is a BONUS', () => {
+    // CBBD files conference tournaments as seasonType 'regular', and that
+    // is the right reading: the final is a real game against a real
+    // opponent. So it scores its quadrant like any other game and the title
+    // is added ON TOP — beating a top-30 team to take the ACC should not be
+    // worth LESS than beating them in January, which is what a replacement
+    // value would have meant.
+    test('stacks on the quadrant win for the same game', () => {
+        expect(score(1, confTourney('OVC Championship', 'Final'), { 2: 10 })).toBe(5 + 10);
+        // A #200 at a NEUTRAL site is Q3, not Q4 — conference tournaments
+        // are played on neutral floors, which is exactly the case venue
+        // exists for.
+        expect(score(1, confTourney('MVC Tournament', 'Final'), { 2: 200 })).toBe(1 + 10);
+        expect(score(1, confTourney('MVC Tournament', 'Final'), { 2: 300 })).toBe(0 + 10);
     });
 
-    test('and not for losing it', () => {
-        expect(score(1, confTourney('OVC Championship', 'Final', { homePoints: 60, awayPoints: 70 }))).toBe(0);
+    test('and not for losing the final', () => {
+        expect(score(1, confTourney('OVC Championship', 'Final', { homePoints: 60, awayPoints: 70 }), { 2: 10 })).toBe(0);
     });
 
-    test('an earlier round of the same tournament is a regular game', () => {
+    test('an earlier round is just a game', () => {
         for (const round of ['1st Round', '2nd Round', 'Quarterfinal', 'Semifinal', 'Play-In']) {
             expect(score(1, confTourney('Sun Belt Championship', round), { 2: 10 })).toBe(5);
         }
+    });
+
+    test('a league can switch the bonus off and keep the win', () => {
+        const off = cfg({ disabled: ['confTournamentTitle'] });
+        expect(score(1, confTourney('OVC Championship', 'Final'), { 2: 10 }, off)).toBe(5);
     });
 
     test('a non-conference game is never a conference title', () => {
@@ -203,19 +236,18 @@ describe('a conference tournament title', () => {
     });
 
     test('a NAMED tournament is somebody else’s, however it is marked', () => {
-        // 'NCAA' and 'NIT' set the tournament code; conference tournaments
-        // leave it empty. This is what keeps "NIT - Championship" from
-        // reading as a conference title even if the feed ever marked it a
-        // conference game.
         expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NIT' }))).toBe(false);
         expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NCAA' }))).toBe(false);
         expect(isConfTournamentFinal(nit('Championship'))).toBe(false);
     });
 
-    test('and a conference final filed as POSTSEASON is still a title', () => {
-        // The feed files these as regular today. If that ever changes, the
-        // 31 conference titles must not silently stop paying.
-        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { seasonType: 'postseason' }))).toBe(true);
+    test('the BONUS survives a conference final filed as postseason', () => {
+        // The title is identified by its own markers, not by seasonType, so
+        // it keeps paying if CBBD ever moves conference tournaments into
+        // postseason. The quadrant win does not — that follows seasonType,
+        // which is what keeps the NIT at zero. A conference title would
+        // quietly drop from 15 to 10 rather than to nothing.
+        expect(score(1, confTourney('OVC Championship', 'Final', { seasonType: 'postseason' }), { 2: 10 })).toBe(10);
     });
 });
 
@@ -318,8 +350,11 @@ describe('the context itself', () => {
         const ctx = buildHoopsContext(1, ncaa('Sweet 16'), { 2: 1 });
         expect(ctx.quadrant).toBe(1);
         expect(HOOPS_CONDITIONS.q1Win(ctx)).toBe(false);
+        // A conference final, by contrast, IS a regular game and DOES
+        // score its quadrant — the title is a bonus on top of it.
         const conf = buildHoopsContext(1, confTourney('ACC Tournament', 'Final'), { 2: 1 });
-        expect(HOOPS_CONDITIONS.q1Win(conf)).toBe(false);
+        expect(HOOPS_CONDITIONS.q1Win(conf)).toBe(true);
+        expect(HOOPS_CONDITIONS.confTournamentTitle(conf)).toBe(true);
     });
 
     test('a tournament game is not a regular-season game', () => {

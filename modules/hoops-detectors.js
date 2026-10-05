@@ -145,6 +145,11 @@ function buildHoopsContext(teamId, game, ranks) {
     const venue = venueFor(id, { homeId: game.homeTeamId, awayId: game.awayTeamId, neutralSite: game.neutralSite });
 
     const round = ncaaRoundFor(game);
+    // CBBD's own seasonType. 'postseason' is the NCAA tournament, the NIT
+    // and the College Basketball Crown; conference tournaments are NOT in
+    // it — they are filed as 'regular'.
+    const isPostseason = String(game.seasonType || '').toLowerCase() === 'postseason';
+
     return {
         game,
         team: id,
@@ -160,11 +165,23 @@ function buildHoopsContext(teamId, game, ranks) {
         oppRank: (oppRank === null || oppRank === undefined || oppRank === '' || !Number.isInteger(Number(oppRank)))
             ? null : Number(oppRank),
         isConference: !!game.conferenceGame,
-        // A tournament game is NOT a regular-season game, so the quadrant
-        // rules must not also fire on it.
         round,
         isConfTournamentFinal: isConfTournamentFinal(game),
-        isRegular: !round && !isConfTournamentFinal(game),
+
+        // THE NIT IS NOT SCORED. Nor is the College Basketball Crown, nor
+        // anything else CBBD files as postseason that is not the NCAA
+        // tournament: they are not the real postseason, so they are worth
+        // nothing rather than worth a quadrant win. With isRegular false and
+        // no round to pay, no rule matches and the game scores 0.
+        isOtherPostseason: isPostseason && !round,
+
+        // A CONFERENCE TOURNAMENT GAME IS A REGULAR GAME, final included.
+        // CBBD says so, and it is the right answer: it is a real game
+        // against a real opponent and the quadrant is the honest measure of
+        // it. The title is a BONUS on top (see the structure), not a
+        // replacement for the win — beating a top-30 team to take the ACC
+        // should not be worth less than beating them in January.
+        isRegular: !isPostseason,
         seedUpset: seedUpsetFor(id, game, won)
     };
 }

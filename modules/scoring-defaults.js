@@ -166,7 +166,12 @@ const STRUCTURES = {
             { condition: 'q2Win', pointsKey: 'q2Win', label: 'Quadrant 2 win' },
             { condition: 'q3Win', pointsKey: 'q3Win', label: 'Quadrant 3 win' },
             { condition: 'q4Win', pointsKey: 'q4Win', label: 'Quadrant 4 win' },
-            { condition: 'badLoss', pointsKey: 'badLoss', label: 'Quadrant 4 loss (penalty)', toggleable: true, defaultOff: true }
+            { condition: 'badLoss', pointsKey: 'badLoss', label: 'Quadrant 4 loss (penalty)', toggleable: true, defaultOff: true },
+            // A BONUS, stacked on the quadrant win for the same game, not a
+            // replacement for it. Winning the final is a real win over a
+            // real opponent; the title is the extra. Toggleable, so a league
+            // that thinks a conference tournament is noise can switch it off.
+            { condition: 'confTournamentTitle', pointsKey: 'confTournamentTitle', label: 'Conference tournament title (bonus)', additive: true, toggleable: true, stacksNote: 'Added on top of the quadrant win for the final itself.' }
         ],
         // ARRAY ORDER IS EVALUATION ORDER. Every rung is additive, so a
         // tournament game sums what it matches and never falls through to the
@@ -181,7 +186,6 @@ const STRUCTURES = {
             { condition: 'ncaaR32', pointsKey: 'ncaaR32', label: 'Reached the second round', additive: true, displayOrder: 4 },
             { condition: 'ncaaR64', pointsKey: 'ncaaR64', label: 'Reached the NCAA tournament', additive: true, displayOrder: 3 },
             { condition: 'ncaaFirstFour', pointsKey: 'ncaaFirstFour', label: 'Reached the First Four (play-in)', additive: true, displayOrder: 2 },
-            { condition: 'confTournamentTitle', pointsKey: 'confTournamentTitle', label: 'Conference tournament title', additive: true, displayOrder: 2 },
             // scaleBy multiplies the rule's points by a NUMBER off the
             // context — the only rule in the app whose value is not fixed.
             { condition: 'seedUpsetBonus', pointsKey: 'seedUpsetBonus', label: 'Upset bonus, per seed', additive: true, scaleBy: 'seedUpset', displayOrder: 1, stacksNote: 'Adds the seed difference on top of the round reached.' }
