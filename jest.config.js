@@ -66,6 +66,18 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // What a team was RANKED when a game was played (#316). Every
+        // quadrant is a rank threshold and every score is banked at time of
+        // play, so a rank that is wrong on the night is wrong forever. The
+        // soft paths are the dangerous ones: a missed weekly refresh falls
+        // back to the last week that has one, and a team only one source
+        // knows is kept rather than dropped.
+        "./modules/hoops-ranks.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The basketball condition vocabulary (#316). Its defining risk is a
         // detector that reads a game shape nobody has seen yet — the 2027
         // ingest has no postseason, no seeds and an empty `tournament`
