@@ -425,6 +425,35 @@ describe('a basketball roster reaches the client as `teams`', () => {
         expect(mine.seasons[0].teams.map(t => t.school)).toEqual(['Duke']);
     });
 
+    test('a single manager, not wrapped in an array', async () => {
+        // GET /users/:id passes one; the league route passes a list.
+        const one = { seasons: [{ season: SEASON, teamRefs: [{ id: 150, sport: 'basketball' }] }] };
+        await hydrateRosters(one, SEASON);
+        expect(one.seasons[0].teams.map(t => t.school)).toEqual(['Duke']);
+    });
+
+    test('a manager with no entry for that season is skipped', async () => {
+        const users = [{ seasons: [{ season: 2099, teamRefs: [{ id: 150, sport: 'basketball' }] }] }];
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams).toBeUndefined();
+    });
+
+    test('a football-only roster of refs never touches the hoops collection', async () => {
+        // #478 migrates football to refs too, and the hoops query must not
+        // run for a league that has none.
+        await Team.create({
+            id: 77, school: 'Texas', mascot: 'Longhorns', abbreviation: 'TEX',
+            conference: 'SEC', color: '#bf5700',
+            location: { name: 'DKR', city: 'Austin', state: 'TX' }
+        });
+        const spy = jest.spyOn(HoopsTeam, 'find');
+        const users = withRefs([{ id: 77, sport: 'football' }]);
+        await hydrateRosters(users, SEASON);
+        expect(users[0].seasons[0].teams.map(t => t.school)).toEqual(['Texas']);
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
     test('nothing to do is not a query', async () => {
         const spy = jest.spyOn(HoopsTeam, 'find');
         await hydrateRosters([{ seasons: [{ season: SEASON }] }], SEASON);
