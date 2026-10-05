@@ -168,3 +168,144 @@ describe('a basketball league gets its OWN season', () => {
         expect(String(await seasonAskedFor(HOOPS, '?season=2025'))).toBe('2025');
     });
 });
+
+describe('a two-league account reads the league it is VIEWING', () => {
+    // My Team rendered the FOOTBALL franchise under the basketball league's
+    // header: "Name, Image, & Sadness", 58 points, football season pills, a
+    // football roster. GET /users/:id resolved the franchise by account id
+    // with no league, and an account can hold two — so Mongo's first match
+    // won. The same shape as the wrong-league draft write in #481.
+    const Account = require('../models/account');
+    const seasons = require('../modules/active-season');
+    const SportSeason = require('../models/sportSeason');
+
+    const FOOTBALL_SEASON = 2026;
+    const HOOPS_SEASON = 2027;
+
+    // A session carrying a cc_league cookie, which is what decides the league.
+    const viewing = (accountId, league) => {
+        const app = express();
+        app.use(express.json());
+        app.use((req, res, next) => {
+            const user = { user_metadata: { roles: [], metadata: { league: 'gg', userId: String(accountId) } } };
+            req.oidc = { isAuthenticated: () => true, user };
+            req.effUser = user;
+            req.headers.cookie = `cc_league=${league}`;
+            next();
+        });
+        app.use('/users', require('../routes/users'));
+        return app;
+    };
+
+    let me;
+    beforeEach(async () => {
+        await SportSeason.create([
+            { sport: 'football', season: FOOTBALL_SEASON, status: 'in-season' },
+            { sport: 'basketball', season: HOOPS_SEASON, status: 'preseason' }
+        ]);
+        await seasons.prime();
+
+        me = await Account.create({ firstName: 'Garrett', lastName: 'Graham', email: 'gg@example.invalid' });
+        // The football franchise carries a 2027 entry TOO. Leagues run
+        // concurrently, so the seasons overlap in reality — and without the
+        // overlap the season alone picks the right franchise and the league
+        // scoping cannot be tested. The first version of this gave them
+        // 2026 and 2027, and passing no league at all stayed green.
+        await Franchise.create([
+            { accountId: me._id, league: BALL, seasons: [
+                { season: FOOTBALL_SEASON, franchiseName: 'Name, Image, & Sadness' },
+                { season: HOOPS_SEASON, franchiseName: 'Name, Image, & Sadness', teamRefs: [{ id: 99, sport: 'football' }] }
+            ] },
+            { accountId: me._id, league: HOOPS, seasons: [{ season: HOOPS_SEASON, franchiseName: 'Hoop Dreams', teamRefs: [{ id: 150, sport: 'basketball' }] }] }
+        ]);
+    });
+    afterEach(() => seasons._reset());
+
+    test('GET /users/:id returns the BASKETBALL franchise when viewing hoops', async () => {
+        const res = await request(viewing(me._id, HOOPS)).get(`/users/${me._id}`);
+        expect(res.status).toBe(200);
+        expect(res.body[0].league).toBe(HOOPS);
+        expect(res.body[0].seasons.map(s => s.season)).toEqual([HOOPS_SEASON]);
+    });
+
+    test('and the FOOTBALL one when viewing football', async () => {
+        const res = await request(viewing(me._id, BALL)).get(`/users/${me._id}`);
+        expect(res.body[0].league).toBe(BALL);
+        expect(res.body[0].seasons.map(s => s.season)).toEqual([FOOTBALL_SEASON, HOOPS_SEASON]);
+    });
+
+    test('GET /users/:id/season uses the LEAGUE’s season, not football’s', async () => {
+        // The season pills read 2026 on the basketball page, so the 2027
+        // roster could never be found.
+        const res = await request(viewing(me._id, HOOPS)).get(`/users/${me._id}/season`);
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0].league).toBe(HOOPS);
+        expect(res.body[0].seasons[0].season).toBe(HOOPS_SEASON);
+        expect(res.body[0].seasons[0].franchiseName).toBe('Hoop Dreams');
+    });
+
+    test('and football still gets football', async () => {
+        const res = await request(viewing(me._id, BALL)).get(`/users/${me._id}/season`);
+        expect(res.body[0].seasons[0].season).toBe(FOOTBALL_SEASON);
+        expect(res.body[0].seasons[0].franchiseName).toBe('Name, Image, & Sadness');
+    });
+
+    test('the roster that comes back is the basketball one', async () => {
+        const res = await request(viewing(me._id, HOOPS)).get(`/users/${me._id}/season`);
+        const refs = res.body[0].seasons[0].teamRefs || [];
+        expect(refs.map(r => r.sport)).toEqual(['basketball']);
+    });
+});
+
+describe('seasonFor — the season a page renders', () => {
+    const selection = require('../modules/league-selection');
+    const seasons = require('../modules/active-season');
+    const SportSeason = require('../models/sportSeason');
+
+    beforeEach(async () => {
+        await SportSeason.create([
+            { sport: 'football', season: 2026, status: 'in-season' },
+            { sport: 'basketball', season: 2027, status: 'preseason' }
+        ]);
+        await seasons.prime();
+    });
+    afterEach(() => seasons._reset());
+
+    test('the basketball league’s own season', () => {
+        expect(selection.seasonFor(HOOPS)).toBe(2027);
+    });
+
+    test('the football league’s', () => {
+        expect(selection.seasonFor(BALL)).toBe(2026);
+    });
+
+    test('and football for an unknown or missing league', () => {
+        // A signed-out page has no league at all.
+        expect(selection.seasonFor('nope-league')).toBe(2026);
+        expect(selection.seasonFor('')).toBe(2026);
+        expect(selection.seasonFor(undefined)).toBe(2026);
+    });
+});
+
+describe('page renders carry the viewed league’s season', () => {
+    // server.js passed activeSeason('football') to every render, so the
+    // basketball page booted with window.APP_YEAR = the football year.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
+
+    test('My Team, the draft room, the board, the scoreboard and admin all use it', () => {
+        for (const view of ['userHome', 'draftRoom', 'admin']) {
+            const m = new RegExp(`res\\.render\\('${view}'[\\s\\S]{0,160}?\\}\\)`).exec(src);
+            expect(m).not.toBeNull();
+            expect(m[0]).toContain('viewerSeason(res)');
+            expect(m[0]).not.toContain("activeSeason('football')");
+        }
+    });
+
+    test('and server.js delegates rather than keeping its own copy', () => {
+        // Inline, it could be reverted to activeSeason('football') with the
+        // suite green — the behaviour is tested on seasonFor above.
+        expect(src).toContain('leagueSelection.seasonFor(');
+        expect(src).not.toMatch(/function viewerSeason\(res\)/);
+    });
+});

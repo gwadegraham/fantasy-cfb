@@ -21,6 +21,7 @@ const { effectiveRoles } = require('../modules/dev-role');
 const { hasScoredGames } = require('../modules/season-status');
 const inviteToken = require('../modules/invite-token');
 const leagueCatalog = require('../modules/league-catalog');
+const { selectedLeague } = require('../modules/league-selection');
 const { captainLockMs, captainFocusWeek } = require('../modules/captain');
 const { findPoll } = require('../modules/scoring-detectors');
 const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
@@ -636,7 +637,13 @@ router.get('/:id', async (req, res) => {
     var userId = req.params.id;
 
     try {
-        const one = await franchiseRepo.byAccountId(userId);
+        // SCOPED TO THE LEAGUE BEING VIEWED. byAccountId without a league
+        // returns whichever franchise Mongo hands back first, and an account
+        // can hold more than one — so My Team rendered the football team
+        // under the basketball league's header, with football season pills
+        // and a football roster. Same shape as the wrong-league draft write
+        // in #481.
+        const one = await franchiseRepo.byAccountId(userId, { league: await selectedLeague(req) });
         const user = one ? [one] : [];
         res.json(user);
     } catch (err) {
@@ -647,7 +654,11 @@ router.get('/:id', async (req, res) => {
 //Getting One By Season
 router.get('/:id/season', async (req, res) => {
     var userId = req.params.id;
-    var year = activeSeason('football');
+    // The league being viewed, and ITS season — not football's. See the note
+    // on GET /:id above.
+    const viewing = await selectedLeague(req);
+    const own = seasonForLeague(viewing);
+    var year = Number.isFinite(own) ? own : activeSeason('football');
 
     try {
         // Returns an ARRAY, as User.find() did — the client indexes [0].
@@ -660,7 +671,7 @@ router.get('/:id/season', async (req, res) => {
         // original projected one season, and fetching every season to throw
         // most away is ~4x the bytes on a cluster capped near 85KB/s.
         const scoped = await franchiseRepo.byLeagueAndSeasonForAccount(userId, year,
-            { fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
+            { league: viewing, fields: ['firstName', 'lastName', 'league', 'lastUpdated', 'color', 'seasons'] });
         res.json(scoped);
     } catch (err) {
         res.status(500).json({message: err.message});

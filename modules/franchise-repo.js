@@ -328,9 +328,13 @@ async function findManagers({ accountFilter = {}, franchiseFilter = {}, fields }
 // Season-scoped at the query. Fetching every season and filtering in JS gives
 // the same answer and reads ~4x the bytes, which is the sort of thing that only
 // shows up as a slow Saturday.
-async function byLeagueAndSeasonForAccount(accountId, season, { fields } = {}) {
+async function byLeagueAndSeasonForAccount(accountId, season, { fields, league } = {}) {
+    // `league` is not optional in spirit. An account can hold a franchise in
+    // more than one league — that is the whole point of #319 — and without it
+    // findOne returns whichever Mongo hands back first. On My Team that meant
+    // the basketball page rendering the football roster.
     const franchise = await Franchise.findOne(
-        { accountId, 'seasons.season': season },
+        Object.assign({ accountId, 'seasons.season': season }, league ? { league } : {}),
         fields
             ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
             : { accountId: 1, league: 1, seasons: { $elemMatch: { season } } }
