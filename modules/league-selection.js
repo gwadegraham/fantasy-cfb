@@ -36,7 +36,7 @@ const franchiseRepo = require('./franchise-repo');
 const { leagueCodeFor } = require('./league-access');
 const { effectiveUser, effectiveRoles } = require('./dev-role');
 const leagueCatalog = require('./league-catalog');
-const { sportForLeague } = require('./active-season');
+const { sportForLeague, seasonForLeague, activeSeason } = require('./active-season');
 
 const COOKIE = 'cc_league';
 
@@ -283,6 +283,20 @@ function emptyContext({ admin = false } = {}) {
     };
 }
 
+// The season a page should render for the league being viewed.
+//
+// Every page render passed activeSeason('football'), which was right while
+// every league was football. On a basketball league it rendered the football
+// year — so My Team showed 2026 season pills and found no 2027 roster, with
+// the header saying Hardwood Heroes the whole time.
+//
+// Falls back to football for a signed-out page and for a league the season
+// cache has not seen, which is the same default the sport uses.
+function seasonFor(code) {
+    const own = code ? seasonForLeague(code) : null;
+    return Number.isFinite(own) ? own : activeSeason('football');
+}
+
 // POST /league/select, as a handler rather than inline in server.js — the
 // first version of this was re-implemented inside its own spec, so deleting
 // the authorization check from the real route left every test green.
@@ -302,6 +316,6 @@ async function selectHandler(req, res) {
 
 module.exports = {
     COOKIE, COOKIE_OPTS,
-    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext, emptyContext,
+    selectedLeague, maySelect, canSwitch, viewableBy, isAdmin, selectHandler, viewerContext, emptyContext, seasonFor,
     leaguesOf, accountIdFor
 };

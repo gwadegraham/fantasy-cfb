@@ -640,7 +640,7 @@ app.get('/draft-room', (req, res) => {
         user.isDraft = false;
         const userState = safeJson(req.effUser);
 
-        res.render('draftRoom', {user, userState, year: seasons.activeSeason('football')});
+        res.render('draftRoom', {user, userState, year: viewerSeason(res)});
     } else {
         res.redirect("/login");
     }
@@ -655,7 +655,7 @@ app.get('/draft-board', (req, res) => {
     const user = buildUserContext(req.effUser);
     res.render('draftBoard', {
         user, userState: safeJson(req.effUser),
-        year: seasons.activeSeason('football'), leagueCode: res.locals.viewerLeagueCode
+        year: viewerSeason(res), leagueCode: res.locals.viewerLeagueCode
     });
 });
 
@@ -679,7 +679,7 @@ app.get('/scoreboard', (req, res) => {
     res.render('scoreboard', {
         user,
         userState: safeJson(req.effUser),
-        year: seasons.activeSeason('football'),
+        year: viewerSeason(res),
         leagueCode: res.locals.viewerLeagueCode
     });
 });
@@ -696,7 +696,7 @@ app.get('/admin', (req, res) => {
         const userState = safeJson(req.effUser);
         const isAdmin = roles.includes('Admin');
 
-        res.render('admin', {user, userState, year: seasons.activeSeason('football'), isAdmin});
+        res.render('admin', {user, userState, year: viewerSeason(res), isAdmin});
     } else {
         res.redirect("/login");
     }
@@ -713,12 +713,17 @@ app.get('/index', (req, res) => {
     }
 });
 
+// The season of the league being VIEWED, for a page render. The logic lives
+// in modules/league-selection.js so it can be tested; an inline copy here
+// could be reverted to activeSeason('football') with the suite green.
+const viewerSeason = (res) => leagueSelection.seasonFor(res.locals && res.locals.viewerLeagueCode);
+
 app.get('/userHome', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
 
-        res.render('userHome', {user, userState, year: seasons.activeSeason('football'), cloudinary: cloudinaryConfig()});
+        res.render('userHome', {user, userState, year: viewerSeason(res), cloudinary: cloudinaryConfig()});
     } else {
         res.redirect("/login");
     }
