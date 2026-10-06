@@ -632,19 +632,16 @@ app.get('/rules', async (req, res) => {
 
         // Draft Rules used to be football copy for everyone ("every FBS team").
         // A basketball draft is a capped pool, so say what THIS league's draft
-        // does: its own pool size and rounds, else the sport's defaults.
+        // does — see draftRulesFor for why a null pool is kept, not defaulted.
         const sport = seasons.sportForLeague(leagueCode);
-        let draftRules = Object.assign({ sport }, draftDefaults.draftDefaultsFor(sport));
+        let draft = null;
         try {
             const season = seasons.seasonForLeague(leagueCode);
-            const d = season != null
-                ? await Draft.findOne({ league: leagueCode, season }, { poolSize: 1, totalRounds: 1 }).lean()
-                : null;
-            if (d) {
-                if (d.poolSize != null) draftRules.poolSize = d.poolSize;
-                if (d.totalRounds != null) draftRules.totalRounds = d.totalRounds;
+            if (season != null) {
+                draft = await Draft.findOne({ league: leagueCode, season }, { poolSize: 1, totalRounds: 1 }).lean();
             }
         } catch (err) { /* the defaults are a fine answer for a rules page */ }
+        const draftRules = draftDefaults.draftRulesFor(sport, draft);
 
         res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement, draftRules });
     } else {
