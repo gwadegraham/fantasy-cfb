@@ -424,4 +424,34 @@ describe('a basketball league does not link to football team pages', () => {
         document.getElementById('logo').dispatchEvent(e);
         expect(e.defaultPrevented).toBe(true);
     });
+
+    test('a control NESTED in a refused link still gets its click', () => {
+        // My Team's "+N" breakdown button lives inside the game card's <a>,
+        // and its handler is a bubble listener on document. A guard that
+        // stops propagation runs first (capture, on document) and the
+        // button goes dead — only the navigation should be refused.
+        load({ seed: hoops, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = '<a href="/game/372997" class="game-card"><button id="b" class="score-explain">+12</button></a>';
+        const seen = jest.fn();
+        document.addEventListener('click', seen);
+        try {
+            const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+            document.getElementById('b').dispatchEvent(e);
+            expect(e.defaultPrevented).toBe(true);
+            expect(seen).toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('click', seen);
+        }
+    });
+
+    test('script navigation goes through open(), which refuses the same URLs', () => {
+        // Standings and Scoreboard cards set location.href from a handler —
+        // no anchor, so the guard above never sees them.
+        const cc = load({ seed: hoops });
+        expect(cc.open('/game/372997')).toBe(false);
+        expect(cc.open('/team?team=135')).toBe(false);
+        expect(cc.refusesHref('/standings')).toBe(false);
+        expect(load({ seed: football }).refusesHref('/game/372997')).toBe(false);
+    });
 });

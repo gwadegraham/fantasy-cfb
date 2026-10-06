@@ -292,10 +292,27 @@
             if (a.dataset.ccUnlinked) continue;
             a.dataset.ccUnlinked = '1';
             a.dataset.ccHref = a.getAttribute('href');
-            a.removeAttribute('href');          // also kills middle-click and copy-link
+            a.removeAttribute('href');          // and with it middle-click and copy-link, for links present now
             a.removeAttribute('target');
             a.style.cursor = 'default';
         }
+    }
+
+    // Whether this league refuses a team or game page URL. The one rule,
+    // shared by the anchor guard and by open() below.
+    function refusesHref(href) {
+        if (sport() === 'football') return false;
+        href = href || '';
+        return href.indexOf('/team?team=') === 0 || href.indexOf('/game/') === 0;
+    }
+
+    // For the pages that navigate by script rather than by anchor — a card
+    // whose click handler sets location.href. The anchor guard never sees
+    // those, so they come through here instead. Returns whether it went.
+    function open(href) {
+        if (refusesHref(href)) return false;
+        window.location.href = href;
+        return true;
     }
 
     // The sweep above only sees what is on the page when it runs, and most
@@ -306,18 +323,19 @@
     // reason bindTab does: each evaluation closes over its own SEED, so a
     // stale listener answers sport() for the league that was loaded first
     // — and a first-wins guard would keep exactly the wrong one.
+    //
+    // preventDefault ONLY. Stopping propagation here — a capture listener
+    // on document, so it runs before everything — swallowed clicks on
+    // controls NESTED in a refused link: My Team's "+N" breakdown button
+    // sits inside the game card's <a>, and went dead on basketball.
     function bindForeignLinkGuard() {
         if (window.__ccForeignLinkGuard) {
             document.removeEventListener('click', window.__ccForeignLinkGuard, true);
         }
         window.__ccForeignLinkGuard = function (e) {
-            if (sport() === 'football') return;
             var a = e.target && e.target.closest && e.target.closest('a');
             if (!a) return;
-            var href = a.getAttribute('href') || a.dataset.ccHref || '';
-            if (href.indexOf('/team?team=') !== 0 && href.indexOf('/game/') !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
+            if (refusesHref(a.getAttribute('href') || a.dataset.ccHref)) e.preventDefault();
         };
         document.addEventListener('click', window.__ccForeignLinkGuard, true);
     }
@@ -364,7 +382,7 @@
     };
 
     window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague, selected: selected, openSheet: openSheet,
-        sport: sport, unlinkForeignTeamLinks: unlinkForeignTeamLinks };
+        sport: sport, unlinkForeignTeamLinks: unlinkForeignTeamLinks, refusesHref: refusesHref, open: open };
 
     document.addEventListener('DOMContentLoaded', function () {
         paint(); bindSwitcher(); bindTab(); bindForeignLinkGuard();
