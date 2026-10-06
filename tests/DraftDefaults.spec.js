@@ -311,4 +311,8 @@ describe('draftRulesFor', () => {
         expect(draftRulesFor('basketball', { poolSize: null, totalRounds: 10 }).poolSize).toBeNull();
         expect(draftRulesFor('basketball', { totalRounds: 10 }).poolSize).toBeNull();
     });
+
+    it('a draft with no round count falls back to the sport default', () => {
+        expect(draftRulesFor('basketball', { poolSize: 96 }).totalRounds).toBe(10);
+    });
 });
