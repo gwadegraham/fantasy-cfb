@@ -33,6 +33,10 @@
         // status strip queries the season the league is actually playing rather
         // than the wall-clock year.
         window.APP_YEAR = "<%= year %>";
+        // Per-sport draft starting points (modules/draft-defaults.js), so
+        // the settings form can pre-fill them where an admin can see and
+        // change them.
+        window.DRAFT_DEFAULTS = <%- (typeof draftDefaults !== 'undefined' && draftDefaults) || '{}' %>;
     </script>
 
     <div class="header">

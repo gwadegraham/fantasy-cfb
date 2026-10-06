@@ -2203,17 +2203,47 @@ async function describeDraftPool() {
     }
 }
 
+// The draft defaults for the league being configured, chosen by its SPORT.
+//
+// The sport comes off the client seed, which carries it per league
+// (modules/league-selection.js tags each from the one source, active-season's
+// primed cache). Falls back to an empty object so a page served before the
+// defaults existed simply behaves as it did.
+function draftSportDefaults() {
+    try {
+        var code = getDraftLeagueCode();
+        var seeded = (window.CC_LEAGUE && window.CC_LEAGUE.all) || [];
+        var hit = seeded.filter(function (l) { return l.code === code; })[0];
+        var sport = (hit && hit.sport) || 'football';
+        return (window.DRAFT_DEFAULTS && window.DRAFT_DEFAULTS[sport]) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
 function populateDraftFormFields() {
     var status = currentDraft ? currentDraft.status : 'not configured';
     var statusEl = document.querySelector('[draft-status]');
     statusEl.textContent = status;
     statusEl.className = 'draft-status-badge status-' + status.replace(/\s/g, '-');
 
-    document.querySelector('[draft-rounds]').value = (currentDraft && currentDraft.totalRounds) || 10;
+    // The starting point for a draft that does not exist yet, by the
+    // SPORT of the league being configured.
+    //
+    // Pre-filled rather than defaulted server-side, because this form
+    // always sends a poolSize key — blank arrives as null, not as an
+    // absent field — so a route-side "if the caller omitted it" default is
+    // dead on the only path that creates a draft. Showing the number also
+    // means an admin can see what they are getting and change it.
+    var sportDefaults = draftSportDefaults();
+
+    document.querySelector('[draft-rounds]').value =
+        (currentDraft && currentDraft.totalRounds) || sportDefaults.totalRounds || 10;
     // Blank, not 0 — the field means "how many teams are draftable" and empty
     // is the real default. A 0 in a number input reads as a cap of none.
     var poolInput = document.querySelector('[draft-poolsize]');
-    poolInput.value = (currentDraft && currentDraft.poolSize) ? currentDraft.poolSize : '';
+    poolInput.value = (currentDraft && currentDraft.poolSize) ? currentDraft.poolSize
+        : (currentDraft ? '' : (sportDefaults.poolSize || ''));
     // Bound once — populateDraftFormFields runs on every league and season
     // change, and a listener added each time would fire N requests per keypress.
     if (!poolInput.dataset.bound) {

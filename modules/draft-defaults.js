@@ -28,18 +28,27 @@
 // the failure #320 was written to avoid — 10 managers x 12 rounds is
 // exactly 120 and forces the final round.
 //
+// The ladder was scaled for 12-team rosters and does NOT need rescaling for
+// 10: for the weakest snake roster at 6 managers a championship is 27.1% of
+// a whole regular season at 10 rounds against 24.6% at 12. (An earlier note
+// here said "~22%", which came from a different roster — the last-slot one,
+// whose 10-round figure is 25.5%. The real gap is ~2.5 points, not ~5. The
+// conclusion is unchanged and, if anything, stronger.)
+//
+// No `snake` here. Every draft this app has ever run is a snake, the route
+// reads it straight off the request, and a default nothing consults is a
+// setting that looks configurable and is not.
+//
 // 365 D1 teams is the uncapped universe. Drafting from it would be picking
 // between teams that cannot score: rank 120 expects 9.9 points a season
 // against rank 1's 74.8.
 const BY_SPORT = {
     football: {
-        snake: true,
         totalRounds: 10,
         // Uncapped: the FBS universe is already the right size.
         poolSize: null
     },
     basketball: {
-        snake: true,
         totalRounds: 10,
         poolSize: 120
     }
