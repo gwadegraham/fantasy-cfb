@@ -40,7 +40,13 @@ function points(value) {
 function isFinal(game) {
     if (!game) return false;
     if (String(game.status || '').toLowerCase() !== 'final') return false;
-    return points(game.homePoints) !== null && points(game.awayPoints) !== null;
+    const home = points(game.homePoints);
+    const away = points(game.awayPoints);
+    if (home === null || away === null) return false;
+    // A TIE is not a result. Basketball does not have them, so one means
+    // the row is wrong — and scoring it would pay BOTH teams a Q4 "win"
+    // and shield both from the bad-loss penalty, permanently.
+    return home !== away;
 }
 
 // Every team id on a roster, in roster order. Reads refs first because that

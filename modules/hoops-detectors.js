@@ -23,7 +23,9 @@
 // Conference tournaments seasonType 'REGULAR', conferenceGame true, named
 //                        only in gameNotes: "OVC Championship - Final",
 //                        "MVC Tournament - Final", "Sun Belt Championship -
-//                        2nd Round". 31 finals, one per conference.
+//                        2nd Round". 31 finals, one per conference — and
+//                        one of them is "America East PLAYOFFS - Final",
+//                        which is why the word list has three entries.
 //
 // gameType               'TRNMNT' on all of the above AND on 107 November
 //                        exhibitions. It distinguishes nothing.
@@ -109,8 +111,28 @@ function isConfTournamentFinal(game) {
     if (String(game.tournament || '').trim()) return false;
     if (!game.conferenceGame) return false;
     const notes = String(game.gameNotes || '');
-    if (!/\b(championship|tournament)\b/i.test(notes)) return false;
+    // "Playoffs" too: of the 31 conference finals in March 2026, America
+    // East calls its event "America East Playoffs - Final". Matching only
+    // Championship and Tournament found 30 and silently cost that champion
+    // the title bonus — the largest regular-season rule in the model.
+    if (!/\b(championship|tournament|playoffs?)\b/i.test(notes)) return false;
     return /^(final|championship)$/i.test(roundLabel(game));
+}
+
+// A seed, or null.
+//
+// NOT Number(x): Number(null) is 0 and 0 is finite, so a
+// `Number.isFinite` guard let a game carrying only ONE seed through —
+// the missing side read as seed 0 and the winner collected a bonus equal
+// to their own seed number. On an NIT game, which is supposed to score
+// nothing, that paid 5. A seed is 1..16; anything else is absent.
+//
+// Fourth time this trap has appeared in this model: a display rank, a
+// blended rank, a scoreline, and now a seed.
+function seedOf(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 // How many seeds better the winner was than the loser, or 0.
@@ -122,9 +144,9 @@ function isConfTournamentFinal(game) {
 function seedUpsetFor(teamId, game, won) {
     if (!game || !won) return 0;
     const isHome = Number(game.homeTeamId) === Number(teamId);
-    const mine = Number(isHome ? game.homeSeed : game.awaySeed);
-    const theirs = Number(isHome ? game.awaySeed : game.homeSeed);
-    if (!Number.isFinite(mine) || !Number.isFinite(theirs)) return 0;
+    const mine = seedOf(isHome ? game.homeSeed : game.awaySeed);
+    const theirs = seedOf(isHome ? game.awaySeed : game.homeSeed);
+    if (mine === null || theirs === null) return 0;
     // Winner's seed minus loser's, when positive: a 12 beating a 5 is +7.
     const diff = mine - theirs;
     return diff > 0 ? diff : 0;
@@ -135,6 +157,9 @@ function buildHoopsContext(teamId, game, ranks) {
     const id = Number(teamId);
     const isHome = Number(game.homeTeamId) === id;
     const isAway = Number(game.awayTeamId) === id;
+    // Strictly greater. A tie is not a win — basketball does not have
+    // them, but isFinal accepts a 0-0 final, and `>=` would pay BOTH teams
+    // a Q4 win and shield both from the bad-loss penalty.
     const won = isHome ? game.homePoints > game.awayPoints
         : isAway ? game.awayPoints > game.homePoints : false;
     const oppId = isHome ? game.awayTeamId : (isAway ? game.homeTeamId : null);
@@ -168,12 +193,6 @@ function buildHoopsContext(teamId, game, ranks) {
         round,
         isConfTournamentFinal: isConfTournamentFinal(game),
 
-        // THE NIT IS NOT SCORED. Nor is the College Basketball Crown, nor
-        // anything else CBBD files as postseason that is not the NCAA
-        // tournament: they are not the real postseason, so they are worth
-        // nothing rather than worth a quadrant win. With isRegular false and
-        // no round to pay, no rule matches and the game scores 0.
-        isOtherPostseason: isPostseason && !round,
 
         // A CONFERENCE TOURNAMENT GAME IS A REGULAR GAME, final included.
         // CBBD says so, and it is the right answer: it is a real game
@@ -217,12 +236,20 @@ const HOOPS_CONDITIONS = {
     // The only ladder rung that requires winning.
     ncaaChampion: (ctx) => ctx.played && ctx.won && ctx.round === 'title',
 
-    // Beating a better seed, in any tournament game.
-    seedUpsetBonus: (ctx) => ctx.played && ctx.won && ctx.seedUpset > 0
+    // Beating a better seed in an NCAA tournament game — and ONLY there.
+    //
+    // The rule lives in the postseason list, and ANY postseason match stops
+    // the walk before the quadrant rules. Without the round check, a
+    // regular-season game that happened to carry seeds would score the
+    // upset bonus INSTEAD of its quadrant win and the conference title,
+    // which is the opposite of "a bonus on top". No regular-season game in
+    // March 2026 carries a seed, so this is a coupling rather than a live
+    // bug — but it is one careless feed change away from being live.
+    seedUpsetBonus: (ctx) => ctx.played && ctx.won && !!ctx.round && ctx.seedUpset > 0
 };
 
 module.exports = {
     buildHoopsContext, HOOPS_CONDITIONS,
-    ncaaRoundFor, isConfTournamentFinal, seedUpsetFor,
+    ncaaRoundFor, isConfTournamentFinal, seedUpsetFor, seedOf,
     NCAA_ROUNDS
 };

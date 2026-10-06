@@ -103,17 +103,21 @@ describe('blending two rankings', () => {
 
     test('two teams on the same score rank by id, every time', () => {
         // A quadrant boundary can fall between them, so the order has to be
-        // stable across runs rather than left to the sort.
+        // a property of the inputs rather than of insertion order.
         //
-        // Note this cannot be falsified by removing the id tie-break: JS
-        // iterates integer-like object keys in ascending numeric order, so
-        // the array reaching sort() is already id-ordered and the stable
-        // sort keeps it. The comparator is belt and braces for the day ids
-        // are not integers; the PROPERTY is what is pinned here.
+        // An earlier comment here claimed this could not be falsified. That
+        // was wrong: the id set is the preseason keys followed by the
+        // live-ONLY keys appended, so a team only the live source knows
+        // arrives out of numeric order and a stable sort keeps it there.
         const a = blendRanks({ 5: 1, 3: 1 }, { 5: 1, 3: 1 }, 0.5);
         const b = blendRanks({ 3: 1, 5: 1 }, { 3: 1, 5: 1 }, 0.5);
         expect(a).toEqual(b);
         expect(a).toEqual({ 3: 1, 5: 2 });
+
+        // The case that actually exercises the comparator: team 9 is known
+        // only to the preseason source and team 2 only to the live one, so
+        // the array arrives as [9, 2] and the tie must still rank 2 first.
+        expect(blendRanks({ 9: 1 }, { 2: 1 }, 0.5)).toEqual({ 2: 1, 9: 2 });
     });
 
     test('a team both sources list as junk is left out entirely', () => {
@@ -277,6 +281,51 @@ describe('reading the ranking for a week', () => {
         const out = await ranksFor(SEASON, mid);
         expect(out.source).toBe('blended');
         expect(out.staleWeek).toBe(mid - 1);
+    });
+
+    test('a PARTIALLY written week is ignored, not believed', async () => {
+        // The documented fallback only catches a refresh that writes
+        // nothing. A refresh that writes two rows and dies was accepted
+        // wholesale — and that is far worse: past the ramp the Torvik
+        // baseline is discarded entirely, so 363 teams go unranked, EVERY
+        // win in the league becomes Q4, and the run logs
+        // "ranks cbbd-adjusted" as if it were healthy.
+        const all = [];
+        for (let id = 1; id <= 10; id++) all.push(team(id, id));
+        await HoopsTeam.create(all);
+        await HoopsRating.create([rating(9, FULLY_LIVE, 1), rating(10, FULLY_LIVE, 2)]);
+
+        const out = await ranksFor(SEASON, FULLY_LIVE);
+        expect(out.source).toBe('torvik');
+        expect(out.partialWeek).toBe(FULLY_LIVE);
+        // Not the two-row map: the full Torvik field.
+        expect(Object.keys(out.ranks)).toHaveLength(10);
+        expect(out.ranks['1']).toBe(1);
+    });
+
+    test('a partial week does not promote its teams in the BLEND either', async () => {
+        // A team Torvik has at #10 with a partial live rank of 1 would
+        // blend to 5.5 and overtake real teams.
+        const all = [];
+        for (let id = 1; id <= 10; id++) all.push(team(id, id));
+        await HoopsTeam.create(all);
+        const mid = Math.floor((FULLY_PRESEASON + FULLY_LIVE) / 2);
+        await HoopsRating.create([rating(10, mid, 1)]);
+
+        const out = await ranksFor(SEASON, mid);
+        expect(out.source).toBe('torvik');
+        expect(out.ranks['10']).toBe(10);        // stays last
+    });
+
+    test('a week that covers the field IS believed', async () => {
+        // The floor must not reject a healthy refresh.
+        const all = [];
+        for (let id = 1; id <= 10; id++) all.push(team(id, id));
+        await HoopsTeam.create(all);
+        await HoopsRating.create(all.map((t, i) => rating(i + 1, FULLY_LIVE, 10 - i)));
+        const out = await ranksFor(SEASON, FULLY_LIVE);
+        expect(out.source).toBe('cbbd-adjusted');
+        expect(out.ranks['1']).toBe(10);
     });
 
     test('and nothing anywhere is an empty ranking, not a crash', async () => {

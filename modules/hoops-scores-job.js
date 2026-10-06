@@ -43,17 +43,51 @@ async function basketballLeagues() {
         .filter(l => Number.isFinite(l.season));
 }
 
-// Which week to score for a season — the hoops calendar's answer, since
-// CBBD serves no week field of its own for basketball.
-async function weekFor(season, now) {
+// How far back to look for results. Three days covers a Sunday played
+// after Saturday night's run, a West Coast tip that finishes after
+// midnight Eastern, and a dyno that missed a night.
+const LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;
+
+// WHICH WEEKS TO SCORE — from the RESULTS, not from the calendar.
+//
+// Scoring only "this week" loses every Sunday game, permanently. The
+// scheduler runs on Central time, so a 23:30 CT run is 00:30 EASTERN the
+// next day, and the hoops calendar buckets weeks Monday-to-Sunday on the
+// Eastern day. Sunday's games are stamped week N, are played after
+// Saturday night's run, and the Sunday-night run asks for week N+1 —
+// which is empty. No later run ever asks for week N again, and scores are
+// banked at time of play, so those games are never worth anything.
+//
+// Measured against the real 2027 schedule: 377 of 5,286 games, 7.1% of the
+// season — and because the NCAA ladder pays per round PLAYED, half the
+// Round of 32 and half the Elite Eight are Sunday games too.
+//
+// So: every week that has a game which went final recently. That also
+// picks up a late result, a corrected roster and a missed night, and it
+// needs no reasoning about timezones at all. Re-scoring a week is free —
+// writeWeek replaces the entry rather than appending.
+async function weeksToScore(season, now) {
+    const since = new Date(now.getTime() - LOOKBACK_MS);
+    const recent = await HoopsGame.distinct('week', {
+        season, status: 'final', startDate: { $gte: since }
+    });
+    const weeks = recent.filter(w => Number.isFinite(Number(w))).map(Number).sort((a, b) => a - b);
+    if (weeks.length) return { weeks };
+
+    // Nothing has finished lately. Fall back to the calendar so a league
+    // with no results yet still gets its zero-week written — an absent week
+    // and a zero week read the same in a total but not in a weekly table,
+    // and H2H settles per week.
     const first = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: 1 }).lean();
-    const last = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: -1 }).lean();
     if (!first) return { skip: 'no schedule ingested' };
-    return resolveCurrentWeek({
+    const last = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: -1 }).lean();
+    const when = resolveCurrentWeek({
         seasonStart: seasonStartFrom(first.startDate),
         lastGameDate: last && last.startDate,
         now
     });
+    if (when.skip || !Number.isFinite(when.week)) return { skip: when.skip || 'no current week' };
+    return { weeks: [when.week] };
 }
 
 async function run({ now = new Date() } = {}) {
@@ -71,17 +105,15 @@ async function run({ now = new Date() } = {}) {
 
     for (const { league, season } of leagues) {
         try {
-            const when = await weekFor(season, now);
-            // resolveCurrentWeek returns a skip OR a week, so the second
-            // half of this test is defence against a shape change rather
-            // than a path anything reaches today — which is also why its
-            // message has no test.
-            if (when.skip || !Number.isFinite(when.week)) {
-                skipped.push(`${league}: ${when.skip || 'no current week'}`);
+            const which = await weeksToScore(season, now);
+            if (which.skip) {
+                skipped.push(`${league}: ${which.skip}`);
                 continue;
             }
-            const out = await scoreHoopsWeek(league, { season, week: when.week });
-            done.push(`${league} wk${when.week}: ${out.managers} manager(s), ${out.games} game(s), ranks ${out.source}`);
+            for (const week of which.weeks) {
+                const out = await scoreHoopsWeek(league, { season, week });
+                done.push(`${league} wk${week}: ${out.managers} manager(s), ${out.games} game(s), ranks ${out.source}`);
+            }
         } catch (err) {
             // One league's failure must not stop the others — and must not
             // vanish, which is the failure mode this repo keeps meeting.
@@ -106,4 +138,4 @@ async function run({ now = new Date() } = {}) {
     return { done, skipped, failed, summary };
 }
 
-module.exports = { run, JOB_NAME, basketballLeagues, weekFor };
+module.exports = { run, JOB_NAME, basketballLeagues, weeksToScore, LOOKBACK_MS };

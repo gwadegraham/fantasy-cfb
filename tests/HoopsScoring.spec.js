@@ -7,9 +7,9 @@
 // correct but never reached by the walk scores nothing.
 
 const { useMongo } = require('./helpers/mongo');
-const { evaluate } = require('../modules/scoring');
+const { evaluate, explainGame, explainRegularWin } = require('../modules/scoring');
 const { resolveConfig, MODELS } = require('../modules/scoring-defaults');
-const { buildHoopsContext, ncaaRoundFor, isConfTournamentFinal, seedUpsetFor } = require('../modules/hoops-detectors');
+const { buildHoopsContext, ncaaRoundFor, isConfTournamentFinal, seedUpsetFor, seedOf } = require('../modules/hoops-detectors');
 
 const cfg = (overrides) => resolveConfig('any-league', Object.assign({ model: 'hoops' }, overrides));
 
@@ -235,6 +235,18 @@ describe('the conference tournament title is a BONUS', () => {
         expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { conferenceGame: false }))).toBe(false);
     });
 
+    test('the event must call itself a championship, tournament or PLAYOFFS', () => {
+        // The word list, which had no test and was WRONG: of the 31
+        // conference finals in March 2026, America East calls its event
+        // "America East Playoffs - Final". Matching only Championship and
+        // Tournament found 30 and silently cost that champion 10 points.
+        expect(isConfTournamentFinal(confTourney('America East Playoffs', 'Final'))).toBe(true);
+        expect(isConfTournamentFinal(confTourney('Big Ten Tournament', 'Final'))).toBe(true);
+        expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final'))).toBe(true);
+        // A plain conference game that happens to end in "Final" is not one.
+        expect(isConfTournamentFinal(confTourney('Rivalry Week', 'Final'))).toBe(false);
+    });
+
     test('a NAMED tournament is somebody else’s, however it is marked', () => {
         expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NIT' }))).toBe(false);
         expect(isConfTournamentFinal(confTourney('OVC Championship', 'Final', { tournament: 'NCAA' }))).toBe(false);
@@ -268,6 +280,36 @@ describe('the seed upset bonus', () => {
 
     test('losing to a better seed is not an upset', () => {
         expect(score(1, r64({ homeSeed: 12, awaySeed: 5, homePoints: 60, awayPoints: 70 }))).toBe(7);
+    });
+
+    test('ONE seed on the game is not an upset', () => {
+        // Number(null) is 0 and finite, so without the second guard a game
+        // carrying only the winner's seed paid a bonus equal to that seed
+        // number — and on an NIT game, which is supposed to score nothing
+        // at all, it paid 5.
+        // NULL specifically, not undefined: Number(undefined) is NaN and
+        // fails the comparison on its own, but Number(null) is 0 — so the
+        // guard is only load-bearing for null, and a fixture using
+        // undefined cannot tell whether it is there.
+        expect(seedUpsetFor(1, game({ homeSeed: 5, awaySeed: null }), true)).toBe(0);
+        expect(seedUpsetFor(1, game({ homeSeed: null, awaySeed: 5 }), true)).toBe(0);
+        expect(seedUpsetFor(1, game({ homeSeed: 5 }), true)).toBe(0);
+        // A seed is 1..16. Zero and negatives are absent, not "better than
+        // a 1" — which is what a bare isFinite check would make them.
+        expect(seedUpsetFor(1, game({ homeSeed: 5, awaySeed: 0 }), true)).toBe(0);
+        expect(seedUpsetFor(1, game({ homeSeed: 5, awaySeed: -2 }), true)).toBe(0);
+        expect(seedOf(0)).toBeNull();
+        expect(seedOf(1)).toBe(1);
+        expect(score(1, nit('1st Round', { homeSeed: 5, awaySeed: null }), { 2: 10 })).toBe(0);
+    });
+
+    test('a seeded REGULAR-season game still scores its quadrant', () => {
+        // The bonus lives in the postseason list, and any postseason match
+        // stops the walk before the quadrant rules. Without the round
+        // check, a regular game carrying seeds would score the bonus
+        // INSTEAD of the win and the conference title.
+        expect(score(1, game({ homeSeed: 12, awaySeed: 5 }), { 2: 10 })).toBe(5);
+        expect(score(1, confTourney('OVC Championship', 'Final', { homeSeed: 12, awaySeed: 5 }), { 2: 10 })).toBe(15);
     });
 
     test('equal seeds are not an upset', () => {
@@ -355,6 +397,44 @@ describe('the context itself', () => {
         const conf = buildHoopsContext(1, confTourney('ACC Tournament', 'Final'), { 2: 1 });
         expect(HOOPS_CONDITIONS.q1Win(conf)).toBe(true);
         expect(HOOPS_CONDITIONS.confTournamentTitle(conf)).toBe(true);
+    });
+
+    test('a TIE is not a win', () => {
+        // Basketball does not have them, so a tied row is a wrong row —
+        // and `>=` would pay BOTH teams a Q4 win and shield both from the
+        // bad-loss penalty. isFinal rejects ties too; this pins the
+        // context on its own, since that is the layer that decides `won`.
+        const tied = buildHoopsContext(1, game({ homePoints: 70, awayPoints: 70 }), { 2: 10 });
+        expect(tied.won).toBe(false);
+        expect(buildHoopsContext(2, game({ homePoints: 70, awayPoints: 70 }), { 1: 10 }).won).toBe(false);
+    });
+
+    test('explainGame agrees with evaluate for basketball', () => {
+        // explainGame's own comment promises parity, and it was false for
+        // hoops: it ran football's context and vocabulary, returning a
+        // total of 0 for a game evaluate() scored 61.
+        const cases = [
+            game({ seasonType: 'regular' }),
+            ncaa('1st Round'),
+            ncaa('National Championship'),
+            confTourney('OVC Championship', 'Final')
+        ];
+        for (const g of cases) {
+            const total = explainGame('hoops', 1, g, { 2: 10 }, cfg())
+                .matched.reduce((t, m) => t + m.points, 0);
+            expect(total).toBe(score(1, g, { 2: 10 }));
+        }
+    });
+
+    test('the rules page shows a BASKETBALL worked example', () => {
+        // GET /scoring-config/:league feeds the admin form and the member
+        // rules page. It was telling a basketball commissioner their
+        // example was "a non-conference win over a top-10 team", scoring
+        // nothing.
+        const out = explainRegularWin('hoops', cfg().values, [], []);
+        expect(out.scenario).toMatch(/top-30/);
+        expect(out.matched.map(m => m.key)).toEqual(['q1Win']);
+        expect(out.matched[0].points).toBe(5);
     });
 
     test('a tournament game is not a regular-season game', () => {

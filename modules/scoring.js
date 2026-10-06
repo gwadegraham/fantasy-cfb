@@ -947,7 +947,11 @@ var EXAMPLE_SCENARIOS = {
         ctx: { isConference: false, rankVal: 2, isPowerFiveUpset: false } },
     // Conference win over a top-10 team → stacks base + conference + top-10 win.
     graham: { label: 'a conference win over a top-10 team',
-        ctx: { isConference: true, rankVal: 2, isPowerFiveUpset: false } }
+        ctx: { isConference: true, rankVal: 2, isPowerFiveUpset: false } },
+    // Basketball's signature result: the quadrant IS the scenario, and a
+    // road win over a top-30 team is the one worth describing.
+    hoops: { label: 'a road win over a top-30 team',
+        ctx: { quadrant: 1, venue: 'away', isConference: false } }
 };
 
 // Runs the model's signature win through the REAL condition detectors and
@@ -960,16 +964,23 @@ var EXAMPLE_SCENARIOS = {
 // every match added).
 function explainRegularWin(model, values, disabled, enabled) {
     var structure = (MODELS[model] || MODELS.claunts).structure;
+    // Basketball has its own scenario AND its own conditions. Without the
+    // branch, GET /scoring-config/:league told a basketball commissioner
+    // their worked example was "a non-conference win over a top-10 team"
+    // and that it scored nothing — a football scenario run through
+    // football detectors against a context the hoops rules cannot read.
+    var isHoops = model === 'hoops';
+    var conditions = isHoops ? HOOPS_CONDITIONS : CONDITIONS;
     var scn = EXAMPLE_SCENARIOS[model] || EXAMPLE_SCENARIOS.claunts;
     var ctx = Object.assign({
         game: { seasonType: 'regular', notes: '' },
-        team: 'example', isRegular: true, won: true, opponent: 'Opponent'
+        team: 'example', isRegular: true, won: true, played: true, opponent: 'Opponent'
     }, scn.ctx);
     var matched = [];
     for (var i = 0; i < structure.regularWin.length; i++) {
         var rr = structure.regularWin[i];
         if (!ruleEnabled(rr, disabled || [], enabled || [])) continue;
-        var det = CONDITIONS[rr.condition];
+        var det = conditions[rr.condition];
         if (det && det(ctx)) {
             matched.push({ key: rr.pointsKey, label: rr.label, points: pointsOf(values, rr.pointsKey) });
         }
@@ -990,24 +1001,31 @@ function explainGame(model, team, game, rankings, cfg, bracket) {
     var enabled = cfg.enabled || [];
     var combineMode = (cfg.combineMode === 'sum' || cfg.combineMode === 'first')
         ? cfg.combineMode : structure.combineMode;
-    var ctx = buildContext(team, game, rankings, bracket, cfg.powerConferences);
+    // The same branch evaluate() takes, or the parity this function's own
+    // comment promises is not true for basketball: it returned a total of
+    // 0 for a game evaluate() scored 61.
+    var isHoops = model === 'hoops';
+    var conditions = isHoops ? HOOPS_CONDITIONS : CONDITIONS;
+    var ctx = isHoops
+        ? buildHoopsContext(team, game, rankings)
+        : buildContext(team, game, rankings, bracket, cfg.powerConferences);
     var matched = [];
     var add = function (r, group) {
-        matched.push({ key: r.pointsKey, label: r.label, points: pointsOf(values, r.pointsKey), group: group });
+        matched.push({ key: r.pointsKey, label: r.label, points: ruleValue(values, r, ctx), group: group });
     };
 
     var matchedPost = false;
     for (var i = 0; i < structure.postseason.length; i++) {
         var pr = structure.postseason[i];
         if (!ruleEnabled(pr, disabled, enabled)) continue;
-        var pd = CONDITIONS[pr.condition];
+        var pd = conditions[pr.condition];
         if (pd && pd(ctx)) { add(pr, 'postseason'); matchedPost = true; if (!pr.additive) break; }
     }
     if (!matchedPost) {
         for (var j = 0; j < structure.regularWin.length; j++) {
             var rr = structure.regularWin[j];
             if (!ruleEnabled(rr, disabled, enabled)) continue;
-            var rd = CONDITIONS[rr.condition];
+            var rd = conditions[rr.condition];
             if (rd && rd(ctx)) { add(rr, 'regular'); if (combineMode !== 'sum') break; }
         }
     }

@@ -39,6 +39,25 @@ const HoopsTeam = require('../models/hoopsTeam');
 const FULLY_PRESEASON = 2;
 const FULLY_LIVE = 8;
 
+// How much of the field a stored week must cover before it is believed.
+//
+// The documented safety net — "a missed refresh falls back to the last week
+// that has one" — only catches a refresh that writes NOTHING. A refresh
+// that writes two rows and dies was accepted wholesale, which is far worse:
+//
+//   in the blend window, the two written teams are promoted against the
+//   whole Torvik field — a team Torvik has at #300 with a partial live rank
+//   of 1 blends to #150, turning a home win over it from Q4 into Q2
+//
+//   past the ramp, the Torvik baseline is discarded entirely and the map is
+//   the two rows, so 363 teams become unranked, EVERY win in the league
+//   becomes Q4, and the run logs "ranks cbbd-adjusted" as if healthy
+//
+// A real refresh rates essentially everybody, so anything under this is a
+// broken run rather than a thin one. Below the floor the week is treated as
+// absent and the fallback does its job.
+const MIN_LIVE_COVERAGE = 0.8;
+
 // How much the PRESEASON rank is worth in week `week`, 1 down to 0.
 function blendWeight(week) {
     const w = Number(week);
@@ -81,11 +100,11 @@ function blendRanks(preseason, live, weight) {
     // Tie-broken by team id: two teams on the same blended score must not
     // swap places between runs and carry a quadrant boundary with them.
     //
-    // Belt and braces as written — JS iterates integer-like keys in
-    // ascending numeric order, so the array arriving here is already id
-    // ordered and a stable sort keeps it. Kept for the day an id is not an
-    // integer, and because relying on key-iteration order to hold a scoring
-    // invariant is not something to leave implicit.
+    // NOT redundant, which an earlier comment here claimed. The id set is
+    // the preseason keys followed by the live-only keys APPENDED, so a team
+    // only the live source knows arrives out of numeric order and a stable
+    // sort keeps it there. The comparator is what makes the order a
+    // property of the inputs rather than of the insertion order.
     scored.sort((a, b) => (a[1] - b[1]) || (Number(a[0]) - Number(b[0])));
     const out = {};
     scored.forEach(([id], i) => { out[id] = i + 1; });
@@ -142,9 +161,18 @@ async function ranksFor(season, week) {
         liveRanks(season, week)
     ]);
 
-    const havePre = Object.keys(pre).length > 0;
-    const haveLive = Object.keys(live.ranks).length > 0;
-    if (!haveLive) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null };
+    const preCount = Object.keys(pre).length;
+    const liveCount = Object.keys(live.ranks).length;
+
+    // A partially-written week is a FAILED refresh, not a thin one.
+    const thin = preCount > 0 && liveCount > 0 && liveCount < preCount * MIN_LIVE_COVERAGE;
+    if (thin) {
+        console.error(`hoops-ranks: ignoring week ${live.week} — only ${liveCount} of ${preCount} teams rated`);
+    }
+
+    const havePre = preCount > 0;
+    const haveLive = liveCount > 0 && !thin;
+    if (!haveLive) return { ranks: pre, source: 'torvik', blendWeight: 1, staleWeek: null, partialWeek: thin ? live.week : null };
     if (!havePre) return { ranks: live.ranks, source: 'cbbd-adjusted', blendWeight: 0, staleWeek: live.stale ? live.week : null };
 
     const w = blendWeight(week);
@@ -159,6 +187,6 @@ async function ranksFor(season, week) {
 }
 
 module.exports = {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, rankOf,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, rankOf, MIN_LIVE_COVERAGE,
     FULLY_PRESEASON, FULLY_LIVE
 };

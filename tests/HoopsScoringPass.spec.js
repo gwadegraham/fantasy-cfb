@@ -42,6 +42,14 @@ async function manager(name, teamIds) {
     return a;
 }
 
+// Any week's score for the one manager created most recently.
+const weekOf2 = async (season, week) => {
+    const f = await Franchise.findOne({ league: LEAGUE, 'seasons.season': season }).sort({ _id: -1 }).lean();
+    const s = (f.seasons || []).find(x => x.season === season);
+    const w = (s.weeklyScore || []).find(e => e.week === week);
+    return w && w.score;
+};
+
 const weekOf = async (accountId) => {
     const f = await Franchise.findOne({ accountId, league: LEAGUE }).lean();
     const s = (f.seasons || []).find(x => x.season === SEASON);
@@ -174,7 +182,11 @@ describe('which games it refuses', () => {
         expect(isFinal({ status: 'final', homePoints: '', awayPoints: '' })).toBe(false);
         // A real 0-0 cannot happen in basketball, but it is still a number
         // and must not be rejected by a guard aimed at nulls.
-        expect(isFinal({ status: 'final', homePoints: 0, awayPoints: 0 })).toBe(true);
+        // A tie is not a result. Basketball does not have them, so one
+        // means the row is wrong — and scoring it would pay BOTH teams a
+        // Q4 "win" and shield both from the bad-loss penalty.
+        expect(isFinal({ status: 'final', homePoints: 0, awayPoints: 0 })).toBe(false);
+        expect(isFinal({ status: 'final', homePoints: 70, awayPoints: 70 })).toBe(false);
         expect(isFinal({ status: 'final', homePoints: 'abandoned', awayPoints: 60 })).toBe(false);
         expect(isFinal({ status: 'FINAL', homePoints: 70, awayPoints: 60 })).toBe(true);
         expect(isFinal({ status: 'scheduled', homePoints: 70, awayPoints: 60 })).toBe(false);
@@ -273,6 +285,43 @@ describe('it does not touch anyone else', () => {
             expect(out.skippedReason).toBe('no season or week to score');
             expect(out.managers).toBe(0);
         }
+    });
+
+    test('ONE account with two franchises in the SAME season is not crossed', async () => {
+        // The filter the previous cross-league test could never exercise:
+        // it gave the other league a different ACCOUNT, so a missing
+        // `league` on the write would still have found the right document.
+        // A manager who plays basketball and football has two Franchise
+        // docs under one accountId, and today only the differing season
+        // keeps them apart — which stops being true when football rolls
+        // over to 2027.
+        const a = await Account.create({ firstName: 'Dual', lastName: 'M', email: 'dual@example.invalid' });
+        await Franchise.create([
+            { accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoops side', teamRefs: [{ id: 2, sport: 'basketball' }] }] },
+            // The football side carries a week-3 entry of its OWN for the
+            // same season. Without it the $elemMatch can only ever select
+            // the basketball document, so the league filter on the replace
+            // path is never the thing doing the work.
+            { accountId: a._id, league: 'graham-league', seasons: [{
+                season: SEASON, franchiseName: 'Football side',
+                weeklyScore: [{ week: WEEK, score: 99, scoreByTeam: [] }]
+            }] }
+        ]);
+        await HoopsGame.create(finalGame(240, 2, 1, true));
+
+        // TWICE: the first pass PUSHes the week, the second REPLACEs it.
+        // Both writes carry the league filter and both need exercising —
+        // a single pass only ever reached the push.
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+
+        const hoops = await Franchise.findOne({ accountId: a._id, league: LEAGUE }).lean();
+        const football = await Franchise.findOne({ accountId: a._id, league: 'graham-league' }).lean();
+        expect(hoops.seasons[0].weeklyScore.filter(w => w.week === WEEK)).toHaveLength(1);
+        expect(hoops.seasons[0].weeklyScore.find(w => w.week === WEEK).score).toBe(5);
+        // Untouched: still the 99 it started with, not the basketball score.
+        expect(football.seasons[0].weeklyScore).toHaveLength(1);
+        expect(football.seasons[0].weeklyScore[0].score).toBe(99);
     });
 
     test('apply:false scores without writing anything', async () => {
@@ -376,30 +425,81 @@ describe('the nightly basketball job', () => {
         expect(out.skippedReason).toMatch(/hoops-league:/);
     });
 
-    test('it scores the current week and logs a run', async () => {
+    test('it scores the week a result landed in, and logs a run', async () => {
         await manager('Uma', [2]);
-        const NOW = new Date('2026-12-20');
-        // The calendar needs a season START to count weeks from and a LAST
-        // game to know the season is still running — with only the opener
-        // on file it reads as already over.
+        const NOW = new Date('2026-12-20T23:30:00Z');
         await HoopsGame.create([
             finalGame(201, 50, 51, true, { week: 1, startDate: new Date('2026-11-02'), status: 'scheduled' }),
-            finalGame(299, 52, 53, true, { week: 18, startDate: new Date('2027-03-01'), status: 'scheduled' })
+            finalGame(200, 2, 1, true, { week: 7, startDate: new Date('2026-12-19') })
         ]);
-        // ASK the calendar rather than hardcoding a week. Hardcoding 7
-        // assumed a boundary the calendar does not draw, and the test
-        // failed on an off-by-one that was never the job's.
-        const when = await job.weekFor(SEASON, NOW);
-        expect(Number.isFinite(when.week)).toBe(true);
-        await HoopsGame.create(finalGame(200, 2, 1, true, {
-            week: when.week, startDate: new Date('2026-12-16')
-        }));
 
         const logged = watchLogger();
         const out = await job.run({ now: NOW });
-        expect(out.done.join(' ')).toContain(`hoops-league wk${when.week}: 1 manager(s), 1 game(s)`);
+        expect(out.done.join(' ')).toContain('hoops-league wk7: 1 manager(s), 1 game(s)');
+        expect((await weekOf2(SEASON, 7))).toBe(5);
         expect(logged).toHaveLength(1);
         expect(logged[0].status).toBe('success');
+    });
+
+    // THE BUG THIS DESIGN EXISTS FOR.
+    //
+    // The scheduler runs on Central time, so 23:30 CT is 00:30 EASTERN the
+    // next day — and the hoops calendar buckets weeks Monday-to-Sunday on
+    // the Eastern day. A Sunday game is stamped week N, is played after
+    // Saturday night's run, and the Sunday-night run asks for week N+1.
+    // Scoring "the current week" meant no run EVER asked for week N again,
+    // and scores are banked at time of play.
+    //
+    // 377 of the 5,286 real 2027 games are Sunday games — 7.1% of the
+    // season, plus half the Round of 32 and half the Elite Eight.
+    test('a SUNDAY result is still scored by the next night’s run', async () => {
+        await manager('Sun', [2]);
+        await HoopsGame.create([
+            finalGame(230, 50, 51, true, { week: 1, startDate: new Date('2026-11-02'), status: 'scheduled' }),
+            // Sunday 10 Jan 2027, Eastern — week 10.
+            finalGame(231, 2, 1, true, { week: 10, startDate: new Date('2027-01-10T23:00:00Z') })
+        ]);
+        // The Sunday-night run: 23:30 CT Sunday = 00:30 ET Monday, which the
+        // calendar calls week 11.
+        const out = await job.run({ now: new Date('2027-01-11T05:30:00Z') });
+        expect(out.done.join(' ')).toContain('wk10');
+        expect(await weekOf2(SEASON, 10)).toBe(5);
+    });
+
+    test('a late West Coast Saturday tip is scored too', async () => {
+        // 22:00 PT Saturday is 01:00 ET Sunday, so the Eastern day is
+        // Sunday and the week is N — the same hole.
+        await manager('Wst', [2]);
+        await HoopsGame.create([
+            finalGame(232, 50, 51, true, { week: 1, startDate: new Date('2026-11-02'), status: 'scheduled' }),
+            finalGame(233, 2, 1, true, { week: 6, startDate: new Date('2026-12-13T06:00:00Z') })
+        ]);
+        const out = await job.run({ now: new Date('2026-12-14T05:30:00Z') });
+        expect(out.done.join(' ')).toContain('wk6');
+        expect(await weekOf2(SEASON, 6)).toBe(5);
+    });
+
+    test('a missed night is caught up, not lost', async () => {
+        await manager('Mis', [2]);
+        await HoopsGame.create([
+            finalGame(234, 50, 51, true, { week: 1, startDate: new Date('2026-11-02'), status: 'scheduled' }),
+            finalGame(235, 2, 1, true, { week: 5, startDate: new Date('2026-12-05') }),
+            finalGame(236, 2, 3, true, { week: 6, startDate: new Date('2026-12-07') })
+        ]);
+        // Two nights later: both weeks still inside the lookback.
+        const out = await job.run({ now: new Date('2026-12-07T23:30:00Z') });
+        expect(out.done.join(' ')).toContain('wk5');
+        expect(out.done.join(' ')).toContain('wk6');
+    });
+
+    test('a result older than the lookback is not rescored every night', async () => {
+        await manager('Old', [2]);
+        await HoopsGame.create([
+            finalGame(237, 50, 51, true, { week: 1, startDate: new Date('2026-11-02'), status: 'scheduled' }),
+            finalGame(238, 2, 1, true, { week: 2, startDate: new Date('2026-11-10') })
+        ]);
+        const out = await job.run({ now: new Date('2026-12-20T23:30:00Z') });
+        expect(out.done.join(' ')).not.toContain('wk2');
     });
 
     test('a league that blows up is recorded, not swallowed', async () => {
