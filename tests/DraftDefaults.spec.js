@@ -45,6 +45,17 @@ describe('the defaults themselves', () => {
         expect(BY_SPORT.basketball.poolSize).toBe(120);
     });
 
+    test('and the shared table itself is frozen', () => {
+        // server.js serialises this very object onto every admin page, so
+        // a stray write would change what every admin's form pre-fills
+        // until the dyno restarts. Asserting only that a COPY is safe left
+        // that open.
+        expect(Object.isFrozen(BY_SPORT)).toBe(true);
+        expect(Object.isFrozen(BY_SPORT.basketball)).toBe(true);
+        expect(() => { 'use strict'; BY_SPORT.basketball.poolSize = 1; }).toThrow();
+        expect(BY_SPORT.basketball.poolSize).toBe(120);
+    });
+
     test('the pool is big enough that no round is forced', () => {
         // #320's actual worry: 10 managers x 12 rounds is exactly 120 and
         // empties the pool on the final pick. At the sizes in play — 6 or 8
@@ -172,8 +183,10 @@ describe('the admin form shows the default', () => {
     // nature; the structural test below fails loudly if either is renamed.
     const lift = (name) => {
         // Plain string scanning, not a regex — escaping a regex through
-        // two layers of quoting produced an invalid one.
-        const start = SRC.indexOf('\nfunction ' + name + '(');
+        // two layers of quoting produced an invalid one. `async` is tried
+        // too, or an async function silently reports as missing.
+        let start = SRC.indexOf('\nfunction ' + name + '(');
+        if (start === -1) start = SRC.indexOf('\nasync function ' + name + '(');
         expect(start).toBeGreaterThan(-1);
         const end = SRC.indexOf('\n}\n', start);
         expect(end).toBeGreaterThan(start);
@@ -214,12 +227,61 @@ describe('the admin form shows the default', () => {
         expect(pick('hoops-league', undefined, DEFAULTS)).toEqual({ totalRounds: 10, poolSize: null });
     });
 
-    test('the pre-fill only applies to a draft that does not exist yet', () => {
-        // An existing uncapped draft must keep showing blank, or saving the
-        // form would silently re-cap it.
-        const src = lift('populateDraftFormFields');
-        expect(src).toContain('sportDefaults');
-        expect(src).toMatch(/currentDraft \? '' :/);
+    // THE BEHAVIOUR, not its spelling.
+    //
+    // The first version of this grepped populateDraftFormFields for the
+    // text `currentDraft ? '' :`. A rewrite to
+    //   (sportDefaults.poolSize || (currentDraft ? '' : ''))
+    // re-caps EVERY existing uncapped draft and passed that grep green —
+    // and since the form always sends a poolSize key, this one expression
+    // is the only thing standing between a deliberately uncapped draft and
+    // a silent re-cap on the next save.
+    describe('what the pool field shows', () => {
+        const poolValue = (draft, defaults) =>
+            new Function(lift('draftPoolFieldValue') + '; return draftPoolFieldValue;')()(draft, defaults);
+        const HOOPS_DEFAULTS = { totalRounds: 10, poolSize: 120 };
+
+        test('no draft yet: the sport default, where it can be seen', () => {
+            expect(poolValue(null, HOOPS_DEFAULTS)).toBe(120);
+        });
+
+        test('an existing CAPPED draft: its own cap', () => {
+            expect(poolValue({ poolSize: 90 }, HOOPS_DEFAULTS)).toBe(90);
+        });
+
+        test('an existing UNCAPPED draft: blank, and it STAYS blank', () => {
+            // The case the grep could not see. Saving the form re-sends
+            // whatever is in this field, so a default here would re-cap a
+            // draft the commissioner deliberately opened up.
+            expect(poolValue({ poolSize: null }, HOOPS_DEFAULTS)).toBe('');
+            expect(poolValue({ poolSize: 0 }, HOOPS_DEFAULTS)).toBe('');
+            expect(poolValue({ totalRounds: 10 }, HOOPS_DEFAULTS)).toBe('');
+        });
+
+        test('football, with no default, is blank either way', () => {
+            expect(poolValue(null, { totalRounds: 10, poolSize: null })).toBe('');
+            expect(poolValue(null, {})).toBe('');
+        });
+    });
+
+    describe('what the rounds field shows', () => {
+        const roundsValue = (draft, defaults) =>
+            new Function(lift('draftRoundsFieldValue') + '; return draftRoundsFieldValue;')()(draft, defaults);
+
+        test('an existing draft wins, then the default, then 10', () => {
+            expect(roundsValue({ totalRounds: 12 }, { totalRounds: 10 })).toBe(12);
+            expect(roundsValue(null, { totalRounds: 10 })).toBe(10);
+            expect(roundsValue(null, {})).toBe(10);
+        });
+    });
+
+    test('a failed load is not mistaken for "no draft"', () => {
+        // A 500 returns {message}, which is truthy. currentDraft's
+        // truthiness now decides the pool pre-fill, so reading a failed
+        // load as "a draft exists" would show blank and create the next
+        // basketball draft uncapped.
+        const src = lift('loadDraftConfig');
+        expect(src).toMatch(/draftResp\.ok \?/);
     });
 
     test('the page is actually given the defaults', () => {

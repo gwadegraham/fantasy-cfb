@@ -439,7 +439,17 @@ router.post('/', async (req, res) => {
         // which is the distinction the poolSize handling above is built
         // around.
         const onInsert = { picks: [], currentOverall: 1 };
-        if (!sent && defaults.poolSize != null) onInsert.poolSize = defaults.poolSize;
+        // Gated on the SAME condition the explicit path is validated
+        // against above. Harmless today, and therefore UNTESTABLE today:
+        // football's default is null, so the sport check can never be the
+        // thing that stops a write. It is here for the third sport, where
+        // without it a draft could be created holding a cap that an
+        // explicit POST is refused for — two write paths with two
+        // contracts, which is the shape this repo keeps meeting. Kept
+        // rather than deleted for a coverage number.
+        if (!sent && defaults.poolSize != null && sportForLeague(league) === 'basketball') {
+            onInsert.poolSize = defaults.poolSize;
+        }
 
         const draft = await Draft.findOneAndUpdate(
             { league, season },
@@ -452,10 +462,10 @@ router.post('/', async (req, res) => {
             : 'no date';
         await audit.record(req, {
             action: 'draft.config', league, season: String(season),
-            summary: `Draft settings saved — ${when}, ${draft.snake ? 'snake' : 'linear'}, ${draft.totalRounds} rounds, ${(draft.draftOrder || []).length} managers${draft.callUrl ? ', call link set' : ''}`,
+            summary: `Draft settings saved — ${when}, ${draft.snake ? 'snake' : 'linear'}, ${draft.totalRounds} rounds, ${draft.poolSize ? `${draft.poolSize}-team pool` : 'uncapped'}, ${(draft.draftOrder || []).length} managers${draft.callUrl ? ', call link set' : ''}`,
             // The link itself stays out of the trail — a meeting URL can carry an
             // embedded passcode, and "set or not" is all the log needs to show.
-            meta: { draftId: String(draft._id), scheduledAt: draft.scheduledAt, snake: draft.snake, totalRounds: draft.totalRounds, orderSize: (draft.draftOrder || []).length, callLink: draft.callUrl ? 'set' : 'none' }
+            meta: { draftId: String(draft._id), scheduledAt: draft.scheduledAt, snake: draft.snake, totalRounds: draft.totalRounds, poolSize: draft.poolSize, orderSize: (draft.draftOrder || []).length, callLink: draft.callUrl ? 'set' : 'none' }
         });
         res.status(200).json(draft);
     } catch (err) {

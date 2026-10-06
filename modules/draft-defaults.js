@@ -60,4 +60,10 @@ function draftDefaultsFor(sport) {
     return Object.assign({}, BY_SPORT[sport] || BY_SPORT[DEFAULT_SPORT]);
 }
 
+// Frozen, not just copied on the way out. server.js serialises this very
+// object onto every admin page, so a stray write would change what every
+// admin's form pre-fills until the dyno restarts.
+Object.freeze(BY_SPORT);
+Object.keys(BY_SPORT).forEach(k => Object.freeze(BY_SPORT[k]));
+
 module.exports = { draftDefaultsFor, BY_SPORT };

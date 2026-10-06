@@ -2050,7 +2050,12 @@ async function loadDraftConfig() {
 
     // Existing draft config for this league+season (null if none yet).
     var draftResp = await fetch(`/draft/${leagueCode}/${season}`, { headers: { 'Accept': 'application/json' } });
-    currentDraft = await draftResp.json();
+    // A 500 returns {message: ...}, which is TRUTHY — so without this the
+    // form would read a failed load as "a draft exists" and show blank,
+    // and saving would create a basketball draft uncapped. currentDraft's
+    // truthiness decides the pool pre-fill now, so the distinction between
+    // "no draft" and "could not load" has to be real.
+    currentDraft = draftResp.ok ? await draftResp.json() : null;
 
     var byId = {};
     members.forEach(m => { byId[String(m._id)] = m; });
@@ -2221,6 +2226,34 @@ function draftSportDefaults() {
     }
 }
 
+// What the pool field shows. THREE cases, and the middle one is the one
+// that matters:
+//
+//   no draft yet      the sport's default, so the admin SEES what they are
+//                     getting and can change it
+//   draft, capped     its own cap
+//   draft, UNCAPPED   blank — a commissioner who deliberately cleared the
+//                     cap must not have it silently put back on the next
+//                     save, and since the form always sends a poolSize key
+//                     this line is the only thing preventing that
+//
+// A separate function because the inline version could only be tested by
+// grepping its source, and a rewrite that re-capped every existing draft
+// passed that grep green.
+//
+// Blank, not 0 — a 0 in a number input reads as a cap of none.
+function draftPoolFieldValue(draft, defaults) {
+    if (draft && draft.poolSize) return draft.poolSize;
+    if (draft) return '';
+    return (defaults && defaults.poolSize) || '';
+}
+
+// Rounds, same shape — but an existing draft always has a value, so there
+// is no uncapped-equivalent case.
+function draftRoundsFieldValue(draft, defaults) {
+    return (draft && draft.totalRounds) || (defaults && defaults.totalRounds) || 10;
+}
+
 function populateDraftFormFields() {
     var status = currentDraft ? currentDraft.status : 'not configured';
     var statusEl = document.querySelector('[draft-status]');
@@ -2237,13 +2270,9 @@ function populateDraftFormFields() {
     // means an admin can see what they are getting and change it.
     var sportDefaults = draftSportDefaults();
 
-    document.querySelector('[draft-rounds]').value =
-        (currentDraft && currentDraft.totalRounds) || sportDefaults.totalRounds || 10;
-    // Blank, not 0 — the field means "how many teams are draftable" and empty
-    // is the real default. A 0 in a number input reads as a cap of none.
+    document.querySelector('[draft-rounds]').value = draftRoundsFieldValue(currentDraft, sportDefaults);
     var poolInput = document.querySelector('[draft-poolsize]');
-    poolInput.value = (currentDraft && currentDraft.poolSize) ? currentDraft.poolSize
-        : (currentDraft ? '' : (sportDefaults.poolSize || ''));
+    poolInput.value = draftPoolFieldValue(currentDraft, sportDefaults);
     // Bound once — populateDraftFormFields runs on every league and season
     // change, and a listener added each time would fire N requests per keypress.
     if (!poolInput.dataset.bound) {
