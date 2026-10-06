@@ -25,6 +25,7 @@ const leagueSelection = require('./modules/league-selection');
 const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
+const draftDefaults = require('./modules/draft-defaults');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
@@ -696,7 +697,14 @@ app.get('/admin', (req, res) => {
         const userState = safeJson(req.effUser);
         const isAdmin = roles.includes('Admin');
 
-        res.render('admin', {user, userState, year: viewerSeason(res), isAdmin});
+        // The per-sport draft defaults, so the settings form can SHOW them
+        // rather than relying on a server-side fallback the form can never
+        // trigger — it always sends a poolSize key, so an absent-key default
+        // was dead on the only path that creates a draft.
+        res.render('admin', {
+            user, userState, year: viewerSeason(res), isAdmin,
+            draftDefaults: safeJson(draftDefaults.BY_SPORT)
+        });
     } else {
         res.redirect("/login");
     }
