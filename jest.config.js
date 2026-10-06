@@ -66,6 +66,65 @@ module.exports = {
             functions: 100,
             lines: 95
         },
+        // The nightly basketball job. 95 branches rather than 100: one
+        // fallback is unreachable today — resolveCurrentWeek returns a skip
+        // OR a week, so the "no current week" message is defence against a
+        // shape change — and deleting a real safeguard to buy a round
+        // number is the wrong trade. Everything else here is covered,
+        // including a league that throws and a league that throws a STRING.
+        "./modules/hoops-scores-job.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        // Scoring a week of basketball onto rosters (#316). It WRITES, and
+        // the write is an upsert of one week — a second pass over the same
+        // week is normal (a late final, a corrected roster), and appending
+        // instead of replacing would double every score in the season
+        // total. The refusals matter as much as the scoring: a live game
+        // has points too, and a score banked at time of play is never
+        // revisited.
+        "./modules/hoops-scoring-pass.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        // What a team was RANKED when a game was played (#316). Every
+        // quadrant is a rank threshold and every score is banked at time of
+        // play, so a rank that is wrong on the night is wrong forever. The
+        // soft paths are the dangerous ones: a missed weekly refresh falls
+        // back to the last week that has one, and a team only one source
+        // knows is kept rather than dropped.
+        "./modules/hoops-ranks.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        // The basketball condition vocabulary (#316). Its defining risk is a
+        // detector that reads a game shape nobody has seen yet — the 2027
+        // ingest has no postseason, no seeds and an empty `tournament`
+        // field — so the branches that REFUSE to recognise a round matter as
+        // much as the ones that do. gameType 'TRNMNT' is 107 November
+        // exhibitions, not the NCAA tournament.
+        "./modules/hoops-detectors.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
+        // The basketball scoring table (#316). Pure, and the one place a
+        // band edge can be wrong by one — which is invisible in a spot check
+        // and permanently mis-banks every game on that line, because
+        // quadrants are banked at TIME OF PLAY and never recomputed.
+        "./modules/hoops-quadrants.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // Which leagues the app knows about. It replaced a map over a
         // hardcoded array that silently DROPPED any league existing only in
         // the database — the failure mode was a league with no name, no

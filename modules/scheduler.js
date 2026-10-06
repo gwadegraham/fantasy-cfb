@@ -28,7 +28,15 @@ const JOB_SCHEDULES = [
     // 07:00, so the push and the popup describe the same week — and the weekend
     // is scored long before then. The 19:05 pass is a free retry: the job
     // dedupes on the recap's week, so it is a no-op unless the morning missed.
-    { job: 'recap-notice', modulePath: '../modules/recap-notice-job', rule: { dayOfWeek: 1, hour: [7, 19], minute: 5 } }
+    { job: 'recap-notice', modulePath: '../modules/recap-notice-job', rule: { dayOfWeek: 1, hour: [7, 19], minute: 5 } },
+    // Basketball scoring, nightly, 0 CBBD calls — the games, rosters and
+    // ratings are all local by the time this runs. 23:30 Central is after
+    // daily-scores at 23:00 and after the late West Coast tips have gone
+    // final. It rescores the whole current week each night rather than
+    // scoring incrementally, so a late final or a corrected roster is
+    // picked up without anyone asking. A no-op, silently, while no
+    // basketball league exists.
+    { job: 'hoops-scores', modulePath: '../modules/hoops-scores-job', rule: { hour: 23, minute: 30 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;
