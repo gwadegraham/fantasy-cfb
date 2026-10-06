@@ -26,6 +26,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
 const draftDefaults = require('./modules/draft-defaults');
+const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
@@ -629,7 +630,23 @@ app.get('/rules', async (req, res) => {
         // page can spell out the win/tie bonuses when the league runs H2H.
         const engagement = engagementForSeason(cfg.engagementBySeason, seasons.activeSeason('football'));
 
-        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement });
+        // Draft Rules used to be football copy for everyone ("every FBS team").
+        // A basketball draft is a capped pool, so say what THIS league's draft
+        // does: its own pool size and rounds, else the sport's defaults.
+        const sport = seasons.sportForLeague(leagueCode);
+        let draftRules = Object.assign({ sport }, draftDefaults.draftDefaultsFor(sport));
+        try {
+            const season = seasons.seasonForLeague(leagueCode);
+            const d = season != null
+                ? await Draft.findOne({ league: leagueCode, season }, { poolSize: 1, totalRounds: 1 }).lean()
+                : null;
+            if (d) {
+                if (d.poolSize != null) draftRules.poolSize = d.poolSize;
+                if (d.totalRounds != null) draftRules.totalRounds = d.totalRounds;
+            }
+        } catch (err) { /* the defaults are a fine answer for a rules page */ }
+
+        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement, draftRules });
     } else {
         res.redirect("/login");
     }

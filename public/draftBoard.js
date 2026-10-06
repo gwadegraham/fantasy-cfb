@@ -227,15 +227,17 @@
             ol.appendChild(el('li', 'db-empty', 'No picks yet.'));
             return;
         }
+        var projected = data.projections != null;
         var total = 0;
         data.roster.forEach(function (r) {
             total += r.total || 0;
             var li = el('li');
             li.appendChild(el('span', 'db-r-round', 'R' + r.round));
             li.appendChild(withLogo(el('span', 'db-r-team'), r.id, r.school));
-            li.appendChild(el('span', 'db-r-val', fmt(r.total)));
+            if (projected) li.appendChild(el('span', 'db-r-val', fmt(r.total)));
             ol.appendChild(li);
         });
+        if (!projected) return;
         var sum = el('li', 'db-r-total');
         sum.appendChild(el('span', 'db-r-round', ''));
         sum.appendChild(el('span', 'db-r-team', 'Projected total'));
@@ -260,12 +262,32 @@
         });
     }
 
+    // Basketball has no projection yet (the server's is football end to
+    // end), so the payload carries projections: null. Show the draft — picks
+    // and roster — and say plainly why there are no numbers, rather than
+    // rendering an empty board that looks like everyone has been drafted.
+    function renderUnprojected() {
+        $('[db-source]').textContent = 'No projections for basketball yet';
+        var refresh = $('[db-refresh]');
+        if (refresh) refresh.style.display = 'none';
+        var panel = $('[db-board]') && $('[db-board]').closest('.db-panel-board');
+        if (panel) panel.style.display = 'none';
+        var wrap = $('[db-advice]');
+        wrap.innerHTML = '';
+        wrap.appendChild(el('div', 'db-done',
+            'Pick advice needs a projection, and basketball does not have one yet. The picks and your roster are below.'));
+    }
+
     function render() {
         if (!data) return;
         indexLogos();
-        $('[db-source]').textContent = 'Ranked bonuses: ' + data.rankedSource;
-        renderAdvice();
-        renderBoard();
+        if (data.projections == null) {
+            renderUnprojected();
+        } else {
+            $('[db-source]').textContent = 'Ranked bonuses: ' + data.rankedSource;
+            renderAdvice();
+            renderBoard();
+        }
         renderRoster();
         renderLog();
     }
