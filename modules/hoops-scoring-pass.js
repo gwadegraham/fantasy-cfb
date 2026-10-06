@@ -139,7 +139,10 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
     }
 
     if (apply) {
-        for (const r of results) await writeWeek(league, r.accountId, yr, wk, r);
+        for (const r of results) {
+            await writeWeek(league, r.accountId, yr, wk, r);
+            await writeCumulative(league, r.accountId, yr);
+        }
     }
 
     return {
@@ -174,4 +177,35 @@ async function writeWeek(league, accountId, season, week, result) {
     );
 }
 
-module.exports = { scoreHoopsWeek, isFinal, rosterIds, writeWeek, points };
+// The season total, recomputed from the weeks that are actually on file.
+//
+// NOT accumulated as we go. Re-scoring a week is normal — a late final, a
+// corrected roster — and adding a delta would drift every time; summing
+// what is stored is correct however many times the pass runs.
+//
+// Standings reads THIS, not the weekly entries. Without it a league with
+// six weeks of real scores renders every manager on 0, tied — which is
+// exactly how it looked in dev, while League Highlights (which does read
+// the weekly entries) showed the right numbers two inches below.
+async function writeCumulative(league, accountId, season) {
+    const doc = await Franchise.findOne(
+        { accountId, league, 'seasons.season': season },
+        { seasons: { $elemMatch: { season } } }
+    ).lean();
+    // No `|| []` on seasons: the filter above requires a matching season,
+    // so a document that comes back always carries it. A fallback there
+    // would be an unreachable branch pretending to be a safeguard.
+    const entry = doc && doc.seasons[0];
+    if (!entry) return;
+    // `|| []` here IS kept, and is deliberately not covered: mongoose
+    // materialises the array on anything it created, so this only fires
+    // for a document written by some other path. Cheap insurance on a
+    // value that feeds the standings.
+    const total = (entry.weeklyScore || []).reduce((sum, w) => sum + (Number(w.score) || 0), 0);
+    await Franchise.updateOne(
+        { accountId, league, 'seasons.season': season },
+        { $set: { 'seasons.$.cumulativeScore': total } }
+    );
+}
+
+module.exports = { scoreHoopsWeek, isFinal, rosterIds, writeWeek, writeCumulative, points };

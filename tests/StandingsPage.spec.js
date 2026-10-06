@@ -1377,6 +1377,20 @@ describe('schedule', () => {
         expect(page.scheduleBody().innerHTML).toContain('fa-helmet-un');
     });
 
+    // The card navigates by script, not by anchor, so league.js's anchor
+    // guard never sees it. It must go through ccLeague.open, which refuses
+    // game pages on a basketball league (football-only ids that collide).
+    it('opens a game through ccLeague, so a basketball league can refuse it', async () => {
+        const page = await loadStandingsPage({
+            users: league(), games: [game()],
+            teamLogos: [{ id: 1, logos: ['ind.png'] }, { id: 2, logos: ['pur.png'] }]
+        });
+        // The harness evaluates the real league.js; stub only its navigation.
+        window.ccLeague.open = jest.fn(() => false);
+        page.q('.gc-clickable[data-game-id="g1"]').click();
+        expect(window.ccLeague.open).toHaveBeenCalledWith('/game/g1');
+    });
+
     it('shows a no-games message when nothing is scheduled', async () => {
         const page = await loadStandingsPage({ users: league(), games: [] });
         expect(page.q('#no-games-container').innerHTML).toContain('no-matchups-message');

@@ -337,3 +337,121 @@ describe('the SERVER decides which league a page is about', () => {
         expect(src).toContain("localStorage.setItem('leagueCode'");
     });
 });
+
+// Team and game pages are FOOTBALL-ONLY, and their URLs do not say so.
+//
+// /team?team=135 and /game/:id look their id up in the football
+// collections. The two sports number teams independently — 130 of the 365
+// basketball teams share an id with a football team — so on a basketball
+// league those links do not 404, they render somebody else. Clicking
+// Kentucky on a hoops roster showed MINNESOTA's football page: its record,
+// its coach, its stadium, under the basketball league's header.
+describe('a basketball league does not link to football team pages', () => {
+    const hoops = { code: 'hoops-league', canSwitch: false, isAdmin: false, all: [
+        { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' },
+        { code: 'graham-league', name: 'CFB Sickos', sport: 'football' }
+    ] };
+    const football = { code: 'graham-league', canSwitch: false, isAdmin: false, all: hoops.all };
+
+    const LINKS = '<a id="t" href="/team?team=135">Kentucky</a>'
+        + '<a id="g" href="/game/372997">Duke at Florida</a>'
+        + '<a id="ok" href="/standings">Standings</a>';
+
+    const clickOn = (id) => {
+        const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+        document.getElementById(id).dispatchEvent(e);
+        return e.defaultPrevented;
+    };
+
+    // Each load() re-evaluates league.js, so the guard must replace the
+    // one the previous test left on document — a first-wins registration
+    // keeps a listener closed over the WRONG league's seed, which is the
+    // trap bindTab already hit once in this file.
+    test('the sport comes off the seed', () => {
+        expect(load({ seed: hoops }).sport()).toBe('basketball');
+        expect(load({ seed: football }).sport()).toBe('football');
+    });
+
+    test('team and game links are stripped of their href', () => {
+        const cc = load({ seed: hoops, html: LINKS });
+        cc.paint();
+        expect(document.getElementById('t').hasAttribute('href')).toBe(false);
+        expect(document.getElementById('g').hasAttribute('href')).toBe(false);
+        // Everything else is left alone.
+        expect(document.getElementById('ok').getAttribute('href')).toBe('/standings');
+    });
+
+    test('and the original href is kept, for when team pages learn the sport', () => {
+        const cc = load({ seed: hoops, html: LINKS });
+        cc.paint();
+        expect(document.getElementById('t').dataset.ccHref).toBe('/team?team=135');
+    });
+
+    test('football is untouched', () => {
+        const cc = load({ seed: football, html: LINKS });
+        cc.paint();
+        expect(document.getElementById('t').getAttribute('href')).toBe('/team?team=135');
+        expect(document.getElementById('g').getAttribute('href')).toBe('/game/372997');
+    });
+
+    test('a link built AFTER the sweep is still refused', () => {
+        // Most of these links are built when a fetch resolves, long after
+        // paint. The capture-phase guard is the net that actually closes
+        // the bug — the sweep alone would miss nearly all of them.
+        load({ seed: hoops, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = LINKS;
+        expect(clickOn('t')).toBe(true);     // navigation prevented
+        expect(clickOn('g')).toBe(true);
+        expect(clickOn('ok')).toBe(false);   // ordinary links still work
+    });
+
+    test('and on football the guard lets everything through', () => {
+        load({ seed: football, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = LINKS;
+        expect(clickOn('t')).toBe(false);
+        expect(clickOn('g')).toBe(false);
+    });
+
+    test('a click on something INSIDE the link is refused too', () => {
+        // Most of these wrap a logo or a span, so the target is never the
+        // anchor itself.
+        load({ seed: hoops, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = '<a id="t" href="/team?team=135"><img id="logo"></a>';
+        const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+        document.getElementById('logo').dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+    });
+
+    test('a control NESTED in a refused link still gets its click', () => {
+        // My Team's "+N" breakdown button lives inside the game card's <a>,
+        // and its handler is a bubble listener on document. A guard that
+        // stops propagation runs first (capture, on document) and the
+        // button goes dead — only the navigation should be refused.
+        load({ seed: hoops, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = '<a href="/game/372997" class="game-card"><button id="b" class="score-explain">+12</button></a>';
+        const seen = jest.fn();
+        document.addEventListener('click', seen);
+        try {
+            const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+            document.getElementById('b').dispatchEvent(e);
+            expect(e.defaultPrevented).toBe(true);
+            expect(seen).toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('click', seen);
+        }
+    });
+
+    test('script navigation goes through open(), which refuses the same URLs', () => {
+        // Standings and Scoreboard cards set location.href from a handler —
+        // no anchor, so the guard above never sees them.
+        const cc = load({ seed: hoops });
+        expect(cc.open('/game/372997')).toBe(false);
+        expect(cc.open('/team?team=135')).toBe(false);
+        expect(cc.refusesHref('/standings')).toBe(false);
+        expect(load({ seed: football }).refusesHref('/game/372997')).toBe(false);
+    });
+});

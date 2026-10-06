@@ -617,7 +617,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function openGame(target) {
         var card = target.closest ? target.closest('.sb-card') : null;
         if (!card) return;
-        window.location.href = '/game/' + card.getAttribute('data-game');
+        // Through ccLeague: game pages are football-only, and a basketball
+        // league's ids collide with football ones.
+        window.ccLeague.open('/game/' + card.getAttribute('data-game'));
     }
     content.addEventListener('click', function (e) {
         if (e.target.closest('a')) return;

@@ -529,3 +529,97 @@ describe('the nightly basketball job', () => {
         expect(logged[0].msg).toMatch(/mongo down/);
     });
 });
+
+describe('the season total', () => {
+    // Standings reads cumulativeScore, NOT the weekly entries. Without it a
+    // league with six weeks of real scores rendered every manager on 0 and
+    // tied — while League Highlights, which does read the weekly entries,
+    // showed the right numbers two inches below it on the same page. Found
+    // by clicking, not by a test.
+    const totalOf = async (accountId) => {
+        const f = await Franchise.findOne({ accountId, league: LEAGUE }).lean();
+        return (f.seasons || []).find(s => s.season === SEASON).cumulativeScore;
+    };
+
+    test('is written alongside the week', async () => {
+        const me = await manager('Cum', [2]);
+        await HoopsGame.create(finalGame(300, 2, 1, true));
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect(await totalOf(me._id)).toBe(5);
+    });
+
+    test('and ADDS UP across weeks', async () => {
+        const me = await manager('Sum', [2, 3]);
+        await HoopsGame.create([
+            finalGame(301, 2, 1, true),                                   // Q1 home win: 5
+            finalGame(302, 3, 1, true, { id: 302, week: WEEK + 1 })        // another: 5
+        ]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK + 1 });
+        expect(await totalOf(me._id)).toBe(10);
+    });
+
+    test('re-scoring a week does not inflate it', async () => {
+        // Recomputed from what is stored, never accumulated — a delta would
+        // drift every time a week is re-run, which is routine.
+        const me = await manager('Redo', [2]);
+        await HoopsGame.create(finalGame(303, 2, 1, true));
+        for (let i = 0; i < 3; i++) await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect(await totalOf(me._id)).toBe(5);
+    });
+
+    test('and a corrected result moves it DOWN as well as up', async () => {
+        const me = await manager('Down', [2]);
+        await HoopsGame.create(finalGame(304, 2, 1, true));
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect(await totalOf(me._id)).toBe(5);
+
+        // The result is corrected to a loss.
+        await HoopsGame.updateOne({ id: 304 }, { $set: { homePoints: 60, awayPoints: 70 } });
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect(await totalOf(me._id)).toBe(0);
+    });
+
+    test('a franchise that is not there is a no-op, not a crash', async () => {
+        const { writeCumulative } = require('../modules/hoops-scoring-pass');
+        const ghost = new (require('mongoose')).Types.ObjectId();
+        await expect(writeCumulative(LEAGUE, ghost, SEASON)).resolves.toBeUndefined();
+
+        // A franchise that DOES exist but has no entry for that season:
+        // the $elemMatch projection returns a document with no `seasons`
+        // key at all, which is a different path from "no document".
+        const real = await manager('Noseason', [2]);
+        await expect(writeCumulative(LEAGUE, real._id, 1999)).resolves.toBeUndefined();
+    });
+
+    test('a season with no weeks yet totals 0 rather than throwing', async () => {
+        const { writeCumulative } = require('../modules/hoops-scoring-pass');
+        const me = await manager('Fresh', [2]);
+        await writeCumulative(LEAGUE, me._id, SEASON);
+        const f = await Franchise.findOne({ accountId: me._id, league: LEAGUE }).lean();
+        expect(f.seasons.find(s => s.season === SEASON).cumulativeScore).toBe(0);
+    });
+
+    test('a week with an unusable score counts as zero, not NaN', async () => {
+        // One bad row must not turn the whole season total into NaN, which
+        // renders as blank and is impossible to trace back.
+        const { writeCumulative } = require('../modules/hoops-scoring-pass');
+        const me = await manager('Nan', [2]);
+        await Franchise.updateOne(
+            { accountId: me._id, league: LEAGUE, 'seasons.season': SEASON },
+            { $set: { 'seasons.$.weeklyScore': [
+                { week: 1, score: 5, scoreByTeam: [] },
+                { week: 2, scoreByTeam: [] },
+                { week: 3, score: 3, scoreByTeam: [] }
+            ] } });
+        await writeCumulative(LEAGUE, me._id, SEASON);
+        const f = await Franchise.findOne({ accountId: me._id, league: LEAGUE }).lean();
+        expect(f.seasons.find(s => s.season === SEASON).cumulativeScore).toBe(8);
+    });
+
+    test('a manager with nothing scored is 0, not absent', async () => {
+        const me = await manager('Zero', [1]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect(await totalOf(me._id)).toBe(0);
+    });
+});
