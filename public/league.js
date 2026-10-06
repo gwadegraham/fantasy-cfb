@@ -95,6 +95,7 @@
         }
         var t = document.querySelector('title[data-league-title]');
         if (t) document.title = title(t.getAttribute('data-league-title'));
+        unlinkForeignTeamLinks(root);
     }
 
     // Switching league. BOUND ONCE, HERE.
@@ -254,6 +255,73 @@
         document.addEventListener('keydown', window.__ccLeagueTabKey);
     }
 
+    // The SPORT of the league being viewed, off the client seed.
+    //
+    // modules/league-selection.js tags every league in the seed from the
+    // one source (active-season's primed cache), so this agrees with what
+    // the server used to pick the chrome and the scoring model.
+    function sport() {
+        var want = code();
+        var all = SEED.all || [];
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].code === want) return all[i].sport || 'football';
+        }
+        return 'football';
+    }
+
+    // TEAM AND GAME PAGES ARE FOOTBALL-ONLY, AND THE URLS DO NOT SAY SO.
+    //
+    // /team?team=135 and /game/:id both look their id up in the FOOTBALL
+    // collections. The two sports number teams independently — 130 of the
+    // 365 basketball teams share an id with a football team — so on a
+    // basketball league those links do not 404, they render somebody else
+    // entirely. Clicking Kentucky on a hoops roster showed Minnesota's
+    // football page: its record, its coach, its stadium, under the
+    // basketball league's header.
+    //
+    // Blocked centrally rather than at the ~45 places that build such a
+    // link, because the bug is that the URL carries no sport, and patching
+    // the builders one at a time guarantees missing one. When team pages
+    // learn about basketball, this becomes the place that adds the sport
+    // to the href instead of removing it.
+    function unlinkForeignTeamLinks(root) {
+        if (sport() === 'football') return;
+        var nodes = (root || document).querySelectorAll('a[href^="/team?team="], a[href^="/game/"]');
+        for (var i = 0; i < nodes.length; i++) {
+            var a = nodes[i];
+            if (a.dataset.ccUnlinked) continue;
+            a.dataset.ccUnlinked = '1';
+            a.dataset.ccHref = a.getAttribute('href');
+            a.removeAttribute('href');          // also kills middle-click and copy-link
+            a.removeAttribute('target');
+            a.style.cursor = 'default';
+        }
+    }
+
+    // The sweep above only sees what is on the page when it runs, and most
+    // of these links are built after a fetch resolves. This is the net:
+    // one capture-phase listener that refuses the navigation however the
+    // link got there.
+    // REPLACES any handler a previous evaluation left behind, for the same
+    // reason bindTab does: each evaluation closes over its own SEED, so a
+    // stale listener answers sport() for the league that was loaded first
+    // — and a first-wins guard would keep exactly the wrong one.
+    function bindForeignLinkGuard() {
+        if (window.__ccForeignLinkGuard) {
+            document.removeEventListener('click', window.__ccForeignLinkGuard, true);
+        }
+        window.__ccForeignLinkGuard = function (e) {
+            if (sport() === 'football') return;
+            var a = e.target && e.target.closest && e.target.closest('a');
+            if (!a) return;
+            var href = a.getAttribute('href') || a.dataset.ccHref || '';
+            if (href.indexOf('/team?team=') !== 0 && href.indexOf('/game/') !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        document.addEventListener('click', window.__ccForeignLinkGuard, true);
+    }
+
     // The league a PAGE should load data for. Exported as a bare global as
     // well as on ccLeague, because the pages that need it are plain scripts
     // that run before any module wiring.
@@ -295,7 +363,10 @@
         return window.ccLeagueCode();
     };
 
-    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague, selected: selected, openSheet: openSheet };
+    window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague, selected: selected, openSheet: openSheet,
+        sport: sport, unlinkForeignTeamLinks: unlinkForeignTeamLinks };
 
-    document.addEventListener('DOMContentLoaded', function () { paint(); bindSwitcher(); bindTab(); });
+    document.addEventListener('DOMContentLoaded', function () {
+        paint(); bindSwitcher(); bindTab(); bindForeignLinkGuard();
+    });
 })();
