@@ -5,6 +5,7 @@ const audit = require('../modules/audit-log');
 const Draft = require('../models/draft');
 const Team = require('../models/team');
 const draftPool = require('../modules/draft-pool');
+const { draftDefaultsFor } = require('../modules/draft-defaults');
 const { seasonForLeague, sportForLeague } = require('../modules/active-season');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Game = require('../models/game');
@@ -380,6 +381,11 @@ router.post('/', async (req, res) => {
         // with the message the admin form shows.
         const callUrl = sanitizeCallUrl(req.body.callUrl);
 
+        // Per-SPORT starting points. A basketball draft needs a pool cap and
+        // football does not — see modules/draft-defaults.js for the
+        // measurement behind the numbers.
+        const defaults = draftDefaultsFor(sportForLeague(league));
+
         // ABSENT AND EXPLICITLY-UNCAPPED ARE NOT THE SAME INPUT.
         //
         // This used to default to null and go into the $set unconditionally, so
@@ -419,7 +425,7 @@ router.post('/', async (req, res) => {
             autoOpen: !!req.body.autoOpen,
             callUrl,
             snake: req.body.snake !== false,
-            totalRounds: req.body.totalRounds || 10,
+            totalRounds: req.body.totalRounds || defaults.totalRounds,
             orderMethod: req.body.orderMethod || 'manual',
             draftOrder: Array.isArray(req.body.draftOrder) ? req.body.draftOrder : [],
             status: req.body.scheduledAt ? 'scheduled' : 'pending',
@@ -427,9 +433,17 @@ router.post('/', async (req, res) => {
         };
         if (sent) update.poolSize = poolSize;
 
+        // A NEW basketball draft starts capped; football starts uncapped.
+        // $setOnInsert, so this only ever applies to a draft that does not
+        // exist yet — an admin who deliberately uncapped one keeps that,
+        // which is the distinction the poolSize handling above is built
+        // around.
+        const onInsert = { picks: [], currentOverall: 1 };
+        if (!sent && defaults.poolSize != null) onInsert.poolSize = defaults.poolSize;
+
         const draft = await Draft.findOneAndUpdate(
             { league, season },
-            { $set: update, $setOnInsert: { picks: [], currentOverall: 1 } },
+            { $set: update, $setOnInsert: onInsert },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
 

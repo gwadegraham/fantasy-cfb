@@ -115,6 +115,16 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // What a new draft starts at, per sport (#320). Tiny, and the
+        // numbers in it are the output of a measurement rather than a
+        // preference — so the thing worth pinning is that they reach a new
+        // draft and never overwrite an existing one.
+        "./modules/draft-defaults.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The basketball scoring table (#316). Pure, and the one place a
         // band edge can be wrong by one — which is invisible in a spot check
         // and permanently mis-banks every game on that line, because
