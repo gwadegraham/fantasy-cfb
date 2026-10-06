@@ -626,9 +626,11 @@ app.get('/rules', async (req, res) => {
             cfg = resolveConfig(leagueCode, null);
         }
         const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
-        // Game-mode (H2H/Captain) settings for the active season, so the rules
-        // page can spell out the win/tie bonuses when the league runs H2H.
-        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.activeSeason('football'));
+        // Game-mode (H2H/Captain) settings for THIS league's season, so the
+        // rules page can spell out the win/tie bonuses when the league runs
+        // H2H. Not football's season: a basketball league plays a different
+        // year, and its settings are stored under that one.
+        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.seasonForLeague(leagueCode));
 
         // Draft Rules used to be football copy for everyone ("every FBS team").
         // A basketball draft is a capped pool, so say what THIS league's draft
