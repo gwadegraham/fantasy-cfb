@@ -208,6 +208,49 @@ test('game rows carry the opponent\'s logo, and none when there is no logo', asy
     expect(document.querySelectorAll('.ht-log .ht-ologo')).toHaveLength(1);
 });
 
+test('a row reads venue, rank, logo, then the school', async () => {
+    const base = payload();
+    base.games[0].opponent = { id: 2, school: 'Texas Tech', abbreviation: 'TTU', rank: 14, logo: 'https://x/ttu.png' };
+    await render(base);
+    const nm = document.querySelector('.ht-qlist .nm');
+    expect(Array.from(nm.children).map(c => c.className || c.tagName)).toEqual(['ht-v', 'ht-rk', 'ht-ologo', 'ht-school-nm']);
+    expect(nm.textContent).toBe('@14 Texas Tech');
+});
+
+// jsdom has no layout, so the measurement is stubbed: the name's own box
+// is narrower than its text only when told to be.
+test('a school name that would be cut off becomes its abbreviation, and comes back when it fits', async () => {
+    const base = payload();
+    base.games[0].opponent = { id: 2, school: 'Michigan State', abbreviation: 'MSU', rank: 10 };
+    let squeezed = true;
+    const realRange = document.createRange.bind(document);
+    document.createRange = () => {
+        const r = realRange();
+        r.getBoundingClientRect = () => ({ width: squeezed ? 200 : 50 });
+        return r;
+    };
+    const rect = jest.spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width: 100, top: 0, height: 0 }));
+    try {
+        await render(base);
+        const name = () => document.querySelector('.ht-qlist .ht-school-nm').textContent;
+        expect(name()).toBe('MSU');
+        expect(document.querySelector('.ht-qlist .ht-school-nm').getAttribute('title')).toBe('Michigan State');
+        squeezed = false;
+        window.dispatchEvent(new window.Event('resize'));
+        expect(name()).toBe('Michigan State');
+    } finally {
+        document.createRange = realRange;
+        rect.mockRestore();
+    }
+});
+
+test('no abbreviation on file: the full name stays, ellipsis and all', async () => {
+    const base = payload();
+    base.games[0].opponent = { id: 2, school: 'Long Name University', rank: 10 };
+    await render(base);
+    expect(document.querySelector('.ht-qlist .ht-school-nm').hasAttribute('data-abbr')).toBe(false);
+});
+
 test('names the tab after the team and repaints the league chrome', async () => {
     await render(payload());
     expect(document.querySelector('title').getAttribute('data-league-title')).toBe('Duke');

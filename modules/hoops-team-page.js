@@ -132,7 +132,7 @@ async function build(teamId, { season, league = null } = {}) {
 
     // Opponent names and logos in one read.
     const oppIds = [...new Set(games.map(g => Number(g.homeTeamId) === id ? g.awayTeamId : g.homeTeamId))];
-    const opps = await HoopsTeam.find({ season: yr, id: { $in: oppIds } }, { id: 1, school: 1, logos: 1, _id: 0 }).lean();
+    const opps = await HoopsTeam.find({ season: yr, id: { $in: oppIds } }, { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean();
     const oppById = new Map(opps.map(o => [Number(o.id), o]));
 
     // A game still to play is quadranted against the latest week that HAS
@@ -171,6 +171,7 @@ async function build(teamId, { season, league = null } = {}) {
             opponent: {
                 id: oppId,
                 school: (opp && opp.school) || (home ? g.awayTeam : g.homeTeam),
+                abbreviation: (opp && opp.abbreviation) || null,
                 logo: opp ? pickLogo(opp.logos) || null : null,
                 rank: Number.isFinite(oppRank) ? oppRank : null
             },

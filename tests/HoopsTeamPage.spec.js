@@ -35,7 +35,7 @@ const SEASON = 2027;
 const TEAMS = [
     { id: 1, school: 'Duke', conference: 'ACC', color: '#013088', logos: ['https://x/duke.png'],
         preseason: { rank: 1, adjOE: 120, adjDE: 90, barthag: 0.96, projectedRecord: '26-6' } },
-    { id: 2, school: 'Florida', conference: 'SEC', preseason: { rank: 4, adjOE: 118, adjDE: 92 } },
+    { id: 2, school: 'Florida', abbreviation: 'FLA', conference: 'SEC', preseason: { rank: 4, adjOE: 118, adjDE: 92 } },
     { id: 3, school: 'Army', conference: 'Patriot', preseason: { rank: 358, adjOE: 95, adjDE: 110 } },
     { id: 4, school: 'North Carolina', conference: 'ACC', preseason: { rank: 44, adjOE: 121, adjDE: 100 } }
 ];
@@ -78,7 +78,7 @@ describe('build', () => {
         const p = await teamPage.build(1, { season: SEASON });
         const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
         expect(byId[10]).toMatchObject({ venue: 'away', quadrant: 1, us: 74, them: 62, final: true });
-        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', rank: 4 });
+        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', abbreviation: 'FLA', rank: 4 });
         expect(byId[11]).toMatchObject({ venue: 'home', quadrant: 4 });
         expect(byId[12]).toMatchObject({ venue: 'neutral', quadrant: 1 });
     });

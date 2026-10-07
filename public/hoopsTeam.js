@@ -250,8 +250,11 @@
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
         return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><span class="d">' + dateOf(g) + '</span>'
             + '<a class="opp" href="' + teamHref(g.opponent.id) + '"><span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
+            + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '')
             + (g.opponent.logo ? '<img class="ht-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
-            + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '') + esc(g.opponent.school) + '</span>'
+            + '<span class="ht-school-nm" title="' + esc(g.opponent.school) + '"'
+            + (g.opponent.abbreviation ? ' data-abbr="' + esc(g.opponent.abbreviation) + '"' : '') + '>'
+            + esc(g.opponent.school) + '</span></span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</a>'
             + '<span class="res">' + res + '</span>'
             + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
@@ -318,6 +321,30 @@
         var tabsEl = root.querySelector('.ht-tabs');
         if (tabsEl) tabsEl.outerHTML = tabs(data);
         root.querySelector('.ht-panel').innerHTML = panel(data, done);
+        fitSchools();
+    }
+
+    // A school name that would be cut off becomes its abbreviation —
+    // "Michigan St…" reads worse than "MSU". Measured per row against the
+    // room the row actually has, so only the names that clip change, and
+    // re-run from the full name each time so widening the screen restores
+    // it. Fractional, like fit-names.js: whole-pixel scrollWidth hides the
+    // sub-pixel overflow that still draws an ellipsis.
+    function overflows(el) {
+        var range = document.createRange && document.createRange();
+        if (!range || typeof range.getBoundingClientRect !== 'function') {
+            return el.scrollWidth > el.clientWidth;     // whole pixels, but never a crash
+        }
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect().width - el.getBoundingClientRect().width > 0.1;
+    }
+    function fitSchools() {
+        var names = root.querySelectorAll('.ht-school-nm[data-abbr]');
+        for (var i = 0; i < names.length; i++) {
+            var n = names[i];
+            n.textContent = n.getAttribute('title');
+            if (overflows(n.parentNode)) n.textContent = n.getAttribute('data-abbr');
+        }
     }
 
     function render(d) {
@@ -335,6 +362,7 @@
         var t = document.querySelector('title');
         if (t) t.setAttribute('data-league-title', d.team.school);
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
+        fitSchools();
     }
 
     root.addEventListener('click', function (e) {
@@ -385,8 +413,9 @@
     }
     syncStickyTop();
     window.addEventListener('resize', syncStickyTop);
+    window.addEventListener('resize', function () { if (data) fitSchools(); });
     if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
-        document.fonts.ready.then(syncStickyTop).catch(function () {});
+        document.fonts.ready.then(function () { syncStickyTop(); if (data) fitSchools(); }).catch(function () {});
     }
 
     window.ccHoopsTeam = { render: render, load: load, state: state };
