@@ -39,7 +39,7 @@ function clearRankCache() { rankCache.clear(); }
 // The scoring pass's own test of "is this a result", reused so the page and
 // the points can never disagree about which games count. (A local copy read
 // Number(null) as 0, so a game with a missing score passed as final.)
-const { isFinal } = require('./hoops-scoring-pass');
+const { isFinal, rosterIds } = require('./hoops-scoring-pass');
 
 // The rank an efficiency number holds among every rated team, best first.
 function rankAmong(values, value, higherIsBetter) {
@@ -47,6 +47,18 @@ function rankAmong(values, value, higherIsBetter) {
     const better = values.filter(v => (higherIsBetter ? v > value : v < value)).length;
     return better + 1;
 }
+
+// A conference TOURNAMENT game. CBBD files these as regular-season
+// conference games (see isConfTournamentFinal in hoops-detectors), so
+// conferenceGame alone would add a team's tournament run to its league
+// record and re-sort the standings every March. Same test as the detector:
+// no named tournament, and notes that say tournament/championship/playoffs.
+function isConfTournament(g) {
+    if (!g || !g.conferenceGame) return false;
+    if (String(g.tournament || '').trim()) return false;
+    return /\b(championship|tournament|playoffs?)\b/i.test(String(g.gameNotes || ''));
+}
+const isLeagueGame = (g) => !!g.conferenceGame && !isConfTournament(g);
 
 // Conference standings from the season's games: conference record first,
 // overall second, the way every conference office prints them.
@@ -62,7 +74,7 @@ function standingsFrom(teams, games) {
             const r = row.get(Number(id));
             if (!r) continue;
             if (won) r.w++; else r.l++;
-            if (g.conferenceGame) { if (won) r.confW++; else r.confL++; }
+            if (isLeagueGame(g)) { if (won) r.confW++; else r.confL++; }
         }
     }
     // Games over .500 in conference first, not win percentage: a 0-1 team
@@ -93,8 +105,9 @@ async function ownership(league, season, teamId) {
     for (const m of managers) {
         const entry = entryFor(m, season);
         if (!entry) continue;
-        const refs = (entry.teamRefs || []).filter(r => r && r.sport === 'basketball').map(r => Number(r.id));
-        if (!refs.includes(teamId)) continue;
+        // The scoring pass's own roster reader, fallback and all, so the page
+        // names an owner exactly when scoring pays one.
+        if (!rosterIds(entry).includes(teamId)) continue;
         const points = {};
         for (const wk of entry.weeklyScore || []) {
             for (const s of wk.scoreByTeam || []) {
@@ -166,14 +179,17 @@ async function build(teamId, { season, league = null } = {}) {
             startTimeTbd: !!g.startTimeTbd,
             week: g.week,
             venue,
-            conferenceGame: !!g.conferenceGame,
+            conferenceGame: isLeagueGame(g),
+            conferenceTournament: isConfTournament(g),
             notes: g.gameNotes || null,
             opponent: {
                 id: oppId,
                 school: (opp && opp.school) || (home ? g.awayTeam : g.homeTeam),
                 abbreviation: (opp && opp.abbreviation) || null,
                 logo: opp ? pickLogo(opp.logos) || null : null,
-                rank: Number.isFinite(oppRank) ? oppRank : null
+                rank: Number.isFinite(oppRank) ? oppRank : null,
+                // A non-D-I opponent has no basketball team page to link to.
+                hasPage: !!opp
             },
             // Postseason games (NCAA, NIT, the Crown) are not quadrant games:
             // scoring pays them on the tournament ladder and only fires a
@@ -198,7 +214,7 @@ async function build(teamId, { season, league = null } = {}) {
     const confGames = confIds.length
         ? await HoopsGame.find({ season: yr, status: 'final',
             $or: [{ homeTeamId: { $in: confIds } }, { awayTeamId: { $in: confIds } }] },
-            { homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1, status: 1, conferenceGame: 1, _id: 0 }).lean()
+            { homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1, status: 1, conferenceGame: 1, gameNotes: 1, tournament: 1, _id: 0 }).lean()
         : [];
     const standings = standingsFrom(confTeams, confGames);
 
@@ -228,4 +244,4 @@ async function build(teamId, { season, league = null } = {}) {
     };
 }
 
-module.exports = { build, standingsFrom, rankAmong, clearRankCache, RANK_TTL_MS };
+module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS };

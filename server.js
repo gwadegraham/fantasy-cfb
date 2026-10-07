@@ -768,8 +768,12 @@ app.get('/team', async function(req, res) {
 // the two sports number teams independently and 130 of 365 basketball ids
 // are also football ids — a URL that does not say the sport is how Kentucky
 // rendered Minnesota's football page (#489).
-app.get('/hoops/team/:id', async function(req, res) {
+app.get('/hoops/team/:id', async function(req, res, next) {
     if (req.oidc.isAuthenticated()) {
+        // Basketball stays invisible to anyone not in a basketball league:
+        // fall through to the ordinary 404, indistinguishable from a page
+        // that does not exist.
+        if (!(await hoopsTeamsRouter.seesBasketball(req))) return next();
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
         res.render('hoopsTeam', { user, userState, teamId: req.params.id });

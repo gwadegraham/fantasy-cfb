@@ -242,6 +242,12 @@
         return h + '</tbody></table></div>';
     }
 
+    // A non-D-I opponent has no basketball page; its name is plain text
+    // rather than a link to "No such basketball team".
+    function oppOpen(o) {
+        return o.hasPage === false ? '<span class="opp">' : '<a class="opp" href="' + teamHref(o.id) + '">';
+    }
+
     function gameRow(d, g) {
         var vals = d.quadrantValues || {};
         var res = g.final
@@ -249,13 +255,13 @@
             : (vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '');
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
         return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><span class="d">' + dateOf(g) + '</span>'
-            + '<a class="opp" href="' + teamHref(g.opponent.id) + '"><span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
+            + oppOpen(g.opponent) + '<span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
             + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '')
             + (g.opponent.logo ? '<img class="ht-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
             + '<span class="ht-school-nm" title="' + esc(g.opponent.school) + '"'
             + (g.opponent.abbreviation ? ' data-abbr="' + esc(g.opponent.abbreviation) + '"' : '') + '>'
             + esc(g.opponent.school) + '</span></span>'
-            + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</a>'
+            + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + (g.opponent.hasPage === false ? '</span>' : '</a>')
             + '<span class="res">' + res + '</span>'
             + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
                 : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')

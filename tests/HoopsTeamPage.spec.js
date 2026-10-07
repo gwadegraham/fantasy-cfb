@@ -78,7 +78,7 @@ describe('build', () => {
         const p = await teamPage.build(1, { season: SEASON });
         const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
         expect(byId[10]).toMatchObject({ venue: 'away', quadrant: 1, us: 74, them: 62, final: true });
-        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', abbreviation: 'FLA', rank: 4 });
+        expect(byId[10].opponent).toMatchObject({ id: 2, school: 'Florida', abbreviation: 'FLA', rank: 4, hasPage: true });
         expect(byId[11]).toMatchObject({ venue: 'home', quadrant: 4 });
         expect(byId[12]).toMatchObject({ venue: 'neutral', quadrant: 1 });
     });
@@ -162,6 +162,48 @@ describe('build', () => {
         expect(p.standings.map(r => r.school)).toEqual(['Duke', 'North Carolina', 'Boston College']);
     });
 
+    // CBBD files conference tournament games as regular-season conference
+    // games. Counting them would add a team's tournament run to its league
+    // record every March.
+    test('conference TOURNAMENT games are not conference record', async () => {
+        await HoopsGame.create([
+            game(10, 1, 1, 4, { conferenceGame: true }),                                                      // league game
+            game(11, 18, 4, 1, { conferenceGame: true, neutralSite: true, gameNotes: 'ACC Tournament - Quarterfinal', homePoints: 90, awayPoints: 60 }),
+            game(12, 19, 4, 1, { conferenceGame: true, neutralSite: true, gameNotes: "ACC Men's Basketball Championship - Final", homePoints: 90, awayPoints: 60 })
+        ]);
+        const p = await teamPage.build(1, { season: SEASON });
+        const row = (school) => p.standings.find(r => r.school === school);
+        expect(row('Duke')).toMatchObject({ confW: 1, confL: 0, w: 1, l: 2 });        // tournament losses count overall only
+        expect(row('North Carolina')).toMatchObject({ confW: 0, confL: 1, w: 2, l: 1 });
+        const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
+        expect(byId[10]).toMatchObject({ conferenceGame: true, conferenceTournament: false });
+        expect(byId[12]).toMatchObject({ conferenceGame: false, conferenceTournament: true, quadrant: 1 });
+    });
+
+    test('isConfTournament: a named tournament (NCAA/NIT) is never a conference tournament', () => {
+        expect(teamPage.isConfTournament({ conferenceGame: true, gameNotes: 'America East Playoffs - Final' })).toBe(true);
+        expect(teamPage.isConfTournament({ conferenceGame: true, tournament: 'NIT', gameNotes: 'NIT - Championship' })).toBe(false);
+        expect(teamPage.isConfTournament({ conferenceGame: false, gameNotes: 'Tournament' })).toBe(false);
+        expect(teamPage.isConfTournament({ conferenceGame: true })).toBe(false);
+    });
+
+    // Scoring's rosterIds falls back to embedded teams when a season has no
+    // refs; the page must name the owner whenever scoring pays one.
+    test('an owner whose roster is embedded teams (no refs) is still found', async () => {
+        const a = await Account.create({ firstName: 'Ann', lastName: 'A', email: 'a@example.invalid' });
+        await Franchise.collection.insertOne({
+            accountId: a._id, league: LEAGUE,
+            seasons: [{ season: SEASON, franchiseName: 'Old Shape', teams: [{ id: 1, school: 'Duke' }], weeklyScore: [] }]
+        });
+        expect((await teamPage.build(1, { season: SEASON, league: LEAGUE })).owner).toMatchObject({ franchiseName: 'Old Shape' });
+    });
+
+    test('an opponent with no basketball team row is marked as having no page', async () => {
+        await HoopsGame.create([game(10, 1, 1, 9999, { awayTeam: 'Division II College' })]);
+        const p = await teamPage.build(1, { season: SEASON });
+        expect(p.games[0].opponent).toMatchObject({ id: 9999, school: 'Division II College', hasPage: false });
+    });
+
     test('no league: no owner, no point values — the page still renders', async () => {
         const p = await teamPage.build(1, { season: SEASON });
         expect(p.owner).toBeNull();
@@ -206,6 +248,25 @@ describe('build', () => {
 describe('GET /hoops/teams/:id/page', () => {
     const app = express();
     app.use('/hoops/teams', require('../routes/hoopsTeams'));
+    // Most of these are about the page; the viewer is in the basketball
+    // league unless a test says otherwise.
+    beforeEach(() => { jest.spyOn(leagueSelection, 'viewableBy').mockResolvedValue([LEAGUE, 'graham-league']); });
+
+    // The league is unannounced, and EXISTENCE counts: someone in no
+    // basketball league must not learn there is any basketball at all.
+    test('a viewer in no basketball league gets a plain 404', async () => {
+        leagueSelection.viewableBy.mockResolvedValue(['graham-league']);
+        jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue('graham-league');
+        const res = await request(app).get('/hoops/teams/1/page');
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ message: 'Not found' });
+    });
+
+    test('a failed visibility check refuses rather than reveals', async () => {
+        leagueSelection.viewableBy.mockRejectedValue(new Error('M0 hiccup'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        expect((await request(app).get('/hoops/teams/1/page')).status).toBe(404);
+    });
 
     test('uses the SERVER\'s league selection for ownership — a ?league= is ignored', async () => {
         await owner([1]);
@@ -217,7 +278,7 @@ describe('GET /hoops/teams/:id/page', () => {
         expect(res.body.team.school).toBe('Duke');
     });
 
-    test('a viewer on a FOOTBALL league gets the page without anyone\'s roster', async () => {
+    test('a basketball member VIEWING a football league gets the page without anyone\'s roster', async () => {
         await owner([1]);
         jest.spyOn(leagueSelection, 'selectedLeague').mockResolvedValue('graham-league');
         const res = await request(app).get('/hoops/teams/1/page');
@@ -288,11 +349,19 @@ describe('hoops-stats', () => {
         expect(doc.players[0]).toMatchObject({ trueShootingPct: 59.6, rebounds: 40, threeMade: 20, winShares: 1.5 });
     });
 
-    test('true shooting: a fraction becomes a percent, a percent is left alone', () => {
-        expect(hoopsStats.asPercent(0.546)).toBe(54.6);
-        expect(hoopsStats.asPercent(60.4)).toBe(60.4);
-        expect(hoopsStats.asPercent(null)).toBeUndefined();
-        expect(hoopsStats.asPercent('n/a')).toBeUndefined();
+    // Converted by which field it is, not by size: a player's fraction can
+    // pass 1 on a tiny sample, and a "<= 1 is a fraction" guess stored 1.5
+    // as 1.5% instead of 150%.
+    test('player true shooting is a fraction, ALWAYS converted — even above 1', () => {
+        expect(hoopsStats.fractionToPercent(0.546)).toBe(54.6);
+        expect(hoopsStats.fractionToPercent(1.5)).toBe(150);
+        expect(hoopsStats.fractionToPercent(null)).toBeUndefined();
+        expect(hoopsStats.fractionToPercent('n/a')).toBeUndefined();
+        expect(hoopsStats.slimPlayer({ name: 'X', trueShootingPct: 1.5 }).trueShootingPct).toBe(150);
+    });
+
+    test('team true shooting is already a percent and is left alone', () => {
+        expect(hoopsStats.slimTeam({ teamStats: { trueShooting: 0.9 } }).team.trueShooting).toBe(0.9);
     });
 
     test('a team with players but no team row still gets a document', () => {

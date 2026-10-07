@@ -251,6 +251,16 @@ test('no abbreviation on file: the full name stays, ellipsis and all', async () 
     expect(document.querySelector('.ht-qlist .ht-school-nm').hasAttribute('data-abbr')).toBe(false);
 });
 
+test('a non-D-I opponent is plain text, not a link to a missing page', async () => {
+    const base = payload();
+    base.games[0].opponent = { id: 9999, school: 'Division II College', rank: null, hasPage: false };
+    await render(base);
+    const row = Array.from(document.querySelectorAll('.ht-qlist .ht-lg')).find(n => n.textContent.includes('Division II'));
+    expect(row.querySelector('.opp').tagName).toBe('SPAN');
+    expect(row.querySelector('a.opp')).toBeNull();
+    expect(document.querySelectorAll('.ht-qlist a.opp').length).toBeGreaterThan(0);   // the rest still link
+});
+
 test('names the tab after the team and repaints the league chrome', async () => {
     await render(payload());
     expect(document.querySelector('title').getAttribute('data-league-title')).toBe('Duke');

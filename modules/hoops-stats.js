@@ -21,11 +21,12 @@ function num(v) {
 
 // CBBD sends a player's true shooting as a FRACTION (0.546) and a team's as
 // a PERCENT (60.4). Stored as a percent everywhere so the page never has to
-// know which is which.
-function asPercent(v) {
+// know which is which. Converted by WHICH FIELD it is, not by size: a
+// player's fraction can exceed 1 on a tiny sample (one made three on one
+// shot is 1.5), and a "<= 1 means fraction" guess stored that as 1.5%.
+function fractionToPercent(v) {
     const n = num(v);
-    if (n === undefined) return undefined;
-    return n <= 1 ? Math.round(n * 1000) / 10 : n;
+    return n === undefined ? undefined : Math.round(n * 1000) / 10;
 }
 
 function slimSide(s) {
@@ -39,7 +40,7 @@ function slimSide(s) {
     return {
         possessions: num(s.possessions),
         rating: num(s.rating),
-        trueShooting: asPercent(s.trueShooting),
+        trueShooting: num(s.trueShooting),                // already a percent
         fgPct: num(fg.pct),
         threePct: num(three.pct),
         threeRate: fga ? Math.round((threeA / fga) * 1000) / 10 : undefined,
@@ -84,7 +85,7 @@ function slimPlayer(p) {
         blocks: num(p.blocks),
         threeMade: num((p.threePointFieldGoals || {}).made),
         threePct: num((p.threePointFieldGoals || {}).pct),
-        trueShootingPct: asPercent(p.trueShootingPct),
+        trueShootingPct: fractionToPercent(p.trueShootingPct),
         usage: num(p.usage),
         netRating: num(p.netRating),
         winShares: num((p.winShares || {}).total)
@@ -149,4 +150,4 @@ async function importSeason(season) {
     };
 }
 
-module.exports = { importSeason, buildOps, slimTeam, slimPlayer, asPercent };
+module.exports = { importSeason, buildOps, slimTeam, slimPlayer, fractionToPercent };
