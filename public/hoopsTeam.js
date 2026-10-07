@@ -250,6 +250,7 @@
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
         return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><span class="d">' + dateOf(g) + '</span>'
             + '<a class="opp" href="' + teamHref(g.opponent.id) + '"><span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
+            + (g.opponent.logo ? '<img class="ht-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
             + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '') + esc(g.opponent.school) + '</span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</a>'
             + '<span class="res">' + res + '</span>'

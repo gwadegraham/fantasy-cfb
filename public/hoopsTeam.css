@@ -139,6 +139,7 @@
 .ht-lg:last-child { border-bottom: 0; }
 .ht-lg .d { color: var(--cc-muted); font-size: 11px; }
 .ht-lg .opp { min-width: 0; }
+.ht-ologo { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; margin-right: 6px; }
 .ht-lg .nm, .ht-lg .note { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ht-lg .note { font-size: 10px; color: var(--cc-muted-2); }
 .ht-lg .res { font-weight: 700; font-variant-numeric: tabular-nums; }

@@ -197,6 +197,17 @@ test('a postseason game is off the team sheet and off the table, and says its to
     expect(row.querySelector('.res').textContent).toBe('');
 });
 
+test('game rows carry the opponent\'s logo, and none when there is no logo', async () => {
+    const base = payload();
+    base.games[0].opponent.logo = 'https://x/fla.png';
+    await render(base);
+    const row = (school) => Array.from(document.querySelectorAll('.ht-qlist .ht-lg')).find(n => n.textContent.includes(school));
+    expect(row('Florida').querySelector('.ht-ologo').getAttribute('src')).toBe('https://x/fla.png');
+    expect(row('UConn').querySelector('.ht-ologo')).toBeNull();
+    tab('schedule');
+    expect(document.querySelectorAll('.ht-log .ht-ologo')).toHaveLength(1);
+});
+
 test('names the tab after the team and repaints the league chrome', async () => {
     await render(payload());
     expect(document.querySelector('title').getAttribute('data-league-title')).toBe('Duke');
