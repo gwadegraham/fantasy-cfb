@@ -1,27 +1,30 @@
-// A basketball game's box score, on demand (#503).
+// Basketball box scores (#503), ingested in a nightly batch — the same shape
+// football uses (modules/box-scores.js + player-box-scores.js): pull a window
+// of finished games in one call per endpoint, filter to our games locally,
+// store. The game page only ever READS what is stored; it never calls CBBD.
 //
-// CBBD traps, measured 7 Oct 2026 — each one cost a billable call to learn:
+// Two calls a night, whatever the number of games: /games/teams answers for
+// every game in a date window (both sides in one row), /games/players for
+// every team's lines. Measured 7 Oct 2026: one day of 2025-26 (25 games) is
+// 50 rows each, 383 KB of players. The busiest real day is 152 games, ~2.3 MB
+// — under the 3,000-row cap even across the 3-day lookback.
 //
-//   - /games/teams IGNORES gameId. ?gameId=209788 returned 3,000 rows of
-//     unrelated games, no error. The game is found by TEAM plus a date
-//     window, then by matching gameId in the rows.
-//   - A date window with no team needs the season, or it returns nothing.
-//   - /games/players with team= returns only THAT team's players, so a game
-//     is one /games/teams call (both sides) plus one /games/players per team.
+// CBBD traps, each measured:
+//   - /games/teams IGNORES gameId (?gameId=209788 returned 3,000 unrelated
+//     rows, no error), so it is never sent; games are matched by id locally.
+//   - A date window needs the season, or it returns nothing.
 //   - UNITS differ from the season endpoint: per game, turnoverRatio and a
-//     player's trueShootingPct are PERCENTS (15.2, 73.5); per season they
-//     were fractions. Nothing here converts — the per-game values are stored
-//     as sent.
-//
-// Only a FINAL game is fetched, and it is stored, so its calls are spent once.
-// A game still to play or in progress has no box here; a live box would cost
-// 3 calls a view.
+//     player's trueShootingPct are PERCENTS (15.2, 73.5). Stored as sent.
 
 const cbbd = require('./cbbd-client');
+const HoopsGame = require('../models/hoopsGame');
 const HoopsBoxScore = require('../models/hoopsBoxScore');
 const { isFinal } = require('./hoops-scoring-pass');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Re-look at the last few days each night: a late West Coast final, a box
+// CBBD posts the next morning, a missed night. Re-storing a box is free.
+const LOOKBACK_MS = 3 * DAY_MS;
 const ymd = (d) => new Date(d).toISOString().slice(0, 10);
 
 function num(v) {
@@ -62,91 +65,77 @@ function slimSide(teamId, s, players) {
     };
 }
 
-// The box score document for a game, from the three CBBD payloads. Pure.
-// null when CBBD has no row for this game — a wrong window or a game it
-// has not boxed yet — so nothing half-built is ever stored.
-function buildBox(game, teamRows, homePlayerRows, awayPlayerRows) {
+// One game's box score from the window's payloads. Pure. null when CBBD has
+// no team row for the game — nothing half-built is ever stored.
+//
+// Player rows are matched on game AND team: a window's /games/players holds
+// a row per side per game, and matching on the game alone handed the home
+// side whichever row came first.
+function buildBox(game, teamRows, playerRows) {
     const id = Number(game.id);
-    const home = Number(game.homeTeamId);
+    const home = Number(game.homeTeamId), away = Number(game.awayTeamId);
     const rows = (teamRows || []).filter(r => Number(r.gameId) === id);
     // CBBD may answer from either side's point of view; a row whose
     // OPPONENT is our home team has the home stats in opponentStats.
     const homeRow = rows.find(r => Number(r.teamId) === home) || rows.find(r => Number(r.opponentId) === home);
     if (!homeRow) return null;
     const homeIsTeam = Number(homeRow.teamId) === home;
-    const homeStats = homeIsTeam ? homeRow.teamStats : homeRow.opponentStats;
-    const awayStats = homeIsTeam ? homeRow.opponentStats : homeRow.teamStats;
-    const playersOf = (list) => {
-        const row = (list || []).find(r => Number(r.gameId) === id);
+    const playersOf = (teamId) => {
+        const row = (playerRows || []).find(r => Number(r.gameId) === id && Number(r.teamId) === teamId);
         return row ? row.players : [];
     };
     return {
         gameId: id,
         season: Number(game.season),
         pace: num(homeRow.pace),
-        home: slimSide(home, homeStats, playersOf(homePlayerRows)),
-        away: slimSide(Number(game.awayTeamId), awayStats, playersOf(awayPlayerRows))
+        home: slimSide(home, homeIsTeam ? homeRow.teamStats : homeRow.opponentStats, playersOf(home)),
+        away: slimSide(away, homeIsTeam ? homeRow.opponentStats : homeRow.teamStats, playersOf(away))
     };
 }
 
-// A final game CBBD has not boxed yet. Asked again after RETRY_MS — the box
-// usually lands within the hour — but not on every view in between, which
-// is 3 billable calls a view on a busy night. Per process, so a restart
-// costs one extra try at most.
-const RETRY_MS = 30 * 60 * 1000;
-const triedAt = new Map();
-// Past this age, a game with no box never gets one: the miss is stored and
-// never asked again.
-const MISSING_AFTER_MS = 3 * DAY_MS;
-function clearRetryCache() { triedAt.clear(); }
+// The nightly batch: every game that went final in the lookback window gets
+// its box stored (or refreshed). Two CBBD calls, or none when nothing went
+// final. Throws on a CBBD failure so the job records it.
+async function ingestRecent(season, { now = Date.now() } = {}) {
+    const yr = Number(season);
+    const since = new Date(now - LOOKBACK_MS);
+    const games = (await HoopsGame.find({ season: yr, status: 'final', startDate: { $gte: since, $lte: new Date(now) } }).lean())
+        .filter(isFinal);
+    if (!games.length) return { season: yr, games: 0, stored: 0, skippedReason: 'nothing final' };
 
-// The stored box score, or — for a final game not yet stored — fetch, store
-// and return it. Never throws: a CBBD failure is { box: null, unavailable }
-// and is NOT stored, so a later view tries again.
-async function getBox(game, now = Date.now()) {
-    if (!game) return { box: null };
-    const stored = await HoopsBoxScore.findOne({ gameId: Number(game.id) }, { _id: 0, __v: 0 }).lean();
-    if (stored) return stored.missing ? { box: null, missing: true } : { box: stored };
-    if (!isFinal(game)) return { box: null };
-    const last = triedAt.get(Number(game.id));
-    if (last && now - last < RETRY_MS) return { box: null };
-    triedAt.set(Number(game.id), now);
+    // A day either side of the games' own dates: a TBD tip is stamped
+    // midnight EASTERN, which is the previous day in UTC.
+    const times = games.map(g => new Date(g.startDate).getTime());
+    const window = {
+        season: yr,
+        startDateRange: ymd(Math.min(...times) - DAY_MS),
+        endDateRange: ymd(Math.max(...times) + DAY_MS)
+    };
+    const [teams, players] = await Promise.all([
+        cbbd.cbbdGet('/games/teams', window),
+        cbbd.cbbdGet('/games/players', window)
+    ]);
+    // At the cap the window cannot be trusted to be whole (the /games trap,
+    // cbbd-client.js). Store what came, and say so in the job summary.
+    const capped = teams.data.length >= cbbd.PAGE_CAP || players.data.length >= cbbd.PAGE_CAP;
 
-    // A day either side: a TBD tip is stamped midnight EASTERN, which is
-    // the previous day in UTC, and the window is cheap insurance against
-    // either reading of "the day".
-    const start = new Date(game.startDate).getTime();
-    const window = { season: Number(game.season), startDateRange: ymd(start - DAY_MS), endDateRange: ymd(start + DAY_MS) };
-    try {
-        const [teams, home, away] = await Promise.all([
-            cbbd.cbbdGet('/games/teams', Object.assign({ team: game.homeTeam }, window)),
-            cbbd.cbbdGet('/games/players', Object.assign({ team: game.homeTeam }, window)),
-            cbbd.cbbdGet('/games/players', Object.assign({ team: game.awayTeam }, window))
-        ]);
-        const box = buildBox(game, teams.data, home.data, away.data);
-        if (!box) {
-            if (now - new Date(game.startDate).getTime() > MISSING_AFTER_MS) {
-                await HoopsBoxScore.updateOne({ gameId: Number(game.id) },
-                    { $set: { gameId: Number(game.id), season: Number(game.season), missing: true, fetchedAt: new Date(now) } },
-                    { upsert: true });
-                return { box: null, missing: true };
-            }
-            return { box: null };
-        }
-        // CBBD can post a game's team line before its player lines (or a
-        // players window can miss). A stored box is never fetched again, so a
-        // box missing either side's players is shown but NOT stored while the
-        // game is recent — the retry window brings the players in later. Past
-        // MISSING_AFTER_MS, what there is is what there will be: store it.
-        const complete = box.home.players.length > 0 && box.away.players.length > 0;
-        if (complete || now - new Date(game.startDate).getTime() > MISSING_AFTER_MS) {
-            await HoopsBoxScore.updateOne({ gameId: box.gameId }, { $set: Object.assign({ fetchedAt: new Date(now) }, box) }, { upsert: true });
-        }
-        return { box };
-    } catch (err) {
-        console.error(`hoops box score ${game.id}: ${err.message}`);
-        return { box: null, unavailable: true };
+    const ops = [];
+    for (const g of games) {
+        const box = buildBox(g, teams.data, players.data);
+        if (!box) continue;
+        ops.push({ updateOne: { filter: { gameId: box.gameId },
+            update: { $set: Object.assign({ fetchedAt: new Date(now) }, box) }, upsert: true } });
     }
+    if (ops.length) await HoopsBoxScore.bulkWrite(ops, { ordered: false });
+    return {
+        season: yr, games: games.length, stored: ops.length, capped,
+        remainingCalls: players.remainingCalls != null ? players.remainingCalls : teams.remainingCalls
+    };
 }
 
-module.exports = { getBox, buildBox, slimSide, clearRetryCache, RETRY_MS, MISSING_AFTER_MS };
+// The stored box score for a game, or null. Never calls CBBD.
+async function getBox(gameId) {
+    return HoopsBoxScore.findOne({ gameId: Number(gameId) }, { _id: 0, __v: 0 }).lean();
+}
+
+module.exports = { ingestRecent, getBox, buildBox, slimSide, LOOKBACK_MS };

@@ -1,12 +1,14 @@
-// Scheduled import of basketball season stats for the team page (#494).
+// Scheduled import of basketball season stats for the team page (#494) and
+// box scores for the game page (#503).
 //
-// Two CBBD calls a night, and only while there is something to refresh:
+// Four CBBD calls a night, and only while there is something to refresh:
 // skipped silently with no basketball league, and with no game gone final
 // in the last three days — so the off-season and the gap before November
 // cost nothing. Same shape and the same JobRun habits as hoops-scores-job.
 
 const jobLogger = require('./job-logger');
 const hoopsStats = require('./hoops-stats');
+const boxScore = require('./hoops-box-score');
 const { basketballLeagues, LOOKBACK_MS } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 
@@ -34,6 +36,18 @@ async function run({ now = new Date() } = {}) {
         } catch (err) {
             failed = String((err && err.message) || err);
             done.push(`${season}: FAILED ${failed}`);
+        }
+        // Box scores for the game page, football's way: one batch for every
+        // game that went final in the lookback, 2 calls. Its own try, so a
+        // stats failure does not cost the boxes or the reverse.
+        try {
+            const box = await boxScore.ingestRecent(season, { now: now.getTime() });
+            done.push(box.skippedReason
+                ? `${season} boxes: ${box.skippedReason}`
+                : `${season} boxes: ${box.stored}/${box.games} stored${box.capped ? ' (HIT THE 3000-ROW CAP — window incomplete)' : ''}`);
+        } catch (err) {
+            failed = String((err && err.message) || err);
+            done.push(`${season} boxes: FAILED ${failed}`);
         }
     }
     if (!done.length) return { skippedReason: 'no recent results' };

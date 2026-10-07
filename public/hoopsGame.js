@@ -188,10 +188,9 @@
     }
 
     function noBox(d) {
+        // Box scores are pulled in a nightly batch (05:00 Central), as football's are.
         var text = !d.game.final ? 'The box score arrives after the final.'
-            : d.boxUnavailable ? 'Couldn’t reach the stats provider — try again in a bit.'
-            : d.boxMissing ? 'There’s no box score for this game.'
-            : 'The box score isn’t posted yet. It usually lands within the hour.';
+            : 'The box score lands overnight — check back in the morning.';
         return '<div class="ht-card ht-empty">' + text + '</div>';
     }
 

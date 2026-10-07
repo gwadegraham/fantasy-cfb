@@ -4,7 +4,7 @@
 // each side's quadrant and who banked what — is worked out exactly as the
 // team page does it (same rank cache, same owner lookup), so the two pages
 // cannot tell a manager different stories about one game. The box score is
-// fetched from CBBD on first view of a final game and then kept.
+// read from what the nightly batch stored — the page never calls CBBD.
 
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
@@ -55,7 +55,7 @@ async function build(gameId, { league = null } = {}) {
         teamPage.ownership(league, yr, homeId),
         teamPage.ownership(league, yr, awayId),
         teamPage.quadrantValues(league),
-        boxScore.getBox(game)
+        final ? boxScore.getBox(id) : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
 
@@ -94,10 +94,7 @@ async function build(gameId, { league = null } = {}) {
         home: side(homeId, awayId, homeRec, homeOwner, game.homePoints),
         away: side(awayId, homeId, awayRec, awayOwner, game.awayPoints),
         quadrantValues: values,
-        box: boxed.box || null,
-        boxUnavailable: !!boxed.unavailable,
-        // CBBD never boxed this game and never will (see hoops-box-score).
-        boxMissing: !!boxed.missing
+        box: boxed || null
     };
 }
 

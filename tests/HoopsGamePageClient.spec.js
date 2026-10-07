@@ -28,7 +28,6 @@ function payload(o) {
         box: { pace: 66,
             home: side({ players: [player('Cameron Boozer', { points: 15 }), player('Cayden Boozer', { starter: false, minutes: 14, points: 2 }), player('Isaiah Evans', { points: 23, rebounds: 1 })] }),
             away: side({ points: 60, byPeriod: [33, 27], efgPct: 36.4, tovPct: 24.2, orbPct: 43.9, ftRate: 39, players: [player('Dailyn Swain', { points: 16 })] }) },
-        boxUnavailable: false
     }, o || {});
 }
 
@@ -107,13 +106,9 @@ test('postseason: the tournament, not a quadrant', async () => {
     expect(txt('.hg-q')).toBe('NCAA | NCAA');
 });
 
-test('final without a box: says why — not posted yet, or provider down', async () => {
+test('final without a box: it lands overnight', async () => {
     await render(payload({ box: null }));
-    expect(txt('.ht-empty')).toContain('isn’t posted yet');
-    await render(payload({ box: null, boxUnavailable: true }));
-    expect(txt('.ht-empty')).toContain('Couldn’t reach');
-    await render(payload({ box: null, boxMissing: true }));
-    expect(txt('.ht-empty')).toBe('There’s no box score for this game.');
+    expect(txt('.ht-empty')).toContain('lands overnight');
 });
 
 test('four factors: the better side is marked, and its bar is the LONGER one even when lower is better', async () => {

@@ -407,8 +407,12 @@ describe('hoops-stats', () => {
 
 describe('hoops-stats job', () => {
     const NOW = new Date(Date.UTC(2026, 10, 12));
+    const boxScore = require('../modules/hoops-box-score');
 
     beforeEach(() => {
+        // The box batch has its own tests (HoopsGamePage.spec.js); here it
+        // must simply never reach CBBD.
+        jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ season: SEASON, games: 3, stored: 3 });
         jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
         jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
         jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -432,7 +436,7 @@ describe('hoops-stats job', () => {
         jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 365, players: 5000 });
         await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
         const out = await statsJob.run({ now: NOW });
-        expect(out.summary).toBe(`${SEASON}: 365 team(s), 5000 player(s)`);
+        expect(out.summary).toBe(`${SEASON}: 365 team(s), 5000 player(s) | ${SEASON} boxes: 3/3 stored`);
         expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
     });
 
@@ -441,12 +445,35 @@ describe('hoops-stats job', () => {
         await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
         const out = await statsJob.run({ now: NOW });
         expect(out.failed).toBe('CBBD 503');
-        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', `${SEASON}: FAILED CBBD 503`);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', `${SEASON}: FAILED CBBD 503 | ${SEASON} boxes: 3/3 stored`);
     });
 
     test('a skipped import (no teams) is reported in the summary', async () => {
         jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, skippedReason: 'no hoops teams ingested' });
         await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
-        expect((await statsJob.run({ now: NOW })).summary).toBe(`${SEASON}: no hoops teams ingested`);
+        expect((await statsJob.run({ now: NOW })).summary).toBe(`${SEASON}: no hoops teams ingested | ${SEASON} boxes: 3/3 stored`);
+    });
+
+    test('the box batch runs on its own: a box failure is recorded, and the stats still import', async () => {
+        jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 365, players: 5000 });
+        boxScore.ingestRecent.mockRejectedValue(new Error('CBBD 429'));
+        await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
+        const out = await statsJob.run({ now: NOW });
+        expect(out.summary).toBe(`${SEASON}: 365 team(s), 5000 player(s) | ${SEASON} boxes: FAILED CBBD 429`);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', out.summary);
+    });
+
+    test('a capped box window says so in the summary', async () => {
+        jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 1, players: 1 });
+        boxScore.ingestRecent.mockResolvedValue({ season: SEASON, games: 9, stored: 4, capped: true });
+        await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
+        expect((await statsJob.run({ now: NOW })).summary).toContain('boxes: 4/9 stored (HIT THE 3000-ROW CAP');
+    });
+
+    test('nothing final in the window: the box batch says so', async () => {
+        jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 1, players: 1 });
+        boxScore.ingestRecent.mockResolvedValue({ season: SEASON, games: 0, stored: 0, skippedReason: 'nothing final' });
+        await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
+        expect((await statsJob.run({ now: NOW })).summary).toContain('boxes: nothing final');
     });
 });

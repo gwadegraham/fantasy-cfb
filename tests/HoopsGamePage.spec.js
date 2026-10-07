@@ -1,10 +1,10 @@
-// The basketball game page's data (#503): the on-demand box score
-// (modules/hoops-box-score.js), the page payload (modules/hoops-game-page.js)
-// and GET /hoops/games/:id/page.
+// The basketball game page's data (#503): the nightly box-score batch
+// (modules/hoops-box-score.js — football's pattern), the page payload
+// (modules/hoops-game-page.js) and GET /hoops/games/:id/page.
 //
-// The box score is BILLABLE — 3 CBBD calls — so most of what is tested here
-// is when it is NOT fetched: a stored box, a game not yet final, a game asked
-// about inside the retry window, and an old game CBBD will never box.
+// The batch is BILLABLE, so what matters is that it is two calls for a whole
+// window, that it lands each box on the right game and side, and that the
+// page itself never calls CBBD.
 
 const express = require('express');
 const request = require('supertest');
@@ -57,20 +57,21 @@ const playerRow = (gameId, teamId, names) => ({
 });
 
 function stubCbbd({ fail = false } = {}) {
-    return jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path, params) => {
+    return jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path) => {
         if (fail) throw new Error('CBBD 503');
         if (path === '/games/teams') {
             return { data: [
-                teamRow(999, 1, 7, sideStats(80, [40, 40]), sideStats(70, [35, 35])),        // another game that window
+                teamRow(999, 1, 7, sideStats(80, [40, 40]), sideStats(70, [35, 35])),        // a game that is not ours
                 teamRow(500, 1, 2, sideStats(75, [32, 43]), sideStats(60, [33, 27]))
             ] };
         }
-        return { data: [playerRow(500, params.team === 'Duke' ? 1 : 2, params.team === 'Duke' ? ['Isaiah Evans', 'Cameron Boozer'] : ['Dailyn Swain'])] };
+        // The whole window's players: a row per side per game, AWAY FIRST, so
+        // a match on the game alone would hand Duke Texas's lines.
+        return { data: [playerRow(500, 2, ['Dailyn Swain']), playerRow(999, 1, ['Someone Else']), playerRow(500, 1, ['Isaiah Evans', 'Cameron Boozer'])] };
     });
 }
 
 beforeEach(async () => {
-    boxScore.clearRetryCache();
     teamPage.clearRankCache();
     await League.create({ code: LEAGUE, name: 'Hardwood Heroes', sport: 'basketball' });
     await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' }, { sport: 'basketball', season: SEASON, status: 'in-season' }]);
@@ -83,101 +84,90 @@ beforeEach(async () => {
 afterEach(() => { seasons._reset(); jest.restoreAllMocks(); });
 
 describe('buildBox', () => {
-    test('picks THIS game out of the window, both sides, in per-game units', () => {
+    test('picks THIS game out of the window, each side\'s OWN players, in per-game units', () => {
         const box = boxScore.buildBox(GAME,
             [teamRow(999, 1, 7, sideStats(80, [40, 40]), sideStats(70, [35, 35])), teamRow(500, 1, 2, sideStats(75, [32, 43]), sideStats(60, [33, 27]))],
-            [playerRow(500, 1, ['Isaiah Evans'])], [playerRow(500, 2, ['Dailyn Swain'])]);
+            [playerRow(500, 2, ['Dailyn Swain']), playerRow(500, 1, ['Isaiah Evans'])]);
         expect(box).toMatchObject({ gameId: 500, pace: 66,
             home: { teamId: 1, points: 75, byPeriod: [32, 43], tovPct: 15.2, threeMade: 9, threeAtt: 23 },
             away: { teamId: 2, points: 60, byPeriod: [33, 27] } });
-        expect(box.home.players[0]).toMatchObject({ name: 'Isaiah Evans', starter: true, rebounds: 5, threeMade: 4, threeAtt: 8 });
-        expect(box.away.players[0].name).toBe('Dailyn Swain');
+        expect(box.home.players.map(p => p.name)).toEqual(['Isaiah Evans']);
+        expect(box.away.players.map(p => p.name)).toEqual(['Dailyn Swain']);
+        expect(box.home.players[0]).toMatchObject({ starter: true, rebounds: 5, threeMade: 4, threeAtt: 8 });
     });
 
     test('a row from the AWAY team\'s point of view still lands each side right', () => {
-        const box = boxScore.buildBox(GAME, [teamRow(500, 2, 1, sideStats(60, [33, 27]), sideStats(75, [32, 43]))], [], []);
-        expect(box.home).toMatchObject({ teamId: 1, points: 75 });
+        const box = boxScore.buildBox(GAME, [teamRow(500, 2, 1, sideStats(60, [33, 27]), sideStats(75, [32, 43]))], []);
+        expect(box.home).toMatchObject({ teamId: 1, points: 75, players: [] });
         expect(box.away).toMatchObject({ teamId: 2, points: 60 });
     });
 
+    test('a side with no stats at all comes out empty, not broken', () => {
+        expect(boxScore.slimSide(1, undefined, undefined)).toMatchObject({ teamId: 1, byPeriod: [], points: undefined, players: [] });
+        expect(boxScore.slimSide(1, { points: { total: '' } }, [{ name: '' }, null, { name: 'X', rebounds: null }]))
+            .toMatchObject({ points: undefined, players: [{ name: 'X', rebounds: undefined, fgMade: undefined }] });
+        expect(boxScore.buildBox(GAME, null, null)).toBeNull();
+    });
+
     test('no row for this game: null, so nothing half-built is stored', () => {
-        expect(boxScore.buildBox(GAME, [teamRow(999, 1, 7, sideStats(1, []), sideStats(0, []))], [], [])).toBeNull();
+        expect(boxScore.buildBox(GAME, [teamRow(999, 1, 7, sideStats(1, []), sideStats(0, []))], [])).toBeNull();
     });
 });
 
-describe('getBox', () => {
-    test('a final game: 3 calls, by TEAM and a date window (CBBD ignores gameId), then stored', async () => {
+describe('ingestRecent (the nightly batch)', () => {
+    test('two calls for the whole window — by season and dates, never gameId — and each final game stored', async () => {
+        await HoopsGame.create([GAME,
+            Object.assign({}, GAME, { id: 501, startDate: new Date(Date.UTC(2026, 10, 19)) })]);    // final, no CBBD row
         const get = stubCbbd();
-        const out = await boxScore.getBox(GAME, NOW);
-        expect(out.box.home.points).toBe(75);
-        expect(get).toHaveBeenCalledTimes(3);
-        const [path, params] = get.mock.calls[0];
-        expect(path).toBe('/games/teams');
-        expect(params).toEqual({ team: 'Duke', season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-11-19' });
-        expect(params.gameId).toBeUndefined();
+        const out = await boxScore.ingestRecent(SEASON, { now: NOW });
+        expect(out).toMatchObject({ season: SEASON, games: 2, stored: 1, capped: false });
+        expect(get).toHaveBeenCalledTimes(2);
+        expect(get.mock.calls.map(c => c[0]).sort()).toEqual(['/games/players', '/games/teams']);
+        expect(get.mock.calls[0][1]).toEqual({ season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-11-20' });
+        const stored = await HoopsBoxScore.findOne({ gameId: 500 }).lean();
+        expect(stored.home.players.map(p => p.name)).toEqual(['Isaiah Evans', 'Cameron Boozer']);
+        expect(stored.away.players.map(p => p.name)).toEqual(['Dailyn Swain']);
+        expect(await HoopsBoxScore.countDocuments({})).toBe(1);
+    });
+
+    test('a re-run refreshes rather than duplicating', async () => {
+        await HoopsGame.create(GAME);
+        stubCbbd();
+        await boxScore.ingestRecent(SEASON, { now: NOW });
+        await boxScore.ingestRecent(SEASON, { now: NOW });
         expect(await HoopsBoxScore.countDocuments({ gameId: 500 })).toBe(1);
     });
 
-    test('a stored box costs nothing', async () => {
+    test('nothing final in the lookback: no calls at all', async () => {
+        await HoopsGame.create([
+            Object.assign({}, GAME, { startDate: new Date(NOW - boxScore.LOOKBACK_MS - 1) }),         // too old
+            Object.assign({}, GAME, { id: 502, status: 'scheduled', homePoints: null, awayPoints: null })
+        ]);
         const get = stubCbbd();
-        await boxScore.getBox(GAME, NOW);
-        get.mockClear();
-        boxScore.clearRetryCache();
-        expect((await boxScore.getBox(GAME, NOW)).box.home.points).toBe(75);
+        expect(await boxScore.ingestRecent(SEASON, { now: NOW })).toMatchObject({ games: 0, stored: 0, skippedReason: 'nothing final' });
         expect(get).not.toHaveBeenCalled();
     });
 
-    test('a game not yet final is never fetched', async () => {
-        const get = stubCbbd();
-        expect(await boxScore.getBox(Object.assign({}, GAME, { status: 'scheduled', homePoints: null }), NOW)).toEqual({ box: null });
-        expect(get).not.toHaveBeenCalled();
-    });
-
-    test('no box yet: asked once, then not again inside the retry window, then again after it', async () => {
-        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
-        const recent = Object.assign({}, GAME, { startDate: new Date(NOW - 60 * 60 * 1000) });
-        await boxScore.getBox(recent, NOW);
-        await boxScore.getBox(recent, NOW + 60 * 1000);
-        expect(get).toHaveBeenCalledTimes(3);
-        await boxScore.getBox(recent, NOW + boxScore.RETRY_MS + 1);
-        expect(get).toHaveBeenCalledTimes(6);
-        expect(await HoopsBoxScore.countDocuments({})).toBe(0);           // recent: not given up on
-    });
-
-    test('an old game CBBD never boxed is stored as missing and never asked again', async () => {
-        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
-        const old = Object.assign({}, GAME, { startDate: new Date(NOW - boxScore.MISSING_AFTER_MS - 1) });
-        expect(await boxScore.getBox(old, NOW)).toEqual({ box: null, missing: true });
-        boxScore.clearRetryCache();
-        expect(await boxScore.getBox(old, NOW)).toEqual({ box: null, missing: true });
-        expect(get).toHaveBeenCalledTimes(3);
-        expect(await HoopsBoxScore.findOne({ gameId: 500 }).lean()).toMatchObject({ missing: true });
-    });
-
-    // CBBD can post the team line before the player lines; a stored box is
-    // never fetched again, so storing it then would lose the players for good.
-    test('a recent box missing player lines is shown but not stored; an old one is stored as is', async () => {
+    test('a window at the 3,000-row cap is flagged, not trusted', async () => {
+        await HoopsGame.create(GAME);
         jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path) => (path === '/games/teams'
-            ? { data: [teamRow(500, 1, 2, sideStats(75, [32, 43]), sideStats(60, [33, 27]))] }
+            ? { data: Array.from({ length: cbbd.PAGE_CAP }, (_, i) => teamRow(i === 0 ? 500 : 10000 + i, 1, 2, sideStats(75, []), sideStats(60, []))) }
             : { data: [] }));
-        const recent = Object.assign({}, GAME, { startDate: new Date(NOW - 60 * 60 * 1000) });
-        expect((await boxScore.getBox(recent, NOW)).box.home.points).toBe(75);
-        expect(await HoopsBoxScore.countDocuments({})).toBe(0);
-        boxScore.clearRetryCache();
-        const old = Object.assign({}, GAME, { startDate: new Date(NOW - boxScore.MISSING_AFTER_MS - 1) });
-        await boxScore.getBox(old, NOW);
-        expect(await HoopsBoxScore.countDocuments({ gameId: 500, missing: false })).toBe(1);
+        expect(await boxScore.ingestRecent(SEASON, { now: NOW })).toMatchObject({ capped: true, stored: 1 });
     });
 
-    test('CBBD down: unavailable, not stored, and tried again later', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {});
+    test('a CBBD failure throws, so the job records it', async () => {
+        await HoopsGame.create(GAME);
         stubCbbd({ fail: true });
-        expect(await boxScore.getBox(GAME, NOW)).toEqual({ box: null, unavailable: true });
-        expect(await HoopsBoxScore.countDocuments({})).toBe(0);
+        await expect(boxScore.ingestRecent(SEASON, { now: NOW })).rejects.toThrow('CBBD 503');
     });
 
-    test('no game: no box', async () => {
-        expect(await boxScore.getBox(null)).toEqual({ box: null });
+    test('getBox reads what is stored, and never calls CBBD', async () => {
+        const get = stubCbbd();
+        expect(await boxScore.getBox(500)).toBeNull();
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
+        expect((await boxScore.getBox(500)).home.points).toBe(75);
+        expect(get).not.toHaveBeenCalled();
     });
 });
 
@@ -221,9 +211,11 @@ describe('build', () => {
         ]);
     });
 
-    test('each side reads the game from its OWN point of view', async () => {
-        stubCbbd();
+    test('each side reads the game from its OWN point of view; the box is the stored one', async () => {
+        const get = stubCbbd();
+        await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         const p = await gamePage.build(500);
+        expect(get).not.toHaveBeenCalled();                  // the page never calls CBBD
         // Neutral site: Texas (#37) is Q1 for Duke; Duke (#4) is Q1 for Texas too.
         expect(p.home).toMatchObject({ id: 1, school: 'Duke', abbreviation: 'DUKE', rank: 4, points: 75, quadrant: 1, hasPage: true });
         expect(p.away).toMatchObject({ id: 2, school: 'Texas', rank: 37, points: 60, quadrant: 1 });
@@ -257,12 +249,19 @@ describe('build', () => {
         expect(p.game).toMatchObject({ postseason: true, tournament: 'NCAA' });
     });
 
-    test('a game still to play: no score, no record, no box fetch', async () => {
+    test('a game still to play: no score, no record, no box', async () => {
         const get = stubCbbd();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'scheduled', homePoints: null, awayPoints: null } });
         const p = await gamePage.build(500);
         expect(p.game.final).toBe(false);
         expect([p.home.points, p.home.record, p.box]).toEqual([null, null, null]);
+        expect(get).not.toHaveBeenCalled();
+    });
+
+    test('a final game with nothing stored yet: no box, and still no CBBD call', async () => {
+        const get = stubCbbd();
+        const p = await gamePage.build(500);
+        expect(p.box).toBeNull();
         expect(get).not.toHaveBeenCalled();
     });
 

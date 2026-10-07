@@ -266,8 +266,8 @@ async function restampSeason(season, seasonStart) {
     return res.modifiedCount || 0;
 }
 
-// The basketball game page's data (#503). The only CBBD calls are the box
-// score's, on the first view of a final game (modules/hoops-box-score.js).
+// The basketball game page's data (#503). No CBBD calls: box scores come
+// from the nightly batch (modules/hoops-box-score.js, run by hoops-stats-job).
 //
 // Basketball stays hidden from anyone not in a basketball league (404, as if
 // it did not exist), and ownership is league-private, so the league comes

@@ -106,13 +106,12 @@ module.exports = {
             functions: 100,
             lines: 100
         },
-        // The basketball game page (#503). The box score is BILLABLE, so the
-        // branches that decline to fetch (stored, not final, inside the retry
-        // window, given up on) are the ones that matter; the uncovered ones
-        // are `|| {}` guards on optional CBBD fields.
+        // The basketball game page (#503). The box batch is BILLABLE, so the
+        // branches that matter are the ones that decline to call (nothing
+        // final) and the ones that put a box on the right game and side.
         "./modules/hoops-box-score.js": {
-            statements: 98,
-            branches: 70,
+            statements: 100,
+            branches: 90,
             functions: 100,
             lines: 100
         },

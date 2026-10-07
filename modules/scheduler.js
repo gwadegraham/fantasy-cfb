@@ -37,10 +37,11 @@ const JOB_SCHEDULES = [
     // picked up without anyone asking. A no-op, silently, while no
     // basketball league exists.
     { job: 'hoops-scores', modulePath: '../modules/hoops-scores-job', rule: { hour: 23, minute: 30 } },
-    // Basketball season stats for the team page (#494). 2 CBBD calls, all
-    // teams at once. 05:00 so last night's late West Coast finals are in
-    // CBBD's totals; silent and free while no basketball league exists or
-    // nothing has gone final in three days.
+    // Basketball season stats for the team page (#494) and box scores for
+    // the game page (#503). 4 CBBD calls, every team and every game at once.
+    // 05:00 so last night's late West Coast finals are in CBBD's totals;
+    // silent and free while no basketball league exists or nothing has gone
+    // final in three days.
     { job: 'hoops-stats', modulePath: '../modules/hoops-stats-job', rule: { hour: 5, minute: 0 } }
 ];
 
