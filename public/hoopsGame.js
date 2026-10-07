@@ -54,8 +54,11 @@
     function hero(d) {
         var g = d.game, H = d.home, A = d.away;
         var place = [g.venue, [g.city, g.state].filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ');
-        var status = g.final ? 'Final' : (String(g.status || '').toLowerCase() === 'in_progress' ? 'Live' : null);
-        var meta = (status ? '<b>' + status + '</b>' + (when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
+        // Live: "LIVE · 2nd · 8:43" (OT periods named), from the poller (#505).
+        var half = function (p) { return p === 1 ? '1st' : p === 2 ? '2nd' : p > 2 ? 'OT' + (p > 3 ? p - 2 : '') : ''; };
+        var liveBits = g.live ? [half(g.period), g.clock].filter(Boolean).join(' · ') : '';
+        var status = g.final ? 'Final' : g.live ? 'Live' + (liveBits ? ' · ' + liveBits : '') : null;
+        var meta = (status ? '<b' + (g.live ? ' class="live"' : '') + '>' + esc(status) + '</b>' + (!g.live && when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
             + (g.tournament ? ' · ' + esc(g.tournament) : g.notes ? ' · ' + esc(g.notes) : '')
             + (place || g.neutralSite ? '<br>' + place + (g.neutralSite ? (place ? ' · ' : '') + 'neutral site' : '') : '');
         var side = function (t) {
@@ -63,10 +66,12 @@
                 + '<div class="hg-nm">' + (t.rank ? '<small>' + t.rank + '</small>' : '') + esc(t.school).toUpperCase() + '</div>')
                 + (t.record ? '<div class="hg-rec">' + t.record.w + '–' + t.record.l + '</div>' : '') + '</div>';
         };
-        var homeWon = g.final && H.points > A.points;
+        var scored = g.final || (g.live && H.points != null && A.points != null);
+        var homeWon = scored && H.points > A.points;
         // Away on the left, home on the right — the scoreboard convention,
-        // so "@" reads correctly — and the score in the same order.
-        var score = g.final
+        // so "@" reads correctly — and the score in the same order. A live
+        // score dims the side that is behind, as a final dims the loser.
+        var score = scored
             ? '<span class="' + (homeWon ? 'lose' : '') + '">' + A.points + '</span><span class="dash">–</span>'
                 + '<span class="' + (homeWon ? '' : 'lose') + '">' + H.points + '</span>'
             : '<span class="vs">' + (g.neutralSite ? 'vs' : '@') + '</span>';
@@ -218,10 +223,11 @@
         if (p == null) return '';
         var a = 1 - p;
         return '<div class="ht-card hg-wp"><div class="hg-wp-head"><span>' + esc(abbr(d.away)) + ' <b>' + pct(a) + '%</b></span>'
-            + '<span class="k">Win probability</span><span><b>' + pct(p) + '%</b> ' + esc(abbr(d.home)) + '</span></div>'
+            + '<span class="k">' + (d.game.live ? 'Pregame win prob.' : 'Win probability') + '</span><span><b>' + pct(p) + '%</b> ' + esc(abbr(d.home)) + '</span></div>'
             + '<div class="hg-wp-bar"><i style="flex:' + a + ';background:' + esc(d.away.color || 'var(--cc-surface-3)') + '"></i>'
             + '<i style="flex:' + p + ';background:' + esc(d.home.color || 'var(--cc-surface-3)') + '"></i></div>'
-            + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court') + '.</div></div>';
+            + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court')
+            + (d.game.live ? ', before tip-off — not updated during the game' : '') + '.</div></div>';
     }
 
     // What is on the line for the managers. Two rostered sides make it a

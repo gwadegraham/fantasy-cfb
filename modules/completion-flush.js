@@ -84,59 +84,73 @@ function groupPending(entries) {
 }
 
 // ---- pending set (process-local state) -------------------------------------
-
+// One pending set per caller. Football's live poller uses the default set
+// below; basketball's (modules/hoops-live-poll.js, #505) makes its own, so a
+// basketball final can never be flushed through football's completion work
+// or the reverse. The timing rules and grouping are shared.
+//
 // gameId -> { id, week, seasonType }. A Map so a game re-reported as newly
 // completed (a restart, or routes/games.js racing the poller) collapses instead
 // of being ingested twice.
-let pending = new Map();
-let firstAddedMs = null;
-let lastAddedMs = null;
+function createCompletionFlush({ quietMs = QUIET_MS, maxWaitMs = MAX_WAIT_MS } = {}) {
+    let pending = new Map();
+    let firstAddedMs = null;
+    let lastAddedMs = null;
 
-// Record newly completed games, tagged with the week they were seen in. The
-// week is captured at add time rather than read at flush time because the
-// flush can span a week boundary — see groupPending.
-function addPending(gameIds, { week, seasonType }, nowMs = Date.now()) {
-    let added = 0;
-    for (const id of gameIds || []) {
-        if (id == null || pending.has(id)) continue;
-        pending.set(id, { id, week, seasonType });
-        added++;
+    // Record newly completed games, tagged with the week they were seen in. The
+    // week is captured at add time rather than read at flush time because the
+    // flush can span a week boundary — see groupPending.
+    function addPending(gameIds, { week, seasonType }, nowMs = Date.now()) {
+        let added = 0;
+        for (const id of gameIds || []) {
+            if (id == null || pending.has(id)) continue;
+            pending.set(id, { id, week, seasonType });
+            added++;
+        }
+        if (added) {
+            if (firstAddedMs == null) firstAddedMs = nowMs;
+            lastAddedMs = nowMs;
+        }
+        return added;
     }
-    if (added) {
-        if (firstAddedMs == null) firstAddedMs = nowMs;
-        lastAddedMs = nowMs;
+
+    function pendingCount() {
+        return pending.size;
     }
-    return added;
+
+    // Apply the timing rules to the current pending set.
+    function shouldFlush({ nowMs = Date.now(), force = false } = {}) {
+        return decideFlush({
+            pendingCount: pending.size,
+            firstAddedMs, lastAddedMs, nowMs,
+            quietMs, maxWaitMs,
+            force
+        });
+    }
+
+    // Hand the caller the pending batches and clear the set. Taken (rather than
+    // read then cleared) so a poll that overlaps the flush cannot pick up the same
+    // games again; anything that finals during the flush starts a fresh window.
+    function takePending() {
+        const groups = groupPending([...pending.values()]);
+        pending = new Map();
+        firstAddedMs = null;
+        lastAddedMs = null;
+        return groups;
+    }
+
+    const _reset = () => { pending = new Map(); firstAddedMs = null; lastAddedMs = null; };
+    return { addPending, pendingCount, shouldFlush, takePending, _reset };
 }
 
-function pendingCount() {
-    return pending.size;
-}
-
-// Apply the timing rules to the current pending set.
-function shouldFlush({ nowMs = Date.now(), force = false } = {}) {
-    return decideFlush({
-        pendingCount: pending.size,
-        firstAddedMs, lastAddedMs, nowMs,
-        quietMs: QUIET_MS, maxWaitMs: MAX_WAIT_MS,
-        force
-    });
-}
-
-// Hand the caller the pending batches and clear the set. Taken (rather than
-// read then cleared) so a poll that overlaps the flush cannot pick up the same
-// games again; anything that finals during the flush starts a fresh window.
-function takePending() {
-    const groups = groupPending([...pending.values()]);
-    pending = new Map();
-    firstAddedMs = null;
-    lastAddedMs = null;
-    return groups;
-}
+// Football's set — the module's long-standing API, unchanged.
+const football = createCompletionFlush();
 
 module.exports = {
-    addPending, pendingCount, shouldFlush, takePending,
+    addPending: football.addPending, pendingCount: football.pendingCount,
+    shouldFlush: football.shouldFlush, takePending: football.takePending,
+    createCompletionFlush,
     // exported for tests
     decideFlush, groupPending, QUIET_MS, MAX_WAIT_MS,
-    _reset: () => { pending = new Map(); firstAddedMs = null; lastAddedMs = null; }
+    _reset: football._reset
 };

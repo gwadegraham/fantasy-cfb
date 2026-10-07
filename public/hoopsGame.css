@@ -6,6 +6,7 @@
         var(--cc-bg) 54%, color-mix(in srgb, var(--right) 55%, var(--cc-bg)) 100%); }
 .hg-meta { text-align: center; font-size: 11px; color: var(--cc-muted-bright); letter-spacing: .3px; line-height: 1.5; }
 .hg-meta b { color: var(--cc-text); text-transform: uppercase; letter-spacing: 1.2px; }
+.hg-meta b.live { color: var(--cc-success); }
 .hg-board { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; margin-top: 14px; }
 .hg-side { text-align: center; min-width: 0; }
 .hg-side a { display: flex; flex-direction: column; align-items: center; gap: 4px; }

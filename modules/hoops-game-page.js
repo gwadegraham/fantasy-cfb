@@ -86,6 +86,9 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
     const yr = Number(game.season);
     const homeId = Number(game.homeTeamId), awayId = Number(game.awayTeamId);
     const final = isFinal(game);
+    // In progress: the live poller (#505) writes running points, half and
+    // clock. Shown as a live score; nothing is banked until final.
+    const live = !final && String(game.status || '').toLowerCase() === 'in_progress';
     const postseason = String(game.seasonType || '').toLowerCase() === 'postseason';
 
     // The week to rank against: the game's own once it is played; before
@@ -143,7 +146,7 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
             rank: Number.isFinite(rank) ? rank : null,
             // Through this game when played; going INTO it when not.
             record: rec,
-            points: final ? Number(points) : null,
+            points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
             quadrant: postseason ? null : quadrantFor(oppRank, venue),
@@ -156,7 +159,9 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
     return {
         game: {
             id, season: yr, week: game.week, startDate: game.startDate, startTimeTbd: !!game.startTimeTbd,
-            status: game.status || null, final, postseason,
+            status: game.status || null, final, live, postseason,
+            period: live && Number.isFinite(Number(game.period)) ? Number(game.period) : null,
+            clock: live ? game.clock || null : null,
             tournament: postseason ? (String(game.tournament || '').trim() || 'Postseason') : null,
             notes: game.gameNotes || null, neutralSite: !!game.neutralSite,
             conferenceGame: !!game.conferenceGame && !teamPage.isConfTournament(game),

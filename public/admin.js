@@ -279,7 +279,7 @@ var JOB_LABELS = {
     'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
     'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
     'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts',
-    'hoops-scores': 'Basketball', 'hoops-stats': 'Basketball stats'
+    'hoops-scores': 'Basketball', 'hoops-stats': 'Basketball stats', 'hoops-live': 'Basketball live'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -308,7 +308,7 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
         var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'hoops-scores', 'hoops-stats',
+                     'hoops-live', 'hoops-scores', 'hoops-stats',
                      'enrichment', 'season-stats', 'player-season-leaders',
                      'captain-reminder', 'recap-notice'];
         // Collapse to the latest run per job — the live poller writes a run every
