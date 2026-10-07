@@ -34,7 +34,27 @@ async function cachedRanks(season, week, now = Date.now()) {
     rankCache.set(key, { at: now, ranks });
     return ranks;
 }
-function clearRankCache() { rankCache.clear(); }
+function clearRankCache() { rankCache.clear(); weekCache.clear(); }
+
+// THE week a game still to play is quadranted against: the latest week of
+// the season in which ANY game has gone final. Season-wide, not per team —
+// a per-team "latest played" week differs between two opponents, and ranks
+// are blended by week (hoops-ranks blendWeight), so the team page and the
+// game page would rate the same future game against different ranks and
+// could disagree on its quadrant. Cached with the ranks.
+const weekCache = new Map();
+async function currentWeek(season, now = Date.now()) {
+    const hit = weekCache.get(season);
+    if (hit && now - hit.at < RANK_TTL_MS) return hit.week;
+    // homePoints/awayPoints required too: the scoring pass's isFinal refuses a
+    // "final" row with no score, and so must this, or one bad row moves the week.
+    const last = await HoopsGame.findOne({ season, status: 'final', week: { $type: 'number' },
+        homePoints: { $type: 'number' }, awayPoints: { $type: 'number' } }, { week: 1, _id: 0 })
+        .sort({ week: -1 }).lean();
+    const week = last ? Number(last.week) : null;
+    weekCache.set(season, { at: now, week });
+    return week;
+}
 
 // The scoring pass's own test of "is this a result", reused so the page and
 // the points can never disagree about which games count. (A local copy read
@@ -117,6 +137,10 @@ async function ownership(league, season, teamId) {
         return {
             franchiseName: entry.franchiseName || null,
             firstName: m.firstName || null,
+            // The ACCOUNT id (franchise-repo puts it on _id) — what Auth0's
+            // metadata.userId names — so a page can tell the viewer's own
+            // team. Never sent to the client; only a `mine` flag is.
+            accountId: m._id != null ? String(m._id) : null,
             points
         };
     }
@@ -151,8 +175,7 @@ async function build(teamId, { season, league = null } = {}) {
     // A game still to play is quadranted against the latest week that HAS
     // been played — "what it would be worth tonight" — rather than against
     // a future week nobody has rated.
-    const playedWeeks = games.filter(isFinal).map(g => Number(g.week)).filter(Number.isFinite);
-    const nowWeek = playedWeeks.length ? Math.max(...playedWeeks) : null;
+    const nowWeek = await currentWeek(yr);
     const ranksByWeek = new Map();
     for (const g of games) {
         const wk = isFinal(g) || nowWeek === null ? Number(g.week) : nowWeek;
@@ -244,4 +267,6 @@ async function build(teamId, { season, league = null } = {}) {
     };
 }
 
-module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS };
+module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS,
+    // Shared with the game page (#503), so the two read ranks and owners the same way.
+    cachedRanks, ownership, quadrantValues, currentWeek };

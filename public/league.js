@@ -281,16 +281,17 @@
     // because the bug is that the URL carries no sport, and patching the
     // builders one at a time guarantees missing one. On a basketball league:
     //
-    //   /team?team=ID  -> /hoops/team/ID   (the basketball team page, #494)
-    //   /game/ID       -> refused          (no basketball game page yet)
+    //   /team?team=ID  -> /hoops/team/ID   (#494)
+    //   /game/ID       -> /hoops/game/ID   (#503)
     //
     // Anything that shows FOOTBALL ids whatever league is selected opts out
     // with data-page-sport="football" — on <body> for a whole page (the
     // football team page, a game, the CFP bracket, the scoreboard), or on
     // the one container that does (admin's roster table when the league it
-    // manages is football). The rewrite must never guess: a football id sent
-    // to /hoops/team/ is #489 in reverse — Minnesota's link opening
-    // Kentucky's basketball page.
+    // manages is football; the Standings and My Team game lists, which read
+    // football games until #490/#501). The rewrite must never guess: a
+    // football id sent to /hoops/ is #489 in reverse — Minnesota's link
+    // opening Kentucky's basketball page.
     function footballContext(el) {
         if (document.body && document.body.getAttribute('data-page-sport') === 'football') return true;
         return !!(el && el.closest && el.closest('[data-page-sport="football"]'));
@@ -298,15 +299,10 @@
 
     function basketballHref(href, el) {
         if (sport() === 'football' || footballContext(el)) return null;
-        var m = /^\/team\?team=([^&#]+)/.exec(href || '');
-        return m ? '/hoops/team/' + m[1] : null;
-    }
-
-    // Whether this league refuses a URL outright. The one rule, shared by
-    // the anchor guard and by open() below.
-    function refusesHref(href, el) {
-        if (sport() === 'football' || footballContext(el)) return false;
-        return (href || '').indexOf('/game/') === 0;
+        var t = /^\/team\?team=([^&#]+)/.exec(href || '');
+        if (t) return '/hoops/team/' + t[1];
+        var g = /^\/game\/([^/?#]+)/.exec(href || '');
+        return g ? '/hoops/game/' + g[1] : null;
     }
 
     // The sport of any league in the viewer's seed — for a page that shows a
@@ -319,6 +315,8 @@
         return 'football';
     }
 
+    // Named for what it did before #494/#503, when these links were removed;
+    // they are rewritten now. The name is kept because pages call it.
     function unlinkForeignTeamLinks(root) {
         if (sport() === 'football' || footballContext(null)) return;
         var nodes = (root || document).querySelectorAll('a[href^="/team?team="], a[href^="/game/"]');
@@ -328,22 +326,16 @@
             a.dataset.ccUnlinked = '1';
             a.dataset.ccHref = a.getAttribute('href');
             var hoops = basketballHref(a.dataset.ccHref, a);
-            if (hoops) {
-                a.setAttribute('href', hoops);
-                continue;
-            }
-            a.removeAttribute('href');          // and with it middle-click and copy-link, for links present now
-            a.removeAttribute('target');
-            a.style.cursor = 'default';
+            if (hoops) a.setAttribute('href', hoops);
         }
     }
 
     // For the pages that navigate by script rather than by anchor — a card
     // whose click handler sets location.href. The anchor guard never sees
-    // those, so they come through here instead. Returns whether it went.
-    function open(href) {
-        if (refusesHref(href)) return false;
-        window.location.href = basketballHref(href) || href;
+    // those, so they come through here instead, with the element so a
+    // football container is honoured.
+    function open(href, el) {
+        window.location.href = basketballHref(href, el) || href;
         return true;
     }
 
@@ -351,7 +343,7 @@
     // of these links are built after a fetch resolves. This is the net:
     // capture-phase listeners that fix the link however it got there.
     //
-    // A team link is REWRITTEN IN PLACE rather than intercepted, on mousedown
+    // A link is REWRITTEN IN PLACE rather than intercepted, on mousedown
     // as well as click: mousedown comes before click, auxclick (middle-click)
     // and the context menu, so a new tab or a copied link gets the basketball
     // URL too — not only a plain left click.
@@ -361,10 +353,11 @@
     // stale listener answers sport() for the league that was loaded first
     // — and a first-wins guard would keep exactly the wrong one.
     //
-    // preventDefault ONLY, never stopPropagation. This runs before every
-    // other handler, so stopping propagation swallowed clicks on controls
-    // NESTED in a refused link: My Team's "+N" breakdown button sits inside
-    // the game card's <a>, and went dead on basketball.
+    // Never stopPropagation (or preventDefault, now that nothing is
+    // refused). This runs before every other handler, so stopping
+    // propagation swallowed clicks on controls NESTED in a link: My Team's
+    // "+N" breakdown button sits inside the game card's <a>, and went dead
+    // on basketball.
     function bindForeignLinkGuard() {
         if (window.__ccForeignLinkGuard) {
             document.removeEventListener('click', window.__ccForeignLinkGuard, true);
@@ -375,11 +368,7 @@
             if (!a) return;
             var href = a.getAttribute('href') || a.dataset.ccHref;
             var hoops = basketballHref(href, a);
-            if (hoops) {
-                a.setAttribute('href', hoops);
-                return;
-            }
-            if (e.type === 'click' && refusesHref(href, a)) e.preventDefault();
+            if (hoops) a.setAttribute('href', hoops);
         };
         document.addEventListener('click', window.__ccForeignLinkGuard, true);
         document.addEventListener('mousedown', window.__ccForeignLinkGuard, true);
@@ -427,7 +416,7 @@
     };
 
     window.ccLeague = { code: code, name: name, title: title, paint: paint, syncSwitcher: syncSwitcher, bindSwitcher: bindSwitcher, selectLeague: selectLeague, selected: selected, openSheet: openSheet,
-        sport: sport, unlinkForeignTeamLinks: unlinkForeignTeamLinks, refusesHref: refusesHref, basketballHref: basketballHref, open: open, sportOf: sportOf };
+        sport: sport, unlinkForeignTeamLinks: unlinkForeignTeamLinks, basketballHref: basketballHref, open: open, sportOf: sportOf };
 
     document.addEventListener('DOMContentLoaded', function () {
         paint(); bindSwitcher(); bindTab(); bindForeignLinkGuard();

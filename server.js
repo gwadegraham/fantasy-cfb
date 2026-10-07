@@ -26,6 +26,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
 const draftDefaults = require('./modules/draft-defaults');
+const hoopsVisibility = require('./modules/hoops-visibility');
 const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
@@ -773,10 +774,23 @@ app.get('/hoops/team/:id', async function(req, res, next) {
         // Basketball stays invisible to anyone not in a basketball league:
         // fall through to the ordinary 404, indistinguishable from a page
         // that does not exist.
-        if (!(await hoopsTeamsRouter.seesBasketball(req))) return next();
+        if (!(await hoopsVisibility.seesBasketball(req))) return next();
         const user = buildUserContext(req.effUser);
         const userState = safeJson(req.effUser);
         res.render('hoopsTeam', { user, userState, teamId: req.params.id });
+    } else {
+        res.redirect("/login");
+    }
+});
+
+// The basketball game page (#503). Its own path for the reason the team
+// page has one: /game/:id is football, and the ids do not say the sport.
+app.get('/hoops/game/:id', async function(req, res, next) {
+    if (req.oidc.isAuthenticated()) {
+        if (!(await hoopsVisibility.seesBasketball(req))) return next();
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
+        res.render('hoopsGame', { user, userState, gameId: req.params.id });
     } else {
         res.redirect("/login");
     }

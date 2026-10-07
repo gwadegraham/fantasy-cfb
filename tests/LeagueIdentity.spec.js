@@ -374,11 +374,12 @@ describe('a basketball league does not link to football team pages', () => {
 
     // #494: there IS a basketball team page now, so a team link goes there
     // rather than nowhere. Games still have no basketball page.
-    test('team links go to the basketball team page; game links are stripped', () => {
+    // #494 and #503: both have basketball pages now.
+    test('team and game links go to the basketball pages', () => {
         const cc = load({ seed: hoops, html: LINKS });
         cc.paint();
         expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');
-        expect(document.getElementById('g').hasAttribute('href')).toBe(false);
+        expect(document.getElementById('g').getAttribute('href')).toBe('/hoops/game/372997');
         // Everything else is left alone.
         expect(document.getElementById('ok').getAttribute('href')).toBe('/standings');
     });
@@ -405,8 +406,10 @@ describe('a basketball league does not link to football team pages', () => {
         document.body.innerHTML = LINKS;
         expect(clickOn('t')).toBe(false);    // allowed to navigate...
         expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');   // ...to basketball
-        expect(clickOn('g')).toBe(true);     // a game is refused
+        expect(clickOn('g')).toBe(false);
+        expect(document.getElementById('g').getAttribute('href')).toBe('/hoops/game/372997');
         expect(clickOn('ok')).toBe(false);   // ordinary links still work
+        expect(document.getElementById('ok').getAttribute('href')).toBe('/standings');
     });
 
     // Middle-click fires auxclick, and "open in new tab" / "copy link"
@@ -459,7 +462,7 @@ describe('a basketball league does not link to football team pages', () => {
             expect(document.getElementById('t').getAttribute('href')).toBe('/team?team=135');
             expect(document.getElementById('g').getAttribute('href')).toBe('/game/372997');
             expect(clickOn('g')).toBe(false);
-            expect(cc.refusesHref('/game/372997')).toBe(false);
+            expect(document.getElementById('g').getAttribute('href')).toBe('/game/372997');
         } finally {
             document.body.removeAttribute('data-page-sport');
         }
@@ -481,16 +484,15 @@ describe('a basketball league does not link to football team pages', () => {
         document.body.innerHTML = '<a id="t" href="/team?team=135"><img id="logo"></a><a id="g" href="/game/1"><img id="glogo"></a>';
         document.getElementById('logo').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
         expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');
-        const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
-        document.getElementById('glogo').dispatchEvent(e);
-        expect(e.defaultPrevented).toBe(true);
+        document.getElementById('glogo').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(document.getElementById('g').getAttribute('href')).toBe('/hoops/game/1');
     });
 
-    test('a control NESTED in a refused link still gets its click', () => {
+    test('a control NESTED in a rewritten link still gets its click', () => {
         // My Team's "+N" breakdown button lives inside the game card's <a>,
         // and its handler is a bubble listener on document. A guard that
         // stops propagation runs first (capture, on document) and the
-        // button goes dead — only the navigation should be refused.
+        // button goes dead.
         load({ seed: hoops, html: '' });
         document.dispatchEvent(new window.Event('DOMContentLoaded'));
         document.body.innerHTML = '<a href="/game/372997" class="game-card"><button id="b" class="score-explain">+12</button></a>';
@@ -499,22 +501,23 @@ describe('a basketball league does not link to football team pages', () => {
         try {
             const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
             document.getElementById('b').dispatchEvent(e);
-            expect(e.defaultPrevented).toBe(true);
             expect(seen).toHaveBeenCalled();
+            expect(document.querySelector('.game-card').getAttribute('href')).toBe('/hoops/game/372997');
         } finally {
             document.removeEventListener('click', seen);
         }
     });
 
-    test('script navigation goes through open(), which refuses the same URLs', () => {
+    test('script navigation resolves the same URLs, honouring a football container', () => {
         // Standings and Scoreboard cards set location.href from a handler —
-        // no anchor, so the guard above never sees them.
-        const cc = load({ seed: hoops });
-        expect(cc.open('/game/372997')).toBe(false);
+        // no anchor, so the guard above never sees them; they pass their
+        // card to open(), which asks basketballHref with it.
+        const cc = load({ seed: hoops, html: '<div data-page-sport="football"><div id="card"></div></div><div id="hc"></div>' });
+        expect(cc.basketballHref('/game/372997', document.getElementById('hc'))).toBe('/hoops/game/372997');
+        expect(cc.basketballHref('/game/372997', document.getElementById('card'))).toBeNull();
         expect(cc.basketballHref('/team?team=135')).toBe('/hoops/team/135');
-        expect(cc.refusesHref('/team?team=135')).toBe(false);
-        expect(cc.refusesHref('/standings')).toBe(false);
+        expect(cc.basketballHref('/standings')).toBeNull();
+        expect(load({ seed: football }).basketballHref('/game/372997')).toBeNull();
         expect(load({ seed: football }).basketballHref('/team?team=135')).toBeNull();
-        expect(load({ seed: football }).refusesHref('/game/372997')).toBe(false);
     });
 });

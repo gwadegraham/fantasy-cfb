@@ -11,6 +11,7 @@ const { activeSeason } = require('../modules/active-season');
 const seasons = require('../modules/active-season');
 const leagueSelection = require('../modules/league-selection');
 const teamPage = require('../modules/hoops-team-page');
+const visibility = require('../modules/hoops-visibility');
 
 // Basketball logos come from ESPN's CDN, keyed on sourceId — which IS the ESPN
 // id, so no mapping is invented, only the image host is borrowed.
@@ -237,24 +238,9 @@ router.post('/:season/ingest', async (req, res) => {
 // a ?league= would let anyone ask about a league they are not in, which is
 // exactly how the basketball league would become discoverable early.
 // A football (or no) selection still gets the page, just without an owner.
-// Whether this viewer may know basketball exists at all: an Admin, or
-// someone holding a franchise in a basketball league. The league stays
-// invisible to everyone else until it is announced, and EXISTENCE counts —
-// a page any signed-in member could open by URL would be the leak. A
-// refusal is a 404, not a 403, for the same reason.
-async function seesBasketball(req) {
-    try {
-        const mine = await leagueSelection.viewableBy(req);
-        return (mine || []).some(code => seasons.sportForLeague(code) === 'basketball');
-    } catch (e) {
-        console.error(`hoops team page: visibility check failed: ${e.message}`);
-        return false;
-    }
-}
-
 router.get('/:id/page', async (req, res) => {
     try {
-        if (!(await seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
         const id = Number(req.params.id);
         if (!Number.isInteger(id)) return res.status(400).json({ message: 'team id must be a number' });
         let league = '';
@@ -277,6 +263,5 @@ router.get('/:id/page', async (req, res) => {
 
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
-module.exports.seesBasketball = seesBasketball;
 module.exports.logosFor = logosFor;
 module.exports.withHash = withHash;

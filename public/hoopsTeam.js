@@ -254,7 +254,8 @@
             ? '<span class="' + (won(g) ? 'ht-w' : 'ht-l') + '">' + (won(g) ? 'W' : 'L') + '</span> ' + g.us + '–' + g.them
             : (vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '');
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
-        return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><span class="d">' + dateOf(g) + '</span>'
+        var gameHref = '/hoops/game/' + encodeURIComponent(g.id);
+        return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><a class="d" href="' + gameHref + '">' + dateOf(g) + '</a>'
             + oppOpen(g.opponent) + '<span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
             + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '')
             + (g.opponent.logo ? '<img class="ht-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
@@ -262,7 +263,7 @@
             + (g.opponent.abbreviation ? ' data-abbr="' + esc(g.opponent.abbreviation) + '"' : '') + '>'
             + esc(g.opponent.school) + '</span></span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + (g.opponent.hasPage === false ? '</span>' : '</a>')
-            + '<span class="res">' + res + '</span>'
+            + '<a class="res" href="' + gameHref + '">' + res + '</a>'
             + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
                 : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')
             + '<span class="p' + (g.points ? '' : ' z') + '">' + pts + '</span></div>';

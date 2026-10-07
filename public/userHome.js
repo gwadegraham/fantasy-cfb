@@ -648,7 +648,7 @@ async function hydrateGames(user, activeYear) {
         const cur = window.localStorage.getItem('weekCode') || 'week-1';
         body.innerHTML = `<label class="uh-games-pick"><select uh-games-week aria-label="Week">${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
             <div class="football-loader" style="display:none"><div class="football-icon">🏈</div><p class="loading-text">Scouting for games...</p></div>
-            <div class="schedule-grid" schedule-body><div id="no-games-container"></div></div>`;
+            <div class="schedule-grid" schedule-body data-page-sport="football"><div id="no-games-container"></div></div>`;
         const sel = body.querySelector('[uh-games-week]');
         const run = () => {
             const loader = body.querySelector('.football-loader'); if (loader) loader.style.display = 'flex';

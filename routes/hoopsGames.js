@@ -17,6 +17,11 @@ const HoopsGame = require('../models/hoopsGame');
 // API anyway, failing with a 400 that looked like a routing bug.
 const cbbd = require('../modules/cbbd-client');
 const calendar = require('../modules/hoops-calendar');
+// Namespaces, not destructures, so a test can stand in for them.
+const leagueSelection = require('../modules/league-selection');
+const seasons = require('../modules/active-season');
+const visibility = require('../modules/hoops-visibility');
+const gamePage = require('../modules/hoops-game-page');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -260,6 +265,37 @@ async function restampSeason(season, seasonStart) {
     const res = await HoopsGame.bulkWrite(ops, { ordered: false });
     return res.modifiedCount || 0;
 }
+
+// The basketball game page's data (#503). No CBBD calls: box scores come
+// from the nightly batch (modules/hoops-box-score.js, run by hoops-stats-job).
+//
+// Basketball stays hidden from anyone not in a basketball league (404, as if
+// it did not exist), and ownership is league-private, so the league comes
+// from the server's validated selection — never a query string.
+router.get('/:id/page', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'game id must be a number' });
+        let league = '';
+        try {
+            league = await leagueSelection.selectedLeague(req);
+        } catch (e) {
+            console.error(`hoops game page: league selection failed: ${e.message}`);
+        }
+        const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
+        // Who is looking, so the page can open on their own team. The app's
+        // account id lives in the Auth0 profile's nested metadata.
+        const meta = (req.effUser && req.effUser.user_metadata) || {};
+        const viewerId = (meta.metadata && meta.metadata.userId) || null;
+        const page = await gamePage.build(id, { league: basketball ? league : null, viewerId });
+        if (!page) return res.status(404).json({ message: 'No such basketball game' });
+        return res.json(page);
+    } catch (err) {
+        console.error(`hoops game page ${req.params.id}: ${err && err.message}`);
+        return res.status(500).json({ message: 'Could not load this game' });
+    }
+});
 
 // Ingest a whole season's schedule. Safe to re-run — upserts by game id.
 //

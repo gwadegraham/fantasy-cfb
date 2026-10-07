@@ -106,6 +106,28 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball game page (#503). The box batch is BILLABLE, so the
+        // branches that matter are the ones that decline to call (nothing
+        // final) and the ones that put a box on the right game and side.
+        "./modules/hoops-box-score.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-game-page.js": {
+            statements: 97,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
+        // Who may know basketball exists. Fails closed.
+        "./modules/hoops-visibility.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         // The nightly stats import (#494) and its job. Two billable calls a
         // night; the job's skips are what keep the off-season free.
         "./modules/hoops-stats.js": {

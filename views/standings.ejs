@@ -130,7 +130,9 @@
         <option value="week-16">Week 16</option>
         <option value="week-17">Postseason</option>
     </select>
-    <div class="game-content" style="display:none">
+    <!-- data-page-sport: these are FOOTBALL games whatever the league (#490/#501), so
+         public/league.js must not send their links to the basketball pages. -->
+    <div class="game-content" style="display:none" data-page-sport="football">
         <div class="football-loader">
             <div class="football-icon">🏈</div>
             <p class="loading-text">Scouting for games...</p>
