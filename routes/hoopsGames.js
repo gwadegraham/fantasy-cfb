@@ -17,6 +17,11 @@ const HoopsGame = require('../models/hoopsGame');
 // API anyway, failing with a 400 that looked like a routing bug.
 const cbbd = require('../modules/cbbd-client');
 const calendar = require('../modules/hoops-calendar');
+// Namespaces, not destructures, so a test can stand in for them.
+const leagueSelection = require('../modules/league-selection');
+const seasons = require('../modules/active-season');
+const visibility = require('../modules/hoops-visibility');
+const gamePage = require('../modules/hoops-game-page');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -267,6 +272,33 @@ async function restampSeason(season, seasonStart) {
 // no indication: a single call for 2025-26 returns exactly 3000 rows ending
 // 6 Jan, and the paged fetch returns 6,079 ending 15 Mar. More than half the
 // season, lost silently, on a call that looks entirely successful.
+// The basketball game page's data (#503). The only CBBD calls are the box
+// score's, on the first view of a final game (modules/hoops-box-score.js).
+//
+// Basketball stays hidden from anyone not in a basketball league (404, as if
+// it did not exist), and ownership is league-private, so the league comes
+// from the server's validated selection — never a query string.
+router.get('/:id/page', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'game id must be a number' });
+        let league = '';
+        try {
+            league = await leagueSelection.selectedLeague(req);
+        } catch (e) {
+            console.error(`hoops game page: league selection failed: ${e.message}`);
+        }
+        const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
+        const page = await gamePage.build(id, { league: basketball ? league : null });
+        if (!page) return res.status(404).json({ message: 'No such basketball game' });
+        return res.json(page);
+    } catch (err) {
+        console.error(`hoops game page ${req.params.id}: ${err && err.message}`);
+        return res.status(500).json({ message: 'Could not load this game' });
+    }
+});
+
 router.post('/:season/schedule', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({ message: 'Invalid season' });

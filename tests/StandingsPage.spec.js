@@ -1388,7 +1388,8 @@ describe('schedule', () => {
         // The harness evaluates the real league.js; stub only its navigation.
         window.ccLeague.open = jest.fn(() => false);
         page.q('.gc-clickable[data-game-id="g1"]').click();
-        expect(window.ccLeague.open).toHaveBeenCalledWith('/game/g1');
+        // With the card, so a football container is honoured (league.js).
+        expect(window.ccLeague.open).toHaveBeenCalledWith('/game/g1', page.q('.gc-clickable[data-game-id="g1"]'));
     });
 
     it('shows a no-games message when nothing is scheduled', async () => {

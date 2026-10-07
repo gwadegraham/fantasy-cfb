@@ -244,4 +244,6 @@ async function build(teamId, { season, league = null } = {}) {
     };
 }
 
-module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS };
+module.exports = { build, standingsFrom, rankAmong, isConfTournament, clearRankCache, RANK_TTL_MS,
+    // Shared with the game page (#503), so the two read ranks and owners the same way.
+    cachedRanks, ownership, quadrantValues };
