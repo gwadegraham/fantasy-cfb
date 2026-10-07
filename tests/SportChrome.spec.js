@@ -91,7 +91,7 @@ describe('the views adopted it', () => {
     test('there are the views we think there are', () => {
         // A new full-document view has to be considered rather than silently
         // skipped by the two assertions below.
-        expect(docs).toHaveLength(14);
+        expect(docs).toHaveLength(15);
     });
 
     test('every one includes the favicon partial', () => {
@@ -174,5 +174,15 @@ describe('the accent token', () => {
     test('and the radius scale is still on :root, not inside the sport rule', () => {
         const root = /:root\s*\{([\s\S]*?)\}/.exec(css);
         expect(root[1]).toContain('--cc-r-pill');
+    });
+});
+
+// Pages that show FOOTBALL ids whatever league is selected must say so, or
+// public/league.js sends their team links to the basketball team page —
+// where a football id opens whichever basketball team shares the number.
+describe('football-only pages opt out of the basketball link rewrite', () => {
+    const VIEWS = path.join(__dirname, '..', 'views');
+    test.each(['team.ejs', 'gameDetail.ejs', 'cfpBracket.ejs', 'scoreboard.ejs'])('%s', (f) => {
+        expect(fs.readFileSync(path.join(VIEWS, f), 'utf8')).toMatch(/<body\b[^>]*\sdata-page-sport="football"/);
     });
 });

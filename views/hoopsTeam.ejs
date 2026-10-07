@@ -1,49 +1,35 @@
 <!DOCTYPE html>
-<html lang="en" class="cfp-page" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
-
+<html lang="en" data-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Absolute paths: this page lives one level down (/hoops/team/:id), so a
+         relative "styles.css" would resolve under /hoops/team/. -->
     <link href="/styles.css" rel="stylesheet">
+    <link href="/hoopsTeam.css" rel="stylesheet">
     <script src="/haptic.js"></script>
-    <!-- No pull-to-refresh here on purpose: a settled bracket has nothing live to
-         fetch, and the page is tall enough that the gesture mostly fired by
-         accident on the way back up. -->
-    <link href="/cfpBracket.css" rel="stylesheet">
-    <link href="/loading.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- The same font set as every other page: Pacifico is the "Clash" in the navbar wordmark. -->
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
-    <title>CFP Bracket · Campus Clash</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
+    <script defer src="/hoopsTeam.js"></script>
+    <title data-league-title="Team">Team · Campus Clash</title>
     <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
-
-<!-- data-page-sport: this page is football whatever league is selected,
-     so public/league.js leaves its team and game links alone. -->
-<body data-page-sport="football">
+<body>
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>
             var userState = <%- userState %>;
         </script>
     <% } %>
-
-    <script>
-        var SEASON = '<%= year %>';
-        var LEAGUE = '<%= leagueCode %>';
-    </script>
-
-    <div id="cfp-bracket" class="cfp-container">
-        <div class="cfp-loading">Loading bracket...</div>
-    </div>
-
-    <script src="/cfpBracket.js"></script>
+    <main class="ht" id="hoops-team" data-team-id="<%= teamId %>">
+        <div class="ht-loading" ht-loading>Loading…</div>
+    </main>
 </body>
-
 </html>

@@ -174,6 +174,13 @@ async function getUsers() {
 
 function displayUsers(data) {
     const userTableBody = document.querySelector('[user-table-body]');
+    // The rosters here are the MANAGED league's, which for a League Manager
+    // viewing basketball is still their football league. Saying which sport
+    // these ids are keeps public/league.js from sending a football id to the
+    // basketball team page.
+    if (userTableBody && window.ccLeague && window.ccLeague.sportOf && window.ccManageLeagueCode) {
+        userTableBody.setAttribute('data-page-sport', window.ccLeague.sportOf(window.ccManageLeagueCode()));
+    }
     var str = '';
 
     data.forEach( user => {
@@ -272,7 +279,7 @@ var JOB_LABELS = {
     'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
     'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
     'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts',
-    'hoops-scores': 'Basketball'
+    'hoops-scores': 'Basketball', 'hoops-stats': 'Basketball stats'
 };
 
 function renderAdminStatus(el, s, api, year, jobs) {
@@ -301,7 +308,7 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
         var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'hoops-scores',
+                     'hoops-scores', 'hoops-stats',
                      'enrichment', 'season-stats', 'player-season-leaders',
                      'captain-reminder', 'recap-notice'];
         // Collapse to the latest run per job — the live poller writes a run every
