@@ -13,6 +13,7 @@ const boxScore = require('./hoops-box-score');
 const { isFinal } = require('./hoops-scoring-pass');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { pickLogo } = require('../public/logo.js');
+const { homeWinProb } = require('./hoops-win-prob');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -29,6 +30,52 @@ async function recordThrough(teamId, game) {
         if (won) w++; else l++;
     }
     return { w, l };
+}
+
+// One side of a game PREVIEW, from that team's own team-page payload — the
+// same records, quadrants and stats its team page shows, so a manager never
+// reads two versions of one team. Only results BEFORE this game count.
+function previewSide(team, before) {
+    if (!team) return null;
+    const played = team.games.filter(g => g.final && new Date(g.startDate) < before);
+    const rec = (list) => {
+        const w = list.filter(g => g.us > g.them).length;
+        return { w, l: list.length - w };
+    };
+    const s = team.stats;
+    const per = (v) => (s && s.games && Number.isFinite(v) ? Math.round((v / s.games) * 10) / 10 : null);
+    const top = s && Array.isArray(s.players)
+        ? s.players.filter(p => p.games > 0)
+            .map(p => ({ name: p.name, position: p.position || null,
+                ppg: Math.round((p.points / p.games) * 10) / 10,
+                rpg: Math.round(((p.rebounds || 0) / p.games) * 10) / 10,
+                apg: Math.round(((p.assists || 0) / p.games) * 10) / 10 }))
+            .sort((a, b) => b.ppg - a.ppg).slice(0, 3)
+        : [];
+    let streak = null;
+    for (let i = played.length - 1; i >= 0; i--) {
+        const won = played[i].us > played[i].them;
+        if (!streak) streak = { won, n: 0 };
+        if (won !== streak.won) break;
+        streak.n++;
+    }
+    return {
+        record: rec(played),
+        confRecord: rec(played.filter(g => g.conferenceGame)),
+        q1Record: rec(played.filter(g => g.quadrant === 1)),
+        roadRecord: rec(played.filter(g => g.venue === 'away')),
+        streak,
+        last5: played.slice(-5).map(g => ({ won: g.us > g.them, us: g.us, them: g.them, venue: g.venue,
+            opponent: g.opponent.abbreviation || g.opponent.school })),
+        preseason: team.preseason,
+        stats: s && s.games ? {
+            games: s.games, pace: s.pace ?? null,
+            ppg: per(s.team && s.team.points), oppPpg: per(s.opponent && s.opponent.points),
+            efgPct: s.team && s.team.efgPct, tovPct: s.team && s.team.tovRatio != null ? s.team.tovRatio * 100 : null,
+            orbPct: s.team && s.team.orbPct, ftRate: s.team && s.team.ftRate
+        } : null,
+        topScorers: top
+    };
 }
 
 async function build(gameId, { league = null } = {}) {
@@ -59,6 +106,28 @@ async function build(gameId, { league = null } = {}) {
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
 
+    // A game still to play gets a PREVIEW: both teams' résumés from their
+    // own team pages, earlier meetings, and a pregame win probability.
+    let preview = null;
+    if (!final) {
+        const [homeTeam, awayTeam] = await Promise.all([
+            byId.has(homeId) ? teamPage.build(homeId, { season: yr }) : null,
+            byId.has(awayId) ? teamPage.build(awayId, { season: yr }) : null
+        ]);
+        const before = new Date(game.startDate);
+        const pHome = homeWinProb(homeTeam && homeTeam.preseason && homeTeam.preseason.barthag,
+            awayTeam && awayTeam.preseason && awayTeam.preseason.barthag, game.neutralSite);
+        preview = {
+            home: previewSide(homeTeam, before),
+            away: previewSide(awayTeam, before),
+            homeWinProb: pHome,
+            meetings: homeTeam ? homeTeam.games
+                .filter(g => g.final && g.opponent.id === awayId && g.id !== id)
+                .map(g => ({ id: g.id, startDate: g.startDate, startTimeTbd: g.startTimeTbd,
+                    homeScore: g.us, awayScore: g.them, venue: g.venue, notes: g.notes })) : []
+        };
+    }
+
     const side = (teamId, oppId, rec, owner, points) => {
         const t = byId.get(teamId);
         const venue = venueFor(teamId, { homeId: game.homeTeamId, awayId: game.awayTeamId, neutralSite: game.neutralSite });
@@ -72,7 +141,8 @@ async function build(gameId, { league = null } = {}) {
             logo: t ? pickLogo(t.logos) || null : null,
             hasPage: !!t,
             rank: Number.isFinite(rank) ? rank : null,
-            record: final ? rec : null,
+            // Through this game when played; going INTO it when not.
+            record: rec,
             points: final ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
@@ -94,7 +164,8 @@ async function build(gameId, { league = null } = {}) {
         home: side(homeId, awayId, homeRec, homeOwner, game.homePoints),
         away: side(awayId, homeId, awayRec, awayOwner, game.awayPoints),
         quadrantValues: values,
-        box: boxed || null
+        box: boxed || null,
+        preview
     };
 }
 

@@ -32,11 +32,30 @@
         return day + (p.tbd ? ' · TBD' : ' · ' + k.time(g.startDate, g.startTimeTbd, 'spaced'));
     }
 
+    // When a game still to play tips, said the way people say it: "Tonight
+    // · 9:00 PM", "Tomorrow · 7:00 PM", "Sat, Nov 12 · 7:00 PM". A TBD tip
+    // keeps its day and says the time is TBD. Past tip-off with no result
+    // yet, it says so rather than counting down to the past.
+    function countdown(g, now) {
+        var k = window.ccKickoff;
+        var p = k && k.parts ? k.parts(g.startDate, g.startTimeTbd) : null;
+        if (!p) return 'Upcoming';
+        var time = p.tbd ? 'time TBD' : k.time(g.startDate, g.startTimeTbd, 'spaced');
+        var start = new Date(g.startDate).getTime();
+        now = now == null ? Date.now() : now;
+        if (!p.tbd && now >= start) return 'Awaiting the result';
+        var key = function (t) { return k.dayKey ? k.dayKey(new Date(t).toISOString(), false) : new Date(t).toDateString(); };
+        var day = k.dayKey ? k.dayKey(g.startDate, g.startTimeTbd) : new Date(start).toDateString();
+        if (day === key(now)) return 'Tonight · ' + time;
+        if (day === key(now + 24 * 60 * 60 * 1000)) return 'Tomorrow · ' + time;
+        return p.weekdayLong.slice(0, 3) + ', ' + p.monthShort + ' ' + p.day + ' · ' + time;
+    }
+
     function hero(d) {
         var g = d.game, H = d.home, A = d.away;
         var place = [g.venue, [g.city, g.state].filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ');
-        var status = g.final ? 'Final' : (String(g.status || '').toLowerCase() === 'in_progress' ? 'Live' : 'Upcoming');
-        var meta = '<b>' + status + '</b>' + (when(g) ? ' · ' + esc(when(g)) : '')
+        var status = g.final ? 'Final' : (String(g.status || '').toLowerCase() === 'in_progress' ? 'Live' : null);
+        var meta = (status ? '<b>' + status + '</b>' + (when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
             + (g.tournament ? ' · ' + esc(g.tournament) : g.notes ? ' · ' + esc(g.notes) : '')
             + (place || g.neutralSite ? '<br>' + place + (g.neutralSite ? (place ? ' · ' : '') + 'neutral site' : '') : '');
         var side = function (t) {
@@ -187,6 +206,135 @@
         return h + '</table></div>';
     }
 
+    // ---- preview: a game still to play ----------------------------------
+
+    function pct(p) { return Math.round(p * 100); }
+
+    function winProbability(d) {
+        var p = d.preview && d.preview.homeWinProb;
+        if (p == null) return '';
+        var a = 1 - p;
+        return '<div class="ht-card hg-wp"><div class="hg-wp-head"><span>' + esc(abbr(d.away)) + ' <b>' + pct(a) + '%</b></span>'
+            + '<span class="k">Win probability</span><span><b>' + pct(p) + '%</b> ' + esc(abbr(d.home)) + '</span></div>'
+            + '<div class="hg-wp-bar"><i style="flex:' + a + ';background:' + esc(d.away.color || 'var(--cc-surface-3)') + '"></i>'
+            + '<i style="flex:' + p + ';background:' + esc(d.home.color || 'var(--cc-surface-3)') + '"></i></div>'
+            + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court') + '.</div></div>';
+    }
+
+    // What is on the line for the managers. Two rostered sides make it a
+    // head-to-head between two managers — the most interesting thing about
+    // the game to them — so that gets its own framing.
+    function stakes(d) {
+        var vals = d.quadrantValues;
+        if (!vals) return '';
+        var p = d.preview && d.preview.homeWinProb;
+        var line = function (t, winP) {
+            var v = t.quadrant ? vals[t.quadrant] : null;
+            var owner = t.owner ? esc(t.owner.franchiseName || t.owner.firstName || 'A manager') : null;
+            var q = t.quadrant ? '<span class="hg-q' + (t.quadrant === 1 ? ' q1' : '') + '">Q' + t.quadrant + '</span>'
+                : '<span class="hg-q post">' + esc(d.game.tournament || 'Post') + '</span>';
+            if (!owner) return '<div class="hg-st-row">' + q + '<span class="who"><b>' + esc(t.school) + '</b> · not on a roster</span></div>';
+            // A win that pays nothing (Q4) says so, rather than "+0, expected +0".
+            if (v === 0) {
+                return '<div class="hg-st-row">' + q + '<span class="who"><b>' + owner + '</b> · ' + esc(t.school) + '</span>'
+                    + '<span class="pts zero">no points<small>a Q' + t.quadrant + ' win</small></span></div>';
+            }
+            var exp = v != null && winP != null ? '<small>expected +' + (Math.round(v * winP * 10) / 10) + '</small>' : '';
+            return '<div class="hg-st-row">' + q + '<span class="who"><b>' + owner + '</b> · ' + esc(t.school) + '</span>'
+                + '<span class="pts">' + (v != null ? '+' + v : 'ladder') + exp + '</span></div>';
+        };
+        var both = d.home.owner && d.away.owner;
+        var none = !d.home.owner && !d.away.owner;
+        if (none) return '';
+        return '<h2>' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
+            + '<div class="ht-card hg-stakes">' + line(d.away, p == null ? null : 1 - p) + line(d.home, p) + '</div>';
+    }
+
+    function rec(r) { return r ? r.w + '–' + r.l : '—'; }
+
+    // Side by side, away left and home right like the scoreboard. `better`
+    // names which way is good so the stronger side can be marked.
+    function tape(d) {
+        var A = d.preview.away, H = d.preview.home;
+        if (!A || !H) return '';
+        var rows = [
+            ['T-Rank', A.preseason && A.preseason.rank, H.preseason && H.preseason.rank, 'low', function (v) { return '#' + v; }],
+            ['Record', A.record, H.record, null, rec],
+            ['Conference', A.confRecord, H.confRecord, null, rec],
+            ['vs Q1', A.q1Record, H.q1Record, null, rec],
+            ['On the road', A.roadRecord, H.roadRecord, null, rec],
+            ['Offense', A.preseason && A.preseason.adjOE, H.preseason && H.preseason.adjOE, 'high', function (v) { return fixed(v, 1); }],
+            ['Defense', A.preseason && A.preseason.adjDE, H.preseason && H.preseason.adjDE, 'low', function (v) { return fixed(v, 1); }]
+        ];
+        if (A.stats && H.stats) {
+            rows.push(['Points a game', A.stats.ppg, H.stats.ppg, 'high', function (v) { return fixed(v, 1); }]);
+            rows.push(['Allowed a game', A.stats.oppPpg, H.stats.oppPpg, 'low', function (v) { return fixed(v, 1); }]);
+            rows.push(['Pace', A.stats.pace, H.stats.pace, null, function (v) { return fixed(v, 1); }]);
+            rows.push(['Shooting (eFG%)', A.stats.efgPct, H.stats.efgPct, 'high', function (v) { return fixed(v, 1); }]);
+            rows.push(['Turnovers / 100', A.stats.tovPct, H.stats.tovPct, 'low', function (v) { return fixed(v, 1); }]);
+            rows.push(['Off. rebound %', A.stats.orbPct, H.stats.orbPct, 'high', function (v) { return fixed(v, 1); }]);
+            rows.push(['FT rate', A.stats.ftRate, H.stats.ftRate, 'high', function (v) { return fixed(v, 1); }]);
+        }
+        var out = '<div class="hg-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
+        rows.forEach(function (r) {
+            var a = r[1], h = r[2];
+            if (a == null && h == null) return;
+            var aBetter = r[3] && a != null && h != null && a !== h ? (r[3] === 'high' ? a > h : a < h) : null;
+            out += '<div class="hg-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + (a == null ? '—' : r[4](a)) + '</span>'
+                + '<span class="mid">' + r[0] + '</span>'
+                + '<span class="r' + (aBetter === false ? ' edge' : '') + '">' + (h == null ? '—' : r[4](h)) + '</span></div>';
+        });
+        var src = A.stats && H.stats ? 'Ratings: Torvik preseason · stats: this season' : 'Torvik preseason ratings · season stats arrive after tip-off';
+        return '<h2>Tale of the tape<small>' + src + '</small></h2><div class="ht-card">' + out + '</div>';
+    }
+
+    function form(d) {
+        var row = function (t, side) {
+            if (!side) return '';
+            var chips = side.last5.map(function (g) {
+                return '<span class="hg-f ' + (g.won ? 'w' : 'l') + '" title="' + (g.won ? 'W' : 'L') + ' ' + g.us + '–' + g.them
+                    + (g.venue === 'away' ? ' at ' : g.venue === 'neutral' ? ' vs ' : ' vs ') + esc(g.opponent) + '">' + (g.won ? 'W' : 'L') + '</span>';
+            }).join('');
+            var streak = side.streak ? (side.streak.won ? 'W' : 'L') + side.streak.n : '';
+            return '<div class="hg-form-row"><span class="nm">' + esc(abbr(t)) + '</span><span class="chips">'
+                + (chips || '<small>No games yet</small>') + '</span><span class="sk">' + streak + '</span></div>';
+        };
+        if (!d.preview.away && !d.preview.home) return '';
+        return '<h2>Recent form<small>Last five, oldest first</small></h2><div class="ht-card hg-form">'
+            + row(d.away, d.preview.away) + row(d.home, d.preview.home) + '</div>';
+    }
+
+    function keyPlayers(d) {
+        var col = function (t, side) {
+            if (!side || !side.topScorers.length) return '';
+            var names = shortNames(side.topScorers);
+            return '<div class="hg-kp"><div class="k">' + esc(t.school) + '</div>' + side.topScorers.map(function (p) {
+                return '<div class="hg-ld-row"><span>' + esc(names[p.name]) + (p.position ? ' <small>' + esc(p.position) + '</small>' : '') + '</span>'
+                    + '<b>' + fixed(p.ppg, 1) + '</b></div><div class="hg-kp-sub">' + fixed(p.rpg, 1) + ' reb · ' + fixed(p.apg, 1) + ' ast</div>';
+            }).join('') + '</div>';
+        };
+        var a = col(d.away, d.preview.away), h = col(d.home, d.preview.home);
+        if (!a && !h) return '';
+        return '<h2>Key players<small>Points a game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
+    }
+
+    function meetings(d) {
+        var m = d.preview.meetings;
+        if (!m || !m.length) return '';
+        return '<h2>Earlier this season</h2><div class="ht-card ht-log">' + m.map(function (g) {
+            var homeWon = g.homeScore > g.awayScore;
+            var p = window.ccKickoff && window.ccKickoff.parts ? window.ccKickoff.parts(g.startDate, g.startTimeTbd) : null;
+            return '<a class="ht-lg hg-meet" href="/hoops/game/' + encodeURIComponent(g.id) + '"><span class="d">' + (p ? p.monthShort + ' ' + p.day : '') + '</span>'
+                + '<span class="opp">' + esc(abbr(homeWon ? d.home : d.away)) + ' won ' + Math.max(g.homeScore, g.awayScore) + '–' + Math.min(g.homeScore, g.awayScore)
+                + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</span></a>';
+        }).join('') + '</div>';
+    }
+
+    function preview(d) {
+        if (!d.preview) return '';
+        return winProbability(d) + stakes(d) + tape(d) + form(d) + keyPlayers(d) + meetings(d);
+    }
+
     function noBox(d) {
         // Box scores are pulled in a nightly batch (05:00 Central), as football's are.
         var text = !d.game.final ? 'The box score arrives after the final.'
@@ -229,7 +377,9 @@
         // Open the box on the side a manager owns; otherwise the left-hand
         // (away) side, so the toggle reads in the scoreboard's order.
         state.side = d.home.owner && !d.away.owner ? 'home' : 'away';
-        root.innerHTML = hero(d) + fantasy(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>';
+        root.innerHTML = d.game.final
+            ? hero(d) + fantasy(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
+            : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
         var title = document.querySelector('title');
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
@@ -275,6 +425,6 @@
     window.addEventListener('resize', syncStickyTop);
     if (document.fonts && document.fonts.ready && document.fonts.ready.then) document.fonts.ready.then(syncStickyTop).catch(function () {});
 
-    window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames };
+    window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown };
     load();
 })();

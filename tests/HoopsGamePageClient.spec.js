@@ -85,18 +85,6 @@ test('no league selected: no roster lines at all', async () => {
     expect(document.querySelectorAll('.hg-fc .p')).toHaveLength(0);
 });
 
-test('a game to play: "@", no box, and what a win would pay', async () => {
-    const p = payload({ box: null });
-    p.game = Object.assign({}, p.game, { final: false, neutralSite: false, status: 'scheduled' });
-    p.home = Object.assign({}, p.home, { points: null, record: null, banked: null });
-    p.away = Object.assign({}, p.away, { points: null, record: null });
-    await render(p);
-    expect(q('.hg-score').textContent).toBe('@');
-    expect(q('.ht-tabs')).toBeNull();
-    expect(txt('.ht-empty')).toContain('arrives after the final');
-    expect(Array.from(document.querySelectorAll('.hg-fc'))[1].textContent).toBe('Q1game for Duke+5 if won, for Hoop Dreams');
-});
-
 test('postseason: the tournament, not a quadrant', async () => {
     const p = payload();
     p.game = Object.assign({}, p.game, { postseason: true, tournament: 'NCAA' });
@@ -176,4 +164,136 @@ test('nobody rostered: the box opens on the left-hand (away) side', async () => 
 test('an API error is shown, not a blank page', async () => {
     await render({ message: 'No such basketball game' }, 404);
     expect(txt('.ht-error')).toBe('No such basketball game');
+});
+
+// ---- preview: a game still to play --------------------------------------
+
+const prevSide = (o) => Object.assign({
+    record: { w: 7, l: 2 }, confRecord: { w: 0, l: 0 }, q1Record: { w: 2, l: 2 }, roadRecord: { w: 1, l: 0 },
+    streak: { won: true, n: 2 },
+    last5: [{ won: false, us: 77, them: 81, venue: 'home', opponent: 'ILL' }, { won: true, us: 74, them: 62, venue: 'away', opponent: 'FLA' }],
+    preseason: { rank: 1, adjOE: 120.8, adjDE: 91 },
+    stats: { games: 10, pace: 66.5, ppg: 81.6, oppPpg: 63.6, efgPct: 56.7, tovPct: 16, orbPct: 30.8, ftRate: 38.2 },
+    topScorers: [{ name: 'Cameron Boozer', position: 'F', ppg: 22.5, rpg: 10.2, apg: 4 }, { name: 'Cayden Boozer', position: 'G', ppg: 7.7, rpg: 2.3, apg: 2.9 }]
+}, o);
+
+function upcoming(o) {
+    const p = payload({ box: null });
+    p.game = Object.assign({}, p.game, { final: false, status: 'scheduled', startDate: new Date(Date.now() + 3 * 3600e3).toISOString() });
+    p.home = Object.assign({}, p.home, { points: null, banked: null, quadrant: 1 });
+    p.away = Object.assign({}, p.away, { points: null, quadrant: 1, owner: { franchiseName: 'Cinderella Story' } });
+    p.preview = Object.assign({
+        home: prevSide(),
+        away: prevSide({ record: { w: 6, l: 1 }, preseason: { rank: 31, adjOE: 118.4, adjDE: 99.6 }, stats: null, topScorers: [] }),
+        homeWinProb: 0.78, meetings: []
+    }, o || {});
+    return p;
+}
+
+// Real ccKickoff, so the countdown reads days the way the app does.
+beforeEach(() => { window.ccKickoff = require('../public/kickoff-day.js'); });
+
+test('a game to play: the preview replaces the fantasy cards, tabs and box', async () => {
+    await render(upcoming());
+    expect(q('.hg-score').textContent).toBe('vs');
+    expect(q('.hg-fan')).toBeNull();
+    expect(q('.ht-tabs')).toBeNull();
+    expect(q('.ht-empty')).toBeNull();
+    expect(q('.hg-preview')).not.toBeNull();
+});
+
+test('the countdown: tonight, tomorrow, a date, TBD, and past tip-off', () => {
+    window.ccKickoff = require('../public/kickoff-day.js');
+    (0, eval)(SRC);
+    const cd = window.ccHoopsGame.countdown;
+    const at = (ms, tbd) => ({ startDate: new Date(ms).toISOString(), startTimeTbd: !!tbd });
+    // Mid-day UTC, with tips three hours later: the same calendar day in UTC
+    // and every US zone, so this passes wherever the suite runs. The clock
+    // time is the viewer's local one, so it is matched by shape.
+    const now = Date.UTC(2026, 10, 10, 15);
+    const clock = '\\d{1,2}:\\d{2} [AP]M';
+    expect(cd(at(now + 3 * 3600e3), now)).toMatch(new RegExp('^Tonight · ' + clock + '$'));
+    expect(cd(at(now + 27 * 3600e3), now)).toMatch(new RegExp('^Tomorrow · ' + clock + '$'));
+    expect(cd(at(now + 4 * 24 * 3600e3), now)).toMatch(new RegExp('^Sat, Nov 14 · ' + clock + '$'));
+    expect(cd(at(Date.UTC(2026, 10, 14, 5), true), now)).toBe('Sat, Nov 14 · time TBD');
+    expect(cd(at(now - 3600e3), now)).toBe('Awaiting the result');
+});
+
+test('win probability: away left, home right, in team colours', async () => {
+    await render(upcoming());
+    expect(q('.hg-wp-head').textContent).toBe('TEX 22%Win probability78% DUKE');
+    const bars = document.querySelectorAll('.hg-wp-bar i');
+    expect(bars[1].style.background).toContain('rgb(1, 48, 136)');      // Duke #013088
+    await render(upcoming({ homeWinProb: null }));
+    expect(q('.hg-wp')).toBeNull();
+});
+
+test('both sides rostered: a manager matchup, with expected points', async () => {
+    await render(upcoming());
+    expect(txt('.hg-preview h2')).toContain('Manager matchup');
+    const rows = Array.from(document.querySelectorAll('.hg-st-row')).map(r => r.textContent);
+    expect(rows[0]).toBe('Q1Cinderella Story · Texas+5expected +1.1');
+    expect(rows[1]).toBe('Q1Hoop Dreams · Duke+5expected +3.9');
+});
+
+test('one side rostered: fantasy stakes; a Q4 win says it pays nothing', async () => {
+    const p = upcoming();
+    p.away = Object.assign({}, p.away, { owner: null });
+    p.home = Object.assign({}, p.home, { quadrant: 4 });
+    await render(p);
+    expect(txt('.hg-preview h2')).toContain('Fantasy stakes');
+    const rows = Array.from(document.querySelectorAll('.hg-st-row')).map(r => r.textContent);
+    expect(rows[0]).toBe('Q1Texas · not on a roster');
+    expect(rows[1]).toBe('Q4Hoop Dreams · Dukeno pointsa Q4 win');
+});
+
+test('nobody rostered, or no league: no stakes section at all', async () => {
+    const p = upcoming();
+    p.away = Object.assign({}, p.away, { owner: null });
+    p.home = Object.assign({}, p.home, { owner: null });
+    await render(p);
+    expect(q('.hg-stakes')).toBeNull();
+    await render(upcoming());
+    window.history.replaceState(null, '', window.location.pathname);
+    const noLeague = upcoming(); noLeague.quadrantValues = null;
+    await render(noLeague);
+    expect(q('.hg-stakes')).toBeNull();
+});
+
+test('tale of the tape: the better side marked; stats rows only when both sides have stats', async () => {
+    await render(upcoming());
+    const rows = () => Array.from(document.querySelectorAll('.hg-preview .hg-vs')).map(r => r.querySelector('.mid').textContent);
+    expect(rows()).toEqual(['T-Rank', 'Record', 'Conference', 'vs Q1', 'On the road', 'Offense', 'Defense']);
+    const rank = document.querySelectorAll('.hg-preview .hg-vs')[0];
+    expect(rank.querySelector('.r').className).toContain('edge');       // #1 beats #31: lower is better
+    expect(txt('.hg-preview h2')).toContain('season stats arrive after tip-off');
+    const p = upcoming();
+    p.preview.away = prevSide({ preseason: { rank: 31 } });
+    await render(p);
+    expect(rows()).toContain('Turnovers / 100');
+});
+
+test('recent form: last five as W/L chips, with the streak', async () => {
+    await render(upcoming());
+    const duke = Array.from(document.querySelectorAll('.hg-form-row'))[1];
+    expect(duke.querySelector('.nm').textContent).toBe('DUKE');
+    expect(Array.from(duke.querySelectorAll('.hg-f')).map(c => c.textContent)).toEqual(['L', 'W']);
+    expect(duke.querySelector('.hg-f').getAttribute('title')).toBe('L 77–81 vs ILL');
+    expect(duke.querySelector('.sk').textContent).toBe('W2');
+});
+
+test('key players: top scorers, colliding short names kept full', async () => {
+    await render(upcoming());
+    const kp = txt('.hg-kp');
+    expect(kp).toContain('Cameron Boozer');
+    expect(kp).toContain('Cayden Boozer');
+    expect(kp).toContain('22.5');
+    expect(document.querySelectorAll('.hg-kp')).toHaveLength(1);            // Texas has none yet
+});
+
+test('an earlier meeting is listed and links to its game', async () => {
+    await render(upcoming({ meetings: [{ id: 400, startDate: '2026-11-04T00:00:00.000Z', homeScore: 80, awayScore: 70, venue: 'away', notes: null }] }));
+    const m = q('a.hg-meet');
+    expect(m.getAttribute('href')).toBe('/hoops/game/400');
+    expect(m.textContent).toContain('DUKE won 80–70');
 });

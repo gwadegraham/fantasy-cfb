@@ -249,12 +249,13 @@ describe('build', () => {
         expect(p.game).toMatchObject({ postseason: true, tournament: 'NCAA' });
     });
 
-    test('a game still to play: no score, no record, no box', async () => {
+    test('a game still to play: no score and no box — but the record going in', async () => {
         const get = stubCbbd();
         await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'scheduled', homePoints: null, awayPoints: null } });
         const p = await gamePage.build(500);
         expect(p.game.final).toBe(false);
-        expect([p.home.points, p.home.record, p.box]).toEqual([null, null, null]);
+        expect([p.home.points, p.box]).toEqual([null, null]);
+        expect(p.home.record).toEqual({ w: 0, l: 1 });       // lost game 400 before this one
         expect(get).not.toHaveBeenCalled();
     });
 
@@ -336,5 +337,71 @@ describe('seesBasketball', () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
         leagueSelection.viewableBy.mockRejectedValue(new Error('M0'));
         expect(await seesBasketball({})).toBe(false);
+    });
+});
+
+describe('homeWinProb', () => {
+    const { homeWinProb, log5 } = require('../modules/hoops-win-prob');
+    test('log5 of equals is a coin flip; home court tilts it; neutral does not', () => {
+        expect(log5(0.5, 0.5)).toBeCloseTo(0.5);
+        expect(homeWinProb(0.5, 0.5, true)).toBeCloseTo(0.5);
+        expect(homeWinProb(0.5, 0.5, false)).toBeCloseTo(0.583, 3);
+        expect(homeWinProb(0.9629, 0.8793, true)).toBeCloseTo(0.782, 2);   // Duke vs Georgia
+    });
+    test('a missing or impossible rating gives no number rather than a wrong one', () => {
+        expect(homeWinProb(null, 0.5, false)).toBeNull();
+        expect(homeWinProb(0.5, 1, false)).toBeNull();
+        expect(homeWinProb(0, 0.5, false)).toBeNull();
+    });
+});
+
+describe('preview (a game still to play)', () => {
+    beforeEach(async () => {
+        await HoopsTeam.updateOne({ id: 1, season: SEASON }, { $set: { 'preseason.barthag': 0.96, 'preseason.adjOE': 120, 'preseason.adjDE': 91 } });
+        await HoopsTeam.updateOne({ id: 2, season: SEASON }, { $set: { 'preseason.barthag': 0.80, 'preseason.adjOE': 112, 'preseason.adjDE': 98 } });
+        await HoopsGame.create([
+            Object.assign({}, GAME, { id: 400, week: 1, startDate: new Date(Date.UTC(2026, 10, 4)), homeTeamId: 2, awayTeamId: 1, homePoints: 70, awayPoints: 80, neutralSite: false }),   // earlier meeting, Duke won at Texas
+            Object.assign({}, GAME, { id: 401, week: 1, startDate: new Date(Date.UTC(2026, 10, 6)), homeTeamId: 1, awayTeamId: 9, homePoints: 60, awayPoints: 61, neutralSite: false }),   // Duke loses at home
+            Object.assign({}, GAME, { id: 500, status: 'scheduled', homePoints: null, awayPoints: null }),
+            Object.assign({}, GAME, { id: 600, week: 9, startDate: new Date(Date.UTC(2026, 11, 20)), homeTeamId: 1, awayTeamId: 9, homePoints: 90, awayPoints: 50, neutralSite: false })     // AFTER this game: must not count
+        ]);
+    });
+
+    test('records, form and streak going INTO the game — later results do not count', async () => {
+        const p = await gamePage.build(500);
+        expect(p.home.record).toEqual({ w: 1, l: 1 });
+        expect(p.preview.home).toMatchObject({ record: { w: 1, l: 1 }, roadRecord: { w: 1, l: 0 }, streak: { won: false, n: 1 } });
+        expect(p.preview.home.last5.map(g => g.won)).toEqual([true, false]);
+        expect(p.preview.away.record).toEqual({ w: 0, l: 1 });
+    });
+
+    test('win probability from both barthags, neutral floor', async () => {
+        const p = await gamePage.build(500);
+        expect(p.preview.homeWinProb).toBeCloseTo(require('../modules/hoops-win-prob').homeWinProb(0.96, 0.80, true), 6);
+    });
+
+    test('earlier meetings this season, from the home side\'s view', async () => {
+        const p = await gamePage.build(500);
+        expect(p.preview.meetings).toEqual([expect.objectContaining({ id: 400, homeScore: 80, awayScore: 70, venue: 'away' })]);
+    });
+
+    test('season stats and top scorers when imported', async () => {
+        const HoopsTeamStats = require('../models/hoopsTeamStats');
+        await HoopsTeamStats.create({ season: SEASON, teamId: 1, games: 10, pace: 68, team: { points: 800, efgPct: 55, tovRatio: 0.15 }, opponent: { points: 650 },
+            players: [{ name: 'Bench', games: 10, points: 40 }, { name: 'Star', games: 10, points: 200, rebounds: 50, assists: 30 }, { name: 'DNP', games: 0, points: 0 }] });
+        const p = await gamePage.build(500);
+        expect(p.preview.home.stats).toMatchObject({ games: 10, ppg: 80, oppPpg: 65, efgPct: 55 });
+        expect(p.preview.home.stats.tovPct).toBeCloseTo(15);
+        expect(p.preview.home.topScorers.map(x => x.name)).toEqual(['Star', 'Bench']);
+        expect(p.preview.home.topScorers[0]).toMatchObject({ ppg: 20, rpg: 5, apg: 3 });
+        expect(p.preview.away.stats).toBeNull();
+    });
+
+    test('a final game has no preview; a non-D-I side has none for its half', async () => {
+        expect((await gamePage.build(400)).preview).toBeNull();
+        await HoopsGame.updateOne({ id: 500 }, { $set: { awayTeamId: 9999 } });
+        const p = await gamePage.build(500);
+        expect(p.preview.away).toBeNull();
+        expect(p.preview.homeWinProb).toBeNull();
     });
 });
