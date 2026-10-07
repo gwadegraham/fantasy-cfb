@@ -36,7 +36,12 @@ const JOB_SCHEDULES = [
     // scoring incrementally, so a late final or a corrected roster is
     // picked up without anyone asking. A no-op, silently, while no
     // basketball league exists.
-    { job: 'hoops-scores', modulePath: '../modules/hoops-scores-job', rule: { hour: 23, minute: 30 } }
+    { job: 'hoops-scores', modulePath: '../modules/hoops-scores-job', rule: { hour: 23, minute: 30 } },
+    // Basketball season stats for the team page (#494). 2 CBBD calls, all
+    // teams at once. 05:00 so last night's late West Coast finals are in
+    // CBBD's totals; silent and free while no basketball league exists or
+    // nothing has gone final in three days.
+    { job: 'hoops-stats', modulePath: '../modules/hoops-stats-job', rule: { hour: 5, minute: 0 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

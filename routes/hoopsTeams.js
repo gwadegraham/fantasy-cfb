@@ -7,6 +7,10 @@ const router = express.Router();
 const HoopsTeam = require('../models/hoopsTeam');
 const cbbd = require('../modules/cbbd-client');
 const { activeSeason } = require('../modules/active-season');
+// Namespaces, not destructures, so a test can stand in for them.
+const seasons = require('../modules/active-season');
+const leagueSelection = require('../modules/league-selection');
+const teamPage = require('../modules/hoops-team-page');
 
 // Basketball logos come from ESPN's CDN, keyed on sourceId — which IS the ESPN
 // id, so no mapping is invented, only the image host is borrowed.
@@ -223,6 +227,36 @@ router.post('/:season/ingest', async (req, res) => {
     console.log(`Hoops team ingest: unexpected error: ${err && err.message}`);
     return res.status(500).json({ message: err && err.message });
   }
+});
+
+// The basketball team page's data (#494). Read-only, no CBBD calls.
+//
+// The league comes from the SERVER's validated selection, the same answer
+// the navbar renders — never from a query string. Who rosters a team, and
+// what it has banked, is the one league-private thing on this payload, and
+// a ?league= would let anyone ask about a league they are not in, which is
+// exactly how the basketball league would become discoverable early.
+// A football (or no) selection still gets the page, just without an owner.
+router.get('/:id/page', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: 'team id must be a number' });
+        let league = '';
+        try {
+            league = await leagueSelection.selectedLeague(req);
+        } catch (e) {
+            console.error(`hoops team page: league selection failed: ${e.message}`);
+        }
+        const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
+        const season = basketball ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
+        if (season == null) return res.status(404).json({ message: 'No basketball season is active' });
+        const page = await teamPage.build(id, { season, league: basketball ? league : null });
+        if (!page) return res.status(404).json({ message: 'No such basketball team this season' });
+        return res.json(page);
+    } catch (err) {
+        console.error(`hoops team page ${req.params.id}: ${err && err.message}`);
+        return res.status(500).json({ message: 'Could not load this team' });
+    }
 });
 
 module.exports = router;

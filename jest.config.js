@@ -96,6 +96,30 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball team page's data (#494). It recomputes each game's
+        // quadrant the way scoring banked it, so a drift here makes the team
+        // sheet and the manager's points tell two different stories. The
+        // uncovered branches are `|| null` fallbacks on optional CBBD fields.
+        "./modules/hoops-team-page.js": {
+            statements: 98,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
+        // The nightly stats import (#494) and its job. Two billable calls a
+        // night; the job's skips are what keep the off-season free.
+        "./modules/hoops-stats.js": {
+            statements: 98,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-stats-job.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         // What a team was RANKED when a game was played (#316). Every
         // quadrant is a rank threshold and every score is banked at time of
         // play, so a rank that is wrong on the night is wrong forever. The

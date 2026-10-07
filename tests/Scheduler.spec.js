@@ -5,7 +5,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-scores',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-scores', 'hoops-stats',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });

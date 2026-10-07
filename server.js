@@ -764,6 +764,20 @@ app.get('/team', async function(req, res) {
     }
 });
 
+// The basketball team page (#494). Its own path, not /team?team=, because
+// the two sports number teams independently and 130 of 365 basketball ids
+// are also football ids — a URL that does not say the sport is how Kentucky
+// rendered Minnesota's football page (#489).
+app.get('/hoops/team/:id', async function(req, res) {
+    if (req.oidc.isAuthenticated()) {
+        const user = buildUserContext(req.effUser);
+        const userState = safeJson(req.effUser);
+        res.render('hoopsTeam', { user, userState, teamId: req.params.id });
+    } else {
+        res.redirect("/login");
+    }
+});
+
 app.get('/hall-of-fame', async function(req, res) {
     if (req.oidc.isAuthenticated()) {
         const user = buildUserContext(req.effUser);

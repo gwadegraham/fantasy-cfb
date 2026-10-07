@@ -24,7 +24,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 
-<body>
+<!-- data-page-sport: this page is football whatever league is selected,
+     so public/league.js leaves its team and game links alone. -->
+<body data-page-sport="football">
     <%- include('partials/navbar') %>
     <% if (userState) { %>
         <script>

@@ -372,16 +372,18 @@ describe('a basketball league does not link to football team pages', () => {
         expect(load({ seed: football }).sport()).toBe('football');
     });
 
-    test('team and game links are stripped of their href', () => {
+    // #494: there IS a basketball team page now, so a team link goes there
+    // rather than nowhere. Games still have no basketball page.
+    test('team links go to the basketball team page; game links are stripped', () => {
         const cc = load({ seed: hoops, html: LINKS });
         cc.paint();
-        expect(document.getElementById('t').hasAttribute('href')).toBe(false);
+        expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');
         expect(document.getElementById('g').hasAttribute('href')).toBe(false);
         // Everything else is left alone.
         expect(document.getElementById('ok').getAttribute('href')).toBe('/standings');
     });
 
-    test('and the original href is kept, for when team pages learn the sport', () => {
+    test('and the original href is kept', () => {
         const cc = load({ seed: hoops, html: LINKS });
         cc.paint();
         expect(document.getElementById('t').dataset.ccHref).toBe('/team?team=135');
@@ -394,16 +396,44 @@ describe('a basketball league does not link to football team pages', () => {
         expect(document.getElementById('g').getAttribute('href')).toBe('/game/372997');
     });
 
-    test('a link built AFTER the sweep is still refused', () => {
+    test('a link built AFTER the sweep is still caught', () => {
         // Most of these links are built when a fetch resolves, long after
         // paint. The capture-phase guard is the net that actually closes
         // the bug — the sweep alone would miss nearly all of them.
         load({ seed: hoops, html: '' });
         document.dispatchEvent(new window.Event('DOMContentLoaded'));
         document.body.innerHTML = LINKS;
-        expect(clickOn('t')).toBe(true);     // navigation prevented
-        expect(clickOn('g')).toBe(true);
+        expect(clickOn('t')).toBe(false);    // allowed to navigate...
+        expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');   // ...to basketball
+        expect(clickOn('g')).toBe(true);     // a game is refused
         expect(clickOn('ok')).toBe(false);   // ordinary links still work
+    });
+
+    // Middle-click fires auxclick, and "open in new tab" / "copy link"
+    // fire neither click nor auxclick — but all of them start with a
+    // mousedown, which is why the rewrite happens there too.
+    test('a team link is rewritten on MOUSEDOWN, before a middle-click or a copy', () => {
+        load({ seed: hoops, html: '' });
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.body.innerHTML = LINKS;
+        document.getElementById('t').dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 1 }));
+        expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');
+    });
+
+    // The football team page, a football game and the CFP bracket are
+    // football whatever league is selected: their ids ARE football ids.
+    test('a football-only page keeps its links, even on a basketball league', () => {
+        const cc = load({ seed: hoops, html: LINKS });
+        document.body.setAttribute('data-page-sport', 'football');
+        try {
+            cc.paint();
+            expect(document.getElementById('t').getAttribute('href')).toBe('/team?team=135');
+            expect(document.getElementById('g').getAttribute('href')).toBe('/game/372997');
+            expect(clickOn('g')).toBe(false);
+            expect(cc.refusesHref('/game/372997')).toBe(false);
+        } finally {
+            document.body.removeAttribute('data-page-sport');
+        }
     });
 
     test('and on football the guard lets everything through', () => {
@@ -414,14 +444,16 @@ describe('a basketball league does not link to football team pages', () => {
         expect(clickOn('g')).toBe(false);
     });
 
-    test('a click on something INSIDE the link is refused too', () => {
+    test('a click on something INSIDE the link is caught too', () => {
         // Most of these wrap a logo or a span, so the target is never the
         // anchor itself.
         load({ seed: hoops, html: '' });
         document.dispatchEvent(new window.Event('DOMContentLoaded'));
-        document.body.innerHTML = '<a id="t" href="/team?team=135"><img id="logo"></a>';
+        document.body.innerHTML = '<a id="t" href="/team?team=135"><img id="logo"></a><a id="g" href="/game/1"><img id="glogo"></a>';
+        document.getElementById('logo').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');
         const e = new window.MouseEvent('click', { bubbles: true, cancelable: true });
-        document.getElementById('logo').dispatchEvent(e);
+        document.getElementById('glogo').dispatchEvent(e);
         expect(e.defaultPrevented).toBe(true);
     });
 
@@ -450,8 +482,10 @@ describe('a basketball league does not link to football team pages', () => {
         // no anchor, so the guard above never sees them.
         const cc = load({ seed: hoops });
         expect(cc.open('/game/372997')).toBe(false);
-        expect(cc.open('/team?team=135')).toBe(false);
+        expect(cc.basketballHref('/team?team=135')).toBe('/hoops/team/135');
+        expect(cc.refusesHref('/team?team=135')).toBe(false);
         expect(cc.refusesHref('/standings')).toBe(false);
+        expect(load({ seed: football }).basketballHref('/team?team=135')).toBeNull();
         expect(load({ seed: football }).refusesHref('/game/372997')).toBe(false);
     });
 });
