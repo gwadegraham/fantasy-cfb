@@ -174,6 +174,13 @@ async function getUsers() {
 
 function displayUsers(data) {
     const userTableBody = document.querySelector('[user-table-body]');
+    // The rosters here are the MANAGED league's, which for a League Manager
+    // viewing basketball is still their football league. Saying which sport
+    // these ids are keeps public/league.js from sending a football id to the
+    // basketball team page.
+    if (userTableBody && window.ccLeague && window.ccLeague.sportOf && window.ccManageLeagueCode) {
+        userTableBody.setAttribute('data-page-sport', window.ccLeague.sportOf(window.ccManageLeagueCode()));
+    }
     var str = '';
 
     data.forEach( user => {

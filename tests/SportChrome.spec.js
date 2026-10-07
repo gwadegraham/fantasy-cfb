@@ -176,3 +176,13 @@ describe('the accent token', () => {
         expect(root[1]).toContain('--cc-r-pill');
     });
 });
+
+// Pages that show FOOTBALL ids whatever league is selected must say so, or
+// public/league.js sends their team links to the basketball team page —
+// where a football id opens whichever basketball team shares the number.
+describe('football-only pages opt out of the basketball link rewrite', () => {
+    const VIEWS = path.join(__dirname, '..', 'views');
+    test.each(['team.ejs', 'gameDetail.ejs', 'cfpBracket.ejs', 'scoreboard.ejs'])('%s', (f) => {
+        expect(fs.readFileSync(path.join(VIEWS, f), 'utf8')).toMatch(/<body\b[^>]*\sdata-page-sport="football"/);
+    });
+});

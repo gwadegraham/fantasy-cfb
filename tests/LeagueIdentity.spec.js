@@ -412,6 +412,35 @@ describe('a basketball league does not link to football team pages', () => {
     // Middle-click fires auxclick, and "open in new tab" / "copy link"
     // fire neither click nor auxclick — but all of them start with a
     // mousedown, which is why the rewrite happens there too.
+    // #489 in reverse: a football id sent to /hoops/team/ opens whichever
+    // basketball team shares the number. A CONTAINER of football ids — admin's
+    // roster table for a football league it manages — opts out on its own.
+    test('links inside a football container are left alone, on the sweep and on click', () => {
+        const cc = load({ seed: hoops, html: '<div data-page-sport="football"><a id="ft" href="/team?team=135">Minnesota</a><a id="fg" href="/game/9">G</a></div>' + LINKS });
+        cc.paint();
+        expect(document.getElementById('ft').getAttribute('href')).toBe('/team?team=135');
+        expect(document.getElementById('fg').getAttribute('href')).toBe('/game/9');
+        expect(document.getElementById('t').getAttribute('href')).toBe('/hoops/team/135');   // outside: rewritten
+        document.dispatchEvent(new window.Event('DOMContentLoaded'));
+        document.getElementById('ft').dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+        expect(clickOn('ft')).toBe(false);
+        expect(clickOn('fg')).toBe(false);
+        expect(document.getElementById('ft').getAttribute('href')).toBe('/team?team=135');
+    });
+
+    test('a container marked basketball is rewritten like the rest', () => {
+        const cc = load({ seed: hoops, html: '<div data-page-sport="basketball"><a id="bt" href="/team?team=96">Kentucky</a></div>' });
+        cc.paint();
+        expect(document.getElementById('bt').getAttribute('href')).toBe('/hoops/team/96');
+    });
+
+    test('sportOf names the sport of any league in the seed', () => {
+        const cc = load({ seed: hoops });
+        expect(cc.sportOf('hoops-league')).toBe('basketball');
+        expect(cc.sportOf('graham-league')).toBe('football');
+        expect(cc.sportOf('nobody')).toBe('football');
+    });
+
     test('a team link is rewritten on MOUSEDOWN, before a middle-click or a copy', () => {
         load({ seed: hoops, html: '' });
         document.dispatchEvent(new window.Event('DOMContentLoaded'));
