@@ -284,7 +284,11 @@ router.get('/:id/page', async (req, res) => {
             console.error(`hoops game page: league selection failed: ${e.message}`);
         }
         const basketball = !!league && seasons.sportForLeague(league) === 'basketball';
-        const page = await gamePage.build(id, { league: basketball ? league : null });
+        // Who is looking, so the page can open on their own team. The app's
+        // account id lives in the Auth0 profile's nested metadata.
+        const meta = (req.effUser && req.effUser.user_metadata) || {};
+        const viewerId = (meta.metadata && meta.metadata.userId) || null;
+        const page = await gamePage.build(id, { league: basketball ? league : null, viewerId });
         if (!page) return res.status(404).json({ message: 'No such basketball game' });
         return res.json(page);
     } catch (err) {

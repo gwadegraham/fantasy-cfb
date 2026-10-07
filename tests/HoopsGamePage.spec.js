@@ -171,6 +171,16 @@ describe('ingestRecent (the nightly batch)', () => {
     });
 });
 
+describe('currentWeek', () => {
+    test('a "final" row with no score does not move the season\'s week', async () => {
+        await HoopsGame.create([
+            Object.assign({}, GAME, { id: 800, week: 3 }),
+            Object.assign({}, GAME, { id: 801, week: 11, homePoints: null, awayPoints: null })    // marked final, never scored
+        ]);
+        expect(await teamPage.currentWeek(SEASON)).toBe(3);
+    });
+});
+
 describe('the team page and the game page agree on a game still to play', () => {
     // Ranks are blended by week, so the week an unplayed game is rated
     // against decides its quadrant. Both pages must use the SAME week — the
@@ -241,6 +251,17 @@ describe('build', () => {
         expect(p.quadrantValues).toMatchObject({ 1: 5 });
     });
 
+    test('the viewer\'s own team is flagged — and no account id reaches the payload', async () => {
+        stubCbbd();
+        const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g2@example.invalid' });
+        await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams', teamRefs: [{ id: 2, sport: 'basketball' }] }] });
+        const p = await gamePage.build(500, { league: LEAGUE, viewerId: String(a._id) });
+        expect(p.away.owner).toEqual({ franchiseName: 'Hoop Dreams', firstName: 'Garrett', mine: true });
+        expect((await gamePage.build(500, { league: LEAGUE, viewerId: 'someone-else' })).away.owner.mine).toBe(false);
+        expect((await gamePage.build(500, { league: LEAGUE })).away.owner.mine).toBe(false);
+        expect(JSON.stringify(p)).not.toContain(String(a._id));
+    });
+
     test('a postseason game has no quadrant on either side', async () => {
         await HoopsGame.updateOne({ id: 500 }, { $set: { seasonType: 'postseason', tournament: 'NCAA' } });
         stubCbbd();
@@ -293,6 +314,15 @@ describe('GET /hoops/games/:id/page', () => {
         const res = await request(app).get('/hoops/games/500/page');
         expect(res.status).toBe(200);
         expect(res.body.home.school).toBe('Duke');
+    });
+
+    test('passes the signed-in viewer to the page', async () => {
+        const spy = jest.spyOn(gamePage, 'build').mockResolvedValue({ ok: true });
+        const asUser = express();
+        asUser.use((req, _res, next) => { req.effUser = { user_metadata: { metadata: { userId: 'acct-1' } } }; next(); });
+        asUser.use('/hoops/games', require('../routes/hoopsGames'));
+        await request(asUser).get('/hoops/games/500/page');
+        expect(spy).toHaveBeenCalledWith(500, { league: LEAGUE, viewerId: 'acct-1' });
     });
 
     test('basketball stays hidden: someone in no basketball league gets a plain 404', async () => {

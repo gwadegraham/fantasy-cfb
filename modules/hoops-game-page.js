@@ -78,7 +78,7 @@ function previewSide(team, before) {
     };
 }
 
-async function build(gameId, { league = null } = {}) {
+async function build(gameId, { league = null, viewerId = null } = {}) {
     const id = Number(gameId);
     if (!Number.isFinite(id)) return null;
     const game = await HoopsGame.findOne({ id }).lean();
@@ -147,7 +147,8 @@ async function build(gameId, { league = null } = {}) {
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
             quadrant: postseason ? null : quadrantFor(oppRank, venue),
-            owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName } : null,
+            owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName,
+                mine: !!viewerId && owner.accountId === String(viewerId) } : null,
             banked: owner && final && Object.prototype.hasOwnProperty.call(owner.points, String(id)) ? owner.points[String(id)] : null
         };
     };

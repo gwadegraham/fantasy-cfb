@@ -94,9 +94,31 @@ test('postseason: the tournament, not a quadrant', async () => {
     expect(txt('.hg-q')).toBe('NCAA | NCAA');
 });
 
-test('final without a box: it lands overnight', async () => {
-    await render(payload({ box: null }));
+test('final without a box: it lands overnight — unless the game is too old to get one', async () => {
+    const recent = payload({ box: null });
+    recent.game = Object.assign({}, recent.game, { startDate: new Date(Date.now() - 12 * 3600e3).toISOString() });
+    await render(recent);
     expect(txt('.ht-empty')).toContain('lands overnight');
+    await render(payload({ box: null }));                       // Nov 2025: long past the 3-day window
+    expect(txt('.ht-empty')).toBe('There’s no box score for this game.');
+});
+
+test('final but not scored yet: "points post overnight", never a fake 0', async () => {
+    const p = payload();
+    p.home = Object.assign({}, p.home, { banked: null });
+    await render(p);
+    expect(Array.from(document.querySelectorAll('.hg-fc'))[1].textContent).toBe('Q1win for DukeHoop Dreams · points post overnight');
+});
+
+test('the box opens on the VIEWER\'s team when both sides are rostered', async () => {
+    // Both rostered, viewer owns HOME: the old "home only if only home is
+    // rostered" rule would have opened on the away side here.
+    const p = payload();
+    p.away = Object.assign({}, p.away, { owner: { franchiseName: 'Cinderella Story', mine: false } });
+    p.home = Object.assign({}, p.home, { owner: { franchiseName: 'Hoop Dreams', mine: true } });
+    await render(p);
+    tab('box');
+    expect(q('.hg-seg button.on').getAttribute('data-side')).toBe('home');
 });
 
 test('four factors: the better side is marked, and its bar is the LONGER one even when lower is better', async () => {

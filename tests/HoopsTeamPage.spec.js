@@ -454,6 +454,14 @@ describe('hoops-stats job', () => {
         expect((await statsJob.run({ now: NOW })).summary).toBe(`${SEASON}: no hoops teams ingested | ${SEASON} boxes: 3/3 stored`);
     });
 
+    test('a box window at the row cap is recorded as an ERROR, not a quiet success', async () => {
+        jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 1, players: 1 });
+        boxScore.ingestRecent.mockResolvedValue({ season: SEASON, games: 9, stored: 4, capped: true });
+        await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
+        const out = await statsJob.run({ now: NOW });
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', out.summary);
+    });
+
     test('the box batch runs on its own: a box failure is recorded, and the stats still import', async () => {
         jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 365, players: 5000 });
         boxScore.ingestRecent.mockRejectedValue(new Error('CBBD 429'));

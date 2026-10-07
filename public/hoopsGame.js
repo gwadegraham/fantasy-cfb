@@ -102,7 +102,10 @@
             if (vals) {
                 var who = t.owner ? esc(t.owner.franchiseName || t.owner.firstName || 'a manager') : null;
                 if (!who) foot = 'Not on a roster';
-                else if (d.game.final) foot = '<b>' + (t.banked > 0 ? '+' : '') + (t.banked == null ? 0 : t.banked) + '</b> for ' + who;
+                // banked null = the nightly scoring has not reached this game
+                // yet, which is not the same as banking 0.
+                else if (d.game.final && t.banked == null) foot = who + ' · points post overnight';
+                else if (d.game.final) foot = '<b>' + (t.banked > 0 ? '+' : '') + t.banked + '</b> for ' + who;
                 else foot = (t.quadrant && vals[t.quadrant] ? '<b>+' + vals[t.quadrant] + '</b> if won, for ' : 'On ') + who + (t.quadrant && vals[t.quadrant] ? '' : '’s roster');
             }
             return '<div class="hg-fc">' + head + (foot ? '<span class="p">' + foot + '</span>' : '') + '</div>';
@@ -337,7 +340,11 @@
 
     function noBox(d) {
         // Box scores are pulled in a nightly batch (05:00 Central), as football's are.
+        // The nightly batch looks back 3 days; past that, a game with no box
+        // will not get one, and "check back in the morning" would be untrue.
+        var old = Date.now() - new Date(d.game.startDate).getTime() > 3 * 24 * 60 * 60 * 1000;
         var text = !d.game.final ? 'The box score arrives after the final.'
+            : old ? 'There’s no box score for this game.'
             : 'The box score lands overnight — check back in the morning.';
         return '<div class="ht-card ht-empty">' + text + '</div>';
     }
@@ -374,9 +381,12 @@
         data = d;
         var h = (window.location.hash || '').replace('#', '');
         state.tab = h === 'box' ? 'box' : 'summary';
-        // Open the box on the side a manager owns; otherwise the left-hand
-        // (away) side, so the toggle reads in the scoreboard's order.
-        state.side = d.home.owner && !d.away.owner ? 'home' : 'away';
+        // Open the box on the viewer's own team; failing that, the one side
+        // somebody rosters; otherwise the left-hand (away) side, so the toggle
+        // reads in the scoreboard's order.
+        var mine = function (t) { return !!(t.owner && t.owner.mine); };
+        state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
+            : (d.home.owner && !d.away.owner ? 'home' : 'away');
         root.innerHTML = d.game.final
             ? hero(d) + fantasy(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
             : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';

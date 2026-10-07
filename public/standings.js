@@ -1197,8 +1197,8 @@ document.addEventListener('click', async function (e) {
 
 document.addEventListener('click', function (e) {
     var card = e.target.closest('.gc-clickable[data-game-id]');
-    // Through ccLeague, which refuses it on a basketball league: these ids
-    // are looked up as FOOTBALL games, and the numbering collides.
+    // Through ccLeague with the card, so the football container these cards
+    // sit in is honoured on a basketball league (the ids are FOOTBALL games).
     if (card) window.ccLeague.open('/game/' + card.getAttribute('data-game-id'), card);
 });
 

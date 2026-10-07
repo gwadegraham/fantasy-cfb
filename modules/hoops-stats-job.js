@@ -42,6 +42,10 @@ async function run({ now = new Date() } = {}) {
         // stats failure does not cost the boxes or the reverse.
         try {
             const box = await boxScore.ingestRecent(season, { now: now.getTime() });
+            // A window at CBBD's 3,000-row cap cannot be trusted to be whole;
+            // recorded as an ERROR so it shows red on the admin strip rather
+            // than hiding in a "success" summary.
+            if (box.capped) failed = 'box window hit the 3000-row cap';
             done.push(box.skippedReason
                 ? `${season} boxes: ${box.skippedReason}`
                 : `${season} boxes: ${box.stored}/${box.games} stored${box.capped ? ' (HIT THE 3000-ROW CAP — window incomplete)' : ''}`);
