@@ -5,7 +5,11 @@
     /* body is a centred flex column, so without these the page sizes to its
        widest unbreakable line and runs off a phone's right edge. */
     width: 100%; min-width: 0; box-sizing: border-box; }
-.ht a { color: inherit; text-decoration: none; }
+/* Team links look like the rest of the app's: no colour change and no
+   underline on hover (My Team writes them inline as color:inherit;
+   text-decoration:none, the game tables pin a:hover the same way).
+   Without :hover here, Bootstrap's blue underline took over. */
+.ht a, .ht a:hover, .ht a:focus { color: inherit; text-decoration: none; }
 .ht-loading, .ht-error { padding: 48px 0; text-align: center; color: var(--cc-muted); }
 
 /* ---- hero: the programme's colour over a faint court ------------------- */
