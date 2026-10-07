@@ -74,7 +74,23 @@ async function record(status, summary) {
     await jobLogger.finishRun(id, status, summary);
 }
 
-async function run({ now = new Date() } = {}) {
+// One tick at a time. A completion pass (box scores, then every league and
+// week rescored) can outlast the 30s cadence on the free-tier cluster; a
+// second tick starting under it would write the scoreboard and score
+// concurrently. A skipped tick costs nothing — the next one catches up.
+let running = false;
+
+async function run(opts = {}) {
+    if (running) return { skipped: 'previous tick still running' };
+    running = true;
+    try {
+        return await tick(opts);
+    } finally {
+        running = false;
+    }
+}
+
+async function tick({ now = new Date() } = {}) {
     if (process.env.LIVE_POLL_ENABLED === 'false') return { skipped: 'disabled' };
     const leagues = await hoopsScoresJob.basketballLeagues();
     if (!leagues.length) return { skipped: 'no basketball leagues' };
@@ -109,10 +125,11 @@ async function run({ now = new Date() } = {}) {
     // Group new finals by week so the batch rescores the right weeks.
     const byWeek = new Map();
     for (const g of applied.newlyFinal) {
-        if (!byWeek.has(g.week)) byWeek.set(g.week, []);
-        byWeek.get(g.week).push(g.id);
+        const key = `${g.seasonType}:${g.week}`;
+        if (!byWeek.has(key)) byWeek.set(key, { week: g.week, seasonType: g.seasonType, ids: [] });
+        byWeek.get(key).ids.push(g.id);
     }
-    for (const [week, ids] of byWeek) flush.addPending(ids, { week, seasonType: 'regular' }, nowMs);
+    for (const b of byWeek.values()) flush.addPending(b.ids, { week: b.week, seasonType: b.seasonType }, nowMs);
 
     const bits = [`${applied.matched} of ${applied.rows} scoreboard games matched`, `${applied.updated} updated`];
     if (applied.newlyFinal.length) bits.push(`${applied.newlyFinal.length} final`);

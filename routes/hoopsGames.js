@@ -443,7 +443,10 @@ async function refreshResults({ season, seasonType, start, end }) {
     // nightly refresh would otherwise answer 200 {games: 0} from November to
     // March and no score would ever be ingested.
     if (!result.games.length) {
-        const due = await HoopsGame.countDocuments({ season, startDate: { $gte: start, $lte: end } });
+        // This season type only: in March the window can hold only
+        // postseason games, and counting them against an empty REGULAR fetch
+        // reported "CBBD returned nothing" every night of the tournament.
+        const due = await HoopsGame.countDocuments({ season, seasonType, startDate: { $gte: start, $lte: end } });
         if (due > 0) {
             return reply(422, {
                 message: `CBBD returned no ${seasonType} games for season ${season} between `

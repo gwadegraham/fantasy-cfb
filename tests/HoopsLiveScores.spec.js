@@ -52,7 +52,14 @@ afterEach(() => { seasons._reset(); jest.restoreAllMocks(); delete process.env.L
 
 describe('updateFor (one scoreboard row)', () => {
     test('a scheduled game\'s 0-0 is NOT stored as a score', () => {
-        expect(scoreboard.updateFor(row(1, 'scheduled', 0, 0), { status: 'scheduled' })).toEqual({ status: 'scheduled' });
+        expect(scoreboard.updateFor(row(1, 'scheduled', 0, 0), { status: 'postponed' })).toEqual({ status: 'scheduled' });
+        expect(scoreboard.updateFor(row(1, 'scheduled', 0, 0), { status: 'scheduled' })).toBeNull();     // nothing changed
+    });
+
+    test('only what CHANGED is written', () => {
+        const stored = { status: 'in_progress', homePoints: 55, awayPoints: 50, homePeriodPoints: [30, 25], awayPeriodPoints: [28, 22], period: 2, clock: '8:43' };
+        expect(scoreboard.updateFor(row(1, 'in_progress', 55, 50), stored)).toBeNull();
+        expect(scoreboard.updateFor(row(1, 'in_progress', 55, 50, { clock: '8:10' }), stored)).toEqual({ clock: '8:10' });
     });
 
     test('in progress: running points, half scores, half and clock', () => {
@@ -82,7 +89,7 @@ describe('applyScoreboard', () => {
         await HoopsGame.create([game(10), game(11)]);
         const first = await scoreboard.applyScoreboard([row(10, 'final', 75, 60), row(11, 'in_progress', 40, 41), row(999, 'final', 1, 0)]);
         expect(first).toMatchObject({ rows: 3, matched: 2, updated: 2 });
-        expect(first.newlyFinal).toEqual([{ id: 10, week: 3, season: SEASON }]);
+        expect(first.newlyFinal).toEqual([{ id: 10, week: 3, season: SEASON, seasonType: 'regular' }]);
         const stored = await HoopsGame.findOne({ id: 10 }).lean();
         expect(stored).toMatchObject({ status: 'final', homePoints: 75, awayPoints: 60, homeWinner: true });
         expect((await HoopsGame.findOne({ id: 11 }).lean())).toMatchObject({ status: 'in_progress', period: 2, clock: '8:43' });
@@ -110,6 +117,11 @@ describe('the live poller', () => {
         await League.deleteMany({});
         await seasons.prime();
         expect(await livePoll.run({ now: DURING })).toEqual({ skipped: 'no basketball leagues' });
+    });
+
+    test('no active basketball season: skipped, not "no games"', async () => {
+        jest.spyOn(seasons, 'activeSeason').mockReturnValue(null);
+        expect(await livePoll.run({ now: DURING })).toEqual({ skipped: 'no active basketball season' });
     });
 
     test('no game in progress: no CBBD call and no JobRun', async () => {
@@ -169,11 +181,51 @@ describe('the live poller', () => {
         expect(logged[0].status).toBe('error');
     });
 
-    test('a tick that changed nothing writes no JobRun', async () => {
-        await HoopsGame.create(game(10, { status: 'in_progress', homePoints: 40, awayPoints: 41 }));
-        stubBoard([]);
+    // The real case: a busy night where the SAME scoreboard comes back on
+    // consecutive ticks. (An empty scoreboard proved nothing — the first
+    // version of this test used one, and a JobRun-per-tick bug passed it.)
+    test('a tick over an unchanged scoreboard writes nothing and records no JobRun', async () => {
+        await HoopsGame.create(game(10));
+        const write = jest.spyOn(HoopsGame, 'bulkWrite');
+        stubBoard([row(10, 'in_progress', 40, 41)]);
         await livePoll.run({ now: DURING });
-        expect(logged).toEqual([]);
+        expect(logged).toHaveLength(1);
+        write.mockClear();
+        const out = await livePoll.run({ now: new Date(DURING.getTime() + 30e3) });
+        expect(out.summary).toBe('1 of 1 scoreboard games matched, 0 updated');
+        expect(write).not.toHaveBeenCalled();
+        expect(logged).toHaveLength(1);                                       // still just the first
+    });
+
+    test('a final whose score an earlier poll already stored is still a NEW final', async () => {
+        await HoopsGame.create(game(10));
+        stubBoard([row(10, 'in_progress', 75, 60)]);
+        await livePoll.run({ now: DURING });
+        cbbd.cbbdGet.mockResolvedValue({ data: [row(10, 'final', 75, 60)] });
+        const out = await livePoll.run({ now: new Date(DURING.getTime() + 30e3) });
+        expect(out.summary).toContain('1 final');
+    });
+
+    test('a postseason final is queued as postseason', async () => {
+        await HoopsGame.create(game(10, { seasonType: 'postseason' }));
+        stubBoard([row(10, 'final', 75, 60)]);
+        const add = jest.spyOn(livePoll._flush, 'addPending');
+        await livePoll.run({ now: DURING });
+        expect(add).toHaveBeenCalledWith([10], { week: 3, seasonType: 'postseason' }, DURING.getTime());
+    });
+
+    test('one tick at a time: a tick that starts under a running one is skipped', async () => {
+        await HoopsGame.create(game(10));
+        let release;
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockImplementationOnce(() => new Promise(r => { release = () => r({ data: [] }); }));
+        get.mockResolvedValue({ data: [] });                                  // later ticks answer at once
+        const first = livePoll.run({ now: DURING });
+        // Wait until the first tick is actually inside its scoreboard call.
+        for (let i = 0; i < 200 && !release; i++) await new Promise(r => setTimeout(r, 10));
+        expect(await livePoll.run({ now: DURING })).toEqual({ skipped: 'previous tick still running' });
+        release();
+        await first;
+        expect((await livePoll.run({ now: new Date(DURING.getTime() + 60e3) })).skipped).not.toBe('previous tick still running');
     });
 
     test('a scoreboard outage is recorded', async () => {
@@ -211,9 +263,11 @@ describe('completionWork', () => {
 describe('the nightly safety net', () => {
     const NIGHT = new Date(Date.UTC(2026, 10, 19, 5, 30));
 
-    test('refreshes the last 3 days of results before scoring — regular only, unless postseason is scheduled', async () => {
+    test('refreshes the last 3 days of results before scoring — only the season types that can have results', async () => {
         const refresh = jest.spyOn(hoopsGames, 'refreshResults').mockResolvedValue({ code: 200, body: { finals: 4, games: 9 } });
-        await HoopsGame.create(game(10));
+        // Mid-season: a game in the window and more still to come, so the
+        // regular season is not "just over".
+        await HoopsGame.create([game(10), game(11, { startDate: new Date(NIGHT.getTime() + 30 * 24 * 3600e3) })]);
         await scoresJob.run({ now: NIGHT });
         expect(refresh).toHaveBeenCalledTimes(1);
         expect(refresh.mock.calls[0][0]).toMatchObject({ season: SEASON, seasonType: 'regular' });
@@ -223,6 +277,28 @@ describe('the nightly safety net', () => {
         await HoopsGame.create(game(20, { seasonType: 'postseason', startDate: new Date(NIGHT.getTime() - 3600e3) }));
         await scoresJob.run({ now: NIGHT });
         expect(refresh.mock.calls.map(c => c[0].seasonType)).toEqual(['regular', 'postseason']);
+    });
+
+    test('March: only postseason in the window — regular is not asked for (it 422ed every night)', async () => {
+        const refresh = jest.spyOn(hoopsGames, 'refreshResults').mockResolvedValue({ code: 200, body: { finals: 1, games: 1 } });
+        await HoopsGame.create([
+            game(10, { startDate: new Date(NIGHT.getTime() - 10 * 24 * 3600e3) }),                     // regular season over
+            game(20, { seasonType: 'postseason', startDate: new Date(NIGHT.getTime() - 3600e3) })
+        ]);
+        await scoresJob.run({ now: NIGHT });
+        expect(refresh.mock.calls.map(c => c[0].seasonType)).toEqual(['postseason']);
+    });
+
+    test('just after the regular season, postseason is asked for even before any bracket game is stored', async () => {
+        await HoopsGame.create(game(10, { startDate: new Date(NIGHT.getTime() - 5 * 24 * 3600e3) }));
+        const t = await scoresJob.seasonTypesToRefresh(SEASON, new Date(NIGHT.getTime() - scoresJob.LOOKBACK_MS), NIGHT);
+        expect(t).toEqual(['postseason']);
+    });
+
+    test('off-season (nothing scheduled, nothing just ended): no call at all', async () => {
+        await HoopsGame.create(game(10, { startDate: new Date(NIGHT.getTime() - 200 * 24 * 3600e3) }));
+        const t = await scoresJob.seasonTypesToRefresh(SEASON, new Date(NIGHT.getTime() - scoresJob.LOOKBACK_MS), NIGHT);
+        expect(t).toEqual([]);
     });
 
     test('a failed refresh is a job ERROR — the failure is not swallowed', async () => {
@@ -246,5 +322,18 @@ describe('scheduling', () => {
         const { HOOPS_LIVE_POLL_SCHEDULE, JOB_SCHEDULES } = require('../modules/scheduler');
         expect(HOOPS_LIVE_POLL_SCHEDULE).toMatchObject({ job: 'hoops-live', rule: { second: [0, 30] } });
         expect(JOB_SCHEDULES.find(s => s.job === 'hoops-live')).toBeUndefined();     // not always-on
+    });
+});
+
+describe('the refresh\'s "games were due" guard', () => {
+    // It counted every stored game in the window whatever its season type,
+    // so an empty REGULAR fetch in March (only tournament games left) was
+    // reported as CBBD failing — every night of the tournament.
+    test('counts only the season type that was asked for', async () => {
+        jest.spyOn(cbbd, 'fetchGamesInRange').mockResolvedValue({ games: [], capHits: [], windows: 1 });
+        const start = new Date(TIP.getTime() - 3600e3), end = new Date(TIP.getTime() + 3600e3);
+        await HoopsGame.create(game(20, { seasonType: 'postseason' }));
+        expect((await hoopsGames.refreshResults({ season: SEASON, seasonType: 'regular', start, end })).code).toBe(200);
+        expect((await hoopsGames.refreshResults({ season: SEASON, seasonType: 'postseason', start, end })).code).toBe(422);
     });
 });
