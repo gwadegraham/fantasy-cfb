@@ -38,9 +38,16 @@
     <section class="rules-section draft-section">
       <h2 class="rule-header"><span data-icon="clipboard" data-icon-size="20"></span>Draft Rules</h2>
       <ul>
-        <li><i class="fas fa-circle fa-xs"></i>Every <strong>FBS team</strong> is available to be drafted</li>
+        <% var dr = (typeof draftRules !== 'undefined' && draftRules) || { sport: 'football' }; %>
+        <% if (dr.sport === 'basketball' && dr.poolSize) { %>
+          <li><i class="fas fa-circle fa-xs"></i>The top <strong><%= dr.poolSize %> teams</strong> by preseason rank are available to be drafted</li>
+        <% } else if (dr.sport === 'basketball') { %>
+          <li><i class="fas fa-circle fa-xs"></i>Every <strong>Division I team</strong> is available to be drafted</li>
+        <% } else { %>
+          <li><i class="fas fa-circle fa-xs"></i>Every <strong>FBS team</strong> is available to be drafted</li>
+        <% } %>
         <li><i class="fas fa-circle fa-xs"></i><strong>Snake Drafting</strong> format</li>
-        <li><i class="fas fa-circle fa-xs"></i>Each player selects <strong>one team per round</strong></li>
+        <li><i class="fas fa-circle fa-xs"></i>Each player selects <strong>one team per round</strong><% if (dr.sport === 'basketball' && dr.totalRounds) { %>, for <strong><%= dr.totalRounds %> rounds</strong><% } %></li>
       </ul>
     </section>
 

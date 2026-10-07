@@ -229,6 +229,24 @@ router.get('/board/:league/:season', async (req, res) => {
         const draft = await Draft.findOne({ league, season }).lean();
         if (!draft) return res.status(404).json({ message: 'No draft configured' });
 
+        // The projection below is FOOTBALL end to end — FBS teams, football
+        // games, the football engine, SP+/AP ranks. On a basketball league it
+        // projected whichever football team shares each basketball id (the
+        // numbering collides), so every number on the board was somebody
+        // else's. Until there is a hoops projection, basketball gets the
+        // draft itself — picks and roster — and no numbers at all.
+        if (sportForLeague(league) === 'basketball') {
+            const meta = (req.effUser && req.effUser.user_metadata) || {};
+            const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
+            return res.json({
+                league, season, sport: 'basketball',
+                projections: null, rankedSource: null, advice: null, captain: null,
+                draft: publicDraft(draft),
+                schedule: draftBoard.pickSchedule(draft, userId),
+                roster: draftBoard.rosterFor(draft, userId, [])
+            });
+        }
+
         const key = `${league}:${season}`;
         if (req.query.refresh === '1') boardCache.delete(key);
         let cached = boardCache.get(key);

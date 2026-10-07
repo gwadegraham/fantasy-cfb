@@ -66,4 +66,18 @@ function draftDefaultsFor(sport) {
 Object.freeze(BY_SPORT);
 Object.keys(BY_SPORT).forEach(k => Object.freeze(BY_SPORT[k]));
 
-module.exports = { draftDefaultsFor, BY_SPORT };
+// What the rules page tells a league about its draft. An EXISTING draft is
+// the answer as it stands, null pool included: null on a Draft means
+// uncapped (the admin form saves a cleared cap as null on purpose), so
+// backfilling the sport's 120 would print a cap the draft does not have.
+// The defaults are only for a league with no draft yet.
+function draftRulesFor(sport, draft) {
+    const base = Object.assign({ sport }, draftDefaultsFor(sport));
+    if (!draft) return base;
+    return Object.assign(base, {
+        poolSize: draft.poolSize != null ? draft.poolSize : null,
+        totalRounds: draft.totalRounds != null ? draft.totalRounds : base.totalRounds
+    });
+}
+
+module.exports = { draftDefaultsFor, draftRulesFor, BY_SPORT };

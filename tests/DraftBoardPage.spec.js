@@ -338,3 +338,30 @@ describe('roster, log and provenance', () => {
         expect(txt('[db-advice]')).toContain('Forbidden');
     });
 });
+
+// Basketball has no projection yet, so the server sends projections: null.
+// The page must show the draft and say why there are no numbers — not an
+// empty board that reads as "everyone has been drafted".
+describe('a basketball league', () => {
+    const hoops = () => payload({
+        sport: 'basketball', projections: null, advice: null, rankedSource: null, captain: null,
+        roster: [{ overall: 2, round: 1, id: 96, school: 'Kentucky', total: null, regular: null }],
+        draft: { status: 'active', currentOverall: 3, snake: true, totalRounds: 10, draftOrder: [],
+            picks: [{ overall: 2, round: 1, userId: ME, teamId: 96, school: 'Kentucky' }] }
+    });
+
+    it('says there is no projection rather than showing football numbers', async () => {
+        await loadPage(hoops());
+        expect(txt('[db-source]')).toBe('No projections for basketball yet');
+        expect(txt('[db-source]')).not.toContain('SP+');
+        expect(txt('[db-advice]')).toContain('basketball does not have one yet');
+    });
+
+    it('still lists the roster and the picks, without points', async () => {
+        await loadPage(hoops());
+        expect(txt('[db-roster]')).toContain('Kentucky');
+        expect(txt('[db-roster]')).not.toContain('Projected total');
+        expect(txt('[db-roster]')).not.toContain('—');
+        expect(txt('[db-log]')).toContain('Kentucky');
+    });
+});

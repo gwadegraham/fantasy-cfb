@@ -291,3 +291,28 @@ describe('the admin form shows the default', () => {
         expect(server).toMatch(/draftDefaults:\s*safeJson\(draftDefaults\.BY_SPORT\)/);
     });
 });
+
+// What /rules tells a league about its draft (#492).
+describe('draftRulesFor', () => {
+    const { draftRulesFor } = require('../modules/draft-defaults');
+
+    it('a league with no draft yet gets the sport defaults', () => {
+        expect(draftRulesFor('basketball', null)).toEqual({ sport: 'basketball', poolSize: 120, totalRounds: 10 });
+    });
+
+    it('an existing draft wins', () => {
+        expect(draftRulesFor('basketball', { poolSize: 96, totalRounds: 12 }))
+            .toEqual({ sport: 'basketball', poolSize: 96, totalRounds: 12 });
+    });
+
+    // null on a Draft means UNCAPPED. Backfilling 120 told the league "top
+    // 120 teams" about a draft that draws from all of Division I.
+    it('keeps an uncapped draft uncapped', () => {
+        expect(draftRulesFor('basketball', { poolSize: null, totalRounds: 10 }).poolSize).toBeNull();
+        expect(draftRulesFor('basketball', { totalRounds: 10 }).poolSize).toBeNull();
+    });
+
+    it('a draft with no round count falls back to the sport default', () => {
+        expect(draftRulesFor('basketball', { poolSize: 96 }).totalRounds).toBe(10);
+    });
+});

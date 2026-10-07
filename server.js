@@ -26,6 +26,7 @@ const ScoringConfig = require('./models/scoringConfig');
 const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
 const draftDefaults = require('./modules/draft-defaults');
+const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
@@ -625,11 +626,26 @@ app.get('/rules', async (req, res) => {
             cfg = resolveConfig(leagueCode, null);
         }
         const fields = fieldsForModel(cfg.model, cfg.disabled, cfg.enabled);
-        // Game-mode (H2H/Captain) settings for the active season, so the rules
-        // page can spell out the win/tie bonuses when the league runs H2H.
-        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.activeSeason('football'));
+        // Game-mode (H2H/Captain) settings for THIS league's season, so the
+        // rules page can spell out the win/tie bonuses when the league runs
+        // H2H. Not football's season: a basketball league plays a different
+        // year, and its settings are stored under that one.
+        const engagement = engagementForSeason(cfg.engagementBySeason, seasons.seasonForLeague(leagueCode));
 
-        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement });
+        // Draft Rules used to be football copy for everyone ("every FBS team").
+        // A basketball draft is a capped pool, so say what THIS league's draft
+        // does — see draftRulesFor for why a null pool is kept, not defaulted.
+        const sport = seasons.sportForLeague(leagueCode);
+        let draft = null;
+        try {
+            const season = seasons.seasonForLeague(leagueCode);
+            if (season != null) {
+                draft = await Draft.findOne({ league: leagueCode, season }, { poolSize: 1, totalRounds: 1 }).lean();
+            }
+        } catch (err) { /* the defaults are a fine answer for a rules page */ }
+        const draftRules = draftDefaults.draftRulesFor(sport, draft);
+
+        res.render('scoringRules', { user, userState, cfg, fields, leagueCode, engagement, draftRules });
     } else {
         res.redirect("/login");
     }
