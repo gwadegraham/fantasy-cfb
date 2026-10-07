@@ -431,6 +431,7 @@
     var state = null;
     var pinned = null;
     var drawnCount = null;   // how many points the last attached chart showed
+    var lastReveal = null;   // { from, count, at }: the last draw-in started
 
     // ---- drawing the new stretch -------------------------------------------
     //
@@ -444,6 +445,10 @@
     // the old tip is simply point prevCount-1 in the NEW model — which also
     // copes with the x-axis rescaling when a game reaches overtime.
     var REVEAL_MS = 1000;
+    // The gamecast can re-render twice in one tick (see gdRepaintPlays), which
+    // replaces the chart mid-draw. An attach this soon after one that started a
+    // draw, showing the same series, replays it on the new nodes.
+    var REPLAY_MS = 600;
 
     // The index the reveal starts from, or null for "draw it all at once": the
     // first paint of the page, or a series that didn't grow.
@@ -503,7 +508,10 @@
         var endFill = now ? now.getAttribute('fill') : null;
 
         var start = null;
+        var finished = false;
         function done() {
+            if (finished) return;
+            finished = true;
             for (var j = 0; j < inked.length; j++) inked[j].removeAttribute('clip-path');
             if (defs.parentNode) defs.parentNode.removeChild(defs);
             if (now) { now.setAttribute('cx', endX); now.setAttribute('cy', endY); now.setAttribute('fill', endFill); }
@@ -524,6 +532,9 @@
             if (k < 1) requestAnimationFrame(tick);
             else done();
         });
+        // rAF stops entirely in a hidden or occluded tab; without this the
+        // line would stay clipped at its old tip until the tab came back.
+        setTimeout(done, REVEAL_MS + 200);
     }
 
     function attach(root) {
@@ -621,6 +632,12 @@
         if (pinned != null && pinned < pts.length) show(pinned);
 
         var from = revealFrom(drawnCount, pts.length);
+        var now = Date.now();
+        if (from != null) {
+            lastReveal = { from: from, count: pts.length, at: now };
+        } else if (lastReveal && lastReveal.count === pts.length && now - lastReveal.at < REPLAY_MS) {
+            from = lastReveal.from;
+        }
         drawnCount = pts.length;
         if (from != null) reveal(svg, model, from);
     }
@@ -628,7 +645,7 @@
     // Drop the scrubber's pinned moment. A page load clears it by re-evaluating
     // this file; this is for callers that re-render a DIFFERENT game into the
     // same document, and for specs.
-    function reset() { state = null; pinned = null; drawnCount = null; }
+    function reset() { state = null; pinned = null; drawnCount = null; lastReveal = null; }
 
     return {
         reset: reset,

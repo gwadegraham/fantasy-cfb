@@ -414,7 +414,7 @@ function loadWeek(week, jumpToCurrent, prevGames) {
         renderConfOptions(data.conferences);
         renderLiveCount();
         render();
-        if (prevGames) markChanges(prevGames, sbState.games);
+        if (prevGames) markChangesSafely(prevGames, sbState.games);
         if (jumpToCurrent) scrollToCurrent();
         scheduleRefresh();
     }).catch(function (err) {
@@ -535,6 +535,18 @@ function markChanges(prevGames, nextGames) {
     });
 }
 
+// Motion is decoration. A throw in it must never reach the refresh loop: in
+// loadWeek's path it would show "Couldn't load the slate" and stop refreshing
+// for good, and in the patch path it would skip the cache sync below and replay
+// the same score every tick.
+function markChangesSafely(prevGames, nextGames) {
+    try {
+        markChanges(prevGames, nextGames);
+    } catch (err) {
+        console.error('Scoreboard motion failed:', err);
+    }
+}
+
 function refresh() {
     if (sbState.week == null) return Promise.resolve();
 
@@ -551,7 +563,7 @@ function refresh() {
         var before = sbState.games.slice();
         var missing = live.some(function (g) { return !patchCard(g); });
         if (missing || sbState.liveCount !== wasLive) return loadWeek(sbState.week, false, before);
-        markChanges(before, live);
+        markChangesSafely(before, live);
 
         // Keep the cached copy in step so a filter change doesn't repaint stale
         // scores from the last full load.

@@ -66,8 +66,14 @@ describe('freshPlays', () => {
         expect(lm.freshPlays(new Set(), plays.slice(0, 3))).toHaveLength(3);
     });
 
+    it('keeps a play\'s key when CFBD rewords its text, so it does not slide in twice', () => {
+        expect(lm.playKey(p('9:00', 'Smith pass to Jones'))).toBe(lm.playKey(p('9:00', 'Smith pass complete to Jones for 9 yds')));
+    });
+
     it('keys two different plays at the same clock apart', () => {
-        expect(lm.playKey(p('9:00', 'a'))).not.toBe(lm.playKey(p('9:00', 'b')));
+        const timeout = { period: 2, clock: '9:00', playType: 'Timeout' };
+        const rush = { period: 2, clock: '9:00', playType: 'Rush' };
+        expect(lm.playKey(timeout)).not.toBe(lm.playKey(rush));
     });
 });
 
@@ -83,6 +89,23 @@ describe('stampLabel', () => {
         [null, 'Score']
     ])('%s -> %s', (type, label) => {
         expect(lm.stampLabel(type)).toBe(label);
+    });
+
+    // The points can land on a row whose type says nothing about the score:
+    // the extra-point row, or the next kickoff.
+    it.each([
+        ['Kickoff', 6, 'Touchdown'],
+        ['Kickoff', 7, 'Touchdown'],
+        ['Kickoff', 3, 'Field Goal'],
+        ['Kickoff', 2, 'Two Points'],
+        ['Passing Touchdown', 7, 'Touchdown']
+    ])('%s worth %i -> %s', (type, points, label) => {
+        expect(lm.stampLabel(type, points)).toBe(label);
+    });
+
+    it('gives an extra point no stamp of its own', () => {
+        expect(lm.stampLabel('Extra Point Good', 1)).toBeNull();
+        expect(lm.stampLabel('Kickoff', 1)).toBeNull();
     });
 });
 
@@ -107,6 +130,21 @@ describe('DOM helpers', () => {
         jest.advanceTimersByTime(500);
         expect(el.textContent.trim()).toBe('21');
         expect(el.querySelector('i.ball')).not.toBeNull();
+    });
+
+    it('countTo still lands on the real score when animation frames never run (hidden tab)', () => {
+        const raf = window.requestAnimationFrame;
+        window.requestAnimationFrame = () => 0;   // a hidden tab: frames are suspended
+        try {
+            document.body.innerHTML = '<span class="s">21</span>';
+            const el = document.querySelector('.s');
+            lm.countTo(el, 14, 21, 100);
+            expect(el.textContent).toBe('14');
+            jest.advanceTimersByTime(300);
+            expect(el.textContent).toBe('21');
+        } finally {
+            window.requestAnimationFrame = raf;
+        }
     });
 
     it('pulse adds the class and clears it when its animation ends', () => {

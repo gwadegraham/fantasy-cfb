@@ -699,6 +699,22 @@ describe('drawing the new stretch', () => {
         expect(clipped(paint(3))).toHaveLength(0);
     });
 
+    // The gamecast can render twice in one tick, replacing the chart mid-draw.
+    it('replays the draw on a second paint moments later, but not on a later refresh', () => {
+        const now = jest.spyOn(Date, 'now');
+        try {
+            now.mockReturnValue(10000);
+            paint(2);
+            paint(3);
+            now.mockReturnValue(10150);                   // same tick, nodes replaced
+            expect(clipped(paint(3)).length).toBeGreaterThan(0);
+            now.mockReturnValue(20000);                   // the next 10s refresh
+            expect(clipped(paint(3))).toHaveLength(0);
+        } finally {
+            now.mockRestore();
+        }
+    });
+
     it('skips the draw under prefers-reduced-motion', () => {
         paint(2);
         reduce = true;

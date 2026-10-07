@@ -657,6 +657,12 @@
     from { opacity: 0; transform: translateX(8px); }
     to   { opacity: 1; transform: none; }
 }
+/* A last-second score and the final whistle in one tick: the owner's glow is
+   the louder news, so it keeps the card's edge. The label and caret above
+   still animate, since they're on the children. */
+.sb-card.sb-went-final.sb-flash-league {
+    animation: sb-flash-league 2000ms ease-out;
+}
 /* The loser's row dims into its final colour rather than switching to it. */
 .sb-card.sb-went-final .sb-side:not(.is-winner) {
     animation: sb-final-dim 900ms ease-out;

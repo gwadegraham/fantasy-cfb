@@ -52,11 +52,13 @@
     }
 
     // A play has no id in the shaped feed (modules/play-by-play.js), so it is
-    // keyed by when it happened and what it said. Two plays share a key only if
-    // they share a period, a clock AND their text — which is the same play.
+    // keyed by where it sits: drive, period, clock, type and the score after
+    // it. NOT by its text: CFBD rewrites play text after the fact (names,
+    // yardage), and a reworded play would slide in and stamp a second time.
+    // Two plays that collide here merely don't animate, which is harmless.
     function playKey(p) {
         if (!p) return '';
-        return [p.period, p.clock, p.playText || p.playType || ''].join('|');
+        return [p.driveIndex, p.period, p.clock, p.playType, p.awayScore, p.homeScore].join('|');
     }
 
     // Plays in `plays` whose key isn't in `seen`. `seen` null means this is the
@@ -76,16 +78,24 @@
         return out.length > (cap == null ? 6 : cap) ? [] : out;
     }
 
-    // The word for the stamp. CFBD's play types are long ("Passing Touchdown",
-    // "Field Goal Good", "Interception Return Touchdown"); the stamp wants the
-    // one word that matters. Order matters: a "Fumble Return Touchdown" is a
-    // touchdown, and so is a two-point try's parent play.
-    function stampLabel(playType) {
+    // The word for the stamp, or null for a score not worth one. CFBD's play
+    // types are long ("Passing Touchdown", "Interception Return Touchdown")
+    // and not always on the row whose score moved: the points can land on the
+    // extra-point row or the next kickoff. So `points` (from the score change
+    // itself) decides when the type doesn't say.
+    //
+    // An extra point gets no stamp. It follows a touchdown that already had
+    // one, often on a later fetch, and a second stamp for the kick is noise.
+    function stampLabel(playType, points) {
         var t = String(playType || '').toLowerCase();
         if (/touchdown/.test(t)) return 'Touchdown';
         if (/field goal/.test(t)) return 'Field Goal';
         if (/safety/.test(t)) return 'Safety';
+        if (points === 1) return null;
         if (/two.?point|2pt|conversion/.test(t)) return 'Two Points';
+        if (points >= 6) return 'Touchdown';
+        if (points === 3) return 'Field Goal';
+        if (points === 2) return 'Two Points';
         return 'Score';
     }
 
@@ -110,23 +120,33 @@
     }
 
     // Tick a score up from `from` to `to`. Short — a score is two or three
-    // steps, not a slot machine — and it always lands on the real number, so a
-    // tab that throttles rAF mid-count still ends correct.
+    // steps, not a slot machine. The real number is ALSO written by a timer:
+    // rAF stops entirely in a hidden or occluded tab, and the count starts by
+    // writing the OLD score, which would otherwise sit there until the tab
+    // came back. Timers are throttled when hidden, not stopped.
     function countTo(el, from, to, ms) {
         if (!el || reduced()) return;
         var node = numberNode(el, to);
         if (!node) return;
         var dur = ms || 600;
         var start = null;
+        var done = false;
+        function land() {
+            if (done) return;
+            done = true;
+            node.nodeValue = node.nodeValue.replace(/\d+/, String(to));
+        }
         node.nodeValue = node.nodeValue.replace(String(to), String(from));
         requestAnimationFrame(function tick(now) {
+            if (done) return;
             if (start == null) start = now;
             var t = Math.min((now - start) / dur, 1);
+            if (t >= 1) { land(); return; }
             var e = 1 - Math.pow(1 - t, 3);
-            var cur = t < 1 ? Math.round(from + (to - from) * e) : to;
-            node.nodeValue = node.nodeValue.replace(/\d+/, String(cur));
-            if (t < 1) requestAnimationFrame(tick);
+            node.nodeValue = node.nodeValue.replace(/\d+/, String(Math.round(from + (to - from) * e)));
+            requestAnimationFrame(tick);
         });
+        setTimeout(land, dur + 150);
     }
 
     // Restart a CSS animation class on an element, tinted with `color`. The

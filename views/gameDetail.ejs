@@ -247,11 +247,14 @@
                 if (data.status === 'budget') gdPlaysDone = true;
 
                 var fresh = gdMarkPlays();
-                gdRepaintPlays();
-                gdStampScore(fresh);
-                // Fresh for one paint only. A tab switch or the next tick
-                // repaints these rows, and they must not slide in again.
-                gdFresh = {};
+                try {
+                    gdRepaintPlays();
+                    gdStampScore(fresh);
+                } finally {
+                    // Fresh for one paint only. A tab switch or the next tick
+                    // repaints these rows, and they must not slide in again.
+                    gdFresh = {};
+                }
             } catch (err) {
                 // A drive chart that didn't load is not a broken page. The live
                 // loop will try again on its next tick; a final game won't,
@@ -1007,6 +1010,15 @@
         // render that brought nothing new animates nothing.
 
         var gdLastScore = null;      // { away, home } as last painted
+        var gdScoreAnim = null;      // { at, moves }: the last score animation started
+
+        // A second render() can follow the first within the same tick:
+        // gdRepaintPlays falls back to one whenever there is no field to
+        // update in place, which on some games is every tick. It replaces the
+        // nodes mid-animation, and since the score no longer differs from the
+        // last paint, nothing would play on the new ones and the score would
+        // just snap. A render this soon after one that animated replays it.
+        var GD_REPLAY_MS = 600;
 
         // The header score ticks up and glows in the scoring team's colour.
         function gdMarkScore(game, awayColor, homeColor) {
@@ -1017,11 +1029,22 @@
             if (!lm || !was) return;
             var cells = container.querySelectorAll('.gd-mu-score');
             if (cells.length < 2) return;
+
+            var moves = [];
             [['away', 0, awayColor], ['home', 1, homeColor]].forEach(function (s) {
                 var from = was[s[0]], to = now[s[0]];
                 if (typeof from !== 'number' || typeof to !== 'number' || to <= from) return;
-                lm.countTo(cells[s[1]], from, to, 700);
-                lm.pulse(cells[s[1]], 'gd-mu-scored', ensureBarContrast(s[2]));
+                moves.push({ cell: s[1], from: from, to: to, color: ensureBarContrast(s[2]) });
+            });
+            if (moves.length) {
+                gdScoreAnim = { at: Date.now(), moves: moves };
+            } else if (gdScoreAnim && Date.now() - gdScoreAnim.at < GD_REPLAY_MS
+                       && was.away === now.away && was.home === now.home) {
+                moves = gdScoreAnim.moves;
+            }
+            moves.forEach(function (m) {
+                lm.countTo(cells[m.cell], m.from, m.to, 700);
+                lm.pulse(cells[m.cell], 'gd-mu-scored', m.color);
             });
         }
 
@@ -1047,12 +1070,14 @@
                 if (gdPlays[i].scoring) { latest = gdPlays[i]; break; }
             }
             if (!latest || fresh.indexOf(lm.playKey(latest)) === -1) return;
+            var label = lm.stampLabel(latest.playType, latest.points);
+            if (!label) return;
             var who = latest.scoringTeamId != null ? latest.scoringTeamId : latest.teamId;
             var side = who === gdTeamCtx.home.id ? gdTeamCtx.home
                      : (who === gdTeamCtx.away.id ? gdTeamCtx.away : null);
             var host = container.querySelector('.gd-lf-section') || container.querySelector('.gd-header');
             var field = host && host.classList.contains('gd-lf-section');
-            lm.stamp(host, lm.stampLabel(latest.playType),
+            lm.stamp(host, label,
                 side ? ensureBarContrast(side.color) : null, field ? GD_BALL_MS : 0);
         }
 
