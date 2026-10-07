@@ -105,6 +105,20 @@ describe('build', () => {
         expect(up).toMatchObject({ final: false, us: null, them: null, points: null, quadrant: 1 });
     });
 
+    // Scoring pays an NCAA/NIT game on the tournament ladder and never as a
+    // quadrant win (isRegular in hoops-detectors). The page must not put it
+    // on the team sheet as if it were one.
+    test('a postseason game has no quadrant; a conference tournament game keeps one', async () => {
+        await HoopsGame.create([
+            game(10, 20, 1, 2, { seasonType: 'postseason', neutralSite: true, tournament: 'NCAA', gameNotes: "Men's Basketball Championship - 1st Round" }),
+            game(11, 19, 1, 4, { neutralSite: true, gameNotes: 'ACC Tournament - Final' })
+        ]);
+        const p = await teamPage.build(1, { season: SEASON });
+        const byId = Object.fromEntries(p.games.map(g => [g.id, g]));
+        expect(byId[10]).toMatchObject({ quadrant: null, postseason: true, tournament: 'NCAA' });
+        expect(byId[11]).toMatchObject({ quadrant: 1, postseason: false, tournament: null });   // #44 at a neutral site
+    });
+
     test('a tie or a missing score is not a result', async () => {
         await HoopsGame.create([
             game(10, 1, 1, 3, { homePoints: 70, awayPoints: 70 }),

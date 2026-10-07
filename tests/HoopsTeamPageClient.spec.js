@@ -40,7 +40,9 @@ function payload(o) {
     }, o || {});
 }
 
-async function render(body, status = 200) {
+async function render(body, status = 200, hash = '') {
+    // The tab rides in the hash, and a test that taps a tab leaves it there.
+    window.history.replaceState(null, '', hash ? '#' + hash : window.location.pathname);
     document.body.innerHTML = '<title data-league-title="Team">Team</title><main id="hoops-team" data-team-id="72"></main>';
     window.ccLeague = { paint: jest.fn() };
     global.fetch = jest.fn(() => Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) }));
@@ -104,13 +106,11 @@ test('no owner, no strip — and no point values, no "+N a win"', async () => {
 });
 
 test('tabs: the hash picks the tab, a tap changes it and the hash', async () => {
-    window.location.hash = 'stats';
-    await render(payload());
+    await render(payload(), 200, 'stats');
     expect(document.querySelector('.ht-tab.on').textContent).toBe('Stats');
     tab('schedule');
     expect(window.location.hash).toBe('#schedule');
     expect(document.querySelector('.ht-tab.on').textContent).toBe('Schedule');
-    window.location.hash = '';
 });
 
 test('the conference tab is named for the conference, and hidden without standings', async () => {
@@ -181,6 +181,20 @@ test('a result shows its banked points', async () => {
     const florida = Array.from(document.querySelectorAll('.ht-lg')).find(n => n.textContent.includes('Florida'));
     expect(florida.querySelector('.res').textContent).toBe('W 80–70');
     expect(florida.querySelector('.p').textContent).toBe('+5');
+});
+
+test('a postseason game is off the team sheet and off the table, and says its tournament', async () => {
+    const base = payload();
+    base.games.push(g(20, { final: false, us: null, them: null, points: null, quadrant: null, postseason: true,
+        tournament: 'NCAA', opponent: { id: 30, school: 'Gonzaga', rank: 9 } }));
+    await render(base);
+    expect(document.querySelector('.ht-tile[data-q="1"] .ht-tile-left').textContent).toBe('1 left');   // unchanged
+    expect(txt('.ht-own')).toContain('up to +6');                                                         // unchanged
+    expect(txt('.ht-qlist')).not.toContain('Gonzaga');
+    tab('schedule');
+    const row = Array.from(document.querySelectorAll('.ht-lg')).find(n => n.textContent.includes('Gonzaga'));
+    expect(row.querySelector('.ht-qt').textContent).toBe('NCAA');
+    expect(row.querySelector('.res').textContent).toBe('');
 });
 
 test('names the tab after the team and repaints the league chrome', async () => {

@@ -154,6 +154,7 @@ async function build(teamId, { season, league = null } = {}) {
         const home = Number(g.homeTeamId) === id;
         const oppId = Number(home ? g.awayTeamId : g.homeTeamId);
         const final = isFinal(g);
+        const postseason = String(g.seasonType || '').toLowerCase() === 'postseason';
         const wk = final || nowWeek === null ? Number(g.week) : nowWeek;
         const ranks = ranksByWeek.get(wk) || {};
         const oppRank = ranks[String(oppId)];
@@ -173,7 +174,14 @@ async function build(teamId, { season, league = null } = {}) {
                 logo: opp ? pickLogo(opp.logos) || null : null,
                 rank: Number.isFinite(oppRank) ? oppRank : null
             },
-            quadrant: quadrantFor(oppRank, venue),
+            // Postseason games (NCAA, NIT, the Crown) are not quadrant games:
+            // scoring pays them on the tournament ladder and only fires a
+            // quadrant win when the game is regular season (isRegular in
+            // modules/hoops-detectors.js). Conference tournaments are
+            // 'regular' to CBBD and do get a quadrant, exactly as scored.
+            quadrant: postseason ? null : quadrantFor(oppRank, venue),
+            postseason,
+            tournament: postseason ? (String(g.tournament || '').trim() || 'Postseason') : null,
             final,
             us: final ? Number(home ? g.homePoints : g.awayPoints) : null,
             them: final ? Number(home ? g.awayPoints : g.homePoints) : null,

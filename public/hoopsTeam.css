@@ -144,6 +144,7 @@
 .ht-lg .res { font-weight: 700; font-variant-numeric: tabular-nums; }
 .ht-lg.up .res { color: var(--cc-muted-2); font-weight: 500; font-size: 12px; }
 .ht-qt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; background: var(--cc-surface-3); }
+.ht-qt.post { font-size: 9px; letter-spacing: .3px; color: var(--cc-amber); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ht-qt.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
 .ht-lg .p { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .ht-lg .p.z { color: var(--cc-muted-2); font-weight: 500; }

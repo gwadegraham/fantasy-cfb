@@ -253,7 +253,8 @@
             + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '') + esc(g.opponent.school) + '</span>'
             + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</a>'
             + '<span class="res">' + res + '</span>'
-            + '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
+            + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
+                : '<span class="ht-qt post" title="Scored on the tournament ladder">' + esc(g.tournament || 'Post') + '</span>')
             + '<span class="p' + (g.points ? '' : ' z') + '">' + pts + '</span></div>';
     }
 
