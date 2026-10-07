@@ -266,12 +266,6 @@ async function restampSeason(season, seasonStart) {
     return res.modifiedCount || 0;
 }
 
-// Ingest a whole season's schedule. Safe to re-run — upserts by game id.
-//
-// Paged by date window, because /games caps at 3,000 records with no error and
-// no indication: a single call for 2025-26 returns exactly 3000 rows ending
-// 6 Jan, and the paged fetch returns 6,079 ending 15 Mar. More than half the
-// season, lost silently, on a call that looks entirely successful.
 // The basketball game page's data (#503). The only CBBD calls are the box
 // score's, on the first view of a final game (modules/hoops-box-score.js).
 //
@@ -299,6 +293,12 @@ router.get('/:id/page', async (req, res) => {
     }
 });
 
+// Ingest a whole season's schedule. Safe to re-run — upserts by game id.
+//
+// Paged by date window, because /games caps at 3,000 records with no error and
+// no indication: a single call for 2025-26 returns exactly 3000 rows ending
+// 6 Jan, and the paged fetch returns 6,079 ending 15 Mar. More than half the
+// season, lost silently, on a call that looks entirely successful.
 router.post('/:season/schedule', async (req, res) => {
     if (!/^\d{4}$/.test(req.params.season)) {
         return res.status(400).json({ message: 'Invalid season' });

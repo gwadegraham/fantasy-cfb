@@ -41,10 +41,15 @@ async function build(gameId, { league = null } = {}) {
     const final = isFinal(game);
     const postseason = String(game.seasonType || '').toLowerCase() === 'postseason';
 
+    // The week to rank against: the game's own once it is played; before
+    // that, the season's current week — the SAME rule the team page uses,
+    // so the two pages give an unplayed game the same quadrant.
+    const nowWeek = final ? null : await teamPage.currentWeek(yr);
+    const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
     const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, logos: 1, _id: 0 }).lean(),
-        Number.isFinite(Number(game.week)) ? teamPage.cachedRanks(yr, Number(game.week)) : {},
+        Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
         recordThrough(homeId, game),
         recordThrough(awayId, game),
         teamPage.ownership(league, yr, homeId),

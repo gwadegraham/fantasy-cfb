@@ -133,7 +133,15 @@ async function getBox(game, now = Date.now()) {
             }
             return { box: null };
         }
-        await HoopsBoxScore.updateOne({ gameId: box.gameId }, { $set: Object.assign({ fetchedAt: new Date() }, box) }, { upsert: true });
+        // CBBD can post a game's team line before its player lines (or a
+        // players window can miss). A stored box is never fetched again, so a
+        // box missing either side's players is shown but NOT stored while the
+        // game is recent — the retry window brings the players in later. Past
+        // MISSING_AFTER_MS, what there is is what there will be: store it.
+        const complete = box.home.players.length > 0 && box.away.players.length > 0;
+        if (complete || now - new Date(game.startDate).getTime() > MISSING_AFTER_MS) {
+            await HoopsBoxScore.updateOne({ gameId: box.gameId }, { $set: Object.assign({ fetchedAt: new Date(now) }, box) }, { upsert: true });
+        }
         return { box };
     } catch (err) {
         console.error(`hoops box score ${game.id}: ${err.message}`);

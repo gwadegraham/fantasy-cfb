@@ -154,6 +154,21 @@ describe('getBox', () => {
         expect(await HoopsBoxScore.findOne({ gameId: 500 }).lean()).toMatchObject({ missing: true });
     });
 
+    // CBBD can post the team line before the player lines; a stored box is
+    // never fetched again, so storing it then would lose the players for good.
+    test('a recent box missing player lines is shown but not stored; an old one is stored as is', async () => {
+        jest.spyOn(cbbd, 'cbbdGet').mockImplementation(async (path) => (path === '/games/teams'
+            ? { data: [teamRow(500, 1, 2, sideStats(75, [32, 43]), sideStats(60, [33, 27]))] }
+            : { data: [] }));
+        const recent = Object.assign({}, GAME, { startDate: new Date(NOW - 60 * 60 * 1000) });
+        expect((await boxScore.getBox(recent, NOW)).box.home.points).toBe(75);
+        expect(await HoopsBoxScore.countDocuments({})).toBe(0);
+        boxScore.clearRetryCache();
+        const old = Object.assign({}, GAME, { startDate: new Date(NOW - boxScore.MISSING_AFTER_MS - 1) });
+        await boxScore.getBox(old, NOW);
+        expect(await HoopsBoxScore.countDocuments({ gameId: 500, missing: false })).toBe(1);
+    });
+
     test('CBBD down: unavailable, not stored, and tried again later', async () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
         stubCbbd({ fail: true });
@@ -163,6 +178,37 @@ describe('getBox', () => {
 
     test('no game: no box', async () => {
         expect(await boxScore.getBox(null)).toEqual({ box: null });
+    });
+});
+
+describe('the team page and the game page agree on a game still to play', () => {
+    // Ranks are blended by week, so the week an unplayed game is rated
+    // against decides its quadrant. Both pages must use the SAME week — the
+    // season's latest played one — or they show the manager two answers.
+    test('both rate it against the season\'s current week', async () => {
+        const HoopsRating = require('../models/hoopsRating');
+        await HoopsTeam.create([
+            { id: 3, season: SEASON, school: 'Other A', preseason: { rank: 100 } },
+            { id: 4, season: SEASON, school: 'Other B', preseason: { rank: 101 } }
+        ]);
+        // Texas: #37 preseason, #300 by the week-5 live rating. Week 5 is
+        // mid-BLEND (hoops-ranks blendWeight), so ranks rated at week 5 and at
+        // week 12 (fully live, falling back to week 5's rows) differ — which is
+        // what makes the choice of week visible.
+        await HoopsRating.create([[1, 1], [2, 300], [3, 2], [4, 3]].map(([teamId, rank]) =>
+            ({ season: SEASON, week: 5, teamId, rank, source: 'cbbd-adjusted' })));
+        await HoopsGame.create([
+            Object.assign({}, GAME, { id: 701, week: 1, awayTeamId: 3, awayTeam: 'Other A', neutralSite: false }),     // Duke's last game: week 1
+            Object.assign({}, GAME, { id: 702, week: 5, homeTeamId: 3, awayTeamId: 4, neutralSite: false }),          // the season is at week 5
+            Object.assign({}, GAME, { id: 700, week: 12, status: 'scheduled', homePoints: null, awayPoints: null, neutralSite: false })
+        ]);
+        expect(await teamPage.currentWeek(SEASON)).toBe(5);
+        const fromTeam = (await teamPage.build(1, { season: SEASON })).games.find(g => g.id === 700);
+        const fromGame = (await gamePage.build(700));
+        expect(fromGame.home.quadrant).toBe(fromTeam.quadrant);
+        expect(fromGame.away.rank).toBe(fromTeam.opponent.rank);
+        // And it is the week-5 blend, not week 12's pure live #300 (Q4).
+        expect(fromTeam.opponent.rank).not.toBe(300);
     });
 });
 

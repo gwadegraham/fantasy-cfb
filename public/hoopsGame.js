@@ -161,7 +161,7 @@
                 if (!ps.length) return;
                 var names = shortNames(ps);
                 var top = ps.sort(function (a, b) { return (b[s[1]] || 0) - (a[s[1]] || 0); })[0];
-                h += '<div class="row"><span>' + esc(names[top.name]) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
+                h += '<div class="hg-ld-row"><span>' + esc(names[top.name]) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
             });
             h += '</div>';
         });

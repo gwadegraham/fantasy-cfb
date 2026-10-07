@@ -50,9 +50,11 @@
 .hg-lead { display: grid; gap: 8px; }
 .hg-ld { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); padding: 10px 12px; }
 .hg-ld .k { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); }
-.hg-ld .row { display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; }
-.hg-ld .row small { color: var(--cc-muted-2); font-size: 11px; }
-.hg-ld .row b { font-variant-numeric: tabular-nums; }
+/* Not .row: that is Bootstrap's grid row, whose negative side margins pushed
+   each line past the card's edges. */
+.hg-ld-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-top: 6px; }
+.hg-ld-row small { color: var(--cc-muted-2); font-size: 11px; }
+.hg-ld-row b { font-variant-numeric: tabular-nums; }
 
 .hg-seg { display: flex; gap: 6px; margin-bottom: 8px; }
 .hg-seg button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0;

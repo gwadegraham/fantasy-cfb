@@ -140,6 +140,13 @@ test('leaders: one per side per stat', async () => {
     expect(pts).toContain('I. Evans DUKE23');
 });
 
+// Bootstrap ships .row (negative side margins) and .lead (oversized text);
+// a bare class with either name pushed the leader lines outside their cards.
+test('nothing on the page uses a bare Bootstrap layout class', async () => {
+    await render(payload());
+    expect(document.querySelectorAll('#hoops-game .row, #hoops-game .lead, #hoops-game .card, #hoops-game .table')).toHaveLength(0);
+});
+
 test('box score: starters then bench, a side toggle, game high marked, colliding short names kept full', async () => {
     window.history.replaceState(null, '', '#box');
     document.body.innerHTML = '<main id="hoops-game" data-game-id="500"></main>';
