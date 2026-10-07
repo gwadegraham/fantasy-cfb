@@ -396,7 +396,11 @@ function sbUrl(week, live) {
 // arrivals at a slate nobody has looked at yet. A REFRESH that falls back to a
 // full reload must not pass it: yanking the page around under someone who is
 // reading a different part of the slate is exactly what this flag guards.
-function loadWeek(week, jumpToCurrent) {
+//
+// `prevGames` is passed only by a refresh that fell back to a full load: it is
+// the slate as it stood before, so the scores that moved in between can still
+// be marked. Every other caller is an arrival, and an arrival is not news.
+function loadWeek(week, jumpToCurrent, prevGames) {
     return sbApi(sbUrl(week, false)).then(function (data) {
         sbState.week = data.week;
         // The payload carries each week with its dates; the arrows only need the
@@ -410,6 +414,7 @@ function loadWeek(week, jumpToCurrent) {
         renderConfOptions(data.conferences);
         renderLiveCount();
         render();
+        if (prevGames) markChanges(prevGames, sbState.games);
         if (jumpToCurrent) scrollToCurrent();
         scheduleRefresh();
     }).catch(function (err) {
@@ -496,6 +501,40 @@ function patchCard(game) {
     return true;
 }
 
+// ---- live motion ------------------------------------------------------------
+//
+// A patched card used to change silently: 14 became 21 and nothing said so,
+// which on a page of forty cards meant nobody noticed. Now the score ticks up
+// and the card glows — in the owner's colour when it's a league team, since
+// "one of OURS just scored" is the thing this page is open for. A game going
+// final settles: the caret slides in and the card gets a brief green edge.
+// See public/live-motion.js for the rules (nothing animates on arrival).
+function markChanges(prevGames, nextGames) {
+    var lm = window.ccLiveMotion;
+    if (!lm) return;
+    var changes = lm.scoreChanges(prevGames, nextGames);
+    var byId = {};
+    nextGames.forEach(function (g) { byId[g.id] = g; });
+
+    changes.scored.forEach(function (c) {
+        var card = document.querySelector('[data-game="' + c.id + '"]');
+        if (!card) return;
+        var rows = card.querySelectorAll('.sb-side');
+        var row = rows[c.side === 'away' ? 0 : 1];
+        if (!row) return;
+        var owner = byId[c.id] && byId[c.id][c.side] && byId[c.id][c.side].owner;
+        var color = owner ? (owner.color || 'var(--cc-amber)') : 'var(--cc-muted-2)';
+        lm.countTo(row.querySelector('.sb-score'), c.from, c.to);
+        lm.pulse(row, 'sb-scored', color);
+        lm.pulse(card, owner ? 'sb-flash-league' : 'sb-flash', color);
+    });
+
+    changes.finals.forEach(function (id) {
+        var card = document.querySelector('[data-game="' + id + '"]');
+        if (card) lm.pulse(card, 'sb-went-final');
+    });
+}
+
 function refresh() {
     if (sbState.week == null) return Promise.resolve();
 
@@ -509,8 +548,10 @@ function refresh() {
         // and one that just went final drops out of the live response with its
         // card still showing a clock. Either way the slate's shape changed, so
         // take the full payload instead of patching.
+        var before = sbState.games.slice();
         var missing = live.some(function (g) { return !patchCard(g); });
-        if (missing || sbState.liveCount !== wasLive) return loadWeek(sbState.week, false);
+        if (missing || sbState.liveCount !== wasLive) return loadWeek(sbState.week, false, before);
+        markChanges(before, live);
 
         // Keep the cached copy in step so a filter change doesn't repaint stale
         // scores from the last full load.

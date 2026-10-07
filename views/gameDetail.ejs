@@ -10,6 +10,7 @@
     <script src="/pull-to-refresh.js"></script>
     <script src="/fit-names.js"></script>
     <script src="/wp-chart.js"></script>
+    <script src="/live-motion.js"></script>
     <link href="/gameDetail.css" rel="stylesheet">
     <link href="/loading.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -245,7 +246,12 @@
                 // rolls over (or after the floor is lowered) starts again.
                 if (data.status === 'budget') gdPlaysDone = true;
 
+                var fresh = gdMarkPlays();
                 gdRepaintPlays();
+                gdStampScore(fresh);
+                // Fresh for one paint only. A tab switch or the next tick
+                // repaints these rows, and they must not slide in again.
+                gdFresh = {};
             } catch (err) {
                 // A drive chart that didn't load is not a broken page. The live
                 // loop will try again on its next tick; a final game won't,
@@ -918,6 +924,7 @@
             if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
+            gdMarkScore(game, awayColor, homeColor);
 
             // Season Leaders names get whatever width is left after the stat
             // columns; shorten only the ones that would clip. Shared with the
@@ -990,6 +997,64 @@
         var gdPlaysLive = false;     // is the game in progress? decides feed order
         var gdSituation = null;      // down/distance/possession, for the field
         var gdTeamCtx = null;        // last render's per-side context, for repaints
+        var gdSeenPlays = null;      // keys of every play shown so far; null until the first fetch
+        var gdFresh = {};            // keys that arrived on THIS fetch — they slide in
+
+        // ---- live motion (public/live-motion.js) ---------------------------
+        //
+        // The page re-renders wholesale every tick, so each of these compares
+        // against what the LAST render showed rather than reading the DOM. A
+        // render that brought nothing new animates nothing.
+
+        var gdLastScore = null;      // { away, home } as last painted
+
+        // The header score ticks up and glows in the scoring team's colour.
+        function gdMarkScore(game, awayColor, homeColor) {
+            var lm = window.ccLiveMotion;
+            var now = { away: game.awayPoints, home: game.homePoints };
+            var was = gdLastScore;
+            gdLastScore = now;
+            if (!lm || !was) return;
+            var cells = container.querySelectorAll('.gd-mu-score');
+            if (cells.length < 2) return;
+            [['away', 0, awayColor], ['home', 1, homeColor]].forEach(function (s) {
+                var from = was[s[0]], to = now[s[0]];
+                if (typeof from !== 'number' || typeof to !== 'number' || to <= from) return;
+                lm.countTo(cells[s[1]], from, to, 700);
+                lm.pulse(cells[s[1]], 'gd-mu-scored', ensureBarContrast(s[2]));
+            });
+        }
+
+        // After a fetch: which plays are new, and if the newest of them is a
+        // score, stamp it over the field. The stamp waits for the ball — the
+        // field animates the same play first, and a stamp landing mid-flight
+        // gives the result away before the throw does.
+        function gdMarkPlays() {
+            var lm = window.ccLiveMotion;
+            if (!lm) return;
+            var fresh = lm.freshPlays(gdSeenPlays, gdPlays);
+            gdSeenPlays = new Set(gdPlays.map(lm.playKey));
+            gdFresh = {};
+            fresh.forEach(function (k) { gdFresh[k] = true; });
+            return fresh;
+        }
+
+        function gdStampScore(fresh) {
+            var lm = window.ccLiveMotion;
+            if (!lm || !fresh || !fresh.length || !gdTeamCtx) return;
+            var latest = null;
+            for (var i = gdPlays.length - 1; i >= 0; i--) {
+                if (gdPlays[i].scoring) { latest = gdPlays[i]; break; }
+            }
+            if (!latest || fresh.indexOf(lm.playKey(latest)) === -1) return;
+            var who = latest.scoringTeamId != null ? latest.scoringTeamId : latest.teamId;
+            var side = who === gdTeamCtx.home.id ? gdTeamCtx.home
+                     : (who === gdTeamCtx.away.id ? gdTeamCtx.away : null);
+            var host = container.querySelector('.gd-lf-section') || container.querySelector('.gd-header');
+            var field = host && host.classList.contains('gd-lf-section');
+            lm.stamp(host, lm.stampLabel(latest.playType),
+                side ? ensureBarContrast(side.color) : null, field ? GD_BALL_MS : 0);
+        }
 
         function gdPlayTabs() {
             var tabs = [['scoring', 'Scoring Plays'], ['all', 'All Plays']];
@@ -1001,6 +1066,10 @@
                      + ' data-pbp-tab="' + tabs[i][0] + '">' + tabs[i][1] + '</button>';
             }
             return html + '</div>';
+        }
+
+        function gdNewCls(play) {
+            return window.ccLiveMotion && gdFresh[ccLiveMotion.playKey(play)] ? ' gd-pbp-new' : '';
         }
 
         // One play card. A scoring play gets the full treatment from the
@@ -1042,7 +1111,7 @@
                     badge = '<span class="gd-pbp-badge gd-pbp-badge-' + play.outcome + '">'
                           + esc(play.outcomeLabel || '') + '</span>';
                 }
-                return '<div class="gd-pbp-row">'
+                return '<div class="gd-pbp-row' + gdNewCls(play) + '">'
                     + '<div class="gd-pbp-row-meta">' + logo
                     + '<span class="gd-pbp-clock">' + esc(clockStr) + '</span>'
                     + (situation ? '<span class="gd-pbp-situation">' + esc(situation) + '</span>' : '')
@@ -1056,7 +1125,7 @@
                     + '</div>';
             }
 
-            return '<div class="gd-pbp-card">'
+            return '<div class="gd-pbp-card' + gdNewCls(play) + '">'
                 + '<div class="gd-pbp-card-top">'
                 + logo
                 + '<div class="gd-pbp-card-head">'

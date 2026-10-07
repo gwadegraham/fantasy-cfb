@@ -637,3 +637,71 @@ describe('coverage note', () => {
         expect(model.coverage.periods).toBe(4);
     });
 });
+
+// The newly-sampled stretch of the line is drawn in rather than appearing,
+// with the "now" dot riding its tip. First paint draws everything at once.
+describe('drawing the new stretch', () => {
+    const ctx = { homeTeam: 'LSU', awayTeam: 'Alabama', homeAbbr: 'LSU', awayAbbr: 'BAMA' };
+    const snaps = [
+        snap(1, '13:00', 0.58),
+        snap(2, '9:00', 0.44),
+        snap(3, '6:00', 0.61),
+        snap(4, '3:00', 0.81)
+    ];
+    let reduce;
+
+    beforeEach(() => {
+        reduce = false;
+        window.matchMedia = () => ({ matches: reduce });
+    });
+    afterEach(() => {
+        document.body.innerHTML = '';
+        delete window.matchMedia;
+    });
+
+    function paint(n) {
+        document.body.innerHTML = wp.render(game(snaps.slice(0, n)), ctx);
+        wp.attach(document);
+        return [...document.querySelectorAll('.gd-wp-line')];
+    }
+    const clipped = (lines) => lines.filter(l => l.getAttribute('clip-path'));
+
+    it('revealFrom starts at the old tip, and only when the series grew', () => {
+        expect(wp.revealFrom(null, 5)).toBeNull();   // first paint
+        expect(wp.revealFrom(0, 5)).toBeNull();
+        expect(wp.revealFrom(5, 5)).toBeNull();      // nothing new
+        expect(wp.revealFrom(6, 5)).toBeNull();      // shrank: a different series
+        expect(wp.revealFrom(4, 6)).toBe(3);
+    });
+
+    it('yAtX interpolates along the line and clamps at the ends', () => {
+        const pts = [{ x: 0, y: 10 }, { x: 10, y: 30 }, { x: 20, y: 30 }];
+        expect(wp.yAtX(pts, -5)).toBe(10);
+        expect(wp.yAtX(pts, 5)).toBe(20);
+        expect(wp.yAtX(pts, 15)).toBe(30);
+        expect(wp.yAtX(pts, 99)).toBe(30);
+    });
+
+    it('draws the whole line at once on first paint', () => {
+        expect(clipped(paint(3))).toHaveLength(0);
+    });
+
+    it('clips the line to the old tip when a sample is added', () => {
+        paint(2);
+        const lines = paint(3);
+        expect(lines.length).toBeGreaterThan(0);
+        expect(clipped(lines)).toHaveLength(lines.length);
+        expect(document.querySelector('#gd-wp-reveal rect')).not.toBeNull();
+    });
+
+    it('does not re-draw on a refresh that added nothing', () => {
+        paint(3);
+        expect(clipped(paint(3))).toHaveLength(0);
+    });
+
+    it('skips the draw under prefers-reduced-motion', () => {
+        paint(2);
+        reduce = true;
+        expect(clipped(paint(3))).toHaveLength(0);
+    });
+});
