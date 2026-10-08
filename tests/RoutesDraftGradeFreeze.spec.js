@@ -158,11 +158,29 @@ describe('GET /draft/grades — a basketball league', () => {
     });
     afterEach(() => seasons._reset());
 
+    const visibility = require('../modules/hoops-visibility');
+    afterEach(() => jest.restoreAllMocks());
+
     it('returns no managers and says it is basketball, even with a finished draft', async () => {
+        jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(true);
         await Draft.create({ league: 'hoops-league', season: 2027, status: 'complete', picks: [{ round: 1, overall: 1, userId: new (require('mongoose').Types.ObjectId)(), team: { id: 150, school: 'Duke' } }] });
         const res = await request(app).get('/draft/grades/hoops-league/2027');
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ league: 'hoops-league', season: 2027, managers: [], sport: 'basketball' });
+    });
+
+    // The route is open to any signed-in member, so `sport: 'basketball'`
+    // would tell a football manager the league exists.
+    // The route is open to any signed-in member. Anything that differs from
+    // the answer for a league code that does not exist — a `sport` field, a
+    // 404 — tells a football manager the league is real.
+    it('someone not in on basketball gets exactly what a nonexistent league gets', async () => {
+        jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(false);
+        const hidden = await request(app).get('/draft/grades/hoops-league/2027');
+        const missing = await request(app).get('/draft/grades/no-such-league/2027');
+        expect(hidden.status).toBe(missing.status);
+        expect(hidden.body).toEqual(Object.assign({}, missing.body, { league: 'hoops-league' }));
+        expect(hidden.body.sport).toBeUndefined();
     });
 
     it('a football league is unaffected', async () => {

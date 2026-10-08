@@ -20,6 +20,8 @@ const { buildSnapshotTeams, teamsByIdFromSnapshot } = require('../modules/market
 const { canManageLeague } = require('../modules/league-access');
 const { sanitizeCallUrl } = require('../modules/draft-call-link');
 const { pickLogo } = require('../public/logo.js');
+// A namespace, so a test can stand in for the viewer.
+const hoopsVisibility = require('../modules/hoops-visibility');
 
 // Post-draft grades for a league + season — immediate preseason feedback. Each
 // roster is projected to EXPECTED FANTASY POINTS under that league's own scoring
@@ -34,6 +36,14 @@ router.get('/grades/:league/:season', async (req, res) => {
         // football one that looks authoritative (#482). `sport` lets the
         // draft room hide the panel instead of saying "no grades".
         if (sportForLeague(league) === 'basketball') {
+            // Only to someone who may know basketball exists. This route is
+            // open to every signed-in member, so anyone else gets EXACTLY what
+            // a league code that does not exist gets (the no-draft answer
+            // below). Not a 404: that differs from an unknown code too, and
+            // any difference confirms the league is real.
+            if (!(await hoopsVisibility.seesBasketball(req))) {
+                return res.json({ league, season, managers: [] });
+            }
             return res.json({ league, season, managers: [], sport: 'basketball' });
         }
         const draft = await Draft.findOne({ league, season }).lean();
