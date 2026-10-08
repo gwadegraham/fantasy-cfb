@@ -151,7 +151,7 @@ test('stats imported: exactly the four factors, named and explained, with the ed
     expect(rows[1].textContent).toContain('15.0');                                  // turnovers per 100, not 0.15
     expect(rows[1].querySelectorAll('span')[0].className).toBe('edge');            // fewer turnovers is better
     expect(rows[2].querySelectorAll('span')[1].className).toBe('edge');            // they out-rebounded us
-    expect(txt('.ht-style')).toContain('possessions a game');
+    expect(txt('.ht-style')).toContain('possessions per game');
     const names = Array.from(document.querySelectorAll('.ht-rot tbody tr .full')).map(n => n.textContent);
     expect(names).toEqual(['Big Minutes Few Games', 'Star <b>', 'Bench Guy']);    // by minutes A GAME; DNP dropped; escaped
     expect(document.querySelector('.ht-rot tbody tr .short').textContent).toBe('B. Minutes Few Games');
@@ -294,7 +294,7 @@ describe('Next up (#506)', () => {
         await render(p);
         expect(document.querySelector('.ht-next')).toBeNull();
     });
-    test('only on the Résumé tab', async () => {
+    test('only on the Resume tab', async () => {
         await render(payload(), 200, 'schedule');
         expect(document.querySelector('.ht-next')).toBeNull();
     });
@@ -368,5 +368,10 @@ test('Next up keeps a game that tipped an hour ago: it is being played', async (
     p.games[3].startDate = new Date(Date.now() - 3600e3).toISOString();
     await render(p);
     expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
+});
+
+test('labels: "Resume" without accents, and "per game" throughout', async () => {
+    await render(payload());
+    expect(document.querySelector('.sp-tab').textContent).toBe('Resume');
 });
 

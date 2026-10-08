@@ -284,8 +284,8 @@
             ['Defense', A.preseason && A.preseason.adjDE, H.preseason && H.preseason.adjDE, 'low', function (v) { return fixed(v, 1); }]
         ];
         if (A.stats && H.stats) {
-            rows.push(['Points a game', A.stats.ppg, H.stats.ppg, 'high', function (v) { return fixed(v, 1); }]);
-            rows.push(['Allowed a game', A.stats.oppPpg, H.stats.oppPpg, 'low', function (v) { return fixed(v, 1); }]);
+            rows.push(['Points per game', A.stats.ppg, H.stats.ppg, 'high', function (v) { return fixed(v, 1); }]);
+            rows.push(['Allowed per game', A.stats.oppPpg, H.stats.oppPpg, 'low', function (v) { return fixed(v, 1); }]);
             rows.push(['Pace', A.stats.pace, H.stats.pace, null, function (v) { return fixed(v, 1); }]);
             rows.push(['Shooting (eFG%)', A.stats.efgPct, H.stats.efgPct, 'high', function (v) { return fixed(v, 1); }]);
             rows.push(['Turnovers / 100', A.stats.tovPct, H.stats.tovPct, 'low', function (v) { return fixed(v, 1); }]);
@@ -331,7 +331,7 @@
         };
         var a = col(d.away, d.preview.away), h = col(d.home, d.preview.home);
         if (!a && !h) return '';
-        return '<h2 class="sp-h">Key players<small>Points a game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
+        return '<h2 class="sp-h">Key players<small>Points per game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
     }
 
     function meetings(d) {

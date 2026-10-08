@@ -170,7 +170,7 @@
         var t = s.team || {}, o = s.opponent || {};
         var chip = function (n, l) { return '<div class="ht-style-c"><b>' + n + '</b><small>' + l + '</small></div>'; };
         return '<div class="ht-style">'
-            + chip(fixed(s.pace, 1), 'possessions a game')
+            + chip(fixed(s.pace, 1), 'possessions per game')
             + chip(fixed(t.rating, 1), 'scored per 100')
             + chip(fixed(o.rating, 1), 'allowed per 100')
             + chip(t.threeRate != null ? fixed(t.threeRate, 0) + '%' : '—', 'of shots are threes')
@@ -210,7 +210,7 @@
         }
         return '<h2 class="sp-h">Style<small>' + esc(s.games) + ' games</small></h2>' + style(s)
             + '<h2 class="sp-h">Four factors<small>The four things that decide games</small></h2><div class="sp-card">' + fourFactors(s) + '</div>'
-            + '<h2 class="sp-h">Rotation<small>Top nine by minutes a game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
+            + '<h2 class="sp-h">Rotation<small>Top nine by minutes per game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
     }
 
     // The next game, one tap from its preview: when, where, who, and what a
@@ -340,7 +340,7 @@
     }
 
     function tabs(d) {
-        var label = { resume: 'Résumé', schedule: 'Schedule', stats: 'Stats', conference: d.team.conference || 'Conference' };
+        var label = { resume: 'Resume', schedule: 'Schedule', stats: 'Stats', conference: d.team.conference || 'Conference' };
         var list = TABS.filter(function (t) { return t !== 'conference' || (d.standings && d.standings.length && d.team.conference); });
         return kit.tabs(list.map(function (t) { return [t, label[t]]; }), state.tab);
     }
@@ -397,7 +397,7 @@
             state.tab = tab.getAttribute('data-tab');
             if (window.history && window.history.replaceState) window.history.replaceState(null, '', '#' + state.tab);
             paintPanel();
-            // From the peek at the bottom of the Résumé, the table would
+            // From the peek at the bottom of the Resume, the table would
             // otherwise open scrolled to wherever the peek was.
             if (tab.classList.contains('ht-peek-more')) toPanelTop();
             return;

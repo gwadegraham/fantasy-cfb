@@ -394,3 +394,12 @@ test('a stale listing (#498) says so and links to the played game, with no previ
     expect(txt('.hg-meta')).toContain('Rescheduled');
 });
 
+test('the tale of the tape says "per game", not "a game"', async () => {
+    const p = upcoming();
+    p.preview.home.stats = p.preview.away.stats = { games: 5, ppg: 80, oppPpg: 70, pace: 68, efgPct: 50, tovPct: 15, orbPct: 30, ftRate: 35 };
+    await render(p);
+    expect(txt('.sp-vs .mid')).toContain('Points per game');
+    expect(txt('.sp-vs .mid')).toContain('Allowed per game');
+    expect(txt('.sp-vs .mid')).not.toMatch(/a game/);
+});
+
