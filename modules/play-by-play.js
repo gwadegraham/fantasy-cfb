@@ -73,6 +73,109 @@ function classifyScore(play, prev) {
     return { side: dh > 0 ? 'home' : 'away', points };
 }
 
+// ---- moving a misfiled score to the play that made it ----------------------
+//
+// The arithmetic above decides WHETHER points were scored. It cannot decide
+// WHICH row scored them, because CFBD regularly files a believable score on the
+// wrong row. Measured across the 25 games stored in the dev database (8 Oct
+// 2026): 13 of 251 scoring rows were plays that don't describe a score — a
+// fumble out of bounds, a 1st-down catch, a sack, a kickoff. Three shapes
+// recur, all real rows from that measurement:
+//
+//   early, reverted   Kentucky at South Carolina (401856709): the fumble on row
+//                     32 carries SC's 14, row 33 drops back to 7, and the
+//                     Rushing Touchdown on row 34 reaches 14 — classified
+//                     'same', so the touchdown never showed as a score. The
+//                     gap runs to 14 rows (Miami (OH) at Cincinnati).
+//   early, adjacent   Miami (OH) at Pittsburgh: a 22-yard catch carries 59, and
+//                     the touchdown pass on the very next row carries 59 too.
+//   late              South Florida at Army: the touchdown row carries a
+//                     corrupt 14-18 and is rejected, and its 7 points land on
+//                     the kickoff after it.
+//
+// The fix moves the credit, never the arithmetic: the same points, for the same
+// side, at the same running total — just on the row whose own words say it
+// scored. So it can relocate a score but cannot create or delete one.
+//
+// What a row says it scored, read from CFBD's own words. The scoring detection
+// stays score-based (see above); this is only consulted to choose between rows
+// that already agree on the total, so a playType CFBD invents tomorrow just
+// means the credit stays where it was.
+//
+// playType is trusted first because it is the cleanest field. playText is the
+// fallback for scores CFBD types as the play that preceded them ('Pass
+// Reception … TOUCHDOWN'), and skips text that mentions a score that did not
+// count: 'TOUCHDOWN nullified by penalty' on a 'Penalty' row, or a replay
+// reversal that quotes the '(Original Play: … TOUCHDOWN)'. Returns the range
+// of points that kind of score can be worth, or null.
+const SCORE_KINDS = {
+    touchdown: { min: 6, max: 8 },
+    fieldGoal: { min: 3, max: 3 },
+    safety: { min: 2, max: 2 }
+};
+function describedScore(play) {
+    if (!play) return null;
+    const type = String(play.playType || '');
+    if (/touchdown/i.test(type)) return SCORE_KINDS.touchdown;
+    if (/field goal good/i.test(type)) return SCORE_KINDS.fieldGoal;
+    if (/safety/i.test(type)) return SCORE_KINDS.safety;
+    const text = String(play.playText || '');
+    if (/nullified|NO PLAY|OVERTURNED/i.test(text)) return null;
+    if (/\bTOUCHDOWN\b/.test(text)) return SCORE_KINDS.touchdown;
+    if (/field goal attempt from \d+ y(?:ar)?ds GOOD/i.test(text)) return SCORE_KINDS.fieldGoal;
+    if (/\bSAFETY\b/.test(text)) return SCORE_KINDS.safety;
+    return null;
+}
+
+// Whether a row's words account for these points: a touchdown can't be the
+// 3-point score, nor a field goal the 7.
+function describesPoints(play, points) {
+    const kind = describedScore(play);
+    return !!kind && points >= kind.min && points <= kind.max;
+}
+
+// How far past a reverted row to look for the play that reaches the same total.
+// The longest gap measured was 14 rows; the search also stops at the first row
+// that goes past the total, so this only bounds a feed that never catches up.
+const MISFILED_SCORE_LOOKAHEAD = 20;
+
+// Find the row that should carry the score CFBD filed on rows[i], or -1 to
+// leave it there. `classes` is each row's classifyScore result. Only called for
+// a scoring row whose own words don't describe the score.
+function misfiledScoreTarget(rows, classes, i) {
+    const r = rows[i];
+    // No `!scoring` check is needed: every candidate below is either 'invalid'
+    // or at exactly this total, i.e. 'same', so none can already be scoring.
+    const accounts = j => describesPoints(rows[j], r.points);
+    const equal = j => rows[j].homeScore === r.homeScore && rows[j].awayScore === r.awayScore;
+
+    // Late: the row before says it scored, but carried a corrupt score and was
+    // rejected, so its points surfaced here instead.
+    if (i > 0 && classes[i - 1] === 'invalid' && accounts(i - 1)) return i - 1;
+
+    const next = rows[i + 1];
+    if (!next || next.homeScore == null || next.awayScore == null) return -1;
+
+    // Early, adjacent: the very next row says it scored, at this same total.
+    if (equal(i + 1) && accounts(i + 1)) return i + 1;
+
+    // Early, reverted: the next row drops back below this total — CFBD's own
+    // admission that the score was not real yet — and a later row that says it
+    // scored reaches the same total. Rows between may revert or repeat the
+    // total; one that goes past it means something else scored, and the search
+    // ends there.
+    if (next.homeScore < r.homeScore || next.awayScore < r.awayScore) {
+        const end = Math.min(rows.length - 1, i + MISFILED_SCORE_LOOKAHEAD);
+        for (let j = i + 1; j <= end; j++) {
+            // A row with no score compares false on both tests and is passed over.
+            const row = rows[j];
+            if (row.homeScore > r.homeScore || row.awayScore > r.awayScore) return -1;
+            if (equal(j) && accounts(j)) return j;
+        }
+    }
+    return -1;
+}
+
 function isScoringPlay(play, prev) {
     const c = classifyScore(play, prev);
     return c !== 'unknown' && c !== 'same' && c !== 'invalid';
@@ -216,12 +319,18 @@ function buildPlayByPlay(payload) {
     const drives = (payload && payload.drives) || [];
     const sides = sideTeamIds(payload);
     const out = [];
+    // Kept beside `out` for the misfiled-score pass below, which needs each
+    // row's classification and drive but should not leak them to the client.
+    const classes = [];
+    const driveOf = [];
     let prev = null;
 
     drives.forEach((drive, driveIndex) => {
         const plays = drive && drive.plays ? drive.plays : [];
         plays.forEach((play, playIndex) => {
             const change = classifyScore(play, prev);
+            classes.push(change);
+            driveOf.push({ drive, isLastOfDrive: playIndex === plays.length - 1 });
             const scoring = change !== 'unknown' && change !== 'same' && change !== 'invalid';
             const isLastOfDrive = playIndex === plays.length - 1;
 
@@ -267,6 +376,31 @@ function buildPlayByPlay(payload) {
             // second phantom scoring play on the row after it.
             if (change === 'same' || scoring) prev = play;
         });
+    });
+
+    // Move each misfiled score onto the play that made it (see
+    // misfiledScoreTarget). After the loop rather than inside it because the
+    // right row is often AFTER the one CFBD stamped. The running baseline is
+    // untouched: the total was right, only the row was wrong.
+    out.forEach((row, i) => {
+        if (!row.scoring || describesPoints(row, row.points)) return;
+        const j = misfiledScoreTarget(out, classes, i);
+        if (j < 0) return;
+        const target = out[j];
+        target.scoring = true;
+        target.scoringSide = row.scoringSide;
+        target.scoringTeamId = row.scoringTeamId;
+        target.points = row.points;
+        target.driveSummary = driveOf[j].isLastOfDrive ? driveSummary(driveOf[j].drive) : null;
+        // A late target was rejected for carrying a corrupt score, so the card
+        // would print that corrupt score. Give it the total it actually made.
+        target.homeScore = row.homeScore;
+        target.awayScore = row.awayScore;
+        row.scoring = false;
+        row.scoringSide = null;
+        row.scoringTeamId = null;
+        row.points = null;
+        row.driveSummary = null;
     });
 
     return out;
@@ -382,7 +516,7 @@ function scoringPlays(plays) {
 
 module.exports = {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
-    isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
+    isScoringPlay, classifyScore, describedScore, sideTeamIds, periodLabel, driveSummary,
     cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
     playResult, playResultLabel,
     MAX_POINTS_ON_ONE_PLAY, FORMATION_PREFIXES
