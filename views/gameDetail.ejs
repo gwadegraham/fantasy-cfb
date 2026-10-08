@@ -10,6 +10,7 @@
     <script src="/pull-to-refresh.js"></script>
     <script src="/fit-names.js"></script>
     <script src="/wp-chart.js"></script>
+    <script src="/live-motion.js"></script>
     <link href="/gameDetail.css" rel="stylesheet">
     <link href="/loading.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -245,7 +246,15 @@
                 // rolls over (or after the floor is lowered) starts again.
                 if (data.status === 'budget') gdPlaysDone = true;
 
-                gdRepaintPlays();
+                var fresh = gdMarkPlays();
+                try {
+                    gdRepaintPlays();
+                    gdStampScore(fresh);
+                } finally {
+                    // Fresh for one paint only. A tab switch or the next tick
+                    // repaints these rows, and they must not slide in again.
+                    gdFresh = {};
+                }
             } catch (err) {
                 // A drive chart that didn't load is not a broken page. The live
                 // loop will try again on its next tick; a final game won't,
@@ -918,6 +927,14 @@
             if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
+            // Motion is decoration. A throw here would skip the chart wiring
+            // and the plays fetch below, and on first load show "Could not
+            // load game", so it is contained, as the scoreboard's is.
+            try {
+                gdMarkScore(game, awayColor, homeColor);
+            } catch (err) {
+                console.error('Score motion failed:', err);
+            }
 
             // Season Leaders names get whatever width is left after the stat
             // columns; shorten only the ones that would clip. Shared with the
@@ -990,6 +1007,84 @@
         var gdPlaysLive = false;     // is the game in progress? decides feed order
         var gdSituation = null;      // down/distance/possession, for the field
         var gdTeamCtx = null;        // last render's per-side context, for repaints
+        var gdSeenPlays = null;      // keys of every play shown so far; null until the first fetch
+        var gdFresh = {};            // keys that arrived on THIS fetch — they slide in
+
+        // ---- live motion (public/live-motion.js) ---------------------------
+        //
+        // The page re-renders wholesale every tick, so each of these compares
+        // against what the LAST render showed rather than reading the DOM. A
+        // render that brought nothing new animates nothing.
+
+        var gdLastScore = null;      // { away, home } as last painted
+        var gdScoreAnim = null;      // { at, moves }: the last score animation started
+
+        // A second render() can follow the first within the same tick:
+        // gdRepaintPlays falls back to one whenever there is no field to
+        // update in place, which on some games is every tick. It replaces the
+        // nodes mid-animation, and since the score no longer differs from the
+        // last paint, nothing would play on the new ones and the score would
+        // just snap. A render this soon after one that animated replays it.
+        var GD_REPLAY_MS = 600;
+
+        // The header score ticks up and glows in the scoring team's colour.
+        function gdMarkScore(game, awayColor, homeColor) {
+            var lm = window.ccLiveMotion;
+            var now = { away: game.awayPoints, home: game.homePoints };
+            var was = gdLastScore;
+            gdLastScore = now;
+            if (!lm || !was) return;
+            var cells = container.querySelectorAll('.gd-mu-score');
+            if (cells.length < 2) return;
+
+            var moves = [];
+            [['away', 0, awayColor], ['home', 1, homeColor]].forEach(function (s) {
+                var from = was[s[0]], to = now[s[0]];
+                if (typeof from !== 'number' || typeof to !== 'number' || to <= from) return;
+                moves.push({ cell: s[1], from: from, to: to, color: ensureBarContrast(s[2]) });
+            });
+            if (moves.length) {
+                gdScoreAnim = { at: Date.now(), moves: moves };
+            } else if (gdScoreAnim && Date.now() - gdScoreAnim.at < GD_REPLAY_MS
+                       && was.away === now.away && was.home === now.home) {
+                moves = gdScoreAnim.moves;
+            }
+            moves.forEach(function (m) {
+                lm.countTo(cells[m.cell], m.from, m.to, 700);
+                lm.pulse(cells[m.cell], 'gd-mu-scored', m.color);
+            });
+        }
+
+        // After a fetch: which plays are new, and if the newest of them is a
+        // score, stamp it over the field. The stamp waits for the ball — the
+        // field animates the same play first, and a stamp landing mid-flight
+        // gives the result away before the throw does.
+        function gdMarkPlays() {
+            var lm = window.ccLiveMotion;
+            if (!lm) return;
+            var fresh = lm.freshPlays(gdSeenPlays, gdPlays);
+            gdSeenPlays = new Set(gdPlays.map(lm.playKey));
+            gdFresh = {};
+            fresh.forEach(function (k) { gdFresh[k] = true; });
+            return fresh;
+        }
+
+        var gdLastStamp = null;      // { side, label, score }: see pickStamp
+
+        // Over the field only. Without one (the plays feed paused, or the
+        // tick a game goes final) the header would be the only host, and a
+        // stamp there sits on top of the score that is counting up beneath it.
+        function gdStampScore(fresh) {
+            var lm = window.ccLiveMotion;
+            if (!lm || !fresh || !fresh.length || !gdTeamCtx) return;
+            var host = container.querySelector('.gd-lf-section');
+            if (!host) return;
+            var pick = lm.pickStamp(gdPlays, fresh, gdLastStamp);
+            if (!pick) return;
+            gdLastStamp = { side: pick.side, label: pick.label, score: pick.score };
+            var team = pick.side ? gdTeamCtx[pick.side] : null;
+            lm.stamp(host, pick.label, team ? ensureBarContrast(team.color) : null, GD_BALL_MS);
+        }
 
         function gdPlayTabs() {
             var tabs = [['scoring', 'Scoring Plays'], ['all', 'All Plays']];
@@ -1001,6 +1096,10 @@
                      + ' data-pbp-tab="' + tabs[i][0] + '">' + tabs[i][1] + '</button>';
             }
             return html + '</div>';
+        }
+
+        function gdNewCls(play) {
+            return window.ccLiveMotion && gdFresh[ccLiveMotion.playKey(play)] ? ' gd-pbp-new' : '';
         }
 
         // One play card. A scoring play gets the full treatment from the
@@ -1042,7 +1141,7 @@
                     badge = '<span class="gd-pbp-badge gd-pbp-badge-' + play.outcome + '">'
                           + esc(play.outcomeLabel || '') + '</span>';
                 }
-                return '<div class="gd-pbp-row">'
+                return '<div class="gd-pbp-row' + gdNewCls(play) + '">'
                     + '<div class="gd-pbp-row-meta">' + logo
                     + '<span class="gd-pbp-clock">' + esc(clockStr) + '</span>'
                     + (situation ? '<span class="gd-pbp-situation">' + esc(situation) + '</span>' : '')
@@ -1056,7 +1155,7 @@
                     + '</div>';
             }
 
-            return '<div class="gd-pbp-card">'
+            return '<div class="gd-pbp-card' + gdNewCls(play) + '">'
                 + '<div class="gd-pbp-card-top">'
                 + logo
                 + '<div class="gd-pbp-card-head">'

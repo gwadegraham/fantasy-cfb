@@ -570,3 +570,110 @@
     .sb-title { font-size: 1.35rem; }
     .sb-head { padding: 10px 16px 8px; }
 }
+
+/* ---- live motion (public/live-motion.js) ----------------------------------
+   Classes are added for one animation and removed when it ends. --lm-color is
+   set per element: the owner's colour on a league team, a quiet grey on any
+   other game, so a league score reads louder than the rest of the slate. */
+
+/* The score that changed: a quick pop, held bright while it counts up. */
+.sb-side.sb-scored .sb-score {
+    animation: sb-score-pop 900ms cubic-bezier(.3, 1.4, .5, 1);
+    transform-origin: right center;
+}
+@keyframes sb-score-pop {
+    0%   { transform: scale(1);    color: var(--cc-text); }
+    25%  { transform: scale(1.35); color: var(--cc-text); }
+    100% { transform: scale(1); }
+}
+/* Its row gets a tint that sweeps in from the score side and fades. On a
+   pseudo-element because a gradient can't be animated, but its opacity can.
+   Its animationend is what clears .sb-scored: a pseudo-element's events are
+   dispatched on the element itself. */
+.sb-side.sb-scored {
+    position: relative;
+    isolation: isolate;   /* lets the tint sit under the text, not over it */
+}
+.sb-side.sb-scored::after {
+    content: '';
+    position: absolute;
+    inset: 0 -6px;
+    border-radius: var(--cc-r-sm);
+    background: linear-gradient(270deg, var(--lm-color), transparent 75%);
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0;
+    animation: sb-row-tint 1600ms ease-out;
+}
+@keyframes sb-row-tint {
+    0%   { opacity: 0;   transform: scaleX(.4); transform-origin: right; }
+    15%  { opacity: .32; transform: scaleX(1);  transform-origin: right; }
+    100% { opacity: 0;   transform: scaleX(1);  transform-origin: right; }
+}
+
+/* The card's edge. Any game gets a faint one; a league team's is the owner's
+   colour, brighter and longer, with a second beat so it reads across a room. */
+.sb-card.sb-flash {
+    animation: sb-flash 1200ms ease-out;
+}
+@keyframes sb-flash {
+    0%   { box-shadow: 0 0 0 0 transparent; }
+    20%  { box-shadow: 0 0 0 1px var(--lm-color); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+.sb-card.sb-flash-league {
+    animation: sb-flash-league 2000ms ease-out;
+}
+@keyframes sb-flash-league {
+    0%   { box-shadow: 0 0 0 0 transparent; }
+    12%  { box-shadow: 0 0 0 2px var(--lm-color), 0 0 18px 2px color-mix(in srgb, var(--lm-color) 55%, transparent); }
+    30%  { box-shadow: 0 0 0 1px var(--lm-color), 0 0 6px 0 color-mix(in srgb, var(--lm-color) 20%, transparent); }
+    45%  { box-shadow: 0 0 0 2px var(--lm-color), 0 0 18px 2px color-mix(in srgb, var(--lm-color) 55%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Going final: the state label fades over to "Final", the winner's caret
+   slides in beside the score, and the card's edge flashes green once. */
+.sb-card.sb-went-final {
+    animation: sb-final-edge 1400ms ease-out;
+}
+@keyframes sb-final-edge {
+    0%   { box-shadow: 0 0 0 0 transparent; }
+    25%  { box-shadow: 0 0 0 1px var(--cc-success); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+.sb-card.sb-went-final .sb-state {
+    animation: sb-final-label 700ms ease-out;
+}
+@keyframes sb-final-label {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+}
+.sb-card.sb-went-final .sb-win.is-win {
+    display: inline-block;
+    animation: sb-final-caret 600ms 250ms cubic-bezier(.3, 1.4, .5, 1) backwards;
+}
+@keyframes sb-final-caret {
+    from { opacity: 0; transform: translateX(8px); }
+    to   { opacity: 1; transform: none; }
+}
+/* A last-second score and the final whistle in one tick: the owner's glow is
+   the louder news, so it keeps the card's edge. The label and caret above
+   still animate, since they're on the children. */
+.sb-card.sb-went-final.sb-flash-league {
+    animation: sb-flash-league 2000ms ease-out;
+}
+/* The loser's row dims into its final colour rather than switching to it. */
+.sb-card.sb-went-final .sb-side:not(.is-winner) {
+    animation: sb-final-dim 900ms ease-out;
+}
+@keyframes sb-final-dim {
+    from { filter: brightness(1.35); }
+    to   { filter: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-side.sb-scored, .sb-side.sb-scored::after, .sb-side.sb-scored .sb-score,
+    .sb-card.sb-flash, .sb-card.sb-flash-league, .sb-card.sb-went-final,
+    .sb-card.sb-went-final * { animation: none !important; }
+}

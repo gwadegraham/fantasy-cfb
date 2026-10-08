@@ -430,6 +430,112 @@
     // the refresh instead of snapping back to rest under the reader.
     var state = null;
     var pinned = null;
+    var drawnCount = null;   // how many points the last attached chart showed
+    var lastReveal = null;   // { from, count, at }: the last draw-in started
+
+    // ---- drawing the new stretch -------------------------------------------
+    //
+    // Each refresh redraws the whole chart, and a line that has grown by one
+    // sample looks identical to one that hasn't unless you were staring at its
+    // tip. So when the series has grown since the last paint, the old part is
+    // shown at once and the new stretch is drawn in, with the "now" dot riding
+    // its leading edge.
+    //
+    // Indices are stable from the front as snapshots append (see `pinned`), so
+    // the old tip is simply point prevCount-1 in the NEW model — which also
+    // copes with the x-axis rescaling when a game reaches overtime.
+    var REVEAL_MS = 1000;
+    // The gamecast can re-render twice in one tick (see gdRepaintPlays), which
+    // replaces the chart mid-draw. An attach this soon after one that started a
+    // draw, showing the same series, replays it on the new nodes.
+    var REPLAY_MS = 600;
+
+    // The index the reveal starts from, or null for "draw it all at once": the
+    // first paint of the page, or a series that didn't grow.
+    function revealFrom(prevCount, nowCount) {
+        if (prevCount == null || prevCount < 1 || nowCount <= prevCount) return null;
+        return prevCount - 1;
+    }
+
+    // y on the polyline at viewBox x, so the dot can ride the line. Clamped to
+    // the ends.
+    function yAtX(points, x) {
+        if (!points.length) return 0;
+        if (x <= points[0].x) return points[0].y;
+        for (var i = 1; i < points.length; i++) {
+            var a = points[i - 1], b = points[i];
+            if (x <= b.x) {
+                var span = b.x - a.x;
+                return span > 0 ? a.y + (b.y - a.y) * ((x - a.x) / span) : b.y;
+            }
+        }
+        return points[points.length - 1].y;
+    }
+
+    function reducedMotion() {
+        return typeof window === 'undefined' || !window.matchMedia
+            || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function reveal(svg, model, from) {
+        if (typeof requestAnimationFrame !== 'function' || reducedMotion()) return;
+        var pts = model.points;
+        var x0 = pts[from].x;
+        var x1 = pts[pts.length - 1].x;
+        if (!(x1 > x0)) return;
+
+        var NS = 'http://www.w3.org/2000/svg';
+        var id = 'gd-wp-reveal';
+        var defs = svg.ownerDocument.createElementNS(NS, 'defs');
+        var clip = svg.ownerDocument.createElementNS(NS, 'clipPath');
+        var rect = svg.ownerDocument.createElementNS(NS, 'rect');
+        clip.setAttribute('id', id);
+        rect.setAttribute('x', '0');
+        rect.setAttribute('y', '0');
+        rect.setAttribute('height', String(model.box.H));
+        // A little past the tip, so the stroke's round cap isn't sliced off.
+        var pad = 4;
+        rect.setAttribute('width', String(x0 + pad));
+        clip.appendChild(rect);
+        defs.appendChild(clip);
+        svg.insertBefore(defs, svg.firstChild);
+
+        var inked = svg.querySelectorAll('.gd-wp-line, .gd-wp-dot');
+        for (var i = 0; i < inked.length; i++) inked[i].setAttribute('clip-path', 'url(#' + id + ')');
+        var now = svg.querySelector('.gd-wp-now');
+        var endY = now ? now.getAttribute('cy') : null;
+        var endX = now ? now.getAttribute('cx') : null;
+        var endFill = now ? now.getAttribute('fill') : null;
+
+        var start = null;
+        var finished = false;
+        function done() {
+            if (finished) return;
+            finished = true;
+            for (var j = 0; j < inked.length; j++) inked[j].removeAttribute('clip-path');
+            if (defs.parentNode) defs.parentNode.removeChild(defs);
+            if (now) { now.setAttribute('cx', endX); now.setAttribute('cy', endY); now.setAttribute('fill', endFill); }
+        }
+        requestAnimationFrame(function tick(t) {
+            // A refresh that lands mid-draw replaces the whole chart; the
+            // detached copy has nothing left to draw.
+            if (!svg.isConnected) return;
+            if (start == null) start = t;
+            var k = Math.min((t - start) / REVEAL_MS, 1);
+            var e = 1 - Math.pow(1 - k, 3);
+            var x = x0 + (x1 - x0) * e;
+            rect.setAttribute('width', (x + pad).toFixed(2));
+            if (now) {
+                now.setAttribute('cx', x.toFixed(2));
+                now.setAttribute('cy', yAtX(pts, x).toFixed(2));
+            }
+            if (k < 1) requestAnimationFrame(tick);
+            else done();
+        });
+        // rAF stops entirely in a hidden or occluded tab; without this the
+        // line would stay clipped at its old tip until the tab came back.
+        setTimeout(done, REVEAL_MS + 200);
+    }
 
     function attach(root) {
         if (!state) return;
@@ -524,12 +630,22 @@
         });
 
         if (pinned != null && pinned < pts.length) show(pinned);
+
+        var from = revealFrom(drawnCount, pts.length);
+        var now = Date.now();
+        if (from != null) {
+            lastReveal = { from: from, count: pts.length, at: now };
+        } else if (lastReveal && lastReveal.count === pts.length && now - lastReveal.at < REPLAY_MS) {
+            from = lastReveal.from;
+        }
+        drawnCount = pts.length;
+        if (from != null) reveal(svg, model, from);
     }
 
     // Drop the scrubber's pinned moment. A page load clears it by re-evaluating
     // this file; this is for callers that re-render a DIFFERENT game into the
     // same document, and for specs.
-    function reset() { state = null; pinned = null; }
+    function reset() { state = null; pinned = null; drawnCount = null; lastReveal = null; }
 
     return {
         reset: reset,
@@ -541,6 +657,8 @@
         swingDots: swingDots,
         indexAt: indexAt,
         readoutHtml: readoutHtml,
+        revealFrom: revealFrom,
+        yAtX: yAtX,
         render: render,
         attach: attach
     };

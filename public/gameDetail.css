@@ -1343,3 +1343,78 @@ html.gd-page, .gd-page body {
     .gd-lf-ez { flex-basis: 26px; }
     .gd-lf-spot { margin-left: 0; width: 100%; }
 }
+
+/* ---- live motion (public/live-motion.js) ----------------------------------
+   Each class is added for one animation and removed when it ends. --lm-color
+   is the scoring team's colour, already lifted for contrast on dark. */
+
+/* Header score: a pop and a glow in the scoring team's colour while it ticks. */
+.gd-mu-score.gd-mu-scored {
+    animation: gd-mu-scored 1400ms cubic-bezier(.3, 1.4, .5, 1);
+}
+@keyframes gd-mu-scored {
+    0%   { transform: scale(1);    color: var(--cc-text); text-shadow: 0 0 0 transparent; }
+    18%  { transform: scale(1.28); color: var(--cc-text); text-shadow: 0 0 22px var(--lm-color), 0 0 4px var(--lm-color); }
+    60%  { transform: scale(1);    color: var(--cc-text); text-shadow: 0 0 12px var(--lm-color); }
+    100% { transform: scale(1);    text-shadow: 0 0 0 transparent; }
+}
+
+/* A play that arrived on this fetch slides down into the top of the feed,
+   with a brief highlight that fades into the row's own background. */
+.gd-pbp-row.gd-pbp-new,
+.gd-pbp-card.gd-pbp-new {
+    animation: gd-pbp-in 520ms cubic-bezier(.2, .8, .3, 1) backwards,
+               gd-pbp-glow 2200ms ease-out;
+}
+@keyframes gd-pbp-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: none; }
+}
+@keyframes gd-pbp-glow {
+    0%, 30% { box-shadow: inset 3px 0 0 var(--cc-interactive); }
+    100%    { box-shadow: inset 3px 0 0 transparent; }
+}
+
+/* The score stamp, laid over the field card. Slams in, holds, lifts away. */
+.gd-lf-section, .gd-header { position: relative; }
+.lm-stamp {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(ellipse at center, color-mix(in srgb, var(--lm-color, var(--cc-amber)) 30%, transparent), transparent 70%);
+    animation: lm-stamp-bg 2200ms ease-out forwards;
+}
+.lm-stamp-word {
+    font-family: 'Graduate', serif;
+    font-weight: 800;
+    font-size: clamp(1.8rem, 7vw, 2.8rem);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cc-text);
+    -webkit-text-stroke: 1px var(--lm-color, var(--cc-amber));
+    text-shadow: 0 0 18px var(--lm-color, var(--cc-amber)), 0 4px 18px rgba(0, 0, 0, .6);
+    animation: lm-stamp-word 2200ms cubic-bezier(.3, 1.5, .4, 1) forwards;
+}
+@keyframes lm-stamp-bg {
+    0%   { opacity: 0; }
+    12%  { opacity: 1; }
+    75%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+@keyframes lm-stamp-word {
+    0%   { opacity: 0; transform: scale(2.4) rotate(-8deg); }
+    18%  { opacity: 1; transform: scale(.94) rotate(-4deg); }
+    26%  { transform: scale(1) rotate(-4deg); }
+    75%  { opacity: 1; transform: scale(1) rotate(-4deg); }
+    100% { opacity: 0; transform: scale(1.06) translateY(-10px) rotate(-4deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gd-mu-score.gd-mu-scored, .gd-pbp-new, .lm-stamp, .lm-stamp-word { animation: none !important; }
+    .lm-stamp { display: none; }
+}
