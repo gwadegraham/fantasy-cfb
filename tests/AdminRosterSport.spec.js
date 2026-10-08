@@ -41,6 +41,16 @@ test('a basketball league\'s rosters are marked basketball, so they DO go to the
     expect(body().getAttribute('data-page-sport')).toBe('basketball');
 });
 
+// The basketball admin page manages the basketball league while an Admin may
+// be VIEWING football, when league.js rewrites nothing — so the link has to be
+// the basketball page's already.
+test('a basketball league\'s roster links go to the basketball team page directly', () => {
+    loadAdmin({ managed: 'hoops-league', sportOf: (c) => (c === 'hoops-league' ? 'basketball' : 'football') });
+    displayUsers(USERS);
+    expect(body().querySelector('a[href="/hoops/team/135"]')).not.toBeNull();
+    expect(body().querySelector('a[href^="/team?team="]')).toBeNull();
+});
+
 test('without the league helper (an old cached league.js) nothing is marked and nothing breaks', () => {
     loadAdmin({ managed: 'graham-league', sportOf: null });
     expect(() => displayUsers(USERS)).not.toThrow();

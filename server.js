@@ -708,7 +708,8 @@ app.get('/admin', (req, res) => {
         // trigger — it always sends a poolSize key, so an absent-key default
         // was dead on the only path that creates a draft.
         res.render('admin', {
-            user, userState, year: viewerSeason(res), isAdmin,
+            user, userState, isAdmin,
+            year: hoopsAdmin.footballAdminSeason(roles, res.locals.viewerLeagueCode, req.effUser),
             draftDefaults: safeJson(draftDefaults.BY_SPORT)
         });
     } else {

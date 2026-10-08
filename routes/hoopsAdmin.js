@@ -33,6 +33,7 @@ const cbbd = require('../modules/cbbd-client');
 const roster = require('../modules/hoops-roster');
 const { effectiveRoles } = require('../modules/dev-role');
 const leagueCatalog = require('../modules/league-catalog');
+const { leagueCodeFor } = require('../modules/league-access');
 // A namespace, read at call time, so a test can widen the default and see
 // the quote follow it.
 const hoopsGames = require('./hoopsGames');
@@ -129,6 +130,18 @@ function footballAdminRedirect(roles, viewerSport) {
     return (roles || []).includes('Admin') && viewerSport === 'basketball' ? '/hoops/admin' : null;
 }
 
+// The season football's /admin works in: the season of the league it
+// MANAGES, which is what its tools read and write. The same answer
+// ccManageLeagueCode gives the page (public/league.js): an Admin manages the
+// league they view (always football here — basketball is redirected above);
+// a League Manager manages their own, whatever they view. It used to be the
+// VIEWED league's season, so a League Manager viewing basketball got
+// basketball's 2027 while managing their football league.
+function footballAdminSeason(roles, viewed, effUser) {
+    const managed = (roles || []).includes('Admin') && viewed ? viewed : leagueCodeFor(effUser);
+    return seasons.seasonForLeague(managed);
+}
+
 // pageLocals builds what the navbar partial needs (user, userState). It lives
 // in server.js with the rest of the session plumbing and is injected, so a
 // test can mount the real router without the whole app.
@@ -167,4 +180,4 @@ function build({ pageLocals = () => ({}) } = {}) {
     return router;
 }
 
-module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, HOOPS_JOBS };
+module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, footballAdminSeason, HOOPS_JOBS };

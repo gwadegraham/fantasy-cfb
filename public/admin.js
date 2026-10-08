@@ -178,8 +178,10 @@ function displayUsers(data) {
     // viewing basketball is still their football league. Saying which sport
     // these ids are keeps public/league.js from sending a football id to the
     // basketball team page.
+    var managedSport = null;
     if (userTableBody && window.ccLeague && window.ccLeague.sportOf && window.ccManageLeagueCode) {
-        userTableBody.setAttribute('data-page-sport', window.ccLeague.sportOf(window.ccManageLeagueCode()));
+        managedSport = window.ccLeague.sportOf(window.ccManageLeagueCode());
+        userTableBody.setAttribute('data-page-sport', managedSport);
     }
     var str = '';
 
@@ -191,7 +193,12 @@ function displayUsers(data) {
         
         for (var i = 0; i < (userSeason.teams || []).length; i++) {
             var team = userSeason.teams[i];
-            var refLink = `/team?team=${team.id}`;
+            // A basketball league's ids go straight to the basketball team page.
+            // Leaving them as /team?team= relied on public/league.js rewriting
+            // them, which it only does while a BASKETBALL league is viewed — on
+            // the basketball admin page an Admin may be viewing football, and a
+            // basketball id then opened whichever football team shares it.
+            var refLink = managedSport === 'basketball' ? `/hoops/team/${team.id}` : `/team?team=${team.id}`;
 
             str += '<div>';
             str += '<a href="' + refLink + '"><img src="' + ccLogo(team.logos) + '" alt="' + team.mascot + '">'

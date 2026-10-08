@@ -552,7 +552,7 @@ router.get('/league/:leagueCodeReq/roster', async (req, res) => {
         return res.status(403).json({ message: 'Forbidden: not your league' });
     }
     try {
-        const year = activeSeason('football');
+        const year = leagueSeason(leagueCode);
         // The original projection, kept. It already included authSub — this
         // route reduces it to `linked` below and never sends it raw — so there
         // was never a reason to widen the read.
@@ -713,7 +713,7 @@ router.post('/', async (req, res) => {
     // season roster and scoring config — League Managers can't, Admins can, since
     // they're the ones who can rescore afterwards.
     if (!effectiveRoles(req).includes('Admin')
-        && await hasScoredGames(req.body.league, activeSeason('football'))) {
+        && await hasScoredGames(req.body.league, leagueSeason(req.body.league))) {
         return res.status(423).json({
             message: 'Adding a player is locked once the season is underway (they would start with an empty roster). Ask an admin.'
         });
@@ -743,7 +743,7 @@ router.post('/', async (req, res) => {
     // caller doesn't supply one (the admin form no longer does).
     const seasons = (Array.isArray(req.body.seasons) && req.body.seasons.length)
         ? req.body.seasons
-        : [{ season: activeSeason('football') }];
+        : [{ season: leagueSeason(req.body.league) }];
     const color = req.body.color || await pickUnusedColor(req.body.league);
 
     // The one route that CREATES the pair, and the one place an orphan Account
@@ -764,7 +764,7 @@ router.post('/', async (req, res) => {
         });
         await audit.record(req, {
             action: 'user.create',
-            league: newUser.league, season: String(activeSeason('football')),
+            league: newUser.league, season: String(leagueSeason(newUser.league)),
             summary: `Added ${newUser.firstName} ${newUser.lastName}`,
             meta: { userId: String(newUser._id) }
         });
@@ -806,7 +806,7 @@ router.post('/:id/invite-link', async (req, res) => {
 
         await audit.record(req, {
             action: 'user.invite',
-            league: user.league, season: String(activeSeason('football')),
+            league: user.league, season: String(leagueSeason(user.league)),
             summary: `Created an invite link for ${user.firstName} ${user.lastName}`,
             meta: { userId: String(user._id), reissued: !!user.authSub }
         });
@@ -839,7 +839,7 @@ router.delete('/:id/invite-link', async (req, res) => {
         await franchiseRepo.updateAccount(user._id, { $unset: { authSub: '' } });
         await audit.record(req, {
             action: 'user.invite',
-            league: user.league, season: String(activeSeason('football')),
+            league: user.league, season: String(leagueSeason(user.league)),
             summary: `Reset the login link for ${user.firstName} ${user.lastName}`,
             meta: { userId: String(user._id), reset: true }
         });
@@ -1005,7 +1005,7 @@ router.post('/:id/season-membership', async (req, res) => {
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
-        const year = activeSeason('football');
+        const year = leagueSeason(user.league);
         // Locked once the season is underway (would drop scored data); admins
         // only, since applying it needs a rescore.
         if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(user.league, year)) {
@@ -1211,6 +1211,17 @@ function requestedSeason(req) {
         if (Number.isFinite(n)) return n;
     }
     return activeSeason('football');
+}
+
+// The season a LEAGUE is in — its own, which for a basketball league is
+// basketball's (2026-27 is 2027), not football's. The roster, add-a-player,
+// invite and season-membership routes used football's for every league, so
+// from the basketball admin page (#518) they read and wrote the wrong season:
+// ticking a manager into "this season" added a football-year entry. A football
+// league's own season IS football's, so those are unaffected.
+function leagueSeason(code) {
+    const own = Number(seasonForLeague(code));
+    return Number.isFinite(own) ? own : activeSeason('football');
 }
 
 // The handlers below write ONLY franchise-side fields (lastUpdated, isUpdated,

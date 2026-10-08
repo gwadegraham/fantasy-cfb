@@ -110,6 +110,14 @@ describe('the page manages a basketball league', () => {
         expect(html).toContain('user-table-body');
     });
 
+    // The badge counts the tools actually shown, on both pages.
+    test.each([['basketball', 'hoops'], ['football', 'admin']])('%s: the League setup count matches its tools', async (sport) => {
+        const PARTIAL = path.join(__dirname, '..', 'views', 'partials', 'admin-league-setup.ejs');
+        const html = ejs.render(fs.readFileSync(PARTIAL, 'utf8'), { sport }, { filename: PARTIAL });
+        const shown = (html.match(/class="function-container/g) || []).length;
+        expect(html).toContain('<span class="group-count">' + shown + '</span>');
+    });
+
     test('no basketball league: the data tasks only, and no league tools', async () => {
         await League.deleteMany({ sport: 'basketball' });
         activeSeason._reset();
@@ -135,6 +143,23 @@ describe("football's /admin sends an Admin viewing basketball to this page", () 
     });
 });
 
+describe("football's /admin works in the season of the league it manages", () => {
+    const League = require('../models/league');
+    const lm = { user_metadata: { metadata: { league: 'gg' } } };
+    beforeEach(async () => {
+        await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
+                             { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
+        activeSeason._reset();
+        await activeSeason.prime();
+    });
+    test('a League Manager viewing basketball still gets football\'s season', () => {
+        expect(hoopsAdmin.footballAdminSeason(['League Manager'], 'hoops-league', lm)).toBe(2026);
+    });
+    test('an Admin gets the season of the league they view', () => {
+        expect(hoopsAdmin.footballAdminSeason(['Admin'], 'graham-league', lm)).toBe(2026);
+    });
+});
+
 describe("football's admin page is unchanged by the split", () => {
     const ADMIN = path.join(__dirname, '..', 'views', 'admin.ejs');
     test('it keeps every League setup tool, Fixed/Stacking included', () => {
@@ -144,7 +169,7 @@ describe("football's admin page is unchanged by the split", () => {
         }, { filename: ADMIN });
         ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
          'name="rule-shape"', 'displayDraftConfigContainer'].forEach(bit => expect(html).toContain(bit));
-        expect(html).toContain('<span class="group-count">9</span>');
+        expect(html).toContain('<span class="group-count">10</span>');
     });
 });
 
