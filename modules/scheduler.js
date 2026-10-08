@@ -42,7 +42,11 @@ const JOB_SCHEDULES = [
     // 05:00 so last night's late West Coast finals are in CBBD's totals;
     // silent and free while no basketball league exists or nothing has gone
     // final in three days.
-    { job: 'hoops-stats', modulePath: '../modules/hoops-stats-job', rule: { hour: 5, minute: 0 } }
+    { job: 'hoops-stats', modulePath: '../modules/hoops-stats-job', rule: { hour: 5, minute: 0 } },
+    // Basketball TV listings for the game page (#506). 1 CBBD call a WEEK,
+    // Monday after hoops-stats — the morning after Selection Sunday, so the
+    // NCAA first round is listed. Free while nothing is scheduled.
+    { job: 'hoops-media', modulePath: '../modules/hoops-media-job', rule: { dayOfWeek: 1, hour: 6, minute: 0 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

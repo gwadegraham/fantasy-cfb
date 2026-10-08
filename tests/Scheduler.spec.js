@@ -5,7 +5,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-scores', 'hoops-stats',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-scores', 'hoops-stats',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -65,6 +65,8 @@ describe('scheduler config', () => {
         expect(byJob['saturday-scores']).toEqual({ dayOfWeek: 6, hour: [10, 15, 18, 22], minute: 0 });
         expect(byJob['sunday-scores']).toEqual({ dayOfWeek: 0, hour: [3, 6], minute: 0 });
         expect(byJob['enrichment']).toEqual({ dayOfWeek: 2, hour: 5, minute: 30 });
+        // Basketball TV: weekly, the Monday after Selection Sunday included.
+        expect(byJob['hoops-media']).toEqual({ dayOfWeek: 1, hour: 6, minute: 0 });
     });
 
     it('builds a timezone-aware recurrence rule', () => {

@@ -31,14 +31,15 @@
 
     function hero(d) {
         var g = d.game, H = d.home, A = d.away;
-        var place = [g.venue, [g.city, g.state].filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ');
+        // Venue, city, neutral site, then where it is on: "Kia Center · Orlando, FL · ESPN2".
+        var place = [g.venue, [g.city, g.state].filter(Boolean).join(', '), g.neutralSite ? 'neutral site' : '', g.tv].filter(Boolean).map(esc).join(' · ');
         // Live: "LIVE · 2nd · 8:43" (OT periods named), from the poller (#505).
         var half = function (p) { return p === 1 ? '1st' : p === 2 ? '2nd' : p > 2 ? 'OT' + (p > 3 ? p - 2 : '') : ''; };
         var liveBits = g.live ? [half(g.period), g.clock].filter(Boolean).join(' · ') : '';
         var status = g.final ? 'Final' : d.rescheduled ? 'Rescheduled' : g.live ? 'Live' + (liveBits ? ' · ' + liveBits : '') : null;
         var meta = (status ? '<b' + (g.live ? ' class="live"' : '') + '>' + esc(status) + '</b>' + (!g.live && when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
             + (g.tournament ? ' · ' + esc(g.tournament) : g.notes ? ' · ' + esc(g.notes) : '')
-            + (place || g.neutralSite ? '<br>' + place + (g.neutralSite ? (place ? ' · ' : '') + 'neutral site' : '') : '');
+            + (place ? '<br>' + place : '');
         var side = function (t) {
             return '<div class="hg-side">' + teamLink(t, (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '')
                 + '<div class="hg-nm">' + (t.rank ? '<small>' + t.rank + '</small>' : '') + esc(t.school).toUpperCase() + '</div>')

@@ -10,6 +10,9 @@ const express = require('express');
 const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const boxScore = require('../modules/hoops-box-score');
+const hoopsMedia = require('../modules/hoops-media');
+const mediaJob = require('../modules/hoops-media-job');
+const jobLogger = require('../modules/job-logger');
 const gamePage = require('../modules/hoops-game-page');
 const teamPage = require('../modules/hoops-team-page');
 const cbbd = require('../modules/cbbd-client');
@@ -168,6 +171,102 @@ describe('ingestRecent (the nightly batch)', () => {
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         expect((await boxScore.getBox(500)).home.points).toBe(75);
         expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('TV listings (modules/hoops-media.js)', () => {
+    const media = (gameId, broadcasts) => ({ gameId, startDate: '2026-11-18T00:30:00.000Z', broadcasts });
+
+    test('ONE call for the whole window, by season and dates; outlets land on the right game and nothing else moves', async () => {
+        await HoopsGame.create([GAME, Object.assign({}, GAME, { id: 501, startDate: new Date(Date.UTC(2026, 10, 22)) })]);
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [
+            media(500, [{ broadcastName: 'ESPN2', broadcastType: 'TV' }, { broadcastName: 'ESPN+', broadcastType: 'Streaming' }]),
+            media(999, [{ broadcastName: 'FOX', broadcastType: 'TV' }])            // not stored here: never created
+        ], remainingCalls: 29000 });
+        const before = await HoopsGame.findOne({ id: 500 }).lean();
+        const out = await hoopsMedia.ingestWindow(SEASON, { now: NOW });
+        expect(out).toMatchObject({ season: SEASON, games: 2, stored: 1, capped: false, remainingCalls: 29000 });
+        expect(get).toHaveBeenCalledTimes(1);
+        // Three days back through two weeks ahead; the end is the day AFTER (the midnight trap).
+        expect(get).toHaveBeenCalledWith('/games/media', { season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-12-05' });
+        const after = await HoopsGame.findOne({ id: 500 }).lean();
+        expect(after.broadcasts).toEqual([{ name: 'ESPN2', type: 'TV' }, { name: 'ESPN+', type: 'Streaming' }]);
+        const { broadcasts, ...rest } = after;
+        expect(rest).toEqual(before);
+        expect((await HoopsGame.findOne({ id: 501 }).lean()).broadcasts).toBeUndefined();
+        expect(await HoopsGame.countDocuments({})).toBe(2);
+    });
+
+    test('nothing stored in the window: no call at all, so the off-season is free', async () => {
+        await HoopsGame.create(Object.assign({}, GAME, { startDate: new Date(Date.UTC(2026, 9, 1)) }));
+        // Mocked, not just watched: a regressed gate must fail here, not bill the real key.
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
+        expect(await hoopsMedia.ingestWindow(SEASON, { now: NOW })).toMatchObject({ skippedReason: 'nothing scheduled' });
+        expect(get).not.toHaveBeenCalled();
+    });
+
+    test('a response at the row cap says so', async () => {
+        await HoopsGame.create(GAME);
+        jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: Array.from({ length: cbbd.PAGE_CAP }, (_, i) => media(10000 + i, [])) });
+        expect((await hoopsMedia.ingestWindow(SEASON, { now: NOW })).capped).toBe(true);
+    });
+
+    test('outlets: TV over streaming, streaming over nothing, never radio', () => {
+        const b = (name, type) => ({ name, type });
+        expect(hoopsMedia.outlets([b('ERADM', 'Radio'), b('ESPN', 'TV'), b('ESPN+', 'Streaming')])).toBe('ESPN');
+        expect(hoopsMedia.outlets([b('ACC Network', 'TV'), b('ESPN2', 'TV'), b('ESPN2', 'TV')])).toBe('ACC Network / ESPN2');
+        expect(hoopsMedia.outlets([b('ESPN+', 'Streaming'), b('ERADM', 'Radio')])).toBe('ESPN+');
+        expect(hoopsMedia.outlets([b('ERADM', 'Radio')])).toBeNull();
+        expect(hoopsMedia.outlets(undefined)).toBeNull();
+    });
+
+    test('the page payload carries it, and the page still never calls CBBD', async () => {
+        await HoopsGame.create(Object.assign({}, GAME, { broadcasts: [{ name: 'ESPN2', type: 'TV' }] }));
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
+        expect((await gamePage.build(500)).game.tv).toBe('ESPN2');
+        expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('hoops-media job (weekly)', () => {
+    beforeEach(() => {
+        jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
+        jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    test('one pull for the active season, recorded as a run', async () => {
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 40, stored: 38, capped: false });
+        const out = await mediaJob.run({ now: new Date(NOW) });
+        expect(pull).toHaveBeenCalledTimes(1);
+        expect(pull).toHaveBeenCalledWith(SEASON, { now: NOW });
+        expect(out.summary).toBe(`${SEASON} tv: 38/40 stored`);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+    });
+
+    test('nothing scheduled: silent, no JobRun', async () => {
+        jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 0, stored: 0, skippedReason: 'nothing scheduled' });
+        expect(await mediaJob.run({ now: new Date(NOW) })).toEqual({ skippedReason: 'nothing scheduled' });
+        expect(jobLogger.startRun).not.toHaveBeenCalled();
+    });
+
+    test('no basketball league: no pull at all', async () => {
+        await League.deleteMany({});
+        await seasons.prime();
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow');
+        expect(await mediaJob.run({ now: new Date(NOW) })).toEqual({ skippedReason: 'no basketball leagues' });
+        expect(pull).not.toHaveBeenCalled();
+    });
+
+    test('a failed or capped pull is an ERROR, not a quiet success', async () => {
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow').mockRejectedValueOnce(new Error('CBBD 429'));
+        let out = await mediaJob.run({ now: new Date(NOW) });
+        expect(out.summary).toBe(`${SEASON} tv: FAILED CBBD 429`);
+        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
+        pull.mockResolvedValueOnce({ season: SEASON, games: 3000, stored: 2900, capped: true });
+        out = await mediaJob.run({ now: new Date(NOW) });
+        expect(out.summary).toBe(`${SEASON} tv: 2900/3000 stored (HIT THE 3000-ROW CAP)`);
+        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
     });
 });
 

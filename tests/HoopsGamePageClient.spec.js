@@ -68,6 +68,13 @@ test('scoreboard: away on the left, home on the right, score in the same order',
     expect(txt('.hg-meta')).toContain('neutral site');
 });
 
+test('the meta line ends with where it is on: venue · city · neutral site · TV', async () => {
+    await render(payload({ game: Object.assign(payload().game, { tv: 'ESPN2' }) }));
+    expect(q('.hg-meta').innerHTML).toContain('<br>Spectrum Center · Charlotte, NC · neutral site · ESPN2');
+    await render(payload({ game: Object.assign(payload().game, { venue: null, city: null, state: null, neutralSite: false, tv: null }) }));
+    expect(q('.hg-meta').innerHTML).not.toContain('<br>');
+});
+
 test('line score by half, in scoreboard order', async () => {
     await render(payload());
     const rows = Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent);
