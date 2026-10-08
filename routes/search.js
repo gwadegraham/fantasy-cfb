@@ -1,8 +1,9 @@
 const express = require('express');
 const franchiseRepo = require('../modules/franchise-repo');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, sportForLeague } = require('../modules/active-season');
 const router = express.Router();
 const Team = require('../models/team');
+const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('../modules/team-scope');
 const { pickLogo } = require('../public/logo.js');
 const { selectedLeague } = require('../modules/league-selection');
@@ -13,7 +14,8 @@ const { selectedLeague } = require('../modules/league-selection');
 //
 //  1. TEAMS are projected hard. A bare `Team.find()` hands back 1,097 KB across
 //     138 teams — `seasons` alone is 729 KB — and the palette needs none of it.
-//     The projection below measures 30 KB, so the whole index ships in one lazy
+//     The projection below measures 30 KB (a basketball league's ~365
+//     programmes, roughly 80 KB), so the whole index ships in one lazy
 //     fetch and every keystroke is matched in memory. Logos are resolved HERE
 //     with the shared pickLogo (dark variant, highest res, https-upgraded)
 //     rather than shipping the raw arrays, which keeps another 95 KB off the
@@ -51,25 +53,41 @@ function teamAliases(t) {
     ].filter(Boolean))];
 }
 
+// The teams of the sport being viewed (#499). A basketball league searches
+// basketball programmes and opens their basketball pages; the two sports'
+// team ids overlap, so a football id under a basketball league would open
+// the wrong page, not a missing one. `href` rides on each team so the
+// palette never has to know which sport it is in.
+async function teamsFor(sport, season) {
+    if (sport === 'basketball') {
+        if (season == null) return [];
+        const docs = await HoopsTeam.find({ season }, 'id school mascot abbreviation conference color logos').lean();
+        return docs.map((t) => ({
+            type: 'team', id: t.id, name: t.school, sub: t.conference || '',
+            image: pickLogo(t.logos || []), color: t.color || null,
+            aliases: teamAliases(t), href: '/hoops/team/' + t.id
+        }));
+    }
+    const docs = await Team.find(FBS_ONLY, 'id school mascot abbreviation conference color logos alt_name1 alt_name2 alt_name3 alternateNames').lean();
+    return docs.map((t) => ({
+        type: 'team', id: t.id, name: t.school, sub: t.conference || '',
+        image: pickLogo(t.logos || []), color: t.color || null,
+        aliases: teamAliases(t), href: '/team?team=' + t.id
+    }));
+}
+
 router.get('/index', async (req, res) => {
     try {
         const league = await selectedLeague(req);
-        const season = activeSeason('football');
+        const sport = sportForLeague(league);
+        // The viewed league's sport's season: franchise names are per season,
+        // and a basketball league's are on the basketball one.
+        const season = activeSeason(sport);
 
-        const [teamDocs, userDocs] = await Promise.all([
-            Team.find(FBS_ONLY, 'id school mascot abbreviation conference color logos alt_name1 alt_name2 alt_name3 alternateNames').lean(),
+        const [teams, userDocs] = await Promise.all([
+            teamsFor(sport, season),
             franchiseRepo.byLeague(league, { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] })
         ]);
-
-        const teams = teamDocs.map((t) => ({
-            type: 'team',
-            id: t.id,
-            name: t.school,
-            sub: t.conference || '',
-            image: pickLogo(t.logos || []),
-            color: t.color || null,
-            aliases: teamAliases(t)
-        }));
 
         const managers = userDocs.map((u) => {
             // Franchise names are per-season and commissioner/self-editable, so

@@ -1,4 +1,5 @@
-// App-wide search palette: jump to any of the 138 FBS teams or any manager in
+// App-wide search palette: jump to any team of the viewed league's sport (the
+// 138 FBS teams, or ~365 basketball programmes) or any manager in
 // your league from anywhere in the app.
 //
 // The gap it closes: every team link in the app is contextual — a roster card, a
@@ -34,10 +35,12 @@
             : url;
     }
 
+    // A team carries its own page (football or basketball, #499); the
+    // fallback is football's, for a server that predates `href` (a deploy
+    // in progress).
     function hrefFor(item) {
-        return item.type === 'team'
-            ? '/team?team=' + encodeURIComponent(item.id)
-            : '/userHome?user=' + encodeURIComponent(item.id);
+        if (item.type === 'team') return item.href || '/team?team=' + encodeURIComponent(item.id);
+        return '/userHome?user=' + encodeURIComponent(item.id);
     }
 
     // ---- Index ---------------------------------------------------------------
