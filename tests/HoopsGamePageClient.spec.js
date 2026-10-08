@@ -335,3 +335,12 @@ test('a live game: LIVE · half · clock, and the running score with the trailin
     await render(p);
     expect(q('.hg-meta b').textContent).toBe('Live · OT · 8:43');
 });
+
+test('a tied live score dims neither side', async () => {
+    const p = upcoming();
+    p.game = Object.assign({}, p.game, { live: true, status: 'in_progress', period: 2, clock: '1:02' });
+    p.home = Object.assign({}, p.home, { points: 60 });
+    p.away = Object.assign({}, p.away, { points: 60 });
+    await render(p);
+    expect(Array.from(document.querySelectorAll('.hg-score span')).map(x => x.className)).toEqual(['', 'dash', '']);
+});

@@ -19,8 +19,9 @@
 //      stops firing exactly when the last final lands.
 //
 // Registered alongside football's poller, behind the same LIVE_POLL_ENABLED.
-// A JobRun is written only for a tick that changed something, so an
-// eight-hour game night is not 900 identical rows.
+// A JobRun is written only for a tick with a new final, a settled batch or an
+// error — not for a running score moving — so a game night is a handful of
+// rows, not one every 30 seconds.
 
 const HoopsGame = require('../models/hoopsGame');
 const cbbd = require('./cbbd-client');
@@ -45,8 +46,9 @@ const NOT_LIVE = new Set(['final', 'postponed', 'cancelled']);
 async function completionWork(season, groups, nowMs) {
     const notes = [];
     let failed = null;
+    const gameIds = groups.reduce((all, g) => all.concat(g.gameIds), []);
     try {
-        const box = await boxScore.ingestRecent(season, { now: nowMs });
+        const box = await boxScore.ingestRecent(season, { now: nowMs, gameIds });
         notes.push(box.skippedReason ? `boxes: ${box.skippedReason}` : `boxes ${box.stored}/${box.games}`);
         if (box.capped) failed = 'box window hit the 3000-row cap';
     } catch (err) {
@@ -54,7 +56,13 @@ async function completionWork(season, groups, nowMs) {
         notes.push(`boxes FAILED ${err.message}`);
     }
     const weeks = [...new Set(groups.map(g => Number(g.week)).filter(Number.isFinite))];
-    const leagues = (await hoopsScoresJob.basketballLeagues()).filter(l => l.season === season);
+    let leagues = [];
+    try {
+        leagues = (await hoopsScoresJob.basketballLeagues()).filter(l => l.season === season);
+    } catch (err) {
+        // Nothing scored, so the batch goes back on the queue (see settle).
+        return { notes: notes.concat(`leagues FAILED ${err.message}`), failed: `leagues: ${err.message}`, retry: true };
+    }
     for (const { league } of leagues) {
         for (const week of weeks) {
             try {
@@ -67,6 +75,17 @@ async function completionWork(season, groups, nowMs) {
         }
     }
     return { notes, failed };
+}
+
+// Take the pending batch and do the completion work. If nothing could be
+// scored (the league lookup failed), the games go back on the queue: they are
+// already 'final' in the database, so no later poll would ever report them as
+// newly final again, and they would wait for the nightly job.
+async function settle(season, nowMs) {
+    const groups = flush.takePending();
+    const work = await completionWork(season, groups, nowMs);
+    if (work.retry) groups.forEach(g => flush.addPending(g.gameIds, { week: g.week, seasonType: g.seasonType }, nowMs));
+    return { groups, work };
 }
 
 async function record(status, summary) {
@@ -107,8 +126,7 @@ async function tick({ now = new Date() } = {}) {
 
     if (!live) {
         if (!flush.pendingCount()) return { skipped: 'no game in progress' };
-        const groups = flush.takePending();
-        const work = await completionWork(season, groups, nowMs);
+        const { groups, work } = await settle(season, nowMs);
         const summary = `Slate over — settled ${groups.reduce((n, g) => n + g.gameIds.length, 0)} game(s) · ${work.notes.join(' | ')}`;
         await record(work.failed ? 'error' : 'success', summary);
         return { drained: true, summary, failed: work.failed };
@@ -137,8 +155,7 @@ async function tick({ now = new Date() } = {}) {
     const verdict = flush.shouldFlush({ nowMs });
     let failed = null;
     if (verdict.flush) {
-        const groups = flush.takePending();
-        const work = await completionWork(season, groups, nowMs);
+        const { work } = await settle(season, nowMs);
         bits.push(`settled · ${work.notes.join(' | ')}`);
         failed = work.failed;
     } else if (flush.pendingCount()) {
@@ -149,7 +166,11 @@ async function tick({ now = new Date() } = {}) {
     if (applied.rows > 0 && applied.matched === 0) failed = failed || 'no scoreboard game matched a stored game';
 
     const summary = bits.join(', ');
-    if (applied.updated || verdict.flush || failed) await record(failed ? 'error' : 'success', summary);
+    // Recorded only when something a manager can see in the standings
+    // happened — a final, a settled batch — or something went wrong. A
+    // running score or clock moving is not that, and on a live night it
+    // changes every tick.
+    if (applied.newlyFinal.length || verdict.flush || failed) await record(failed ? 'error' : 'success', summary);
     return { polled: true, summary, failed };
 }
 

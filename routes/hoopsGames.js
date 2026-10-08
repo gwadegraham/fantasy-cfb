@@ -37,9 +37,36 @@ const { PAGE_CAP } = cbbd;
 // the other run wrote that game. Two overlapping runs are realistic here —
 // the full ingest measured 14.5s against Heroku's 30s ceiling, and an H12
 // leaves the handler running while the caller retries.
+// A game already stored as FINAL keeps its result. CBBD's /games can lag its
+// /scoreboard: a late tip the live poller has finalled can still read
+// in_progress at the 23:30 refresh, and writing that back would drop the game
+// from the week the same job then scores. The rest of the row (time, venue,
+// notes) still updates.
+const RESULT_FIELDS = ['status', 'homePoints', 'awayPoints', 'homeWinner', 'awayWinner',
+    'homePeriodPoints', 'awayPeriodPoints', 'period', 'clock'];
+async function keepStoredFinals(ops) {
+    const ids = ops.map(op => op.updateOne && op.updateOne.filter && op.updateOne.filter.id).filter(id => id != null);
+    if (!ids.length) return ops;
+    const finals = new Set(await HoopsGame.distinct('id', { id: { $in: ids }, status: 'final' }));
+    if (!finals.size) return ops;
+    return ops.map(op => {
+        const u = op.updateOne;
+        if (!finals.has(u.filter.id) || !u.update.$set || u.update.$set.status === 'final') return op;
+        const set = Object.assign({}, u.update.$set);
+        const unset = Object.assign({}, u.update.$unset || {});
+        RESULT_FIELDS.forEach(f => { delete set[f]; delete unset[f]; });
+        const update = { $set: set };
+        if (Object.keys(unset).length) update.$unset = unset;
+        return { updateOne: Object.assign({}, u, { update }) };
+    });
+}
+
 async function writeGames(ops, label) {
     if (!ops.length) return { created: 0, updated: 0, failure: null };
     try {
+        // Inside the try: a failed check must fail the write (a 500 the caller
+        // sees), never escape the handler — and never write without the check.
+        ops = await keepStoredFinals(ops);
         const write = await HoopsGame.bulkWrite(ops, { ordered: false });
         return { created: write.upsertedCount || 0, updated: write.matchedCount || 0, failure: null };
     } catch (err) {
@@ -519,3 +546,4 @@ module.exports.buildUpsertOp = buildUpsertOp;
 module.exports.resolveSeasonStart = resolveSeasonStart;
 module.exports.restampSeason = restampSeason;
 module.exports.refreshResults = refreshResults;
+module.exports.keepStoredFinals = keepStoredFinals;

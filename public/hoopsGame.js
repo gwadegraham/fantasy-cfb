@@ -68,12 +68,13 @@
         };
         var scored = g.final || (g.live && H.points != null && A.points != null);
         var homeWon = scored && H.points > A.points;
+        var tied = scored && H.points === A.points;              // live only; a tie dims nobody
         // Away on the left, home on the right — the scoreboard convention,
         // so "@" reads correctly — and the score in the same order. A live
         // score dims the side that is behind, as a final dims the loser.
         var score = scored
             ? '<span class="' + (homeWon ? 'lose' : '') + '">' + A.points + '</span><span class="dash">–</span>'
-                + '<span class="' + (homeWon ? '' : 'lose') + '">' + H.points + '</span>'
+                + '<span class="' + (homeWon || tied ? '' : 'lose') + '">' + H.points + '</span>'
             : '<span class="vs">' + (g.neutralSite ? 'vs' : '@') + '</span>';
         return '<section class="hg-hero" style="--left:' + esc(A.color || '#343954') + ';--right:' + esc(H.color || '#343954') + '">'
             + '<div class="hg-meta">' + meta + '</div>'

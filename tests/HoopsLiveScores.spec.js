@@ -189,12 +189,12 @@ describe('the live poller', () => {
         const write = jest.spyOn(HoopsGame, 'bulkWrite');
         stubBoard([row(10, 'in_progress', 40, 41)]);
         await livePoll.run({ now: DURING });
-        expect(logged).toHaveLength(1);
+        expect(write).toHaveBeenCalledTimes(1);                               // the first tick wrote the score
         write.mockClear();
         const out = await livePoll.run({ now: new Date(DURING.getTime() + 30e3) });
         expect(out.summary).toBe('1 of 1 scoreboard games matched, 0 updated');
         expect(write).not.toHaveBeenCalled();
-        expect(logged).toHaveLength(1);                                       // still just the first
+        expect(logged).toEqual([]);                                           // neither tick is a JobRun
     });
 
     test('a final whose score an earlier poll already stored is still a NEW final', async () => {
@@ -233,6 +233,81 @@ describe('the live poller', () => {
         jest.spyOn(cbbd, 'cbbdGet').mockRejectedValue(new Error('Could not reach CBBD'));
         expect(await livePoll.run({ now: DURING })).toEqual({ error: 'Could not reach CBBD' });
         expect(logged[0]).toEqual({ status: 'error', msg: 'scoreboard: Could not reach CBBD' });
+    });
+});
+
+describe('the live poller, after review', () => {
+    const stubBoard = (rows) => jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: rows });
+
+    test('a running score moving is NOT a JobRun; a final is', async () => {
+        await HoopsGame.create(game(10));
+        stubBoard([row(10, 'in_progress', 40, 41)]);
+        await livePoll.run({ now: DURING });
+        expect(logged).toEqual([]);                                           // score moved, nothing to record
+        cbbd.cbbdGet.mockResolvedValue({ data: [row(10, 'final', 75, 60)] });
+        await livePoll.run({ now: new Date(DURING.getTime() + 30e3) });
+        expect(logged).toHaveLength(1);
+    });
+
+    test('a batch fetches box scores for ITS games only', async () => {
+        jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ games: 2, stored: 2 });
+        jest.spyOn(scoringPass, 'scoreHoopsWeek').mockResolvedValue({ games: 1 });
+        await livePoll.completionWork(SEASON, [{ week: 3, gameIds: [10, 11] }, { week: 4, gameIds: [12] }], DURING.getTime());
+        expect(boxScore.ingestRecent).toHaveBeenCalledWith(SEASON, { now: DURING.getTime(), gameIds: [10, 11, 12] });
+    });
+
+    test('a batch that could not be scored goes back on the queue', async () => {
+        await HoopsGame.create(game(10));
+        stubBoard([row(10, 'final', 75, 60)]);
+        jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ games: 1, stored: 1 });
+        await livePoll.run({ now: DURING });                                   // queued
+        jest.spyOn(scoresJob, 'basketballLeagues')
+            .mockResolvedValueOnce([{ league: LEAGUE, season: SEASON }])     // the gate's own lookup
+            .mockRejectedValueOnce(new Error('M0 hiccup'));                  // completionWork's
+        const out = await livePoll.run({ now: new Date(DURING.getTime() + 10e3) });   // nothing live: drain
+        expect(out.failed).toBe('leagues: M0 hiccup');
+        expect(livePoll._flush.pendingCount()).toBe(1);                       // kept, not lost
+    });
+});
+
+describe('the final-guard cannot crash a request', () => {
+    test('a failed check fails the write cleanly — a 500, not an escaped rejection', async () => {
+        jest.spyOn(cbbd, 'fetchGamesInRange').mockResolvedValue({ games: [{ id: 10, season: SEASON, seasonType: 'regular', startDate: TIP.toISOString(), status: 'final', homeTeamId: 1, awayTeamId: 2, homeTeam: 'Duke', awayTeam: 'Texas', homePoints: 70, awayPoints: 60 }], capHits: [], windows: 1 });
+        await HoopsGame.create(game(10));
+        jest.spyOn(HoopsGame, 'distinct').mockRejectedValueOnce(new Error('connection reset'));
+        const out = await hoopsGames.refreshResults({ season: SEASON, seasonType: 'regular', start: new Date(TIP.getTime() - 3600e3), end: new Date(TIP.getTime() + 3600e3) });
+        expect(out.code).toBe(500);
+        expect(out.body.message).toMatch(/connection reset/);
+    });
+});
+
+describe('ingestRecent with gameIds', () => {
+    test('narrows the batch to those games', async () => {
+        await HoopsGame.create([
+            game(10, { status: 'final', homePoints: 75, awayPoints: 60 }),
+            game(11, { status: 'final', homePoints: 70, awayPoints: 60 })
+        ]);
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
+        const out = await boxScore.ingestRecent(SEASON, { now: DURING.getTime(), gameIds: [11] });
+        expect(out.games).toBe(1);
+        expect(get).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('a stored final is never walked back by a refresh or ingest', () => {
+    test('the result fields are kept; the rest of the row still updates', async () => {
+        await HoopsGame.create(game(10, { status: 'final', homePoints: 75, awayPoints: 60, homeWinner: true, venue: 'Old' }));
+        const ops = [{ updateOne: { filter: { id: 10 }, update: { $set: { id: 10, status: 'in_progress', homePoints: 70, venue: 'New' } }, upsert: true } },
+                     { updateOne: { filter: { id: 11 }, update: { $set: { id: 11, status: 'in_progress' } }, upsert: true } }];
+        const kept = await hoopsGames.keepStoredFinals(ops);
+        expect(kept[0].updateOne.update.$set).toEqual({ id: 10, venue: 'New' });
+        expect(kept[1]).toBe(ops[1]);                                          // not stored as final: untouched
+    });
+
+    test('a final arriving for a stored final is written as usual', async () => {
+        await HoopsGame.create(game(10, { status: 'final', homePoints: 75, awayPoints: 60 }));
+        const op = { updateOne: { filter: { id: 10 }, update: { $set: { id: 10, status: 'final', homePoints: 76 } } } };
+        expect((await hoopsGames.keepStoredFinals([op]))[0]).toBe(op);         // a corrected final score still lands
     });
 });
 
