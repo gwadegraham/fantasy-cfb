@@ -14,7 +14,8 @@ const { selectedLeague } = require('../modules/league-selection');
 //
 //  1. TEAMS are projected hard. A bare `Team.find()` hands back 1,097 KB across
 //     138 teams — `seasons` alone is 729 KB — and the palette needs none of it.
-//     The projection below measures 30 KB, so the whole index ships in one lazy
+//     The projection below measures 30 KB (a basketball league's ~365
+//     programmes, roughly 80 KB), so the whole index ships in one lazy
 //     fetch and every keystroke is matched in memory. Logos are resolved HERE
 //     with the shared pickLogo (dark variant, highest res, https-upgraded)
 //     rather than shipping the raw arrays, which keeps another 95 KB off the
