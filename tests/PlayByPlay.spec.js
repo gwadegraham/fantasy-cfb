@@ -185,6 +185,9 @@ describe('misfiled scores, from real CFBD rows', () => {
         expect(scoringRowNumbers(rows)).toEqual([34]);
         expect(rows[34]).toMatchObject({ scoringSide: 'home', scoringTeamId: 2579, points: 7, homeScore: 14, awayScore: 0 });
         expect(rows[32]).toMatchObject({ scoringSide: null, scoringTeamId: null, points: null, driveSummary: null });
+        // The window is one drive and row 34 isn't its last play, so the moved
+        // credit carries no drive summary.
+        expect(rows[34].driveSummary).toBeNull();
     });
 
     it('waits through a long gap for the play that reaches the total', () => {
@@ -262,11 +265,81 @@ describe('misfiled scores, from real CFBD rows', () => {
     });
 });
 
+// The guards inside the move, one test each. No stored game trips them, so the
+// rows are built in the shapes the real ones take (playType + playText, scores
+// after the play), on top of the real Kentucky window's teams.
+describe('misfiled-score guards', () => {
+    const teams = MISFILED.earlyReverted.teams;   // home South Carolina, away Kentucky
+    const row = (playType, playText, awayScore, homeScore) => ({ period: 2, playType, playText, homeScore, awayScore });
+    const shape = (rows) => {
+        const lead = leadIn(rows[0].homeScore, rows[0].awayScore);
+        return buildPlayByPlay({ teams, drives: [{ plays: [...lead, ...rows] }] }).slice(lead.length);
+    };
+    const RUSH = '#21 J.Coleman rush left for 17 yards gain to the UKY04';
+    const TD = '#21 J.Coleman rush left for 4 yards gain TOUCHDOWN #32 M.Orsan kick attempt good';
+
+    it('does not hand one side\'s score to the other side\'s touchdown on the next row', () => {
+        const out = shape([
+            row('Rush', RUSH, 0, 7),
+            row('Rush', RUSH, 0, 14),                                    // misfiled home +7
+            row('Passing Touchdown', '#3 K.Minchey pass complete TOUCHDOWN', 7, 14)  // away +7
+        ]);
+        expect(out.map(r => r.scoring && `${r.scoringSide}+${r.points}`)).toEqual([false, 'home+7', 'away+7']);
+    });
+
+    it('only takes a late score back to a touchdown row that was rejected', () => {
+        // The touchdown before was believed ('same' here), so it is not the row
+        // whose points went missing.
+        const out = shape([
+            row('Rush', RUSH, 0, 14),
+            row('Rushing Touchdown', TD, 0, 14),
+            row('Kickoff', '#14 M.Kelley kickoff 59 yards to the UKY06', 0, 21)
+        ]);
+        expect(out.map(r => r.scoring)).toEqual([false, false, true]);
+    });
+
+    it('does not look ahead unless the next row reverts', () => {
+        const out = shape([
+            row('Rush', RUSH, 0, 7),
+            row('Fumble', '#16 L.Sellers rush right for 9 yards gain fumbled', 0, 14),
+            row('Rush', RUSH, 0, 14),
+            row('Rushing Touchdown', TD, 0, 14)
+        ]);
+        expect(out.map(r => r.scoring)).toEqual([false, true, false, false]);
+    });
+
+    it('stops looking once another score goes past the total', () => {
+        const out = shape([
+            row('Rush', RUSH, 0, 7),
+            row('Fumble', '#16 L.Sellers rush right for 9 yards gain fumbled', 0, 14),
+            row('Rush', RUSH, 0, 7),                                     // reverts
+            row('Field Goal Good', '#97 T.Wright field goal attempt from 40 yards GOOD', 3, 14),
+            row('Rushing Touchdown', TD, 0, 14)                          // corrupt, behind the field goal
+        ]);
+        expect(out.map(r => r.scoring && r.scoringSide)).toEqual([false, 'home', false, 'away', false]);
+    });
+
+    it('passes over a row with no score while it looks', () => {
+        const out = shape([
+            row('Rush', RUSH, 0, 7),
+            row('Fumble', '#16 L.Sellers rush right for 9 yards gain fumbled', 0, 14),
+            row('Rush', RUSH, 0, 7),
+            { period: 2, playType: 'Timeout', playText: 'Timeout Kentucky' },
+            row('Rushing Touchdown', TD, 0, 14)
+        ]);
+        expect(out.map(r => r.scoring)).toEqual([false, false, false, false, true]);
+    });
+});
+
 describe('describedScore', () => {
     it('reads a score from the play type or, failing that, the text', () => {
         expect(describedScore({ playType: 'Rushing Touchdown' })).toEqual({ min: 6, max: 8 });
         expect(describedScore({ playType: 'Field Goal Good', playText: 'Jake Weinberg 27 Yd Field Goal' })).toEqual({ min: 3, max: 3 });
         expect(describedScore(MISFILED.earlyAdjacent.plays[2])).toEqual({ min: 6, max: 8 });
+        expect(describedScore({ playType: 'Safety', playText: 'x' })).toEqual({ min: 2, max: 2 });
+        expect(describedScore({ playType: 'Penalty', playText: '#16 S.Keltner field goal attempt from 24 yards GOOD' })).toEqual({ min: 3, max: 3 });
+        expect(describedScore({ playType: 'Sack', playText: '#10 J.Mateer sacked in the end zone for a SAFETY' })).toEqual({ min: 2, max: 2 });
+        expect(describedScore(null)).toBeNull();
     });
 
     it('ignores a touchdown that did not count, or was overturned, and a field goal that missed', () => {

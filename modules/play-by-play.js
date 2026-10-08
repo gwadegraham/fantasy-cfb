@@ -144,7 +144,9 @@ const MISFILED_SCORE_LOOKAHEAD = 20;
 // a scoring row whose own words don't describe the score.
 function misfiledScoreTarget(rows, classes, i) {
     const r = rows[i];
-    const accounts = j => !rows[j].scoring && describesPoints(rows[j], r.points);
+    // No `!scoring` check is needed: every candidate below is either 'invalid'
+    // or at exactly this total, i.e. 'same', so none can already be scoring.
+    const accounts = j => describesPoints(rows[j], r.points);
     const equal = j => rows[j].homeScore === r.homeScore && rows[j].awayScore === r.awayScore;
 
     // Late: the row before says it scored, but carried a corrupt score and was
@@ -165,8 +167,8 @@ function misfiledScoreTarget(rows, classes, i) {
     if (next.homeScore < r.homeScore || next.awayScore < r.awayScore) {
         const end = Math.min(rows.length - 1, i + MISFILED_SCORE_LOOKAHEAD);
         for (let j = i + 1; j <= end; j++) {
+            // A row with no score compares false on both tests and is passed over.
             const row = rows[j];
-            if (row.homeScore == null || row.awayScore == null) continue;
             if (row.homeScore > r.homeScore || row.awayScore > r.awayScore) return -1;
             if (equal(j) && accounts(j)) return j;
         }
