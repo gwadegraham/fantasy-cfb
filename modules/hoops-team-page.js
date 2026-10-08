@@ -12,6 +12,7 @@
 
 const HoopsTeam = require('../models/hoopsTeam');
 const HoopsGame = require('../models/hoopsGame');
+const { dropStale } = require('./hoops-stale-duplicates');
 const HoopsTeamStats = require('../models/hoopsTeamStats');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
@@ -147,7 +148,7 @@ async function ownership(league, season, teamId) {
     return null;
 }
 
-async function build(teamId, { season, league = null } = {}) {
+async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     const id = Number(teamId);
     const yr = Number(season);
     if (!Number.isFinite(id) || !Number.isFinite(yr)) return null;
@@ -155,7 +156,7 @@ async function build(teamId, { season, league = null } = {}) {
     const team = await HoopsTeam.findOne({ id, season: yr }).lean();
     if (!team) return null;
 
-    const [games, rated, confTeams, stats, owner, values] = await Promise.all([
+    const [listed, rated, confTeams, stats, owner, values] = await Promise.all([
         HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean(),
         HoopsTeam.find({ season: yr, 'preseason.adjOE': { $type: 'number' } },
             { 'preseason.adjOE': 1, 'preseason.adjDE': 1, _id: 0 }).lean(),
@@ -166,6 +167,9 @@ async function build(teamId, { season, league = null } = {}) {
         ownership(league, yr, id),
         quadrantValues(league)
     ]);
+
+    // A rescheduled game's old listing never gets played (#498).
+    const games = dropStale(listed, now);
 
     // Opponent names and logos in one read.
     const oppIds = [...new Set(games.map(g => Number(g.homeTeamId) === id ? g.awayTeamId : g.homeTeamId))];

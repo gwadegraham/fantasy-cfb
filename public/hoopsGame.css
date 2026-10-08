@@ -76,6 +76,9 @@
 
 /* ---- preview: a game still to play ---------------------------------- */
 .hg-preview { margin-top: 14px; }
+.hg-moved { margin: 0; padding: 14px 16px; background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md);
+    color: var(--cc-muted); font-size: 14px; }
+.hg-moved a { color: var(--cc-accent); }
 .hg-wp { padding: 12px 14px; }
 .hg-wp-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--cc-muted-bright); }
 .hg-wp-head b { color: var(--cc-text); font-size: 18px; font-variant-numeric: tabular-nums; }

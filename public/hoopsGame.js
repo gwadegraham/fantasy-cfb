@@ -57,7 +57,7 @@
         // Live: "LIVE · 2nd · 8:43" (OT periods named), from the poller (#505).
         var half = function (p) { return p === 1 ? '1st' : p === 2 ? '2nd' : p > 2 ? 'OT' + (p > 3 ? p - 2 : '') : ''; };
         var liveBits = g.live ? [half(g.period), g.clock].filter(Boolean).join(' · ') : '';
-        var status = g.final ? 'Final' : g.live ? 'Live' + (liveBits ? ' · ' + liveBits : '') : null;
+        var status = g.final ? 'Final' : d.rescheduled ? 'Rescheduled' : g.live ? 'Live' + (liveBits ? ' · ' + liveBits : '') : null;
         var meta = (status ? '<b' + (g.live ? ' class="live"' : '') + '>' + esc(status) + '</b>' + (!g.live && when(g) ? ' · ' + esc(when(g)) : '') : '<b>' + esc(countdown(g)) + '</b>')
             + (g.tournament ? ' · ' + esc(g.tournament) : g.notes ? ' · ' + esc(g.notes) : '')
             + (place || g.neutralSite ? '<br>' + place + (g.neutralSite ? (place ? ' · ' : '') + 'neutral site' : '') : '');
@@ -340,7 +340,17 @@
         }).join('') + '</div>';
     }
 
+    // An old listing of a game that moved (#498): send them to the real one.
+    function moved(d) {
+        var r = d.rescheduled, k = window.ccKickoff;
+        var p = k && k.parts ? k.parts(r.startDate, r.startTimeTbd) : null;
+        return '<p class="hg-moved">This listing is out of date. The game was played '
+            + (p ? 'on ' + esc(p.monthShort + ' ' + p.day) + ' ' : 'on another date ')
+            + '— <a href="/hoops/game/' + encodeURIComponent(r.id) + '">see the result</a>.</p>';
+    }
+
     function preview(d) {
+        if (d.rescheduled) return moved(d);
         if (!d.preview) return '';
         return winProbability(d) + stakes(d) + tape(d) + form(d) + keyPlayers(d) + meetings(d);
     }

@@ -344,3 +344,18 @@ test('a tied live score dims neither side', async () => {
     await render(p);
     expect(Array.from(document.querySelectorAll('.hg-score span')).map(x => x.className)).toEqual(['', 'dash', '']);
 });
+
+test('a stale listing (#498) says so and links to the played game, with no preview', async () => {
+    window.ccKickoff = { parts: () => ({ monthShort: 'Nov', day: 14, weekdayLong: 'Saturday' }), time: () => '7 PM' };
+    await render(payload({
+        game: Object.assign(payload().game, { final: false, status: 'scheduled' }),
+        rescheduled: { id: 372814, startDate: '2026-11-14T00:00:00.000Z', startTimeTbd: false },
+        preview: { homeWinProb: 0.6, home: null, away: null, meetings: [] }, box: null
+    }));
+    expect(q('.hg-moved').textContent).toContain('played on Nov 14');
+    expect(q('.hg-moved a').getAttribute('href')).toBe('/hoops/game/372814');
+    expect(q('.hg-wp')).toBeNull();
+    expect(txt('.hg-meta')).toContain('Rescheduled');
+    delete window.ccKickoff;
+});
+

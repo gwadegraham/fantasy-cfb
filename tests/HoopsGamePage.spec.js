@@ -393,6 +393,30 @@ describe('homeWinProb', () => {
     });
 });
 
+describe('a stale listing of a rescheduled game (#498)', () => {
+    const COPY = Object.assign({}, GAME, { id: 501, status: 'scheduled', homePoints: null, awayPoints: null,
+        startDate: new Date(Date.UTC(2026, 10, 15)) });
+
+    test('points at the played game instead of previewing one that will never tip', async () => {
+        await HoopsGame.create([GAME, COPY]);
+        const p = await gamePage.build(501, { now: NOW });
+        expect(p.rescheduled).toEqual({ id: 500, startDate: GAME.startDate, startTimeTbd: false });
+        expect(p.preview).toBeNull();
+    });
+
+    test('a listing still inside the grace window previews as normal', async () => {
+        await HoopsGame.create([GAME, COPY]);
+        const p = await gamePage.build(501, { now: Date.UTC(2026, 10, 16) });
+        expect(p.rescheduled).toBeNull();
+        expect(p.preview).not.toBeNull();
+    });
+
+    test('the played game itself is not "rescheduled"', async () => {
+        await HoopsGame.create([GAME, COPY]);
+        expect((await gamePage.build(500, { now: NOW })).rescheduled).toBeNull();
+    });
+});
+
 describe('preview (a game still to play)', () => {
     beforeEach(async () => {
         await HoopsTeam.updateOne({ id: 1, season: SEASON }, { $set: { 'preseason.barthag': 0.96, 'preseason.adjOE': 120, 'preseason.adjDE': 91 } });
