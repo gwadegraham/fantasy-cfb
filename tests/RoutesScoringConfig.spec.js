@@ -190,6 +190,13 @@ describe('a basketball league keeps the hoops model (#500)', () => {
         await expect(ScoringConfig.create({ league: HOOPS, model: 'hoops' })).resolves.toBeTruthy();
     });
 
+    it('a save while the season cache is cold still stores hoops (the catalog decides)', async () => {
+        seasons._reset();                                   // every league reads as football now
+        const res = await save({ model: 'graham' });
+        expect(res.status).toBe(200);
+        expect((await ScoringConfig.findOne({ league: HOOPS }).lean()).model).toBe('hoops');
+    });
+
     it('a football league cannot be switched to hoops by the form', async () => {
         const res = await request(app).post('/scoring-config').set('X-Internal-Token', TOKEN)
             .send({ league: LEAGUE, model: 'hoops', values: {}, disabled: [], enabled: [] });

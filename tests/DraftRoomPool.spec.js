@@ -254,6 +254,19 @@ describe('the draft grades panel', () => {
     test('a basketball draft hides it', async () => {
         expect(await grades({ managers: [], sport: 'basketball' })).toBe('none|');
     });
+    test('and it stays hidden when the room re-renders (a socket update)', async () => {
+        const page = room({ draft: { status: 'complete', picks: [] } });
+        page.run(`
+            document.body.insertAdjacentHTML('beforeend', '<div id="draft-grades-panel"></div>');
+            fetch = function (url) {
+                var body = String(url).indexOf('/draft/grades/') !== -1 ? { managers: [], sport: 'basketball' } : [];
+                return Promise.resolve({ ok: true, json: function () { return Promise.resolve(body); } });
+            };
+            renderGrades();
+        `);
+        await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0));
+        expect(page.run(`renderGrades(); document.getElementById('draft-grades-panel').style.display`)).toBe('none');
+    });
     test('a football draft renders it', async () => {
         expect(await grades({ managers: [{ userId: 'x' }] })).toBe('|GRADES');
     });

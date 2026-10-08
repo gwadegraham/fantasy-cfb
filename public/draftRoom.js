@@ -540,10 +540,12 @@ function renderAll() {
 // preseason grades and render the shared cards (highlighting the viewer). Fetch
 // once per completed draft to avoid re-hitting the endpoint on every re-render.
 var gradesRenderedFor = null;
+var gradesSport = null;      // 'basketball' once the server says there are no grades for it (#482)
 function renderGrades() {
     var el = document.getElementById('draft-grades-panel');
     if (!el) return;
-    if (!draft || draft.status !== 'complete') { el.style.display = 'none'; return; }
+    // Remembered, not hidden once: every renderAll() comes back through here.
+    if (!draft || draft.status !== 'complete' || gradesSport === 'basketball') { el.style.display = 'none'; return; }
     el.style.display = '';
     var key = leagueCode + ':' + season;
     if (gradesRenderedFor === key) return;
@@ -552,7 +554,7 @@ function renderGrades() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             // No grade model for basketball yet (#482): no panel at all.
-            if (data && data.sport === 'basketball') { el.style.display = 'none'; return; }
+            if (data && data.sport === 'basketball') { gradesSport = 'basketball'; el.style.display = 'none'; return; }
             if (typeof renderDraftGrades === 'function') {
                 renderDraftGrades(el, data, {
                     currentUserId: myUserId,
