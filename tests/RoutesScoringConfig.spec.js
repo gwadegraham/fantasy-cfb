@@ -153,3 +153,47 @@ describe('POST /scoring-config — saving the power list', () => {
         expect(entry.meta.powerConferences).toEqual(POWER_PLUS);
     });
 });
+
+// #500: a basketball league scores on quadrants whatever the admin form
+// posts. The form's model picks Fixed vs Stacking WITHIN football; taking it
+// for a basketball league switched that league to football scoring.
+describe('a basketball league keeps the hoops model (#500)', () => {
+    const League = require('../models/league');
+    const SportSeason = require('../models/sportSeason');
+    const seasons = require('../modules/active-season');
+    const HOOPS = 'hoops-league';
+    beforeEach(async () => {
+        await League.create({ code: HOOPS, name: 'Hardwood Heroes', sport: 'basketball' });
+        await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' }, { sport: 'basketball', season: 2027, status: 'preseason' }]);
+        await seasons.prime();
+    });
+    afterEach(() => seasons._reset());
+    const save = (body) => request(app).post('/scoring-config').set('X-Internal-Token', TOKEN)
+        .send(Object.assign({ league: HOOPS, values: { q1Win: 6 }, disabled: [], enabled: [] }, body));
+
+    it('a save carrying a football model is stored as hoops, with the values kept', async () => {
+        const res = await save({ model: 'claunts' });
+        expect(res.status).toBe(200);
+        expect(res.body.model).toBe('hoops');
+        const doc = await ScoringConfig.findOne({ league: HOOPS }).lean();
+        expect(doc.model).toBe('hoops');
+        expect(doc.values.q1Win).toBe(6);
+    });
+
+    it('a stored football model (saved before the fix) still reads back as hoops', async () => {
+        await ScoringConfig.collection.insertOne({ league: HOOPS, model: 'graham', values: {}, disabled: [], enabled: [] });
+        const res = await request(app).get(`/scoring-config/${HOOPS}`);
+        expect(res.body.model).toBe('hoops');
+    });
+
+    it('the model validates as hoops on a full document save', async () => {
+        await expect(ScoringConfig.create({ league: HOOPS, model: 'hoops' })).resolves.toBeTruthy();
+    });
+
+    it('a football league cannot be switched to hoops by the form', async () => {
+        const res = await request(app).post('/scoring-config').set('X-Internal-Token', TOKEN)
+            .send({ league: LEAGUE, model: 'hoops', values: {}, disabled: [], enabled: [] });
+        expect(res.status).toBe(200);
+        expect(res.body.model).toBe('graham');
+    });
+});

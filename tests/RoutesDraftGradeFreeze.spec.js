@@ -144,3 +144,29 @@ describe('GET /draft/grades — freezing', () => {
         expect(frozen.managers[0].projPoints).toBeGreaterThan(live.managers[0].projPoints);
     });
 });
+
+// #482: the grade is a football projection (SP+, expected wins, CFP odds),
+// so a basketball draft gets none rather than a meaningless football one.
+describe('GET /draft/grades — a basketball league', () => {
+    const League = require('../models/league');
+    const SportSeason = require('../models/sportSeason');
+    const seasons = require('../modules/active-season');
+    beforeEach(async () => {
+        await League.create({ code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' });
+        await SportSeason.create([{ sport: 'football', season: SEASON, status: 'in-season' }, { sport: 'basketball', season: 2027, status: 'preseason' }]);
+        await seasons.prime();
+    });
+    afterEach(() => seasons._reset());
+
+    it('returns no managers and says it is basketball, even with a finished draft', async () => {
+        await Draft.create({ league: 'hoops-league', season: 2027, status: 'complete', picks: [{ round: 1, overall: 1, userId: new (require('mongoose').Types.ObjectId)(), team: { id: 150, school: 'Duke' } }] });
+        const res = await request(app).get('/draft/grades/hoops-league/2027');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ league: 'hoops-league', season: 2027, managers: [], sport: 'basketball' });
+    });
+
+    it('a football league is unaffected', async () => {
+        const res = await request(app).get(`/draft/grades/${LEAGUE}/${SEASON}`);
+        expect(res.body.sport).toBeUndefined();
+    });
+});

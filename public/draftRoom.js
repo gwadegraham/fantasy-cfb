@@ -551,6 +551,8 @@ function renderGrades() {
     fetch('/draft/grades/' + encodeURIComponent(leagueCode) + '/' + encodeURIComponent(season), { headers: { 'Accept': 'application/json' } })
         .then(function (r) { return r.json(); })
         .then(function (data) {
+            // No grade model for basketball yet (#482): no panel at all.
+            if (data && data.sport === 'basketball') { el.style.display = 'none'; return; }
             if (typeof renderDraftGrades === 'function') {
                 renderDraftGrades(el, data, {
                     currentUserId: myUserId,

@@ -29,6 +29,13 @@ router.get('/grades/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
+        // The projection is football's through and through — SP+, expected
+        // wins, CFP odds — so a basketball draft gets no grade rather than a
+        // football one that looks authoritative (#482). `sport` lets the
+        // draft room hide the panel instead of saying "no grades".
+        if (sportForLeague(league) === 'basketball') {
+            return res.json({ league, season, managers: [], sport: 'basketball' });
+        }
         const draft = await Draft.findOne({ league, season }).lean();
         if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
             return res.json({ league, season, managers: [] });
