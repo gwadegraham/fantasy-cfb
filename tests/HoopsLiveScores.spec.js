@@ -40,6 +40,7 @@ const row = (id, status, home, away, o = {}) => Object.assign({
 let logged;
 beforeEach(async () => {
     livePoll._flush._reset();
+    livePoll._resetErrors();
     await League.create({ code: LEAGUE, name: 'Hardwood Heroes', sport: 'basketball' });
     await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' }, { sport: 'basketball', season: SEASON, status: 'in-season' }]);
     await seasons.prime();
@@ -88,7 +89,7 @@ describe('applyScoreboard', () => {
     test('writes our games, ignores others, and reports a final only on the transition', async () => {
         await HoopsGame.create([game(10), game(11)]);
         const first = await scoreboard.applyScoreboard([row(10, 'final', 75, 60), row(11, 'in_progress', 40, 41), row(999, 'final', 1, 0)]);
-        expect(first).toMatchObject({ rows: 3, matched: 2, updated: 2 });
+        expect(first).toMatchObject({ rows: 3, matched: 2, mismatched: 0, updated: 2 });
         expect(first.newlyFinal).toEqual([{ id: 10, week: 3, season: SEASON, seasonType: 'regular' }]);
         const stored = await HoopsGame.findOne({ id: 10 }).lean();
         expect(stored).toMatchObject({ status: 'final', homePoints: 75, awayPoints: 60, homeWinner: true });
@@ -98,8 +99,17 @@ describe('applyScoreboard', () => {
         expect(again.newlyFinal).toEqual([]);
     });
 
+    // The id is assumed to be /games' id; the TEAMS are what make it this
+    // game. A partial id collision must not finalise somebody else's game.
+    test('a row whose teams disagree with the stored game is never written', async () => {
+        await HoopsGame.create(game(10));
+        const out = await scoreboard.applyScoreboard([row(10, 'final', 75, 60, { homeTeam: { id: 99, points: 75 }, awayTeam: { id: 98, points: 60 } })]);
+        expect(out).toMatchObject({ matched: 0, mismatched: 1, updated: 0, newlyFinal: [] });
+        expect((await HoopsGame.findOne({ id: 10 }).lean()).status).toBe('scheduled');
+    });
+
     test('nothing to apply', async () => {
-        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, updated: 0, newlyFinal: [] });
+        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [] });
         expect(await scoreboard.applyScoreboard(null)).toMatchObject({ rows: 0 });
     });
 });
@@ -226,6 +236,25 @@ describe('the live poller', () => {
         release();
         await first;
         expect((await livePoll.run({ now: new Date(DURING.getTime() + 60e3) })).skipped).not.toBe('previous tick still running');
+    });
+
+    test('a team mismatch is an error even when other rows matched', async () => {
+        await HoopsGame.create([game(10), game(11)]);
+        stubBoard([row(10, 'in_progress', 40, 41), row(11, 'in_progress', 30, 20, { homeTeam: { id: 77, points: 30 } })]);
+        const out = await livePoll.run({ now: DURING });
+        expect(out.failed).toBe('1 scoreboard game(s) matched an id but not its teams');
+        expect(logged[0].status).toBe('error');
+    });
+
+    test('the same error is recorded once per 15 minutes, not every tick', async () => {
+        await HoopsGame.create(game(10));
+        jest.spyOn(cbbd, 'cbbdGet').mockRejectedValue(new Error('Could not reach CBBD'));
+        await livePoll.run({ now: DURING });
+        await livePoll.run({ now: new Date(DURING.getTime() + 30e3) });
+        await livePoll.run({ now: new Date(DURING.getTime() + 60e3) });
+        expect(logged).toHaveLength(1);
+        await livePoll.run({ now: new Date(DURING.getTime() + livePoll.ERROR_EVERY_MS + 1) });
+        expect(logged).toHaveLength(2);
     });
 
     test('a scoreboard outage is recorded', async () => {

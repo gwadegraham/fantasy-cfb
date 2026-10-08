@@ -88,7 +88,19 @@ async function settle(season, nowMs) {
     return { groups, work };
 }
 
-async function record(status, summary) {
+// The same error is recorded at most once per ERROR_EVERY_MS: an outage or
+// an id mismatch lasts the whole night, and one row per 30s tick would be
+// ~1,000 identical red rows on the shared free-tier cluster. A different
+// error, or any success, records at once.
+const ERROR_EVERY_MS = 15 * 60 * 1000;
+let lastError = null;
+async function record(status, summary, nowMs = Date.now(), key = summary) {
+    if (status === 'error') {
+        if (lastError && lastError.key === key && nowMs - lastError.at < ERROR_EVERY_MS) return;
+        lastError = { key, at: nowMs };
+    } else {
+        lastError = null;
+    }
     const id = await jobLogger.startRun(JOB_NAME);
     await jobLogger.finishRun(id, status, summary);
 }
@@ -128,7 +140,7 @@ async function tick({ now = new Date() } = {}) {
         if (!flush.pendingCount()) return { skipped: 'no game in progress' };
         const { groups, work } = await settle(season, nowMs);
         const summary = `Slate over — settled ${groups.reduce((n, g) => n + g.gameIds.length, 0)} game(s) · ${work.notes.join(' | ')}`;
-        await record(work.failed ? 'error' : 'success', summary);
+        await record(work.failed ? 'error' : 'success', summary, nowMs, work.failed || summary);
         return { drained: true, summary, failed: work.failed };
     }
 
@@ -136,7 +148,7 @@ async function tick({ now = new Date() } = {}) {
     try {
         board = await cbbd.cbbdGet('/scoreboard');
     } catch (err) {
-        await record('error', `scoreboard: ${err.message}`);
+        await record('error', `scoreboard: ${err.message}`, nowMs);
         return { error: err.message };
     }
     const applied = await scoreboard.applyScoreboard(board.data);
@@ -164,14 +176,18 @@ async function tick({ now = new Date() } = {}) {
     // A live night where the scoreboard matches NONE of our games is the
     // id-mismatch the scoreboard module warns about — loud, not quiet.
     if (applied.rows > 0 && applied.matched === 0) failed = failed || 'no scoreboard game matched a stored game';
+    // Teams disagreeing on a matched id is the PARTIAL collision the 0-matched
+    // alarm misses: those rows were skipped, and someone should know.
+    if (applied.mismatched) failed = failed || `${applied.mismatched} scoreboard game(s) matched an id but not its teams`;
+    if (applied.mismatched) bits.push(`${applied.mismatched} team mismatch(es) skipped`);
 
     const summary = bits.join(', ');
     // Recorded only when something a manager can see in the standings
     // happened — a final, a settled batch — or something went wrong. A
     // running score or clock moving is not that, and on a live night it
     // changes every tick.
-    if (applied.newlyFinal.length || verdict.flush || failed) await record(failed ? 'error' : 'success', summary);
+    if (applied.newlyFinal.length || verdict.flush || failed) await record(failed ? 'error' : 'success', summary, nowMs, failed || summary);
     return { polled: true, summary, failed };
 }
 
-module.exports = { run, JOB_NAME, completionWork, _flush: flush };
+module.exports = { run, JOB_NAME, completionWork, _flush: flush, ERROR_EVERY_MS, _resetErrors: () => { lastError = null; } };

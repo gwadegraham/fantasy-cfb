@@ -71,34 +71,42 @@ function updateFor(row, stored) {
 // completion batch).
 async function applyScoreboard(rows) {
     const list = (rows || []).filter(r => r && r.id != null);
-    if (!list.length) return { rows: 0, matched: 0, updated: 0, newlyFinal: [] };
+    if (!list.length) return { rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [] };
     const ids = list.map(r => Number(r.id));
     const stored = await HoopsGame.find({ id: { $in: ids } }, {
-        id: 1, status: 1, week: 1, season: 1, seasonType: 1, homePoints: 1, awayPoints: 1,
+        id: 1, status: 1, week: 1, season: 1, seasonType: 1, homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1,
         homePeriodPoints: 1, awayPeriodPoints: 1, period: 1, clock: 1, homeWinner: 1, awayWinner: 1, _id: 0
     }).lean();
     const byId = new Map(stored.map(g => [Number(g.id), g]));
 
     const ops = [];
     const newlyFinal = [];
+    let mismatched = 0;
     for (const row of list) {
         const prev = byId.get(Number(row.id));
         if (!prev) continue;
+        // The id is assumed to be /games' id (unverified until a real game
+        // night); the two TEAMS are what make it this game. A row whose teams
+        // disagree is never written — a partial id collision would otherwise
+        // put live points and a final on somebody else's game, silently.
+        const home = Number(row.homeTeam && row.homeTeam.id);
+        const away = Number(row.awayTeam && row.awayTeam.id);
+        if (home !== Number(prev.homeTeamId) || away !== Number(prev.awayTeamId)) { mismatched++; continue; }
         const set = updateFor(row, prev);
         if (!set) continue;
         ops.push({ updateOne: { filter: { id: Number(row.id) }, update: { $set: set } } });
         // Read the result off the row as it now stands — a final whose score
         // was already stored by an earlier in-progress poll carries no points
         // in its (changed-only) $set.
-        const home = set.homePoints != null ? set.homePoints : prev.homePoints;
-        const away = set.awayPoints != null ? set.awayPoints : prev.awayPoints;
+        const hp = set.homePoints != null ? set.homePoints : prev.homePoints;
+        const ap = set.awayPoints != null ? set.awayPoints : prev.awayPoints;
         if (set.status === 'final' && prev.status !== 'final'
-            && home != null && away != null && home !== away) {
+            && hp != null && ap != null && hp !== ap) {
             newlyFinal.push({ id: Number(row.id), week: prev.week, season: prev.season, seasonType: prev.seasonType || 'regular' });
         }
     }
     if (ops.length) await HoopsGame.bulkWrite(ops, { ordered: false });
-    return { rows: list.length, matched: byId.size, updated: ops.length, newlyFinal };
+    return { rows: list.length, matched: byId.size - mismatched, mismatched, updated: ops.length, newlyFinal };
 }
 
 module.exports = { applyScoreboard, updateFor };
