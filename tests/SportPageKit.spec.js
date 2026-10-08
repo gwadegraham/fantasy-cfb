@@ -260,3 +260,39 @@ describe('countUp', () => {
         expect(document.querySelector('b').textContent).toBe('—');
     });
 });
+
+describe('vsRow: a stat comparison row, away left and home right (#506)', () => {
+    const colors = { away: '#aa0000', home: '#0000aa' };
+    const row = (html) => { const d = document.createElement('div'); d.innerHTML = html; return d.firstChild; };
+
+    test('marks the better side and splits the bar by share', () => {
+        const r = row(kit.vsRow('Total Yards', '', '377', '223', 377, 223, 'high', colors));
+        expect(r.querySelector('.l').classList.contains('edge')).toBe(true);
+        expect(r.querySelector('.r').classList.contains('edge')).toBe(false);
+        const bars = r.querySelectorAll('.bars i');
+        expect(bars[0].getAttribute('style')).toBe('flex:62.8;background:#aa0000');
+        expect(bars[1].getAttribute('style')).toBe('flex:37.2;background:#0000aa');
+    });
+
+    test('lower-is-better draws each bar from the OTHER side, so longer is still better', () => {
+        const r = row(kit.vsRow('Turnovers', '', '0', '2', 0, 2, 'low', colors));
+        expect(r.querySelector('.l').classList.contains('edge')).toBe(true);
+        expect(r.querySelectorAll('.bars i')[0].getAttribute('style')).toBe('flex:100;background:#aa0000');
+    });
+
+    test('a tie marks neither side; no `better` or a missing number draws no bar', () => {
+        expect(row(kit.vsRow('Sacks', '', '2', '2', 2, 2, 'high', colors)).querySelector('.edge')).toBeNull();
+        expect(row(kit.vsRow('Notes', 'sub', 'a', 'b', null, 1, 'high', colors)).querySelector('.bars')).toBeNull();
+        expect(row(kit.vsRow('Pace', '', '70', '68', 70, 68, null, colors)).querySelector('.bars')).toBeNull();
+        expect(row(kit.vsRow('Pace', 'per game', '70', '68', 70, 68, null, colors)).querySelector('.mid small').textContent).toBe('per game');
+    });
+
+    test('both zero splits the bar evenly rather than dividing by nothing', () => {
+        const r = row(kit.vsRow('TDs', '', '0', '0', 0, 0, 'high', colors));
+        expect(r.querySelectorAll('.bars i')[0].getAttribute('style')).toBe('flex:50;background:#aa0000');
+    });
+
+    test('vsHead escapes its labels', () => {
+        expect(kit.vsHead('W&M', 'DUKE')).toBe('<div class="sp-vs-head"><span>W&amp;M</span><span></span><span>DUKE</span></div>');
+    });
+});

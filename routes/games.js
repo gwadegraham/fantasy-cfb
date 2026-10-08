@@ -9,6 +9,10 @@ const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
 const franchiseRepo = require('../modules/franchise-repo');
 const Team = require('../models/team');
+const League = require('../models/league');
+const { DEFAULTS: DEFAULT_LEAGUES } = require('../modules/league-catalog');
+const scoring = require('../modules/scoring');
+const { sideRead, stakeFor } = require('../modules/game-fantasy');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
@@ -355,6 +359,65 @@ router.get('/detail/:gameId', async (req, res) => {
             obj.bettingLines = merged;
         }
         res.status(200).json(obj);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// The fantasy read of one game for one league (#506 Phase 3): each side's
+// owner, what the game banked them, and — until it is final — what a win or
+// a loss would pay. modules/game-fantasy.js has the why.
+//
+// Football leagues only. Basketball franchises own BASKETBALL team ids, and
+// 130 of them share a number with a football team (#489): asked about a
+// basketball league, this would name a hoops manager as the owner of a
+// football team. A league that is neither on file nor one of the hardcoded
+// defaults is refused the same way.
+//
+// Zero CFBD calls: the game, the rosters and the banked points are in Mongo;
+// the stakes read the scoring config and the week's poll through the scoring
+// engine's own (cached) lookups. Those are a nicety — if either fails, the
+// read still answers, just without stakes.
+router.get('/fantasy/:league/:gameId', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const gameId = Number(req.params.gameId);
+        if (!Number.isFinite(gameId)) return res.status(400).json({ message: 'Invalid game id' });
+        const doc = await League.findOne({ code: league }, { sport: 1, _id: 0 }).lean();
+        const known = doc || DEFAULT_LEAGUES.some(d => d.code === league);
+        if (!known || (doc && doc.sport && doc.sport !== 'football')) {
+            return res.status(404).json({ message: 'No such football league' });
+        }
+        const game = await Game.findOne({ id: gameId }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+
+        const users = await franchiseRepo.byLeagueAndSeason(league, game.season,
+            { fields: ['firstName', 'lastName', 'seasons'] });
+        const owners = ownersByTeam(users, game.season);
+        const points = pointsByTeamGame(users, game.season, game.week);
+        const out = {
+            league,
+            final: !!game.completed,
+            away: sideRead(game, 'away', owners, points),
+            home: sideRead(game, 'home', owners, points)
+        };
+
+        // Before kickoff only — the page shows the stakes only then, and a
+        // live game re-reads this on every score change.
+        if (!game.completed && !game.period && (out.away.owner || out.home.owner)) {
+            try {
+                const resolved = await scoring.cachedScoringConfig(league);
+                const cfg = Object.assign(scoring.normalizeCfg(resolved.model, resolved), { model: resolved.model });
+                const rankings = await scoring.getRankingsForGame(game, game.week, game.season);
+                const bracket = await scoring.getBracketForGame(game, game.season);
+                ['away', 'home'].forEach(which => {
+                    if (out[which].owner) Object.assign(out[which], stakeFor(scoring.evaluate, cfg, game, out[which].teamId, rankings, bracket));
+                });
+            } catch (e) {
+                console.error(`game fantasy stakes for ${gameId}: ${e.message}`);
+            }
+        }
+        res.json(out);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

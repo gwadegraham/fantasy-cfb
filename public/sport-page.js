@@ -12,6 +12,7 @@
 //   window.ccSportPage.readable(hex)                    a team colour that shows on the dark page
 //   window.ccSportPage.matchColors(away, home)          two team colours a reader can tell apart
 //   window.ccSportPage.countUp(root)                    [data-countup] numbers tick up (not if reduced motion)
+//   window.ccSportPage.vsRow / vsHead                   a stat-comparison row (.sp-vs), two-colour bars
 //   window.ccSportPage.syncStickyTop()                  re-measure the navbar offset
 //
 // It also pins the sticky tabs under the navbar (--sp-sticky-top), measured.
@@ -190,6 +191,37 @@
         return { away: a, home: distance(a, NEUTRAL) >= CLOSE ? NEUTRAL : '#F4F6FB' };
     }
 
+    // ---- stat comparison ------------------------------------------------------
+
+    // One .sp-vs row, away left and home right: each side's number, the better
+    // one marked, and a bar in each team's own colour. `better` is 'high',
+    // 'low' or null (no better side). For 'low' each bar is drawn from the
+    // OTHER side's number, so the longer bar is always the better side rather
+    // than the bigger number. aText/hText are shown as given (callers esc()
+    // anything that is not their own formatting); a/h are the numbers compared.
+    // colors: { away, home } — matchColors' answer.
+    function vsRow(label, sub, aText, hText, a, h, better, colors) {
+        var num = function (v) { return typeof v === 'number' && isFinite(v); };
+        var both = !!better && num(a) && num(h);
+        var aBetter = both && a !== h ? (better === 'high' ? a > h : a < h) : null;
+        var bars = '';
+        if (both && colors) {
+            var wa = Math.abs(better === 'low' ? h : a), wh = Math.abs(better === 'low' ? a : h);
+            // Shares of 100: flex-grow values that sum below 1 (two
+            // percentages written as fractions) leave the bar half empty.
+            var share = wa + wh > 0 ? wa / (wa + wh) : 0.5;
+            bars = '<span class="bars"><i style="flex:' + Math.round(share * 1000) / 10 + ';background:' + colors.away + '"></i>'
+                + '<i style="flex:' + Math.round((1 - share) * 1000) / 10 + ';background:' + colors.home + '"></i></span>';
+        }
+        return '<div class="sp-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + aText + '</span>'
+            + '<span class="mid">' + label + (sub ? '<small>' + sub + '</small>' : '') + bars + '</span>'
+            + '<span class="r' + (aBetter === false ? ' edge' : '') + '">' + hText + '</span></div>';
+    }
+    // The column labels over a run of vsRows.
+    function vsHead(awayLabel, homeLabel) {
+        return '<div class="sp-vs-head"><span>' + esc(awayLabel) + '</span><span></span><span>' + esc(homeLabel) + '</span></div>';
+    }
+
     // ---- motion -------------------------------------------------------------
 
     // [data-countup="12"] ticks up from 0 over ~0.85s, as football's season
@@ -227,6 +259,8 @@
         syncStickyTop: syncStickyTop, readable: readable, matchColors: matchColors, countUp: countUp };
 
     api.numbered = numbered;
+    api.vsRow = vsRow;
+    api.vsHead = vsHead;
 
     if (global.document) {
         syncStickyTop();

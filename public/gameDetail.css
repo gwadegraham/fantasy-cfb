@@ -9,14 +9,6 @@ html.gd-page, .gd-page body {
 .gd-page body {
     justify-content: flex-start;
 }
-.game-detail-container {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 16px 16px 32px;
-    box-sizing: border-box;
-    width: 100%;
-}
-
 /* ---- Loading / Error ---- */
 .gd-loading, .gd-error {
     text-align: center;
@@ -38,13 +30,6 @@ html.gd-page, .gd-page body {
 }
 .gd-back:hover { color: var(--cc-text); }
 
-/* ---- Header ---- */
-.gd-header {
-    text-align: center;
-    margin-bottom: 12px;
-    padding: 16px 12px;
-    border-radius: var(--cc-r-md);
-}
 .gd-date {
     font-size: 0.82rem;
     color: var(--cc-muted);
@@ -186,7 +171,6 @@ html.gd-page, .gd-page body {
     font-weight: 400;
 }
 .gd-tnm-abbr { display: none; }
-.gd-ls-abbr { display: none; }
 
 /* ---- Meta row ---- */
 .gd-meta {
@@ -309,102 +293,8 @@ html.gd-page, .gd-page body {
     padding: 5px 12px;
 }
 
-/* ---- Line score table ---- */
+/* ---- Scrolling tables ---- */
 .gd-table-scroll { overflow-x: auto; max-width: 100%; }
-.gd-linescore {
-    width: 100%;
-    border-collapse: collapse;
-    font-variant-numeric: tabular-nums;
-}
-.gd-linescore th, .gd-linescore td {
-    padding: 6px 10px;
-    text-align: center;
-    font-size: 0.85rem;
-    white-space: nowrap;
-}
-.gd-linescore th {
-    color: var(--cc-muted-2);
-    font-weight: 500;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid var(--cc-border);
-}
-.gd-linescore td { border-bottom: 1px solid var(--cc-border); }
-.gd-linescore tbody tr:last-child td { border-bottom: none; }
-.gd-ls-team {
-    text-align: left !important;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-.gd-ls-logo {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-}
-.gd-total {
-    font-weight: 700 !important;
-}
-.gd-row-winner td { color: var(--cc-text); }
-.gd-linescore tbody tr:not(.gd-row-winner) td {
-    color: var(--cc-muted);
-}
-
-/* ---- Team stats comparison ---- */
-.gd-stats-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.gd-stat-row {
-    display: grid;
-    grid-template-columns: 60px 1fr 60px;
-    align-items: center;
-    gap: 10px;
-}
-.gd-stat-val {
-    font-size: 0.88rem;
-    font-weight: 500;
-    color: var(--cc-muted);
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-}
-.gd-stat-val.gd-stat-lead {
-    color: var(--cc-text);
-    font-weight: 700;
-}
-.gd-stat-center { text-align: center; }
-.gd-stat-label {
-    font-size: 0.72rem;
-    color: var(--cc-muted-2);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 3px;
-}
-.gd-stat-bar {
-    height: 5px;
-    border-radius: 3px;
-    background: var(--cc-surface-3);
-    overflow: hidden;
-}
-.gd-stat-bar {
-    display: flex;
-    gap: 2px;
-}
-.gd-stat-bar-fill {
-    height: 100%;
-    border-radius: 3px 0 0 3px;
-    background: var(--cc-interactive);
-    transition: width 0.3s ease;
-}
-.gd-stat-bar-fill.gd-stat-bar-right {
-    border-radius: 0 3px 3px 0;
-    opacity: 0.5;
-}
-
 /* ---- Player stat tables ---- */
 .gd-player-tables {
     display: grid;
@@ -705,53 +595,6 @@ html.gd-page, .gd-page body {
     font-weight: 600;
     color: var(--cc-muted-bright);
 }
-.gd-ss-row { margin-bottom: 12px; }
-.gd-ss-row:last-child { margin-bottom: 0; }
-.gd-ss-label {
-    font-size: 0.72rem;
-    color: #fff;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    text-align: center;
-    margin-bottom: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-}
-/* Points at whichever team is winning the row. Both carets are always in the
-   DOM and the loser's is only made invisible, so the label text stays centred
-   on every row — including a tie, where neither shows. The colour is the
-   contrast-corrected bar colour, so a navy or black team stays visible against
-   the card rather than disappearing into it. */
-.gd-ss-caret {
-    flex: none;
-    font-size: 0.6rem;
-    line-height: 1;
-}
-.gd-ss-track {
-    height: 24px;
-    border-radius: 4px;
-    display: flex;
-    overflow: hidden;
-    background: var(--cc-surface-3);
-}
-.gd-ss-fill {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #fff;
-    padding: 0 8px;
-    min-width: 36px;
-    transition: width 0.3s ease;
-    overflow: hidden;
-    white-space: nowrap;
-}
-.gd-ss-fill-away { justify-content: flex-start; }
-.gd-ss-fill-home { justify-content: flex-end; }
-
 /* ---- Player Season Leaders (side-by-side) ---- */
 .gd-pl-row {
     display: grid;
@@ -802,7 +645,6 @@ html.gd-page, .gd-page body {
 
 /* ---- Mobile ---- */
 @media (max-width: 600px) {
-    .game-detail-container { padding: 12px 10px 50px; }
     .gd-matchup-grid { column-gap: 8px; }
     .gd-logo { width: 44px; height: 44px; }
     .gd-mu-score { font-size: 1.6rem; }
@@ -810,21 +652,12 @@ html.gd-page, .gd-page body {
     .gd-mu-name { font-size: 0.75rem; }
     .gd-tnm-full { display: none; }
     .gd-tnm-abbr { display: inline; }
-    .gd-ls-full { display: none; }
-    .gd-ls-abbr { display: inline; }
     .gd-player-tables { grid-template-columns: 1fr; }
-    .gd-stat-row { grid-template-columns: 50px 1fr 50px; gap: 6px; }
-    .gd-stat-val { font-size: 0.8rem; }
-    .gd-linescore th, .gd-linescore td { padding: 6px 6px; font-size: 0.8rem; }
-    .gd-ls-logo { width: 18px; height: 18px; }
     .gd-odds-table tbody td { font-size: 0.9rem; padding: 10px 6px; }
     .gd-odds-table thead th { font-size: 0.65rem; padding: 0 6px 6px; }
     .gd-odds-hl { padding: 4px 8px; }
     .gd-odds-logo { width: 20px; height: 20px; }
     .gd-odds-table tbody td:first-child { font-size: 0.78rem; }
-    .gd-ss-track { height: 22px; }
-    .gd-ss-fill { font-size: 0.6rem; padding: 0 6px; }
-    .gd-ss-label { font-size: 0.65rem; }
     .gd-ss-team-label img { width: 18px; height: 18px; }
     .gd-ss-team-label span { font-size: 0.72rem; }
     .gd-pl-row { gap: 4px; }
@@ -1376,7 +1209,7 @@ html.gd-page, .gd-page body {
 }
 
 /* The score stamp, laid over the field card. Slams in, holds, lifts away. */
-.gd-lf-section, .gd-header { position: relative; }
+.gd-lf-section { position: relative; }
 .lm-stamp {
     position: absolute;
     inset: 0;
@@ -1418,3 +1251,25 @@ html.gd-page, .gd-page body {
     .gd-mu-score.gd-mu-scored, .gd-pbp-new, .lm-stamp, .lm-stamp-word { animation: none !important; }
     .lm-stamp { display: none; }
 }
+
+/* ============================================================================
+   The shared kit's frame (#506 Phase 3)
+   The page is .sp-page; the hero is the kit's two-colour sp-hero.match with
+   the football scoreboard inside; the stat comparisons are the kit's .sp-vs;
+   the fantasy read is .sp-fan / .sp-stake; the tabs are .sp-tabs. What is
+   below is only how football's own pieces sit in that frame.
+   ========================================================================== */
+.fg-hero { text-align: center; }
+.fg-hero .gd-back { display: flex; width: max-content; margin: 0 0 6px; }
+.fg-when { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 10px; }
+.fg-when .gd-status { margin-bottom: 0; }
+.fg-when .gd-date { margin: 0; color: var(--cc-muted-bright); font-size: 13px; }
+.fg-lines tr:not(.fg-won) td { color: var(--cc-muted); }
+.fg-lines tr:not(.fg-won) td:first-child { color: var(--cc-muted-bright); }
+.fg .gd-meta { margin-top: 14px; }
+/* In-card titles read like the kit's section headers. */
+.fg .gd-section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--cc-muted); font-weight: 700; }
+/* Under the tabs a panel starts flush; with no tabs (before kickoff) the
+   first card keeps its gap from the meta row. */
+.sp-tabs ~ .fg-panel > .gd-section:first-child { margin-top: 0; }
+.sp-tabs ~ .fg-panel > .sp-h:first-child { margin-top: 4px; }
