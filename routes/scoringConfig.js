@@ -1,7 +1,8 @@
 const express = require('express');
-const { seasonForLeague } = require('../modules/active-season');
+const { seasonForLeague, sportForLeague } = require('../modules/active-season');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
+const League = require('../models/league');
 const Game = require('../models/game');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
@@ -153,7 +154,15 @@ router.post('/', async (req, res) => {
         if (!effectiveRoles(req).includes('Admin') && await hasScoredGames(league, seasonForLeague(league))) {
             return res.status(423).json({ message: 'Scoring is locked once the season is underway. Ask an admin to change it — the change needs a re-score.' });
         }
-        const resolved = resolveConfig(league, { model, values, disabled, enabled, powerConferences });
+        // The form's model picks Fixed vs Stacking within football; the
+        // league's SPORT decides football vs basketball (#500). Read from the
+        // league catalog itself, not the season cache: a cold cache reads every
+        // league as football, and a save in that window would write a football
+        // model onto a basketball league.
+        const leagueDoc = await League.findOne({ code: league }, { sport: 1, _id: 0 }).lean();
+        const basketball = (leagueDoc ? leagueDoc.sport : sportForLeague(league)) === 'basketball';
+        const formModel = basketball ? 'hoops' : model === 'hoops' ? undefined : model;
+        const resolved = resolveConfig(league, { model: formModel, values, disabled, enabled, powerConferences });
         // An absent/malformed power list normalizes to undefined, which means
         // "use the engine default". Mongoose strips an undefined from a $set, so
         // clearing it back to the default needs an explicit $unset — otherwise
@@ -177,7 +186,7 @@ router.post('/', async (req, res) => {
         // shape that was chosen, not just that something changed.
         await audit.record(req, {
             action: 'scoring.config', league, season: String(seasonForLeague(league)),
-            summary: `Scoring rules updated (${resolved.model === 'graham' ? 'stacking' : 'fixed'} win values)`,
+            summary: `Scoring rules updated (${resolved.model === 'hoops' ? 'quadrant' : resolved.model === 'graham' ? 'stacking' : 'fixed'} win values)`,
             meta: { model: resolved.model, combineMode: resolved.combineMode, disabled: resolved.disabled, enabled: resolved.enabled, powerConferences: resolved.powerConferences || null }
         });
         // Same builder the GET uses, so a save can never report a different

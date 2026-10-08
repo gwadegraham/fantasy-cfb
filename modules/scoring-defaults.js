@@ -254,7 +254,14 @@ function fieldsForModel(model, disabled, enabled) {
 //   { model, combineMode, values, disabled }
 // merging any provided overrides over the model defaults.
 function resolveConfig(league, overrides) {
-    const model = (overrides && overrides.model && MODELS[overrides.model]) ? overrides.model : modelForLeague(league);
+    // A basketball league always scores on quadrants: a football model saved
+    // or posted for it (the admin form's Fixed/Stacking) is ignored, or the
+    // league quietly switched to football scoring (#500). A stored 'hoops' is
+    // honoured even when the league's sport is not known yet (a cold cache
+    // reads every league as football). Keeping a FOOTBALL league off 'hoops'
+    // is the save route's job.
+    const asked = overrides && overrides.model && MODELS[overrides.model] ? overrides.model : null;
+    const model = sportForLeague(league) === 'basketball' ? 'hoops' : asked || modelForLeague(league);
     const modelDef = MODELS[model] || MODELS.claunts;
     const combineMode = (overrides && (overrides.combineMode === 'sum' || overrides.combineMode === 'first'))
         ? overrides.combineMode

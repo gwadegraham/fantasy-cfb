@@ -31,7 +31,6 @@ const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('./modules/scoring-defaults');
-const BettingGroup = require('./models/bettingGroup');
 const draftToken = require('./modules/draft-token');
 const registerDraftSockets = require('./modules/draft-socket');
 const { cloudinaryConfig } = require('./modules/profile-update');
@@ -245,23 +244,9 @@ app.use(async (req, res, next) => {
     next();
 });
 
-// Betting group membership flag for the navbar and My Team links. HTML GETs
-// only so API calls and static assets skip the query.
-app.use(async (req, res, next) => {
-    res.locals.isBettingGroupMember = false;
-    try {
-        if (req.method === 'GET'
-            && (req.headers.accept || '').includes('text/html')
-            && req.oidc && req.oidc.isAuthenticated()) {
-            const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
-            if (innerMeta.userId) {
-                const group = await BettingGroup.findOne({ active: true, members: innerMeta.userId }).lean();
-                res.locals.isBettingGroupMember = !!group;
-            }
-        }
-    } catch (e) { /* non-fatal */ }
-    next();
-});
+// Betting group membership flag for the navbar and My Team links — false on
+// a basketball league, where betting does not exist (#491).
+app.use(require('./modules/betting-member').bettingMember());
 
 const { requiresAuth } = require('express-openid-connect');
 
