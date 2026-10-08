@@ -16,6 +16,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const franchiseRepo = require('./franchise-repo');
 const { resolveConfig, overridesFromDoc } = require('./scoring-defaults');
 const { evaluate } = require('./scoring');
+const { buildHoopsContext } = require('./hoops-detectors');
 const { ranksFor } = require('./hoops-ranks');
 const { entryFor } = require('./roster-teams');
 
@@ -132,7 +133,16 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
             for (const game of byTeam.get(String(id)) || []) {
                 const pts = evaluate('hoops', id, game, ranked.ranks, cfg);
                 score += pts;
-                scoreByTeam.push({ teamId: id, gameId: game.id, score: pts });
+                // The quadrant it was banked at, kept with the points (#502):
+                // ranks can move after a week is scored (a late weekly row,
+                // a re-imported preseason), and the pages must show what
+                // was PAID, not what the ranks say today.
+                const ctx = buildHoopsContext(id, game, ranked.ranks);
+                scoreByTeam.push({
+                    teamId: id, gameId: game.id, score: pts,
+                    quadrant: ctx.isRegular ? ctx.quadrant : null,
+                    oppRank: ctx.oppRank
+                });
             }
         }
         results.push({ accountId: m._id, score, scoreByTeam });

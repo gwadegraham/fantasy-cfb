@@ -3,6 +3,9 @@ const { seasonForLeague } = require('../modules/active-season');
 const router = express.Router();
 const ScoringConfig = require('../models/scoringConfig');
 const Game = require('../models/game');
+const HoopsGame = require('../models/hoopsGame');
+const { ranksFor } = require('../modules/hoops-ranks');
+const hoopsTeamPage = require('../modules/hoops-team-page');
 const { resolveConfig, fieldsForModel, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { explainRegularWin, explainGame, getScoringConfig, getRankingsForGame, getBracketForGame } = require('../modules/scoring');
 const { POWER_CONFERENCES } = require('../modules/scoring-detectors');
@@ -109,9 +112,6 @@ router.get('/:league/explain', async (req, res) => {
         if (!Number.isFinite(teamId) || !Number.isFinite(gameId)) {
             return res.status(400).json({ message: 'teamId and gameId are required' });
         }
-        const game = await Game.findOne({ id: gameId }).lean();
-        if (!game) return res.status(404).json({ message: 'Game not found' });
-
         const season = req.query.season;
         let cfg;
         if (season && String(season) !== String(seasonForLeague(req.params.league))) {
@@ -124,6 +124,27 @@ router.get('/:league/explain', async (req, res) => {
             cfg = await getScoringConfig(req.params.league);
         }
 
+        // A basketball league's game lives in hoopsgames, not games — and
+        // the two id spaces overlap, so the football lookup either 404'd or
+        // explained a FOOTBALL game under basketball rules (#495).
+        if (cfg.model === 'hoops') {
+            const game = await HoopsGame.findOne({ id: gameId }).lean();
+            if (!game) return res.status(404).json({ message: 'Game not found' });
+            // The opponent at the rank it was BANKED at (#502), when the
+            // scoring pass stored one, so the breakdown adds up to the
+            // points beside it even after the ranks have moved.
+            const ranks = Object.assign({}, (await ranksFor(game.season, game.week)).ranks);
+            const owner = await hoopsTeamPage.ownership(req.params.league, game.season, teamId);
+            const paid = owner && owner.banked && owner.banked[String(gameId)];
+            if (paid && paid.oppRank != null) {
+                const oppId = Number(game.homeTeamId) === teamId ? game.awayTeamId : game.homeTeamId;
+                ranks[String(oppId)] = paid.oppRank;
+            }
+            return res.json(explainGame('hoops', teamId, game, ranks, cfg));
+        }
+
+        const game = await Game.findOne({ id: gameId }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
         const rankings = await getRankingsForGame(game, game.week, game.season);
         const bracket = await getBracketForGame(game, game.season);
         res.json(explainGame(cfg.model, teamId, game, rankings, cfg, bracket));

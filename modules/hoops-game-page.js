@@ -151,6 +151,9 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         const venue = venueFor(teamId, { homeId: game.homeTeamId, awayId: game.awayTeamId, neutralSite: game.neutralSite });
         const oppRank = ranks[String(oppId)];
         const rank = ranks[String(teamId)];
+        // Paid already: the quadrant it was PAID at (#502), as the team page
+        // shows it, not one recomputed from ranks that have moved since.
+        const paid = final && owner && owner.banked ? owner.banked[String(id)] : undefined;
         return {
             id: teamId,
             school: (t && t.school) || (teamId === homeId ? game.homeTeam : game.awayTeam),
@@ -166,7 +169,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
-            quadrant: postseason ? null : quadrantFor(oppRank, venue),
+            quadrant: paid ? paid.quadrant : postseason ? null : quadrantFor(oppRank, venue),
             owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName,
                 mine: !!viewerId && owner.accountId === String(viewerId) } : null,
             banked: owner && final && Object.prototype.hasOwnProperty.call(owner.points, String(id)) ? owner.points[String(id)] : null

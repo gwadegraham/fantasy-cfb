@@ -78,6 +78,16 @@ const weeklyTeamScoreSchema = new mongoose.Schema({
     },
     score: {
         type: Number
+    },
+    // Basketball only (#502): the quadrant this game was banked at and the
+    // opponent rank behind it, AS SCORED. The pages show these rather than
+    // recomputing from rank data that can move after the week is banked.
+    // null on a postseason game (scored on the ladder, not a quadrant).
+    quadrant: {
+        type: Number
+    },
+    oppRank: {
+        type: Number
     }
 });
 

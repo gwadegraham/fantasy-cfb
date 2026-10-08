@@ -131,9 +131,21 @@ async function ownership(league, season, teamId) {
         // names an owner exactly when scoring pays one.
         if (!rosterIds(entry).includes(teamId)) continue;
         const points = {};
+        // What each game was banked AT (#502): the quadrant and opponent
+        // rank the scoring pass stored with the points. Only rows written
+        // since then carry it; an older row is left out and the page
+        // recomputes, as it always did.
+        const banked = {};
         for (const wk of entry.weeklyScore || []) {
             for (const s of wk.scoreByTeam || []) {
-                if (Number(s.teamId) === teamId) points[String(s.gameId)] = Number(s.score) || 0;
+                if (Number(s.teamId) !== teamId) continue;
+                points[String(s.gameId)] = Number(s.score) || 0;
+                if (s.quadrant !== undefined) {
+                    banked[String(s.gameId)] = {
+                        quadrant: s.quadrant == null ? null : Number(s.quadrant),
+                        oppRank: s.oppRank == null ? null : Number(s.oppRank)
+                    };
+                }
             }
         }
         return {
@@ -143,7 +155,8 @@ async function ownership(league, season, teamId) {
             // metadata.userId names — so a page can tell the viewer's own
             // team. Never sent to the client; only a `mine` flag is.
             accountId: m._id != null ? String(m._id) : null,
-            points
+            points,
+            banked
         };
     }
     return null;
@@ -195,6 +208,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     }));
 
     const points = (owner && owner.points) || {};
+    const bankedAt = (owner && owner.banked) || {};
     const out = games.map(g => {
         const home = Number(g.homeTeamId) === id;
         const oppId = Number(home ? g.awayTeamId : g.homeTeamId);
@@ -202,7 +216,10 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         const postseason = String(g.seasonType || '').toLowerCase() === 'postseason';
         const wk = final || nowWeek === null ? Number(g.week) : nowWeek;
         const ranks = ranksByWeek.get(wk) || {};
-        const oppRank = ranks[String(oppId)];
+        // A game this team's owner has been paid for shows the quadrant it
+        // was PAID at; anything else is worked out from today's ranks.
+        const paid = final ? bankedAt[String(g.id)] : undefined;
+        const oppRank = paid ? paid.oppRank : ranks[String(oppId)];
         const venue = venueFor(id, { homeId: g.homeTeamId, awayId: g.awayTeamId, neutralSite: g.neutralSite });
         const opp = oppById.get(oppId);
         return {
@@ -228,7 +245,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
             // quadrant win when the game is regular season (isRegular in
             // modules/hoops-detectors.js). Conference tournaments are
             // 'regular' to CBBD and do get a quadrant, exactly as scored.
-            quadrant: postseason ? null : quadrantFor(oppRank, venue),
+            quadrant: paid ? paid.quadrant : postseason ? null : quadrantFor(oppRank, venue),
             postseason,
             tournament: postseason ? (String(g.tournament || '').trim() || 'Postseason') : null,
             final,

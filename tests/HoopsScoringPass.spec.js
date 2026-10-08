@@ -127,6 +127,31 @@ describe('what the pass scores', () => {
     });
 });
 
+describe('what each game was banked at (#502)', () => {
+    test('the quadrant and the opponent rank are stored with the points', async () => {
+        const me = await manager('Ann', [2]);
+        await HoopsGame.create(finalGame(100, 2, 1, true));          // home win over #5: Q1
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect((await weekOf(me._id)).scoreByTeam[0]).toMatchObject({ quadrant: 1, oppRank: 5 });
+    });
+
+    test('a loss is stored with its quadrant too', async () => {
+        const me = await manager('Ann', [1]);
+        await HoopsGame.create(finalGame(100, 2, 1, true));          // #5 loses at #300: Q4 loss
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        expect((await weekOf(me._id)).scoreByTeam[0]).toMatchObject({ quadrant: 4, oppRank: 300 });
+    });
+
+    test('a postseason game has no quadrant: it is paid on the ladder', async () => {
+        const me = await manager('Ann', [2]);
+        await HoopsGame.create(finalGame(100, 2, 1, true, { seasonType: 'postseason', tournament: 'NIT' }));
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: WEEK });
+        const row = (await weekOf(me._id)).scoreByTeam[0];
+        expect(row.quadrant).toBeNull();
+        expect(row.oppRank).toBe(5);
+    });
+});
+
 describe('which games it refuses', () => {
     test('a scheduled game is not scored', async () => {
         const me = await manager('Fay', [2]);

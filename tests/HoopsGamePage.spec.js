@@ -357,6 +357,17 @@ describe('build', () => {
         expect(p.quadrantValues).toMatchObject({ 1: 5 });
     });
 
+    test('a paid game shows the quadrant it was banked at (#502), the unowned side today\'s', async () => {
+        stubCbbd();
+        const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g3@example.invalid' });
+        await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
+            teamRefs: [{ id: 1, sport: 'basketball' }], weeklyScore: [{ week: 3, score: 1, scoreByTeam: [{ teamId: 1, gameId: 500, score: 1, quadrant: 3, oppRank: 120 }] }] }] });
+        const p = await gamePage.build(500, { league: LEAGUE });
+        expect(p.home.quadrant).toBe(3);
+        const today = await gamePage.build(500);                     // no league: nothing banked to read
+        expect(today.home.quadrant).not.toBe(3);
+    });
+
     test('the viewer\'s own team is flagged — and no account id reaches the payload', async () => {
         stubCbbd();
         const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g2@example.invalid' });
