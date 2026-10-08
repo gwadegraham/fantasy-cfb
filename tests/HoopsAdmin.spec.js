@@ -166,8 +166,15 @@ describe("football's /admin works in the season of the league it manages", () =>
     test('a League Manager viewing basketball still gets football\'s season', () => {
         expect(hoopsAdmin.footballAdminSeason(['League Manager'], 'hoops-league', lm)).toBe(2026);
     });
-    test('an Admin gets the season of the league they view', () => {
-        expect(hoopsAdmin.footballAdminSeason(['Admin'], 'graham-league', lm)).toBe(2026);
+    // The viewed league and the Admin's own Auth0 league must differ in
+    // season, or reading the wrong one passes too.
+    test('an Admin gets the season of the league they view, not their own', async () => {
+        await League.updateOne({ code: 'graham-league' }, { $set: { season: 2025 } });
+        await League.create({ code: 'claunts-league', name: 'Goofballers', sport: 'football' });
+        activeSeason._reset();
+        await activeSeason.prime();
+        const claunts = { user_metadata: { metadata: { league: 'claunts' } } };
+        expect(hoopsAdmin.footballAdminSeason(['Admin'], 'graham-league', claunts)).toBe(2025);
     });
 });
 
