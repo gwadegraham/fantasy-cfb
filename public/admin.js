@@ -251,7 +251,7 @@ async function loadAdminStatus() {
         var jobs = [];
         try {
             var jobsRes = await fetch('/job-runs', { headers: { 'Accept': 'application/json' } });
-            if (jobsRes.ok) { jobs = await jobsRes.json(); }
+            if (jobsRes.ok) { jobs = footballJobs(await jobsRes.json()); }
         } catch (e) { /* job history is optional */ }
         renderAdminStatus(el, s, api, year, jobs);
     } catch (e) { /* leave the strip hidden on error */ }
@@ -278,9 +278,15 @@ var JOB_LABELS = {
     'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
     'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
     'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
-    'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts',
-    'hoops-scores': 'Basketball', 'hoops-stats': 'Basketball stats', 'hoops-media': 'Basketball TV', 'hoops-live': 'Basketball live'
+    'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts'
 };
+
+// Basketball's jobs (hoops-*) are on the basketball admin page (#518), not
+// here. This strip is shown to League Managers too, and basketball stays
+// invisible to anyone not in on it — a job name is enough to give it away.
+function footballJobs(jobs) {
+    return (jobs || []).filter(function (j) { return !/^hoops-/.test(j && j.jobName); });
+}
 
 function renderAdminStatus(el, s, api, year, jobs) {
     var behind = !s.upToDate;
@@ -308,7 +314,6 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
         var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'hoops-live', 'hoops-scores', 'hoops-stats', 'hoops-media',
                      'enrichment', 'season-stats', 'player-season-leaders',
                      'captain-reminder', 'recap-notice'];
         // Collapse to the latest run per job — the live poller writes a run every
@@ -716,7 +721,9 @@ window.onload = async function() {
     // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     detectMobile();
     getUserProfile();
-    getTeams();
+    // Football's team list (~1 MB) — names for the football-only tools. The
+    // basketball admin page has none of them.
+    if (window.ADMIN_SPORT !== 'basketball') getTeams();
     setSeasonOptions();
     setSeasonTypeOptions();
     setWeekOptions();
@@ -2399,7 +2406,7 @@ async function loadScoringConfig(model) {
 }
 
 // Plain-language name for each rule shape (the league's `model`).
-var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values' };
+var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values', hoops: 'Quadrant win values' };
 
 // "<League> — <rule shape>". The name comes from ccLeague rather than a
 // hardcoded map: League setup, a few sections up this same page, can rename a

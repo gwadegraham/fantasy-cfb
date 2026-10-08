@@ -42,3 +42,9 @@
 .ha-job + .ha-job { border-top: 1px solid var(--cc-border); }
 .ha-job span:last-child { margin-left: auto; color: var(--cc-muted); font-size: 12px; }
 .ha .sp-h { margin-top: 22px; }
+
+/* League setup — football's admin markup and CSS (admin.css), pointed at the
+   basketball league. This only frames it under the data tasks. */
+.ha-league { width: 100%; max-width: 880px; margin: 0 auto; padding: 0 16px 56px; box-sizing: border-box; min-width: 0; }
+.ha-league-h { font: 700 20px Poppins, sans-serif; color: var(--cc-text); margin: 8px 0 12px; }
+.ha-league-h small { font-size: 13px; font-weight: 500; color: var(--cc-muted); margin-left: 6px; }

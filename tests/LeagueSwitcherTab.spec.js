@@ -232,6 +232,20 @@ describe('ccManageLeagueCode — what the Admin page WRITES to', () => {
         delete window.userState;
     });
 
+    // The basketball admin page (#518) names its league outright: it manages
+    // the basketball league while an Admin is still viewing football, and a
+    // League Manager's Auth0 flag never overrides it.
+    test('a page that names its league manages that one, for anyone', () => {
+        window.ADMIN_LEAGUE = HOOPS.code;
+        try {
+            page({ leagues: [OTHER, BALL, HOOPS], here: BALL.code, isAdmin: true });
+            expect(window.ccManageLeagueCode()).toBe(HOOPS.code);
+            page({ leagues: [BALL, HOOPS], here: BALL.code, isAdmin: false });
+            window.userState = { user_metadata: { metadata: { league: 'gg' } } };
+            expect(window.ccManageLeagueCode()).toBe(HOOPS.code);
+        } finally { delete window.ADMIN_LEAGUE; delete window.userState; }
+    });
+
     test('a League Manager manages their OWN, whatever they are viewing', () => {
         page({ leagues: [BALL, HOOPS], here: HOOPS.code, isAdmin: false });
         window.userState = { user_metadata: { metadata: { league: 'gg' } } };

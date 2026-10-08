@@ -26,7 +26,7 @@ useMongo();
 const SEASON = 2027;
 
 // roles: null = signed out; [] = a member; ['League Manager']; ['Admin'].
-function appAs(roles) {
+function appAs(roles, viewing) {
     const a = express();
     a.set('views', path.join(__dirname, '..', 'views'));
     a.set('view engine', 'ejs');
@@ -38,7 +38,8 @@ function appAs(roles) {
         next();
     });
     a.use('/hoops/admin', hoopsAdmin.build({
-        pageLocals: () => ({ user: { userId: 'u1', firstName: 'Garrett', role: (roles || [])[0] || '' }, userState: '{}' })
+        pageLocals: () => ({ user: { userId: 'u1', firstName: 'Garrett', role: (roles || [])[0] || '' }, userState: '{}',
+            viewerLeagueCode: viewing, draftDefaults: '{}' })
     }));
     // What server.js does with a request no route answered.
     a.use((req, res) => res.status(404).send('Not found'));
@@ -72,6 +73,78 @@ describe('the page', () => {
         const res = await request(appAs(roles)).get('/hoops/admin');
         expect(res.status).toBe(404);
         expect(res.text).not.toContain('hoops-admin');
+    });
+});
+
+// League setup on the basketball page: football's commissioner tools,
+// pointed at the basketball league and its season.
+describe('the page manages a basketball league', () => {
+    const League = require('../models/league');
+    beforeEach(async () => {
+        await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
+                             { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
+        activeSeason._reset();
+        await activeSeason.prime();
+    });
+    const page = async (viewing) => (await request(appAs(['Admin'], viewing)).get('/hoops/admin')).text;
+
+    // An Admin arriving from football's page is still VIEWING football.
+    test.each([['viewing basketball', 'hoops-league'], ['viewing football', 'graham-league'], ['viewing nothing', undefined]])(
+        '%s, it manages the basketball league in its own season', async (_, viewing) => {
+            const html = await page(viewing);
+            expect(html).toContain('window.ADMIN_LEAGUE = "hoops-league"');
+            expect(html).toContain('window.APP_YEAR = "2027"');
+            expect(html).toContain('Hardwood Heroes');
+            expect(html).toContain('src="/admin.js"');
+        });
+
+    test("League setup without what basketball doesn't have", async () => {
+        const html = await page('hoops-league');
+        ['displayLeagueNameContainer', 'displayDraftConfigContainer', 'displayScoringConfigContainer',
+         'displayCreateUserContainer', 'displaySeasonRosterContainer', 'displayManagerLoginsContainer',
+         'displayAuditLogContainer'].forEach(fn => expect(html).toContain(fn + '()'));
+        // No Captain or H2H in basketball scoring; always quadrants; the roster
+        // fix offers football teams only.
+        ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         'name="rule-shape"'].forEach(bit => expect(html).not.toContain(bit));
+        expect(html).toContain('user-table-body');
+    });
+
+    test('no basketball league: the data tasks only, and no league tools', async () => {
+        await League.deleteMany({ sport: 'basketball' });
+        activeSeason._reset();
+        await activeSeason.prime();
+        const html = await page('graham-league');
+        expect(html).toContain('window.ADMIN_LEAGUE = null');
+        expect(html).not.toContain('src="/admin.js"');
+        expect(html).not.toContain('displayDraftConfigContainer');
+    });
+});
+
+describe("football's /admin sends an Admin viewing basketball to this page", () => {
+    test('an Admin viewing basketball is redirected', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'basketball')).toBe('/hoops/admin');
+    });
+    test('an Admin viewing football stays', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'football')).toBeNull();
+    });
+    // A League Manager manages their own football league on /admin, and the
+    // basketball page would 404 them anyway.
+    test('a League Manager stays, whatever they view', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['League Manager'], 'basketball')).toBeNull();
+    });
+});
+
+describe("football's admin page is unchanged by the split", () => {
+    const ADMIN = path.join(__dirname, '..', 'views', 'admin.ejs');
+    test('it keeps every League setup tool, Fixed/Stacking included', () => {
+        const html = ejs.render(fs.readFileSync(ADMIN, 'utf8'), {
+            user: { userId: 'u1', firstName: 'Garrett', role: 'League Manager' },
+            userState: '{}', year: 2026, isAdmin: false, draftDefaults: '{}'
+        }, { filename: ADMIN });
+        ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         'name="rule-shape"', 'displayDraftConfigContainer'].forEach(bit => expect(html).toContain(bit));
+        expect(html).toContain('<span class="group-count">9</span>');
     });
 });
 

@@ -32,6 +32,7 @@ const seasons = require('../modules/active-season');
 const cbbd = require('../modules/cbbd-client');
 const roster = require('../modules/hoops-roster');
 const { effectiveRoles } = require('../modules/dev-role');
+const leagueCatalog = require('../modules/league-catalog');
 // A namespace, read at call time, so a test can widen the default and see
 // the quote follow it.
 const hoopsGames = require('./hoopsGames');
@@ -107,16 +108,50 @@ async function status() {
     };
 }
 
+// The basketball league this page manages: the one being viewed if it is a
+// basketball league, else the first basketball league on offer (an Admin
+// arriving from football's page). null when there is none — the page then
+// shows the data tasks only. The sport comes from the season cache, never
+// the code's name.
+async function managedLeague(req, viewed) {
+    if (viewed && seasons.sportForLeague(viewed) === 'basketball') return viewed;
+    const codes = await leagueCatalog.codes(req);
+    return codes.find(c => seasons.sportForLeague(c) === 'basketball') || null;
+}
+
+// Where football's /admin sends a viewer instead of rendering, or null to
+// render. An Admin viewing a basketball league goes to that league's page —
+// otherwise /admin shows basketball managers and the basketball season inside
+// football's tools. A League Manager always manages their own (football)
+// league on /admin, whatever they view, and cannot open the basketball page.
+// Here rather than inline in server.js so a test exercises the real rule.
+function footballAdminRedirect(roles, viewerSport) {
+    return (roles || []).includes('Admin') && viewerSport === 'basketball' ? '/hoops/admin' : null;
+}
+
 // pageLocals builds what the navbar partial needs (user, userState). It lives
 // in server.js with the rest of the session plumbing and is injected, so a
 // test can mount the real router without the whole app.
 function build({ pageLocals = () => ({}) } = {}) {
     const router = express.Router();
 
-    router.get('/', (req, res, next) => {
-        if (!(req.oidc && req.oidc.isAuthenticated())) return res.redirect('/login');
-        if (!isAdmin(req)) return next();
-        res.render('hoopsAdmin', Object.assign({ user: null, userState: null }, pageLocals(req, res)));
+    router.get('/', async (req, res, next) => {
+        try {
+            if (!(req.oidc && req.oidc.isAuthenticated())) return res.redirect('/login');
+            if (!isAdmin(req)) return next();
+            const locals = Object.assign({ user: null, userState: null, draftDefaults: '{}' }, pageLocals(req, res));
+            const league = await managedLeague(req, locals.viewerLeagueCode);
+            // The league's own season, which is what League setup's tools read
+            // and write — not football's.
+            const year = league ? seasons.seasonForLeague(league) : seasons.activeSeason('basketball');
+            const named = league ? (await leagueCatalog.named(req)).find(l => l.code === league) : null;
+            res.render('hoopsAdmin', Object.assign(locals, {
+                manageLeague: league, manageLeagueName: (named && named.name) || league, year
+            }));
+        } catch (err) {
+            console.error(`hoops admin page: ${err && err.message}`);
+            return res.status(500).send('Could not load the basketball admin page');
+        }
     });
 
     router.get('/status', async (req, res) => {
@@ -132,4 +167,4 @@ function build({ pageLocals = () => ({}) } = {}) {
     return router;
 }
 
-module.exports = { build, status, windowsFor, HOOPS_JOBS };
+module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, HOOPS_JOBS };
