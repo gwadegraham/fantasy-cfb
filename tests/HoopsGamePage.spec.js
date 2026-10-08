@@ -197,7 +197,8 @@ describe('TV listings (modules/hoops-media.js)', () => {
 
     test('nothing stored in the window: no call at all, so the off-season is free', async () => {
         await HoopsGame.create(Object.assign({}, GAME, { startDate: new Date(Date.UTC(2026, 9, 1)) }));
-        const get = jest.spyOn(cbbd, 'cbbdGet');
+        // Mocked, not just watched: a regressed gate must fail here, not bill the real key.
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
         expect(await hoopsMedia.ingestWindow(SEASON, { now: NOW })).toMatchObject({ skippedReason: 'nothing scheduled' });
         expect(get).not.toHaveBeenCalled();
     });
@@ -219,7 +220,7 @@ describe('TV listings (modules/hoops-media.js)', () => {
 
     test('the page payload carries it, and the page still never calls CBBD', async () => {
         await HoopsGame.create(Object.assign({}, GAME, { broadcasts: [{ name: 'ESPN2', type: 'TV' }] }));
-        const get = jest.spyOn(cbbd, 'cbbdGet');
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
         expect((await gamePage.build(500)).game.tv).toBe('ESPN2');
         expect(get).not.toHaveBeenCalled();
     });
