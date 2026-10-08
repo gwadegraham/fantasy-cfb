@@ -34,10 +34,11 @@
             : url;
     }
 
+    // A team carries its own page (football or basketball, #499); the
+    // fallback is football's, for an index cached before that change.
     function hrefFor(item) {
-        return item.type === 'team'
-            ? '/team?team=' + encodeURIComponent(item.id)
-            : '/userHome?user=' + encodeURIComponent(item.id);
+        if (item.type === 'team') return item.href || '/team?team=' + encodeURIComponent(item.id);
+        return '/userHome?user=' + encodeURIComponent(item.id);
     }
 
     // ---- Index ---------------------------------------------------------------

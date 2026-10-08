@@ -236,3 +236,49 @@ describe('league scoping', () => {
         expect((await get(viewing)).body.managers.map((m) => m.name)).toEqual(['Cole Smith']);
     });
 });
+
+// #499: a basketball league searches basketball programmes and opens their
+// basketball pages. The id spaces overlap, so a football row there would open
+// the WRONG page, not a missing one.
+describe('a basketball league', () => {
+    const HoopsTeam = require('../models/hoopsTeam');
+    const League = require('../models/league');
+    const SportSeason = require('../models/sportSeason');
+    const Account = require('../models/account');
+    const seasons = require('../modules/active-season');
+    let me;
+    beforeEach(async () => {
+        await League.create([
+            { code: 'graham-league', name: 'Graham League', sport: 'football' },
+            { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }
+        ]);
+        await SportSeason.create([{ sport: 'football', season: SEASON, status: 'in-season' }, { sport: 'basketball', season: 2027, status: 'preseason' }]);
+        await seasons.prime();
+        await HoopsTeam.create([
+            { id: 8, season: 2027, school: 'Duke', mascot: 'Blue Devils', abbreviation: 'DUKE', conference: 'ACC', color: '#013088', logos: LOGOS },
+            { id: 9, season: 2026, school: 'Last Year U', conference: 'X' }
+        ]);
+        me = await Account.create({ firstName: 'Hoop', lastName: 'Fan', email: 'h@example.invalid' });
+        await Franchise.create({ accountId: me._id, league: 'hoops-league', seasons: [{ season: 2027, franchiseName: 'Hoop Dreams' }] });
+    });
+    afterEach(() => seasons._reset());
+    const index = () => request(appAs('gg', { accountId: me._id, cookie: 'hoops-league' })).get('/search/index');
+
+    test('indexes this season\'s basketball teams, linked to their basketball pages', async () => {
+        const { body } = await index();
+        expect(body.teams.map(t => t.name)).toEqual(['Duke']);          // not Arkansas (football), not last season
+        expect(body.teams[0]).toMatchObject({ id: 8, href: '/hoops/team/8', sub: 'ACC', aliases: expect.arrayContaining(['Blue Devils', 'DUKE']) });
+    });
+
+    test('managers carry their BASKETBALL season\'s franchise name', async () => {
+        const { body } = await index();
+        expect(body.managers.find(m => m.name === 'Hoop Fan').sub).toBe('Hoop Dreams');
+    });
+
+    test('a football league is unchanged, with its football link', async () => {
+        const { body } = await request(asGraham).get('/search/index');
+        const ark = body.teams.find(t => t.name === 'Arkansas');
+        expect(ark.href).toBe('/team?team=8');
+        expect(body.teams.map(t => t.name)).not.toContain('Duke');
+    });
+});
