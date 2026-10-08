@@ -57,6 +57,10 @@
         linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(0, 0, 0, .12)); }
 .hg-court { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hg-court * { vector-effect: non-scaling-stroke; }
+/* The line across the floor at the ball (football's marker), under it. */
+.hg-mark { position: absolute; top: 0; bottom: 0; width: 3px; transform: translateX(-50%);
+    left: clamp(11px, calc(100% * var(--wp, .5)), calc(100% - 11px));
+    background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .55); }
 /* Clamped so a 0% or 100% chance keeps the whole ball on the floor. */
 .hg-ball { position: absolute; top: 50%; left: clamp(11px, calc(100% * var(--wp, .5)), calc(100% - 11px)); transform: translate(-50%, -50%);
     font-size: 20px; line-height: 1; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .55)); }

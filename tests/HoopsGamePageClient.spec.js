@@ -403,3 +403,16 @@ test('the tale of the tape says "per game", not "a game"', async () => {
     expect(txt('.sp-vs .mid')).not.toMatch(/a game/);
 });
 
+test('"Keys to the game", not "Four factors"', async () => {
+    await render(payload());
+    expect(txt('h2')).toContain('Keys to the game');
+    expect(txt('h2')).not.toMatch(/four factors/i);
+});
+
+test('a white line marks the ball on the court, at the same place', async () => {
+    await render(upcoming());
+    const floor = q('.hg-floor');
+    expect(floor.querySelector('.hg-mark')).not.toBeNull();
+    expect(floor.querySelector('.hg-mark').nextElementSibling.className).toBe('hg-ball');   // drawn under the ball
+});
+

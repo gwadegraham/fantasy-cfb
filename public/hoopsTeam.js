@@ -209,7 +209,7 @@
             return '<div class="sp-card sp-empty">Box-score stats arrive once the season tips off, and refresh nightly.</div>';
         }
         return '<h2 class="sp-h">Style<small>' + esc(s.games) + ' games</small></h2>' + style(s)
-            + '<h2 class="sp-h">Four factors<small>The four things that decide games</small></h2><div class="sp-card">' + fourFactors(s) + '</div>'
+            + '<h2 class="sp-h">Keys to the game<small>The four things that decide games</small></h2><div class="sp-card">' + fourFactors(s) + '</div>'
             + '<h2 class="sp-h">Rotation<small>Top nine by minutes per game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
     }
 

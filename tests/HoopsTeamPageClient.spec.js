@@ -375,3 +375,8 @@ test('labels: "Resume" without accents, and "per game" throughout', async () => 
     expect(document.querySelector('.sp-tab').textContent).toBe('Resume');
 });
 
+test('the Stats tab calls them "Keys to the game"', async () => {
+    const r = await render(payload({ stats: { games: 5, pace: 68, team: { efgPct: 50, tovRatio: .15, orbPct: 30, ftRate: 35 }, opponent: { efgPct: 48, tovRatio: .17, orbPct: 28, ftRate: 30 }, players: [] } }), 200, 'stats');
+    expect(Array.from(r.querySelectorAll('h2')).map(h => h.firstChild.textContent)).toContain('Keys to the game');
+});
+

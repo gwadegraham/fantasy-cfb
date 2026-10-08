@@ -231,7 +231,10 @@
         var label = d.game.live ? 'Pregame win probability' : 'Matchup predictor';
         return '<h2 class="sp-h">' + label + '</h2><div class="sp-card hg-wp">'
             + '<div class="hg-floor" role="img" aria-label="' + esc(d.away.school) + ' ' + pct(a) + '%, ' + esc(d.home.school) + ' ' + pct(p) + '%"'
-            + ' style="--wp:' + p + '">' + court(state.colors) + '<span class="hg-ball" aria-hidden="true">🏀</span></div>'
+            + ' style="--wp:' + p + '">' + court(state.colors)
+            // A white line across the floor at the ball, as football's field
+            // marks it, so the ball reads even on an orange lane.
+            + '<span class="hg-mark" aria-hidden="true"></span><span class="hg-ball" aria-hidden="true">🏀</span></div>'
             + '<div class="hg-wp-head"><span><b>' + pct(a) + '%</b> <span class="nm">' + esc(d.away.school) + '</span></span>'
             + '<span><span class="nm">' + esc(d.home.school) + '</span> <b>' + pct(p) + '%</b></span></div>'
             + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court')
@@ -387,7 +390,7 @@
             };
             return '<div class="sp-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
         }
-        return '<h2 class="sp-h">Four factors<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
+        return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
             + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
             + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
     }
