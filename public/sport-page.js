@@ -7,6 +7,8 @@
 //   window.ccSportPage.tabs(list, active)               sticky tab bar markup
 //   window.ccSportPage.fitNames(root, selector)         full name, or abbr if it clips
 //   window.ccSportPage.load(url, render, root, noun)    fetch → render, or an error state
+//   window.ccSportPage.overflows(el)                    does a name clip (sub-pixel)
+//   window.ccSportPage.syncStickyTop()                  re-measure the navbar offset
 //
 // It also pins the sticky tabs under the navbar (--sp-sticky-top), measured.
 // Works in the browser and under Node (module.exports) for tests.

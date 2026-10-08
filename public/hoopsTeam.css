@@ -100,6 +100,7 @@
 .ht-st tr.me td.s { font-weight: 700; }
 
 /* ---- schedule: sp-gr game rows, plus the quadrant column ---------------- */
+.sp-gr { grid-template-columns: 44px minmax(0, 1fr) auto 28px 26px; }
 .ht-qt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; background: var(--cc-surface-3); }
 .ht-qt.post { font-size: 9px; letter-spacing: .3px; color: var(--cc-amber); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ht-qt.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }

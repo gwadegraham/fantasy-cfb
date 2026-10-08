@@ -83,7 +83,9 @@
 
 /* ---- game row: date · opponent · result · (sport columns) -------------- */
 .sp-games { overflow: hidden; }
-.sp-gr { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 28px 26px; gap: 8px; align-items: center; padding: 9px 12px;
+/* Date, opponent, result; a sport adds its own columns (basketball: Q, pts)
+   by setting grid-template-columns in its sheet. */
+.sp-gr { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 9px 12px;
     font-size: 13px; border-bottom: 1px solid var(--cc-border); }
 .sp-gr:last-child { border-bottom: 0; }
 .sp-gr .d { color: var(--cc-muted); font-size: 11px; }
