@@ -1,0 +1,44 @@
+/* The basketball admin page (#518). Builds on the shared kit (sport-page.css)
+   for the frame, cards and states; only what is its own lives here. Every
+   class is ha- prefixed: the navbar loads Bootstrap on every page. */
+
+.ha-top { padding: 22px 0 6px; }
+.ha-back { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cc-muted) !important; }
+.ha-top h1 { font: 700 24px Poppins, sans-serif; margin: 8px 0 4px; }
+.ha-top h1 i { color: var(--cc-accent); margin-right: 6px; }
+.ha-season { font-size: 14px; color: var(--cc-muted-bright); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.ha-season b { color: var(--cc-text); }
+.ha-calls { margin-left: auto; font-size: 12px; color: var(--cc-muted); }
+
+.ha-task { padding: 14px; margin-top: 12px; }
+.ha-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ha-head i { color: var(--cc-accent); width: 18px; text-align: center; }
+.ha-head h2 { font: 600 16px Poppins, sans-serif; margin: 0; }
+.ha-head code { margin-left: auto; font-size: 11px; color: var(--cc-muted); background: var(--cc-surface-2);
+    padding: 2px 6px; border-radius: var(--cc-r-sm); overflow-wrap: anywhere; }
+.ha-what { font-size: 13px; color: var(--cc-muted-bright); margin: 6px 0 8px; }
+.ha-onfile { font-size: 13px; }
+.ha-onfile small { color: var(--cc-muted); text-transform: uppercase; letter-spacing: 1px; font-size: 10px; margin-right: 4px; }
+.ha-last { font-size: 12px; color: var(--cc-muted-bright); margin-top: 4px; overflow-wrap: anywhere; }
+.ha-muted { color: var(--cc-muted); }
+.ha-warn { margin-top: 10px; font-size: 12px; color: var(--cc-amber); }
+
+.ha-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--cc-muted-2); }
+.ha-success { background: var(--cc-success); }
+.ha-error { background: var(--cc-danger); }
+.ha-running, .ha-skipped { background: var(--cc-amber); }
+
+.ha-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.ha-type { background: var(--cc-surface-2); color: var(--cc-text); border: 1px solid var(--cc-border); border-radius: var(--cc-r-sm);
+    padding: 7px 8px; font: 500 13px Poppins, sans-serif; }
+.ha-run, .ha-cancel { border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); padding: 8px 16px;
+    font: 600 13px Poppins, sans-serif; cursor: pointer; background: var(--cc-surface-2); color: var(--cc-text); }
+.ha-run:disabled { opacity: .55; cursor: default; }
+.ha-confirm { background: var(--cc-amber); border-color: var(--cc-amber); color: #101322; }
+.ha-cancel { background: transparent; color: var(--cc-muted); }
+
+.ha-jobs { padding: 4px 0; }
+.ha-job { display: flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; }
+.ha-job + .ha-job { border-top: 1px solid var(--cc-border); }
+.ha-job span:last-child { margin-left: auto; color: var(--cc-muted); font-size: 12px; }
+.ha .sp-h { margin-top: 22px; }

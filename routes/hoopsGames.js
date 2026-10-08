@@ -535,6 +535,10 @@ async function refreshResults({ season, seasonType, start, end }) {
     });
 }
 
+// The window a refresh covers when it is not given one. Exported so the
+// basketball admin page quotes the calls it spends from the same number.
+const DEFAULT_REFRESH_MS = 24 * 3600 * 1000;
+
 router.post('/refresh', async (req, res) => {
     const season = Number(req.body && req.body.season);
     if (!Number.isInteger(season)) {
@@ -546,7 +550,7 @@ router.post('/refresh', async (req, res) => {
     const end = req.body && req.body.end ? new Date(req.body.end) : now;
     const start = req.body && req.body.start
         ? new Date(req.body.start)
-        : new Date(end.getTime() - 24 * 3600 * 1000);
+        : new Date(end.getTime() - DEFAULT_REFRESH_MS);
     if (isNaN(start) || isNaN(end) || start > end) {
         return res.status(400).json({ message: 'Invalid start/end range.' });
     }
@@ -560,3 +564,4 @@ module.exports.resolveSeasonStart = resolveSeasonStart;
 module.exports.restampSeason = restampSeason;
 module.exports.refreshResults = refreshResults;
 module.exports.keepStoredFinals = keepStoredFinals;
+module.exports.DEFAULT_REFRESH_MS = DEFAULT_REFRESH_MS;

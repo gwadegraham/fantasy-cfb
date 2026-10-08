@@ -91,7 +91,7 @@ describe('the views adopted it', () => {
     test('there are the views we think there are', () => {
         // A new full-document view has to be considered rather than silently
         // skipped by the two assertions below.
-        expect(docs).toHaveLength(16);
+        expect(docs).toHaveLength(17);
     });
 
     test('every one includes the favicon partial', () => {
