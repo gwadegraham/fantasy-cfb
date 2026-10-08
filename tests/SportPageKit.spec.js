@@ -156,3 +156,92 @@ test('the sticky tabs sit exactly under the navbar, re-measured on resize', () =
     kit.syncStickyTop();
     expect(document.documentElement.style.getPropertyValue('--sp-sticky-top')).toBe('0px');
 });
+
+describe('team colours', () => {
+    test('readable eases a dark colour toward white, leaves a bright one, refuses junk', () => {
+        expect(kit.readable('#013088')).toBe('#738dbd');                 // Duke navy, lifted
+        expect(kit.readable('#000000')).toBe('#8c8c8c');
+        expect(kit.readable('#fa4616')).toBe('#fa4616');                 // already reads
+        expect(kit.readable('#fff')).toBe('#ffffff');                     // short form
+        expect(kit.readable('navy')).toBeNull();
+        expect(kit.readable(null)).toBeNull();
+    });
+    test('two distinct primaries are kept', () => {
+        expect(kit.matchColors({ color: '#bf5700' }, { color: '#013088' })).toEqual({ away: '#cb752e', home: '#738dbd' });
+    });
+    test('two navies: home takes its alternate', () => {
+        expect(kit.matchColors({ color: '#013088' }, { color: '#0021A5', altColor: '#fa4616' }))
+            .toEqual({ away: '#738dbd', home: '#fa4616' });
+    });
+    test('home has no usable alternate: away takes its own', () => {
+        expect(kit.matchColors({ color: '#013088', altColor: '#ffd200' }, { color: '#0021A5', altColor: '#0021A5' }))
+            .toEqual({ away: '#ffd200', home: kit.readable('#0021A5') });
+    });
+    test('no alternates at all: home falls back to the neutral fill', () => {
+        expect(kit.matchColors({ color: '#013088' }, { color: '#0021A5' }).home).toBe('#F4F6FB');
+        // …unless away is itself grey, when it is white.
+        const greys = kit.matchColors({ color: '#8A90A8' }, { color: '#8a8fa6' });
+        expect(greys.home).toBe('#F4F6FB');
+        const navy = kit.matchColors({ color: '#7f86a0' }, { color: '#7f86a1' });
+        expect(navy.home).toBe('#F4F6FB');
+    });
+    test('missing colours on either side are the neutral fill, never undefined', () => {
+        const c = kit.matchColors({}, null);
+        expect(c.away).toBe('#8A90A8');
+        expect(c.home).toBe('#F4F6FB');
+    });
+});
+
+describe('countUp', () => {
+    const el = (to, sign) => {
+        document.body.innerHTML = '<div id="r"><b data-countup="' + to + '"' + (sign ? ' data-sign="+"' : '') + '>' + (sign && to > 0 ? '+' : '') + to + '</b></div>';
+        return document.querySelector('b');
+    };
+    let frames;
+    beforeEach(() => {
+        frames = [];
+        window.requestAnimationFrame = (fn) => { frames.push(fn); return frames.length; };
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+        window.matchMedia = () => ({ matches: false });
+    });
+    afterEach(() => { delete window.matchMedia; delete document.hidden; });
+    const run = (ts) => { const f = frames.splice(0); f.forEach(fn => fn(ts)); };
+
+    test('ticks up from zero to the value, keeping the plus sign', () => {
+        const b = el(12, true);
+        kit.countUp(document);
+        expect(b.textContent).toBe('0');
+        run(0); run(425);
+        const mid = Number(b.textContent.replace('+', ''));
+        expect(mid).toBeGreaterThan(0);
+        expect(mid).toBeLessThan(12);
+        run(900);
+        expect(b.textContent).toBe('+12');
+        expect(frames).toHaveLength(0);                                   // stops at the end
+    });
+    test('a negative value counts down, with no plus', () => {
+        const b = el(-3, true);
+        kit.countUp(document);
+        run(0); run(900);
+        expect(b.textContent).toBe('-3');
+    });
+    test('reduced motion: the number at once, no frames', () => {
+        window.matchMedia = (q) => ({ matches: /reduce/.test(q) });
+        const b = el(7, true);
+        kit.countUp(document);
+        expect(b.textContent).toBe('+7');
+        expect(frames).toHaveLength(0);
+    });
+    test('a hidden tab: the number at once', () => {
+        Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+        const b = el(7);
+        kit.countUp(document);
+        expect(b.textContent).toBe('7');
+        expect(frames).toHaveLength(0);
+    });
+    test('a value that is not a number is left alone', () => {
+        document.body.innerHTML = '<b data-countup="abc">—</b>';
+        kit.countUp(document);
+        expect(document.querySelector('b').textContent).toBe('—');
+    });
+});

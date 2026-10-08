@@ -69,7 +69,7 @@
         return '<div class="ht-own"><div class="who">On <b>' + esc(name) + '</b>’s roster'
             + (upcoming.length ? '<br><span class="sub">' + q1Left + ' Q1 game' + (q1Left === 1 ? '' : 's')
                 + ' left · up to <b>+' + table + '</b> still on the table</span>' : '')
-            + '</div><div class="pts"><div class="n">' + (banked > 0 ? '+' : '') + banked + '</div><div class="l">pts banked</div></div></div>';
+            + '</div><div class="pts"><div class="n" data-countup="' + banked + '" data-sign="+">' + (banked > 0 ? '+' : '') + banked + '</div><div class="l">pts banked</div></div></div>';
     }
 
     // The team sheet, phone-first: four tiles in a row — each quadrant's
@@ -213,15 +213,58 @@
             + '<h2 class="sp-h">Rotation<small>Top nine by minutes a game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
     }
 
+    // The next game, one tap from its preview: when, where, who, and what a
+    // win there pays this manager's league.
+    function nextUp(d) {
+        var g = d.games.filter(function (x) { return !x.final; })[0];
+        if (!g) return '';
+        var vals = d.quadrantValues || {};
+        var o = g.opponent;
+        var pay = g.quadrant && vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '';
+        return '<a class="sp-card ht-next" href="/hoops/game/' + encodeURIComponent(g.id) + '">'
+            + '<div class="ht-next-when">Next up · ' + esc(kit.countdown(g)) + '</div>'
+            + '<div class="ht-next-row"><span class="ht-next-opp"><span class="ht-v">' + venueMark(g.venue) + '</span>'
+            + (o.rank ? '<span class="ht-rk">' + o.rank + '</span> ' : '')
+            + (o.logo ? '<img class="sp-ologo" src="' + esc(o.logo) + '" alt="" onerror="this.remove()">' : '')
+            + '<b>' + esc(o.school) + '</b></span>'
+            + (g.quadrant ? '<span class="ht-qt' + (g.quadrant === 1 ? ' q1' : '') + '">Q' + g.quadrant + '</span>'
+                : '<span class="ht-qt post">' + esc(g.tournament || 'Post') + '</span>')
+            + (pay ? '<span class="ht-next-pay">' + pay + '</span>' : '') + '</div>'
+            + (g.notes ? '<div class="ht-next-note">' + esc(g.notes) + '</div>' : '') + '</a>';
+    }
+
+    // Where they sit in the conference, at a glance: the rows either side of
+    // this team, with the full table one tap away on its own tab.
+    var PEEK = 2;
+    function standingsPeek(d) {
+        if (!d.standings || !d.standings.length || !d.team.conference) return '';
+        var at = -1;
+        d.standings.forEach(function (r, i) { if (r.teamId === d.team.id) at = i; });
+        if (at === -1) return '';
+        var from = Math.max(0, Math.min(at - PEEK, d.standings.length - (PEEK * 2 + 1)));
+        var rows = d.standings.slice(from, from + PEEK * 2 + 1);
+        var h = '<h2 class="sp-h">' + esc(d.team.conference) + '<small>' + ordinal(at + 1) + ' of ' + d.standings.length + '</small></h2>'
+            + '<div class="sp-card"><table class="ht-st"><thead><tr><th></th><th>Team</th><th>Conf</th><th>Overall</th></tr></thead><tbody>';
+        rows.forEach(function (r, i) {
+            h += standingsRow(d, r, from + i);
+        });
+        return h + '</tbody></table><button type="button" class="ht-peek-more" data-tab="conference">Full ' + esc(d.team.conference) + ' table</button></div>';
+    }
+    function ordinal(n) {
+        var t = n % 100, s = n % 10;
+        return n + (t >= 11 && t <= 13 ? 'th' : s === 1 ? 'st' : s === 2 ? 'nd' : s === 3 ? 'rd' : 'th');
+    }
+    function standingsRow(d, r, i) {
+        return '<tr' + (r.teamId === d.team.id ? ' class="me"' : '') + '><td class="n">' + (i + 1) + '</td>'
+            + '<td class="s"><a href="' + teamHref(r.teamId) + '">' + (r.logo ? '<img src="' + esc(r.logo) + '" alt="">' : '') + esc(r.school) + '</a></td>'
+            + '<td>' + r.confW + '–' + r.confL + '</td><td>' + r.w + '–' + r.l + '</td></tr>';
+    }
+
     function standings(d) {
         if (!d.standings || !d.standings.length || !d.team.conference) return '';
         var h = '<div class="sp-card"><table class="ht-st"><thead><tr>'
             + '<th></th><th>Team</th><th>Conf</th><th>Overall</th></tr></thead><tbody>';
-        d.standings.forEach(function (r, i) {
-            h += '<tr' + (r.teamId === d.team.id ? ' class="me"' : '') + '><td class="n">' + (i + 1) + '</td>'
-                + '<td class="s"><a href="' + teamHref(r.teamId) + '">' + (r.logo ? '<img src="' + esc(r.logo) + '" alt="">' : '') + esc(r.school) + '</a></td>'
-                + '<td>' + r.confW + '–' + r.confL + '</td><td>' + r.w + '–' + r.l + '</td></tr>';
-        });
+        d.standings.forEach(function (r, i) { h += standingsRow(d, r, i); });
         return h + '</tbody></table></div>';
     }
 
@@ -300,7 +343,15 @@
         if (state.tab === 'schedule') return schedule(d);
         if (state.tab === 'stats') return efficiency(d) + stats(d);
         if (state.tab === 'conference') return standings(d);
-        return sheet(d) + splits(done);
+        return nextUp(d) + sheet(d) + splits(done) + standingsPeek(d);
+    }
+
+    // Scroll so the panel starts just under the sticky navbar and tabs.
+    function toPanelTop() {
+        var panel = root.querySelector('.ht-panel'), tabsEl = root.querySelector('.sp-tabs');
+        var nav = document.getElementById('navbar');
+        var cover = (nav ? nav.getBoundingClientRect().height : 0) + (tabsEl ? tabsEl.getBoundingClientRect().height : 0);
+        window.scrollTo(0, Math.max(0, panel.getBoundingClientRect().top + window.pageYOffset - cover - 8));
     }
 
     function paintPanel() {
@@ -330,6 +381,7 @@
         if (t) t.setAttribute('data-league-title', d.team.school);
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
         fitSchools();
+        kit.countUp(root);
     }
 
     root.addEventListener('click', function (e) {
@@ -339,6 +391,9 @@
             state.tab = tab.getAttribute('data-tab');
             if (window.history && window.history.replaceState) window.history.replaceState(null, '', '#' + state.tab);
             paintPanel();
+            // From the peek at the bottom of the Résumé, the table would
+            // otherwise open scrolled to wherever the peek was.
+            if (tab.classList.contains('ht-peek-more')) toPanelTop();
             return;
         }
         var q = e.target.closest('[data-q]');

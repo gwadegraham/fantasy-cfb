@@ -221,6 +221,13 @@ describe('build', () => {
         ]);
     });
 
+    test('each side carries its alternate colour, for when both primaries are alike (#506)', async () => {
+        await HoopsTeam.updateOne({ id: 1, season: SEASON }, { $set: { alt_color: '#ffffff' } });
+        const p = await gamePage.build(500);
+        expect(p.home.altColor).toBe('#ffffff');
+        expect(p.away.altColor).toBeNull();
+    });
+
     test('each side reads the game from its OWN point of view; the box is the stored one', async () => {
         const get = stubCbbd();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });

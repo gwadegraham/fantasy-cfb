@@ -12,6 +12,10 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'hoopsGame.js')
 // The shared kit (#506) the page script builds on, loaded once as the page would.
 const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
 beforeAll(() => { (0, eval)(KIT); });
+// Numbers that count up (#506) show their final value at once under reduced
+// motion; the animation itself is pinned in SportPageKit.spec.js.
+beforeEach(() => { window.matchMedia = (q) => ({ matches: /reduce/.test(q) }); });
+afterAll(() => { delete window.matchMedia; });
 
 const side = (o) => Object.assign({ byPeriod: [32, 43], points: 75, efgPct: 51, tovPct: 15.2, orbPct: 29.7, ftRate: 57.7,
     fgMade: 22, fgAtt: 52, threeMade: 9, threeAtt: 23, ftMade: 22, ftAtt: 30, rebounds: 37, assists: 13, steals: 8, blocks: 2,
@@ -130,9 +134,33 @@ test('four factors: the better side is marked, and its bar is the LONGER one eve
     expect(rows.map(r => r.querySelector('.mid').firstChild.textContent)).toEqual(['Shooting', 'Ball security', 'Second chances', 'Getting to the line']);
     const sec = rows[1];                                             // Duke 15.2 turnovers vs Texas 24.2: Duke better
     expect(sec.querySelector('.r').className).toContain('edge');
+    const flex = (i) => Number(i.style.flex.split(' ')[0]);
     const bars = sec.querySelectorAll('.bars i');
-    expect(bars[1].className).toBe('on');
-    expect(Number(bars[1].style.flex.split(' ')[0])).toBeGreaterThan(Number(bars[0].style.flex.split(' ')[0]));
+    expect(flex(bars[1])).toBeGreaterThan(flex(bars[0]));
+    expect(flex(bars[0]) + flex(bars[1])).toBeCloseTo(100, 5);           // shares of 100, never half empty
+    // Each side in its own team colour, eased to read on the dark page:
+    // Texas #bf5700 on the left, Duke #013088 on the right.
+    expect(bars[0].style.background).toBe('rgb(203, 117, 46)');
+    expect(bars[1].style.background).toBe('rgb(115, 141, 189)');
+});
+
+test('bars compare fractions as shares too: field goals 22-52 vs 19-59 fill the whole bar', async () => {
+    const p = payload();
+    p.box.away.fgMade = 19; p.box.away.fgAtt = 59;
+    await render(p);
+    const fg = Array.from(document.querySelectorAll('.sp-vs')).find(r => r.querySelector('.mid').firstChild.textContent === 'Field goals');
+    const [a, h] = Array.from(fg.querySelectorAll('.bars i')).map(i => Number(i.style.flex.split(' ')[0]));
+    expect(a + h).toBeCloseTo(100, 5);
+    expect(h).toBeGreaterThan(a);                                        // Duke shot 42%, Texas 32%
+    expect(fg.querySelector('.l').textContent).toBe('19-59');
+});
+
+test('two teams in the same colour: home switches to its alternate', async () => {
+    const p = payload();
+    p.away.color = '#0021A5'; p.home.color = '#013088'; p.home.altColor = '#ffffff';
+    await render(p);
+    const bars = document.querySelectorAll('.sp-vs .bars i');
+    expect(bars[1].style.background).toBe('rgb(255, 255, 255)');
 });
 
 test('team stats side by side, and possessions', async () => {
@@ -246,9 +274,14 @@ test('the countdown: tonight, tomorrow, a date, TBD, and past tip-off', () => {
 
 test('win probability: away left, home right, in team colours', async () => {
     await render(upcoming());
-    expect(q('.hg-wp-head').textContent).toBe('TEX 22%Win probability78% DUKE');
-    const bars = document.querySelectorAll('.hg-wp-bar i');
-    expect(bars[1].style.background).toContain('rgb(1, 48, 136)');      // Duke #013088
+    expect(q('.hg-wp-head').textContent).toBe('22% TexasDuke 78%');
+    expect(q('.hg-floor').getAttribute('aria-label')).toBe('Texas 22%, Duke 78%');
+    // The ball sits at the home side's chance, measured from the away end,
+    // as football's field does; each lane is painted in its own team colour.
+    expect(q('.hg-floor').style.getPropertyValue('--wp')).toBe('0.78');
+    const lanes = Array.from(document.querySelectorAll('.hg-court rect[fill]')).map(r => r.getAttribute('fill'));
+    expect(lanes).toEqual(['#cb752e', '#738dbd']);
+    expect(txt('.hg-preview h2')).toContain('Matchup predictor');
     await render(upcoming({ homeWinProb: null }));
     expect(q('.hg-wp')).toBeNull();
 });
@@ -331,7 +364,7 @@ test('a live game: LIVE · half · clock, and the running score with the trailin
     await render(p);
     expect(q('.hg-meta b').textContent).toBe('Live · 2nd · 8:43');
     expect(q('.hg-meta b').className).toBe('live');
-    expect(q('.hg-wp-head .k').textContent).toBe('Pregame win prob.');      // not a live number
+    expect(txt('.hg-preview h2')).toContain('Pregame win probability');      // not a live number
     expect(q('.hg-score').textContent).toBe('38–41');
     expect(q('.hg-score span').className).toBe('lose');
     p.game.period = 3;

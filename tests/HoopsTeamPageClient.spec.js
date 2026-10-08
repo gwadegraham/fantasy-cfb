@@ -14,6 +14,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'hoopsTeam.js')
 // The shared kit (#506) the page script builds on, loaded once as the page would.
 const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
 beforeAll(() => { (0, eval)(KIT); });
+// Count-up numbers (#506) show their final value at once under reduced motion.
+beforeEach(() => { window.matchMedia = (q) => ({ matches: /reduce/.test(q) }); });
+afterAll(() => { delete window.matchMedia; });
 
 const g = (id, o) => Object.assign({
     id, startDate: '2026-11-10T00:00:00.000Z', startTimeTbd: false, week: 1, venue: 'home',
@@ -274,3 +277,71 @@ test('an API error is shown, not a blank page', async () => {
     await render({ message: 'No such basketball team this season' }, 404);
     expect(txt('.sp-error')).toBe('No such basketball team this season');
 });
+
+describe('Next up (#506)', () => {
+    test('the first game still to play, linked to its preview, with what a win pays', async () => {
+        await render(payload());
+        const card = document.querySelector('.ht-next');
+        expect(card.getAttribute('href')).toBe('/hoops/game/4');
+        expect(card.querySelector('.ht-next-opp').textContent).toBe('vs3 Virginia');
+        expect(card.querySelector('.ht-qt').textContent).toBe('Q1');
+        expect(card.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
+        expect(card.querySelector('.ht-next-when').textContent).toMatch(/^Next up · /);
+    });
+    test('season over: no card', async () => {
+        const p = payload();
+        p.games = p.games.filter(x => x.final);
+        await render(p);
+        expect(document.querySelector('.ht-next')).toBeNull();
+    });
+    test('only on the Résumé tab', async () => {
+        await render(payload(), 200, 'schedule');
+        expect(document.querySelector('.ht-next')).toBeNull();
+    });
+});
+
+describe('standings peek (#506)', () => {
+    const conf = (n, at) => Array.from({ length: n }, (_, i) => ({
+        teamId: i === at ? 72 : 900 + i, school: i === at ? 'Duke' : 'Team ' + (i + 1), logo: null, confW: n - i, confL: i, w: 10, l: 2
+    }));
+    const rows = () => Array.from(document.querySelectorAll('.ht-panel .ht-st tbody tr')).map(r => r.querySelector('.n').textContent + (r.className === 'me' ? '*' : ''));
+
+    test('two either side of this team, its place in the header', async () => {
+        await render(payload({ standings: conf(15, 6) }));
+        expect(rows()).toEqual(['5', '6', '7*', '8', '9']);
+        expect(txt('.ht-panel h2')).toContain('ACC7th of 15');
+    });
+    test('top of the table: the first five, not a window off the edge', async () => {
+        await render(payload({ standings: conf(15, 0) }));
+        expect(rows()).toEqual(['1*', '2', '3', '4', '5']);
+        expect(txt('.ht-panel h2')).toContain('1st of 15');
+    });
+    test('bottom of the table: the last five', async () => {
+        await render(payload({ standings: conf(15, 14) }));
+        expect(rows()).toEqual(['11', '12', '13', '14', '15*']);
+    });
+    test('the button opens the full table on its own tab', async () => {
+        await render(payload({ standings: conf(15, 6) }));
+        window.scrollTo = jest.fn();
+        document.querySelector('.ht-peek-more').click();
+        expect(window.location.hash).toBe('#conference');
+        expect(rows()).toHaveLength(15);
+        expect(window.scrollTo).toHaveBeenCalled();
+    });
+    test('no conference standings: no peek', async () => {
+        await render(payload({ standings: [] }));
+        expect(document.querySelector('.ht-peek-more')).toBeNull();
+    });
+    test('ordinals', async () => {
+        for (const [at, want] of [[1, '2nd'], [2, '3rd'], [10, '11th'], [11, '12th'], [12, '13th'], [20, '21st']]) {
+            await render(payload({ standings: conf(24, at) }));
+            expect(txt('.ht-panel h2')).toContain(want + ' of 24');
+        }
+    });
+});
+
+test('the points banked count up from the owner strip\'s final value', async () => {
+    await render(payload());
+    expect(document.querySelector('.ht-own .pts .n').textContent).toBe('+5');
+});
+

@@ -104,7 +104,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
     const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
-            { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, logos: 1, _id: 0 }).lean(),
+            { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
         recordThrough(homeId, game),
         recordThrough(awayId, game),
@@ -147,6 +147,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             school: (t && t.school) || (teamId === homeId ? game.homeTeam : game.awayTeam),
             abbreviation: (t && t.abbreviation) || null,
             color: (t && t.color) || null,
+            // The second colour, for when both primaries are navy (#506).
+            altColor: (t && t.alt_color) || null,
             logo: t ? pickLogo(t.logos) || null : null,
             hasPage: !!t,
             rank: Number.isFinite(rank) ? rank : null,
