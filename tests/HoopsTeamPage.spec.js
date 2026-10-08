@@ -238,6 +238,28 @@ describe('build', () => {
         expect(p.games.map(x => x.id)).toEqual([10, 12]);
     });
 
+    // #502: score a week, then the ratings move (a late weekly row, a
+    // re-imported preseason). The page shows what was PAID.
+    test('a scored game shows the quadrant it was banked at, not today\'s', async () => {
+        await HoopsGame.create([game(11, 1, 1, 3)]);                  // vs #358 Army at home: Q4 by today's ranks
+        // Stored quadrant and rank deliberately disagree (#60 at home is Q2):
+        // the page must read the stored quadrant, not re-derive it from the
+        // stored rank, or this test could not tell the two apart.
+        await owner([1], [{ week: 1, score: 5, scoreByTeam: [{ teamId: 1, gameId: 11, score: 5, quadrant: 1, oppRank: 60 }] }]);
+        const g = (await teamPage.build(1, { season: SEASON, league: LEAGUE })).games.find(x => x.id === 11);
+        expect(g.quadrant).toBe(1);
+        expect(g.opponent.rank).toBe(60);
+        expect(g.points).toBe(5);
+    });
+
+    test('a row scored before quadrants were stored is worked out as before', async () => {
+        await HoopsGame.create([game(11, 1, 1, 3)]);
+        await owner([1], [{ week: 1, score: 0, scoreByTeam: [{ teamId: 1, gameId: 11, score: 0 }] }]);
+        const g = (await teamPage.build(1, { season: SEASON, league: LEAGUE })).games.find(x => x.id === 11);
+        expect(g.quadrant).toBe(4);
+        expect(g.opponent.rank).toBe(358);
+    });
+
     test('unknown team, or no season: null', async () => {
         expect(await teamPage.build(999, { season: SEASON })).toBeNull();
         expect(await teamPage.build(1, {})).toBeNull();

@@ -150,7 +150,15 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         const t = byId.get(teamId);
         const venue = venueFor(teamId, { homeId: game.homeTeamId, awayId: game.awayTeamId, neutralSite: game.neutralSite });
         const oppRank = ranks[String(oppId)];
-        const rank = ranks[String(teamId)];
+        // Paid already: the quadrant it was PAID at (#502), as the team page
+        // shows it, not one recomputed from ranks that have moved since. A
+        // side's own rank is the rank the OTHER side was paid against, when
+        // that side's owner has been paid, so a "#5" never sits beside a Q3
+        // that was banked against #120.
+        const bankedFor = (o) => (final && o && o.banked ? o.banked[String(id)] : undefined);
+        const paid = bankedFor(owner);
+        const otherPaid = bankedFor(teamId === homeId ? awayOwner : homeOwner);
+        const rank = otherPaid ? otherPaid.oppRank : ranks[String(teamId)];
         return {
             id: teamId,
             school: (t && t.school) || (teamId === homeId ? game.homeTeam : game.awayTeam),
@@ -166,7 +174,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,
             // Postseason games are paid on the tournament ladder, not as a
             // quadrant (isRegular in hoops-detectors) — same rule as the team page.
-            quadrant: postseason ? null : quadrantFor(oppRank, venue),
+            quadrant: paid ? paid.quadrant : postseason ? null : quadrantFor(oppRank, venue),
             owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName,
                 mine: !!viewerId && owner.accountId === String(viewerId) } : null,
             banked: owner && final && Object.prototype.hasOwnProperty.call(owner.points, String(id)) ? owner.points[String(id)] : null
