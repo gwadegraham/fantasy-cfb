@@ -188,9 +188,10 @@ test('Results shows the nightly job, which does the same refresh', async () => {
     expect(document.querySelector('.ha-jobs').textContent).toContain('no runs yet');
 });
 
-test('links back to football admin', async () => {
+test('says nothing about football: no link to its admin page', async () => {
     await render(status());
-    expect(document.querySelector('a.ha-back').getAttribute('href')).toBe('/admin');
+    expect(document.querySelector('a[href="/admin"]')).toBeNull();
+    expect(document.getElementById('hoops-admin').innerHTML).not.toMatch(/football/i);
 });
 
 test('no basketball season: no buttons, a plain sentence', async () => {

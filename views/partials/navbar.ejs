@@ -102,7 +102,11 @@
         <ul>
             <% var _role = (user && user.role) || ''; %>
             <% if (_role === 'Admin' || _role === 'League Manager') { %>
-            <li><a admin-page href="/admin"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
+            <%# An Admin viewing a basketball league goes to that sport's admin
+                page (#518). A League Manager manages their own football league
+                on /admin whatever they view, and cannot open the basketball one. %>
+            <% var _adminHref = (_role === 'Admin' && typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? '/hoops/admin' : '/admin'; %>
+            <li><a admin-page href="<%= _adminHref %>"><%= _role === 'Admin' ? 'Admin' : 'League Management' %></a></li>
             <% } %>
             <%# The switcher, for anyone with more than one league to switch
                 between — an Admin (all of them) or a member holding more than

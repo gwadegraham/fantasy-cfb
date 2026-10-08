@@ -182,7 +182,9 @@
 
     function render() {
         var d = state.data;
-        var head = '<header class="ha-top"><a class="ha-back" href="/admin"><i class="fa-solid fa-football"></i> Football admin</a>'
+        // No link to football's admin: the two are separate pages, and the
+        // navbar's Admin link already goes to the one for the league viewed.
+        var head = '<header class="ha-top">'
             + '<h1><i class="fa-solid fa-basketball"></i> Basketball admin</h1>';
         if (d.season == null) {
             root.innerHTML = head + '</header><div class="sp-error">No basketball season is set, so there is nothing to run against.</div>';

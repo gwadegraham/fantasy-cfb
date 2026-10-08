@@ -3,7 +3,6 @@
    class is ha- prefixed: the navbar loads Bootstrap on every page. */
 
 .ha-top { padding: 22px 0 6px; }
-.ha-back { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cc-muted) !important; }
 .ha-top h1 { font: 700 24px Poppins, sans-serif; margin: 8px 0 4px; }
 .ha-top h1 i { color: var(--cc-accent); margin-right: 6px; }
 .ha-season { font-size: 14px; color: var(--cc-muted-bright); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }

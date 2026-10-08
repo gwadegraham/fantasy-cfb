@@ -108,6 +108,8 @@ describe('the page manages a basketball league', () => {
         ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
          'name="rule-shape"'].forEach(bit => expect(html).not.toContain(bit));
         expect(html).toContain('user-table-body');
+        // Nothing football-only in the words either.
+        expect(html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')).not.toMatch(/football|captain|kickoff|FBS/i);
     });
 
     // The badge counts the tools actually shown, on both pages.

@@ -69,3 +69,21 @@ test('a basketball league names its scoring shape', () => {
     loadAdmin({});
     expect(SHAPE_LABEL.hoops).toBe('Quadrant win values');
 });
+
+// Basketball has no Captain, and its Activity is its own league's.
+test('basketball Activity: one league, and no Captain picks tab', async () => {
+    loadAdmin({ sport: 'basketball', routes: { '/audit-log': { entries: [], scope: ['hoops-league'] } } });
+    window.ccManageLeagueCode = () => 'hoops-league';
+    document.body.innerHTML += '<div audit-log-body></div>';
+    await loadAuditLog();
+    expect(urls().find(u => u.indexOf('/audit-log') === 0)).toContain('league=hoops-league');
+    expect(document.querySelector('[data-audit-kind="captain"]')).toBeNull();
+});
+
+test('football Activity is unchanged: every league it manages, with the Captain tab', async () => {
+    loadAdmin({ routes: { '/audit-log': { entries: [], scope: ['graham-league'] } } });
+    document.body.innerHTML += '<div audit-log-body></div>';
+    await loadAuditLog();
+    expect(urls().find(u => u.indexOf('/audit-log') === 0)).not.toContain('league=');
+    expect(document.querySelector('[data-audit-kind="captain"]')).not.toBeNull();
+});

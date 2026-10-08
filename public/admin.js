@@ -390,6 +390,8 @@ function auditLeagueTag(entry, multiLeague) {
 var auditKind = 'commissioner';
 
 function auditTabs() {
+    // Basketball has no Captain, so its admin page has no Captain picks tab.
+    if (window.ADMIN_SPORT === 'basketball') return '';
     return '<div class="al-tabs">'
         + ['commissioner', 'captain'].map(function (k) {
             return '<button type="button" class="al-tab' + (auditKind === k ? ' is-on' : '')
@@ -412,7 +414,9 @@ async function loadAuditLog() {
     if (!body) return;
     auditPaint(body, '<p class="al-empty">Loading…</p>');
     try {
-        var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind), { headers: { 'Accept': 'application/json' } });
+        // The basketball admin page shows its own league's changes only.
+        var only = window.ADMIN_SPORT === 'basketball' ? '&league=' + encodeURIComponent(getDraftLeagueCode()) : '';
+        var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind) + only, { headers: { 'Accept': 'application/json' } });
         var data = await res.json();
         if (!res.ok) { auditPaint(body, '<p class="al-empty">' + escapeHtml(data.message || 'Could not load activity.') + '</p>'); return; }
         if (!data.entries.length) {
