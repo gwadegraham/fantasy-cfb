@@ -89,7 +89,7 @@
                 // banked null = the nightly scoring has not reached this game
                 // yet, which is not the same as banking 0.
                 else if (d.game.final && t.banked == null) foot = who + ' · points post overnight';
-                else if (d.game.final) foot = '<b>' + (t.banked > 0 ? '+' : '') + t.banked + '</b> for ' + who;
+                else if (d.game.final) foot = '<b data-countup="' + t.banked + '" data-sign="+">' + (t.banked > 0 ? '+' : '') + t.banked + '</b> for ' + who;
                 else foot = (t.quadrant && vals[t.quadrant] ? '<b>+' + vals[t.quadrant] + '</b> if won, for ' : 'On ') + who + (t.quadrant && vals[t.quadrant] ? '' : '’s roster');
             }
             return '<div class="hg-fc">' + head + (foot ? '<span class="p">' + foot + '</span>' : '') + '</div>';
@@ -98,47 +98,69 @@
         return '<div class="hg-fan">' + card(d.away, awayWon) + card(d.home, d.game.final && !awayWon) + '</div>';
     }
 
-    // Plain words, as on the team page. `up` false means lower is better —
-    // the bar is then drawn from the OTHER side's number, so the longer bar
-    // is always the better side rather than the bigger number.
+    // One comparison row, away left and home right, as football draws them:
+    // each side's number, the better one marked, and a bar in each team's
+    // own colour. `better` is 'high', 'low' or null (no better side). For
+    // 'low' each bar is drawn from the OTHER side's number, so the longer
+    // bar is always the better side rather than the bigger number.
+    function vsRow(label, sub, aText, hText, a, h, better) {
+        var num = function (v) { return typeof v === 'number' && isFinite(v); };
+        var both = !!better && num(a) && num(h);
+        var aBetter = both && a !== h ? (better === 'high' ? a > h : a < h) : null;
+        var bars = '';
+        if (both) {
+            var wa = Math.abs(better === 'low' ? h : a), wh = Math.abs(better === 'low' ? a : h);
+            // Shares of 100: flex-grow values that sum below 1 (two
+            // percentages written as fractions) leave the bar half empty.
+            var share = wa + wh > 0 ? wa / (wa + wh) : 0.5;
+            bars = '<span class="bars"><i style="flex:' + Math.round(share * 1000) / 10 + ';background:' + state.colors.away + '"></i>'
+                + '<i style="flex:' + Math.round((1 - share) * 1000) / 10 + ';background:' + state.colors.home + '"></i></span>';
+        }
+        return '<div class="sp-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + aText + '</span>'
+            + '<span class="mid">' + label + (sub ? '<small>' + sub + '</small>' : '') + bars + '</span>'
+            + '<span class="r' + (aBetter === false ? ' edge' : '') + '">' + hText + '</span></div>';
+    }
+    function vsHead(d) {
+        return '<div class="sp-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
+    }
+
+    // Plain words, as on the team page.
     var FACTORS = [
-        { key: 'efgPct', name: 'Shooting', what: 'eFG%', up: true },
-        { key: 'tovPct', name: 'Ball security', what: 'turnovers per 100', up: false },
-        { key: 'orbPct', name: 'Second chances', what: 'off. rebound %', up: true },
-        { key: 'ftRate', name: 'Getting to the line', what: 'FT rate', up: true }
+        { key: 'efgPct', name: 'Shooting', what: 'eFG%', better: 'high' },
+        { key: 'tovPct', name: 'Ball security', what: 'turnovers per 100', better: 'low' },
+        { key: 'orbPct', name: 'Second chances', what: 'off. rebound %', better: 'high' },
+        { key: 'ftRate', name: 'Getting to the line', what: 'FT rate', better: 'high' }
     ];
     function factors(d) {
         var a = d.box.away, h = d.box.home;
-        var out = '<div class="sp-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
-        FACTORS.forEach(function (f) {
+        return vsHead(d) + FACTORS.map(function (f) {
             var x = a[f.key], y = h[f.key];
-            if (x == null || y == null) return;
-            var awayBetter = f.up ? x > y : x < y;
-            var wa = f.up ? x : y, wh = f.up ? y : x;          // bar lengths: longer = better
-            out += '<div class="sp-vs"><span class="l' + (awayBetter ? ' edge' : '') + '">' + fixed(x, 1) + '</span>'
-                + '<span class="mid">' + f.name + '<small>' + f.what + '</small><span class="bars">'
-                + '<i style="flex:' + (wa || 0.001) + '" class="' + (awayBetter ? 'on' : '') + '"></i>'
-                + '<i style="flex:' + (wh || 0.001) + '" class="' + (awayBetter ? '' : 'on') + '"></i></span></span>'
-                + '<span class="r' + (awayBetter ? '' : ' edge') + '">' + fixed(y, 1) + '</span></div>';
-        });
-        return out;
+            if (x == null || y == null) return '';
+            return vsRow(f.name, f.what, fixed(x, 1), fixed(y, 1), x, y, f.better);
+        }).join('');
     }
 
+    // [label, text, the number the bar compares, which way is better]. The
+    // shooting lines read "22-52" but compare on the percentage.
+    var rate = function (m, a) { return a ? m / a : null; };
     var TEAM_STATS = [
-        ['Field goals', function (s) { return ma(s.fgMade, s.fgAtt); }],
-        ['Threes', function (s) { return ma(s.threeMade, s.threeAtt); }],
-        ['Free throws', function (s) { return ma(s.ftMade, s.ftAtt); }],
-        ['Rebounds', function (s) { return fixed(s.rebounds, 0); }],
-        ['Assists', function (s) { return fixed(s.assists, 0); }],
-        ['Turnovers', function (s) { return fixed(s.turnovers, 0); }],
-        ['Points in the paint', function (s) { return fixed(s.paintPoints, 0); }],
-        ['Fast-break points', function (s) { return fixed(s.fastBreakPoints, 0); }],
-        ['Points off turnovers', function (s) { return fixed(s.pointsOffTurnovers, 0); }],
-        ['Largest lead', function (s) { return fixed(s.largestLead, 0); }]
+        ['Field goals', function (s) { return ma(s.fgMade, s.fgAtt); }, function (s) { return rate(s.fgMade, s.fgAtt); }, 'high'],
+        ['Threes', function (s) { return ma(s.threeMade, s.threeAtt); }, function (s) { return rate(s.threeMade, s.threeAtt); }, 'high'],
+        ['Free throws', function (s) { return ma(s.ftMade, s.ftAtt); }, function (s) { return rate(s.ftMade, s.ftAtt); }, 'high'],
+        ['Rebounds', null, 'rebounds', 'high'],
+        ['Assists', null, 'assists', 'high'],
+        ['Turnovers', null, 'turnovers', 'low'],
+        ['Points in the paint', null, 'paintPoints', 'high'],
+        ['Fast-break points', null, 'fastBreakPoints', 'high'],
+        ['Points off turnovers', null, 'pointsOffTurnovers', 'high'],
+        ['Largest lead', null, 'largestLead', 'high']
     ];
     function teamStats(d) {
         return TEAM_STATS.map(function (r) {
-            return '<div class="sp-vs"><span class="l">' + r[1](d.box.away) + '</span><span class="mid">' + r[0] + '</span><span class="r">' + r[1](d.box.home) + '</span></div>';
+            var val = typeof r[2] === 'function' ? r[2] : function (s) { return s[r[2]]; };
+            var txt = r[1] || function (s) { return fixed(s[r[2]], 0); };
+            var a = val(d.box.away), h = val(d.box.home);
+            return vsRow(r[0], null, txt(d.box.away), txt(d.box.home), a == null ? null : Number(a), h == null ? null : Number(h), r[3]);
         }).join('');
     }
 
@@ -180,14 +202,41 @@
 
     // ---- preview: a game still to play ----------------------------------
 
+    // The matchup predictor, drawn as a court the way football's is drawn
+    // as a field: each team's colour in its own lane (away left, home right)
+    // and the ball sitting at the home side's win probability measured from
+    // the away end — football's rule, so the two read the same. The court is
+    // to scale (94 x 50 ft; 19-ft lane, 12 wide; the men's 22.15-ft three).
+    function court(colors) {
+        var end = function (m) {
+            var X = function (x) { return m ? 94 - x : x; };
+            var lane = m ? 'x="75" ' : 'x="0" ';
+            return '<rect ' + lane + 'y="19" width="19" height="12" fill="' + (m ? colors.home : colors.away) + '" fill-opacity=".85"/>'
+                + '<circle cx="' + X(19) + '" cy="25" r="6"/>'
+                // Corner threes run 22 ft from the basket, 3 ft in from each
+                // sideline, until they meet the 22.15-ft arc at x = 7.79.
+                + '<path d="M' + X(0) + ' 3H' + X(7.79) + 'M' + X(0) + ' 47H' + X(7.79) + '"/>'
+                + '<path d="M' + X(7.79) + ' 3A22.15 22.15 0 0 ' + (m ? 0 : 1) + ' ' + X(7.79) + ' 47"/>'
+                + '<circle cx="' + X(5.25) + '" cy="25" r=".9"/>';
+        };
+        return '<svg class="hg-court" viewBox="0 0 94 50" preserveAspectRatio="none" aria-hidden="true" fill="none"'
+            + ' stroke="rgba(255,255,255,.8)" stroke-width=".5">'
+            + '<rect x=".25" y=".25" width="93.5" height="49.5"/><path d="M47 0V50"/><circle cx="47" cy="25" r="6"/>'
+            + end(false) + end(true) + '</svg>';
+    }
     function winProbability(d) {
         var p = d.preview && d.preview.homeWinProb;
         if (p == null) return '';
         var a = 1 - p;
-        return '<div class="sp-card hg-wp"><div class="hg-wp-head"><span>' + esc(abbr(d.away)) + ' <b>' + pct(a) + '%</b></span>'
-            + '<span class="k">' + (d.game.live ? 'Pregame win prob.' : 'Win probability') + '</span><span><b>' + pct(p) + '%</b> ' + esc(abbr(d.home)) + '</span></div>'
-            + '<div class="hg-wp-bar"><i style="flex:' + a + ';background:' + esc(d.away.color || 'var(--cc-surface-3)') + '"></i>'
-            + '<i style="flex:' + p + ';background:' + esc(d.home.color || 'var(--cc-surface-3)') + '"></i></div>'
+        var label = d.game.live ? 'Pregame win probability' : 'Matchup predictor';
+        return '<h2 class="sp-h">' + label + '</h2><div class="sp-card hg-wp">'
+            + '<div class="hg-floor" role="img" aria-label="' + esc(d.away.school) + ' ' + pct(a) + '%, ' + esc(d.home.school) + ' ' + pct(p) + '%"'
+            + ' style="--wp:' + p + '">' + court(state.colors)
+            // A white line across the floor at the ball, as football's field
+            // marks it, so the ball reads even on an orange lane.
+            + '<span class="hg-mark" aria-hidden="true"></span><span class="hg-ball" aria-hidden="true">🏀</span></div>'
+            + '<div class="hg-wp-head"><span><b>' + pct(a) + '%</b> <span class="nm">' + esc(d.away.school) + '</span></span>'
+            + '<span><span class="nm">' + esc(d.home.school) + '</span> <b>' + pct(p) + '%</b></span></div>'
             + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court')
             + (d.game.live ? ', before tip-off — not updated during the game' : '') + '.</div></div>';
     }
@@ -238,22 +287,21 @@
             ['Defense', A.preseason && A.preseason.adjDE, H.preseason && H.preseason.adjDE, 'low', function (v) { return fixed(v, 1); }]
         ];
         if (A.stats && H.stats) {
-            rows.push(['Points a game', A.stats.ppg, H.stats.ppg, 'high', function (v) { return fixed(v, 1); }]);
-            rows.push(['Allowed a game', A.stats.oppPpg, H.stats.oppPpg, 'low', function (v) { return fixed(v, 1); }]);
+            rows.push(['Points per game', A.stats.ppg, H.stats.ppg, 'high', function (v) { return fixed(v, 1); }]);
+            rows.push(['Allowed per game', A.stats.oppPpg, H.stats.oppPpg, 'low', function (v) { return fixed(v, 1); }]);
             rows.push(['Pace', A.stats.pace, H.stats.pace, null, function (v) { return fixed(v, 1); }]);
             rows.push(['Shooting (eFG%)', A.stats.efgPct, H.stats.efgPct, 'high', function (v) { return fixed(v, 1); }]);
             rows.push(['Turnovers / 100', A.stats.tovPct, H.stats.tovPct, 'low', function (v) { return fixed(v, 1); }]);
             rows.push(['Off. rebound %', A.stats.orbPct, H.stats.orbPct, 'high', function (v) { return fixed(v, 1); }]);
             rows.push(['FT rate', A.stats.ftRate, H.stats.ftRate, 'high', function (v) { return fixed(v, 1); }]);
         }
-        var out = '<div class="sp-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
+        var out = vsHead(d);
         rows.forEach(function (r) {
             var a = r[1], h = r[2];
             if (a == null && h == null) return;
-            var aBetter = r[3] && a != null && h != null && a !== h ? (r[3] === 'high' ? a > h : a < h) : null;
-            out += '<div class="sp-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + (a == null ? '—' : r[4](a)) + '</span>'
-                + '<span class="mid">' + r[0] + '</span>'
-                + '<span class="r' + (aBetter === false ? ' edge' : '') + '">' + (h == null ? '—' : r[4](h)) + '</span></div>';
+            // Records ("6–2") are not one number, so they get no bar.
+            out += vsRow(r[0], null, a == null ? '—' : r[4](a), h == null ? '—' : r[4](h),
+                typeof a === 'number' ? a : null, typeof h === 'number' ? h : null, r[3]);
         });
         var src = A.stats && H.stats ? 'Ratings: Torvik preseason · stats: this season' : 'Torvik preseason ratings · season stats arrive after tip-off';
         return '<h2 class="sp-h">Tale of the tape<small>' + src + '</small></h2><div class="sp-card">' + out + '</div>';
@@ -286,7 +334,7 @@
         };
         var a = col(d.away, d.preview.away), h = col(d.home, d.preview.home);
         if (!a && !h) return '';
-        return '<h2 class="sp-h">Key players<small>Points a game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
+        return '<h2 class="sp-h">Key players<small>Points per game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
     }
 
     function meetings(d) {
@@ -342,7 +390,7 @@
             };
             return '<div class="sp-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
         }
-        return '<h2 class="sp-h">Four factors<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
+        return '<h2 class="sp-h">Keys to the game<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
             + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
             + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
     }
@@ -361,6 +409,7 @@
         // somebody rosters; otherwise the left-hand (away) side, so the toggle
         // reads in the scoreboard's order.
         var mine = function (t) { return !!(t.owner && t.owner.mine); };
+        state.colors = kit.matchColors(d.away, d.home);
         state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
             : (d.home.owner && !d.away.owner ? 'home' : 'away');
         root.innerHTML = d.game.final
@@ -369,6 +418,7 @@
         var title = document.querySelector('title');
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
         if (window.ccLeague && window.ccLeague.paint) window.ccLeague.paint();
+        kit.countUp(root);
     }
 
     root.addEventListener('click', function (e) {

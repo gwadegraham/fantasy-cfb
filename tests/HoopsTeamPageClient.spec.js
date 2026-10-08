@@ -14,6 +14,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'hoopsTeam.js')
 // The shared kit (#506) the page script builds on, loaded once as the page would.
 const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
 beforeAll(() => { (0, eval)(KIT); });
+// Count-up numbers (#506) show their final value at once under reduced motion.
+beforeEach(() => { window.matchMedia = (q) => ({ matches: /reduce/.test(q) }); });
+afterAll(() => { delete window.matchMedia; });
 
 const g = (id, o) => Object.assign({
     id, startDate: '2026-11-10T00:00:00.000Z', startTimeTbd: false, week: 1, venue: 'home',
@@ -148,7 +151,7 @@ test('stats imported: exactly the four factors, named and explained, with the ed
     expect(rows[1].textContent).toContain('15.0');                                  // turnovers per 100, not 0.15
     expect(rows[1].querySelectorAll('span')[0].className).toBe('edge');            // fewer turnovers is better
     expect(rows[2].querySelectorAll('span')[1].className).toBe('edge');            // they out-rebounded us
-    expect(txt('.ht-style')).toContain('possessions a game');
+    expect(txt('.ht-style')).toContain('possessions per game');
     const names = Array.from(document.querySelectorAll('.ht-rot tbody tr .full')).map(n => n.textContent);
     expect(names).toEqual(['Big Minutes Few Games', 'Star <b>', 'Bench Guy']);    // by minutes A GAME; DNP dropped; escaped
     expect(document.querySelector('.ht-rot tbody tr .short').textContent).toBe('B. Minutes Few Games');
@@ -274,3 +277,120 @@ test('an API error is shown, not a blank page', async () => {
     await render({ message: 'No such basketball team this season' }, 404);
     expect(txt('.sp-error')).toBe('No such basketball team this season');
 });
+
+describe('Next up (#506)', () => {
+    test('the first game still to play, linked to its preview, with what a win pays', async () => {
+        await render(payload());
+        const card = document.querySelector('.ht-next');
+        expect(card.getAttribute('href')).toBe('/hoops/game/4');
+        expect(card.querySelector('.ht-next-opp').textContent).toBe('vs3 Virginia');
+        expect(card.querySelector('.ht-qt').textContent).toBe('Q1');
+        expect(card.querySelector('.ht-next-pay').textContent).toBe('+5 if won');
+        expect(card.querySelector('.ht-next-when').textContent).toMatch(/^Next up · /);
+    });
+    test('season over: no card', async () => {
+        const p = payload();
+        p.games = p.games.filter(x => x.final);
+        await render(p);
+        expect(document.querySelector('.ht-next')).toBeNull();
+    });
+    test('only on the Resume tab', async () => {
+        await render(payload(), 200, 'schedule');
+        expect(document.querySelector('.ht-next')).toBeNull();
+    });
+});
+
+describe('standings peek (#506)', () => {
+    const conf = (n, at) => Array.from({ length: n }, (_, i) => ({
+        teamId: i === at ? 72 : 900 + i, school: i === at ? 'Duke' : 'Team ' + (i + 1), logo: null, confW: n - i, confL: i, w: 10, l: 2
+    }));
+    const rows = () => Array.from(document.querySelectorAll('.ht-panel .ht-st tbody tr')).map(r => r.querySelector('.n').textContent + (r.className === 'me' ? '*' : ''));
+
+    test('two either side of this team, its place in the header', async () => {
+        await render(payload({ standings: conf(15, 6) }));
+        expect(rows()).toEqual(['5', '6', '7*', '8', '9']);
+        expect(txt('.ht-panel h2')).toContain('ACC7th of 15');
+    });
+    test('top of the table: the first five, not a window off the edge', async () => {
+        await render(payload({ standings: conf(15, 0) }));
+        expect(rows()).toEqual(['1*', '2', '3', '4', '5']);
+        expect(txt('.ht-panel h2')).toContain('1st of 15');
+    });
+    test('bottom of the table: the last five', async () => {
+        await render(payload({ standings: conf(15, 14) }));
+        expect(rows()).toEqual(['11', '12', '13', '14', '15*']);
+    });
+    test('the button opens the full table on its own tab', async () => {
+        await render(payload({ standings: conf(15, 6) }));
+        window.scrollTo = jest.fn();
+        document.querySelector('.ht-peek-more').click();
+        expect(window.location.hash).toBe('#conference');
+        expect(rows()).toHaveLength(15);
+        expect(window.scrollTo).toHaveBeenCalled();
+    });
+    test('no conference standings: no peek', async () => {
+        await render(payload({ standings: [] }));
+        expect(document.querySelector('.ht-peek-more')).toBeNull();
+    });
+    test('ordinals', async () => {
+        for (const [at, want] of [[1, '2nd'], [2, '3rd'], [10, '11th'], [11, '12th'], [12, '13th'], [20, '21st']]) {
+            await render(payload({ standings: conf(24, at) }));
+            expect(txt('.ht-panel h2')).toContain(want + ' of 24');
+        }
+    });
+});
+
+test('the points banked count up: from 0 to the banked total', async () => {
+    window.matchMedia = () => ({ matches: false });
+    const frames = [];
+    window.requestAnimationFrame = (fn) => frames.push(fn);
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    try {
+        await render(payload());
+        const n = document.querySelector('.ht-own .pts .n');
+        expect(n.textContent).toBe('0');
+        frames.splice(0).forEach(f => f(0));
+        frames.splice(0).forEach(f => f(1000));
+        expect(n.textContent).toBe('+5');
+    } finally { delete document.hidden; }
+});
+
+test('Next up skips a game long past its tip with no final (cancelled, or the result is late)', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 6 * 3600e3).toISOString();      // Virginia: tipped 6h ago, no final
+    p.games[4].startDate = new Date(Date.now() + 24 * 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/5');
+});
+
+test('Next up keeps a game that tipped an hour ago: it is being played', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
+});
+
+test('labels: "Resume" without accents, and "per game" throughout', async () => {
+    await render(payload());
+    expect(document.querySelector('.sp-tab').textContent).toBe('Resume');
+});
+
+test('the Stats tab calls them "Keys to the game"', async () => {
+    const r = await render(payload({ stats: { games: 5, pace: 68, team: { efgPct: 50, tovRatio: .15, orbPct: 30, ftRate: 35 }, opponent: { efgPct: 48, tovRatio: .17, orbPct: 28, ftRate: 30 }, players: [] } }), 200, 'stats');
+    expect(Array.from(r.querySelectorAll('h2')).map(h => h.firstChild.textContent)).toContain('Keys to the game');
+});
+
+test('Next up: a game that has tipped and is not final says "Under way"', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next-when').textContent).toBe('Under way');
+});
+
+test('Next up keeps a game with no date yet rather than treating it as 1970', async () => {
+    const p = payload();
+    p.games[3].startDate = null;
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
+});
+

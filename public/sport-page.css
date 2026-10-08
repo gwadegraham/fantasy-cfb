@@ -78,7 +78,6 @@
 .sp-vs .mid small { display: block; font-size: 10px; color: var(--cc-muted-2); }
 .sp-vs .bars { display: flex; gap: 3px; margin-top: 5px; }
 .sp-vs .bars i { display: block; height: 5px; border-radius: 3px; background: var(--cc-surface-3); }
-.sp-vs .bars i.on { background: var(--cc-accent); }
 .sp-vs .edge { color: var(--cc-success); font-weight: 700; }
 
 /* ---- game row: date · opponent · result · (sport columns) -------------- */

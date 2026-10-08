@@ -8,6 +8,9 @@
 //   window.ccSportPage.fitNames(root, selector)         full name, or abbr if it clips
 //   window.ccSportPage.load(url, render, root, noun)    fetch → render, or an error state
 //   window.ccSportPage.overflows(el)                    does a name clip (sub-pixel)
+//   window.ccSportPage.readable(hex)                    a team colour that shows on the dark page
+//   window.ccSportPage.matchColors(away, home)          two team colours a reader can tell apart
+//   window.ccSportPage.countUp(root)                    [data-countup] numbers tick up (not if reduced motion)
 //   window.ccSportPage.syncStickyTop()                  re-measure the navbar offset
 //
 // It also pins the sticky tabs under the navbar (--sp-sticky-top), measured.
@@ -128,9 +131,92 @@
         global.document.documentElement.style.setProperty('--sp-sticky-top', h + 'px');
     }
 
+    // ---- team colours -----------------------------------------------------
+
+    function rgbOf(hex) {
+        if (typeof hex !== 'string') return null;
+        var m = hex.trim().replace('#', '');
+        if (m.length === 3) m = m.split('').map(function (c) { return c + c; }).join('');
+        if (!/^[0-9a-fA-F]{6}$/.test(m)) return null;
+        return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
+    }
+    function hexOf(rgb) {
+        return '#' + rgb.map(function (v) { return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0'); }).join('');
+    }
+    function luminance(rgb) {
+        var a = rgb.map(function (v) {
+            v /= 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+    }
+    // A team colour that reads on the dark page: navy and black are eased
+    // toward white until they clear a minimum luminance — football's rule
+    // (team.js readableOnDark). Null for anything that is not a hex colour.
+    function readable(hex) {
+        var rgb = rgbOf(hex);
+        if (!rgb) return null;
+        for (var i = 0; i < 12 && luminance(rgb) < 0.22; i++) {
+            rgb = rgb.map(function (v) { return v + (255 - v) * 0.18; });
+        }
+        return hexOf(rgb);
+    }
+    // Two colours side by side — away left, home right — have to be told
+    // apart. When the two readable primaries are too close (two navies),
+    // home switches to its alternate colour, then away to its; failing both,
+    // home falls back to the neutral fill. Each side: { color, altColor }.
+    var NEUTRAL = '#8A90A8';
+    function distance(a, b) {
+        var x = rgbOf(a), y = rgbOf(b);
+        return Math.sqrt(Math.pow(x[0] - y[0], 2) + Math.pow(x[1] - y[1], 2) + Math.pow(x[2] - y[2], 2));
+    }
+    function matchColors(away, home) {
+        var a = readable(away && away.color) || NEUTRAL;
+        var h = readable(home && home.color) || NEUTRAL;
+        var CLOSE = 90;
+        if (distance(a, h) >= CLOSE) return { away: a, home: h };
+        var hAlt = readable(home && home.altColor);
+        if (hAlt && distance(a, hAlt) >= CLOSE) return { away: a, home: hAlt };
+        var aAlt = readable(away && away.altColor);
+        if (aAlt && distance(aAlt, h) >= CLOSE) return { away: aAlt, home: h };
+        return { away: a, home: distance(a, NEUTRAL) >= CLOSE ? NEUTRAL : '#F4F6FB' };
+    }
+
+    // ---- motion -------------------------------------------------------------
+
+    // [data-countup="12"] ticks up from 0 over ~0.85s, as football's season
+    // score does. A reader who asked for reduced motion sees the number at
+    // once. data-sign="+" keeps a leading plus on a positive number ("+12").
+    function reducedMotion() {
+        return !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+    function countUp(root) {
+        var els = root.querySelectorAll('[data-countup]');
+        Array.prototype.forEach.call(els, function (el) {
+            var to = Number(el.getAttribute('data-countup'));
+            if (!isFinite(to)) return;
+            var plus = el.getAttribute('data-sign') === '+';
+            var show = function (v) { el.textContent = (plus && v > 0 ? '+' : '') + v; };
+            // A hidden tab throttles animation frames to a crawl, so it just
+            // shows the number.
+            if (reducedMotion() || !global.requestAnimationFrame || global.document.hidden) { show(to); return; }
+            var start = null, dur = 850;
+            show(0);
+            var step = function (ts) {
+                if (start === null) start = ts;
+                var p = Math.min(1, (ts - start) / dur);
+                // The last frame shows the value itself, so 7.5 never ends as 8.
+                if (p >= 1) { show(to); return; }
+                show(Math.round(to * (1 - Math.pow(1 - p, 3))));
+                global.requestAnimationFrame(step);
+            };
+            global.requestAnimationFrame(step);
+        });
+    }
+
     var api = { esc: esc, fixed: fixed, pct: pct, record: record, shortName: shortName, shortNames: shortNames,
         dayOf: dayOf, countdown: countdown, tabs: tabs, overflows: overflows, fitNames: fitNames, load: load,
-        syncStickyTop: syncStickyTop };
+        syncStickyTop: syncStickyTop, readable: readable, matchColors: matchColors, countUp: countUp };
 
     if (global.document) {
         syncStickyTop();
