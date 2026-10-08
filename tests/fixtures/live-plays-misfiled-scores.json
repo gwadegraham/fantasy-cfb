@@ -508,5 +508,105 @@
     "awayScore": 14
    }
   ]
+ },
+ "duplicateFieldGoal": {
+  "gameId": 401856782,
+  "game": "Oregon at Oklahoma State",
+  "note": "Field Goal Good on row 103 is right; CFBD repeats it on row 104 at the same total",
+  "firstRow": 101,
+  "teams": [
+   {
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 2483,
+    "team": "Oregon",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 3,
+    "clock": "11:54",
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "playType": "Pass Incompletion",
+    "playText": "(11:58) No Huddle-Shotgun #17 D.Mestemaker pass incomplete short right to #24 C.Hawkins thrown to ORE10 broken up by #6 J.Mixon",
+    "homeScore": 24,
+    "awayScore": 17
+   },
+   {
+    "period": 3,
+    "clock": "11:50",
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "playType": "Pass Incompletion",
+    "playText": "(11:50) No Huddle-Shotgun #17 D.Mestemaker pass incomplete short right to #24 C.Hawkins thrown to ORE05 broken up by #6 J.Mixon",
+    "homeScore": 24,
+    "awayScore": 17
+   },
+   {
+    "period": 3,
+    "clock": "11:50",
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "playType": "Field Goal Good",
+    "playText": "(11:50) #16 S.Keltner field goal attempt from 24 yards GOOD (H: #85 N.Ost, LS: #42 C.Yates), clock 11:50",
+    "homeScore": 27,
+    "awayScore": 17
+   },
+   {
+    "period": 3,
+    "clock": "11:50",
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "playType": "Field Goal Good",
+    "playText": "(11:50) #16 S.Keltner field goal attempt from 24 yards GOOD (H: #85 N.Ost, LS: #42 C.Yates), clock 11:50",
+    "homeScore": 27,
+    "awayScore": 17
+   },
+   {
+    "period": 3,
+    "clock": "11:50",
+    "teamId": 197,
+    "team": "Oklahoma State",
+    "playType": "Kickoff",
+    "playText": "(11:50) #49 J.Kim kickoff 65 yards to the ORE00, Touchback",
+    "homeScore": 27,
+    "awayScore": 17
+   }
+  ]
+ },
+ "overturned": {
+  "gameId": 401858213,
+  "game": "Florida A&M at Miami",
+  "note": "Pass Incompletion whose text quotes the overturned TOUCHDOWN",
+  "firstRow": 116,
+  "teams": [
+   {
+    "teamId": 2390,
+    "team": "Miami",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 50,
+    "team": "Florida A&M",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 3,
+    "clock": "9:16",
+    "teamId": 50,
+    "team": "Florida A&M",
+    "playType": "Pass Incompletion",
+    "playText": "(09:16) No Huddle-Shotgun #9 D.Fletcher pass incomplete short right to #13 J.Taylor thrown to FAMU27 broken up by #33 B.Pickett Jr.. The previous play is under automatic review - \"Forward pass\". CALL OVERTURNED. (Original Play: (09:16) No Huddle-Shotgun #9 D.Fletcher sacked for loss of 0 yards to the FAMU27 (#33 B.Pickett Jr.), fumble by #9 D.Fletcher recovered by MIAMI #17 E.Marcelin, Jr. at FAMU27 TOUCHDOWN, clock 09:14)",
+    "homeScore": 63,
+    "awayScore": 0
+   }
+  ]
  }
 }

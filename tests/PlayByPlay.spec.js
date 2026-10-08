@@ -153,10 +153,18 @@ function leadIn(home, away) {
 
 // Shape a fixture window, and return the window's rows with their feed row
 // numbers, so a test can say "row 34" exactly as the measurement did.
-function shapeWindow(win) {
+//
+// The fixtures don't keep CFBD's drive boundaries, so the window is one drive
+// unless `splitAt` names the feed row that starts the next one.
+function shapeWindow(win, splitAt) {
     const first = win.plays[0];
     const lead = leadIn(first.homeScore, first.awayScore);
-    const out = buildPlayByPlay({ teams: win.teams, drives: [{ plays: [...lead, ...win.plays] }] });
+    const cut = splitAt != null ? splitAt - win.firstRow : win.plays.length;
+    const drives = [
+        { playCount: 9, yards: 75, duration: '4:01', plays: [...lead, ...win.plays.slice(0, cut)] },
+        { plays: win.plays.slice(cut) }
+    ];
+    const out = buildPlayByPlay({ teams: win.teams, drives });
     const rows = {};
     out.slice(lead.length).forEach((r, k) => { rows[win.firstRow + k] = r; });
     return rows;
@@ -175,8 +183,8 @@ describe('misfiled scores, from real CFBD rows', () => {
         expect(rows[32].playType).toBe('Fumble');
         expect(rows[34].playType).toBe('Rushing Touchdown');
         expect(scoringRowNumbers(rows)).toEqual([34]);
-        expect(rows[34]).toMatchObject({ scoringSide: 'home', points: 7, homeScore: 14, awayScore: 0 });
-        expect(rows[32]).toMatchObject({ scoringSide: null, scoringTeamId: null, points: null });
+        expect(rows[34]).toMatchObject({ scoringSide: 'home', scoringTeamId: 2579, points: 7, homeScore: 14, awayScore: 0 });
+        expect(rows[32]).toMatchObject({ scoringSide: null, scoringTeamId: null, points: null, driveSummary: null });
     });
 
     it('waits through a long gap for the play that reaches the total', () => {
@@ -203,10 +211,14 @@ describe('misfiled scores, from real CFBD rows', () => {
         // South Florida at Army: the touchdown row carries a corrupt 14-18 and
         // is rejected, so its 7 surfaced on the kickoff. The card prints the
         // credited row's score, so it gets the real total, not the corrupt one.
-        const rows = shapeWindow(MISFILED.late);
+        // Split where CFBD splits it: the touchdown ends USF's drive, so it
+        // takes that drive's summary; the kickoff opens Army's and loses it.
+        const rows = shapeWindow(MISFILED.late, 84);
         expect(rows[84].playType).toBe('Kickoff');
         expect(scoringRowNumbers(rows)).toEqual([83]);
-        expect(rows[83]).toMatchObject({ scoringSide: 'away', points: 7, awayScore: 14, homeScore: 14 });
+        expect(rows[83]).toMatchObject({ scoringSide: 'away', scoringTeamId: 58, points: 7, awayScore: 14, homeScore: 14 });
+        expect(rows[83].driveSummary).toBe('9 plays, 75 yards, 4:01');
+        expect(rows[84]).toMatchObject({ scoringTeamId: null, driveSummary: null });
     });
 
     it('does not hand a 7-point score to a field goal', () => {
@@ -219,6 +231,15 @@ describe('misfiled scores, from real CFBD rows', () => {
         win.plays[5] = { ...fg, homeScore: 14, awayScore: 0 };
         const rows = shapeWindow(win);
         expect(scoringRowNumbers(rows)).toEqual([32]);
+    });
+
+    it('leaves a score on the right row when CFBD repeats it on the next', () => {
+        // Oregon at Oklahoma State: the field goal is filed correctly on row
+        // 103, then the same play appears again on row 104 at the same total.
+        // The score was never misfiled, so nothing moves.
+        const rows = shapeWindow(MISFILED.duplicateFieldGoal);
+        expect(rows[104].playType).toBe('Field Goal Good');
+        expect(scoringRowNumbers(rows)).toEqual([103]);
     });
 
     it('leaves a score no row accounts for where CFBD put it', () => {
@@ -248,8 +269,9 @@ describe('describedScore', () => {
         expect(describedScore(MISFILED.earlyAdjacent.plays[2])).toEqual({ min: 6, max: 8 });
     });
 
-    it('ignores a touchdown that did not count and a field goal that missed', () => {
+    it('ignores a touchdown that did not count, or was overturned, and a field goal that missed', () => {
         expect(describedScore(MISFILED.nullified.plays[0])).toBeNull();
+        expect(describedScore(MISFILED.overturned.plays[0])).toBeNull();
         expect(describedScore({ playType: 'Field Goal Missed', playText: '#38 K.McLaughlin field goal attempt from 45 yards NO GOOD' })).toBeNull();
         expect(describedScore({ playType: 'Fumble', playText: MISFILED.earlyReverted.plays[3].playText })).toBeNull();
     });

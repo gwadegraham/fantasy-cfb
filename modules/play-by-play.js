@@ -105,7 +105,8 @@ function classifyScore(play, prev) {
 // playType is trusted first because it is the cleanest field. playText is the
 // fallback for scores CFBD types as the play that preceded them ('Pass
 // Reception … TOUCHDOWN'), and skips text that mentions a score that did not
-// count: 'TOUCHDOWN nullified by penalty' on a 'Penalty' row. Returns the range
+// count: 'TOUCHDOWN nullified by penalty' on a 'Penalty' row, or a replay
+// reversal that quotes the '(Original Play: … TOUCHDOWN)'. Returns the range
 // of points that kind of score can be worth, or null.
 const SCORE_KINDS = {
     touchdown: { min: 6, max: 8 },
@@ -119,7 +120,7 @@ function describedScore(play) {
     if (/field goal good/i.test(type)) return SCORE_KINDS.fieldGoal;
     if (/safety/i.test(type)) return SCORE_KINDS.safety;
     const text = String(play.playText || '');
-    if (/nullified|NO PLAY/i.test(text)) return null;
+    if (/nullified|NO PLAY|OVERTURNED/i.test(text)) return null;
     if (/\bTOUCHDOWN\b/.test(text)) return SCORE_KINDS.touchdown;
     if (/field goal attempt from \d+ y(?:ar)?ds GOOD/i.test(text)) return SCORE_KINDS.fieldGoal;
     if (/\bSAFETY\b/.test(text)) return SCORE_KINDS.safety;
