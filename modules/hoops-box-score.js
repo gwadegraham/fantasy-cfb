@@ -3,7 +3,7 @@
 // of finished games in one call per endpoint, filter to our games locally,
 // store. The game page only ever READS what is stored; it never calls CBBD.
 //
-// Two calls a night, whatever the number of games: /games/teams answers for
+// Two calls a batch, whatever the number of games: /games/teams answers for
 // every game in a date window (both sides in one row), /games/players for
 // every team's lines. Measured 7 Oct 2026: one day of 2025-26 (25 games) is
 // 50 rows each, 383 KB of players. The busiest real day is 152 games, ~2.3 MB
@@ -96,11 +96,16 @@ function buildBox(game, teamRows, playerRows) {
 // The nightly batch: every game that went final in the lookback window gets
 // its box stored (or refreshed). Two CBBD calls, or none when nothing went
 // final. Throws on a CBBD failure so the job records it.
-async function ingestRecent(season, { now = Date.now() } = {}) {
+// `gameIds` narrows the batch to those games — what the live poller passes
+// for the cluster that just finished, so a flush on a busy Saturday fetches
+// tonight's window for those games rather than re-downloading and rewriting
+// three days of boxes every few minutes. Still 2 calls a batch either way.
+async function ingestRecent(season, { now = Date.now(), gameIds = null } = {}) {
     const yr = Number(season);
     const since = new Date(now - LOOKBACK_MS);
-    const games = (await HoopsGame.find({ season: yr, status: 'final', startDate: { $gte: since, $lte: new Date(now) } }).lean())
-        .filter(isFinal);
+    const query = { season: yr, status: 'final', startDate: { $gte: since, $lte: new Date(now) } };
+    if (Array.isArray(gameIds)) query.id = { $in: gameIds.map(Number) };
+    const games = (await HoopsGame.find(query).lean()).filter(isFinal);
     if (!games.length) return { season: yr, games: 0, stored: 0, skippedReason: 'nothing final' };
 
     // A day either side of the games' own dates: a TBD tip is stamped

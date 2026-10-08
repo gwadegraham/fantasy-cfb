@@ -37,9 +37,36 @@ const { PAGE_CAP } = cbbd;
 // the other run wrote that game. Two overlapping runs are realistic here —
 // the full ingest measured 14.5s against Heroku's 30s ceiling, and an H12
 // leaves the handler running while the caller retries.
+// A game already stored as FINAL keeps its result. CBBD's /games can lag its
+// /scoreboard: a late tip the live poller has finalled can still read
+// in_progress at the 23:30 refresh, and writing that back would drop the game
+// from the week the same job then scores. The rest of the row (time, venue,
+// notes) still updates.
+const RESULT_FIELDS = ['status', 'homePoints', 'awayPoints', 'homeWinner', 'awayWinner',
+    'homePeriodPoints', 'awayPeriodPoints', 'period', 'clock'];
+async function keepStoredFinals(ops) {
+    const ids = ops.map(op => op.updateOne && op.updateOne.filter && op.updateOne.filter.id).filter(id => id != null);
+    if (!ids.length) return ops;
+    const finals = new Set(await HoopsGame.distinct('id', { id: { $in: ids }, status: 'final' }));
+    if (!finals.size) return ops;
+    return ops.map(op => {
+        const u = op.updateOne;
+        if (!finals.has(u.filter.id) || !u.update.$set || u.update.$set.status === 'final') return op;
+        const set = Object.assign({}, u.update.$set);
+        const unset = Object.assign({}, u.update.$unset || {});
+        RESULT_FIELDS.forEach(f => { delete set[f]; delete unset[f]; });
+        const update = { $set: set };
+        if (Object.keys(unset).length) update.$unset = unset;
+        return { updateOne: Object.assign({}, u, { update }) };
+    });
+}
+
 async function writeGames(ops, label) {
     if (!ops.length) return { created: 0, updated: 0, failure: null };
     try {
+        // Inside the try: a failed check must fail the write (a 500 the caller
+        // sees), never escape the handler — and never write without the check.
+        ops = await keepStoredFinals(ops);
         const write = await HoopsGame.bulkWrite(ops, { ordered: false });
         return { created: write.upsertedCount || 0, updated: write.matchedCount || 0, failure: null };
     } catch (err) {
@@ -415,32 +442,22 @@ router.post('/:season/schedule', async (req, res) => {
 // Defaults to yesterday and today in UTC: a game tipping at 21:00 ET lands on
 // the following UTC date, so a single-day refresh would miss the late slate
 // every night.
-router.post('/refresh', async (req, res) => {
-    const season = Number(req.body && req.body.season);
-    if (!Number.isInteger(season)) {
-        return res.status(400).json({ message: 'A numeric season is required.' });
-    }
-    const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
-
-    const now = new Date();
-    const end = req.body && req.body.end ? new Date(req.body.end) : now;
-    const start = req.body && req.body.start
-        ? new Date(req.body.start)
-        : new Date(end.getTime() - 24 * 3600 * 1000);
-    if (isNaN(start) || isNaN(end) || start > end) {
-        return res.status(400).json({ message: 'Invalid start/end range.' });
-    }
-
+// Pull results for a date range from CBBD and write them (#314; called by
+// POST /refresh and, since #505, by the nightly hoops-scores job as the safety
+// net under the live poller). Returns { code, body } — the HTTP answer the
+// route sends — so the job can read exactly what an operator would see.
+const reply = (code, body) => ({ code, body });
+async function refreshResults({ season, seasonType, start, end }) {
     let result;
     try {
         result = await cbbd.fetchGamesInRange(season, seasonType, start, end);
     } catch (err) {
         const code = err.unreachable ? 502 : 400;
         console.log(`Hoops refresh failed: ${err.message}`);
-        return res.status(code).json({ message: err.message });
+        return reply(code, { message: err.message });
     }
     if (result.capHits.length) {
-        return res.status(500).json({ message: `CBBD hit the ${PAGE_CAP}-record cap for ${result.capHits.join(', ')}.` });
+        return reply(500, { message: `CBBD hit the ${PAGE_CAP}-record cap for ${result.capHits.join(', ')}.` });
     }
 
     // An empty window is USUALLY an ordinary quiet night — but this is the route
@@ -453,9 +470,12 @@ router.post('/refresh', async (req, res) => {
     // nightly refresh would otherwise answer 200 {games: 0} from November to
     // March and no score would ever be ingested.
     if (!result.games.length) {
-        const due = await HoopsGame.countDocuments({ season, startDate: { $gte: start, $lte: end } });
+        // This season type only: in March the window can hold only
+        // postseason games, and counting them against an empty REGULAR fetch
+        // reported "CBBD returned nothing" every night of the tournament.
+        const due = await HoopsGame.countDocuments({ season, seasonType, startDate: { $gte: start, $lte: end } });
         if (due > 0) {
-            return res.status(422).json({
+            return reply(422, {
                 message: `CBBD returned no ${seasonType} games for season ${season} between `
                     + `${start.toISOString().slice(0, 10)} and ${end.toISOString().slice(0, 10)}, `
                     + `but ${due} are on the stored schedule. CBBD numbers a split season by its `
@@ -469,12 +489,12 @@ router.post('/refresh', async (req, res) => {
         ({ seasonStart, moved } = await resolveSeasonStart(season, result.games));
     } catch (err) {
         console.log(`Hoops refresh · ${season}: could not resolve the season anchor: ${err.message}`);
-        return res.status(500).json({ message: `Could not resolve the season anchor: ${err.message}` });
+        return reply(500, { message: `Could not resolve the season anchor: ${err.message}` });
     }
     const ops = result.games.map(g => buildUpsertOp(g, seasonStart)).filter(Boolean);
     const { created, updated, failure } = await writeGames(ops, `Hoops refresh · ${season}`);
     if (failure) {
-        return res.status(500).json({ season, seasonType, created, updated, message: `Refresh write failed: ${failure}` });
+        return reply(500, { season, seasonType, created, updated, message: `Refresh write failed: ${failure}` });
     }
 
     // `games` and `finals` count what was WRITABLE, not what was fetched. Off
@@ -494,15 +514,36 @@ router.post('/refresh', async (req, res) => {
         + `${start.toISOString().slice(0, 10)}..${end.toISOString().slice(0, 10)}: `
         + `${ops.length} writable of ${result.games.length} fetched, ${finals} final, `
         + `${created} created, ${updated} updated`);
-    return res.status(200).json({
+    return reply(200, {
         season, seasonType, created, updated, restamped,
         ...(restampError ? { restampError } : {}),
         games: ops.length, fetched: result.games.length, finals,
         remainingCalls: result.remainingCalls
     });
+}
+
+router.post('/refresh', async (req, res) => {
+    const season = Number(req.body && req.body.season);
+    if (!Number.isInteger(season)) {
+        return res.status(400).json({ message: 'A numeric season is required.' });
+    }
+    const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
+
+    const now = new Date();
+    const end = req.body && req.body.end ? new Date(req.body.end) : now;
+    const start = req.body && req.body.start
+        ? new Date(req.body.start)
+        : new Date(end.getTime() - 24 * 3600 * 1000);
+    if (isNaN(start) || isNaN(end) || start > end) {
+        return res.status(400).json({ message: 'Invalid start/end range.' });
+    }
+    const out = await refreshResults({ season, seasonType, start, end });
+    return res.status(out.code).json(out.body);
 });
 
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
 module.exports.resolveSeasonStart = resolveSeasonStart;
 module.exports.restampSeason = restampSeason;
+module.exports.refreshResults = refreshResults;
+module.exports.keepStoredFinals = keepStoredFinals;

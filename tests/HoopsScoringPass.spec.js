@@ -367,6 +367,11 @@ describe('the nightly basketball job', () => {
         jest.spyOn(jobLogger, 'finishRun').mockImplementation(async (id, status, msg) => calls.push({ status, msg }));
         return calls;
     };
+    // The refresh it runs first is a billable CBBD call: never real in a test.
+    const hoopsGames = require('../routes/hoopsGames');
+    beforeEach(() => {
+        jest.spyOn(hoopsGames, 'refreshResults').mockResolvedValue({ code: 200, body: { finals: 0, games: 0 } });
+    });
     afterEach(() => jest.restoreAllMocks());
 
     test('scores only BASKETBALL leagues', async () => {

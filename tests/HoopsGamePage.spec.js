@@ -280,6 +280,14 @@ describe('build', () => {
         expect(get).not.toHaveBeenCalled();
     });
 
+    test('in progress: the running score, half and clock — and nothing banked', async () => {
+        await HoopsGame.updateOne({ id: 500 }, { $set: { status: 'in_progress', homePoints: 41, awayPoints: 38, period: 2, clock: '8:43' } });
+        const p = await gamePage.build(500);
+        expect(p.game).toMatchObject({ final: false, live: true, period: 2, clock: '8:43' });
+        expect([p.home.points, p.away.points, p.box]).toEqual([41, 38, null]);
+        expect(p.preview).not.toBeNull();
+    });
+
     test('a final game with nothing stored yet: no box, and still no CBBD call', async () => {
         const get = stubCbbd();
         const p = await gamePage.build(500);

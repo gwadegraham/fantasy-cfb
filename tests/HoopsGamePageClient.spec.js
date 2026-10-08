@@ -319,3 +319,28 @@ test('an earlier meeting is listed and links to its game', async () => {
     expect(m.getAttribute('href')).toBe('/hoops/game/400');
     expect(m.textContent).toContain('DUKE won 80–70');
 });
+
+test('a live game: LIVE · half · clock, and the running score with the trailing side dimmed', async () => {
+    const p = upcoming();
+    p.game = Object.assign({}, p.game, { live: true, status: 'in_progress', period: 2, clock: '8:43' });
+    p.home = Object.assign({}, p.home, { points: 41 });
+    p.away = Object.assign({}, p.away, { points: 38 });
+    await render(p);
+    expect(q('.hg-meta b').textContent).toBe('Live · 2nd · 8:43');
+    expect(q('.hg-meta b').className).toBe('live');
+    expect(q('.hg-wp-head .k').textContent).toBe('Pregame win prob.');      // not a live number
+    expect(q('.hg-score').textContent).toBe('38–41');
+    expect(q('.hg-score span').className).toBe('lose');
+    p.game.period = 3;
+    await render(p);
+    expect(q('.hg-meta b').textContent).toBe('Live · OT · 8:43');
+});
+
+test('a tied live score dims neither side', async () => {
+    const p = upcoming();
+    p.game = Object.assign({}, p.game, { live: true, status: 'in_progress', period: 2, clock: '1:02' });
+    p.home = Object.assign({}, p.home, { points: 60 });
+    p.away = Object.assign({}, p.away, { points: 60 });
+    await render(p);
+    expect(Array.from(document.querySelectorAll('.hg-score span')).map(x => x.className)).toEqual(['', 'dash', '']);
+});

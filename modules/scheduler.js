@@ -72,6 +72,15 @@ const LIVE_POLL_SCHEDULE = {
     rule: { second: [0, 10, 20, 30, 40, 50] }
 };
 
+// Basketball's live poller (#505), behind the same opt-in. 30s rather than
+// football's 10s: no basketball surface shows a running clock yet, so the
+// only thing a faster tick would buy is a final noticed a few seconds sooner —
+// and finals are batched for two minutes regardless (completion-flush).
+const HOOPS_LIVE_POLL_SCHEDULE = {
+    job: 'hoops-live', modulePath: '../modules/hoops-live-poll',
+    rule: { second: [0, 30] }
+};
+
 function livePollEnabled() { return process.env.LIVE_POLL_ENABLED === 'true'; }
 
 function toRule(spec) {
@@ -94,7 +103,7 @@ function toRule(spec) {
 // only when LIVE_POLL_ENABLED=true.
 function start() {
     const schedules = JOB_SCHEDULES.slice();
-    if (livePollEnabled()) schedules.push(LIVE_POLL_SCHEDULE);
+    if (livePollEnabled()) schedules.push(LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE);
 
     schedules.forEach(function (s) {
         const mod = require(s.modulePath);
@@ -106,4 +115,4 @@ function start() {
     });
 }
 
-module.exports = { start, JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule };
+module.exports = { start, JOB_SCHEDULES, LIVE_POLL_SCHEDULE, HOOPS_LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule };

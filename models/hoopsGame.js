@@ -63,9 +63,13 @@ const hoopsGameSchema = new mongoose.Schema({
     week: { type: Number },
     startTimeTbd: { type: Boolean, default: false },
 
-    // 'scheduled' | 'final' (and whatever else CBBD adds). NOT derived from the
-    // points — see the note on homePoints.
+    // 'scheduled' | 'in_progress' | 'final' | 'postponed' | 'cancelled' (CBBD's
+    // GameStatus enum). NOT derived from the points — see the note on homePoints.
     status: { type: String },
+    // Live state from CBBD's /scoreboard (#505), written by the live poller
+    // while a game is on: the half (or OT period) and its clock, e.g. 2, "8:43".
+    period: { type: Number },
+    clock: { type: String },
 
     neutralSite: { type: Boolean, default: false },
     conferenceGame: { type: Boolean, default: false },

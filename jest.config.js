@@ -128,6 +128,21 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Basketball live scores (#505). The scoreboard writer must never
+        // store a scheduled 0-0 or walk a final back; the poller must stay
+        // free when nothing is live and loud when nothing matches.
+        "./modules/hoops-scoreboard.js": {
+            statements: 96,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-live-poll.js": {
+            statements: 98,
+            branches: 84,
+            functions: 100,
+            lines: 100
+        },
         // The nightly stats import (#494) and its job. Two billable calls a
         // night; the job's skips are what keep the off-season free.
         "./modules/hoops-stats.js": {
