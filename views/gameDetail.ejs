@@ -1070,7 +1070,7 @@
                 if (gdPlays[i].scoring) { latest = gdPlays[i]; break; }
             }
             if (!latest || fresh.indexOf(lm.playKey(latest)) === -1) return;
-            var label = lm.stampLabel(latest.playType, latest.points);
+            var label = lm.stampLabel(latest);
             if (!label) return;
             var who = latest.scoringTeamId != null ? latest.scoringTeamId : latest.teamId;
             var side = who === gdTeamCtx.home.id ? gdTeamCtx.home

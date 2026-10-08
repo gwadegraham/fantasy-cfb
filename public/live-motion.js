@@ -78,25 +78,29 @@
         return out.length > (cap == null ? 6 : cap) ? [] : out;
     }
 
-    // The word for the stamp, or null for a score not worth one. CFBD's play
-    // types are long ("Passing Touchdown", "Interception Return Touchdown")
-    // and not always on the row whose score moved: the points can land on the
-    // extra-point row or the next kickoff. So `points` (from the score change
-    // itself) decides when the type doesn't say.
+    // The word for the stamp, or null for no stamp. Only a play that DESCRIBES
+    // a score gets one: its type ("Passing Touchdown", "Field Goal Good") or
+    // its text ("... for a TD"; CFBD types plenty of touchdown passes as plain
+    // "Pass Reception").
+    //
+    // The score change alone is not enough. CFBD stamps the new score on the
+    // wrong row about once every two games: a sack, a kickoff, "End of 2nd
+    // quarter", or a fumble out of bounds two plays before the touchdown.
+    // Measured Oct 2026 across the 25 stored games: 13 of 251 scoring rows.
+    // Stamping TOUCHDOWN over a fumble is worse than not stamping; the header
+    // score still ticks either way.
     //
     // An extra point gets no stamp. It follows a touchdown that already had
     // one, often on a later fetch, and a second stamp for the kick is noise.
-    function stampLabel(playType, points) {
-        var t = String(playType || '').toLowerCase();
-        if (/touchdown/.test(t)) return 'Touchdown';
-        if (/field goal/.test(t)) return 'Field Goal';
-        if (/safety/.test(t)) return 'Safety';
-        if (points === 1) return null;
-        if (/two.?point|2pt|conversion/.test(t)) return 'Two Points';
-        if (points >= 6) return 'Touchdown';
-        if (points === 3) return 'Field Goal';
-        if (points === 2) return 'Two Points';
-        return 'Score';
+    function stampLabel(play) {
+        var type = String((play && play.playType) || '').toLowerCase();
+        var text = String((play && play.playText) || '');
+        var say = type + ' ' + text.toLowerCase();
+        if (/touchdown/.test(say) || /\bTD\b/.test(text)) return 'Touchdown';
+        if (/field goal/.test(say)) return 'Field Goal';
+        if (/safety/.test(say)) return 'Safety';
+        if (/two.?point|2pt|conversion/.test(say)) return 'Two Points';
+        return null;
     }
 
     // ---- DOM -----------------------------------------------------------

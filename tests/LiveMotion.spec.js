@@ -78,34 +78,45 @@ describe('freshPlays', () => {
 });
 
 describe('stampLabel', () => {
+    const play = (playType, playText) => ({ playType, playText });
+
     it.each([
         ['Passing Touchdown', 'Touchdown'],
         ['Fumble Return Touchdown', 'Touchdown'],
         ['Field Goal Good', 'Field Goal'],
         ['Safety', 'Safety'],
         ['Two Point Conversion', 'Two Points'],
-        ['Defensive 2pt Conversion', 'Two Points'],
-        ['Something New', 'Score'],
-        [null, 'Score']
+        ['Defensive 2pt Conversion', 'Two Points']
     ])('%s -> %s', (type, label) => {
-        expect(lm.stampLabel(type)).toBe(label);
+        expect(lm.stampLabel(play(type, ''))).toBe(label);
     });
 
-    // The points can land on a row whose type says nothing about the score:
-    // the extra-point row, or the next kickoff.
+    // CFBD types plenty of touchdown passes as a plain "Pass Reception".
+    it('reads the play text when the type is generic', () => {
+        expect(lm.stampLabel(play('Pass Reception', 'Smith pass complete to Jones for 24 yds for a TD (Ramos KICK)'))).toBe('Touchdown');
+        expect(lm.stampLabel(play('Rush', 'Durham run for 3 yds, TOUCHDOWN'))).toBe('Touchdown');
+    });
+
+    // The Kentucky at South Carolina case: CFBD put SC's 14 on a fumble out of
+    // bounds, two plays before the touchdown. The score change says "scoring",
+    // the play does not, and a TOUCHDOWN stamp over a fumble is wrong.
     it.each([
-        ['Kickoff', 6, 'Touchdown'],
-        ['Kickoff', 7, 'Touchdown'],
-        ['Kickoff', 3, 'Field Goal'],
-        ['Kickoff', 2, 'Two Points'],
-        ['Passing Touchdown', 7, 'Touchdown']
-    ])('%s worth %i -> %s', (type, points, label) => {
-        expect(lm.stampLabel(type, points)).toBe(label);
+        ['Fumble', '#16 L.Sellers rush right for 9 yards gain to the UKY21 fumbled by #16 L.Sellers at UKY19, out of bounds at UKY21, 1ST DOWN'],
+        ['Sack', '#3 C.Hellums sacked for loss of 6 yards to the USF46'],
+        ['Kickoff', '#37 L.Thorn kickoff 65 yards to the Army00 fair catch'],
+        ['End Period', 'End of 2nd quarter.'],
+        ['Rush', '#8 N.Poulos rush right for 5 yards gain to the OHIO50 (#9 J.Carr)']
+    ])('gives no stamp to a %s the score was misfiled on', (type, text) => {
+        expect(lm.stampLabel(play(type, text))).toBeNull();
+    });
+
+    it('does not read "TD" inside another word', () => {
+        expect(lm.stampLabel(play('Rush', 'run to the STDN 40'))).toBeNull();
     });
 
     it('gives an extra point no stamp of its own', () => {
-        expect(lm.stampLabel('Extra Point Good', 1)).toBeNull();
-        expect(lm.stampLabel('Kickoff', 1)).toBeNull();
+        expect(lm.stampLabel(play('Extra Point Good', 'Ramos extra point GOOD'))).toBeNull();
+        expect(lm.stampLabel(null)).toBeNull();
     });
 });
 
