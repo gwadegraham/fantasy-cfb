@@ -43,7 +43,7 @@ async function render(body, status = 200) {
 const q = (s) => document.querySelector(s);
 const txt = (s) => Array.from(document.querySelectorAll(s)).map(n => n.textContent).join(' | ');
 const tab = (n) => q('[data-tab="' + n + '"]').click();
-afterEach(() => { delete window.ccLeague; });
+afterEach(() => { delete window.ccLeague; delete window.ccKickoff; });
 
 test('fetches its own game, and names the tab "TEX vs DUKE"', async () => {
     await render(payload());
@@ -356,6 +356,5 @@ test('a stale listing (#498) says so and links to the played game, with no previ
     expect(q('.hg-moved a').getAttribute('href')).toBe('/hoops/game/372814');
     expect(q('.hg-wp')).toBeNull();
     expect(txt('.hg-meta')).toContain('Rescheduled');
-    delete window.ccKickoff;
 });
 

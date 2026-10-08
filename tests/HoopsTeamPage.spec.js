@@ -234,7 +234,7 @@ describe('build', () => {
                 startDate: new Date(Date.UTC(2026, 10, 11)) }),                       // old listing, never tips
             game(12, 9, 1, 2, { status: 'scheduled', homePoints: null, awayPoints: null })   // a real game to come
         ]);
-        const p = await teamPage.build(1, { season: SEASON, now: Date.UTC(2026, 10, 20) });
+        const p = await teamPage.build(1, { season: SEASON, now: Date.UTC(2026, 10, 30) });
         expect(p.games.map(x => x.id)).toEqual([10, 12]);
     });
 

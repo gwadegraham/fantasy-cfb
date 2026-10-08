@@ -399,21 +399,21 @@ describe('a stale listing of a rescheduled game (#498)', () => {
 
     test('points at the played game instead of previewing one that will never tip', async () => {
         await HoopsGame.create([GAME, COPY]);
-        const p = await gamePage.build(501, { now: NOW });
+        const p = await gamePage.build(501, { now: Date.UTC(2026, 10, 25) });
         expect(p.rescheduled).toEqual({ id: 500, startDate: GAME.startDate, startTimeTbd: false });
         expect(p.preview).toBeNull();
     });
 
     test('a listing still inside the grace window previews as normal', async () => {
         await HoopsGame.create([GAME, COPY]);
-        const p = await gamePage.build(501, { now: Date.UTC(2026, 10, 16) });
+        const p = await gamePage.build(501, { now: Date.UTC(2026, 10, 21) });
         expect(p.rescheduled).toBeNull();
         expect(p.preview).not.toBeNull();
     });
 
     test('the played game itself is not "rescheduled"', async () => {
         await HoopsGame.create([GAME, COPY]);
-        expect((await gamePage.build(500, { now: NOW })).rescheduled).toBeNull();
+        expect((await gamePage.build(500, { now: Date.UTC(2026, 10, 25) })).rescheduled).toBeNull();
     });
 });
 

@@ -38,6 +38,12 @@ test('the reverse fixture (other venue) or a neutral site is a different game', 
     expect(supersededBy(copy, [g(1, { neutralSite: true }), copy], NOW)).toBeNull();
 });
 
+test('two played meetings: the listing points at the one nearest its own date', () => {
+    const nov = g(1), mar = g(3, { startDate: new Date(T0 + 120 * DAY) });
+    const copy = old(2, { startDate: new Date(T0 + 118 * DAY) });
+    expect(supersededBy(copy, [nov, mar, copy], T0 + 140 * DAY)).toBe(mar);
+});
+
 test('no played twin: an overdue listing stays (nothing to point at)', () => {
     const copy = old(2);
     expect(dropStale([copy, old(3, { homeTeamId: 5 })], NOW)).toHaveLength(2);
