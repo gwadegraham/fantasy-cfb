@@ -207,3 +207,28 @@ test('a status the server refuses becomes the error state', async () => {
     await flush();
     expect(document.querySelector('.sp-error').textContent).toBe('Not found');
 });
+
+// Graham: "jersey import should probably be called 'Roster Import'".
+test('the roster task and its results say "roster import", not jersey', async () => {
+    await render(status(), {
+        'POST /hoops/games/2027/schedule': () => json({ season: 2027, created: 0, updated: 5286, games: 5286, windows: 8,
+            roster: { season: 2027, teams: 1535, players: 5643 } })
+    });
+    expect(task('roster').querySelector('h2').textContent).toBe('Roster import');
+    task('schedule').querySelector('[data-arm]').click();
+    task('schedule').querySelector('[data-confirm]').click();
+    await flush();
+    expect(task('schedule').textContent).toContain('roster import: numbers for 5,643 players');
+    expect(document.getElementById('hoops-admin').textContent).not.toMatch(/jersey import|jersey numbers imported|Jersey numbers/);
+});
+
+test('a failed roster import during the schedule says so by that name', async () => {
+    await render(status(), {
+        'POST /hoops/games/2027/schedule': () => json({ season: 2027, created: 0, updated: 5286, games: 5286, windows: 8,
+            roster: null, rosterError: 'CBBD 500' })
+    });
+    task('schedule').querySelector('[data-arm]').click();
+    task('schedule').querySelector('[data-confirm]').click();
+    await flush();
+    expect(task('schedule').textContent).toContain('roster import failed: CBBD 500');
+});

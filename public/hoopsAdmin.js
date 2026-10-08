@@ -54,14 +54,14 @@
         },
         {
             key: 'schedule', title: 'Schedule', icon: 'fa-calendar-days', seasonType: true,
-            what: 'The whole season\'s games, fetched a month at a time. Also imports jersey numbers the first time.',
+            what: 'The whole season\'s games, fetched a month at a time. Also runs the roster import the first time.',
             url: function (s) { return '/hoops/games/' + s + '/schedule'; },
             body: function (s, type) { return { seasonType: type }; },
             onFile: function (f) { return plural(f.games.games, 'game') + ' on file'; },
             summary: function (r) {
                 var line = n(r.created) + ' created, ' + n(r.updated) + ' updated · ' + plural(r.games, 'game') + ' in ' + plural(r.windows, 'window');
-                if (r.rosterError) line += ' · jersey import failed: ' + r.rosterError;
-                else if (r.roster && r.roster.players) line += ' · ' + plural(r.roster.players, 'jersey number') + ' imported';
+                if (r.rosterError) line += ' · roster import failed: ' + r.rosterError;
+                else if (r.roster && r.roster.players) line += ' · roster import: numbers for ' + plural(r.roster.players, 'player');
                 if (r.restampError) line += ' · week re-stamp failed: ' + r.restampError;
                 return line;
             }
@@ -79,8 +79,8 @@
             }
         },
         {
-            key: 'roster', title: 'Jersey numbers', icon: 'fa-shirt',
-            what: 'Re-import every team\'s numbers — for a late roster addition. The schedule import does this once on its own.',
+            key: 'roster', title: 'Roster import', icon: 'fa-shirt',
+            what: 'Re-import every team\'s roster and jersey numbers — for a late roster addition. The schedule import runs it once on its own.',
             url: function (s) { return '/hoops/teams/' + s + '/roster'; },
             onFile: function (f) {
                 return plural(f.roster.players, 'numbered player') + ' on ' + plural(f.roster.teams, 'team')
