@@ -22,6 +22,13 @@ const leagueSelection = require('../modules/league-selection');
 const seasons = require('../modules/active-season');
 const visibility = require('../modules/hoops-visibility');
 const gamePage = require('../modules/hoops-game-page');
+const board = require('../modules/hoops-league-scoreboard');
+const boardHelpers = require('../modules/league-scoreboard');
+const hoopsTeamPage = require('../modules/hoops-team-page');
+const { dropStale } = require('../modules/hoops-stale-duplicates');
+const franchiseRepo = require('../modules/franchise-repo');
+const HoopsTeam = require('../models/hoopsTeam');
+const { pickLogo } = require('../public/logo.js');
 const roster = require('../modules/hoops-roster');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
@@ -300,6 +307,84 @@ async function restampSeason(season, seasonStart) {
 // Basketball stays hidden from anyone not in a basketball league (404, as if
 // it did not exist), and ownership is league-private, so the league comes
 // from the server's validated selection — never a query string.
+// The league scoreboard for a basketball league (#490): a week's slate with
+// the league's drafted teams marked up. Same response shape as football's
+// GET /games/scoreboard/:league/:season/:week so public/scoreboard.js renders
+// either. The league in the URL must be the one the caller is VIEWING and a
+// basketball one — otherwise this would hand any member another league's
+// rosters for the price of editing a path.
+router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const league = req.params.league;
+        let viewing = '';
+        try { viewing = await leagueSelection.selectedLeague(req); } catch (e) { viewing = ''; }
+        if (viewing !== league || seasons.sportForLeague(league) !== 'basketball') {
+            return res.status(404).json({ message: 'Not found' });
+        }
+        const season = Number(req.params.season);
+        if (!Number.isFinite(season)) return res.status(400).json({ message: 'Invalid season' });
+        const seasonType = req.query.seasonType === 'postseason' ? 'postseason' : 'regular';
+        const liveOnly = req.query.live === '1' || req.query.live === 'true';
+        const nowMs = Date.now();
+
+        // Week windows: the picker and the default week. Skipped on the 30s
+        // live refresh, which already names its week.
+        let windows = null;
+        let week = req.params.week != null ? Number(req.params.week) : NaN;
+        if (!Number.isFinite(week) || !liveOnly) {
+            const weekRows = await HoopsGame.find({ season, seasonType, week: { $type: 'number' } },
+                { week: 1, startDate: 1, _id: 0 }).lean();
+            windows = boardHelpers.weekWindows(weekRows);
+            if (!Number.isFinite(week)) week = boardHelpers.defaultWeek(windows, nowMs);
+        }
+        if (week == null || !Number.isFinite(week)) {
+            return res.json({ league, season, seasonType, week: null, weeks: [], conferences: [], games: [], liveCount: 0 });
+        }
+
+        const [listed, franchises, ranks] = await Promise.all([
+            HoopsGame.find({ season, seasonType, week }, {
+                id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
+                period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
+                awayTeamId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
+                broadcasts: 1, gameNotes: 1, venue: 1, _id: 0
+            }).lean(),
+            franchiseRepo.byLeagueAndSeason(league, season,
+                { fields: ['firstName', 'lastName', 'color', 'avatarUrl', 'seasons'] }),
+            hoopsTeamPage.cachedRanks(season, week)
+        ]);
+        // A rescheduled game's old listing never tips (#498).
+        const games = dropStale(listed, nowMs);
+
+        const teamIds = [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))];
+        const teamDocs = await HoopsTeam.find({ season, id: { $in: teamIds } },
+            { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean();
+        const teams = {};
+        teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
+
+        const ctx = {
+            owners: board.ownersByTeam(franchises, season),
+            points: boardHelpers.pointsByTeamGame(franchises, season, week),
+            teams, ranks: ranks || {}, nowMs
+        };
+        let shaped = board.shapeGames(games, ctx);
+        const liveCount = shaped.filter(g => g.state === 'live').length;
+        if (liveOnly) shaped = shaped.filter(g => g.state === 'live');
+
+        res.json({
+            league, season, seasonType, week,
+            weeks: windows ? boardHelpers.weekList(windows) : undefined,
+            weekRange: windows ? boardHelpers.weekRangeOf(windows, week) : undefined,
+            conferences: liveOnly ? undefined : boardHelpers.conferenceList(games),
+            liveCount,
+            games: shaped
+        });
+    } catch (err) {
+        console.error(`hoops scoreboard: ${err && err.message}`);
+        res.status(500).json({ message: 'Could not load the scoreboard' });
+    }
+});
+
 router.get('/:id/page', async (req, res) => {
     try {
         if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
