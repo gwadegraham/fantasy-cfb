@@ -43,6 +43,12 @@
         <div class="header-title">
             <%= isAdmin ? 'Admin' : 'League Management' %>
         </div>
+        <% /* Admins only: basketball stays invisible to League Managers. */ %>
+        <% if (isAdmin) { %>
+        <a class="admin-sport-link" href="/hoops/admin" style="font-size:13px;color:var(--cc-muted);text-decoration:none;">
+            <i class="fa-solid fa-basketball"></i> Basketball admin
+        </a>
+        <% } %>
     </div>
 
     <div class="get-users-container" get-users-container>

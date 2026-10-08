@@ -884,6 +884,12 @@ app.use('/games', requireAuthOrToken, gamesRouter);
 // this mount only authenticates.
 app.use('/hoops/games', requireAuthOrToken, hoopsGamesRouter);
 app.use('/hoops/teams', requireAuthOrToken, hoopsTeamsRouter);
+// The basketball admin page (#518) — separate from football's /admin. Admin
+// only, and its gate lives in the router: both routes are GETs, which the path
+// list above lets through.
+app.use('/hoops/admin', require('./routes/hoopsAdmin').build({
+    pageLocals: (req) => ({ user: buildUserContext(req.effUser), userState: safeJson(req.effUser) })
+}));
 
 const rankingsRouter = require('./routes/rankings');
 app.use('/rankings', requireAuthOrToken, rankingsRouter);
