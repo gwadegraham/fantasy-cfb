@@ -116,3 +116,58 @@
 .sp-ld-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-top: 6px; }
 .sp-ld-row small { color: var(--cc-muted-2); font-size: 11px; }
 .sp-ld-row b { font-variant-numeric: tabular-nums; }
+
+/* ---- added for football (#506 Phases 2–3) ------------------------------
+   New classes only: nothing above changes, so basketball renders exactly as
+   it did. Basketball's own versions of these (.ht-own, .ht-next, .ht-st,
+   .hg-fan, .hg-stakes) can move onto them later. */
+
+/* Whose roster: the strip under a team's hero. .free is an undrafted team. */
+.sp-own { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0;
+    padding: 12px 14px; border-radius: var(--cc-r-md); background: var(--cc-surface);
+    border: 1px solid var(--cc-border); border-left: 3px solid var(--cc-accent); }
+.sp-own.free { border-left-color: var(--cc-border-2); }
+.sp-own .who { font-size: 13px; color: var(--cc-muted); min-width: 0; }
+.sp-own .who b { color: var(--cc-text); }
+.sp-own .sub { font-size: 12px; }
+.sp-own .pts { text-align: right; flex: 0 0 auto; }
+.sp-own .pts .n { font-size: 22px; font-weight: 800; color: var(--cc-accent); font-variant-numeric: tabular-nums; }
+.sp-own .pts .l { font-size: 11px; color: var(--cc-muted); }
+
+/* The next game, one tap from its preview. */
+.sp-next { display: block; margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid var(--cc-accent); }
+.sp-next-when { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--cc-accent); }
+.sp-next-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 14px; }
+.sp-next-opp { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-next-pay { font-size: 12px; color: var(--cc-muted-bright); white-space: nowrap; }
+.sp-next-note { font-size: 11px; color: var(--cc-muted-2); margin-top: 2px; }
+
+/* A standings table; the viewed team's row is .me. */
+.sp-st { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sp-st th { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); font-weight: 600; text-align: right; padding: 10px 14px 6px; }
+.sp-st th:nth-child(2) { text-align: left; }
+.sp-st td { padding: 7px 14px; border-top: 1px solid var(--cc-border); text-align: right; font-variant-numeric: tabular-nums; }
+.sp-st td.n { color: var(--cc-muted-2); width: 28px; }
+.sp-st td.s { text-align: left; }
+.sp-st td.s img { width: 20px; height: 20px; object-fit: contain; vertical-align: middle; margin-right: 8px; }
+.sp-st tr.me td { background: rgba(var(--cc-accent-rgb), .10); }
+.sp-st tr.me td.s { font-weight: 700; }
+.sp-peek-more { display: block; width: 100%; padding: 9px; border: 0; border-top: 1px solid var(--cc-border); background: transparent;
+    color: var(--cc-muted-bright); font: 600 12px Poppins, sans-serif; }
+
+/* A game's fantasy read: one card per side, away left. */
+.sp-fan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
+.sp-fan > div { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md);
+    padding: 9px 11px; font-size: 12px; color: var(--cc-muted); min-width: 0; }
+.sp-fan b { color: var(--cc-text); }
+.sp-fan .p { display: block; margin-top: 3px; font-size: 13px; color: var(--cc-muted-bright); overflow-wrap: anywhere; }
+.sp-fan .p b { color: var(--cc-accent); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* What is on the line for the managers: one row per side. */
+.sp-stake { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 14px;
+    border-top: 1px solid var(--cc-border); font-size: 13px; color: var(--cc-muted); }
+.sp-stake:first-child { border-top: 0; }
+.sp-stake b { color: var(--cc-text); }
+.sp-stake .v { color: var(--cc-accent); font-weight: 800; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums; }
+.sp-stake .v.zero { color: var(--cc-muted-2); font-weight: 600; font-size: 13px; }
+.sp-stake .v small { display: block; font-size: 10px; font-weight: 500; color: var(--cc-muted-2); }

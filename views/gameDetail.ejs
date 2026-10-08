@@ -11,13 +11,15 @@
     <script src="/fit-names.js"></script>
     <script src="/wp-chart.js"></script>
     <script src="/live-motion.js"></script>
+    <!-- The shared sport-page kit (#506) first; gameDetail.css is what is football's own. -->
+    <link href="/sport-page.css" rel="stylesheet">
     <link href="/gameDetail.css" rel="stylesheet">
-    <link href="/loading.css" rel="stylesheet">
+    <script src="/sport-page.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
-    <title>Game Detail · Campus Clash</title>
+    <title data-league-title="Game">Game · Campus Clash</title>
     <%- include('partials/favicons') %>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#101322" />
@@ -35,14 +37,16 @@
         </script>
     <% } %>
 
-    <div id="game-detail" class="game-detail-container">
-        <div class="gd-loading">Loading game data...</div>
-    </div>
+    <main id="game-detail" class="sp-page fg">
+        <div class="sp-loading">Loading game…</div>
+    </main>
 
     <script>
     (function () {
         var GAME_ID = '<%= gameId %>';
         var container = document.getElementById('game-detail');
+        // The shared sport-page kit (#506): hero colours, comparison rows, tabs.
+        var kit = window.ccSportPage;
 
         function fmt(n) { return n != null ? String(n) : '-'; }
         function pct(n) { return n != null ? n.toFixed(1) + '%' : '-'; }
@@ -97,6 +101,7 @@
                 // asking /teams/teamLogos again every 30 seconds.
                 gdArt = { logoMap: logoMap, colorMap: colorMap, abbrMap: abbrMap, mascotMap: mascotMap };
                 gdSchedule(game);
+                gdFetchFantasy(game);
             } catch (err) {
                 container.innerHTML = '<div class="gd-error">Could not load game. <a href="/standings">Back to Standings</a></div>';
             }
@@ -154,6 +159,9 @@
                 window.scrollTo(0, y);
 
                 gdSchedule(game);
+                // Only when the score or the result moved — the points can't
+                // have changed otherwise, and this is a roster read.
+                gdFetchFantasy(game);
             } catch (err) {
                 // A missed tick is a stale clock, not a broken page — keep the
                 // loop alive so the next one can recover.
@@ -363,14 +371,22 @@
 
             var html = '';
 
-            // ---- Back link ----
-            html += '<a href="javascript:history.back()" class="gd-back"><i class="fas fa-arrow-left"></i> Back</a>';
+            // The tab title names the game, and the league being viewed (#493).
+            var titleText = game.awayTeam + ' at ' + game.homeTeam;
+            var titleEl = document.querySelector('title');
+            if (titleEl) titleEl.setAttribute('data-league-title', titleText);
+            if (window.ccLeague && window.ccLeague.title) document.title = window.ccLeague.title(titleText);
 
-            // ---- Header: matchup ----
-            var gradStyle = 'background: linear-gradient(90deg, ' + awayColor + '38 0%, transparent 38%, transparent 62%, ' + homeColor + '38 100%);';
-            html += '<div class="gd-header" style="' + gradStyle + '">';
-            html += '<div class="gd-date">' + dateStr + '</div>';
-            html += statusLabel;
+            // ---- Hero: the kit's two-colour scoreboard (sp-hero.match) ----
+            // Away's colour on the left, home's on the right, told apart by
+            // the kit when two navies meet. The scoreboard inside is the same
+            // markup as before — live-motion counts and pulses .gd-mu-score.
+            var heroColors = kit.matchColors(
+                { color: colors[game.awayId] && colors[game.awayId].primary, altColor: colors[game.awayId] && colors[game.awayId].alt },
+                { color: colors[game.homeId] && colors[game.homeId].primary, altColor: colors[game.homeId] && colors[game.homeId].alt });
+            html += '<section class="sp-hero match fg-hero" style="--left:' + heroColors.away + ';--right:' + heroColors.home + '">';
+            html += '<a href="javascript:history.back()" class="gd-back"><i class="fas fa-arrow-left"></i> Back</a>';
+            html += '<div class="fg-when">' + statusLabel + '<div class="gd-date">' + dateStr + '</div></div>';
             var awayRankStr = game.awayRanking ? '<span class="gd-rank">' + game.awayRanking + '</span> ' : '';
             var homeRankStr = game.homeRanking ? '<span class="gd-rank">' + game.homeRanking + '</span> ' : '';
             var awayScoreStr = game.awayPoints != null ? String(game.awayPoints) : '';
@@ -428,7 +444,21 @@
                 html += '<a href="/team?team=' + game.homeId + '" class="gd-mu-logo"><img class="gd-logo" src="' + homeLogo + '" alt="" /></a>';
                 html += '</div>';
             }
-            html += '</div>'; // .gd-header
+            // Score by quarter, in the hero as on the basketball page.
+            var homeLS = game.homeLineScores || [];
+            var awayLS = game.awayLineScores || [];
+            if (homeLS.length || awayLS.length) {
+                var maxQ = Math.max(homeLS.length, awayLS.length, 4);
+                var lsRow = function (abbr, ls, total, won) {
+                    var r = '<tr' + (won ? ' class="fg-won"' : '') + '><td>' + esc(abbr) + '</td>';
+                    for (var q = 0; q < maxQ; q++) r += '<td>' + (ls[q] != null ? ls[q] : '-') + '</td>';
+                    return r + '<td>' + fmt(total) + '</td></tr>';
+                };
+                html += '<div class="gd-table-scroll"><table class="sp-lines fg-lines"><tr><th></th>';
+                for (var q = 0; q < maxQ; q++) html += '<th>' + (q < 4 ? 'Q' + (q + 1) : 'OT' + (q > 4 ? q - 3 : '')) + '</th>';
+                html += '<th>T</th></tr>' + lsRow(awayAbbr, awayLS, game.awayPoints, awayWon) + lsRow(homeAbbr, homeLS, game.homePoints, homeWon) + '</table></div>';
+            }
+            html += '</section>';
 
 
             // ---- Live strip: the field's stand-in -------------------------
@@ -475,6 +505,11 @@
             if (metaParts.length) {
                 html += '<div class="gd-meta">' + metaParts.join('<span class="gd-meta-sep"></span>') + '</div>';
             }
+
+            // ---- The fantasy read: once the ball is in the air, who banks
+            // what. Before kickoff it is the stakes section further down.
+            // In a slot of its own, so the read can land without a re-render.
+            if (isLive || isFinal) html += '<div class="fg-fan-slot">' + gdFantasyStrip(game, isFinal) + '</div>';
 
             // ---- Matchup Predictor (football field) ----
             var homeWP = null;
@@ -547,7 +582,6 @@
 
                 wpSectionHtml += '</div>'; // .gd-predictor
             }
-            if (!isLive) html += wpSectionHtml;
 
             // ---- Season Averages (tug-of-war bars, pre-game only) ----
             var preGameStatsHtml = '';
@@ -579,54 +613,19 @@
                         { label: '3rd down %', away: (as_.thirdDowns > 0 ? (as_.thirdDownConversions || 0) / as_.thirdDowns * 100 : 0), home: (hs_.thirdDowns > 0 ? (hs_.thirdDownConversions || 0) / hs_.thirdDowns * 100 : 0), isPct: true }
                     ];
 
-                    var awayBarColor = ensureBarContrast(awayColor);
-                    var homeBarColor = ensureBarContrast(homeColor);
-
-                    preGameStatsHtml += '<div class="gd-section">';
-                    preGameStatsHtml += '<div class="gd-ss-header">';
-                    preGameStatsHtml += '<div class="gd-ss-team-label"><img src="' + awayLogo + '" alt="" /><span>' + awayAbbr + '</span></div>';
-                    preGameStatsHtml += '<h3 class="gd-section-title"><i class="fas fa-chart-simple"></i> Season Averages</h3>';
-                    preGameStatsHtml += '<div class="gd-ss-team-label" style="flex-direction:row-reverse"><img src="' + homeLogo + '" alt="" /><span>' + homeAbbr + '</span></div>';
-                    preGameStatsHtml += '</div>';
-
+                    // The kit's comparison rows: each side's number, the
+                    // better one marked, and two-colour bars. `invert` rows
+                    // ("allowed", turnovers) are better low, and the bar is
+                    // drawn so the longer one is still the better side.
+                    preGameStatsHtml += '<h2 class="sp-h">Season averages</h2>';
+                    preGameStatsHtml += '<div class="sp-card fg-vs">' + kit.vsHead(awayAbbr, homeAbbr);
                     for (var si = 0; si < ssRows.length; si++) {
                         var sr = ssRows[si];
-                        var aVal = sr.away;
-                        var hVal = sr.home;
-                        var total = aVal + hVal;
-                        var awayPctBar = total > 0 ? (aVal / total * 100) : 50;
-
-                        var aDisp = sr.isPct ? aVal.toFixed(1) + '%' : aVal.toFixed(1);
-                        var hDisp = sr.isPct ? hVal.toFixed(1) + '%' : hVal.toFixed(1);
-
-                        // Which team is winning the row. The bar cannot say it:
-                        // its length is proportional to the NUMBER, so on an
-                        // "allowed" row the team that gave up more gets the
-                        // longer bar and the glance reads backwards. `invert`
-                        // says which direction wins — it was computed here and
-                        // thrown away until a marker existed to use it. Neither
-                        // side is marked on a tie.
-                        var aLead = sr.invert ? aVal < hVal : aVal > hVal;
-                        var hLead = sr.invert ? hVal < aVal : hVal > aVal;
-
-                        var caret = function (win, color, glyph) {
-                            return '<span class="gd-ss-caret" aria-hidden="true" style="color:' + color
-                                + (win ? '' : ';visibility:hidden') + '">' + glyph + '</span>';
-                        };
-
-                        preGameStatsHtml += '<div class="gd-ss-row">';
-                        preGameStatsHtml += '<div class="gd-ss-label">'
-                            + caret(aLead, awayBarColor, '\u25c0')
-                            + '<span>' + sr.label + '</span>'
-                            + caret(hLead, homeBarColor, '\u25b6')
-                            + '</div>';
-                        preGameStatsHtml += '<div class="gd-ss-track">';
-                        preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-away" style="width:' + awayPctBar + '%;background:' + awayBarColor + '">' + aDisp + '</div>';
-                        preGameStatsHtml += '<div class="gd-ss-fill gd-ss-fill-home" style="width:' + (100 - awayPctBar) + '%;background:' + homeBarColor + '">' + hDisp + '</div>';
-                        preGameStatsHtml += '</div></div>';
+                        var aDisp = sr.isPct ? sr.away.toFixed(1) + '%' : sr.away.toFixed(1);
+                        var hDisp = sr.isPct ? sr.home.toFixed(1) + '%' : sr.home.toFixed(1);
+                        preGameStatsHtml += kit.vsRow(sr.label, '', aDisp, hDisp, sr.away, sr.home, sr.invert ? 'low' : 'high', heroColors);
                     }
-
-                    preGameStatsHtml += '</div>'; // .gd-section
+                    preGameStatsHtml += '</div>';
                 }
             }
 
@@ -691,7 +690,6 @@
                     preGameStatsHtml += '</div>'; // .gd-section
                 }
             }
-            if (!isLive) html += preGameStatsHtml;
 
             // ---- Betting lines (odds table) ----
             var oddsHtml = '';
@@ -757,43 +755,12 @@
 
                 oddsHtml += '</tbody></table></div>';
             }
-            if (!isFinal && !isLive) html += oddsHtml;
 
-            // ---- Score by quarter ----
-            var lineScoreHtml = '';
-            var homeLS = game.homeLineScores || [];
-            var awayLS = game.awayLineScores || [];
-            var maxQ = Math.max(homeLS.length, awayLS.length, 4);
-            if (homeLS.length || awayLS.length) {
-                lineScoreHtml += '<div class="gd-section">';
-                lineScoreHtml += '<div class="gd-table-scroll"><table class="gd-linescore">';
-                lineScoreHtml += '<thead><tr><th></th>';
-                for (var q = 0; q < maxQ; q++) {
-                    lineScoreHtml += '<th>' + (q < 4 ? 'Q' + (q + 1) : 'OT' + (q > 4 ? q - 3 : '')) + '</th>';
-                }
-                lineScoreHtml += '<th class="gd-total">T</th></tr></thead><tbody>';
-
-                // Away
-                lineScoreHtml += '<tr class="' + (awayWon ? 'gd-row-winner' : '') + '">';
-                lineScoreHtml += '<td class="gd-ls-team"><img src="' + awayLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.awayTeam + '</span><span class="gd-ls-abbr">' + awayAbbr + '</span></td>';
-                for (var q = 0; q < maxQ; q++) lineScoreHtml += '<td>' + (awayLS[q] != null ? awayLS[q] : '-') + '</td>';
-                lineScoreHtml += '<td class="gd-total">' + fmt(game.awayPoints) + '</td></tr>';
-
-                // Home
-                lineScoreHtml += '<tr class="' + (homeWon ? 'gd-row-winner' : '') + '">';
-                lineScoreHtml += '<td class="gd-ls-team"><img src="' + homeLogo + '" class="gd-ls-logo" /><span class="gd-ls-full">' + game.homeTeam + '</span><span class="gd-ls-abbr">' + homeAbbr + '</span></td>';
-                for (var q = 0; q < maxQ; q++) lineScoreHtml += '<td>' + (homeLS[q] != null ? homeLS[q] : '-') + '</td>';
-                lineScoreHtml += '<td class="gd-total">' + fmt(game.homePoints) + '</td></tr>';
-
-                lineScoreHtml += '</tbody></table></div>';
-                lineScoreHtml += '</div>';
-            }
             // ---- The gamecast ----
-            // Box score, then the field, then how the score happened. This is
-            // the whole reason the page exists during a game, so it sits
-            // directly under the linescore and ahead of win probability, odds
-            // and pre-game season context — all of which matter less once the
-            // ball is in play.
+            // The field, then how the score happened. This is the whole
+            // reason the page exists during a game, so while it is live it
+            // sits directly under the scoreboard, above the tabs, with win
+            // probability — unchanged by the tabs (#506).
             //
             // Its data comes from a SEPARATE endpoint (/games/plays/:id) to the
             // rest of the page, because that one can cost a billable CFBD call
@@ -807,126 +774,127 @@
                 + renderPlaysSection(teamCtx)
                 + renderDrivesSection(teamCtx);
 
-            // Live games get the mobile-first running order: hero,
-            // venue/weather, box score, the gamecast, then win probability and
-            // odds — and finally the pre-game season context, which matters
-            // least once the game is under way. Everything above deferred its
-            // markup into a variable to make this one ordering decision,
-            // rather than scattering it through the page.
-            if (isLive) {
-                html += lineScoreHtml;
-                html += gamecastHtml;
-                html += wpSectionHtml;
-                html += oddsHtml;
-                html += preGameStatsHtml;
-            } else {
-                html += lineScoreHtml;
-                html += gamecastHtml;
-            }
-
             // ---- Team stats comparison ----
+            var teamStatsHtml = '';
             var hs = (game.teamStats && game.teamStats.home) || {};
             var as = (game.teamStats && game.teamStats.away) || {};
             if (Object.keys(hs).length || Object.keys(as).length) {
-                html += '<div class="gd-section">';
-                html += '<h3 class="gd-section-title">Team Stats</h3>';
-                html += '<div class="gd-stats-grid">';
-
+                var num = function (v) { return typeof v === 'number' ? v : (v != null && v !== '' && isFinite(v) ? Number(v) : null); };
+                // [label, away text, home text, away number, home number, better]
+                // Turnovers and penalties: lower is better.
                 var statRows = [
-                    ['Total Yards', fmt(as.totalYards), fmt(hs.totalYards)],
-                    ['Passing Yards', fmt(as.netPassingYards), fmt(hs.netPassingYards)],
-                    ['Rushing Yards', fmt(as.rushingYards), fmt(hs.rushingYards)],
-                    ['Passing TDs', fmt(as.passingTDs), fmt(hs.passingTDs)],
-                    ['Rushing TDs', fmt(as.rushingTDs), fmt(hs.rushingTDs)],
-                    ['Turnovers', fmt(as.turnovers), fmt(hs.turnovers)],
-                    ['Sacks', fmt(as.sacks), fmt(hs.sacks)],
-                    ['TFL', fmt(as.tacklesForLoss), fmt(hs.tacklesForLoss)],
-                    ['Penalties', fmt(as.penalties), fmt(hs.penalties)],
-                    ['3rd Down %', pct(as.thirdDownPct), pct(hs.thirdDownPct)],
-                    ['4th Down %', pct(as.fourthDownPct), pct(hs.fourthDownPct)],
-                    ['Possession', timeFmt(as.possessionSeconds), timeFmt(hs.possessionSeconds)],
+                    ['Total Yards', fmt(as.totalYards), fmt(hs.totalYards), num(as.totalYards), num(hs.totalYards), 'high'],
+                    ['Passing Yards', fmt(as.netPassingYards), fmt(hs.netPassingYards), num(as.netPassingYards), num(hs.netPassingYards), 'high'],
+                    ['Rushing Yards', fmt(as.rushingYards), fmt(hs.rushingYards), num(as.rushingYards), num(hs.rushingYards), 'high'],
+                    ['Passing TDs', fmt(as.passingTDs), fmt(hs.passingTDs), num(as.passingTDs), num(hs.passingTDs), 'high'],
+                    ['Rushing TDs', fmt(as.rushingTDs), fmt(hs.rushingTDs), num(as.rushingTDs), num(hs.rushingTDs), 'high'],
+                    ['Turnovers', fmt(as.turnovers), fmt(hs.turnovers), num(as.turnovers), num(hs.turnovers), 'low'],
+                    ['Sacks', fmt(as.sacks), fmt(hs.sacks), num(as.sacks), num(hs.sacks), 'high'],
+                    ['TFL', fmt(as.tacklesForLoss), fmt(hs.tacklesForLoss), num(as.tacklesForLoss), num(hs.tacklesForLoss), 'high'],
+                    ['Penalties', fmt(as.penalties), fmt(hs.penalties), num(as.penalties), num(hs.penalties), 'low'],
+                    ['3rd Down %', pct(as.thirdDownPct), pct(hs.thirdDownPct), num(as.thirdDownPct), num(hs.thirdDownPct), 'high'],
+                    ['4th Down %', pct(as.fourthDownPct), pct(hs.fourthDownPct), num(as.fourthDownPct), num(hs.fourthDownPct), 'high'],
+                    ['Possession', timeFmt(as.possessionSeconds), timeFmt(hs.possessionSeconds), num(as.possessionSeconds), num(hs.possessionSeconds), 'high']
                 ];
-
+                teamStatsHtml += '<h2 class="sp-h">Team stats</h2><div class="sp-card fg-vs">' + kit.vsHead(awayAbbr, homeAbbr);
                 for (var i = 0; i < statRows.length; i++) {
                     var row = statRows[i];
-                    var awayVal = parseFloat(row[1]) || 0;
-                    var homeVal = parseFloat(row[2]) || 0;
-                    var total = awayVal + homeVal;
-                    var awayPct = total > 0 ? (awayVal / total * 100) : 50;
-                    // Turnovers/penalties: lower is better
-                    var invertBar = row[0] === 'Turnovers' || row[0] === 'Penalties';
-                    var awayLead = invertBar ? awayVal < homeVal : awayVal > homeVal;
-                    var homeLead = invertBar ? homeVal < awayVal : homeVal > awayVal;
-
-                    html += '<div class="gd-stat-row">';
-                    html += '<div class="gd-stat-val' + (awayLead ? ' gd-stat-lead' : '') + '">' + row[1] + '</div>';
-                    html += '<div class="gd-stat-center">';
-                    html += '<div class="gd-stat-label">' + row[0] + '</div>';
-                    html += '<div class="gd-stat-bar"><div class="gd-stat-bar-fill" style="width:' + awayPct + '%;background:' + awayColor + '"></div><div class="gd-stat-bar-fill gd-stat-bar-right" style="width:' + (100 - awayPct) + '%;background:' + homeColor + '"></div></div>';
-                    html += '</div>';
-                    html += '<div class="gd-stat-val' + (homeLead ? ' gd-stat-lead' : '') + '">' + row[2] + '</div>';
-                    html += '</div>';
+                    teamStatsHtml += kit.vsRow(row[0], '', esc(row[1]), esc(row[2]), row[3], row[4], row[5], heroColors);
                 }
-
-                html += '</div></div>'; // .gd-stats-grid, .gd-section
+                teamStatsHtml += '</div>';
             }
 
-            // ---- Win probability (final games) ----
-            // The series survives the completion cleanup that nulls every other
-            // live field, and the poller closes it with a terminal 1/0 built
-            // from the final score — so the whole arc of a finished game is
-            // still here to read back. Empty for anything that finished before
-            // the snapshots existed, which is every game before Sep 2026.
-            if (isFinal && wpChartHtml) html += wpChartHtml;
-
             // ---- Player stats ----
+            var boxHtml = '';
             var hp = (game.playerStats && game.playerStats.home) || {};
             var ap = (game.playerStats && game.playerStats.away) || {};
             if (Object.keys(hp).length || Object.keys(ap).length) {
-                html += renderPlayerSection('Passing', ap.passing, hp.passing,
+                boxHtml += renderPlayerSection('Passing', ap.passing, hp.passing,
                     ['C/ATT', 'YDS', 'TD', 'INT', 'QBR'],
                     function (p) { return [p.c + '/' + p.att, p.yds, p.td, p.int, p.qbr != null ? p.qbr.toFixed(1) : '-']; }, teamCtx);
 
-                html += renderPlayerSection('Rushing', ap.rushing, hp.rushing,
+                boxHtml += renderPlayerSection('Rushing', ap.rushing, hp.rushing,
                     ['CAR', 'YDS', 'TD', 'LNG'],
                     function (p) { return [p.car, p.yds, p.td, p.lng]; }, teamCtx);
 
-                html += renderPlayerSection('Receiving', ap.receiving, hp.receiving,
+                boxHtml += renderPlayerSection('Receiving', ap.receiving, hp.receiving,
                     ['REC', 'YDS', 'TD', 'LNG'],
                     function (p) { return [p.rec, p.yds, p.td, p.lng]; }, teamCtx);
 
-                html += renderPlayerSection('Defensive', ap.defensive, hp.defensive,
+                boxHtml += renderPlayerSection('Defensive', ap.defensive, hp.defensive,
                     ['TOT', 'SOLO', 'TFL', 'SACKS', 'INT'],
                     function (p) { return [p.tot, p.solo, p.tfl, p.sacks, p.int]; }, teamCtx);
 
                 if ((ap.kicking && ap.kicking.length) || (hp.kicking && hp.kicking.length)) {
-                    html += renderPlayerSection('Kicking', ap.kicking, hp.kicking,
+                    boxHtml += renderPlayerSection('Kicking', ap.kicking, hp.kicking,
                         ['FG', 'PCT', 'LNG', 'XP', 'PTS'],
                         function (p) { return [p.fgm + '/' + p.fga, p.pct != null ? p.pct.toFixed(1) + '%' : '-', p.lng, p.xpm + '/' + p.xpa, p.pts]; }, teamCtx);
                 }
 
                 if ((ap.punting && ap.punting.length) || (hp.punting && hp.punting.length)) {
-                    html += renderPlayerSection('Punting', ap.punting, hp.punting,
+                    boxHtml += renderPlayerSection('Punting', ap.punting, hp.punting,
                         ['NO', 'YDS', 'AVG', 'LNG', 'IN20'],
                         function (p) { return [p.no, p.yds, p.avg != null ? p.avg.toFixed(1) : '-', p.lng, p.in20]; }, teamCtx);
                 }
             }
 
             // ---- Additional info ----
+            var extraHtml = '';
             var infoParts = [];
             if (game.excitementIndex) infoParts.push(['Excitement', parseFloat(game.excitementIndex).toFixed(2)]);
-            if (game.notes) infoParts.push(['Notes', game.notes]);
+            if (game.notes) infoParts.push(['Notes', esc(game.notes)]);
             if (infoParts.length) {
-                html += '<div class="gd-section gd-extra">';
+                extraHtml += '<div class="gd-section gd-extra">';
                 for (var i = 0; i < infoParts.length; i++) {
-                    html += '<div class="gd-extra-item"><span class="gd-extra-label">' + infoParts[i][0] + '</span> ' + infoParts[i][1] + '</div>';
+                    extraHtml += '<div class="gd-extra-item"><span class="gd-extra-label">' + infoParts[i][0] + '</span> ' + infoParts[i][1] + '</div>';
                 }
-                html += '</div>';
+                extraHtml += '</div>';
             }
 
-            if (isFinal) html += oddsHtml;
+            // ---- The running order (#506) ----
+            //
+            // Before kickoff: one page — predictor, the stakes, the season
+            // averages and leaders, the odds.
+            //
+            // Live: the gamecast and win probability stay on top, exactly as
+            // they were; the tabs below them hold the rest — Summary (team
+            // stats, odds, pre-game context) and Box score.
+            //
+            // Final: Summary (team stats, how win probability moved, the
+            // odds) · Play-by-play (plays and drives) · Box score — the
+            // 6½-screen final page as three short ones.
+            //
+            // Every panel is in the DOM and the inactive ones are [hidden],
+            // so the play-by-play's in-place repaint (gdRepaintPlays) finds
+            // its lists whichever tab is showing, and a 10s refresh keeps
+            // the reader's tab.
+            var summaryHtml, panels;
+            if (isLive) {
+                html += gamecastHtml + wpSectionHtml;
+                summaryHtml = teamStatsHtml + oddsHtml + preGameStatsHtml + extraHtml;
+            } else if (isFinal) {
+                summaryHtml = teamStatsHtml + wpChartHtml + extraHtml + oddsHtml;
+            } else {
+                gdHomeWP = homeWP;
+                summaryHtml = wpSectionHtml + '<div class="fg-stakes-slot">' + gdStakes(game, homeWP) + '</div>' + preGameStatsHtml + oddsHtml + extraHtml;
+            }
+            panels = [['summary', 'Summary', summaryHtml]];
+            // A game past kickoff that the feed has not flagged live yet can
+            // already have plays; they get their tab rather than vanishing.
+            if (!isLive && (isFinal || gdPlays.length || gdDrives.length) && gamecastHtml) panels.push(['plays', 'Play-by-play', gamecastHtml]);
+            if (boxHtml) panels.push(['box', 'Box score', boxHtml]);
+            // A tab with nothing in it yet shows Summary — without forgetting
+            // the reader's choice: a shared #plays link paints before the
+            // plays have arrived, and opens on them once they do.
+            var keys = panels.map(function (p) { return p[0]; });
+            var shown = keys.indexOf(gdTab) !== -1 ? gdTab : 'summary';
+            if (panels.length > 1) html += kit.tabs(panels.map(function (p) { return [p[0], p[1]]; }), shown);
+            panels.forEach(function (p) {
+                html += '<div class="fg-panel" role="tabpanel" data-panel="' + p[0] + '"' + (p[0] === shown ? '' : ' hidden') + '>' + p[2] + '</div>';
+            });
 
             container.innerHTML = html;
+            gdBindTabs();
             // Motion is decoration. A throw here would skip the chart wiring
             // and the plays fetch below, and on first load show "Could not
             // load game", so it is contained, as the scoreboard's is.
@@ -989,6 +957,163 @@
             // Fetched after the paint, not before it: the page is useful
             // without plays, and this request can cost a billable CFBD call.
             gdFetchPlays(game);
+        }
+
+        // ---- tabs (#506) ---------------------------------------------------
+        //
+        // Summary · Play-by-play · Box score, the kit's sticky tab bar. The
+        // tab rides in the URL hash so back, refresh and a shared link land
+        // where the reader was, and survives the 10s live re-render.
+        var GD_TABS = ['summary', 'plays', 'box'];
+        var gdTab = (function () {
+            var h = (window.location.hash || '').replace('#', '');
+            return GD_TABS.indexOf(h) !== -1 ? h : 'summary';
+        })();
+        var gdTabsBound = false;
+
+        function gdShowTab(tab) {
+            gdTab = tab;
+            if (window.history && window.history.replaceState) window.history.replaceState(null, '', '#' + tab);
+            var buttons = container.querySelectorAll('.sp-tab[data-tab]');
+            for (var i = 0; i < buttons.length; i++) {
+                var on = buttons[i].getAttribute('data-tab') === tab;
+                buttons[i].classList.toggle('on', on);
+                buttons[i].setAttribute('aria-selected', on ? 'true' : 'false');
+            }
+            var panels = container.querySelectorAll('.fg-panel[data-panel]');
+            for (var j = 0; j < panels.length; j++) panels[j].hidden = panels[j].getAttribute('data-panel') !== tab;
+            // Names measured while their panel was hidden measured nothing.
+            if (window.ccFitNames) ccFitNames('.gd-pl-name', container);
+        }
+
+        // Bound once, on the container: the re-render replaces everything
+        // inside it, but not the container itself.
+        function gdBindTabs() {
+            if (gdTabsBound) return;
+            gdTabsBound = true;
+            container.addEventListener('click', function (e) {
+                var t = e.target.closest('.sp-tab[data-tab]');
+                if (t) gdShowTab(t.getAttribute('data-tab'));
+            });
+        }
+
+        // ---- the fantasy read (#506) ---------------------------------------
+        //
+        // Who has each side in the league being viewed, and what the game
+        // banked them — or, before kickoff, what a win would pay. From
+        // GET /games/fantasy/:league/:gameId (modules/game-fantasy.js), which
+        // runs the scoring engine itself, so the numbers are the ones the
+        // scoring pass banks. Football leagues only: a basketball league
+        // drafts no football teams, and its franchises' team ids collide
+        // with football's (#489).
+        var gdFantasy = null;          // the last read; null until it lands
+        var gdFantasyKey = null;       // score + result it was read at
+        var gdFantasyAt = 0;           // when it was read
+        var gdFantasyInFlight = false;
+        var gdFantasyRetries = 0;      // follow-ups on a final whose points have not posted
+        var gdHomeWP = null;           // the predictor's number, for the stakes
+        // A read can land before the scoring pass has caught up with the
+        // score that triggered it (score-update writes the score first and
+        // re-scores later in the tick; a final can be held by the completion
+        // flush). So a live game re-reads at least this often, and a final
+        // still missing points tries a few more times.
+        var GD_FANTASY_STALE_MS = 60000;
+        var GD_FANTASY_RETRIES = 5;
+
+        async function gdFetchFantasy(game, force) {
+            var lg = window.ccLeague;
+            var code = window.ccLeagueCode ? window.ccLeagueCode() : (lg && lg.code ? lg.code() : '');
+            if (!code || (lg && typeof lg.sport === 'function' && lg.sport() !== 'football')) return;
+            var key = [game.awayPoints, game.homePoints, !!game.completed].join(':');
+            var stale = gdIsLive(game) && Date.now() - gdFantasyAt >= GD_FANTASY_STALE_MS;
+            if (gdFantasyInFlight || (key === gdFantasyKey && !stale && !force)) return;
+            gdFantasyInFlight = true;
+            try {
+                var res = await fetch('/games/fantasy/' + encodeURIComponent(code) + '/' + encodeURIComponent(GAME_ID),
+                    { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) throw new Error('fantasy read failed: ' + res.status);
+                gdFantasy = await res.json();
+                gdFantasyKey = key;
+                gdFantasyAt = Date.now();
+                gdPaintFantasy();
+                var unposted = ['away', 'home'].some(function (k) { return gdFantasy[k] && gdFantasy[k].owner && gdFantasy[k].banked == null; });
+                if (game.completed && unposted && gdFantasyRetries < GD_FANTASY_RETRIES) {
+                    gdFantasyRetries++;
+                    setTimeout(function () { if (!document.hidden) gdFetchFantasy(gdGame || game, true); }, GD_FANTASY_STALE_MS);
+                }
+            } catch (err) {
+                // The page is whole without it.
+                console.error('Fantasy read failed:', err);
+            } finally {
+                gdFantasyInFlight = false;
+            }
+        }
+
+        // Patched into its slots rather than by re-rendering the page: a
+        // render() here would re-fetch the plays (a billable call when the
+        // server cache is off) and cut the field's ball flight and score
+        // stamp off mid-animation on exactly the ticks that scored.
+        function gdPaintFantasy() {
+            if (!gdGame) return;
+            var fan = container.querySelector('.fg-fan-slot');
+            if (fan) fan.innerHTML = gdFantasyStrip(gdGame, !!gdGame.completed);
+            var stakes = container.querySelector('.fg-stakes-slot');
+            if (stakes) stakes.innerHTML = gdStakes(gdGame, gdHomeWP);
+        }
+
+        // Live and final: one card per side, away left — who banked what.
+        // `banked` null is "the scoring pass has not reached this game",
+        // which is not the same as banking 0.
+        function gdFantasyStrip(game, isFinal) {
+            var f = gdFantasy;
+            if (!f || !f.away || !f.home) return '';
+            var a = Number(game.awayPoints) || 0, h = Number(game.homePoints) || 0;
+            var card = function (side, name, us, them) {
+                var how = isFinal ? (us > them ? 'win' : us < them ? 'loss' : 'tie')
+                    : (us > them ? 'leading' : us < them ? 'trailing' : 'level');
+                var foot;
+                if (!side.owner) {
+                    foot = 'Not on a roster';
+                } else {
+                    var who = esc(side.owner.franchise || side.owner.firstName || 'a manager');
+                    if (side.banked == null) foot = who + (isFinal ? ' · points post after scoring' : '');
+                    else foot = '<b>' + (side.banked > 0 ? '+' : '') + side.banked + '</b> ' + (isFinal ? 'for ' : 'so far for ') + who;
+                }
+                return '<div><b>' + esc(name) + '</b> · ' + how + '<span class="p">' + foot + '</span></div>';
+            };
+            return '<div class="sp-fan fg-fan">' + card(f.away, game.awayTeam, a, h) + card(f.home, game.homeTeam, h, a) + '</div>';
+        }
+
+        // Before kickoff: what is on the line for the managers. Two rostered
+        // sides make it a head-to-head between two managers, the most
+        // interesting thing about the game to them, so it is framed as one.
+        // `homeWP` (0–100) turns a win's points into what to expect.
+        function gdStakes(game, homeWP) {
+            var f = gdFantasy;
+            if (!f || !f.away || !f.home) return '';
+            var p = homeWP != null ? homeWP / 100 : null;
+            var row = function (side, name, winP) {
+                if (!side.owner) {
+                    return '<div class="sp-stake"><span><b>' + esc(name) + '</b> · not on a roster</span><span></span></div>';
+                }
+                var who = esc(side.owner.franchise || side.owner.firstName || 'A manager');
+                var v = '<span></span>';
+                if (side.ifWin != null) {
+                    var loss = side.ifLoss || 0;
+                    if (!side.ifWin && !loss) {
+                        v = '<span class="v zero">no points</span>';
+                    } else {
+                        var notes = [];
+                        if (loss) notes.push('+' + loss + ' even in a loss');
+                        if (winP != null) notes.push('expected +' + (Math.round((side.ifWin * winP + loss * (1 - winP)) * 10) / 10));
+                        v = '<span class="v">+' + side.ifWin + (notes.length ? '<small>' + notes.join(' · ') + '</small>' : '') + '</span>';
+                    }
+                }
+                return '<div class="sp-stake"><span><b>' + who + '</b> · ' + esc(name) + '</span>' + v + '</div>';
+            };
+            var both = f.away.owner && f.home.owner;
+            return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
+                + '<div class="sp-card fg-stakes">' + row(f.away, game.awayTeam, p == null ? null : 1 - p) + row(f.home, game.homeTeam, p) + '</div>';
         }
 
         // ---- play-by-play ------------------------------------------------

@@ -48,8 +48,9 @@ function initLeagueSelector() {}
 
 // ---------------------------------------------------------------------------
 // Page orchestration: fetch the team doc once, then fan out the dependent
-// requests. A missing / unknown ?team= param renders an error card instead of
-// throwing and leaving a blank page.
+// requests, then hand one page model to renderTeamPage. A missing / unknown
+// ?team= param renders an error state instead of throwing and leaving a blank
+// page.
 // ---------------------------------------------------------------------------
 async function loadTeamPage() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -65,9 +66,6 @@ async function loadTeamPage() {
         renderTeamError("We couldn't find that team.");
         return;
     }
-
-    // Theme the page from the team's own colours before anything renders.
-    applyTeamTheme(teamData);
 
     // Swap the favicon to the team's logo so the browser tab shows their mark.
     var teamLogoUrl = typeof ccLogo === 'function' ? ccLogo(teamData.logos) : (teamData.logos && teamData.logos[0] || '');
@@ -93,7 +91,11 @@ async function loadTeamPage() {
 
     const seasonYear = seasonObj?.season || new Date().getFullYear();
     const conference = seasonObj?.conference;
-    const leagueCode = window.localStorage.getItem("leagueCode");
+    // The league being VIEWED, from the server's answer — not the storage
+    // mirror, which getUserProfile writes asynchronously and can still be
+    // empty on a first visit (every league's franchises would then be
+    // searched, basketball's colliding ids included, #489).
+    const leagueCode = (window.ccLeagueCode && window.ccLeagueCode()) || window.localStorage.getItem("leagueCode");
 
     // Fire the independent requests together. allSettled (not all) so one failed
     // request can't blank the whole page — each section falls back to a default.
@@ -108,52 +110,41 @@ async function loadTeamPage() {
         getTeamOwner(teamId, seasonYear, leagueCode),
         getTeamFantasyRank(teamId, seasonYear, leagueCode),
         getPlayerSeasonLeaders(teamData.school, seasonYear),
-        getTeamSeasonStats(teamData.school, seasonYear)
+        getTeamSeasonStats(teamData.school, seasonYear),
+        getConferenceTeams(conference)
     ]);
     const val = (i, fallback) => results[i].status === 'fulfilled' && results[i].value != null ? results[i].value : fallback;
-    const record = val(0, undefined);
     const conferenceRecords = val(1, []);
-    const allLogos = val(2, []);
-    const recruiting = val(3, undefined);
     const schedule = val(4, []);
-    const rankings = val(5, []);
-    const bettingLines = val(6, []);
-    const owner = val(7, null);
-    const fantasyRank = val(8, null);
-    const playerLeaders = val(9, null);
-    const teamStats = val(10, null);
+    schedule.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
-    await renderConferenceStandings(conferenceRecords, teamData, allLogos, conference);
-    renderTeamInfo(teamData, record, recruiting, seasonObj, schedule, owner, fantasyRank);
-    renderTeamScheduleInfo(schedule, allLogos, rankings, bettingLines, seasonYear, teamData);
-    renderTeamSeasonStats(teamStats, schedule);
-    renderPlayerSeasonLeaders(playerLeaders);
-
-    // Runs last: it depends on the final visibility of all three cards above.
-    placeStandingsColumn();
-}
-
-// Early in a season a team can have no team stats and no player leaders yet
-// (both cards stay hidden). That leaves the right column empty, so the schedule
-// would run at half width with dead space beside it and the standings stranded
-// underneath. When that happens, move the standings up into the right column.
-function placeStandingsColumn() {
-    const rightCol = document.querySelector('.tv-right-col');
-    const standings = document.getElementById('conference-standings');
-    if (!rightCol || !standings) return;
-
-    // Nothing to fill the gap with if the standings itself didn't render
-    // (e.g. FBS Independents, where renderConferenceStandings hides it).
-    if (getComputedStyle(standings).display === 'none') return;
-
-    const hasStatCard = Array.from(rightCol.children)
-        .some(card => getComputedStyle(card).display !== 'none');
-
-    if (!hasStatCard) rightCol.appendChild(standings);
+    renderTeamPage({
+        team: teamData,
+        seasonObj: seasonObj,
+        year: seasonYear,
+        // Claunts = V1, Graham = V2. leagueCode is 'claunts-league'/'graham-league'
+        // (never 'gg'), so the old 'gg' test always fell through to V2 and showed
+        // every viewer the Graham score.
+        scoreCode: leagueCode === 'claunts-league' ? 'cumulativeScoreV1' : 'cumulativeScoreV2',
+        record: val(0, undefined),
+        logos: val(2, []),
+        recruiting: val(3, undefined),
+        schedule: schedule,
+        rankings: val(5, []),
+        bettingLines: val(6, []),
+        owner: val(7, null),
+        fantasyRank: val(8, null),
+        playerLeaders: val(9, null),
+        teamStats: val(10, null),
+        standings: conference && conference !== 'FBS Independents'
+            ? buildStandings(Array.isArray(conferenceRecords) ? conferenceRecords : [], val(11, []))
+            : []
+    });
 }
 
 // Find the fantasy manager who drafted this team in the given season/league.
-// Returns { name, franchiseName, userId } or null if undrafted / unavailable.
+// Returns { name, franchiseName, userId, points } or null if undrafted /
+// unavailable; points is what the team banked for them, by game id.
 async function getTeamOwner(teamId, seasonYear, leagueCode) {
     try {
         const res = await fetch(`/users/season/${seasonYear}`, {
@@ -171,7 +162,8 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
                 return {
                     userId: user._id,
                     name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-                    franchiseName: season.franchiseName || ''
+                    franchiseName: season.franchiseName || '',
+                    points: ownerPointsFor(season, teamId)
                 };
             }
         }
@@ -179,6 +171,20 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
     } catch (e) {
         return null;
     }
+}
+
+// What this team has banked for its manager, game by game: { gameId: points }
+// off the franchise's weekly rows. Keyed by game id, so a week with two games
+// (or a postseason week holding several) keeps each game's own points.
+function ownerPointsFor(season, teamId) {
+    var out = {};
+    (season && season.weeklyScore || []).forEach(function (w) {
+        (w.scoreByTeam || []).forEach(function (s) {
+            if (String(s.teamId) !== String(teamId) || s.gameId == null) return;
+            out[String(s.gameId)] = Number(s.score) || 0;
+        });
+    });
+    return out;
 }
 
 // Rank this team's cumulative fantasy score against every FBS team for the
@@ -217,7 +223,7 @@ function renderSeasonSelector(seasons, currentSeason) {
         .map(y => `<option value="${y}" ${String(y) === String(currentSeason) ? 'selected' : ''}>${y}</option>`)
         .join('');
     return `
-        <select class="season-select" aria-label="Select season" onchange="onSeasonChange(this.value)">
+        <select class="ft-season" aria-label="Select season" onchange="onSeasonChange(this.value)">
             ${options}
         </select>
     `;
@@ -347,334 +353,6 @@ async function getAllBettingLines (seasonYear) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Team-colour theming. Sets CSS custom properties from the team's stored
-// colours; team.css consumes them (with the old red as fallback).
-// ---------------------------------------------------------------------------
-function applyTeamTheme(team) {
-    var accent = readableOnDark(team?.color) || readableOnDark(team?.alt_color) || '#ed5858';
-    var rgb = hexToRgb(accent);
-    var root = document.documentElement;
-    root.style.setProperty('--team-accent', accent);
-    if (rgb) {
-        root.style.setProperty('--team-accent-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
-        root.style.setProperty('--team-accent-contrast', contrastText(rgb));
-    }
-}
-
-function hexToRgb(hex) {
-    if (typeof hex !== 'string') return null;
-    var m = hex.trim().replace('#', '');
-    if (m.length === 3) m = m.split('').map(c => c + c).join('');
-    if (!/^[0-9a-fA-F]{6}$/.test(m)) return null;
-    return {
-        r: parseInt(m.slice(0, 2), 16),
-        g: parseInt(m.slice(2, 4), 16),
-        b: parseInt(m.slice(4, 6), 16)
-    };
-}
-
-function rgbToHex(r, g, b) {
-    const h = v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
-    return `#${h(r)}${h(g)}${h(b)}`;
-}
-
-// Relative luminance (0 = black, 1 = white), used to decide readability.
-function luminance(r, g, b) {
-    const a = [r, g, b].map(v => {
-        v /= 255;
-        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
-}
-
-// Returns a version of the colour that reads on the dark (#101322) background:
-// very dark team colours (e.g. navy/black) are lightened toward white until
-// they clear a minimum luminance. Returns null for unparseable input.
-function readableOnDark(hex) {
-    var rgb = hexToRgb(hex);
-    if (!rgb) return null;
-    var { r, g, b } = rgb;
-    var guard = 0;
-    while (luminance(r, g, b) < 0.22 && guard < 12) {
-        r = r + (255 - r) * 0.18;
-        g = g + (255 - g) * 0.18;
-        b = b + (255 - b) * 0.18;
-        guard++;
-    }
-    return rgbToHex(r, g, b);
-}
-
-// Black or white text to sit on top of the accent colour.
-function contrastText(rgb) {
-    return luminance(rgb.r, rgb.g, rgb.b) > 0.45 ? '#101322' : '#F4F6FB';
-}
-
-// ---------------------------------------------------------------------------
-// Animation helpers. Entrance animations are CSS-driven and gated behind
-// prefers-reduced-motion in team.css; these JS bits (count-up) check the same
-// preference so a reader who opts out sees final values immediately.
-// ---------------------------------------------------------------------------
-function ccReducedMotion() {
-    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-// Animate every [data-countup] inside root from 0 to its target.
-function ccCountUp(root) {
-    root.querySelectorAll('[data-countup]').forEach(el => {
-        var to = Number(el.getAttribute('data-countup'));
-        if (isNaN(to)) return;
-        if (ccReducedMotion()) { el.textContent = to; return; }
-        var dur = 850, start = null;
-        function step(ts) {
-            if (start === null) start = ts;
-            var p = Math.min(1, (ts - start) / dur);
-            el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
-            if (p < 1) requestAnimationFrame(step);
-        }
-        requestAnimationFrame(step);
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
-function renderTeamError(message) {
-    const container = document.getElementById("team-container");
-    if (!container) return;
-    container.innerHTML = `
-        <div class="team-empty">
-            <i class="fa-solid fa-helmet-un"></i>
-            <h2>${message}</h2>
-            <p><a href="/standings">Back to standings</a></p>
-        </div>
-    `;
-    // Nothing else can render without a team; hide the lower panels.
-    var lower = document.querySelector('.standings-container');
-    if (lower) lower.style.display = 'none';
-    var hr = document.querySelector('.hr-subtle');
-    if (hr) hr.style.display = 'none';
-}
-
-// Compute the viewed team's completed results in chronological order.
-function computeForm(schedule, teamId) {
-    if (!Array.isArray(schedule)) return [];
-    return schedule
-        .filter(g => g.completed && (g.homeId == teamId || g.awayId == teamId))
-        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
-        .map(g => {
-            var isHome = g.homeId == teamId;
-            var us = isHome ? g.homePoints : g.awayPoints;
-            var them = isHome ? g.awayPoints : g.homePoints;
-            return { win: Number(us) > Number(them), us, them };
-        });
-}
-
-// Render team info
-function renderTeamInfo(team, record, recruiting, seasonObj, schedule, owner, fantasyRank) {
-    const leagueCode = window.localStorage.getItem("leagueCode");
-    const container = document.getElementById("team-container");
-    // Claunts = V1, Graham = V2. leagueCode is 'claunts-league'/'graham-league'
-    // (never 'gg'), so the old 'gg' test always fell through to V2 and showed
-    // every viewer the Graham score.
-    var scoreCode = (leagueCode == 'claunts-league') ? 'cumulativeScoreV1' : 'cumulativeScoreV2';
-    var formatConference = seasonObj.conference;
-    var confLogo = getConferenceLogo(seasonObj.conference);
-
-    var recruitingRank = (recruiting?.rank != null) ? `#${recruiting.rank}` : '—';
-    var seasonScore = (seasonObj[scoreCode] != null) ? seasonObj[scoreCode] : 0;
-
-    // Twitter is optional; only render the link when a handle exists (otherwise
-    // the old code printed the literal text "null" linking to twitter.com/null).
-    var handle = team.twitter ? String(team.twitter).replace(/^@/, '') : '';
-    var twitterHtml = handle
-        ? `<a class="team-twitter" href="https://twitter.com/${handle}" target="_blank" rel="noopener noreferrer">@${handle}</a>`
-        : '';
-
-    // Stadium fields are individually optional in the schema; guard each.
-    var loc = team.location || {};
-    var capacity = (loc.capacity != null) ? loc.capacity.toLocaleString() : null;
-    var stadiumChips = [];
-    if (loc.year_constructed) stadiumChips.push(`Built ${loc.year_constructed}`);
-    if (capacity) stadiumChips.push(`${capacity} seats`);
-    if (loc.grass === true) stadiumChips.push('Grass');
-    if (loc.grass === false) stadiumChips.push('Turf');
-    if (loc.dome === true) stadiumChips.push('Dome');
-    if (loc.elevation) stadiumChips.push(`${Math.round(Number(loc.elevation)).toLocaleString()} ft`);
-
-    // Win/loss form strip + expected-wins comparison.
-    var form = computeForm(schedule, team.id);
-    var played = form.length;   // completed games — 0 means the season hasn't started
-    var wins = record?.total?.wins ?? form.filter(f => f.win).length;
-    var expected = seasonObj.expectedWins;
-    var formStrip = form.slice(-6).map(f =>
-        `<span class="form-dot ${f.win ? 'form-win' : 'form-loss'}" title="${f.us}-${f.them}">${f.win ? 'W' : 'L'}</span>`
-    ).join('');
-
-    // The "actual vs expected" delta is only meaningful once the regular season is
-    // over — mid-season it reads as a shortfall the team hasn't had yet. Show the
-    // projection alone until every regular-season game has been completed.
-    var regularGames = (schedule || []).filter(g => !g.seasonType || g.seasonType === 'regular');
-    var regularDone = regularGames.length > 0 && regularGames.every(g => g.completed);
-    var expectedHtml = '';
-    if (expected != null) {
-        expectedHtml = !regularDone
-            ? `<p class="score expected-wins">${Number(expected).toFixed(1)} projected wins</p>`
-            : `<p class="score expected-wins">${wins} actual vs ${Number(expected).toFixed(1)} expected
-                 <span class="ew-delta ${wins - expected >= 0 ? 'ew-up' : 'ew-down'}">
-                    ${wins - expected >= 0 ? '▲' : '▼'} ${Math.abs(wins - expected).toFixed(1)}
-                 </span></p>`;
-    }
-
-    // "Drafted by" — ties the team back to its fantasy manager for the season.
-    var ownerHtml = owner
-        ? `<a class="team-owner" href="/userHome?user=${owner.userId}">
-               <i class="fa-solid fa-user-group"></i>
-               <span>${owner.franchiseName || owner.name || 'a manager'}</span>
-           </a>`
-        : `<span class="team-owner team-owner--undrafted"><i class="fa-solid fa-user-slash"></i> Undrafted</span>`;
-
-    // National fantasy-scoring rank alongside the raw point total — only once the
-    // team has actually scored (a rank at 0 points is an arbitrary preseason tie).
-    var rankHtml = (fantasyRank && seasonScore > 0)
-        ? `<span class="fantasy-rank">#<span data-countup="${fantasyRank.rank}">0</span> of ${fantasyRank.total}</span>`
-        : '';
-
-    // Record pills. The hero owns the record the way the Game Detail hero owns
-    // the score, so the details grid below no longer repeats it.
-    var overallRec = `${record?.total?.wins || 0}-${record?.total?.losses || 0}`;
-    var confRec = `${record?.conferenceGames?.wins || 0}-${record?.conferenceGames?.losses || 0}`;
-    var statusHtml = (played === 0)
-        ? `<span class="tv-status tv-status--pre">${seasonObj.season} Preseason</span>`
-        : `<span class="tv-status">${overallRec} Overall</span>` +
-          `<span class="tv-status tv-status--sub">${confRec} ${formatConference}</span>`;
-
-    // Meta row (conference / coach / stadium / stadium facts) — one wrapping
-    // line in the same shape as the Game Detail hero's venue+weather row.
-    // Each part is a single flex item so the row only ever wraps BETWEEN parts.
-    var metaParts = [];
-    metaParts.push(`<img class="conf-logo" src="${confLogo}" alt="" /> ${formatConference}`);
-    if (seasonObj.coach) metaParts.push(`<i class="fa-solid fa-clipboard-user"></i> ${seasonObj.coach}`);
-    if (loc.name) {
-        var where = (loc.city && loc.state) ? ` · ${loc.city}, ${loc.state}` : '';
-        metaParts.push(`<i class="fa-solid fa-location-dot"></i> ${loc.name}${where}`);
-    }
-    stadiumChips.forEach(function (c) { metaParts.push(c); });
-    var metaHtml = `<div class="tv-meta">` +
-        metaParts.map(function (m) { return `<span class="tv-meta-item">${m}</span>`; })
-                 .join('<span class="tv-meta-sep"></span>') +
-        `</div>`;
-
-    // Outlook block: SP+/FPI power ratings, talent, returning production. Only
-    // rendered once the enrichment job has populated these (absent otherwise).
-    var outlookChips = [];
-    if (seasonObj.spRank != null) {
-        var spTip = seasonObj.spRating != null ? `SP+ ${seasonObj.spRating > 0 ? '+' : ''}${seasonObj.spRating} — projected points per game vs. an average team` : 'SP+ national rank';
-        outlookChips.push(`<span class="outlook-chip" title="${spTip}">SP+ #${seasonObj.spRank}</span>`);
-    }
-    if (seasonObj.fpiRank != null) {
-        outlookChips.push(`<span class="outlook-chip" title="ESPN Football Power Index — national rank">FPI #${seasonObj.fpiRank}</span>`);
-    }
-    if (seasonObj.talentRank != null || seasonObj.talent != null) {
-        var talLabel = seasonObj.talentRank != null ? `Talent #${seasonObj.talentRank}` : `Talent ${Math.round(seasonObj.talent)}`;
-        var talTip = `247Sports Talent Composite${seasonObj.talent != null ? ' (' + Math.round(seasonObj.talent) + ')' : ''} — total blue-chip recruiting talent on the roster; higher = more talent`;
-        outlookChips.push(`<span class="outlook-chip" title="${talTip}">${talLabel}</span>`);
-    }
-    if (seasonObj.returningProduction != null) {
-        outlookChips.push(`<span class="outlook-chip" title="Share of last season's production (PPA) returning">${seasonObj.returningProduction}% returning</span>`);
-    }
-    // Preseason: SP+/talent/returning are season-fixed and land only once CFBD
-    // publishes them (FPI/coach arrive earlier). When they're still missing on a
-    // not-yet-started season, note it so the lone FPI chip doesn't read as broken.
-    var outlookNote = (played === 0 && seasonObj.spRank == null && outlookChips.length)
-        ? `<p class="outlook-note">SP+, talent &amp; returning production post closer to kickoff.</p>`
-        : '';
-    var outlookHtml = outlookChips.length ? `<div><h4>${window.ccIcon ? window.ccIcon('chart', { size: 21 }) : ''} Outlook</h4><div class="outlook-chips">${outlookChips.join('')}</div>${outlookNote}</div>` : '';
-
-    // Set the tab title to the team being viewed.
-    document.title = ccLeague.title(`${team.school} ${team.mascot}`);
-
-    const html = `
-
-        <div class="team-header">
-            <img class="team-logo" src="${ccLogo(team.logos)}" alt="${team.school}" />
-            <div class="team-meta">
-            <div class="team-name-row">
-                <h2 class="team-name">${team.school} ${team.mascot}</h2>
-                ${renderSeasonSelector(team.seasons, seasonObj.season)}
-            </div>
-            <div class="tv-status-row">${statusHtml}</div>
-            ${expectedHtml}
-            <div class="team-meta-links">${twitterHtml}${ownerHtml}</div>
-            ${formStrip ? `<div class="form-strip" title="Most recent results">${formStrip}</div>` : ''}
-            </div>
-        </div>
-
-        ${metaHtml}
-
-        <div class="team-details">
-            <div>
-                <h4>${window.ccIcon ? window.ccIcon('riser', { size: 21 }) : ''} Season Score</h4>
-                <p class="score"><span class="tv-score-value" data-countup="${seasonScore}">0</span> Points ${rankHtml}</p>
-                <h4>Recruiting Rank</h4>
-                <p class="score">${recruitingRank}</p>
-            </div>
-            ${outlookHtml}
-        </div>
-
-        ${renderWeeklyScores(seasonObj, scoreCode)}
-    `;
-
-    container.innerHTML = html;
-
-    // Trigger entrance animations (CSS handles reduced-motion by no-op).
-    container.classList.add('reveal');
-    container.querySelector('.team-header')?.classList.add('run');
-    container.querySelector('.form-strip')?.classList.add('run');
-    ccCountUp(container);
-}
-
-// Weekly points bar chart from the season's weeklyScore[] (previously collected
-// but never shown; the .weekly-scores/.score-grid styles already existed).
-function renderWeeklyScores(seasonObj, scoreCode) {
-    var weekly = Array.isArray(seasonObj.weeklyScore) ? seasonObj.weeklyScore : [];
-    if (!weekly.length) return '';
-
-    var key = (scoreCode == 'cumulativeScoreV1') ? 'scoreV1' : 'scoreV2';
-
-    // Deduplicate by week+seasonType (two games in the same week get summed).
-    var byKey = {};
-    weekly.forEach(function (w) {
-        var k = (w.seasonType || 'regular') + ':' + w.week;
-        if (!byKey[k]) byKey[k] = { week: w.week, seasonType: w.seasonType, score: 0 };
-        byKey[k].score += Number(w[key]) || 0;
-    });
-    var merged = Object.values(byKey)
-        .sort(function (a, b) { return (b.seasonType || '').localeCompare(a.seasonType || '') || a.week - b.week; });
-
-    var max = Math.max(...merged.map(function (w) { return w.score; }), 1);
-
-    var bars = merged.map(function (w, i) {
-        var v = w.score;
-        var pct = Math.max(4, Math.round((v / max) * 100));
-        var label = (w.seasonType && w.seasonType !== 'regular') ? 'P' + w.week : 'W' + w.week;
-        return `
-            <div class="week-bar" title="Week ${w.week}: ${v} pts">
-                <span class="week-bar-value">${v}</span>
-                <span class="week-bar-fill" style="height:${pct}%;animation-delay:${i * 50}ms"></span>
-                <span class="week-bar-label">${label}</span>
-            </div>
-        `;
-    }).join('');
-
-    return `
-        <div class="weekly-scores">
-            <h4>${window.ccIcon ? window.ccIcon('chart', { size: 21 }) : ''} Weekly Points</h4>
-            <div class="week-bars run">${bars}</div>
-        </div>
-    `;
-}
-
 // This page renders game times in the BROWSER's zone, not Central like the rest
 // of the app — so it has to say which zone that is. The league spans two of
 // them, and "2:30 PM" means different things to different managers.
@@ -696,415 +374,6 @@ function localTzLabel(when) {
         return tzGenericLabel(found && found.value);
     } catch (e) {
         return '';   // no label beats a wrong one
-    }
-}
-
-// Render schedule info
-function renderTeamScheduleInfo(schedule, logos, rankings, bettingLines, year, teamData) {
-    const container = document.getElementById("schedule-container");
-    const teamId = teamData?.id;
-
-    var nextGameHtml = renderNextGame(schedule, logos, teamId);
-
-    // Sits under the heading so it covers both the next-game card and the
-    // games list, and stays visible while the list is collapsed.
-    const tz = localTzLabel();
-    var html = `
-        <div class="schedule-head">
-            <h2><i class="fa-solid fa-calendar-days fa-rank-stand"></i>${year} Schedule</h2>
-            <i class="fa-solid fa-caret-down drop"></i>
-        </div>
-        ${tz ? `<div class="schedule-tz">All times ${tz}</div>` : ''}
-        ${nextGameHtml}
-        <div class="games-container">
-    `;
-
-    if (schedule != null && schedule.length > 0) {
-        schedule.sort((a, b) => {
-            return new Date(a.startDate) - new Date(b.startDate);
-        });
-
-        schedule.forEach((game, gi) => {
-            var animDelay = Math.min(gi * 70, 700);
-            var homePoints = '';
-            var awayPoints = '';
-
-            var bettingLineObj = bettingLines.find(bettingObj => bettingObj.homeTeam == game.homeTeam && bettingObj.awayTeam == game.awayTeam)?.lines;
-
-            var awayLine = '';
-            var homeLine = '';
-
-            if(bettingLineObj?.length > 0 && bettingLineObj != null) {
-                var providerLine = bettingLineObj.find(line => line.provider == "DraftKings") || bettingLineObj[0];
-                // formattedSpread looks like "Georgia -7.5"; guard a missing /
-                // malformed value so one bad line can't break the whole render.
-                var spread = providerLine?.formattedSpread;
-                if (typeof spread === 'string' && spread.includes('-')) {
-                    var idx = spread.lastIndexOf('-');
-                    var favTeam = spread.slice(0, idx).trim();
-                    var number = spread.slice(idx + 1).trim();
-                    awayLine = (favTeam == game.awayTeam) ? number : '';
-                    homeLine = (favTeam == game.homeTeam) ? number : '';
-                }
-            }
-
-            var homeLogo = ccLogo((logos.find((team) => team.id == game.homeId))?.logos);
-            homeLogo = homeLogo ? `<img src="${homeLogo}" alt="${game.homeTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
-
-            var awayLogo = ccLogo((logos.find((team) => team.id == game.awayId))?.logos);
-            awayLogo = awayLogo ? `<img src="${awayLogo}" alt="${game.awayTeam}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
-
-            var pollName = 'Playoff Committee Rankings';
-            if (!rankings.find(r => r.week == game.week)?.polls?.find(p => p.poll == "Playoff Committee Rankings") && game.seasonType != "postseason" ) {
-                pollName = "AP Top 25";
-            }
-
-            rankings.sort((a, b) => {
-                return b.week - a.week;
-            });
-
-            var weekRankings;
-            if (game.seasonType == 'regular') {
-                weekRankings = rankings.find(r => r.week == game.week && r.season == year) ? rankings.find(r => r.week == game.week && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks : rankings[0]?.polls?.find(p => p.poll == pollName)?.ranks;
-            } else {
-                weekRankings = rankings.find(r => r.week == '16' && r.season == year)?.polls?.find(p => p.poll == pollName)?.ranks;
-            }
-            // A week with no loaded rankings (or a poll that lacks this team)
-            // leaves weekRankings undefined; default to [] so .length/.find below
-            // don't throw and the schedule still renders without ranks.
-            if (!Array.isArray(weekRankings)) weekRankings = [];
-
-            var homeRank = '';
-            var awayRank = '';
-            if (weekRankings.length > 0) {
-                homeRank = weekRankings.find(w => w.school == game.homeTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.homeTeam)?.rank}</span>` : '';
-                awayRank = weekRankings.find(w => w.school == game.awayTeam) ? `<span class="rank">${weekRankings.find(w => w.school == game.awayTeam)?.rank}</span>` : '';
-            }
-
-
-            if (game.completed) {
-                homePoints = game.homePoints || '0';
-                awayPoints = game.awayPoints || '0';
-            }
-
-            // Winner logic (compare numerically, not as strings)
-            const homeIsWinner = game.completed && Number(homePoints) > Number(awayPoints);
-            const awayIsWinner = game.completed && Number(awayPoints) > Number(homePoints);
-
-            // A completed game emphasises the winner and mutes the loser. The
-            // winner can't be marked by team colour alone: readableOnDark only
-            // lifts a colour to luminance 0.22, so a navy/black team (UVA ->
-            // #868b9c) ends up dimmer than the default text and the LOSER
-            // reads as the highlighted side. Ties leave both sides alone.
-            const isTieGame = game.completed && Number(homePoints) === Number(awayPoints);
-            const loserOpen = game.completed && !isTieGame ? '<span class="game-loser">' : '';
-            const loserClose = game.completed && !isTieGame ? '</span>' : '';
-            const awayOpen = awayIsWinner ? '<strong class="game-winner">' : loserOpen;
-            const awayClose = awayIsWinner ? '</strong>' : loserClose;
-            const homeOpen = homeIsWinner ? '<strong class="game-winner">' : loserOpen;
-            const homeClose = homeIsWinner ? '</strong>' : loserClose;
-
-            // Result badge from the VIEWED team's perspective (W/L/T + score),
-            // so a completed game reads at a glance without relying on colour.
-            //
-            // It sits on the viewed team's own line rather than in a column of
-            // its own. Centred against the whole row it landed beside the OTHER
-            // team's score, which is exactly the association it exists to make.
-            // The line without it still gets one, hidden, so both scores keep a
-            // shared right edge instead of one row hanging past the other.
-            var awayBadge = '', homeBadge = '';
-            if (game.completed) {
-                var teamIsHome = String(game.homeId) === String(teamId);
-                var us = Number(teamIsHome ? homePoints : awayPoints);
-                var them = Number(teamIsHome ? awayPoints : homePoints);
-                var isTie = us === them;
-                var cls = isTie ? 'result-tie' : (us > them ? 'result-win' : 'result-loss');
-                var letter = isTie ? 'T' : (us > them ? 'W' : 'L');
-                // Just the W/L/T (the per-team scores already show the numbers);
-                // keep the exact score available on hover.
-                var resultBadge = function (shown) {
-                    return shown
-                        ? `<span class="game-result ${cls} run" style="animation-delay:${animDelay}ms" title="${us}-${them}">${letter}</span>`
-                        : `<span class="game-result game-result-ghost" aria-hidden="true">${letter}</span>`;
-                };
-                awayBadge = resultBadge(!teamIsHome);
-                homeBadge = resultBadge(teamIsHome);
-            }
-
-            const awayTeamHTML = `
-                ${awayOpen}
-               <a href="/team?team=${game.awayId}">${awayLogo}${awayRank}${game.awayTeam}</a>
-                ${awayClose}
-                </span><span class="betting-line">${awayLine ? '-' + awayLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
-                ${awayOpen}
-                ${awayPoints ? awayPoints : ''}
-                ${awayClose}
-                </span>
-            `;
-
-            const homeTeamHTML = `
-                ${homeOpen}
-               <a href="/team?team=${game.homeId}">${homeLogo}${homeRank}${game.homeTeam}</a>
-                ${homeClose}
-                </span><span class="betting-line">${homeLine ? '-' + homeLine : ''}</span><span class="team-score run" style="animation-delay:${animDelay}ms">
-                ${homeOpen}
-                ${homePoints ? homePoints : ''}
-                ${homeClose}
-                </span>
-            `;
-
-            html += `
-                <div class="game-row${game.id ? ' gc-clickable' : ''}"${game.id ? ` data-game-id="${game.id}"` : ''}>
-                    <div class="game-info">
-                        <div class="team-row">
-                            <span class="team-vs">${awayTeamHTML}${awayBadge}
-                        </div>
-                        <div class="team-row">
-                            <span class="team-vs">${homeTeamHTML}${homeBadge}
-                        </div>
-                        <span class="game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · <span class="game-tv">${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}</span>` : ''}${game.weather && game.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[game.weather.emoji] ? ` <span class="game-weather" title="${(game.weather.condition || '') + (game.weather.temp != null ? ' · ' + game.weather.temp + '°F' : '')}">${window.ccWeatherEmoji[game.weather.emoji]}</span>` : ''}</span>
-                        <span class="game-date">${game.neutralSite ? game.venue : ''}</span>
-                        <span class="game-date">${game.notes ? game.notes : ''}</span>
-                    </div>
-                </div>
-            `;
-        });
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-
-    container.addEventListener('click', function (e) {
-        if (e.target.closest('a[href]')) return;
-        var card = e.target.closest('.gc-clickable[data-game-id]');
-        if (card) window.location.href = '/game/' + card.getAttribute('data-game-id');
-    });
-
-    const scheduleButton = document.querySelector('#schedule-container .schedule-head');
-
-    if (scheduleButton && document.querySelector('.drop').checkVisibility()) {
-        //Listener to open/close schedule
-        const toggle = document.querySelector('#schedule-container .schedule-head');
-        const content = document.querySelector('.games-container');
-
-        toggle.addEventListener('click', () => {
-            content.classList.toggle('active');
-
-            if (content.classList.contains('active')) {
-                document.querySelector('#schedule-container .drop').classList.add('fa-caret-up');
-                document.querySelector('#schedule-container .drop').classList.remove('fa-caret-down');
-            } else {
-                document.querySelector('#schedule-container .drop').classList.add('fa-caret-down');
-                document.querySelector('#schedule-container .drop').classList.remove('fa-caret-up');
-            }
-        });
-    }
-}
-
-// The next upcoming (not-yet-completed) game, surfaced as a hero card above the
-// collapsible schedule list.
-function renderNextGame(schedule, logos, teamId) {
-    if (!Array.isArray(schedule) || !schedule.length) return '';
-    var upcoming = schedule
-        .filter(g => !g.completed)
-        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
-    var game = upcoming[0];
-    if (!game) return '';
-
-    var isHome = game.homeId == teamId;
-    var oppName = isHome ? game.awayTeam : game.homeTeam;
-    var oppId = isHome ? game.awayId : game.homeId;
-    var oppLogoUrl = ccLogo((logos.find(t => t.id == oppId))?.logos);
-    var oppLogo = oppLogoUrl ? `<img src="${oppLogoUrl}" alt="${oppName}">` : '<i class="fa-solid fa-helmet-un"></i>';
-    var prefix = game.neutralSite ? 'vs' : (isHome ? 'vs' : '@');
-
-    return `
-        <a class="next-game" href="${game.id ? '/game/' + game.id : '/team?team=' + oppId}">
-            <span class="next-game-tag">Next Up</span>
-            <div class="next-game-body">
-                <span class="next-game-opp">${oppLogo} ${prefix} ${oppName}</span>
-                <span class="next-game-date">${formatDate(game.startTimeTbd, game.startDate)}${game.outlet ? ` · ${window.ccIcon ? window.ccIcon('broadcast', { size: 14 }) : ''} ${game.outlet}` : ''}</span>
-                ${game.neutralSite && game.venue ? `<span class="next-game-venue">${game.venue}</span>` : ''}
-            </div>
-        </a>
-    `;
-}
-
-async function renderConferenceStandings(data, teamData, logos, conference) {
-    // Filter for specified conference
-    var standings = [];
-    var conferenceTeams = await getConferenceTeams(conference);
-    conferenceTeams.sort((a,b) => {
-        return a.school.toLowerCase().localeCompare(b.school.toLowerCase());
-    });
-    standings = conferenceTeams.map(team => ({
-            ...team,
-            team: team.school,
-            teamId: team.id,
-            conferenceGames: {
-                games: 0,
-                wins: 0,
-                losses: 0,
-                ties: 0,
-            },
-            total: {
-                games: 0,
-                wins: 0,
-                losses: 0,
-                ties: 0,
-            }
-        }));
-    if (data.message?.startsWith("No conference records")){
-
-    } else {
-
-        // Create a map for quick lookup by teamId
-        const dataMap = new Map(data.map(item => [item.teamId, item]));
-
-        // Replace matching objects in standings
-        const updatedStandings = standings.map(team => {
-            return dataMap.get(team.teamId) || team;
-        });
-
-        // Sort: conference win % → conference wins → overall wins → overall
-        // losses. Real CFB standings order by conference winning percentage, so a
-        // 4-0 team sits above a 5-1 (raw wins would wrongly flip them mid-season,
-        // before byes even out the games played). A 0-0 team is treated as .000.
-        const confPct = (t) => {
-            const g = t.conferenceGames.wins + t.conferenceGames.losses;
-            return g > 0 ? t.conferenceGames.wins / g : 0;
-        };
-        updatedStandings.sort((a, b) => {
-            const pa = confPct(a), pb = confPct(b);
-            if (pb !== pa) return pb - pa;
-            if (b.conferenceGames.wins !== a.conferenceGames.wins) {
-                return b.conferenceGames.wins - a.conferenceGames.wins;
-            }
-            if (b.total.wins !== a.total.wins) {
-                return b.total.wins - a.total.wins;
-            }
-            return a.total.losses - b.total.losses;
-        });
-
-        standings = updatedStandings;
-    }
-
-    if (standings.length > 0 && conference != 'FBS Independents') {
-        // Collapsed-state peek: the viewed team's own standings line, so mobile
-        // shows where the team sits without expanding the whole table. Mirrors
-        // the schedule's "Next Up" hero. Hidden on desktop (table is always
-        // open there) and hidden by the toggle once the table is expanded.
-        const peekIdx = standings.findIndex(t => t.team == teamData.school);
-        let peekHtml = '';
-        if (peekIdx >= 0) {
-            const pk = standings[peekIdx];
-            let pkLogo = ccLogo((logos.find((logo) => logo.id == pk.teamId))?.logos);
-            pkLogo = pkLogo
-                ? `<img src="${pkLogo}" alt="">`
-                : '<i class="fa-solid fa-helmet-un"></i>';
-            peekHtml = `
-                <div class="standings-peek">
-                    <span class="standings-peek-rank">#${peekIdx + 1}</span>
-                    <span class="standings-peek-team">${pkLogo}<span>${pk.team}</span></span>
-                    <span class="standings-peek-recs">
-                        <span class="standings-peek-rec"><small>CONF</small>${pk.conferenceGames.wins}-${pk.conferenceGames.losses}</span>
-                        <span class="standings-peek-rec"><small>OVR</small>${pk.total.wins}-${pk.total.losses}</span>
-                    </span>
-                </div>
-            `;
-        }
-
-        // Build table HTML
-        let html = `
-            <div class="standing-head">
-                <h2><i class="fa-solid fa-ranking-star fa-rank-stand"></i>${data[0]?.conference || conference} Standings</h2>
-                <i class="fa-solid fa-caret-down drop"></i>
-            </div>
-            ${peekHtml}
-            <table class="standings-table">
-                <thead>
-                    <tr>
-                        <th class="standingColumn">Rank</th>
-                        <th class="standingColumn">Team</th>
-                        <th class="standingColumn">Conf</th>
-                        <th class="standingColumn">Overall</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        standings.forEach((team, index) => {
-            var teamLogo = ccLogo((logos.find((logo) => logo.id == team.teamId))?.logos);
-            teamLogo = teamLogo ? `<img src="${teamLogo}" alt="${team.mascot}">` : '<i class="fa-solid fa-helmet-un" style="padding-right: 5px;"></i>';
-
-            var isViewedTeam = team.team == teamData.school;
-            var boldCls = isViewedTeam ? ' boldTeam' : '';
-
-            // Logo and name are their own flex columns so a long name (e.g.
-            // "Georgia Tech", "Florida State") wraps beside the logo, centered,
-            // instead of dropping onto a second line underneath it.
-            var rankHtml = isViewedTeam ? `<strong class="boldTeam">${index + 1}</strong>` : (index + 1);
-            var teamHtml = `<span class="standings-team"><span class="standings-team-logo">${teamLogo}</span><span class="standings-team-name${boldCls}">${team.team}</span></span>`;
-            var confHtml = isViewedTeam
-                ? `<strong class="boldTeam">${team.conferenceGames.wins} - ${team.conferenceGames.losses}</strong>`
-                : `${team.conferenceGames.wins}-${team.conferenceGames.losses}`;
-            var ovrHtml = isViewedTeam
-                ? `<strong class="boldTeam">${team.total.wins} - ${team.total.losses}</strong>`
-                : `${team.total.wins}-${team.total.losses}`;
-
-            html += `
-                <tr class="${isViewedTeam ? 'viewed-team-row' : ''}">
-                    <td class="standingColumn">${rankHtml}</td>
-                    <td class="standingColumn"><a href="/team?team=${team.teamId}">${teamHtml}</a></td>
-                    <td class="standingColumn">${confHtml}</td>
-                    <td class="standingColumn">${ovrHtml}</td>
-                </tr>
-            `;
-        });
-
-        html += `
-                </tbody>
-            </table>
-        `;
-
-        // Render to DOM
-        const container = document.getElementById('conference-standings');
-        if (container) {
-            container.innerHTML = html;
-
-            const standingsButton = document.querySelector('#conference-standings .standing-head');
-
-            if (standingsButton) {
-                //Listener to open/close standings
-                const toggle = document.querySelector('#conference-standings .standing-head');
-                const content = document.querySelector('.standings-table');
-
-                const peek = container.querySelector('.standings-peek');
-
-                toggle.addEventListener('click', () => {
-                    content.classList.toggle('active');
-
-                    // The peek only earns its space while the table is closed.
-                    if (peek) peek.classList.toggle('is-hidden', content.classList.contains('active'));
-
-                    if (content.classList.contains('active')) {
-                        document.querySelector('#conference-standings .drop').classList.add('fa-caret-up');
-                        document.querySelector('#conference-standings .drop').classList.remove('fa-caret-down');
-                    } else {
-                        document.querySelector('#conference-standings .drop').classList.add('fa-caret-down');
-                        document.querySelector('#conference-standings .drop').classList.remove('fa-caret-up');
-                    }
-                });
-            }
-        } else {
-            console.warn("Missing container with id 'conference-standings'");
-        }
-    } else {
-        const container = document.getElementById('conference-standings');
-        container.style.display = 'none';
-
-        const scheduleContainer = document.getElementById('schedule-container');
-        scheduleContainer.style.width = '100%';
     }
 }
 
@@ -1246,50 +515,6 @@ function teamScoring(games, teamName) {
     return { pointsFor: pf, pointsAgainst: pa, games: n };
 }
 
-function renderTeamSeasonStats(data, scheduleGames) {
-    var container = document.getElementById('team-stats-container');
-    if (!container || !data || !data.stats || !data.games) return;
-
-    var s = data.stats;
-    var g = data.games;
-
-    // CFBD's season-stats payload carries no scoring at all — there is no
-    // totalPoints field on it, so both point tiles read undefined and rendered a
-    // flat 0.0 next to real yardage. Points live on the games, which the page has
-    // already fetched for the schedule.
-    var scoring = teamScoring(scheduleGames, data.team);
-
-    var rows = [
-        { label: 'Total YPG', val: (s.totalYards || 0) / g },
-        { label: 'Opp YPG', val: (s.totalYardsOpponent || 0) / g },
-        { label: 'Rush YPG', val: (s.rushingYards || 0) / g },
-        { label: 'Pass YPG', val: (s.netPassingYards || 0) / g },
-        { label: 'Points / game', val: scoring.games ? scoring.pointsFor / scoring.games : 0 },
-        { label: 'Opp PPG', val: scoring.games ? scoring.pointsAgainst / scoring.games : 0 },
-        { label: 'Turnovers / game', val: (s.turnovers || 0) / g },
-        { label: 'Sacks / game', val: (s.sacks || 0) / g },
-        { label: '3rd down %', val: s.thirdDowns > 0 ? (s.thirdDownConversions || 0) / s.thirdDowns * 100 : 0, isPct: true }
-    ];
-
-    // The icon sits in a fixed-width slot (--tv-icon-indent) and the rows below
-    // are indented by the same amount, so the title text and the data share one
-    // left rail regardless of which glyph is used. See team.css.
-    var html = '<h3 class="tv-ts-title"><i class="fas fa-chart-simple"></i>Team Stats</h3>';
-    html += '<div class="tv-ts-subtitle">' + g + (g === 1 ? ' game' : ' games') + '</div>';
-
-    for (var i = 0; i < rows.length; i++) {
-        var r = rows[i];
-        var disp = r.isPct ? r.val.toFixed(1) + '%' : r.val.toFixed(1);
-        html += '<div class="tv-ts-row">';
-        html += '<span class="tv-ts-label">' + r.label + '</span>';
-        html += '<span class="tv-ts-val">' + disp + '</span>';
-        html += '</div>';
-    }
-
-    container.innerHTML = html;
-    container.style.display = '';
-}
-
 async function getPlayerSeasonLeaders(team, seasonYear) {
     var res = await fetch('/player-season-leaders?season=' + seasonYear + '&teams=' + encodeURIComponent(team), {
         method: 'GET',
@@ -1297,73 +522,6 @@ async function getPlayerSeasonLeaders(team, seasonYear) {
     });
     var data = await res.json();
     return Array.isArray(data) && data.length ? data[0] : null;
-}
-
-function renderPlayerSeasonLeaders(data) {
-    var container = document.getElementById('player-leaders-container');
-    if (!container || !data || !data.leaders) return;
-
-    var cats = [
-        { key: 'passing', label: 'Passing', cols: ['YDS', 'TD', 'INT', 'PCT'], colLabels: { 'PCT': 'CMP%' } },
-        { key: 'rushing', label: 'Rushing', cols: ['CAR', 'YDS', 'TD', 'YPC'] },
-        { key: 'receiving', label: 'Receiving', cols: ['REC', 'YDS', 'TD', 'YPR'] },
-        { key: 'tackles', label: 'Tackles', cols: ['TOT', 'SOLO', 'TFL', 'SACKS'] },
-        // 'QB HUR' is the widest label of any category; shortened so it doesn't
-        // force every fixed-width column wider than the values need.
-        { key: 'sacks', label: 'Sacks', cols: ['SACKS', 'TFL', 'QB HUR'], colLabels: { 'QB HUR': 'HUR' } },
-        { key: 'interceptions', label: 'Interceptions', cols: ['INT', 'YDS', 'TD'] },
-        { key: 'kicking', label: 'Kicking', cols: ['FGM', 'FGA', 'XPM', 'XPA', 'PTS'] }
-    ];
-
-    // Icon slot + matching row indent (see the note in renderTeamSeasonStats).
-    var html = '<h3 class="tv-pl-title"><i class="fas fa-user-shield"></i>Season Leaders</h3>';
-
-    for (var ci = 0; ci < cats.length; ci++) {
-        var cat = cats[ci];
-        var players = data.leaders[cat.key];
-        if (!players || !players.length) continue;
-
-        html += '<div class="tv-pl-group">';
-
-        // Column labels belong to the category, not the player: they sit once on
-        // the category line and every player row below lines up under them. The
-        // label and value cells share a fixed width (--tv-pl-cell) so a wide
-        // value can't widen its own column and knock the rows out of alignment.
-        html += '<div class="tv-pl-cathead">';
-        html += '<span class="tv-pl-cat">' + cat.label + '</span>';
-        html += '<span class="tv-pl-stats">';
-        for (var hi = 0; hi < cat.cols.length; hi++) {
-            var hst = cat.cols[hi];
-            var hLabel = (cat.colLabels && cat.colLabels[hst]) || hst;
-            html += '<span class="tv-pl-hcell">' + hLabel + '</span>';
-        }
-        html += '</span></div>';
-
-        for (var pi = 0; pi < players.length; pi++) {
-            var p = players[pi];
-            html += '<div class="tv-pl-player">';
-            html += '<div class="tv-pl-player-info">';
-            html += '<span class="tv-pl-name">' + p.name + '</span>';
-            if (p.pos) html += '<span class="tv-pl-pos">' + p.pos + '</span>';
-            html += '</div>';
-            html += '<div class="tv-pl-stats">';
-            for (var si = 0; si < cat.cols.length; si++) {
-                var st = cat.cols[si];
-                var v = p[st] != null ? p[st] : 0;
-                var displayVal = st === 'PCT' ? (v <= 1 ? Math.round(v * 100) : v) + '%' : v;
-                html += '<span class="tv-pl-stat-cell">' + displayVal + '</span>';
-            }
-            html += '</div></div>';
-        }
-
-        html += '</div>';
-    }
-
-    container.innerHTML = html;
-    container.style.display = '';
-    // Shared with the game detail leaders card — see public/fit-names.js.
-    ccFitNames('.tv-pl-name', container);
-    ccWatchNameFit('.tv-pl-name', container);
 }
 
 // Helper: Format the date to readable format
@@ -1381,6 +539,634 @@ function formatDate(isTbd, dateStr) {
   } else {
     return day + ' ' + datePart + ', ' + time;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering (#506). The frame is the shared kit's (public/sport-page.css/.js):
+// hero shell, owner strip, sticky tabs, cards, game rows — the same frame as
+// the basketball team page. What is football's own lives here and in team.css:
+// the yard lines, SP+/FPI, the spread, the weekly points.
+//
+// Four tabs, the tab riding in the URL hash so back, refresh and a shared link
+// land where the reader was:
+//   Overview    next game, the season in numbers, outlook, weekly points,
+//               where they sit in the conference, the programme
+//   Schedule    every game, with the fantasy points each one scored
+//   Stats       team stats and season leaders
+//   <Conf>      the full conference table (not for an independent)
+// ---------------------------------------------------------------------------
+var FT_TABS = ['overview', 'schedule', 'stats', 'conference'];
+var ftPage = { data: null, tab: 'overview', bound: false };
+
+function ftEsc(s) { return window.ccSportPage.esc(s); }
+function ftIcon(name) { return window.ccIcon ? window.ccIcon(name, { size: 14 }) : ''; }
+
+function renderTeamError(message) {
+    var root = document.getElementById('team-page');
+    if (!root) return;
+    root.innerHTML = '<div class="sp-error"><p>' + ftEsc(message) + '</p>'
+        + '<p><a class="ft-link" href="/standings">Back to standings</a></p></div>';
+}
+
+// The conference table: every member school, with its record where it has
+// one. Ordered by conference win % → conference wins → overall wins → overall
+// losses — real CFB standings order by conference winning percentage, so a
+// 4-0 team sits above a 5-1 (raw wins would flip them mid-season, before byes
+// even out). A 0-0 team counts as .000. With no records at all yet (a
+// preseason), alphabetical.
+function buildStandings(records, conferenceTeams) {
+    var teams = (Array.isArray(conferenceTeams) ? conferenceTeams : []).slice()
+        .sort(function (a, b) { return String(a.school).toLowerCase().localeCompare(String(b.school).toLowerCase()); });
+    var byId = new Map((Array.isArray(records) ? records : []).map(function (r) { return [String(r.teamId), r]; }));
+    var zero = function () { return { games: 0, wins: 0, losses: 0, ties: 0 }; };
+    var rows = teams.map(function (t) {
+        var r = byId.get(String(t.id));
+        return {
+            teamId: t.id,
+            team: t.school,
+            conferenceGames: r && r.conferenceGames ? r.conferenceGames : zero(),
+            total: r && r.total ? r.total : zero()
+        };
+    });
+    if (!byId.size) return rows;
+    var pct = function (t) {
+        var g = t.conferenceGames.wins + t.conferenceGames.losses;
+        return g > 0 ? t.conferenceGames.wins / g : 0;
+    };
+    return rows.sort(function (a, b) {
+        var pa = pct(a), pb = pct(b);
+        if (pb !== pa) return pb - pa;
+        if (b.conferenceGames.wins !== a.conferenceGames.wins) return b.conferenceGames.wins - a.conferenceGames.wins;
+        if (b.total.wins !== a.total.wins) return b.total.wins - a.total.wins;
+        return a.total.losses - b.total.losses;
+    });
+}
+
+// The viewed team's completed results, oldest first.
+function computeForm(schedule, teamId) {
+    if (!Array.isArray(schedule)) return [];
+    return schedule
+        .filter(g => g.completed && (g.homeId == teamId || g.awayId == teamId))
+        .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+        .map(g => {
+            var isHome = g.homeId == teamId;
+            var us = Number(isHome ? g.homePoints : g.awayPoints) || 0;
+            var them = Number(isHome ? g.awayPoints : g.homePoints) || 0;
+            return { win: us > them, tie: us === them, us: us, them: them };
+        });
+}
+
+function ftHex(c) {
+    if (!c) return null;
+    var s = String(c).trim();
+    if (s.charAt(0) !== '#') s = '#' + s;
+    return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(s) ? s : null;
+}
+function ftLogoOf(d, id) {
+    return ccLogo((d.logos.find(t => t.id == id))?.logos) || '';
+}
+function ftRec(r) { return (r && r.wins || 0) + '–' + (r && r.losses || 0); }
+function ftSeasonScore(d) {
+    var v = d.seasonObj[d.scoreCode];
+    return v != null ? v : 0;
+}
+
+// A football field stood on end behind the name — the football twin of the
+// basketball hero's court. Goal lines at both ends, a line every five yards,
+// and the hash marks between them.
+function ftYardLines() {
+    var s = '<svg class="ft-field" viewBox="0 0 120 240" fill="none" stroke="#fff" stroke-width="1.6" aria-hidden="true">'
+        + '<rect x="1" y="1" width="118" height="238"/>';
+    for (var y = 30; y <= 210; y += 15) s += '<path d="M0 ' + y + 'H120"' + (y === 30 || y === 210 ? ' stroke-width="3"' : '') + '/>';
+    s += '<g stroke-width=".8">';
+    for (var h = 33; h < 210; h += 3) s += '<path d="M44 ' + h + 'h6M70 ' + h + 'h6"/>';
+    return s + '</g></svg>';
+}
+
+function ftHero(d) {
+    var t = d.team, s = d.seasonObj, rec = d.record;
+    var form = computeForm(d.schedule, t.id);
+    var conf = s.conference || '';
+    var loc = t.location || {};
+    var sub = [t.mascot, conf, loc.name].filter(Boolean).map(ftEsc).join(' · ');
+
+    var chips = [];
+    // A season not yet started says so, rather than reading 0–0 as a record.
+    if (!form.length) chips.push('<span class="sp-chip">' + ftEsc(s.season) + ' Preseason</span>');
+    if (s.spRank != null) {
+        var spTip = s.spRating != null
+            ? 'SP+ ' + (s.spRating > 0 ? '+' : '') + s.spRating + ' — projected points per game vs. an average team'
+            : 'SP+ national rank';
+        chips.push('<span class="sp-chip" title="' + ftEsc(spTip) + '">SP+ <b>#' + ftEsc(s.spRank) + '</b></span>');
+    }
+    if (s.fpiRank != null) chips.push('<span class="sp-chip" title="ESPN Football Power Index — national rank">FPI <b>#' + ftEsc(s.fpiRank) + '</b></span>');
+    if (s.expectedWins != null) chips.push('<span class="sp-chip" title="Preseason projection">Proj. <b>' + Number(s.expectedWins).toFixed(1) + ' wins</b></span>');
+
+    var score = ftSeasonScore(d);
+    var marks = form.slice(-6).map(function (f) {
+        var k = f.tie ? 't' : (f.win ? 'w' : 'l');
+        return '<span class="sp-wl ' + k + '" title="' + f.us + '-' + f.them + '">' + k.toUpperCase() + '</span>';
+    }).join('');
+    var color = ftHex(t.color);
+    var logo = ccLogo(t.logos);
+
+    return '<section class="sp-hero team ft-hero"' + (color ? ' style="--team:' + color + '"' : '') + '>' + ftYardLines()
+        + '<div class="ft-id">' + (logo ? '<img class="ft-logo" src="' + ftEsc(logo) + '" alt="' + ftEsc(t.school) + '">' : '')
+        + '<div class="ft-idtext"><h1 class="ft-school">' + ftEsc(String(t.school || '').toUpperCase()) + '</h1>'
+        + '<div class="ft-mascot">' + sub + '</div>'
+        + (chips.length ? '<div class="ft-chips">' + chips.join('') + '</div>' : '') + '</div></div>'
+        + '<div class="ft-rec">'
+        + '<div><div class="n">' + ftRec(rec && rec.total) + '</div><div class="l">Overall</div></div>'
+        + (conf && conf !== 'FBS Independents' ? '<div><div class="n">' + ftRec(rec && rec.conferenceGames) + '</div><div class="l">' + ftEsc(conf) + '</div></div>' : '')
+        + '<div><div class="n" data-countup="' + score + '">' + score + '</div><div class="l">Season pts</div></div>'
+        + renderSeasonSelector(t.seasons, s.season)
+        + '</div>'
+        + (marks ? '<div class="ft-form" title="Most recent results">' + marks + '</div>' : '')
+        + '</section>';
+}
+
+// Whose roster the team is on in the league being viewed, and what it has
+// banked them. A basketball league drafts no football teams, so it says
+// nothing rather than "Undrafted".
+function ftOwnerStrip(d) {
+    var lg = window.ccLeague;
+    if (lg && typeof lg.sport === 'function' && lg.sport() !== 'football') return '';
+    var league = lg && typeof lg.name === 'function' ? lg.name() : '';
+    if (!d.owner) {
+        return '<div class="sp-own free"><div class="who"><b>Undrafted</b>' + (league ? ' in ' + ftEsc(league) : '')
+            + ', ' + ftEsc(d.year) + '</div></div>';
+    }
+    var name = d.owner.franchiseName || d.owner.name || 'a manager';
+    var banked = Object.keys(d.owner.points || {}).reduce(function (sum, k) { return sum + d.owner.points[k]; }, 0);
+    var sub = [d.owner.franchiseName && d.owner.name ? d.owner.name : '', league].filter(Boolean).map(ftEsc).join(' · ');
+    return '<a class="sp-own" href="/userHome?user=' + encodeURIComponent(d.owner.userId) + '">'
+        + '<div class="who">On <b>' + ftEsc(name) + '</b>’s roster' + (sub ? '<br><span class="sub">' + sub + '</span>' : '') + '</div>'
+        + '<div class="pts"><div class="n" data-countup="' + banked + '" data-sign="+">' + (banked > 0 ? '+' : '') + banked + '</div>'
+        + '<div class="l">pts banked</div></div></a>';
+}
+
+// The AP (or, once it publishes, the Playoff Committee) rank a school held for
+// one game: that week's poll for a regular-season game, falling back to the
+// latest poll; the week-16 poll for the postseason.
+function ftRankFor(d, game, school) {
+    var rankings = d.rankings || [];
+    var pollName = 'Playoff Committee Rankings';
+    if (!rankings.find(r => r.week == game.week)?.polls?.find(p => p.poll == pollName) && game.seasonType != 'postseason') {
+        pollName = 'AP Top 25';
+    }
+    var latest = rankings.slice().sort((a, b) => b.week - a.week)[0];
+    var ranks;
+    if (game.seasonType == 'regular') {
+        var wk = rankings.find(r => r.week == game.week && r.season == d.year);
+        ranks = (wk || latest)?.polls?.find(p => p.poll == pollName)?.ranks;
+    } else {
+        ranks = rankings.find(r => r.week == '16' && r.season == d.year)?.polls?.find(p => p.poll == pollName)?.ranks;
+    }
+    var hit = Array.isArray(ranks) ? ranks.find(w => w.school == school) : null;
+    return hit ? hit.rank : null;
+}
+
+// The spread from the viewed team's side: "−7.5" when they are favoured,
+// "+7.5" when not. DraftKings when there is a line from them. A missing or
+// malformed line is just no line.
+function ftSpreadFor(d, game, isHome) {
+    var lines = (d.bettingLines || []).find(b => b.homeTeam == game.homeTeam && b.awayTeam == game.awayTeam)?.lines;
+    if (!Array.isArray(lines) || !lines.length) return '';
+    var line = lines.find(l => l.provider == 'DraftKings') || lines[0];
+    var spread = line && line.formattedSpread;
+    if (typeof spread !== 'string' || spread.indexOf('-') === -1) return '';
+    var idx = spread.lastIndexOf('-');
+    var fav = spread.slice(0, idx).trim();
+    var number = spread.slice(idx + 1).trim();
+    if (!number) return '';
+    var us = isHome ? game.homeTeam : game.awayTeam;
+    var them = isHome ? game.awayTeam : game.homeTeam;
+    if (fav == us) return '−' + number;
+    if (fav == them) return '+' + number;
+    return '';
+}
+
+// What each game scored, by game id. A drafted team's points are what it
+// banked its manager — exact per game. An undrafted team's come off its own
+// weekly rows, which are per week: a week holding two of its games can't be
+// split, so the week's total sits on the later one and says so.
+function ftGamePoints(d) {
+    var out = {};
+    if (d.owner && d.owner.points && Object.keys(d.owner.points).length) {
+        Object.keys(d.owner.points).forEach(function (k) { out[k] = { pts: d.owner.points[k] }; });
+        return out;
+    }
+    var key = d.scoreCode === 'cumulativeScoreV1' ? 'scoreV1' : 'scoreV2';
+    var byWeek = {};
+    (d.seasonObj.weeklyScore || []).forEach(function (w) {
+        var k = (w.seasonType || 'regular') + ':' + w.week;
+        byWeek[k] = (byWeek[k] || 0) + (Number(w[key]) || 0);
+    });
+    var games = {};
+    d.schedule.filter(g => g.completed && g.id != null).forEach(function (g) {
+        var k = (g.seasonType || 'regular') + ':' + g.week;
+        (games[k] = games[k] || []).push(g);
+    });
+    Object.keys(games).forEach(function (k) {
+        if (!(k in byWeek)) return;
+        var list = games[k];
+        out[String(list[list.length - 1].id)] = { pts: byWeek[k], week: list.length > 1 };
+    });
+    return out;
+}
+
+function ftOpponent(d, g) {
+    var isHome = String(g.homeId) === String(d.team.id);
+    return {
+        isHome: isHome,
+        id: isHome ? g.awayId : g.homeId,
+        name: isHome ? g.awayTeam : g.homeTeam,
+        mark: g.neutralSite ? 'N' : (isHome ? 'vs' : '@')
+    };
+}
+
+function ftGameRow(d, g, points) {
+    var o = ftOpponent(d, g);
+    var rank = ftRankFor(d, g, o.name);
+    var ownRank = ftRankFor(d, g, d.team.school);
+    var logo = ftLogoOf(d, o.id);
+    var href = g.id != null ? '/game/' + encodeURIComponent(g.id) : null;
+
+    var res;
+    if (g.completed) {
+        var us = Number(o.isHome ? g.homePoints : g.awayPoints) || 0;
+        var them = Number(o.isHome ? g.awayPoints : g.homePoints) || 0;
+        var letter = us === them ? 'T' : (us > them ? 'W' : 'L');
+        res = '<span class="' + (letter === 'W' ? 'sp-w' : letter === 'L' ? 'sp-l' : '') + '">' + letter + '</span> ' + us + '–' + them;
+    } else {
+        var spread = ftSpreadFor(d, g, o.isHome);
+        res = spread ? '<span title="Spread">' + ftEsc(spread) + '</span>' : '';
+    }
+
+    var note = [];
+    if (!g.completed) note.push(ftEsc(window.ccKickoff.dayAbbr(g.startDate, g.startTimeTbd) + ' ' + window.ccKickoff.time(g.startDate, g.startTimeTbd)));
+    if (ownRank) note.push('as #' + ftEsc(ownRank));
+    if (g.outlet) note.push('<span class="ft-tv">' + ftIcon('broadcast') + ' ' + ftEsc(g.outlet) + '</span>');
+    if (g.weather && g.weather.emoji && window.ccWeatherEmoji && window.ccWeatherEmoji[g.weather.emoji]) {
+        note.push('<span title="' + ftEsc((g.weather.condition || '') + (g.weather.temp != null ? ' · ' + g.weather.temp + '°F' : '')) + '">'
+            + window.ccWeatherEmoji[g.weather.emoji] + '</span>');
+    }
+    if (g.neutralSite && g.venue) note.push(ftEsc(g.venue));
+    if (g.notes) note.push(ftEsc(g.notes));
+
+    var p = g.id != null ? points[String(g.id)] : null;
+    var pts = p ? (p.pts > 0 ? '+' + p.pts : String(p.pts)) : '';
+    var open = function (cls) { return href ? '<a class="' + cls + '" href="' + href + '">' : '<span class="' + cls + '">'; };
+    var close = href ? '</a>' : '</span>';
+
+    return '<div class="sp-gr' + (g.completed ? '' : ' up') + '">'
+        + open('d') + ftEsc(window.ccSportPage.dayOf(g)) + close
+        + '<a class="opp" href="/team?team=' + encodeURIComponent(o.id) + '"><span class="nm">'
+        + '<span class="ft-v">' + o.mark + '</span>'
+        + (rank ? '<span class="ft-rk">' + ftEsc(rank) + '</span> ' : '')
+        + (logo ? '<img class="sp-ologo" src="' + ftEsc(logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+        + ftEsc(o.name) + '</span>'
+        + (note.length ? '<span class="note">' + note.join(' · ') + '</span>' : '') + '</a>'
+        + open('res') + res + close
+        + '<span class="p' + (p && p.pts ? '' : ' z') + '"' + (p && p.week ? ' title="The week’s total: two games that week"' : '') + '>' + pts + '</span>'
+        + '</div>';
+}
+
+function ftNextUp(d, now) {
+    now = now == null ? Date.now() : now;
+    var g = d.schedule.filter(x => !x.completed)[0];
+    if (!g) return '';
+    var o = ftOpponent(d, g);
+    var rank = ftRankFor(d, g, o.name);
+    var logo = ftLogoOf(d, o.id);
+    var started = !g.startTimeTbd && g.startDate && now >= new Date(g.startDate).getTime();
+    var spread = ftSpreadFor(d, g, o.isHome);
+    var note = [];
+    if (g.outlet) note.push(ftIcon('broadcast') + ' ' + ftEsc(g.outlet));
+    if (g.neutralSite && g.venue) note.push(ftEsc(g.venue));
+    if (g.notes) note.push(ftEsc(g.notes));
+    return '<h2 class="sp-h">Next up</h2>'
+        + '<a class="sp-card sp-next" href="' + (g.id != null ? '/game/' + encodeURIComponent(g.id) : '/team?team=' + encodeURIComponent(o.id)) + '">'
+        + '<div class="sp-next-when">' + (started ? 'Under way' : ftEsc(formatDate(g.startTimeTbd, g.startDate))) + '</div>'
+        + '<div class="sp-next-row"><span class="sp-next-opp"><span class="ft-v">' + o.mark + '</span>'
+        + (rank ? '<span class="ft-rk">' + ftEsc(rank) + '</span> ' : '')
+        + (logo ? '<img class="sp-ologo" src="' + ftEsc(logo) + '" alt="">' : '')
+        + '<b>' + ftEsc(o.name) + '</b></span>'
+        + (spread ? '<span class="sp-next-pay" title="Spread">' + ftEsc(spread) + '</span>' : '') + '</div>'
+        + (note.length ? '<div class="sp-next-note">' + note.join(' · ') + '</div>' : '')
+        + '</a>';
+}
+
+// The season in three numbers: fantasy points (and where that ranks
+// nationally, once there are any), recruiting, and wins against the
+// projection — a delta only once the regular season is over, because
+// mid-season it reads as a shortfall the team hasn't had yet.
+function ftSeason(d) {
+    var s = d.seasonObj;
+    var score = ftSeasonScore(d);
+    var tile = function (n, l, sub) {
+        return '<div class="ft-tile"><div class="n">' + n + '</div><div class="l">' + l + '</div>'
+            + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div>';
+    };
+    var rank = d.fantasyRank && score > 0 ? '#' + d.fantasyRank.rank + ' of ' + d.fantasyRank.total : '';
+    var tiles = tile('<span data-countup="' + score + '">' + score + '</span>', 'Season pts', rank);
+    tiles += tile(d.recruiting && d.recruiting.rank != null ? '#' + ftEsc(d.recruiting.rank) : '—', 'Recruiting', '');
+    if (s.expectedWins != null) {
+        var expected = Number(s.expectedWins);
+        var regular = d.schedule.filter(g => !g.seasonType || g.seasonType === 'regular');
+        var done = regular.length > 0 && regular.every(g => g.completed);
+        if (done) {
+            var wins = d.record?.total?.wins ?? computeForm(d.schedule, d.team.id).filter(f => f.win).length;
+            var delta = wins - expected;
+            tiles += tile(wins, 'Wins', 'vs ' + expected.toFixed(1) + ' expected <span class="' + (delta >= 0 ? 'sp-w' : 'sp-l') + '">'
+                + (delta >= 0 ? '▲' : '▼') + ' ' + Math.abs(delta).toFixed(1) + '</span>');
+        } else {
+            tiles += tile(expected.toFixed(1), 'Projected wins', '');
+        }
+    }
+    return '<h2 class="sp-h">Season</h2><div class="ft-tiles">' + tiles + '</div>';
+}
+
+// SP+/FPI power ratings, talent, returning production. Only once the
+// enrichment job has populated them.
+function ftOutlook(d) {
+    var s = d.seasonObj;
+    var chips = [];
+    if (s.spRank != null) {
+        chips.push('<span class="ft-chip" title="Projected points per game vs. an average team">SP+ <b>'
+            + (s.spRating != null ? (s.spRating > 0 ? '+' : '') + ftEsc(s.spRating) + ' · ' : '') + '#' + ftEsc(s.spRank) + '</b></span>');
+    }
+    if (s.fpiRank != null) chips.push('<span class="ft-chip" title="ESPN Football Power Index — national rank">FPI <b>#' + ftEsc(s.fpiRank) + '</b></span>');
+    if (s.talentRank != null || s.talent != null) {
+        var talTip = '247Sports Talent Composite' + (s.talent != null ? ' (' + Math.round(s.talent) + ')' : '')
+            + ' — total blue-chip recruiting talent on the roster; higher = more talent';
+        chips.push('<span class="ft-chip" title="' + ftEsc(talTip) + '">Talent <b>'
+            + (s.talentRank != null ? '#' + ftEsc(s.talentRank) : Math.round(s.talent)) + '</b></span>');
+    }
+    if (s.returningProduction != null) {
+        chips.push('<span class="ft-chip" title="Share of last season\'s production (PPA) returning"><b>' + ftEsc(s.returningProduction) + '%</b> returning</span>');
+    }
+    if (!chips.length) return '';
+    // Preseason: SP+/talent/returning land only once CFBD publishes them (FPI
+    // arrives earlier), so a lone FPI chip says why it is alone.
+    var played = computeForm(d.schedule, d.team.id).length;
+    var note = played === 0 && s.spRank == null
+        ? '<p class="ft-explain">SP+, talent &amp; returning production post closer to kickoff.</p>' : '';
+    return '<h2 class="sp-h">Outlook</h2><div class="ft-chips-row">' + chips.join('') + '</div>' + note;
+}
+
+// Weekly points: one bar a week, postseason weeks after the regular season.
+// Two games in one week are summed.
+function ftWeekly(d) {
+    var weekly = Array.isArray(d.seasonObj.weeklyScore) ? d.seasonObj.weeklyScore : [];
+    if (!weekly.length) return '';
+    var key = d.scoreCode === 'cumulativeScoreV1' ? 'scoreV1' : 'scoreV2';
+    var byKey = {};
+    weekly.forEach(function (w) {
+        var k = (w.seasonType || 'regular') + ':' + w.week;
+        if (!byKey[k]) byKey[k] = { week: w.week, seasonType: w.seasonType, score: 0 };
+        byKey[k].score += Number(w[key]) || 0;
+    });
+    var merged = Object.values(byKey)
+        .sort(function (a, b) { return (b.seasonType || '').localeCompare(a.seasonType || '') || a.week - b.week; });
+    var max = Math.max(...merged.map(function (w) { return w.score; }), 1);
+    var bars = merged.map(function (w, i) {
+        var pct = Math.max(4, Math.round((w.score / max) * 100));
+        var label = (w.seasonType && w.seasonType !== 'regular') ? 'P' + w.week : 'W' + w.week;
+        return '<div class="ft-week" title="Week ' + w.week + ': ' + w.score + ' pts">'
+            + '<span class="v">' + w.score + '</span>'
+            + '<span class="f" style="height:' + pct + '%;animation-delay:' + (i * 50) + 'ms"></span>'
+            + '<span class="k">' + label + '</span></div>';
+    }).join('');
+    return '<h2 class="sp-h">Weekly points</h2><div class="sp-card ft-weeks">' + bars + '</div>';
+}
+
+function ftOrdinal(n) {
+    var t = n % 100, s = n % 10;
+    return n + (t >= 11 && t <= 13 ? 'th' : s === 1 ? 'st' : s === 2 ? 'nd' : s === 3 ? 'rd' : 'th');
+}
+function ftStandingsRow(d, r, i) {
+    var me = String(r.teamId) === String(d.team.id);
+    var logo = ftLogoOf(d, r.teamId);
+    return '<tr' + (me ? ' class="me"' : '') + '><td class="n">' + (i + 1) + '</td>'
+        + '<td class="s"><a href="/team?team=' + encodeURIComponent(r.teamId) + '">' + (logo ? '<img src="' + ftEsc(logo) + '" alt="">' : '') + ftEsc(r.team) + '</a></td>'
+        + '<td>' + ftRec(r.conferenceGames) + '</td><td>' + ftRec(r.total) + '</td></tr>';
+}
+var FT_TABLE_HEAD = '<table class="sp-st"><thead><tr><th></th><th>Team</th><th>Conf</th><th>Overall</th></tr></thead><tbody>';
+
+// Where they sit, at a glance: the rows either side of this team, with the
+// full table one tap away on its own tab.
+var FT_PEEK = 2;
+function ftStandingsPeek(d) {
+    var at = d.standings.findIndex(r => String(r.teamId) === String(d.team.id));
+    if (at === -1) return '';
+    var from = Math.max(0, Math.min(at - FT_PEEK, d.standings.length - (FT_PEEK * 2 + 1)));
+    var rows = d.standings.slice(from, from + FT_PEEK * 2 + 1);
+    var conf = d.seasonObj.conference;
+    return '<h2 class="sp-h">' + ftEsc(conf) + '<small>' + ftOrdinal(at + 1) + ' of ' + d.standings.length + '</small></h2>'
+        + '<div class="sp-card">' + FT_TABLE_HEAD + rows.map(function (r, i) { return ftStandingsRow(d, r, from + i); }).join('')
+        + '</tbody></table><button type="button" class="sp-peek-more" data-tab="conference">Full ' + ftEsc(conf) + ' table</button></div>';
+}
+
+function ftStandings(d) {
+    return '<div class="sp-card">' + FT_TABLE_HEAD + d.standings.map(function (r, i) { return ftStandingsRow(d, r, i); }).join('')
+        + '</tbody></table></div>';
+}
+
+// The programme: conference, coach, stadium and its facts, the account.
+function ftProgram(d) {
+    var t = d.team, s = d.seasonObj, loc = t.location || {};
+    var rows = [];
+    var row = function (k, v) { rows.push('<div class="ft-kv"><span>' + k + '</span><span>' + v + '</span></div>'); };
+    if (s.conference) {
+        var confLogo = getConferenceLogo(s.conference);
+        row('Conference', (confLogo ? '<img class="ft-conf" src="' + confLogo + '" alt=""> ' : '') + ftEsc(s.conference));
+    }
+    if (s.coach) row('Coach', ftEsc(s.coach));
+    if (loc.name) row('Stadium', ftEsc(loc.name));
+    if (loc.city && loc.state) row('Location', ftEsc(loc.city + ', ' + loc.state));
+    if (loc.capacity != null) row('Capacity', Number(loc.capacity).toLocaleString());
+    if (loc.year_constructed) row('Built', ftEsc(loc.year_constructed));
+    if (loc.grass === true || loc.grass === false) row('Surface', loc.grass ? 'Grass' : 'Turf');
+    if (loc.dome === true) row('Roof', 'Dome');
+    if (loc.elevation) row('Elevation', Math.round(Number(loc.elevation)).toLocaleString() + ' ft');
+    // Twitter is optional; only shown when a handle exists (the old code once
+    // printed the literal text "null" linking to twitter.com/null).
+    var handle = t.twitter ? String(t.twitter).replace(/^@/, '') : '';
+    if (handle) row('Twitter', '<a class="ft-link" href="https://twitter.com/' + encodeURIComponent(handle) + '" target="_blank" rel="noopener noreferrer">@' + ftEsc(handle) + '</a>');
+    if (!rows.length) return '';
+    return '<h2 class="sp-h">Program</h2><div class="sp-card ft-kvs">' + rows.join('') + '</div>';
+}
+
+function ftOverview(d) {
+    return ftNextUp(d) + ftSeason(d) + ftOutlook(d) + ftWeekly(d)
+        + (d.standings.length ? ftStandingsPeek(d) : '') + ftProgram(d);
+}
+
+// This page renders game times in the browser's zone (see localTzLabel), so
+// the schedule says which zone that is.
+function ftSchedule(d) {
+    if (!d.schedule.length) return '<div class="sp-card sp-empty">No games on the ' + ftEsc(d.year) + ' schedule yet.</div>';
+    var tz = localTzLabel();
+    var points = ftGamePoints(d);
+    var anyPlayed = d.schedule.some(g => g.completed);
+    var h = '<h2 class="sp-h">' + ftEsc(d.year) + ' schedule' + (tz ? '<small>All times ' + ftEsc(tz) + '</small>' : '') + '</h2>'
+        + '<div class="sp-card sp-games">';
+    var split = false;
+    d.schedule.forEach(function (g) {
+        if (!g.completed && !split) {
+            split = true;
+            if (anyPlayed) h += '<div class="sp-gr div">Up next</div>';
+        }
+        h += ftGameRow(d, g, points);
+    });
+    return h + '</div><p class="ft-explain">The last column is the fantasy points the team scored in each game'
+        + (d.owner ? ', as banked for its manager.' : '.') + '</p>';
+}
+
+// Team stats off CFBD's season aggregate. Points are summed off the played
+// games instead — the aggregate carries no scoring at all, so both point rows
+// once read a flat 0.0 next to real yardage.
+function ftTeamStats(d) {
+    var data = d.teamStats;
+    if (!data || !data.stats || !data.games) return '';
+    var s = data.stats, g = data.games;
+    var scoring = teamScoring(d.schedule, data.team);
+    var rows = [
+        ['Total YPG', (s.totalYards || 0) / g],
+        ['Opp YPG', (s.totalYardsOpponent || 0) / g],
+        ['Rush YPG', (s.rushingYards || 0) / g],
+        ['Pass YPG', (s.netPassingYards || 0) / g],
+        ['Points / game', scoring.games ? scoring.pointsFor / scoring.games : 0],
+        ['Opp PPG', scoring.games ? scoring.pointsAgainst / scoring.games : 0],
+        ['Turnovers / game', (s.turnovers || 0) / g],
+        ['Sacks / game', (s.sacks || 0) / g],
+        ['3rd down %', s.thirdDowns > 0 ? (s.thirdDownConversions || 0) / s.thirdDowns * 100 : 0, true]
+    ];
+    return '<h2 class="sp-h">Team stats<small>' + g + (g === 1 ? ' game' : ' games') + '</small></h2><div class="sp-card ft-kvs">'
+        + rows.map(function (r) {
+            return '<div class="ft-kv"><span>' + r[0] + '</span><b>' + r[1].toFixed(1) + (r[2] ? '%' : '') + '</b></div>';
+        }).join('') + '</div>';
+}
+
+var FT_LEADER_CATS = [
+    { key: 'passing', label: 'Passing', cols: ['YDS', 'TD', 'INT', 'PCT'], colLabels: { 'PCT': 'CMP%' } },
+    { key: 'rushing', label: 'Rushing', cols: ['CAR', 'YDS', 'TD', 'YPC'] },
+    { key: 'receiving', label: 'Receiving', cols: ['REC', 'YDS', 'TD', 'YPR'] },
+    { key: 'tackles', label: 'Tackles', cols: ['TOT', 'SOLO', 'TFL', 'SACKS'] },
+    // 'QB HUR' is the widest label of any category; shortened so it doesn't
+    // force every fixed-width column wider than the values need.
+    { key: 'sacks', label: 'Sacks', cols: ['SACKS', 'TFL', 'QB HUR'], colLabels: { 'QB HUR': 'HUR' } },
+    { key: 'interceptions', label: 'Interceptions', cols: ['INT', 'YDS', 'TD'] },
+    { key: 'kicking', label: 'Kicking', cols: ['FGM', 'FGA', 'XPM', 'XPA', 'PTS'] }
+];
+
+// Each category's column labels sit once on its own line, and every player
+// row lines up under them: the label and value cells share a fixed width, so
+// a wide value can't widen its own column.
+function ftLeaders(d) {
+    var data = d.playerLeaders;
+    if (!data || !data.leaders) return '';
+    var h = '';
+    FT_LEADER_CATS.forEach(function (cat) {
+        var players = data.leaders[cat.key];
+        if (!players || !players.length) return;
+        h += '<div class="tv-pl-group"><div class="tv-pl-cathead"><span class="tv-pl-cat">' + cat.label + '</span><span class="tv-pl-stats">'
+            + cat.cols.map(function (c) { return '<span class="tv-pl-hcell">' + ((cat.colLabels && cat.colLabels[c]) || c) + '</span>'; }).join('')
+            + '</span></div>';
+        players.forEach(function (p) {
+            h += '<div class="tv-pl-player"><div class="tv-pl-player-info"><span class="tv-pl-name">' + ftEsc(p.name) + '</span>'
+                + (p.pos ? '<span class="tv-pl-pos">' + ftEsc(p.pos) + '</span>' : '') + '</div><div class="tv-pl-stats">'
+                + cat.cols.map(function (c) {
+                    var v = p[c] != null ? p[c] : 0;
+                    return '<span class="tv-pl-stat-cell">' + (c === 'PCT' ? (v <= 1 ? Math.round(v * 100) : v) + '%' : ftEsc(v)) + '</span>';
+                }).join('') + '</div></div>';
+        });
+        h += '</div>';
+    });
+    return h ? '<h2 class="sp-h">Season leaders</h2><div class="sp-card ft-leaders">' + h + '</div>' : '';
+}
+
+function ftStats(d) {
+    var h = ftTeamStats(d) + ftLeaders(d);
+    return h || '<div class="sp-card sp-empty">Team stats and season leaders arrive once the season kicks off.</div>';
+}
+
+function ftTabList(d) {
+    return FT_TABS.filter(function (t) { return t !== 'conference' || d.standings.length; });
+}
+function ftTabFromHash(d) {
+    var h = (window.location.hash || '').replace('#', '');
+    return ftTabList(d).indexOf(h) !== -1 ? h : 'overview';
+}
+function ftTabs(d) {
+    var label = { overview: 'Overview', schedule: 'Schedule', stats: 'Stats', conference: d.seasonObj.conference || 'Conference' };
+    return window.ccSportPage.tabs(ftTabList(d).map(function (t) { return [t, label[t]]; }), ftPage.tab);
+}
+function ftPanel(d) {
+    if (ftPage.tab === 'schedule') return ftSchedule(d);
+    if (ftPage.tab === 'stats') return ftStats(d);
+    if (ftPage.tab === 'conference') return ftStandings(d);
+    return ftOverview(d);
+}
+
+// Names in the leaders card get whatever width the stat columns leave, and
+// shorten only when they would clip (public/fit-names.js).
+function ftAfterPanel(root) {
+    if (window.ccFitNames) {
+        ccFitNames('.tv-pl-name', root);
+        if (window.ccWatchNameFit) ccWatchNameFit('.tv-pl-name', root);
+    }
+}
+
+function ftPaintPanel() {
+    var root = document.getElementById('team-page');
+    var d = ftPage.data;
+    var tabsEl = root.querySelector('.sp-tabs');
+    if (tabsEl) tabsEl.outerHTML = ftTabs(d);
+    var panel = root.querySelector('.ft-panel');
+    panel.innerHTML = ftPanel(d);
+    ftAfterPanel(panel);
+    window.ccSportPage.countUp(panel);
+}
+
+// Scroll so the panel starts just under the sticky navbar and tabs.
+function ftToPanelTop(root) {
+    var panel = root.querySelector('.ft-panel'), tabsEl = root.querySelector('.sp-tabs');
+    var nav = document.getElementById('navbar');
+    var cover = (nav ? nav.getBoundingClientRect().height : 0) + (tabsEl ? tabsEl.getBoundingClientRect().height : 0);
+    window.scrollTo(0, Math.max(0, panel.getBoundingClientRect().top + window.pageYOffset - cover - 8));
+}
+
+function renderTeamPage(d) {
+    var root = document.getElementById('team-page');
+    if (!root) return;
+    ftPage.data = d;
+    ftPage.tab = ftTabFromHash(d);
+    root.innerHTML = ftHero(d) + ftOwnerStrip(d) + ftTabs(d)
+        + '<div class="ft-panel" role="tabpanel">' + ftPanel(d) + '</div>';
+
+    // The tab title names the team, and the league being viewed.
+    var name = (d.team.school + ' ' + (d.team.mascot || '')).trim();
+    var t = document.querySelector('title');
+    if (t) t.setAttribute('data-league-title', name);
+    if (window.ccLeague && window.ccLeague.title) document.title = window.ccLeague.title(name);
+
+    ftAfterPanel(root);
+    window.ccSportPage.countUp(root);
+
+    if (ftPage.bound) return;
+    ftPage.bound = true;
+    root.addEventListener('click', function (e) {
+        var tab = e.target.closest('[data-tab]');
+        if (!tab || !ftPage.data) return;
+        ftPage.tab = tab.getAttribute('data-tab');
+        if (window.history && window.history.replaceState) window.history.replaceState(null, '', '#' + ftPage.tab);
+        ftPaintPanel();
+        // From the peek at the bottom of the Overview, the table would
+        // otherwise open scrolled to wherever the peek was.
+        if (tab.classList.contains('sp-peek-more')) ftToPanelTop(root);
+    });
 }
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).
