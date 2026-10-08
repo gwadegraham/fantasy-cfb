@@ -232,8 +232,8 @@
         return '<h2 class="sp-h">' + label + '</h2><div class="sp-card hg-wp">'
             + '<div class="hg-floor" role="img" aria-label="' + esc(d.away.school) + ' ' + pct(a) + '%, ' + esc(d.home.school) + ' ' + pct(p) + '%"'
             + ' style="--wp:' + p + '">' + court(state.colors) + '<span class="hg-ball" aria-hidden="true">🏀</span></div>'
-            + '<div class="hg-wp-head"><span><b>' + pct(a) + '%</b> ' + esc(d.away.school) + '</span>'
-            + '<span>' + esc(d.home.school) + ' <b>' + pct(p) + '%</b></span></div>'
+            + '<div class="hg-wp-head"><span><b>' + pct(a) + '%</b> <span class="nm">' + esc(d.away.school) + '</span></span>'
+            + '<span><span class="nm">' + esc(d.home.school) + '</span> <b>' + pct(p) + '%</b></span></div>'
             + '<div class="hg-wp-foot">From Torvik ratings' + (d.game.neutralSite ? ', neutral floor' : ', with home court')
             + (d.game.live ? ', before tip-off — not updated during the game' : '') + '.</div></div>';
     }

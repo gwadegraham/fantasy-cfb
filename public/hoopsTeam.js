@@ -215,8 +215,14 @@
 
     // The next game, one tap from its preview: when, where, who, and what a
     // win there pays this manager's league.
-    function nextUp(d) {
-        var g = d.games.filter(function (x) { return !x.final; })[0];
+    // A game more than this far past its tip with no final (cancelled, or
+    // a result still to arrive) is not "next".
+    var STALE_TIP_MS = 4 * 60 * 60 * 1000;
+    function nextUp(d, now) {
+        now = now == null ? Date.now() : now;
+        var g = d.games.filter(function (x) {
+            return !x.final && !(now - new Date(x.startDate).getTime() > STALE_TIP_MS);
+        })[0];
         if (!g) return '';
         var vals = d.quadrantValues || {};
         var o = g.opponent;

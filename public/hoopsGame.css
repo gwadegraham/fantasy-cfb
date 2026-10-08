@@ -44,6 +44,11 @@
 .hg-moved a { color: var(--cc-accent); }
 .hg-wp { padding: 12px 14px; }
 .hg-wp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; color: var(--cc-muted-bright); }
+/* Two long school names share one phone-width line: the name gives way,
+   never the percentage. */
+.hg-wp-head > span { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.hg-wp-head b { flex-shrink: 0; }
+.hg-wp-head .nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hg-wp-head b { color: var(--cc-text); font-size: 18px; font-variant-numeric: tabular-nums; }
 /* The predictor's floor: hardwood planks under a to-scale court. */
 .hg-floor { position: relative; aspect-ratio: 94 / 50; border-radius: 6px; overflow: hidden; margin-bottom: 10px;
@@ -52,7 +57,8 @@
         linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(0, 0, 0, .12)); }
 .hg-court { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hg-court * { vector-effect: non-scaling-stroke; }
-.hg-ball { position: absolute; top: 50%; left: calc(100% * var(--wp, .5)); transform: translate(-50%, -50%);
+/* Clamped so a 0% or 100% chance keeps the whole ball on the floor. */
+.hg-ball { position: absolute; top: 50%; left: clamp(11px, calc(100% * var(--wp, .5)), calc(100% - 11px)); transform: translate(-50%, -50%);
     font-size: 20px; line-height: 1; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .55)); }
 .hg-wp-foot { font-size: 11px; color: var(--cc-muted-2); margin-top: 8px; }
 .hg-stakes { padding: 4px 0; }

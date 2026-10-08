@@ -340,8 +340,33 @@ describe('standings peek (#506)', () => {
     });
 });
 
-test('the points banked count up from the owner strip\'s final value', async () => {
-    await render(payload());
-    expect(document.querySelector('.ht-own .pts .n').textContent).toBe('+5');
+test('the points banked count up: from 0 to the banked total', async () => {
+    window.matchMedia = () => ({ matches: false });
+    const frames = [];
+    window.requestAnimationFrame = (fn) => frames.push(fn);
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    try {
+        await render(payload());
+        const n = document.querySelector('.ht-own .pts .n');
+        expect(n.textContent).toBe('0');
+        frames.splice(0).forEach(f => f(0));
+        frames.splice(0).forEach(f => f(1000));
+        expect(n.textContent).toBe('+5');
+    } finally { delete document.hidden; }
+});
+
+test('Next up skips a game long past its tip with no final (cancelled, or the result is late)', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 6 * 3600e3).toISOString();      // Virginia: tipped 6h ago, no final
+    p.games[4].startDate = new Date(Date.now() + 24 * 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/5');
+});
+
+test('Next up keeps a game that tipped an hour ago: it is being played', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
 });
 

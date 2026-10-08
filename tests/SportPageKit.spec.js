@@ -177,13 +177,11 @@ describe('team colours', () => {
         expect(kit.matchColors({ color: '#013088', altColor: '#ffd200' }, { color: '#0021A5', altColor: '#0021A5' }))
             .toEqual({ away: '#ffd200', home: kit.readable('#0021A5') });
     });
-    test('no alternates at all: home falls back to the neutral fill', () => {
-        expect(kit.matchColors({ color: '#013088' }, { color: '#0021A5' }).home).toBe('#F4F6FB');
-        // …unless away is itself grey, when it is white.
-        const greys = kit.matchColors({ color: '#8A90A8' }, { color: '#8a8fa6' });
-        expect(greys.home).toBe('#F4F6FB');
-        const navy = kit.matchColors({ color: '#7f86a0' }, { color: '#7f86a1' });
-        expect(navy.home).toBe('#F4F6FB');
+    test('no alternates at all: home falls back to the neutral grey', () => {
+        // Two reds: grey is far enough from the away red, so home goes grey.
+        expect(kit.matchColors({ color: '#c8102e' }, { color: '#ba0c2f' })).toEqual({ away: kit.readable('#c8102e'), home: '#8A90A8' });
+        // …unless away is itself near that grey, when home goes white.
+        expect(kit.matchColors({ color: '#8A90A8' }, { color: '#8a8fa6' }).home).toBe('#F4F6FB');
     });
     test('missing colours on either side are the neutral fill, never undefined', () => {
         const c = kit.matchColors({}, null);
