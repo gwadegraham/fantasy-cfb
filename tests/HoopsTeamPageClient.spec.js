@@ -155,6 +155,19 @@ test('stats imported: exactly the four factors, named and explained, with the ed
     expect(document.querySelector('.ht-rot tbody tr:nth-child(2) .ht-lead').textContent).toBe('20.0');
 });
 
+test('rotation: "#12 C. Boozer" on a phone and "#12 Cameron Boozer" with room; no number, just the name', async () => {
+    const stats = { games: 10, team: {}, opponent: {}, players: [
+        { athleteId: 1, name: 'Cameron Boozer', jersey: '12', games: 10, minutes: 320, points: 225, rebounds: 100, assists: 40 },
+        { athleteId: 2, name: 'Caleb Foster', games: 10, minutes: 300, points: 120, rebounds: 20, assists: 30 }
+    ] };
+    await render(payload({ stats }));
+    tab('stats');
+    const full = Array.from(document.querySelectorAll('.ht-rot tbody tr .full')).map(n => n.textContent);
+    const short = Array.from(document.querySelectorAll('.ht-rot tbody tr .short')).map(n => n.textContent);
+    expect(full).toEqual(['#12 Cameron Boozer', 'Caleb Foster']);
+    expect(short).toEqual(['#12 C. Boozer', 'C. Foster']);
+});
+
 test('conference standings, with this team highlighted', async () => {
     await render(payload());
     tab('conference');

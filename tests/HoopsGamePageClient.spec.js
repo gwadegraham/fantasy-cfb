@@ -178,6 +178,21 @@ test('box score: starters then bench, a side toggle, game high marked, colliding
     expect(window.location.hash).toBe('#summary');
 });
 
+test('box score and leaders: "#12 C. Boozer" when a number is on file, just the name when not', async () => {
+    window.history.replaceState(null, '', '#box');
+    const p = payload();
+    p.box.home.players = [player('Cameron Boozer', { jersey: '12', points: 30 }), player('Isaiah Evans', { points: 23 })];
+    p.box.away.players = [player('Dailyn Swain', { jersey: '00', points: 16 })];
+    await render(p);
+    tab('box');
+    const names = Array.from(document.querySelectorAll('.hg-box tr td:first-child')).map(n => n.textContent);
+    expect(names).toContain('#12 C. BoozerF');
+    expect(names).toContain('I. EvansF');
+    tab('summary');
+    expect(txt('.sp-ld-row')).toContain('#12 C. Boozer DUKE');
+    expect(txt('.sp-ld-row')).toContain('#00 D. Swain TEX');
+});
+
 test('nobody rostered: the box opens on the left-hand (away) side', async () => {
     const p = payload();
     p.home = Object.assign({}, p.home, { owner: null });
@@ -225,6 +240,15 @@ test('a game to play: the preview replaces the fantasy cards, tabs and box', asy
     expect(q('.sp-tabs')).toBeNull();
     expect(q('.sp-empty')).toBeNull();
     expect(q('.hg-preview')).not.toBeNull();
+});
+
+test('key players: the number in front of the name, or the name alone', async () => {
+    const p = upcoming();
+    p.preview.home.topScorers = [{ name: 'Cameron Boozer', jersey: '12', position: 'F', ppg: 22.5, rpg: 10.2, apg: 4 },
+        { name: 'Caleb Foster', jersey: null, position: 'G', ppg: 9.1, rpg: 2, apg: 3 }];
+    await render(p);
+    const rows = Array.from(document.querySelectorAll('.hg-kp .sp-ld-row span')).map(n => n.textContent);
+    expect(rows).toEqual(['#12 C. Boozer F', 'C. Foster G']);
 });
 
 test('the countdown: tonight, tomorrow, a date, TBD, and past tip-off', () => {

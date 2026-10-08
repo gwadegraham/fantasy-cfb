@@ -41,6 +41,17 @@ test('short names, except where two players would collide', () => {
         .toEqual({ 'Cameron Boozer': 'Cameron Boozer', 'Cayden Boozer': 'Cayden Boozer', 'Isaiah Evans': 'I. Evans' });
 });
 
+test('numbered puts the jersey in front — and a player with none is just the label', () => {
+    expect(kit.numbered({ jersey: '2' }, 'C. Boozer')).toBe('#2 C. Boozer');
+    expect(kit.numbered({ jersey: '00' }, 'D. Swain')).toBe('#00 D. Swain');     // "00" is not "0"
+    expect(kit.numbered({ jersey: 0 }, 'Zero')).toBe('#0 Zero');
+    expect(kit.numbered({ jersey: null }, 'C. Foster')).toBe('C. Foster');
+    expect(kit.numbered({ jersey: ' ' }, 'C. Foster')).toBe('C. Foster');
+    expect(kit.numbered({}, 'C. Foster')).toBe('C. Foster');
+    expect(kit.numbered(null, 'C. Foster')).toBe('C. Foster');
+    expect(kit.numbered({ jersey: '12' }, undefined)).toBe('');                  // no name: nothing, not "#12 undefined"
+});
+
 test('dayOf reads the day through ccKickoff, so a TBD tip keeps its real day', () => {
     // CBBD's TBD placeholder: midnight EASTERN, which is the previous day in Central.
     expect(kit.dayOf({ startDate: '2026-11-14T05:00:00.000Z', startTimeTbd: true })).toBe('Nov 14');

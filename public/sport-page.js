@@ -3,6 +3,7 @@
 //
 //   window.ccSportPage.esc / fixed / pct / record      formatting
 //   window.ccSportPage.shortName / shortNames           "C. Boozer", collision-safe
+//   window.ccSportPage.numbered(player, label)          "#2 C. Boozer", or the label alone
 //   window.ccSportPage.dayOf / countdown                dates via ccKickoff
 //   window.ccSportPage.tabs(list, active)               sticky tab bar markup
 //   window.ccSportPage.fitNames(root, selector)         full name, or abbr if it clips
@@ -41,6 +42,13 @@
         var out = {};
         players.forEach(function (p) { var s = shortName(p.name); out[p.name] = count[s] > 1 ? p.name : s; });
         return out;
+    }
+    // A player's label with their jersey in front — "#2 C. Boozer". A player
+    // with no number on file is just the label. Not escaped: callers esc() it.
+    function numbered(p, label) {
+        var j = p && p.jersey != null ? String(p.jersey).trim() : '';
+        if (label == null) label = '';
+        return j && label ? '#' + j + ' ' + label : label;
     }
 
     // "Nov 14" — the game's day as the app shows days (ccKickoff handles a
@@ -131,6 +139,8 @@
     var api = { esc: esc, fixed: fixed, pct: pct, record: record, shortName: shortName, shortNames: shortNames,
         dayOf: dayOf, countdown: countdown, tabs: tabs, overflows: overflows, fitNames: fitNames, load: load,
         syncStickyTop: syncStickyTop };
+
+    api.numbered = numbered;
 
     if (global.document) {
         syncStickyTop();

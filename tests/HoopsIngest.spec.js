@@ -17,7 +17,17 @@ app.use('/hoops/games', hoopsRouter);
 
 useMongo();
 
-beforeEach(() => { jest.spyOn(console, 'log').mockImplementation(() => {}); });
+beforeEach(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    // The schedule ingest also imports the season's roster (one billable
+    // /teams/roster call, modules/hoops-roster.js). Unstubbed, every schedule
+    // test here would spend a real call from the laptop. Its behaviour is
+    // tested in HoopsRoster.spec.js; here it answers "nothing numbered yet".
+    jest.spyOn(client, 'cbbdGet').mockImplementation(async (path) => {
+        if (path === '/teams/roster') return { data: [], remainingCalls: null };
+        throw new Error(`unexpected CBBD call ${path}`);
+    });
+});
 afterEach(() => jest.restoreAllMocks());
 
 // A CBBD row, exactly as the live API shapes one.

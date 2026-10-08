@@ -195,7 +195,7 @@
         var h = '<div class="ht-rot-wrap"><table class="ht-rot"><thead><tr><th>Player</th><th>MPG</th><th>PPG</th><th>RPG</th><th>APG</th><th class="wide">3P%</th><th>TS%</th></tr></thead><tbody>';
         players.forEach(function (p) {
             var c = function (k) { return '<td' + (top[k] === p.athleteId ? ' class="ht-lead"' : '') + '>' + fixed(per(p, k), 1) + '</td>'; };
-            h += '<tr><td><span class="full">' + esc(p.name) + '</span><span class="short">' + esc(short(p.name)) + '</span>'
+            h += '<tr><td><span class="full">' + esc(kit.numbered(p, p.name)) + '</span><span class="short">' + esc(kit.numbered(p, short(p.name))) + '</span>'
                 + (p.position ? '<span class="pos">' + esc(p.position) + '</span>' : '') + '</td>'
                 + '<td>' + fixed(per(p, 'minutes'), 1) + '</td>' + c('points') + c('rebounds') + c('assists')
                 + '<td class="wide">' + fixed(p.threePct, 1) + '</td><td>' + fixed(p.trueShootingPct, 1) + '</td></tr>';

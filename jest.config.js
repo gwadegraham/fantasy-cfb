@@ -160,6 +160,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Jersey numbers (once a season). /teams/roster is billable, so the
+        // branches that matter are the skips that keep it to one call.
+        "./modules/hoops-roster.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-stats-job.js": {
             statements: 100,
             branches: 80,

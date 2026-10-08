@@ -11,6 +11,7 @@ const { activeSeason } = require('../modules/active-season');
 const seasons = require('../modules/active-season');
 const leagueSelection = require('../modules/league-selection');
 const teamPage = require('../modules/hoops-team-page');
+const roster = require('../modules/hoops-roster');
 const visibility = require('../modules/hoops-visibility');
 
 // Basketball logos come from ESPN's CDN, keyed on sourceId — which IS the ESPN
@@ -226,6 +227,46 @@ router.post('/:season/ingest', async (req, res) => {
     });
   } catch (err) {
     console.log(`Hoops team ingest: unexpected error: ${err && err.message}`);
+    return res.status(500).json({ message: err && err.message });
+  }
+});
+
+// Re-import a season's jersey numbers — the admin's door for a late roster
+// addition. The schedule ingest already does this once a season on its own;
+// this forces it. One billable call (CBBD /teams/roster answers for every
+// team); safe to re-run, upserts by (season, athleteId).
+router.post('/:season/roster', async (req, res) => {
+  try {
+    if (!/^\d{4}$/.test(req.params.season)) {
+        return res.status(400).json({ message: 'Invalid season' });
+    }
+    const season = Number(req.params.season);
+    // The same input check as the team ingest above, for the same reason:
+    // /teams/roster answers for ANY season, so a wrong number writes a real
+    // but wrong set of numbers rather than erroring.
+    const expected = activeSeason('basketball');
+    const force = req.query.force === '1' || req.query.force === 'true';
+    if (!force && Number.isFinite(expected) && season !== expected) {
+        return res.status(422).json({
+            message: `Season ${season} is not the stored basketball season (${expected}). `
+                + 'CBBD numbers a split season by its ENDING year — the 2026-27 season is 2027. '
+                + 'Pass ?force=1 to import it anyway.',
+            requested: season, expected
+        });
+    }
+
+    let result;
+    try {
+        result = await roster.importSeason(season);
+    } catch (err) {
+        const code = err.unreachable ? 502 : (err.status >= 500 || err.status === 429 ? 502 : 400);
+        console.log(`Hoops roster import failed: ${err.message}`);
+        return res.status(code).json({ message: err.message, upstreamStatus: err.status || null });
+    }
+    console.log(`Hoops roster · ${season}: ${result.players} numbered player(s) across ${result.teams} team(s)`);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.log(`Hoops roster import: unexpected error: ${err && err.message}`);
     return res.status(500).json({ message: err && err.message });
   }
 });
