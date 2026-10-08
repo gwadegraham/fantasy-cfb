@@ -182,7 +182,14 @@ describe('the accent token', () => {
 // where a football id opens whichever basketball team shares the number.
 describe('football-only pages opt out of the basketball link rewrite', () => {
     const VIEWS = path.join(__dirname, '..', 'views');
-    test.each(['team.ejs', 'gameDetail.ejs', 'cfpBracket.ejs', 'scoreboard.ejs'])('%s', (f) => {
+    test.each(['team.ejs', 'gameDetail.ejs', 'cfpBracket.ejs'])('%s', (f) => {
         expect(fs.readFileSync(path.join(VIEWS, f), 'utf8')).toMatch(/<body\b[^>]*\sdata-page-sport="football"/);
+    });
+
+    // The scoreboard reads the VIEWED league's sport since #490, so its links
+    // must follow the league: opting out would send a basketball league's
+    // team links to football pages.
+    test('scoreboard.ejs does not opt out: it serves basketball on a basketball league', () => {
+        expect(fs.readFileSync(path.join(VIEWS, 'scoreboard.ejs'), 'utf8')).not.toMatch(/data-page-sport="football"/);
     });
 });

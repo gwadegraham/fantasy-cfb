@@ -55,9 +55,14 @@ function dayKey(startDate, tbd) {
 }
 
 // Q3 8:42 / OT. Periods past 4 are overtime — CFBD keeps counting (5 = OT1).
+// Basketball plays halves: 2nd 8:43, then OT, 2OT (period 3 = OT1).
+function isBasketball() { return typeof SPORT !== 'undefined' && SPORT === 'basketball'; }
 function clockLabel(game) {
     if (game.period == null) return 'Live';
-    var qtr = game.period <= 4 ? 'Q' + game.period : 'OT' + (game.period > 5 ? game.period - 4 : '');
+    var p = game.period;
+    var qtr = isBasketball()
+        ? (p === 1 ? '1st' : p === 2 ? '2nd' : (p > 3 ? (p - 2) : '') + 'OT')
+        : (p <= 4 ? 'Q' + p : 'OT' + (p > 5 ? p - 4 : ''));
     return game.clock ? qtr + ' ' + game.clock : qtr;
 }
 
@@ -388,7 +393,8 @@ function renderLiveCount() {
 // ---- data -------------------------------------------------------------------
 
 function sbUrl(week, live) {
-    var base = '/games/scoreboard/' + LEAGUE_CODE + '/' + APP_YEAR + (week != null ? '/' + week : '');
+    var base = (isBasketball() ? '/hoops/games/scoreboard/' : '/games/scoreboard/')
+        + LEAGUE_CODE + '/' + APP_YEAR + (week != null ? '/' + week : '');
     return base + (live ? '?live=1' : '');
 }
 

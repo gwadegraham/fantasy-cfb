@@ -25,15 +25,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 
-<!-- data-page-sport: the scoreboard reads FOOTBALL games whatever league is
-     selected (#490), so public/league.js must not send its team links to
-     the basketball team page. Remove when it learns basketball. -->
-<body data-page-sport="football">
+<!-- No data-page-sport: a basketball league's scoreboard reads basketball
+     games (#490), so public/league.js sends its team and game links to the
+     basketball pages, and a football league's stay football's. -->
+<body>
     <%- include('partials/navbar') %>
     <script>
         var userState = <%- userState %>;
         var APP_YEAR = '<%= year %>';
         var LEAGUE_CODE = '<%= leagueCode %>';
+        // Which slate to read: the basketball league's comes from hoopsgames (#490).
+        var SPORT = '<%= (typeof viewerSport !== 'undefined' && viewerSport) || 'football' %>';
     </script>
 
     <!-- Deliberately NOT the shared .header/.header-title block the other pages
