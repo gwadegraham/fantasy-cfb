@@ -136,9 +136,12 @@ router.get('/:league/explain', async (req, res) => {
             const ranks = Object.assign({}, (await ranksFor(game.season, game.week)).ranks);
             const owner = await hoopsTeamPage.ownership(req.params.league, game.season, teamId);
             const paid = owner && owner.banked && owner.banked[String(gameId)];
-            if (paid && paid.oppRank != null) {
+            // Unranked when banked (null) stays unranked, or a late weekly
+            // row would turn a paid Q4 into a Q1 in the breakdown.
+            if (paid) {
                 const oppId = Number(game.homeTeamId) === teamId ? game.awayTeamId : game.homeTeamId;
-                ranks[String(oppId)] = paid.oppRank;
+                if (paid.oppRank == null) delete ranks[String(oppId)];
+                else ranks[String(oppId)] = paid.oppRank;
             }
             return res.json(explainGame('hoops', teamId, game, ranks, cfg));
         }

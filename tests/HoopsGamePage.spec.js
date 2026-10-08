@@ -368,6 +368,15 @@ describe('build', () => {
         expect(today.home.quadrant).not.toBe(3);
     });
 
+    test('the other side shows the rank it was banked at, beside the banked quadrant', async () => {
+        stubCbbd();
+        const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g4@example.invalid' });
+        await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
+            teamRefs: [{ id: 1, sport: 'basketball' }], weeklyScore: [{ week: 3, score: 1, scoreByTeam: [{ teamId: 1, gameId: 500, score: 1, quadrant: 3, oppRank: 120 }] }] }] });
+        const p = await gamePage.build(500, { league: LEAGUE });
+        expect(p.away.rank).toBe(120);                                // Texas, as Duke was paid against it
+    });
+
     test('the viewer\'s own team is flagged — and no account id reaches the payload', async () => {
         stubCbbd();
         const a = await Account.create({ firstName: 'Garrett', lastName: 'G', email: 'g2@example.invalid' });

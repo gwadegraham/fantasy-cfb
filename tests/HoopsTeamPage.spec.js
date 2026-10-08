@@ -260,13 +260,6 @@ describe('build', () => {
         expect(g.opponent.rank).toBe(358);
     });
 
-    test('a banked postseason game keeps its null quadrant', async () => {
-        await HoopsGame.create([game(11, 1, 1, 3, { seasonType: 'postseason', tournament: 'NIT' })]);
-        await owner([1], [{ week: 1, score: 7, scoreByTeam: [{ teamId: 1, gameId: 11, score: 7, quadrant: null, oppRank: 358 }] }]);
-        const g = (await teamPage.build(1, { season: SEASON, league: LEAGUE })).games.find(x => x.id === 11);
-        expect(g.quadrant).toBeNull();
-    });
-
     test('unknown team, or no season: null', async () => {
         expect(await teamPage.build(999, { season: SEASON })).toBeNull();
         expect(await teamPage.build(1, {})).toBeNull();

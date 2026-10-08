@@ -62,7 +62,7 @@ test('a game that is not in hoopsgames is a 404', async () => {
 
 test('the opponent is ranked where the game was banked, so it adds up to the points paid', async () => {
     const a = await Account.create({ firstName: 'G', lastName: 'G', email: 'g@example.invalid' });
-    // Banked against #120 (a Q2 at home), though today's ranks say #5.
+    // Banked against #60 (a Q2 at home), though today's ranks say #5.
     await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
         teamRefs: [{ id: 2, sport: 'basketball' }],
         weeklyScore: [{ week: 3, score: 3, scoreByTeam: [{ teamId: 2, gameId: 100, score: 3, quadrant: 2, oppRank: 60 }] }] }] });
@@ -75,3 +75,14 @@ test('a football league never reads hoopsgames: no football game 100, so 404', a
     const res = await explain('graham-league', 2, 100);          // hoops game 100 exists; football does not
     expect(res.status).toBe(404);
 });
+
+test('an opponent unranked when banked stays unranked, though a rank arrived since', async () => {
+    const a = await Account.create({ firstName: 'G', lastName: 'G', email: 'g2@example.invalid' });
+    await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: 'Hoop Dreams',
+        teamRefs: [{ id: 2, sport: 'basketball' }],
+        weeklyScore: [{ week: 3, score: 0, scoreByTeam: [{ teamId: 2, gameId: 100, score: 0, quadrant: 4, oppRank: null }] }] }] });
+    const res = await explain(LEAGUE, 2, 100);                       // today's ranks: #5, a Q1
+    expect(res.body.matched.map(m => m.key)).not.toContain('q1Win');
+    expect(res.body.total).toBe(0);
+});
+
