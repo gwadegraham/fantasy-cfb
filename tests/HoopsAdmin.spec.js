@@ -117,6 +117,18 @@ describe('GET /hoops/admin/status', () => {
         expect(res.body.calls).toEqual({ ingest: 1, schedule: 9, refresh: 1, roster: 1 });
     });
 
+    test("the refresh quote follows the route's own default window", async () => {
+        const games = require('../routes/hoopsGames');
+        const prev = games.DEFAULT_REFRESH_MS;
+        expect(prev).toBe(24 * 3600 * 1000);
+        // A wider default (45 days) must change the quote, not leave it at 1.
+        games.DEFAULT_REFRESH_MS = 45 * 24 * 3600 * 1000;
+        try {
+            const res = await request(appAs(['Admin'])).get('/hoops/admin/status');
+            expect(res.body.calls.refresh).toBe(2);
+        } finally { games.DEFAULT_REFRESH_MS = prev; }
+    });
+
     test('the schedule stops counting the roster call once a full roster is on file', async () => {
         jest.spyOn(require('../modules/hoops-roster'), 'hasSeason').mockResolvedValue(true);
         const res = await request(appAs(['Admin'])).get('/hoops/admin/status');

@@ -146,6 +146,10 @@ test('an HTML reply is reported as unreadable and possibly still running, not as
     task('schedule').querySelector('[data-confirm]').click();
     await flush();
     expect(task('schedule').textContent).toContain('may still be running on the server');
+    // ...and its button stays off, so a second tap cannot spend the calls again.
+    expect(task('schedule').querySelector('[data-arm]')).toBeNull();
+    expect(task('schedule').querySelector('.ha-run').disabled).toBe(true);
+    expect(task('ingest').querySelector('[data-arm]').disabled).toBe(false);
 });
 
 test('while one task runs, no other can be started', async () => {
@@ -162,7 +166,7 @@ test('while one task runs, no other can be started', async () => {
     expect(task('ingest').querySelector('[data-confirm]')).toBeNull();
     release();
     await flush();
-    expect(task('roster').textContent).toContain('5,643 numbered players across 1,535 teams');
+    expect(task('roster').textContent).toContain('5,643 numbered players imported (CBBD listed 1,535 teams)');
     expect(posts()).toHaveLength(1);
 });
 

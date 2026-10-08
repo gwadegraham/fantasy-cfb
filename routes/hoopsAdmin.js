@@ -32,6 +32,9 @@ const seasons = require('../modules/active-season');
 const cbbd = require('../modules/cbbd-client');
 const roster = require('../modules/hoops-roster');
 const { effectiveRoles } = require('../modules/dev-role');
+// A namespace, read at call time, so a test can widen the default and see
+// the quote follow it.
+const hoopsGames = require('./hoopsGames');
 
 const DAY = 24 * 3600 * 1000;
 
@@ -95,7 +98,9 @@ async function status() {
         calls: {
             ingest: 1,
             schedule: scheduleWindows + (fullRoster ? 0 : 1),
-            refresh: 1,
+            // The refresh's own default window, so a wider default changes
+            // the quote rather than leaving it at 1.
+            refresh: windowsFor(new Date(Date.now() - hoopsGames.DEFAULT_REFRESH_MS), new Date()),
             roster: 1
         },
         jobs: HOOPS_JOBS.map(name => runs.find(r => r.jobName === name) || { jobName: name, status: null })

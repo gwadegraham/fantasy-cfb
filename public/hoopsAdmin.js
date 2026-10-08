@@ -87,7 +87,9 @@
                     + (f.roster.fetchedAt ? ', fetched ' + day(f.roster.fetchedAt) : '');
             },
             summary: function (r) {
-                return r.skippedReason ? r.skippedReason : plural(r.players, 'numbered player') + ' across ' + plural(r.teams, 'team');
+                // r.teams is every team CBBD listed (~1,500, most of them
+                // below D-I) — not the ~365 that carry numbers on file.
+                return r.skippedReason ? r.skippedReason : plural(r.players, 'numbered player') + ' imported (CBBD listed ' + plural(r.teams, 'team') + ')';
             }
         }
     ];
@@ -106,7 +108,13 @@
         } catch (e) { /* convenience only */ }
     }
 
-    var state = { data: null, armed: null, running: null, callsLeft: null };
+    // A task whose reply could not be read stays locked this long. Heroku
+    // cuts a request at 30s with an HTML page while the handler keeps
+    // running and spending, and nothing on the server stops a second run —
+    // so the button must not come back while the first may still be going.
+    var LOCK_MS = 3 * 60 * 1000;
+    var state = { data: null, armed: null, running: null, callsLeft: null, lockedUntil: {} };
+    function locked(key) { return (state.lockedUntil[key] || 0) > Date.now(); }
 
     function lastLine(t) {
         var mine = readLast()[t.key];
@@ -140,6 +148,8 @@
         } else if (armed) {
             btn = '<button class="ha-run ha-confirm" data-confirm="' + t.key + '">Run — ' + plural(calls, 'CBBD call') + '</button>'
                 + '<button class="ha-cancel" data-cancel>Cancel</button>';
+        } else if (locked(t.key)) {
+            btn = '<button class="ha-run" disabled>May still be running — try again in a few minutes</button>';
         } else {
             btn = '<button class="ha-run" data-arm="' + t.key + '"' + (state.running ? ' disabled' : '') + '>Run</button>';
         }
@@ -219,7 +229,7 @@
                 if (!body) {
                     // Heroku answers a request past 30s with an HTML page while
                     // the handler keeps running — so this is not a failure yet.
-                    return { ok: false, line: 'No reply the page could read (HTTP ' + r.status + '). It may still be running on the server — reload in a minute and check the counts.' };
+                    return { ok: false, unreadable: true, line: 'No reply the page could read (HTTP ' + r.status + '). It may still be running on the server — reload in a minute and check the counts.' };
                 }
                 if (body.remainingCalls != null) state.callsLeft = body.remainingCalls;
                 return r.ok
@@ -230,6 +240,10 @@
             return { ok: false, line: 'Request failed: ' + e.message };
         }).then(function (res) {
             writeLast(t.key, { ok: res.ok, line: res.line, at: new Date().toISOString() });
+            if (res.unreadable) {
+                state.lockedUntil[t.key] = Date.now() + LOCK_MS;
+                setTimeout(function () { if (state.data) render(); }, LOCK_MS + 50);
+            }
             state.running = null;
             // The counts on file are what changed; re-read them.
             return refreshStatus().catch(function () { render(); });
@@ -240,7 +254,7 @@
         var arm = e.target.closest('[data-arm]');
         var confirm = e.target.closest('[data-confirm]');
         var cancel = e.target.closest('[data-cancel]');
-        if (arm && !state.running) { state.armed = arm.getAttribute('data-arm'); render(); }
+        if (arm && !state.running && !locked(arm.getAttribute('data-arm'))) { state.armed = arm.getAttribute('data-arm'); render(); }
         else if (cancel) { state.armed = null; render(); }
         else if (confirm && !state.running) {
             var key = confirm.getAttribute('data-confirm');
