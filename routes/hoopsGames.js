@@ -301,12 +301,6 @@ async function restampSeason(season, seasonStart) {
     return res.modifiedCount || 0;
 }
 
-// The basketball game page's data (#503). No CBBD calls: box scores come
-// from the nightly batch (modules/hoops-box-score.js, run by hoops-stats-job).
-//
-// Basketball stays hidden from anyone not in a basketball league (404, as if
-// it did not exist), and ownership is league-private, so the league comes
-// from the server's validated selection — never a query string.
 // The league scoreboard for a basketball league (#490): a week's slate with
 // the league's drafted teams marked up. Same response shape as football's
 // GET /games/scoreboard/:league/:season/:week so public/scoreboard.js renders
@@ -324,7 +318,12 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         }
         const season = Number(req.params.season);
         if (!Number.isFinite(season)) return res.status(400).json({ message: 'Invalid season' });
-        const seasonType = req.query.seasonType === 'postseason' ? 'postseason' : 'regular';
+        // Basketball's weeks run as ONE sequence through March (scoring reads
+        // {season, week} and nothing else), so the NCAA and NIT games sit in
+        // the weeks they are played — no regular/postseason split here, or
+        // the tournament would never appear. `seasonType` echoes back for the
+        // client, which does not use it to pick a slate.
+        const seasonType = 'all';
         const liveOnly = req.query.live === '1' || req.query.live === 'true';
         const nowMs = Date.now();
 
@@ -333,7 +332,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         let windows = null;
         let week = req.params.week != null ? Number(req.params.week) : NaN;
         if (!Number.isFinite(week) || !liveOnly) {
-            const weekRows = await HoopsGame.find({ season, seasonType, week: { $type: 'number' } },
+            const weekRows = await HoopsGame.find({ season, week: { $type: 'number' } },
                 { week: 1, startDate: 1, _id: 0 }).lean();
             windows = boardHelpers.weekWindows(weekRows);
             if (!Number.isFinite(week)) week = boardHelpers.defaultWeek(windows, nowMs);
@@ -343,7 +342,7 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
         }
 
         const [listed, franchises, ranks] = await Promise.all([
-            HoopsGame.find({ season, seasonType, week }, {
+            HoopsGame.find({ season, week }, {
                 id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
                 period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homeConference: 1, homePoints: 1,
                 awayTeamId: 1, awayTeam: 1, awayConference: 1, awayPoints: 1,
@@ -385,6 +384,12 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
     }
 });
 
+// The basketball game page's data (#503). No CBBD calls: box scores come
+// from the nightly batch (modules/hoops-box-score.js, run by hoops-stats-job).
+//
+// Basketball stays hidden from anyone not in a basketball league (404, as if
+// it did not exist), and ownership is league-private, so the league comes
+// from the server's validated selection — never a query string.
 router.get('/:id/page', async (req, res) => {
     try {
         if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });

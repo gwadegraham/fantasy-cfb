@@ -152,6 +152,14 @@ describe('GET /hoops/games/scoreboard/:league/:season/:week', () => {
         expect(res.body.games[0]).toMatchObject({ id: 10, state: 'final', home: { points: 80, owner: { points: 3 } } });
     });
 
+    test('tournament games show in the week they are played: weeks run straight through March', async () => {
+        await HoopsGame.create({ id: 30, season: SEASON, week: 3, seasonType: 'postseason', tournament: 'NCAA', status: 'scheduled',
+            startDate: tip(9), homeTeamId: 1, homeTeam: 'Duke', awayTeamId: 2, awayTeam: 'Texas', neutralSite: true });
+        const res = await request(app).get(`/hoops/games/scoreboard/${LEAGUE}/${SEASON}/3`);
+        expect(res.body.games.map(g => g.id)).toEqual([30]);
+        expect(res.body.weeks.map(w => w.week)).toEqual([1, 2, 3]);
+    });
+
     test('?live=1 returns only live games and skips the week list', async () => {
         const res = await request(app).get(`/hoops/games/scoreboard/${LEAGUE}/${SEASON}/2?live=1`);
         expect(res.body.games).toEqual([]);
