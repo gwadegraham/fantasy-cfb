@@ -13,10 +13,11 @@
 
 const SEASON = 2026;
 
-function load({ week = 2, ok = true, league = 'graham-league' } = {}) {
+function load({ week = 2, ok = true, league = 'graham-league', sport } = {}) {
     jest.resetModules();
     window.localStorage.clear();
     window.ccLeague = { code: () => league };
+    if (sport) window.ccLeague.sport = () => sport;
     const calls = [];
     window.fetch = jest.fn(url => {
         calls.push(url);
@@ -120,5 +121,35 @@ describe('sync', () => {
 
         await expect(cw.sync(SEASON)).resolves.toBeNull();
         expect(window.localStorage.getItem('weekCode')).toBe('week-6');
+    });
+});
+
+// #501: basketball's weeks are its own calendar. Football's
+// /games/current-week is empty for a basketball season, so My Team's Games
+// tile read "No games" all season.
+describe('on a basketball league', () => {
+    it('asks the basketball calendar, not football\'s', async () => {
+        const { cw, calls } = load({ week: 6, league: 'hoops-league', sport: 'basketball' });
+        await expect(cw.get(2027)).resolves.toBe(6);
+        expect(calls).toEqual(['/hoops/games/current-week/2027']);
+    });
+
+    it('football still asks football', async () => {
+        const { cw, calls } = load({ week: 6, sport: 'football' });
+        await cw.get(SEASON);
+        expect(calls).toEqual(['/games/current-week/2026']);
+    });
+
+    // The stored picker and its pin carry no sport, and football reads
+    // 'week-17' as its postseason: a basketball week written there would move
+    // a football page after a league switch.
+    it('sync answers but leaves football\'s week storage alone', async () => {
+        const { cw } = load({ week: 17, league: 'hoops-league', sport: 'basketball' });
+        window.localStorage.setItem('weekCode', 'week-5');
+        window.localStorage.setItem('week', 'Week 5');
+        window.localStorage.setItem('weekPinned', '1');
+        await expect(cw.sync(2027)).resolves.toBe('week-17');
+        expect(window.localStorage.getItem('weekCode')).toBe('week-5');
+        expect(window.localStorage.getItem('week')).toBe('Week 5');
     });
 });

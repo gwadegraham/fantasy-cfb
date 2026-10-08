@@ -19,6 +19,11 @@
     function leagueCode() {
         try { return (window.ccLeague && window.ccLeague.code()) || ''; } catch (e) { return ''; }
     }
+    // Basketball's weeks are its own calendar (modules/hoops-calendar.js), and
+    // football's /games/current-week is empty for a basketball season (#501).
+    function isBasketball() {
+        try { return !!(window.ccLeague && window.ccLeague.sport && window.ccLeague.sport() === 'basketball'); } catch (e) { return false; }
+    }
     function ls(fn, fallback) {
         try { return fn(window.localStorage); } catch (e) { return fallback; }
     }
@@ -41,7 +46,8 @@
             // the M0 tier — for one integer. Every caller paid it, and the
             // betting page pays it BEFORE it can fetch anything, because the
             // week decides which games to ask for.
-            cache[key] = fetch('/games/current-week/' + encodeURIComponent(season),
+            var base = isBasketball() ? '/hoops/games/current-week/' : '/games/current-week/';
+            cache[key] = fetch(base + encodeURIComponent(season),
                                { headers: { Accept: 'application/json' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (d) {
@@ -74,6 +80,13 @@
     function isPostseason(code) { return code === 'week-17'; }
 
     function sync(season) {
+        // The stored picker and its pin are FOOTBALL's: the keys carry no
+        // sport, and football reads 'week-17' as its postseason. A basketball
+        // week written there would land a football page on it after a league
+        // switch, so on basketball this answers and stores nothing.
+        if (isBasketball()) {
+            return get(season).then(function (wk) { return wk ? 'week-' + wk : null; });
+        }
         var stored = ls(function (s) { return s.getItem('weekCode'); }, null);
         if (pinned() || isPostseason(stored)) return Promise.resolve(stored);
         return get(season).then(function (wk) {
