@@ -419,12 +419,8 @@ describe('hoops-stats', () => {
 describe('hoops-stats job', () => {
     const NOW = new Date(Date.UTC(2026, 10, 12));
     const boxScore = require('../modules/hoops-box-score');
-    const hoopsMedia = require('../modules/hoops-media');
 
     beforeEach(() => {
-        // TV listings have their own tests (HoopsGamePage.spec.js); a quiet
-        // window by default, so it adds nothing to these summaries.
-        jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 0, stored: 0, skippedReason: 'nothing scheduled' });
         // The box batch has its own tests (HoopsGamePage.spec.js); here it
         // must simply never reach CBBD.
         jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ season: SEASON, games: 3, stored: 3 });
@@ -491,30 +487,6 @@ describe('hoops-stats job', () => {
         boxScore.ingestRecent.mockResolvedValue({ season: SEASON, games: 9, stored: 4, capped: true });
         await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
         expect((await statsJob.run({ now: NOW })).summary).toContain('boxes: 4/9 stored (HIT THE 3000-ROW CAP');
-    });
-
-    test('TV listings run before anything has gone final, so the opener has its channel', async () => {
-        const imp = jest.spyOn(hoopsStats, 'importSeason');
-        hoopsMedia.ingestWindow.mockResolvedValue({ season: SEASON, games: 40, stored: 38, capped: false });
-        await HoopsGame.create(game(10, 1, 1, 3, { status: 'scheduled', startDate: new Date(Date.UTC(2026, 10, 14)) }));
-        const out = await statsJob.run({ now: NOW });
-        expect(hoopsMedia.ingestWindow).toHaveBeenCalledWith(SEASON, { now: NOW.getTime() });
-        expect(imp).not.toHaveBeenCalled();
-        expect(out.summary).toBe(`${SEASON} tv: 38/40 stored`);
-        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
-    });
-
-    test('a failed or capped TV pull is an ERROR, and the stats still import', async () => {
-        jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, teams: 365, players: 5000 });
-        await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));
-        hoopsMedia.ingestWindow.mockRejectedValueOnce(new Error('CBBD 429'));
-        let out = await statsJob.run({ now: NOW });
-        expect(out.summary).toBe(`${SEASON} tv: FAILED CBBD 429 | ${SEASON}: 365 team(s), 5000 player(s) | ${SEASON} boxes: 3/3 stored`);
-        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
-        hoopsMedia.ingestWindow.mockResolvedValueOnce({ season: SEASON, games: 3000, stored: 2900, capped: true });
-        out = await statsJob.run({ now: NOW });
-        expect(out.summary).toContain('tv: 2900/3000 stored (HIT THE 3000-ROW CAP)');
-        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
     });
 
     test('nothing final in the window: the box batch says so', async () => {

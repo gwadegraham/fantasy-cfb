@@ -11,6 +11,8 @@ const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const boxScore = require('../modules/hoops-box-score');
 const hoopsMedia = require('../modules/hoops-media');
+const mediaJob = require('../modules/hoops-media-job');
+const jobLogger = require('../modules/job-logger');
 const gamePage = require('../modules/hoops-game-page');
 const teamPage = require('../modules/hoops-team-page');
 const cbbd = require('../modules/cbbd-client');
@@ -185,8 +187,8 @@ describe('TV listings (modules/hoops-media.js)', () => {
         const out = await hoopsMedia.ingestWindow(SEASON, { now: NOW });
         expect(out).toMatchObject({ season: SEASON, games: 2, stored: 1, capped: false, remainingCalls: 29000 });
         expect(get).toHaveBeenCalledTimes(1);
-        // Three days back through a week ahead; the end is the day AFTER (the midnight trap).
-        expect(get).toHaveBeenCalledWith('/games/media', { season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-11-28' });
+        // Three days back through two weeks ahead; the end is the day AFTER (the midnight trap).
+        expect(get).toHaveBeenCalledWith('/games/media', { season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-12-05' });
         const after = await HoopsGame.findOne({ id: 500 }).lean();
         expect(after.broadcasts).toEqual([{ name: 'ESPN2', type: 'TV' }, { name: 'ESPN+', type: 'Streaming' }]);
         const { broadcasts, ...rest } = after;
@@ -223,6 +225,48 @@ describe('TV listings (modules/hoops-media.js)', () => {
         const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [] });
         expect((await gamePage.build(500)).game.tv).toBe('ESPN2');
         expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('hoops-media job (weekly)', () => {
+    beforeEach(() => {
+        jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
+        jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    test('one pull for the active season, recorded as a run', async () => {
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 40, stored: 38, capped: false });
+        const out = await mediaJob.run({ now: new Date(NOW) });
+        expect(pull).toHaveBeenCalledTimes(1);
+        expect(pull).toHaveBeenCalledWith(SEASON, { now: NOW });
+        expect(out.summary).toBe(`${SEASON} tv: 38/40 stored`);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+    });
+
+    test('nothing scheduled: silent, no JobRun', async () => {
+        jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 0, stored: 0, skippedReason: 'nothing scheduled' });
+        expect(await mediaJob.run({ now: new Date(NOW) })).toEqual({ skippedReason: 'nothing scheduled' });
+        expect(jobLogger.startRun).not.toHaveBeenCalled();
+    });
+
+    test('no basketball league: no pull at all', async () => {
+        await League.deleteMany({});
+        await seasons.prime();
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow');
+        expect(await mediaJob.run({ now: new Date(NOW) })).toEqual({ skippedReason: 'no basketball leagues' });
+        expect(pull).not.toHaveBeenCalled();
+    });
+
+    test('a failed or capped pull is an ERROR, not a quiet success', async () => {
+        const pull = jest.spyOn(hoopsMedia, 'ingestWindow').mockRejectedValueOnce(new Error('CBBD 429'));
+        let out = await mediaJob.run({ now: new Date(NOW) });
+        expect(out.summary).toBe(`${SEASON} tv: FAILED CBBD 429`);
+        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
+        pull.mockResolvedValueOnce({ season: SEASON, games: 3000, stored: 2900, capped: true });
+        out = await mediaJob.run({ now: new Date(NOW) });
+        expect(out.summary).toBe(`${SEASON} tv: 2900/3000 stored (HIT THE 3000-ROW CAP)`);
+        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
     });
 });
 

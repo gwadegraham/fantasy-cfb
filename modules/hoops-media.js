@@ -1,16 +1,22 @@
 // Where a basketball game is on — the TV line on the game page (#506).
 //
-// CBBD /games/media, ONE billable call a night, and only when the stored
-// schedule has a game in the window: the off-season and the gap before
-// November cost nothing. The ScoreboardGame `tv` field is free but only
+// CBBD /games/media, ONE billable call a WEEK (modules/hoops-media-job.js),
+// and only when the stored schedule has a game in the window: the
+// off-season and the gap before November cost nothing. The ScoreboardGame `tv` field is free but only
 // covers today's slate, too late to tell anyone where tomorrow's game is.
 //
 // Football does this with one season-wide call (routes/games.js /media).
 // Basketball cannot: /games/media caps at 3,000 rows like /games
 // (cbbd-client.js), and a season is ~5,300 games. So a rolling window —
 // the last three days, so a result that aired is still labelled, through
-// the next week, so a manager can find tomorrow's game. Measured on
-// January 2026: ~90 games a day, so ~1,000 rows, a third of the cap.
+// the next two weeks, so the week after next is listed before this run's
+// successor. Measured on January 2026: ~90 games a day, so ~1,600 rows,
+// about half the cap.
+//
+// Why not once for the whole season in October: CBBD does not have it yet.
+// Measured 8 Oct 2026, 28 of the first 3,000 games of 2026-27 had any
+// listing; the previous January had 177 of 182. Listings fill in as the
+// games approach.
 //
 // Matched by game id and written as ONE field. A game the response does
 // not mention is left alone; nothing is ever created here.
@@ -20,7 +26,7 @@ const HoopsGame = require('../models/hoopsGame');
 const { LOOKBACK_MS } = require('./hoops-box-score');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const AHEAD_MS = 7 * DAY_MS;
+const AHEAD_MS = 14 * DAY_MS;
 const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 async function ingestWindow(season, { now = Date.now() } = {}) {
