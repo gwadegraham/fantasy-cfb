@@ -168,6 +168,56 @@ describe('hydrate', () => {
         expect(document.getElementById('glance').textContent).toBe('No games for your teams · Week 2');
     });
 
+    // QA: the drawer opens the moment the tile is tapped, and the first
+    // load on the M0 tier is slow. It used to say "Could not load" for good.
+    test('opened before the first load lands: loading, then the games', async () => {
+        let release;
+        window.fetch = jest.fn(() => new Promise(r => { release = r; }));
+        let drawer = null;
+        const done = hg().hydrate({ season: '2027', seasonEntry: SEASON_ENTRY, roster: ROSTER, poss: 'your', logoOf,
+            glanceEl: document.getElementById('glance'), setDrawer: fn => { drawer = fn; } });
+        const body = document.getElementById('drawer');
+        drawer(body);
+        expect(body.textContent).toBe('Loading…');
+        await flush();
+        release({ ok: true, json: () => Promise.resolve({ week: 1, weeks: WEEKS, games: [G.final] }) });
+        await done;
+        expect(body.querySelectorAll('.uh-hg-row')).toHaveLength(1);
+    });
+
+    test('a failed week switch keeps the week it had, and says so', async () => {
+        const drawer = await boot();
+        const body = document.getElementById('drawer');
+        drawer(body);
+        window.fetch = jest.fn(() => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }));
+        const sel = body.querySelector('[uh-hg-week]');
+        sel.value = '2';
+        sel.dispatchEvent(new Event('change'));
+        await flush();
+        expect(body.querySelector('[uh-hg-week]').value).toBe('1');
+        expect(body.querySelectorAll('.uh-hg-row')).toHaveLength(3);
+        expect(body.textContent).toContain('Could not load week 2.');
+        expect(document.getElementById('glance').textContent).toContain('2 of your teams · Week 1');
+    });
+
+    test('quick picks: the newest one wins even if an older answer lands last', async () => {
+        const drawer = await boot();
+        const body = document.getElementById('drawer');
+        drawer(body);
+        const pending = {};
+        window.fetch = jest.fn((url) => new Promise(r => { pending[/\/(\d+)\?/.exec(url)[1]] = r; }));
+        const sel = body.querySelector('[uh-hg-week]');
+        sel.value = '2'; sel.dispatchEvent(new Event('change'));
+        const sel2 = body.querySelector('[uh-hg-week]');
+        sel2.value = '1'; sel2.dispatchEvent(new Event('change'));
+        pending['1']({ ok: true, json: () => Promise.resolve({ week: 1, weeks: WEEKS, games: [G.final, G.live, G.pre] }) });
+        await flush();
+        pending['2']({ ok: true, json: () => Promise.resolve({ week: 2, weeks: WEEKS, games: [] }) });
+        await flush();
+        expect(body.querySelector('[uh-hg-week]').value).toBe('1');
+        expect(body.querySelectorAll('.uh-hg-row')).toHaveLength(3);
+    });
+
     test('a failed load says so in the drawer and keeps a plain label', async () => {
         window.fetch = jest.fn(() => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }));
         const drawer = await boot();

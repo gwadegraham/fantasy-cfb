@@ -20,9 +20,13 @@
     <script src="win-reveal.js"></script>
     <script src="pull-to-refresh.js"></script>
     <script defer src="push-alerts.js"></script>
+    <%# Basketball's Games tile (#501). Only on a basketball league: football
+        never needs it, and basketball stays invisible to everyone else. %>
+    <% if (typeof viewerSport !== 'undefined' && viewerSport === 'basketball') { %>
     <link href="sport-page.css" rel="stylesheet">
     <script defer src="sport-page.js"></script>
     <script defer src="hoops-week-games.js"></script>
+    <% } %>
     <script defer src="userHome.js"></script>
     <title data-league-title="My Team">My Team · Campus Clash</title>
     <%- include('partials/favicons') %>

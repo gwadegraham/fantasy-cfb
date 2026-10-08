@@ -83,10 +83,10 @@
         // The stored picker and its pin are FOOTBALL's: the keys carry no
         // sport, and football reads 'week-17' as its postseason. A basketball
         // week written there would land a football page on it after a league
-        // switch, so on basketball this answers and stores nothing.
-        if (isBasketball()) {
-            return get(season).then(function (wk) { return wk ? 'week-' + wk : null; });
-        }
+        // switch — and callers write what this returns (Standings'
+        // applyCurrentWeek does), so on basketball it answers nothing at all.
+        // A basketball surface asks get() and keeps its week itself.
+        if (isBasketball()) return Promise.resolve(null);
         var stored = ls(function (s) { return s.getItem('weekCode'); }, null);
         if (pinned() || isPostseason(stored)) return Promise.resolve(stored);
         return get(season).then(function (wk) {

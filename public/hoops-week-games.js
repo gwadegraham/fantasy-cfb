@@ -129,8 +129,11 @@
 
     function weekLabel(w) {
         var k = global.ccKickoff;
-        var a = k && k.parts ? k.parts(w.first) : null;
-        var b = k && k.parts ? k.parts(w.last) : null;
+        // Read on the EASTERN calendar the weeks are cut on: a week whose
+        // first row is a TBD tip (midnight Eastern) would otherwise start a
+        // day early for anyone west of it.
+        var a = k && k.parts ? k.parts(w.first, true) : null;
+        var b = k && k.parts ? k.parts(w.last, true) : null;
         if (!a || !b) return 'Week ' + w.week;
         var range = a.monthShort === b.monthShort
             ? a.monthShort + ' ' + a.day + '–' + b.day
@@ -184,7 +187,11 @@
     // logoOf, setDrawer(fn(body)) }. Resolves once the glance is painted.
     function hydrate(opts) {
         var ids = (opts.roster || []).map(function (t) { return t.id; });
-        var state = { week: null, data: null };
+        // `loading` until the first answer lands; `failed` only when that
+        // first answer never came. A failed week SWITCH keeps the last good
+        // week rather than dropping the picker. `seq` makes the newest pick
+        // win when quick changes come back out of order.
+        var state = { week: null, data: null, loading: true, failed: false, note: '', seq: 0, body: null };
         var cw = global.ccCurrentWeek;
         var paintGlance = function () {
             if (!opts.glanceEl) return;
@@ -194,41 +201,54 @@
                 ? glanceHtml({ roster: opts.roster, games: state.data.games, label: label, poss: opts.poss, logoOf: opts.logoOf })
                 : '<span class="uh-glance-sub uh-games-wk">' + esc(label) + '</span>';
         };
+        var paint = function () {
+            var body = state.body;
+            if (!body) return;
+            var d = state.data;
+            if (!d) {
+                body.innerHTML = state.loading ? '<div class="sp-loading">Loading…</div>'
+                    : '<div class="sp-error">Could not load the games.</div>';
+                return;
+            }
+            if (!(d.weeks || []).length) { body.innerHTML = '<div class="sp-empty">No basketball schedule yet.</div>'; return; }
+            body.innerHTML = '<div class="uh-hg">' + pickerHtml(d.weeks, state.week)
+                + (state.note ? '<div class="sp-empty">' + esc(state.note) + '</div>' : '') + '<div uh-hg-list>'
+                + listHtml({ roster: opts.roster, games: d.games, seasonEntry: opts.seasonEntry,
+                    week: state.week, logoOf: opts.logoOf, poss: opts.poss }) + '</div></div>';
+            var sel = body.querySelector('[uh-hg-week]');
+            if (sel) sel.addEventListener('change', function () {
+                var listEl = body.querySelector('[uh-hg-list]');
+                if (listEl) listEl.innerHTML = '<div class="sp-loading">Loading…</div>';
+                fetchWeek(Number(sel.value));
+            });
+        };
         var fetchWeek = function (week) {
+            var mine = ++state.seq;
             return load(opts.season, week, ids).then(function (d) {
-                state.week = week;
-                state.data = d;
-                return d;
+                if (mine !== state.seq) return;          // a newer pick is on its way
+                state.loading = false;
+                state.note = '';
+                if (d) {
+                    // The week list is the season's; keep it if an answer lacks it.
+                    if (!(d.weeks || []).length && state.data) d.weeks = state.data.weeks;
+                    state.week = week;
+                    state.data = d;
+                } else if (state.data) {
+                    state.note = 'Could not load week ' + week + '.';
+                }
+                paintGlance();
+                paint();
             });
         };
 
         opts.setDrawer(function (body) {
-            var paint = function () {
-                var d = state.data;
-                if (!d) { body.innerHTML = '<div class="sp-error">Could not load the games.</div>'; return; }
-                if (!(d.weeks || []).length) { body.innerHTML = '<div class="sp-empty">No basketball schedule yet.</div>'; return; }
-                body.innerHTML = '<div class="uh-hg">' + pickerHtml(d.weeks, state.week) + '<div uh-hg-list>'
-                    + listHtml({ roster: opts.roster, games: d.games, seasonEntry: opts.seasonEntry,
-                        week: state.week, logoOf: opts.logoOf, poss: opts.poss }) + '</div></div>';
-                var sel = body.querySelector('[uh-hg-week]');
-                if (sel) sel.addEventListener('change', function () {
-                    var listEl = body.querySelector('[uh-hg-list]');
-                    if (listEl) listEl.innerHTML = '<div class="sp-loading">Loading…</div>';
-                    var keepWeeks = d.weeks;
-                    fetchWeek(Number(sel.value)).then(function (next) {
-                        if (next && !(next.weeks || []).length) next.weeks = keepWeeks;
-                        paintGlance();
-                        paint();
-                    });
-                });
-            };
+            state.body = body;
             paint();
         });
 
         return Promise.resolve(cw && cw.get ? cw.get(opts.season) : null)
             .catch(function () { return null; })
-            .then(function (wk) { return fetchWeek(wk || 1); })
-            .then(paintGlance);
+            .then(function (wk) { return fetchWeek(wk || 1); });
     }
 
     var api = { load: load, byTeam: byTeam, pointsFor: pointsFor, periodLabel: periodLabel, result: result,

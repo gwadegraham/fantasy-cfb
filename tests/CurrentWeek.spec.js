@@ -143,12 +143,12 @@ describe('on a basketball league', () => {
     // The stored picker and its pin carry no sport, and football reads
     // 'week-17' as its postseason: a basketball week written there would move
     // a football page after a league switch.
-    it('sync answers but leaves football\'s week storage alone', async () => {
+    it('sync leaves football\'s week storage alone, and hands callers nothing to store', async () => {
         const { cw } = load({ week: 17, league: 'hoops-league', sport: 'basketball' });
         window.localStorage.setItem('weekCode', 'week-5');
         window.localStorage.setItem('week', 'Week 5');
         window.localStorage.setItem('weekPinned', '1');
-        await expect(cw.sync(2027)).resolves.toBe('week-17');
+        await expect(cw.sync(2027)).resolves.toBeNull();
         expect(window.localStorage.getItem('weekCode')).toBe('week-5');
         expect(window.localStorage.getItem('week')).toBe('Week 5');
     });
