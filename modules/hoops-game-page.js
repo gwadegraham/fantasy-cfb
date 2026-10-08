@@ -14,6 +14,7 @@ const { isFinal } = require('./hoops-scoring-pass');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { pickLogo } = require('../public/logo.js');
 const { homeWinProb } = require('./hoops-win-prob');
+const stale = require('./hoops-stale-duplicates');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -78,7 +79,7 @@ function previewSide(team, before) {
     };
 }
 
-async function build(gameId, { league = null, viewerId = null } = {}) {
+async function build(gameId, { league = null, viewerId = null, now = Date.now() } = {}) {
     const id = Number(gameId);
     if (!Number.isFinite(id)) return null;
     const game = await HoopsGame.findOne({ id }).lean();
@@ -90,6 +91,11 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
     // clock. Shown as a live score; nothing is banked until final.
     const live = !final && String(game.status || '').toLowerCase() === 'in_progress';
     const postseason = String(game.seasonType || '').toLowerCase() === 'postseason';
+    // An old listing of a game that moved (#498): point at the played one
+    // instead of previewing a game that will never tip.
+    const replaced = stale.overdue(game, now) ? stale.supersededBy(game, await HoopsGame.find({
+        season: game.season, status: 'final', homeTeamId: game.homeTeamId, awayTeamId: game.awayTeamId, id: { $ne: id }
+    }, { id: 1, startDate: 1, startTimeTbd: 1, status: 1, homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1, neutralSite: 1, _id: 0 }).lean(), now) : null;
 
     // The week to rank against: the game's own once it is played; before
     // that, the season's current week — the SAME rule the team page uses,
@@ -112,7 +118,7 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
     // A game still to play gets a PREVIEW: both teams' résumés from their
     // own team pages, earlier meetings, and a pregame win probability.
     let preview = null;
-    if (!final) {
+    if (!final && !replaced) {
         const [homeTeam, awayTeam] = await Promise.all([
             byId.has(homeId) ? teamPage.build(homeId, { season: yr }) : null,
             byId.has(awayId) ? teamPage.build(awayId, { season: yr }) : null
@@ -170,6 +176,7 @@ async function build(gameId, { league = null, viewerId = null } = {}) {
         home: side(homeId, awayId, homeRec, homeOwner, game.homePoints),
         away: side(awayId, homeId, awayRec, awayOwner, game.awayPoints),
         quadrantValues: values,
+        rescheduled: replaced ? { id: replaced.id, startDate: replaced.startDate, startTimeTbd: !!replaced.startTimeTbd } : null,
         box: boxed || null,
         preview
     };

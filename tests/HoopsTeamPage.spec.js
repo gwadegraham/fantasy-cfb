@@ -227,6 +227,17 @@ describe('build', () => {
         expect((await teamPage.build(1, { season: SEASON, league: LEAGUE })).owner).toBeNull();
     });
 
+    test('a rescheduled game\'s stale listing drops off the schedule once the real one is final (#498)', async () => {
+        await HoopsGame.create([
+            game(10, 1, 1, 3),                                                        // played
+            game(11, 1, 1, 3, { status: 'scheduled', homePoints: null, awayPoints: null,
+                startDate: new Date(Date.UTC(2026, 10, 11)) }),                       // old listing, never tips
+            game(12, 9, 1, 2, { status: 'scheduled', homePoints: null, awayPoints: null })   // a real game to come
+        ]);
+        const p = await teamPage.build(1, { season: SEASON, now: Date.UTC(2026, 10, 30) });
+        expect(p.games.map(x => x.id)).toEqual([10, 12]);
+    });
+
     test('unknown team, or no season: null', async () => {
         expect(await teamPage.build(999, { season: SEASON })).toBeNull();
         expect(await teamPage.build(1, {})).toBeNull();
