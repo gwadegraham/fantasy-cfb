@@ -4,11 +4,14 @@
 // Four CBBD calls a night, and only while there is something to refresh:
 // skipped silently with no basketball league, and with no game gone final
 // in the last three days — so the off-season and the gap before November
-// cost nothing. Same shape and the same JobRun habits as hoops-scores-job.
+// cost nothing. Plus one for TV listings (modules/hoops-media.js), gated on
+// its own: a game in the window, so the opener's channel is known before
+// anything has gone final. Same shape and the same JobRun habits as hoops-scores-job.
 
 const jobLogger = require('./job-logger');
 const hoopsStats = require('./hoops-stats');
 const boxScore = require('./hoops-box-score');
+const hoopsMedia = require('./hoops-media');
 const { basketballLeagues, LOOKBACK_MS } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 
@@ -26,6 +29,16 @@ async function run({ now = new Date() } = {}) {
     const done = [];
     let failed = null;
     for (const season of years) {
+        // TV listings first, with their own try and their own gate. A quiet
+        // window adds nothing to the summary, so the off-season stays silent.
+        try {
+            const tv = await hoopsMedia.ingestWindow(season, { now: now.getTime() });
+            if (tv.capped) failed = 'media window hit the 3000-row cap';
+            if (!tv.skippedReason) done.push(`${season} tv: ${tv.stored}/${tv.games} stored${tv.capped ? ' (HIT THE 3000-ROW CAP)' : ''}`);
+        } catch (err) {
+            failed = String((err && err.message) || err);
+            done.push(`${season} tv: FAILED ${failed}`);
+        }
         const recent = await HoopsGame.exists({ season, status: 'final', startDate: { $gte: since } });
         if (!recent) continue;
         try {

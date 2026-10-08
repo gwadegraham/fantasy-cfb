@@ -119,7 +119,12 @@ const hoopsGameSchema = new mongoose.Schema({
     venueId: { type: Number },
     venue: { type: String },
     city: { type: String },
-    state: { type: String }
+    state: { type: String },
+
+    // Where it is on, from CBBD /games/media (modules/hoops-media.js), e.g.
+    // [{ name: 'ESPN2', type: 'TV' }, { name: 'ESPN+', type: 'Streaming' }].
+    // Absent until the nightly window first reaches the game.
+    broadcasts: { type: [new mongoose.Schema({ name: String, type: { type: String } }, { _id: false })], default: undefined }
 }, { collection: 'hoopsgames' });
 
 // The two reads the ingest and every surface will do: a night's slate, and one

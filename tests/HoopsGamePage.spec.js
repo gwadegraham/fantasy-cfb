@@ -10,6 +10,7 @@ const express = require('express');
 const request = require('supertest');
 const { useMongo } = require('./helpers/mongo');
 const boxScore = require('../modules/hoops-box-score');
+const hoopsMedia = require('../modules/hoops-media');
 const gamePage = require('../modules/hoops-game-page');
 const teamPage = require('../modules/hoops-team-page');
 const cbbd = require('../modules/cbbd-client');
@@ -167,6 +168,59 @@ describe('ingestRecent (the nightly batch)', () => {
         expect(await boxScore.getBox(500)).toBeNull();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });
         expect((await boxScore.getBox(500)).home.points).toBe(75);
+        expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('TV listings (modules/hoops-media.js)', () => {
+    const media = (gameId, broadcasts) => ({ gameId, startDate: '2026-11-18T00:30:00.000Z', broadcasts });
+
+    test('ONE call for the whole window, by season and dates; outlets land on the right game and nothing else moves', async () => {
+        await HoopsGame.create([GAME, Object.assign({}, GAME, { id: 501, startDate: new Date(Date.UTC(2026, 10, 22)) })]);
+        const get = jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: [
+            media(500, [{ broadcastName: 'ESPN2', broadcastType: 'TV' }, { broadcastName: 'ESPN+', broadcastType: 'Streaming' }]),
+            media(999, [{ broadcastName: 'FOX', broadcastType: 'TV' }])            // not stored here: never created
+        ], remainingCalls: 29000 });
+        const before = await HoopsGame.findOne({ id: 500 }).lean();
+        const out = await hoopsMedia.ingestWindow(SEASON, { now: NOW });
+        expect(out).toMatchObject({ season: SEASON, games: 2, stored: 1, capped: false, remainingCalls: 29000 });
+        expect(get).toHaveBeenCalledTimes(1);
+        // Three days back through a week ahead; the end is the day AFTER (the midnight trap).
+        expect(get).toHaveBeenCalledWith('/games/media', { season: SEASON, startDateRange: '2026-11-17', endDateRange: '2026-11-28' });
+        const after = await HoopsGame.findOne({ id: 500 }).lean();
+        expect(after.broadcasts).toEqual([{ name: 'ESPN2', type: 'TV' }, { name: 'ESPN+', type: 'Streaming' }]);
+        const { broadcasts, ...rest } = after;
+        expect(rest).toEqual(before);
+        expect((await HoopsGame.findOne({ id: 501 }).lean()).broadcasts).toBeUndefined();
+        expect(await HoopsGame.countDocuments({})).toBe(2);
+    });
+
+    test('nothing stored in the window: no call at all, so the off-season is free', async () => {
+        await HoopsGame.create(Object.assign({}, GAME, { startDate: new Date(Date.UTC(2026, 9, 1)) }));
+        const get = jest.spyOn(cbbd, 'cbbdGet');
+        expect(await hoopsMedia.ingestWindow(SEASON, { now: NOW })).toMatchObject({ skippedReason: 'nothing scheduled' });
+        expect(get).not.toHaveBeenCalled();
+    });
+
+    test('a response at the row cap says so', async () => {
+        await HoopsGame.create(GAME);
+        jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: Array.from({ length: cbbd.PAGE_CAP }, (_, i) => media(10000 + i, [])) });
+        expect((await hoopsMedia.ingestWindow(SEASON, { now: NOW })).capped).toBe(true);
+    });
+
+    test('outlets: TV over streaming, streaming over nothing, never radio', () => {
+        const b = (name, type) => ({ name, type });
+        expect(hoopsMedia.outlets([b('ERADM', 'Radio'), b('ESPN', 'TV'), b('ESPN+', 'Streaming')])).toBe('ESPN');
+        expect(hoopsMedia.outlets([b('ACC Network', 'TV'), b('ESPN2', 'TV'), b('ESPN2', 'TV')])).toBe('ACC Network / ESPN2');
+        expect(hoopsMedia.outlets([b('ESPN+', 'Streaming'), b('ERADM', 'Radio')])).toBe('ESPN+');
+        expect(hoopsMedia.outlets([b('ERADM', 'Radio')])).toBeNull();
+        expect(hoopsMedia.outlets(undefined)).toBeNull();
+    });
+
+    test('the page payload carries it, and the page still never calls CBBD', async () => {
+        await HoopsGame.create(Object.assign({}, GAME, { broadcasts: [{ name: 'ESPN2', type: 'TV' }] }));
+        const get = jest.spyOn(cbbd, 'cbbdGet');
+        expect((await gamePage.build(500)).game.tv).toBe('ESPN2');
         expect(get).not.toHaveBeenCalled();
     });
 });

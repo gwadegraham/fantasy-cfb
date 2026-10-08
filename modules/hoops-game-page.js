@@ -15,6 +15,7 @@ const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { pickLogo } = require('../public/logo.js');
 const { homeWinProb } = require('./hoops-win-prob');
 const stale = require('./hoops-stale-duplicates');
+const { outlets } = require('./hoops-media');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -171,7 +172,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             tournament: postseason ? (String(game.tournament || '').trim() || 'Postseason') : null,
             notes: game.gameNotes || null, neutralSite: !!game.neutralSite,
             conferenceGame: !!game.conferenceGame && !teamPage.isConfTournament(game),
-            venue: game.venue || null, city: game.city || null, state: game.state || null
+            venue: game.venue || null, city: game.city || null, state: game.state || null,
+            tv: outlets(game.broadcasts)
         },
         home: side(homeId, awayId, homeRec, homeOwner, game.homePoints),
         away: side(awayId, homeId, awayRec, awayOwner, game.awayPoints),

@@ -116,6 +116,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // TV listings for the game page (#506). ONE billable call a night;
+        // the branch that matters is the one that declines to call.
+        "./modules/hoops-media.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-game-page.js": {
             statements: 97,
             branches: 80,
