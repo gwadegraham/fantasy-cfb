@@ -927,7 +927,14 @@
             if (isFinal) html += oddsHtml;
 
             container.innerHTML = html;
-            gdMarkScore(game, awayColor, homeColor);
+            // Motion is decoration. A throw here would skip the chart wiring
+            // and the plays fetch below, and on first load show "Could not
+            // load game", so it is contained, as the scoreboard's is.
+            try {
+                gdMarkScore(game, awayColor, homeColor);
+            } catch (err) {
+                console.error('Score motion failed:', err);
+            }
 
             // Season Leaders names get whatever width is left after the stat
             // columns; shorten only the ones that would clip. Shared with the
@@ -1062,23 +1069,21 @@
             return fresh;
         }
 
+        var gdLastStamp = null;      // { side, label, score }: see pickStamp
+
+        // Over the field only. Without one (the plays feed paused, or the
+        // tick a game goes final) the header would be the only host, and a
+        // stamp there sits on top of the score that is counting up beneath it.
         function gdStampScore(fresh) {
             var lm = window.ccLiveMotion;
             if (!lm || !fresh || !fresh.length || !gdTeamCtx) return;
-            var latest = null;
-            for (var i = gdPlays.length - 1; i >= 0; i--) {
-                if (gdPlays[i].scoring) { latest = gdPlays[i]; break; }
-            }
-            if (!latest || fresh.indexOf(lm.playKey(latest)) === -1) return;
-            var label = lm.stampLabel(latest);
-            if (!label) return;
-            var who = latest.scoringTeamId != null ? latest.scoringTeamId : latest.teamId;
-            var side = who === gdTeamCtx.home.id ? gdTeamCtx.home
-                     : (who === gdTeamCtx.away.id ? gdTeamCtx.away : null);
-            var host = container.querySelector('.gd-lf-section') || container.querySelector('.gd-header');
-            var field = host && host.classList.contains('gd-lf-section');
-            lm.stamp(host, label,
-                side ? ensureBarContrast(side.color) : null, field ? GD_BALL_MS : 0);
+            var host = container.querySelector('.gd-lf-section');
+            if (!host) return;
+            var pick = lm.pickStamp(gdPlays, fresh, gdLastStamp);
+            if (!pick) return;
+            gdLastStamp = { side: pick.side, label: pick.label, score: pick.score };
+            var team = pick.side ? gdTeamCtx[pick.side] : null;
+            lm.stamp(host, pick.label, team ? ensureBarContrast(team.color) : null, GD_BALL_MS);
         }
 
         function gdPlayTabs() {

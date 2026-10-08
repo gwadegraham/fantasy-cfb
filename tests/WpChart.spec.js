@@ -715,6 +715,26 @@ describe('drawing the new stretch', () => {
         }
     });
 
+    // rAF stops entirely in a hidden tab; the line must not stay clipped.
+    it('finishes the draw on a timer when animation frames never run', () => {
+        // Fake timers first: they install their own requestAnimationFrame, which
+        // would quietly run the frames this test means to withhold.
+        jest.useFakeTimers();
+        const raf = window.requestAnimationFrame;
+        window.requestAnimationFrame = () => 0;
+        try {
+            paint(2);
+            const lines = paint(3);
+            expect(clipped(lines).length).toBeGreaterThan(0);
+            jest.advanceTimersByTime(1300);
+            expect(clipped(lines)).toHaveLength(0);
+            expect(document.querySelector('#gd-wp-reveal')).toBeNull();
+        } finally {
+            window.requestAnimationFrame = raf;
+            jest.useRealTimers();
+        }
+    });
+
     it('skips the draw under prefers-reduced-motion', () => {
         paint(2);
         reduce = true;

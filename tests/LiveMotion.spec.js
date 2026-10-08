@@ -120,6 +120,68 @@ describe('stampLabel', () => {
     });
 });
 
+describe('pickStamp', () => {
+    // Shaped like modules/play-by-play.js output.
+    const row = (clock, over = {}) => Object.assign({
+        driveIndex: 3, period: 2, clock, playType: 'Rush', playText: 'run for 4 yds',
+        awayScore: 7, homeScore: 7, scoring: false, scoringSide: null
+    }, over);
+    const td = (clock, home, over = {}) => row(clock, Object.assign({
+        playType: 'Rushing Touchdown', playText: 'run for 3 yds for a TD',
+        homeScore: home, scoring: true, scoringSide: 'home'
+    }, over));
+    const keys = (...rows) => rows.map(lm.playKey);
+
+    it('stamps a fresh touchdown with its side and score', () => {
+        const t = td('4:10', 14);
+        const pick = lm.pickStamp([row('5:00'), t], keys(t), null);
+        expect(pick).toMatchObject({ label: 'Touchdown', side: 'home', score: 14 });
+    });
+
+    it('stamps nothing when the newest score is history', () => {
+        const old = td('9:00', 14);
+        const run = row('4:10', { homeScore: 14 });
+        expect(lm.pickStamp([old, run], keys(run), null)).toBeNull();
+    });
+
+    // A score credited to a play that doesn't describe one (CFBD misfiling)
+    // is skipped, and the scan goes on to the fresh play that does.
+    it('looks past a fresh score that does not describe itself', () => {
+        const t = td('4:10', 14);
+        const misfiled = row('3:58', { playType: 'Kickoff', playText: 'kickoff 65 yds', homeScore: 17, scoring: true, scoringSide: 'home' });
+        expect(lm.pickStamp([t, misfiled], keys(t, misfiled), null)).toMatchObject({ label: 'Touchdown', score: 14 });
+    });
+
+    // CFBD revising an OLD touchdown's row re-keys it, so it reads as fresh
+    // behind a newer score the reader has already seen. That old score must
+    // not be stamped again.
+    it('stops at the first score that is not fresh, even if an older one is', () => {
+        const oldRevised = td('9:00', 14);
+        const newer = td('2:00', 14, { awayScore: 14, scoringSide: 'away', homeScore: 14 });
+        expect(lm.pickStamp([oldRevised, newer], keys(oldRevised), null)).toBeNull();
+    });
+
+    it('does not stamp the same touchdown twice when CFBD revises 6 to 7', () => {
+        const first = td('4:10', 13);
+        const pick = lm.pickStamp([first], keys(first), null);
+        expect(pick).toMatchObject({ score: 13 });
+        const revised = td('4:10', 14);                      // new key: the score is part of it
+        expect(lm.pickStamp([revised], keys(revised), pick)).toBeNull();
+    });
+
+    it('does stamp the same team\'s next touchdown', () => {
+        const last = { side: 'home', label: 'Touchdown', score: 14 };
+        const next = td('1:02', 21);
+        expect(lm.pickStamp([next], keys(next), last)).toMatchObject({ score: 21 });
+    });
+
+    it('stamps the other team even at a close score', () => {
+        const last = { side: 'home', label: 'Touchdown', score: 14 };
+        const away = td('1:02', 14, { awayScore: 14, scoringSide: 'away' });
+        expect(lm.pickStamp([away], keys(away), last)).toMatchObject({ side: 'away', score: 14 });
+    });
+});
+
 describe('DOM helpers', () => {
     let reduce;
     beforeEach(() => {
@@ -166,6 +228,16 @@ describe('DOM helpers', () => {
         expect(el.style.getPropertyValue('--lm-color')).toBe('red');
         el.dispatchEvent(new Event('animationend'));
         expect(el.classList.contains('flash')).toBe(false);
+    });
+
+    // The scoreboard's score pops on a child and its row tint runs on the row;
+    // the child's shorter animation must not end the row's early.
+    it('pulse ignores animationend from a child', () => {
+        document.body.innerHTML = '<div class="row"><span class="score">21</span></div>';
+        const el = document.querySelector('.row');
+        lm.pulse(el, 'sb-scored');
+        el.querySelector('.score').dispatchEvent(new Event('animationend', { bubbles: true }));
+        expect(el.classList.contains('sb-scored')).toBe(true);
     });
 
     it('stamp lays the word over the host after the delay, then removes itself', () => {

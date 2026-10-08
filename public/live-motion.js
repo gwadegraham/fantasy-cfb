@@ -103,6 +103,42 @@
         return null;
     }
 
+    // Which score, if any, a fetch should stamp. `plays` is the shaped feed in
+    // order, `fresh` the keys that arrived on this fetch, `last` the previous
+    // stamp ({ side, label, score }) or null. Returns the same shape, or null.
+    //
+    // The newest FRESH scoring play that describes its score wins. Scanning
+    // stops at the first scoring play that isn't fresh: everything before it
+    // is history the reader has already seen.
+    //
+    // The `last` check is for CFBD rewriting a row it already sent. A
+    // touchdown first stored at 6 and revised to 7 when the kick is counted
+    // gets a new key (the score is part of it), so it arrives "fresh" a second
+    // time. Same side, same word, and the side's score moved by less than a
+    // field goal since the last stamp means it's the same score being
+    // corrected, not a new one.
+    function pickStamp(plays, fresh, last) {
+        var isFresh = {};
+        (fresh || []).forEach(function (k) { isFresh[k] = true; });
+        var list = plays || [];
+        for (var i = list.length - 1; i >= 0; i--) {
+            var p = list[i];
+            if (!p || !p.scoring) continue;
+            if (!isFresh[playKey(p)]) return null;
+            var label = stampLabel(p);
+            if (!label) continue;
+            var side = p.scoringSide === 'home' || p.scoringSide === 'away' ? p.scoringSide : null;
+            var score = side === 'home' ? p.homeScore : (side === 'away' ? p.awayScore : null);
+            if (last && side && last.side === side && last.label === label
+                && typeof score === 'number' && typeof last.score === 'number'
+                && score >= last.score && score - last.score < 3) {
+                return null;
+            }
+            return { play: p, label: label, side: side, score: score };
+        }
+        return null;
+    }
+
     // ---- DOM -----------------------------------------------------------
 
     function reduced() {
@@ -194,6 +230,7 @@
         playKey: playKey,
         freshPlays: freshPlays,
         stampLabel: stampLabel,
+        pickStamp: pickStamp,
         reduced: reduced,
         countTo: countTo,
         pulse: pulse,
