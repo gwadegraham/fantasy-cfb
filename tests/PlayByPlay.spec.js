@@ -1,6 +1,6 @@
 const {
     buildPlayByPlay, buildDriveChart, groupByPeriod, scoringPlays,
-    isScoringPlay, classifyScore, sideTeamIds, periodLabel, driveSummary,
+    isScoringPlay, classifyScore, describedScore, sideTeamIds, periodLabel, driveSummary,
     cleanPlayText, driveOutcome, driveFieldSpan, driveLabel,
     playResult, playResultLabel
 } = require('../modules/play-by-play');
@@ -129,6 +129,129 @@ describe('corrupt score rows', () => {
         const flagged = scoringPlays(buildPlayByPlay(payload));
         expect(flagged).toHaveLength(10);
         expect(flagged.map(p => p.points)).toEqual([3, 3, 7, 7, 7, 7, 7, 6, 7, 7]);
+    });
+});
+
+// Real rows from the dev database (8 Oct 2026), not hand-built ones: every past
+// bug in this module passed synthetic fixtures, because they assumed the one
+// row shape that works. Each case is a window of a stored game's feed; see
+// `note` in the fixture for what CFBD got wrong.
+const MISFILED = require('./fixtures/live-plays-misfiled-scores.json');
+
+// A window starts mid-game, and the shaper rightly rejects a feed that opens
+// mid-game. So walk the score up to the window's opening total first, in steps
+// the arithmetic accepts; these rows only establish the baseline.
+function leadIn(home, away) {
+    const rows = [];
+    let h = 0, a = 0;
+    while (h < home || a < away) {
+        if (h < home) h = Math.min(home, h + 7); else a = Math.min(away, a + 7);
+        rows.push({ period: 0, playType: 'Lead-in', playText: 'baseline', homeScore: h, awayScore: a });
+    }
+    return rows;
+}
+
+// Shape a fixture window, and return the window's rows with their feed row
+// numbers, so a test can say "row 34" exactly as the measurement did.
+function shapeWindow(win) {
+    const first = win.plays[0];
+    const lead = leadIn(first.homeScore, first.awayScore);
+    const out = buildPlayByPlay({ teams: win.teams, drives: [{ plays: [...lead, ...win.plays] }] });
+    const rows = {};
+    out.slice(lead.length).forEach((r, k) => { rows[win.firstRow + k] = r; });
+    return rows;
+}
+
+function scoringRowNumbers(rows) {
+    return Object.keys(rows).filter(n => rows[n].scoring).map(Number);
+}
+
+describe('misfiled scores, from real CFBD rows', () => {
+    it('credits the touchdown, not the fumble, in Kentucky at South Carolina', () => {
+        // The bug report: CFBD filed SC's 14 on a fumble out of bounds, then
+        // reverted, then reached 14 again on the touchdown, which was read as
+        // 'same' and never shown as a score.
+        const rows = shapeWindow(MISFILED.earlyReverted);
+        expect(rows[32].playType).toBe('Fumble');
+        expect(rows[34].playType).toBe('Rushing Touchdown');
+        expect(scoringRowNumbers(rows)).toEqual([34]);
+        expect(rows[34]).toMatchObject({ scoringSide: 'home', points: 7, homeScore: 14, awayScore: 0 });
+        expect(rows[32]).toMatchObject({ scoringSide: null, scoringTeamId: null, points: null });
+    });
+
+    it('waits through a long gap for the play that reaches the total', () => {
+        // Miami (OH) at Cincinnati: fourteen rows between the stamp and the
+        // touchdown, including a missed field goal that must not take a 7.
+        const rows = shapeWindow(MISFILED.earlyRevertedLongGap);
+        expect(rows[134].playType).toBe('Rush');
+        expect(rows[148].playType).toBe('Passing Touchdown');
+        expect(scoringRowNumbers(rows)).toEqual([148]);
+        expect(rows[148]).toMatchObject({ scoringSide: 'home', points: 7 });
+    });
+
+    it('moves a score filed one row early onto the touchdown that follows', () => {
+        // Miami (OH) at Pittsburgh: no revert at all — the catch and the
+        // touchdown both carry 59. The touchdown is typed 'Pass Reception', so
+        // only its text says it scored.
+        const rows = shapeWindow(MISFILED.earlyAdjacent);
+        expect(rows[152].playType).toBe('Pass Reception');
+        expect(scoringRowNumbers(rows)).toEqual([152]);
+        expect(rows[152]).toMatchObject({ scoringSide: 'home', points: 7, homeScore: 59 });
+    });
+
+    it('moves a score that landed on the kickoff back to the touchdown', () => {
+        // South Florida at Army: the touchdown row carries a corrupt 14-18 and
+        // is rejected, so its 7 surfaced on the kickoff. The card prints the
+        // credited row's score, so it gets the real total, not the corrupt one.
+        const rows = shapeWindow(MISFILED.late);
+        expect(rows[84].playType).toBe('Kickoff');
+        expect(scoringRowNumbers(rows)).toEqual([83]);
+        expect(rows[83]).toMatchObject({ scoringSide: 'away', points: 7, awayScore: 14, homeScore: 14 });
+    });
+
+    it('does not hand a 7-point score to a field goal', () => {
+        // No stored game has this, so it is spliced from two real ones: the
+        // Kentucky window with its touchdown row swapped for Wake Forest's real
+        // field-goal row at the same total. A field goal can't be the 7, so the
+        // credit stays put rather than landing on a play that can't explain it.
+        const fg = MISFILED.unexplained.plays.find(p => p.playType === 'Field Goal Good');
+        const win = { ...MISFILED.earlyReverted, plays: MISFILED.earlyReverted.plays.slice() };
+        win.plays[5] = { ...fg, homeScore: 14, awayScore: 0 };
+        const rows = shapeWindow(win);
+        expect(scoringRowNumbers(rows)).toEqual([32]);
+    });
+
+    it('leaves a score no row accounts for where CFBD put it', () => {
+        // Miami at Wake Forest: a field goal, a revert, then another 3 on the
+        // End Period row. No later row describes a field goal at 27, so moving
+        // it would be a guess; it stays, and nothing is created or lost.
+        const rows = shapeWindow(MISFILED.unexplained);
+        expect(scoringRowNumbers(rows)).toEqual([83, 85]);
+        expect(rows[85].playType).toBe('End Period');
+    });
+
+    it('never changes how many points a game scored', () => {
+        // Moving credit must relocate a score, never create or drop one.
+        const total = win => Object.values(shapeWindow(win)).reduce((s, r) => s + (r.points || 0), 0);
+        expect(total(MISFILED.earlyReverted)).toBe(7);
+        expect(total(MISFILED.earlyRevertedLongGap)).toBe(7);
+        expect(total(MISFILED.earlyAdjacent)).toBe(7);
+        expect(total(MISFILED.late)).toBe(7);
+        expect(total(MISFILED.unexplained)).toBe(6);
+    });
+});
+
+describe('describedScore', () => {
+    it('reads a score from the play type or, failing that, the text', () => {
+        expect(describedScore({ playType: 'Rushing Touchdown' })).toEqual({ min: 6, max: 8 });
+        expect(describedScore({ playType: 'Field Goal Good', playText: 'Jake Weinberg 27 Yd Field Goal' })).toEqual({ min: 3, max: 3 });
+        expect(describedScore(MISFILED.earlyAdjacent.plays[2])).toEqual({ min: 6, max: 8 });
+    });
+
+    it('ignores a touchdown that did not count and a field goal that missed', () => {
+        expect(describedScore(MISFILED.nullified.plays[0])).toBeNull();
+        expect(describedScore({ playType: 'Field Goal Missed', playText: '#38 K.McLaughlin field goal attempt from 45 yards NO GOOD' })).toBeNull();
+        expect(describedScore({ playType: 'Fumble', playText: MISFILED.earlyReverted.plays[3].playText })).toBeNull();
     });
 });
 

@@ -1,0 +1,512 @@
+{
+ "earlyReverted": {
+  "gameId": 401856709,
+  "game": "Kentucky at South Carolina",
+  "note": "Fumble on row 32 carries SC 14, row 33 reverts to 7, Rushing Touchdown on row 34 reaches 14",
+  "firstRow": 29,
+  "teams": [
+   {
+    "teamId": 2579,
+    "team": "South Carolina",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 96,
+    "team": "Kentucky",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 1,
+    "clock": "4:08",
+    "teamId": 96,
+    "team": "Kentucky",
+    "playType": "Punt Return",
+    "playText": "(04:15) #48 T.O'Hara punt 49 yards to the USC33 #4 V.Swain return 1 yard to the USC34, End Of Play",
+    "homeScore": 7,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "3:53",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Pass Reception",
+    "playText": "(04:06) Shotgun #16 L.Sellers pass complete deep right to #83 D.Black caught at UKY42, for 32 yards to the UKY34 (#24 J.Smith), 1ST DOWN",
+    "homeScore": 7,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "3:32",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Rush",
+    "playText": "(03:42) No Huddle-Shotgun #16 L.Sellers rush middle for 4 yards gain to the UKY30 (#91 J.Williams)",
+    "homeScore": 7,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "3:13",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Fumble",
+    "playText": "(03:13) No Huddle-Shotgun #16 L.Sellers rush right for 9 yards gain to the UKY21 fumbled by #16 L.Sellers at UKY19, out of bounds at UKY21, 1ST DOWN",
+    "homeScore": 14,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "2:28",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Rush",
+    "playText": "(02:34) No Huddle-Shotgun #21 J.Coleman rush left for 17 yards gain to the UKY04 (#94 T.Gadson; #24 J.Smith), 1ST DOWN",
+    "homeScore": 7,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "2:09",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Rushing Touchdown",
+    "playText": "(02:12) No Huddle-Shotgun #21 J.Coleman rush left for 4 yards gain to the UKY00 TOUCHDOWN, clock 02:09 #32 M.Orsan kick attempt good (H: #24 M.Love, LS: #57 K.Farrow)",
+    "homeScore": 14,
+    "awayScore": 0
+   },
+   {
+    "period": 1,
+    "clock": "2:03",
+    "teamId": 2579,
+    "team": "South Carolina",
+    "playType": "Kickoff",
+    "playText": "(02:09) #14 M.Kelley kickoff 59 yards to the UKY06 #5 J.Ferguson return 16 yards to the UKY22 (#24 K.Britt; #83 D.Black)",
+    "homeScore": 14,
+    "awayScore": 0
+   }
+  ]
+ },
+ "earlyRevertedLongGap": {
+  "gameId": 401856797,
+  "game": "Miami (OH) at Cincinnati",
+  "note": "Rush on row 134 carries Cincinnati 28, row 135 reverts to 21, Passing Touchdown 14 rows later reaches 28",
+  "firstRow": 133,
+  "teams": [
+   {
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 4,
+    "clock": "12:50",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Fumble Recovery (Own)",
+    "playText": "(12:55) Shotgun #4 J.French IV sacked for loss of 6 yards to the CIN41 (#43 G.Lyons), fumble by #4 J.French IV recovered by MIA #92 R.Andrews at CIN41, End Of Play",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "12:49",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Rush",
+    "playText": "(12:49) No Huddle-Shotgun #0 R.Nelson rush middle for 1 yard gain to the CIN40 (#18 J.Beeler) PENALTY CIN UNS: Unsportsmanlike Conduct (#9 D.Wilson) 15 yards from CIN40 to CIN25, 1ST DOWN",
+    "homeScore": 28,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "12:23",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Sack",
+    "playText": "(12:28) Shotgun #9 D.Jones sacked for loss of 12 yards to the CIN37 (#95 J.Hough)",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "11:34",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Pass Incompletion",
+    "playText": "(11:43) Shotgun #16 D.McComb pass incomplete deep right to #15 C.Ross thrown to CIN04 QB hurried by #95 J.Hough",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "11:34",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Timeout",
+    "playText": "Timeout Miami (OH), clock 11:34",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "11:28",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Pass Reception",
+    "playText": "(11:33) Shotgun #9 D.Jones pass complete short left to #9 D.Jones caught at CIN37, for 10 yards to the CIN27 (#8 K.Worthy), out of bounds",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "10:50",
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "playType": "Field Goal Missed",
+    "playText": "(10:53) #38 K.McLaughlin field goal attempt from 45 yards NO GOOD (H: #34 P.Stainton, LS: #60 T.Wallman), clock 10:50",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "10:46",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Rush",
+    "playText": "(10:49) Shotgun #3 C.Tabb rush middle for 3 yards gain to the CIN30 (#15 B.Myrick)",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "10:16",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Pass Reception",
+    "playText": "(10:25) No Huddle-Shotgun #4 J.French IV pass complete short middle to #11 J.Gibson caught at CIN48, for 21 yards to the MIA49 (#12 K.Martin), 1ST DOWN",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "9:52",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Pass Reception",
+    "playText": "(10:00) No Huddle-Shotgun #4 J.French IV pass complete short middle to #3 C.Tabb caught at MIA45, for 14 yards to the MIA35 (#21 T.Coleman Jr.), 1ST DOWN",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "9:08",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Pass Reception",
+    "playText": "(09:18) No Huddle-Shotgun #4 J.French IV pass complete short right to #0 I.Johnson caught at MIA30, for 5 yards to the MIA30, End Of Play",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "8:41",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Rush",
+    "playText": "(08:49) No Huddle-Shotgun #4 J.French IV rush middle for 2 yards gain to the MIA28 (#92 R.Andrews)",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "8:05",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Rush",
+    "playText": "(08:11) No Huddle-Shotgun #6 G.Payne rush right for 3 yards gain to the MIA25 (#43 G.Lyons; #11 B.Uihlein), 1ST DOWN",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "7:39",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Rush",
+    "playText": "(07:45) No Huddle-Shotgun #6 G.Payne rush right for 8 yards gain to the MIA17 (#11 B.Uihlein)",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "7:01",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Rush",
+    "playText": "(07:08) No Huddle-Shotgun #4 J.French IV rush left for 11 yards gain to the MIA06 (#12 K.Martin), 1ST DOWN",
+    "homeScore": 21,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "6:20",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Passing Touchdown",
+    "playText": "(06:23) No Huddle-Shotgun #4 J.French IV pass complete short right to #11 J.Gibson caught at MIA00, for 6 yards to the MIA00 TOUCHDOWN, clock 06:20 #99 S.Rusnak kick attempt good (H: #31 M.Fletcher, LS: #48 E.Stein)",
+    "homeScore": 28,
+    "awayScore": 31
+   },
+   {
+    "period": 4,
+    "clock": "6:20",
+    "teamId": 2132,
+    "team": "Cincinnati",
+    "playType": "Kickoff",
+    "playText": "(06:20) #99 S.Rusnak kickoff 65 yards to the MIA00, Touchback",
+    "homeScore": 28,
+    "awayScore": 31
+   }
+  ]
+ },
+ "earlyAdjacent": {
+  "gameId": 401858207,
+  "game": "Miami (OH) at Pittsburgh",
+  "note": "22-yard catch on row 151 carries Pitt 59, touchdown pass on row 152 carries 59 too",
+  "firstRow": 150,
+  "teams": [
+   {
+    "teamId": 221,
+    "team": "Pittsburgh",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 193,
+    "team": "Miami (OH)",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 4,
+    "clock": "10:58",
+    "teamId": 221,
+    "team": "Pittsburgh",
+    "playType": "Rush",
+    "playText": "(11:04) Shotgun #11 L.Wright rush middle for 8 yards gain to the Miami37 (#2 J.Pons; #6 J.Agee), 1ST DOWN",
+    "homeScore": 52,
+    "awayScore": 14
+   },
+   {
+    "period": 4,
+    "clock": "10:30",
+    "teamId": 221,
+    "team": "Pittsburgh",
+    "playType": "Pass Reception",
+    "playText": "(10:30) Shotgun #6 M.Heintschel pass complete deep middle to #3 C.Hicks caught at Miami16, for 22 yards to the Miami15 (#2 J.Pons; #21 T.Coleman Jr.), 1ST DOWN",
+    "homeScore": 59,
+    "awayScore": 14
+   },
+   {
+    "period": 4,
+    "clock": "9:48",
+    "teamId": 221,
+    "team": "Pittsburgh",
+    "playType": "Pass Reception",
+    "playText": "(09:48) Shotgun #6 M.Heintschel pass complete short left to #26 D.Ferguson Jr. caught at Miami10, for 15 yards to the Miami00 TOUCHDOWN, clock 09:48, 1ST DOWN #91 S.Hunsaker kick attempt good (H: #92 K.Tijerina, LS: #59 J.Schmidt)",
+    "homeScore": 59,
+    "awayScore": 14
+   },
+   {
+    "period": 4,
+    "clock": "9:48",
+    "teamId": 221,
+    "team": "Pittsburgh",
+    "playType": "Kickoff",
+    "playText": "(09:48) #91 S.Hunsaker kickoff 65 yards to the Miami00, Touchback",
+    "homeScore": 59,
+    "awayScore": 14
+   }
+  ]
+ },
+ "late": {
+  "gameId": 401862702,
+  "game": "South Florida at Army",
+  "note": "Rushing Touchdown on row 83 carries corrupt 14-18, its 7 land on the kickoff (row 84)",
+  "firstRow": 82,
+  "teams": [
+   {
+    "teamId": 349,
+    "team": "Army",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 58,
+    "team": "South Florida",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 3,
+    "clock": "9:04",
+    "teamId": 58,
+    "team": "South Florida",
+    "playType": "Penalty",
+    "playText": "(09:04) Shotgun #3 M.Van Buren Jr. pass incomplete short middle to #0 C.Seldon thrown to Army19 PENALTY Army Pass Interference (#13 C.Williams) 8 yards from Army26 to Army18, 1ST DOWN. NO PLAY",
+    "homeScore": 14,
+    "awayScore": 7
+   },
+   {
+    "period": 3,
+    "clock": "8:59",
+    "teamId": 58,
+    "team": "South Florida",
+    "playType": "Rushing Touchdown",
+    "playText": "(09:03) Shotgun #3 M.Van Buren Jr. rush middle for 18 yards gain to the Army00 TOUCHDOWN, clock 08:59, 1ST DOWN #7 N.Gramatica kick attempt good (H: #39 L.Goater, LS: #49 E.Bonnett) (08:59) #37 L.Thorn kickoff 65 yards to the Army00 fair catch by #27 S.Howard at Army00 (08:57) #7 G.Nwawuihe rush right for 6 yards gain to the Army31 (#2 T.Ward) (08:24) Shotgun #7 G.Nwawuihe rush middle for 5 yards gain to the Army36 (#1 C.Hicks; #56 T.Simmons Jr.), 1ST DOWN, PENALTY Army UNR: Unnecessary Roughness (#84 B.Anderson) 15 yards from Army36 to Army21 (08:07) Shotgun #27 S.Howard rush right for 3 yards gain to the Army24 (#33 A.Mosley), out of bounds (07:20) Shotgun #7 G.Nwawuihe rush middle for 3 yards gain to the Army27 (#7 S.Robinson; #28 R.Jenkins) (06:36) Shotgun #3 C.Hellums rush left for 1",
+    "homeScore": 18,
+    "awayScore": 14
+   },
+   {
+    "period": 3,
+    "clock": "8:59",
+    "teamId": 58,
+    "team": "South Florida",
+    "playType": "Kickoff",
+    "playText": "(08:59) #37 L.Thorn kickoff 65 yards to the Army00 fair catch by #27 S.Howard at Army00",
+    "homeScore": 14,
+    "awayScore": 14
+   },
+   {
+    "period": 3,
+    "clock": "8:51",
+    "teamId": 349,
+    "team": "Army",
+    "playType": "Rush",
+    "playText": "(08:57) #7 G.Nwawuihe rush right for 6 yards gain to the Army31 (#2 T.Ward)",
+    "homeScore": 14,
+    "awayScore": 14
+   }
+  ]
+ },
+ "unexplained": {
+  "gameId": 401858226,
+  "game": "Miami at Wake Forest",
+  "note": "FG 24-7, timeout reverts to 21-7, End Period 27-7: no row accounts for the second 3, so it stays put",
+  "firstRow": 81,
+  "teams": [
+   {
+    "teamId": 154,
+    "team": "Wake Forest",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 2390,
+    "team": "Miami",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 2,
+    "clock": "0:35",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "Timeout",
+    "playText": "Timeout Miami, clock 00:35",
+    "homeScore": 7,
+    "awayScore": 21
+   },
+   {
+    "period": 2,
+    "clock": "0:28",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "Rush",
+    "playText": "(00:31) Shotgun #4 M.Fletcher Jr. rush middle for 0 yards to the WFU10 (#8 B.Johnson)",
+    "homeScore": 7,
+    "awayScore": 21
+   },
+   {
+    "period": 2,
+    "clock": "0:00",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "Field Goal Good",
+    "playText": "Jake Weinberg 27 Yd Field Goal ",
+    "homeScore": 7,
+    "awayScore": 24
+   },
+   {
+    "period": 2,
+    "clock": "0:04",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "Timeout",
+    "playText": "Timeout Miami, clock 00:04",
+    "homeScore": 7,
+    "awayScore": 21
+   },
+   {
+    "period": 2,
+    "clock": "0:00",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "End Period",
+    "playText": "End of 2nd quarter.",
+    "homeScore": 7,
+    "awayScore": 27
+   },
+   {
+    "period": 3,
+    "clock": "15:00",
+    "teamId": 2390,
+    "team": "Miami",
+    "playType": "Kickoff",
+    "playText": "(15:00) #22 J.Weinberg kickoff 65 yards to the WFU00, Touchback",
+    "homeScore": 7,
+    "awayScore": 27
+   }
+  ]
+ },
+ "nullified": {
+  "gameId": 401866418,
+  "game": "Jacksonville State at Ohio",
+  "note": "TOUCHDOWN nullified by penalty",
+  "firstRow": 61,
+  "teams": [
+   {
+    "teamId": 195,
+    "team": "Ohio",
+    "homeAway": "home"
+   },
+   {
+    "teamId": 55,
+    "team": "Jacksonville State",
+    "homeAway": "away"
+   }
+  ],
+  "plays": [
+   {
+    "period": 2,
+    "clock": "14:36",
+    "teamId": 55,
+    "team": "Jacksonville State",
+    "playType": "Penalty",
+    "playText": "No Huddle-Shotgun #12 C.Creel pass complete deep right to #30 L.Gilbert caught at OHIO36, for 57 yards to the OHIO00 TOUCHDOWN nullified by penalty, clock 00:00 PENALTY JAX Ineligible Downfield on Pass (#62 H.Diaby) 5 yards from JAX43 to JAX38. NO PLAY",
+    "homeScore": 7,
+    "awayScore": 14
+   }
+  ]
+ }
+}
