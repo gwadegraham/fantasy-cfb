@@ -10,6 +10,7 @@ const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
 const teamPage = require('./hoops-team-page');
 const boxScore = require('./hoops-box-score');
+const roster = require('./hoops-roster');
 const { isFinal } = require('./hoops-scoring-pass');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { pickLogo } = require('../public/logo.js');
@@ -48,7 +49,7 @@ function previewSide(team, before) {
     const per = (v) => (s && s.games && Number.isFinite(v) ? Math.round((v / s.games) * 10) / 10 : null);
     const top = s && Array.isArray(s.players)
         ? s.players.filter(p => p.games > 0)
-            .map(p => ({ name: p.name, position: p.position || null,
+            .map(p => ({ name: p.name, jersey: p.jersey || null, position: p.position || null,
                 ppg: Math.round((p.points / p.games) * 10) / 10,
                 rpg: Math.round(((p.rebounds || 0) / p.games) * 10) / 10,
                 apg: Math.round(((p.assists || 0) / p.games) * 10) / 10 }))
@@ -115,6 +116,13 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         final ? boxScore.getBox(id) : null
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
+    // Jersey numbers on the box, from the once-a-season roster import (the
+    // key players get theirs through the team page's stats below).
+    if (boxed) {
+        await Promise.all(['home', 'away'].filter(k => boxed[k] && Array.isArray(boxed[k].players)).map(async k => {
+            boxed[k].players = await roster.withJerseys(yr, boxed[k].players);
+        }));
+    }
 
     // A game still to play gets a PREVIEW: both teams' résumés from their
     // own team pages, earlier meetings, and a pregame win probability.

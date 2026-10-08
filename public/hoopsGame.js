@@ -175,7 +175,7 @@
                 if (!ps.length) return;
                 var names = shortNames(ps);
                 var top = ps.sort(function (a, b) { return (b[s[1]] || 0) - (a[s[1]] || 0); })[0];
-                h += '<div class="sp-ld-row"><span>' + esc(names[top.name]) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
+                h += '<div class="sp-ld-row"><span>' + esc(kit.numbered(top, names[top.name])) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
             });
             h += '</div>';
         });
@@ -193,7 +193,7 @@
         if (ps[0].starter) h += '<tr class="grp"><td colspan="7">Starters</td></tr>';
         ps.forEach(function (p) {
             if (!p.starter && !bench) { bench = true; h += '<tr class="grp"><td colspan="7">Bench</td></tr>'; }
-            h += '<tr><td>' + esc(names[p.name]) + (p.position ? '<span class="pos">' + esc(p.position) + '</span>' : '') + '</td>'
+            h += '<tr><td>' + esc(kit.numbered(p, names[p.name])) + (p.position ? '<span class="pos">' + esc(p.position) + '</span>' : '') + '</td>'
                 + '<td>' + fixed(p.minutes, 0) + '</td><td' + (p.points === high && high > 0 ? ' class="hi"' : '') + '>' + fixed(p.points, 0) + '</td>'
                 + '<td>' + fixed(p.rebounds, 0) + '</td><td>' + fixed(p.assists, 0) + '</td>'
                 + '<td>' + ma(p.threeMade, p.threeAtt) + '</td><td>' + ma(p.fgMade, p.fgAtt) + '</td></tr>';
@@ -329,7 +329,7 @@
             if (!side || !side.topScorers.length) return '';
             var names = shortNames(side.topScorers);
             return '<div class="hg-kp"><div class="k">' + esc(t.school) + '</div>' + side.topScorers.map(function (p) {
-                return '<div class="sp-ld-row"><span>' + esc(names[p.name]) + (p.position ? ' <small>' + esc(p.position) + '</small>' : '') + '</span>'
+                return '<div class="sp-ld-row"><span>' + esc(kit.numbered(p, names[p.name])) + (p.position ? ' <small>' + esc(p.position) + '</small>' : '') + '</span>'
                     + '<b>' + fixed(p.ppg, 1) + '</b></div><div class="hg-kp-sub">' + fixed(p.rpg, 1) + ' reb · ' + fixed(p.apg, 1) + ' ast</div>';
             }).join('') + '</div>';
         };

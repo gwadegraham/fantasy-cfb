@@ -14,6 +14,7 @@ const HoopsTeam = require('../models/hoopsTeam');
 const HoopsGame = require('../models/hoopsGame');
 const { dropStale } = require('./hoops-stale-duplicates');
 const HoopsTeamStats = require('../models/hoopsTeamStats');
+const roster = require('./hoops-roster');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
@@ -167,6 +168,10 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         ownership(league, yr, id),
         quadrantValues(league)
     ]);
+
+    // Jersey numbers, joined on athleteId from the once-a-season roster
+    // import. A player with none on file keeps just a name.
+    if (stats && Array.isArray(stats.players)) stats.players = await roster.withJerseys(yr, stats.players);
 
     // A rescheduled game's old listing never gets played (#498).
     const games = dropStale(listed, now);

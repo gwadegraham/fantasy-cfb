@@ -22,6 +22,7 @@ const leagueSelection = require('../modules/league-selection');
 const seasons = require('../modules/active-season');
 const visibility = require('../modules/hoops-visibility');
 const gamePage = require('../modules/hoops-game-page');
+const roster = require('../modules/hoops-roster');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -426,11 +427,23 @@ router.post('/:season/schedule', async (req, res) => {
     } catch (err) { restampError = err.message; console.log(`Hoops schedule · ${season}: re-stamp failed: ${err.message}`); }
     if (restamped) console.log(`Hoops schedule · ${season}: anchor moved — re-stamped ${restamped} game(s)`);
 
+    // Jersey numbers ride along with the schedule, ONCE a season: the first
+    // ingest that finds no roster on file imports it (one billable call), and
+    // every later ingest is a free read that skips it. Numbers do not change
+    // once the season starts; a late addition is the admin's
+    // POST /hoops/teams/:season/roster. Not fatal — the games landed, and a
+    // page without numbers just shows names.
+    let rosterResult = null, rosterError = null;
+    try {
+        rosterResult = (await roster.hasSeason(season)) ? { skippedReason: 'already imported' } : await roster.importSeason(season);
+    } catch (err) { rosterError = err.message; console.log(`Hoops schedule · ${season}: roster import failed: ${err.message}`); }
+
     console.log(`Hoops schedule · ${season} ${seasonType}: ${created} created, ${updated} updated `
         + `(${result.games.length} games, ${result.windows} window(s))`);
     return res.status(200).json({
         season, seasonType, created, updated, restamped,
         ...(restampError ? { restampError } : {}),
+        roster: rosterResult, ...(rosterError ? { rosterError } : {}),
         games: result.games.length, windows: result.windows,
         remainingCalls: result.remainingCalls
     });
