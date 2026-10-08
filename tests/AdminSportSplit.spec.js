@@ -80,10 +80,12 @@ test('basketball Activity: one league, and no Captain picks tab', async () => {
     expect(document.querySelector('[data-audit-kind="captain"]')).toBeNull();
 });
 
-test('football Activity is unchanged: every league it manages, with the Captain tab', async () => {
+// Football's Activity is the managed football league's, so an Admin there never
+// sees the basketball league's changes.
+test('football Activity: its own league, with the Captain tab', async () => {
     loadAdmin({ routes: { '/audit-log': { entries: [], scope: ['graham-league'] } } });
     document.body.innerHTML += '<div audit-log-body></div>';
     await loadAuditLog();
-    expect(urls().find(u => u.indexOf('/audit-log') === 0)).not.toContain('league=');
+    expect(urls().find(u => u.indexOf('/audit-log') === 0)).toContain('league=graham-league');
     expect(document.querySelector('[data-audit-kind="captain"]')).not.toBeNull();
 });

@@ -414,8 +414,9 @@ async function loadAuditLog() {
     if (!body) return;
     auditPaint(body, '<p class="al-empty">Loading…</p>');
     try {
-        // The basketball admin page shows its own league's changes only.
-        var only = window.ADMIN_SPORT === 'basketball' ? '&league=' + encodeURIComponent(getDraftLeagueCode()) : '';
+        // The league this page manages, only — on football's page too, so an
+        // Admin there sees football changes and never the basketball league's.
+        var only = '&league=' + encodeURIComponent(getDraftLeagueCode());
         var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind) + only, { headers: { 'Accept': 'application/json' } });
         var data = await res.json();
         if (!res.ok) { auditPaint(body, '<p class="al-empty">' + escapeHtml(data.message || 'Could not load activity.') + '</p>'); return; }

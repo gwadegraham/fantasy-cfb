@@ -89,7 +89,7 @@ describe('the page manages a basketball league', () => {
     const page = async (viewing) => (await request(appAs(['Admin'], viewing)).get('/hoops/admin')).text;
 
     // An Admin arriving from football's page is still VIEWING football.
-    test.each([['viewing basketball', 'hoops-league'], ['viewing football', 'graham-league'], ['viewing nothing', undefined]])(
+    test.each([['viewing basketball', 'hoops-league'], ['viewing nothing yet', undefined]])(
         '%s, it manages the basketball league in its own season', async (_, viewing) => {
             const html = await page(viewing);
             expect(html).toContain('window.ADMIN_LEAGUE = "hoops-league"');
@@ -120,11 +120,20 @@ describe('the page manages a basketball league', () => {
         expect(html).toContain('<span class="group-count">' + shown + '</span>');
     });
 
+    // Graham: "If I am on the CBB Admin page and click the league switcher, I
+    // want the Admin page to switch to the other sport's admin page." The
+    // switcher reloads, so viewing football here has to land on /admin.
+    test('viewing a football league sends an Admin to football\'s /admin', async () => {
+        const res = await request(appAs(['Admin'], 'graham-league')).get('/hoops/admin');
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/admin');
+    });
+
     test('no basketball league: the data tasks only, and no league tools', async () => {
         await League.deleteMany({ sport: 'basketball' });
         activeSeason._reset();
         await activeSeason.prime();
-        const html = await page('graham-league');
+        const html = await page(undefined);
         expect(html).toContain('window.ADMIN_LEAGUE = null');
         expect(html).not.toContain('src="/admin.js"');
         expect(html).not.toContain('displayDraftConfigContainer');
@@ -292,7 +301,8 @@ describe('windowsFor', () => {
     });
 });
 
-describe("football's admin page links here for Admins only", () => {
+// Graham: viewing football, "I only want to see CFB admin functions and info".
+describe("football's admin page says nothing about basketball", () => {
     const ADMIN = path.join(__dirname, '..', 'views', 'admin.ejs');
     const template = fs.readFileSync(ADMIN, 'utf8');
     const render = (isAdmin) => ejs.render(template, {
@@ -300,10 +310,12 @@ describe("football's admin page links here for Admins only", () => {
         userState: '{}', year: 2026, isAdmin, draftDefaults: '{}'
     }, { filename: ADMIN });
 
-    test('an Admin sees the link', () => {
-        expect(render(true)).toContain('href="/hoops/admin"');
-    });
-    test('a League Manager does not', () => {
-        expect(render(false)).not.toContain('/hoops/admin');
+    // The navbar is rendered too, and its league switcher legitimately
+    // lists every league; the page body is what has to be football-only.
+    const body = (html) => html.slice(html.indexOf('<div class="header">'));
+    test.each([['an Admin', true], ['a League Manager', false]])('%s: no basketball link or wording', (_, isAdmin) => {
+        const html = body(render(isAdmin));
+        expect(html).not.toContain('/hoops/admin');
+        expect(html).not.toMatch(/basketball/i);
     });
 });

@@ -120,6 +120,12 @@ async function managedLeague(req, viewed) {
     return codes.find(c => seasons.sportForLeague(c) === 'basketball') || null;
 }
 
+// Where /hoops/admin sends an Admin instead of rendering: football's page when
+// the league being viewed is a football one. Nothing viewed yet: stay.
+function basketballAdminRedirect(viewed) {
+    return viewed && seasons.sportForLeague(viewed) !== 'basketball' ? '/admin' : null;
+}
+
 // Where football's /admin sends a viewer instead of rendering, or null to
 // render. An Admin viewing a basketball league goes to that league's page —
 // otherwise /admin shows basketball managers and the basketball season inside
@@ -153,6 +159,11 @@ function build({ pageLocals = () => ({}) } = {}) {
             if (!(req.oidc && req.oidc.isAuthenticated())) return res.redirect('/login');
             if (!isAdmin(req)) return next();
             const locals = Object.assign({ user: null, userState: null, draftDefaults: '{}' }, pageLocals(req, res));
+            // Each sport's admin page follows the league being viewed, both
+            // ways: switch to a football league here and the reload lands on
+            // football's /admin, as switching to basketball there lands here.
+            const elsewhere = basketballAdminRedirect(locals.viewerLeagueCode);
+            if (elsewhere) return res.redirect(elsewhere);
             const league = await managedLeague(req, locals.viewerLeagueCode);
             // The league's own season, which is what League setup's tools read
             // and write — not football's.
@@ -180,4 +191,4 @@ function build({ pageLocals = () => ({}) } = {}) {
     return router;
 }
 
-module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, footballAdminSeason, HOOPS_JOBS };
+module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, basketballAdminRedirect, footballAdminSeason, HOOPS_JOBS };
