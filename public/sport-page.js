@@ -205,8 +205,10 @@
             var step = function (ts) {
                 if (start === null) start = ts;
                 var p = Math.min(1, (ts - start) / dur);
+                // The last frame shows the value itself, so 7.5 never ends as 8.
+                if (p >= 1) { show(to); return; }
                 show(Math.round(to * (1 - Math.pow(1 - p, 3))));
-                if (p < 1) global.requestAnimationFrame(step);
+                global.requestAnimationFrame(step);
             };
             global.requestAnimationFrame(step);
         });

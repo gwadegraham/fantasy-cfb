@@ -380,3 +380,17 @@ test('the Stats tab calls them "Keys to the game"', async () => {
     expect(Array.from(r.querySelectorAll('h2')).map(h => h.firstChild.textContent)).toContain('Keys to the game');
 });
 
+test('Next up: a game that has tipped and is not final says "Under way"', async () => {
+    const p = payload();
+    p.games[3].startDate = new Date(Date.now() - 3600e3).toISOString();
+    await render(p);
+    expect(document.querySelector('.ht-next-when').textContent).toBe('Under way');
+});
+
+test('Next up keeps a game with no date yet rather than treating it as 1970', async () => {
+    const p = payload();
+    p.games[3].startDate = null;
+    await render(p);
+    expect(document.querySelector('.ht-next').getAttribute('href')).toBe('/hoops/game/4');
+});
+

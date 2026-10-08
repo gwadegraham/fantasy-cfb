@@ -220,15 +220,16 @@
     var STALE_TIP_MS = 4 * 60 * 60 * 1000;
     function nextUp(d, now) {
         now = now == null ? Date.now() : now;
-        var g = d.games.filter(function (x) {
-            return !x.final && !(now - new Date(x.startDate).getTime() > STALE_TIP_MS);
-        })[0];
+        // A game with no date yet is kept: new Date(null) is 1970, not "past".
+        var startOf = function (x) { return x.startDate ? new Date(x.startDate).getTime() : NaN; };
+        var g = d.games.filter(function (x) { return !x.final && !(now - startOf(x) > STALE_TIP_MS); })[0];
         if (!g) return '';
         var vals = d.quadrantValues || {};
         var o = g.opponent;
         var pay = g.quadrant && vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '';
         return '<a class="sp-card ht-next" href="/hoops/game/' + encodeURIComponent(g.id) + '">'
-            + '<div class="ht-next-when">Next up · ' + esc(kit.countdown(g)) + '</div>'
+            // Tipped and not final: it is being played, not "awaiting" anything.
+            + '<div class="ht-next-when">' + (!g.startTimeTbd && now >= startOf(g) ? 'Under way' : 'Next up · ' + esc(kit.countdown(g, now))) + '</div>'
             + '<div class="ht-next-row"><span class="ht-next-opp"><span class="ht-v">' + venueMark(g.venue) + '</span>'
             + (o.rank ? '<span class="ht-rk">' + o.rank + '</span> ' : '')
             + (o.logo ? '<img class="sp-ologo" src="' + esc(o.logo) + '" alt="" onerror="this.remove()">' : '')

@@ -217,6 +217,12 @@ describe('countUp', () => {
         expect(b.textContent).toBe('+12');
         expect(frames).toHaveLength(0);                                   // stops at the end
     });
+    test('a fractional value ends exactly on itself, not rounded', () => {
+        const b = el(7.5, true);
+        kit.countUp(document);
+        run(0); run(900);
+        expect(b.textContent).toBe('+7.5');
+    });
     test('a negative value counts down, with no plus', () => {
         const b = el(-3, true);
         kit.countUp(document);
