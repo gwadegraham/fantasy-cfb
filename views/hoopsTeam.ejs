@@ -6,6 +6,7 @@
     <!-- Absolute paths: this page lives one level down (/hoops/team/:id), so a
          relative "styles.css" would resolve under /hoops/team/. -->
     <link href="/styles.css" rel="stylesheet">
+    <link href="/sport-page.css" rel="stylesheet">
     <link href="/hoopsTeam.css" rel="stylesheet">
     <script src="/haptic.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,6 +14,7 @@
     <!-- The same font set as every other page: Pacifico is the "Clash" in the navbar wordmark. -->
     <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet"/>
+    <script defer src="/sport-page.js"></script>
     <script defer src="/hoopsTeam.js"></script>
     <title data-league-title="Team">Team · Campus Clash</title>
     <%- include('partials/favicons') %>
@@ -28,8 +30,8 @@
             var userState = <%- userState %>;
         </script>
     <% } %>
-    <main class="ht" id="hoops-team" data-team-id="<%= teamId %>">
-        <div class="ht-loading" ht-loading>Loading…</div>
+    <main class="sp-page ht" id="hoops-team" data-team-id="<%= teamId %>">
+        <div class="sp-loading">Loading…</div>
     </main>
 </body>
 </html>

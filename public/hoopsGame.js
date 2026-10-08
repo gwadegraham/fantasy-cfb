@@ -8,12 +8,9 @@
     var root = document.getElementById('hoops-game');
     if (!root) return;
 
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
-    function fixed(n, d) { return n == null || !isFinite(n) ? '—' : Number(n).toFixed(d); }
+    // Formatting, names, dates, tabs and loading come from the shared kit.
+    var kit = window.ccSportPage;
+    var esc = kit.esc, fixed = kit.fixed, pct = kit.pct, shortNames = kit.shortNames, countdown = kit.countdown;
     function ma(m, a) { return (m == null ? '—' : m) + '-' + (a == null ? '—' : a); }
     function abbr(t) { return t.abbreviation || t.school; }
     function teamLink(t, inner) {
@@ -30,25 +27,6 @@
         var day = p.monthShort + ' ' + p.day;
         if (g.final) return day;
         return day + (p.tbd ? ' · TBD' : ' · ' + k.time(g.startDate, g.startTimeTbd, 'spaced'));
-    }
-
-    // When a game still to play tips, said the way people say it: "Tonight
-    // · 9:00 PM", "Tomorrow · 7:00 PM", "Sat, Nov 12 · 7:00 PM". A TBD tip
-    // keeps its day and says the time is TBD. Past tip-off with no result
-    // yet, it says so rather than counting down to the past.
-    function countdown(g, now) {
-        var k = window.ccKickoff;
-        var p = k && k.parts ? k.parts(g.startDate, g.startTimeTbd) : null;
-        if (!p) return 'Upcoming';
-        var time = p.tbd ? 'time TBD' : k.time(g.startDate, g.startTimeTbd, 'spaced');
-        var start = new Date(g.startDate).getTime();
-        now = now == null ? Date.now() : now;
-        if (!p.tbd && now >= start) return 'Awaiting the result';
-        var key = function (t) { return k.dayKey ? k.dayKey(new Date(t).toISOString(), false) : new Date(t).toDateString(); };
-        var day = k.dayKey ? k.dayKey(g.startDate, g.startTimeTbd) : new Date(start).toDateString();
-        if (day === key(now)) return 'Tonight · ' + time;
-        if (day === key(now + 24 * 60 * 60 * 1000)) return 'Tomorrow · ' + time;
-        return p.weekdayLong.slice(0, 3) + ', ' + p.monthShort + ' ' + p.day + ' · ' + time;
     }
 
     function hero(d) {
@@ -76,7 +54,7 @@
             ? '<span class="' + (homeWon ? 'lose' : '') + '">' + A.points + '</span><span class="dash">–</span>'
                 + '<span class="' + (homeWon || tied ? '' : 'lose') + '">' + H.points + '</span>'
             : '<span class="vs">' + (g.neutralSite ? 'vs' : '@') + '</span>';
-        return '<section class="hg-hero" style="--left:' + esc(A.color || '#343954') + ';--right:' + esc(H.color || '#343954') + '">'
+        return '<section class="sp-hero match hg-hero" style="--left:' + esc(A.color || '#343954') + ';--right:' + esc(H.color || '#343954') + '">'
             + '<div class="hg-meta">' + meta + '</div>'
             + '<div class="hg-board">' + side(A) + '<div class="hg-score">' + score + '</div>' + side(H) + '</div>'
             + lineScore(d) + '</section>';
@@ -90,7 +68,7 @@
             return '<tr><td>' + esc(abbr(t)) + '</td>' + s.byPeriod.map(function (x) { return '<td>' + x + '</td>'; }).join('')
                 + '<td>' + s.points + '</td></tr>';
         };
-        return '<table class="hg-lines"><tr><th></th>' + b.home.byPeriod.map(function (_, i) { return '<th>' + label(i) + '</th>'; }).join('')
+        return '<table class="sp-lines"><tr><th></th>' + b.home.byPeriod.map(function (_, i) { return '<th>' + label(i) + '</th>'; }).join('')
             + '<th>T</th></tr>' + row(d.away, b.away) + row(d.home, b.home) + '</table>';
     }
 
@@ -131,13 +109,13 @@
     ];
     function factors(d) {
         var a = d.box.away, h = d.box.home;
-        var out = '<div class="hg-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
+        var out = '<div class="sp-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
         FACTORS.forEach(function (f) {
             var x = a[f.key], y = h[f.key];
             if (x == null || y == null) return;
             var awayBetter = f.up ? x > y : x < y;
             var wa = f.up ? x : y, wh = f.up ? y : x;          // bar lengths: longer = better
-            out += '<div class="hg-vs"><span class="l' + (awayBetter ? ' edge' : '') + '">' + fixed(x, 1) + '</span>'
+            out += '<div class="sp-vs"><span class="l' + (awayBetter ? ' edge' : '') + '">' + fixed(x, 1) + '</span>'
                 + '<span class="mid">' + f.name + '<small>' + f.what + '</small><span class="bars">'
                 + '<i style="flex:' + (wa || 0.001) + '" class="' + (awayBetter ? 'on' : '') + '"></i>'
                 + '<i style="flex:' + (wh || 0.001) + '" class="' + (awayBetter ? '' : 'on') + '"></i></span></span>'
@@ -160,36 +138,21 @@
     ];
     function teamStats(d) {
         return TEAM_STATS.map(function (r) {
-            return '<div class="hg-vs"><span class="l">' + r[1](d.box.away) + '</span><span class="mid">' + r[0] + '</span><span class="r">' + r[1](d.box.home) + '</span></div>';
+            return '<div class="sp-vs"><span class="l">' + r[1](d.box.away) + '</span><span class="mid">' + r[0] + '</span><span class="r">' + r[1](d.box.home) + '</span></div>';
         }).join('');
-    }
-
-    // "C. Boozer" — unless two players on the team shorten to the same
-    // thing (Duke had Cameron and Cayden Boozer), in which case both keep
-    // their full names.
-    function shortNames(players) {
-        var short = function (n) {
-            var p = String(n || '').trim().split(/\s+/);
-            return p.length > 1 ? p[0].charAt(0) + '. ' + p.slice(1).join(' ') : n;
-        };
-        var count = {};
-        players.forEach(function (p) { var s = short(p.name); count[s] = (count[s] || 0) + 1; });
-        var out = {};
-        players.forEach(function (p) { var s = short(p.name); out[p.name] = count[s] > 1 ? p.name : s; });
-        return out;
     }
 
     function leaders(d) {
         var stat = [['Points', 'points'], ['Rebounds', 'rebounds'], ['Assists', 'assists']];
-        var h = '<div class="hg-lead">';
+        var h = '<div class="sp-leaders">';
         stat.forEach(function (s) {
-            h += '<div class="hg-ld"><div class="k">' + s[0] + '</div>';
+            h += '<div class="sp-ld"><div class="k">' + s[0] + '</div>';
             [['away', d.away], ['home', d.home]].forEach(function (pair) {
                 var ps = (d.box[pair[0]].players || []).slice();
                 if (!ps.length) return;
                 var names = shortNames(ps);
                 var top = ps.sort(function (a, b) { return (b[s[1]] || 0) - (a[s[1]] || 0); })[0];
-                h += '<div class="hg-ld-row"><span>' + esc(names[top.name]) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
+                h += '<div class="sp-ld-row"><span>' + esc(names[top.name]) + ' <small>' + esc(abbr(pair[1])) + '</small></span><b>' + fixed(top[s[1]], 0) + '</b></div>';
             });
             h += '</div>';
         });
@@ -199,10 +162,10 @@
     function boxTable(d) {
         var team = d[state.side], s = d.box[state.side];
         var ps = (s.players || []).slice().sort(function (a, b) { return (b.starter - a.starter) || ((b.minutes || 0) - (a.minutes || 0)); });
-        if (!ps.length) return '<div class="ht-card ht-empty">No player lines for ' + esc(team.school) + '.</div>';
+        if (!ps.length) return '<div class="sp-card sp-empty">No player lines for ' + esc(team.school) + '.</div>';
         var names = shortNames(ps);
         var high = Math.max.apply(null, ps.map(function (p) { return p.points || 0; }));
-        var h = '<div class="ht-card"><table class="hg-box"><tr><th>Player</th><th>Min</th><th>Pts</th><th>Reb</th><th>Ast</th><th>3PT</th><th>FG</th></tr>';
+        var h = '<div class="sp-card"><table class="hg-box"><tr><th>Player</th><th>Min</th><th>Pts</th><th>Reb</th><th>Ast</th><th>3PT</th><th>FG</th></tr>';
         var bench = false;
         if (ps[0].starter) h += '<tr class="grp"><td colspan="7">Starters</td></tr>';
         ps.forEach(function (p) {
@@ -217,13 +180,11 @@
 
     // ---- preview: a game still to play ----------------------------------
 
-    function pct(p) { return Math.round(p * 100); }
-
     function winProbability(d) {
         var p = d.preview && d.preview.homeWinProb;
         if (p == null) return '';
         var a = 1 - p;
-        return '<div class="ht-card hg-wp"><div class="hg-wp-head"><span>' + esc(abbr(d.away)) + ' <b>' + pct(a) + '%</b></span>'
+        return '<div class="sp-card hg-wp"><div class="hg-wp-head"><span>' + esc(abbr(d.away)) + ' <b>' + pct(a) + '%</b></span>'
             + '<span class="k">' + (d.game.live ? 'Pregame win prob.' : 'Win probability') + '</span><span><b>' + pct(p) + '%</b> ' + esc(abbr(d.home)) + '</span></div>'
             + '<div class="hg-wp-bar"><i style="flex:' + a + ';background:' + esc(d.away.color || 'var(--cc-surface-3)') + '"></i>'
             + '<i style="flex:' + p + ';background:' + esc(d.home.color || 'var(--cc-surface-3)') + '"></i></div>'
@@ -256,8 +217,8 @@
         var both = d.home.owner && d.away.owner;
         var none = !d.home.owner && !d.away.owner;
         if (none) return '';
-        return '<h2>' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
-            + '<div class="ht-card hg-stakes">' + line(d.away, p == null ? null : 1 - p) + line(d.home, p) + '</div>';
+        return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
+            + '<div class="sp-card hg-stakes">' + line(d.away, p == null ? null : 1 - p) + line(d.home, p) + '</div>';
     }
 
     function rec(r) { return r ? r.w + '–' + r.l : '—'; }
@@ -285,24 +246,24 @@
             rows.push(['Off. rebound %', A.stats.orbPct, H.stats.orbPct, 'high', function (v) { return fixed(v, 1); }]);
             rows.push(['FT rate', A.stats.ftRate, H.stats.ftRate, 'high', function (v) { return fixed(v, 1); }]);
         }
-        var out = '<div class="hg-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
+        var out = '<div class="sp-vs-head"><span>' + esc(abbr(d.away)) + '</span><span></span><span>' + esc(abbr(d.home)) + '</span></div>';
         rows.forEach(function (r) {
             var a = r[1], h = r[2];
             if (a == null && h == null) return;
             var aBetter = r[3] && a != null && h != null && a !== h ? (r[3] === 'high' ? a > h : a < h) : null;
-            out += '<div class="hg-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + (a == null ? '—' : r[4](a)) + '</span>'
+            out += '<div class="sp-vs"><span class="l' + (aBetter === true ? ' edge' : '') + '">' + (a == null ? '—' : r[4](a)) + '</span>'
                 + '<span class="mid">' + r[0] + '</span>'
                 + '<span class="r' + (aBetter === false ? ' edge' : '') + '">' + (h == null ? '—' : r[4](h)) + '</span></div>';
         });
         var src = A.stats && H.stats ? 'Ratings: Torvik preseason · stats: this season' : 'Torvik preseason ratings · season stats arrive after tip-off';
-        return '<h2>Tale of the tape<small>' + src + '</small></h2><div class="ht-card">' + out + '</div>';
+        return '<h2 class="sp-h">Tale of the tape<small>' + src + '</small></h2><div class="sp-card">' + out + '</div>';
     }
 
     function form(d) {
         var row = function (t, side) {
             if (!side) return '';
             var chips = side.last5.map(function (g) {
-                return '<span class="hg-f ' + (g.won ? 'w' : 'l') + '" title="' + (g.won ? 'W' : 'L') + ' ' + g.us + '–' + g.them
+                return '<span class="sp-wl ' + (g.won ? 'w' : 'l') + '" title="' + (g.won ? 'W' : 'L') + ' ' + g.us + '–' + g.them
                     + (g.venue === 'away' ? ' at ' : g.venue === 'neutral' ? ' vs ' : ' vs ') + esc(g.opponent) + '">' + (g.won ? 'W' : 'L') + '</span>';
             }).join('');
             var streak = side.streak ? (side.streak.won ? 'W' : 'L') + side.streak.n : '';
@@ -310,7 +271,7 @@
                 + (chips || '<small>No games yet</small>') + '</span><span class="sk">' + streak + '</span></div>';
         };
         if (!d.preview.away && !d.preview.home) return '';
-        return '<h2>Recent form<small>Last five, oldest first</small></h2><div class="ht-card hg-form">'
+        return '<h2 class="sp-h">Recent form<small>Last five, oldest first</small></h2><div class="sp-card hg-form">'
             + row(d.away, d.preview.away) + row(d.home, d.preview.home) + '</div>';
     }
 
@@ -319,22 +280,22 @@
             if (!side || !side.topScorers.length) return '';
             var names = shortNames(side.topScorers);
             return '<div class="hg-kp"><div class="k">' + esc(t.school) + '</div>' + side.topScorers.map(function (p) {
-                return '<div class="hg-ld-row"><span>' + esc(names[p.name]) + (p.position ? ' <small>' + esc(p.position) + '</small>' : '') + '</span>'
+                return '<div class="sp-ld-row"><span>' + esc(names[p.name]) + (p.position ? ' <small>' + esc(p.position) + '</small>' : '') + '</span>'
                     + '<b>' + fixed(p.ppg, 1) + '</b></div><div class="hg-kp-sub">' + fixed(p.rpg, 1) + ' reb · ' + fixed(p.apg, 1) + ' ast</div>';
             }).join('') + '</div>';
         };
         var a = col(d.away, d.preview.away), h = col(d.home, d.preview.home);
         if (!a && !h) return '';
-        return '<h2>Key players<small>Points a game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
+        return '<h2 class="sp-h">Key players<small>Points a game, this season</small></h2><div class="hg-kps">' + a + h + '</div>';
     }
 
     function meetings(d) {
         var m = d.preview.meetings;
         if (!m || !m.length) return '';
-        return '<h2>Earlier this season</h2><div class="ht-card ht-log">' + m.map(function (g) {
+        return '<h2 class="sp-h">Earlier this season</h2><div class="sp-card sp-games">' + m.map(function (g) {
             var homeWon = g.homeScore > g.awayScore;
             var p = window.ccKickoff && window.ccKickoff.parts ? window.ccKickoff.parts(g.startDate, g.startTimeTbd) : null;
-            return '<a class="ht-lg hg-meet" href="/hoops/game/' + encodeURIComponent(g.id) + '"><span class="d">' + (p ? p.monthShort + ' ' + p.day : '') + '</span>'
+            return '<a class="sp-gr hg-meet" href="/hoops/game/' + encodeURIComponent(g.id) + '"><span class="d">' + (p ? p.monthShort + ' ' + p.day : '') + '</span>'
                 + '<span class="opp">' + esc(abbr(homeWon ? d.home : d.away)) + ' won ' + Math.max(g.homeScore, g.awayScore) + '–' + Math.min(g.homeScore, g.awayScore)
                 + (g.notes ? '<span class="note">' + esc(g.notes) + '</span>' : '') + '</span></a>';
         }).join('') + '</div>';
@@ -363,14 +324,12 @@
         var text = !d.game.final ? 'The box score arrives after the final.'
             : old ? 'There’s no box score for this game.'
             : 'The box score lands overnight — check back in the morning.';
-        return '<div class="ht-card ht-empty">' + text + '</div>';
+        return '<div class="sp-card sp-empty">' + text + '</div>';
     }
 
     function tabs(d) {
         if (!d.box) return '';
-        return '<nav class="ht-tabs" role="tablist">' + [['summary', 'Summary'], ['box', 'Box score']].map(function (t) {
-            return '<button type="button" role="tab" data-tab="' + t[0] + '" class="ht-tab' + (state.tab === t[0] ? ' on' : '') + '" aria-selected="' + (state.tab === t[0]) + '">' + t[1] + '</button>';
-        }).join('') + '</nav>';
+        return kit.tabs([['summary', 'Summary'], ['box', 'Box score']], state.tab);
     }
 
     function panel(d) {
@@ -381,15 +340,15 @@
                 return '<button type="button" data-side="' + key + '" class="' + (state.side === key ? 'on' : '') + '">'
                     + (t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '') + esc(t.school) + '</button>';
             };
-            return '<div class="hg-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
+            return '<div class="sp-seg">' + seg('away') + seg('home') + '</div>' + boxTable(d);
         }
-        return '<h2>Four factors<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="ht-card">' + factors(d) + '</div>'
-            + '<h2>Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="ht-card">' + teamStats(d) + '</div>'
-            + '<h2>Leaders</h2>' + leaders(d);
+        return '<h2 class="sp-h">Four factors<small>Why it ended ' + d.away.points + '–' + d.home.points + '</small></h2><div class="sp-card">' + factors(d) + '</div>'
+            + '<h2 class="sp-h">Team stats' + (d.box.pace ? '<small>' + fixed(d.box.pace, 0) + ' possessions</small>' : '') + '</h2><div class="sp-card">' + teamStats(d) + '</div>'
+            + '<h2 class="sp-h">Leaders</h2>' + leaders(d);
     }
 
     function paintPanel() {
-        var t = root.querySelector('.ht-tabs');
+        var t = root.querySelector('.sp-tabs');
         if (t) t.outerHTML = tabs(data);
         root.querySelector('.hg-panel').innerHTML = panel(data);
     }
@@ -428,29 +387,10 @@
         }
     });
 
-    function fail(text) { root.innerHTML = '<div class="ht-error">' + esc(text) + '</div>'; }
-
     function load() {
         var id = root.getAttribute('data-game-id');
-        return fetch('/hoops/games/' + encodeURIComponent(id) + '/page', { headers: { Accept: 'application/json' } })
-            .then(function (r) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    if (!r.ok) throw new Error(body.message || ('Could not load this game (' + r.status + ')'));
-                    return body;
-                });
-            })
-            .then(render)
-            .catch(function (e) { fail(e.message); });
+        return kit.load('/hoops/games/' + encodeURIComponent(id) + '/page', render, root, 'game');
     }
-
-    // Tabs pin under the sticky navbar, measured, as on the team page.
-    function syncStickyTop() {
-        var nav = document.getElementById('navbar');
-        document.documentElement.style.setProperty('--ht-sticky-top', (nav ? Math.floor(nav.getBoundingClientRect().height) : 0) + 'px');
-    }
-    syncStickyTop();
-    window.addEventListener('resize', syncStickyTop);
-    if (document.fonts && document.fonts.ready && document.fonts.ready.then) document.fonts.ready.then(syncStickyTop).catch(function () {});
 
     window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown };
     load();

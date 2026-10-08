@@ -9,6 +9,9 @@
 const fs = require('fs');
 const path = require('path');
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'hoopsGame.js'), 'utf8');
+// The shared kit (#506) the page script builds on, loaded once as the page would.
+const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
+beforeAll(() => { (0, eval)(KIT); });
 
 const side = (o) => Object.assign({ byPeriod: [32, 43], points: 75, efgPct: 51, tovPct: 15.2, orbPct: 29.7, ftRate: 57.7,
     fgMade: 22, fgAtt: 52, threeMade: 9, threeAtt: 23, ftMade: 22, ftAtt: 30, rebounds: 37, assists: 13, steals: 8, blocks: 2,
@@ -63,7 +66,7 @@ test('scoreboard: away on the left, home on the right, score in the same order',
 
 test('line score by half, in scoreboard order', async () => {
     await render(payload());
-    const rows = Array.from(document.querySelectorAll('.hg-lines tr')).map(r => r.textContent);
+    const rows = Array.from(document.querySelectorAll('.sp-lines tr')).map(r => r.textContent);
     expect(rows).toEqual(['1st2ndT', 'TEX332760', 'DUKE324375']);
 });
 
@@ -98,9 +101,9 @@ test('final without a box: it lands overnight — unless the game is too old to 
     const recent = payload({ box: null });
     recent.game = Object.assign({}, recent.game, { startDate: new Date(Date.now() - 12 * 3600e3).toISOString() });
     await render(recent);
-    expect(txt('.ht-empty')).toContain('lands overnight');
+    expect(txt('.sp-empty')).toContain('lands overnight');
     await render(payload({ box: null }));                       // Nov 2025: long past the 3-day window
-    expect(txt('.ht-empty')).toBe('There’s no box score for this game.');
+    expect(txt('.sp-empty')).toBe('There’s no box score for this game.');
 });
 
 test('final but not scored yet: "points post overnight", never a fake 0', async () => {
@@ -118,12 +121,12 @@ test('the box opens on the VIEWER\'s team when both sides are rostered', async (
     p.home = Object.assign({}, p.home, { owner: { franchiseName: 'Hoop Dreams', mine: true } });
     await render(p);
     tab('box');
-    expect(q('.hg-seg button.on').getAttribute('data-side')).toBe('home');
+    expect(q('.sp-seg button.on').getAttribute('data-side')).toBe('home');
 });
 
 test('four factors: the better side is marked, and its bar is the LONGER one even when lower is better', async () => {
     await render(payload());
-    const rows = Array.from(document.querySelectorAll('.hg-vs')).slice(0, 4);
+    const rows = Array.from(document.querySelectorAll('.sp-vs')).slice(0, 4);
     expect(rows.map(r => r.querySelector('.mid').firstChild.textContent)).toEqual(['Shooting', 'Ball security', 'Second chances', 'Getting to the line']);
     const sec = rows[1];                                             // Duke 15.2 turnovers vs Texas 24.2: Duke better
     expect(sec.querySelector('.r').className).toContain('edge');
@@ -134,13 +137,13 @@ test('four factors: the better side is marked, and its bar is the LONGER one eve
 
 test('team stats side by side, and possessions', async () => {
     await render(payload());
-    expect(txt('.hg-vs')).toContain('9-23Threes9-23');
+    expect(txt('.sp-vs')).toContain('9-23Threes9-23');
     expect(txt('h2')).toContain('66 possessions');
 });
 
 test('leaders: one per side per stat', async () => {
     await render(payload());
-    const pts = Array.from(document.querySelectorAll('.hg-ld'))[0].textContent;
+    const pts = Array.from(document.querySelectorAll('.sp-ld'))[0].textContent;
     expect(pts).toContain('D. Swain TEX16');
     expect(pts).toContain('I. Evans DUKE23');
 });
@@ -159,9 +162,9 @@ test('box score: starters then bench, a side toggle, game high marked, colliding
     window.ccLeague = { paint: jest.fn() };
     (0, eval)(SRC);
     await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0));
-    expect(q('.ht-tab.on').textContent).toBe('Box score');
+    expect(q('.sp-tab.on').textContent).toBe('Box score');
     // Duke is the rostered side, so the box opens on Duke.
-    expect(q('.hg-seg button.on').getAttribute('data-side')).toBe('home');
+    expect(q('.sp-seg button.on').getAttribute('data-side')).toBe('home');
     const rows = Array.from(document.querySelectorAll('.hg-box tr')).map(r => r.textContent);
     expect(rows[1]).toBe('Starters');
     expect(rows.some(r => r.startsWith('Cameron BoozerF'))).toBe(true);   // two "C. Boozer"s: both full
@@ -180,12 +183,12 @@ test('nobody rostered: the box opens on the left-hand (away) side', async () => 
     p.home = Object.assign({}, p.home, { owner: null });
     await render(p);
     tab('box');
-    expect(q('.hg-seg button.on').getAttribute('data-side')).toBe('away');
+    expect(q('.sp-seg button.on').getAttribute('data-side')).toBe('away');
 });
 
 test('an API error is shown, not a blank page', async () => {
     await render({ message: 'No such basketball game' }, 404);
-    expect(txt('.ht-error')).toBe('No such basketball game');
+    expect(txt('.sp-error')).toBe('No such basketball game');
 });
 
 // ---- preview: a game still to play --------------------------------------
@@ -219,8 +222,8 @@ test('a game to play: the preview replaces the fantasy cards, tabs and box', asy
     await render(upcoming());
     expect(q('.hg-score').textContent).toBe('vs');
     expect(q('.hg-fan')).toBeNull();
-    expect(q('.ht-tabs')).toBeNull();
-    expect(q('.ht-empty')).toBeNull();
+    expect(q('.sp-tabs')).toBeNull();
+    expect(q('.sp-empty')).toBeNull();
     expect(q('.hg-preview')).not.toBeNull();
 });
 
@@ -284,9 +287,9 @@ test('nobody rostered, or no league: no stakes section at all', async () => {
 
 test('tale of the tape: the better side marked; stats rows only when both sides have stats', async () => {
     await render(upcoming());
-    const rows = () => Array.from(document.querySelectorAll('.hg-preview .hg-vs')).map(r => r.querySelector('.mid').textContent);
+    const rows = () => Array.from(document.querySelectorAll('.hg-preview .sp-vs')).map(r => r.querySelector('.mid').textContent);
     expect(rows()).toEqual(['T-Rank', 'Record', 'Conference', 'vs Q1', 'On the road', 'Offense', 'Defense']);
-    const rank = document.querySelectorAll('.hg-preview .hg-vs')[0];
+    const rank = document.querySelectorAll('.hg-preview .sp-vs')[0];
     expect(rank.querySelector('.r').className).toContain('edge');       // #1 beats #31: lower is better
     expect(txt('.hg-preview h2')).toContain('season stats arrive after tip-off');
     const p = upcoming();
@@ -299,8 +302,8 @@ test('recent form: last five as W/L chips, with the streak', async () => {
     await render(upcoming());
     const duke = Array.from(document.querySelectorAll('.hg-form-row'))[1];
     expect(duke.querySelector('.nm').textContent).toBe('DUKE');
-    expect(Array.from(duke.querySelectorAll('.hg-f')).map(c => c.textContent)).toEqual(['L', 'W']);
-    expect(duke.querySelector('.hg-f').getAttribute('title')).toBe('L 77–81 vs ILL');
+    expect(Array.from(duke.querySelectorAll('.sp-wl')).map(c => c.textContent)).toEqual(['L', 'W']);
+    expect(duke.querySelector('.sp-wl').getAttribute('title')).toBe('L 77–81 vs ILL');
     expect(duke.querySelector('.sk').textContent).toBe('W2');
 });
 

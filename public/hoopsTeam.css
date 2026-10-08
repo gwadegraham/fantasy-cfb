@@ -1,24 +1,9 @@
-/* The basketball team page (#494). Tokens only — see styles.css :root.
-   --team is the programme's own colour, set per page from the payload. */
+/* The basketball team page (#494). The frame, cards, tabs, game rows and
+   states come from the shared kit (sport-page.css); this is what is
+   basketball's own. Tokens only — see styles.css :root. --team is the
+   programme's own colour, set per page from the payload. */
 
-.ht { max-width: 880px; margin: 0 auto; padding: 0 16px 56px; color: var(--cc-text); font-family: Poppins, sans-serif;
-    /* body is a centred flex column, so without these the page sizes to its
-       widest unbreakable line and runs off a phone's right edge. */
-    width: 100%; min-width: 0; box-sizing: border-box; }
-/* Team links look like the rest of the app's: no colour change and no
-   underline on hover (My Team writes them inline as color:inherit;
-   text-decoration:none, the game tables pin a:hover the same way).
-   Without :hover here, Bootstrap's blue underline took over. */
-.ht a, .ht a:hover, .ht a:focus { color: inherit; text-decoration: none; }
-.ht-loading, .ht-error { padding: 48px 0; text-align: center; color: var(--cc-muted); }
-
-/* ---- hero: the programme's colour over a faint court ------------------- */
-.ht-hero {
-    --team: var(--cc-surface-3);
-    position: relative; overflow: hidden;
-    margin: 0 -16px; padding: 28px 16px 22px;
-    background: linear-gradient(160deg, var(--team) 0%, color-mix(in srgb, var(--team) 35%, var(--cc-bg)) 55%, var(--cc-bg) 100%);
-}
+/* ---- hero: the programme's colour (sp-hero.team) over a faint court --- */
 .ht-court { position: absolute; right: -40px; top: -14px; width: 240px; opacity: .16; pointer-events: none; }
 .ht-court * { vector-effect: non-scaling-stroke; }
 .ht-id { position: relative; display: flex; gap: 16px; align-items: center; }
@@ -26,9 +11,6 @@
 .ht-school { font-family: Graduate, serif; font-size: 30px; line-height: 1; letter-spacing: .5px; }
 .ht-mascot { color: var(--cc-muted-bright); font-size: 14px; margin-top: 4px; }
 .ht-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.ht-chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: var(--cc-r-pill);
-    background: rgba(0, 0, 0, .28); border: 1px solid rgba(255, 255, 255, .14); }
-.ht-chip b { color: var(--cc-accent); }
 .ht-rec { position: relative; display: flex; gap: 22px; margin-top: 20px; }
 .ht-rec .n { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .ht-rec .l { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); margin-top: 4px; }
@@ -43,21 +25,6 @@
 .ht-own .pts { text-align: right; }
 .ht-own .pts .n { font-size: 22px; font-weight: 800; color: var(--cc-accent); }
 .ht-own .pts .l { font-size: 11px; color: var(--cc-muted); }
-
-.ht h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--cc-muted);
-    margin: 26px 0 10px; font-weight: 700; }
-.ht h2 small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--cc-muted-2); margin-left: 6px; }
-.ht-card { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); }
-.ht-empty { padding: 16px 14px; color: var(--cc-muted); font-size: 13px; }
-
-/* ---- tabs: sticky, so the sections stay one tap apart -------------- */
-.ht-tabs { position: sticky; top: var(--ht-sticky-top, 0px); z-index: 41; display: flex; gap: 4px; margin: 4px -16px 14px; padding: 8px 16px;
-    background: color-mix(in srgb, var(--cc-bg) 92%, transparent); backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--cc-border); overflow-x: auto; scrollbar-width: none; }
-.ht-tabs::-webkit-scrollbar { display: none; }
-.ht-tab { flex: 1 0 auto; border: 0; background: transparent; color: var(--cc-muted); font: 600 13px Poppins, sans-serif;
-    padding: 8px 12px; border-radius: var(--cc-r-pill); white-space: nowrap; }
-.ht-tab.on { background: var(--cc-surface-3); color: var(--cc-text); }
 
 /* ---- team sheet: four tiles, one list ---------------------------------- */
 .ht-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
@@ -78,10 +45,6 @@
 .ht-explain { font-size: 11px; color: var(--cc-muted-2); margin: 8px 2px 0; line-height: 1.45; }
 .ht-v { color: var(--cc-muted-2); font-size: 10px; margin-right: 3px; }
 .ht-rk { color: var(--cc-muted-2); font-size: 10px; font-variant-numeric: tabular-nums; }
-.ht-w { color: var(--cc-success); }
-.ht-l { color: var(--cc-danger-text); }
-.ht-more { display: block; width: 100%; margin-top: 8px; padding: 10px; border-radius: var(--cc-r-md);
-    background: var(--cc-surface); border: 1px solid var(--cc-border); color: var(--cc-muted-bright); font: 600 13px Poppins, sans-serif; }
 
 /* ---- splits ------------------------------------------------------------ */
 .ht-splits { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
@@ -136,26 +99,10 @@
 .ht-st tr.me td { background: rgba(var(--cc-accent-rgb), .10); }
 .ht-st tr.me td.s { font-weight: 700; }
 
-/* ---- schedule ---------------------------------------------------------- */
-.ht-log { overflow: hidden; }
-.ht-lg { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto 28px 26px; gap: 8px; align-items: center; padding: 9px 12px;
-    font-size: 13px; border-bottom: 1px solid var(--cc-border); }
-.ht-lg:last-child { border-bottom: 0; }
-.ht-lg .d { color: var(--cc-muted); font-size: 11px; }
-.ht .ht-lg a.d:hover, .ht .ht-lg a.d:focus { color: var(--cc-muted); }
-.ht-lg .opp { min-width: 0; }
-.ht-ologo { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; margin-right: 6px; }
-.ht-lg .nm, .ht-lg .note { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ht-lg .note { font-size: 10px; color: var(--cc-muted-2); }
-.ht-lg .res { font-weight: 700; font-variant-numeric: tabular-nums; }
-.ht-lg.up .res { color: var(--cc-muted-2); font-weight: 500; font-size: 12px; }
+/* ---- schedule: sp-gr game rows, plus the quadrant column ---------------- */
 .ht-qt { font-size: 10px; font-weight: 800; text-align: center; border-radius: 4px; padding: 2px 0; background: var(--cc-surface-3); }
 .ht-qt.post { font-size: 9px; letter-spacing: .3px; color: var(--cc-amber); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ht-qt.q1 { background: rgba(var(--cc-accent-rgb), .22); color: var(--cc-accent); }
-.ht-lg .p { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.ht-lg .p.z { color: var(--cc-muted-2); font-weight: 500; }
-.ht-lg.div { background: var(--cc-surface-2); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-    color: var(--cc-muted); padding: 6px 12px; grid-template-columns: 1fr; }
 
 @media (max-width: 640px) {
     .ht-rot .full { display: none; }

@@ -10,19 +10,12 @@
     var root = document.getElementById('hoops-team');
     if (!root) return;
 
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
+    // Formatting, tabs, name fitting and loading come from the shared kit.
+    var kit = window.ccSportPage;
+    var esc = kit.esc, fixed = kit.fixed, record = kit.record;
     function venueMark(v) { return v === 'home' ? 'vs' : v === 'away' ? '@' : 'N'; }
     function won(g) { return g.us > g.them; }
-    function record(list) {
-        var w = list.filter(won).length;
-        return w + '–' + (list.length - w);
-    }
     function teamHref(id) { return '/hoops/team/' + encodeURIComponent(id); }
-    function fixed(n, d) { return n == null || !isFinite(n) ? '—' : Number(n).toFixed(d); }
 
     // A to-scale-in-spirit full court, drawn as thin strokes and stood on
     // end so one basket sits behind the name and half court runs along the
@@ -44,27 +37,17 @@
             + end(false) + end(true) + '</g></svg>';
     }
 
-    function dateOf(g) {
-        var k = window.ccKickoff;
-        if (k && k.parts) {
-            var p = k.parts(g.startDate, g.startTimeTbd);
-            if (p) return p.monthShort + ' ' + p.day;
-        }
-        var d = new Date(g.startDate);
-        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-
     function hero(d, done) {
         var t = d.team, pre = d.preseason;
         var conf = done.filter(function (g) { return g.conferenceGame; });
         var q1 = done.filter(function (g) { return g.quadrant === 1; });
         var chips = '';
         if (pre) {
-            chips += '<span class="ht-chip">T-Rank <b>#' + esc(pre.rank) + '</b></span>';
-            if (pre.projectedRecord) chips += '<span class="ht-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
+            chips += '<span class="sp-chip">T-Rank <b>#' + esc(pre.rank) + '</b></span>';
+            if (pre.projectedRecord) chips += '<span class="sp-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
         }
         var sub = [t.mascot, t.conference, t.venue].filter(Boolean).map(esc).join(' · ');
-        return '<section class="ht-hero"' + (t.color ? ' style="--team:' + esc(t.color) + '"' : '') + '>' + court()
+        return '<section class="sp-hero team ht-hero"' + (t.color ? ' style="--team:' + esc(t.color) + '"' : '') + '>' + court()
             + '<div class="ht-id">' + (t.logo ? '<img class="ht-logo" src="' + esc(t.logo) + '" alt="">' : '')
             + '<div><div class="ht-school">' + esc(t.school).toUpperCase() + '</div>'
             + '<div class="ht-mascot">' + sub + '</div>'
@@ -110,8 +93,8 @@
         });
         h += '</div>';
         var games = d.games.filter(function (g) { return g.quadrant === state.q; });
-        h += '<div class="ht-card ht-qlist">';
-        if (!games.length) h += '<div class="ht-empty">No Q' + state.q + ' games on the schedule.</div>';
+        h += '<div class="sp-card ht-qlist">';
+        if (!games.length) h += '<div class="sp-empty">No Q' + state.q + ' games on the schedule.</div>';
         games.forEach(function (g) { h += gameRow(d, g); });
         h += '</div><p class="ht-explain">Quadrants are the selection committee\'s yardstick: the opponent\'s rank, adjusted for where the game was played. Banked at time of play.</p>';
         return h;
@@ -131,7 +114,7 @@
         var cell = function (n, l, cls) {
             return '<div class="ht-sp' + (cls ? ' ' + cls : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>';
         };
-        return '<h2>Splits</h2><div class="ht-splits">'
+        return '<h2 class="sp-h">Splits</h2><div class="ht-splits">'
             + cell(by('home'), 'Home') + cell(by('away'), 'Road', 'road') + cell(by('neutral'), 'Neutral')
             + cell(record(done.slice(-10)), 'Last 10') + cell(streak + n, 'Streak')
             + cell((margin > 0 ? '+' : '') + margin.toFixed(1), 'Margin') + '</div>';
@@ -146,7 +129,7 @@
                 + '<span class="v">' + value + '<small>' + sub + '</small></span></div>';
         };
         var of = p.ratedTeams ? ' of ' + p.ratedTeams : '';
-        return '<h2>Efficiency<small>Torvik preseason · points per 100 possessions</small></h2><div class="ht-card ht-eff">'
+        return '<h2 class="sp-h">Efficiency<small>Torvik preseason · points per 100 possessions</small></h2><div class="sp-card ht-eff">'
             + row('Offense', (p.adjOE - 90) / 35 * 100, fixed(p.adjOE, 1), p.oeRank ? '#' + p.oeRank + of : '')
             + row('Defense', (125 - p.adjDE) / 35 * 100, fixed(p.adjDE, 1), p.deRank ? '#' + p.deRank + of : '')
             + row('Net', ((p.adjOE - p.adjDE) + 10) / 45 * 100, (p.adjOE >= p.adjDE ? '+' : '') + fixed(p.adjOE - p.adjDE, 1),
@@ -223,16 +206,16 @@
     function stats(d) {
         var s = d.stats;
         if (!s || !s.games) {
-            return '<div class="ht-card ht-empty">Box-score stats arrive once the season tips off, and refresh nightly.</div>';
+            return '<div class="sp-card sp-empty">Box-score stats arrive once the season tips off, and refresh nightly.</div>';
         }
-        return '<h2>Style<small>' + esc(s.games) + ' games</small></h2>' + style(s)
-            + '<h2>Four factors<small>The four things that decide games</small></h2><div class="ht-card">' + fourFactors(s) + '</div>'
-            + '<h2>Rotation<small>Top nine by minutes a game</small></h2><div class="ht-card">' + rotation(s) + '</div>';
+        return '<h2 class="sp-h">Style<small>' + esc(s.games) + ' games</small></h2>' + style(s)
+            + '<h2 class="sp-h">Four factors<small>The four things that decide games</small></h2><div class="sp-card">' + fourFactors(s) + '</div>'
+            + '<h2 class="sp-h">Rotation<small>Top nine by minutes a game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
     }
 
     function standings(d) {
         if (!d.standings || !d.standings.length || !d.team.conference) return '';
-        var h = '<div class="ht-card"><table class="ht-st"><thead><tr>'
+        var h = '<div class="sp-card"><table class="ht-st"><thead><tr>'
             + '<th></th><th>Team</th><th>Conf</th><th>Overall</th></tr></thead><tbody>';
         d.standings.forEach(function (r, i) {
             h += '<tr' + (r.teamId === d.team.id ? ' class="me"' : '') + '><td class="n">' + (i + 1) + '</td>'
@@ -251,14 +234,14 @@
     function gameRow(d, g) {
         var vals = d.quadrantValues || {};
         var res = g.final
-            ? '<span class="' + (won(g) ? 'ht-w' : 'ht-l') + '">' + (won(g) ? 'W' : 'L') + '</span> ' + g.us + '–' + g.them
+            ? '<span class="' + (won(g) ? 'sp-w' : 'sp-l') + '">' + (won(g) ? 'W' : 'L') + '</span> ' + g.us + '–' + g.them
             : (vals[g.quadrant] ? '+' + vals[g.quadrant] + ' if won' : '');
         var pts = g.final && g.points != null ? (g.points > 0 ? '+' + g.points : String(g.points)) : '';
         var gameHref = '/hoops/game/' + encodeURIComponent(g.id);
-        return '<div class="ht-lg' + (g.final ? '' : ' up') + '"><a class="d" href="' + gameHref + '">' + dateOf(g) + '</a>'
+        return '<div class="sp-gr' + (g.final ? '' : ' up') + '"><a class="d" href="' + gameHref + '">' + kit.dayOf(g) + '</a>'
             + oppOpen(g.opponent) + '<span class="nm"><span class="ht-v">' + venueMark(g.venue) + '</span>'
             + (g.opponent.rank ? '<span class="ht-rk">' + g.opponent.rank + '</span> ' : '')
-            + (g.opponent.logo ? '<img class="ht-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+            + (g.opponent.logo ? '<img class="sp-ologo" src="' + esc(g.opponent.logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
             + '<span class="ht-school-nm" title="' + esc(g.opponent.school) + '"'
             + (g.opponent.abbreviation ? ' data-abbr="' + esc(g.opponent.abbreviation) + '"' : '') + '>'
             + esc(g.opponent.school) + '</span></span>'
@@ -277,20 +260,20 @@
         var ahead = d.games.filter(function (g) { return !g.final; });
         var shown = state.allGames ? d.games
             : played.slice(-RECENT).concat(ahead.slice(0, NEXT));
-        var h = '<div class="ht-card ht-log">';
+        var h = '<div class="sp-card sp-games">';
         var split = false;
         shown.forEach(function (g) {
             if (!g.final && !split) {
                 split = true;
-                h += '<div class="ht-lg div">Up next</div>';
+                h += '<div class="sp-gr div">Up next</div>';
             }
             h += gameRow(d, g);
         });
         h += '</div>';
         if (shown.length < d.games.length) {
-            h += '<button type="button" class="ht-more" data-more="games">Full schedule · ' + d.games.length + ' games</button>';
+            h += '<button type="button" class="sp-more" data-more="games">Full schedule · ' + d.games.length + ' games</button>';
         } else if (state.allGames && d.games.length > RECENT + NEXT) {
-            h += '<button type="button" class="ht-more" data-more="games">Show less</button>';
+            h += '<button type="button" class="sp-more" data-more="games">Show less</button>';
         }
         return h;
     }
@@ -310,10 +293,7 @@
     function tabs(d) {
         var label = { resume: 'Résumé', schedule: 'Schedule', stats: 'Stats', conference: d.team.conference || 'Conference' };
         var list = TABS.filter(function (t) { return t !== 'conference' || (d.standings && d.standings.length && d.team.conference); });
-        return '<nav class="ht-tabs" role="tablist">' + list.map(function (t) {
-            return '<button type="button" role="tab" data-tab="' + t + '" class="ht-tab' + (state.tab === t ? ' on' : '') + '"'
-                + ' aria-selected="' + (state.tab === t) + '">' + esc(label[t]) + '</button>';
-        }).join('') + '</nav>';
+        return kit.tabs(list.map(function (t) { return [t, label[t]]; }), state.tab);
     }
 
     function panel(d, done) {
@@ -325,34 +305,14 @@
 
     function paintPanel() {
         var done = data.games.filter(function (g) { return g.final; });
-        var tabsEl = root.querySelector('.ht-tabs');
+        var tabsEl = root.querySelector('.sp-tabs');
         if (tabsEl) tabsEl.outerHTML = tabs(data);
         root.querySelector('.ht-panel').innerHTML = panel(data, done);
         fitSchools();
     }
 
-    // A school name that would be cut off becomes its abbreviation —
-    // "Michigan St…" reads worse than "MSU". Measured per row against the
-    // room the row actually has, so only the names that clip change, and
-    // re-run from the full name each time so widening the screen restores
-    // it. Fractional, like fit-names.js: whole-pixel scrollWidth hides the
-    // sub-pixel overflow that still draws an ellipsis.
-    function overflows(el) {
-        var range = document.createRange && document.createRange();
-        if (!range || typeof range.getBoundingClientRect !== 'function') {
-            return el.scrollWidth > el.clientWidth;     // whole pixels, but never a crash
-        }
-        range.selectNodeContents(el);
-        return range.getBoundingClientRect().width - el.getBoundingClientRect().width > 0.1;
-    }
-    function fitSchools() {
-        var names = root.querySelectorAll('.ht-school-nm[data-abbr]');
-        for (var i = 0; i < names.length; i++) {
-            var n = names[i];
-            n.textContent = n.getAttribute('title');
-            if (overflows(n.parentNode)) n.textContent = n.getAttribute('data-abbr');
-        }
-    }
+    // A school name that would be cut off becomes its abbreviation.
+    function fitSchools() { kit.fitNames(root, '.ht-school-nm[data-abbr]'); }
 
     function render(d) {
         data = d;
@@ -393,36 +353,16 @@
         }
     });
 
-    function fail(text) {
-        root.innerHTML = '<div class="ht-error">' + esc(text) + '</div>';
-    }
-
     function load() {
         var id = root.getAttribute('data-team-id');
-        return fetch('/hoops/teams/' + encodeURIComponent(id) + '/page', { headers: { Accept: 'application/json' } })
-            .then(function (r) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    if (!r.ok) throw new Error(body.message || ('Could not load this team (' + r.status + ')'));
-                    return body;
-                });
-            })
-            .then(render)
-            .catch(function (e) { fail(e.message); });
+        return kit.load('/hoops/teams/' + encodeURIComponent(id) + '/page', render, root, 'team');
     }
 
-    // The tabs pin just under the navbar, which is itself sticky — so the
-    // offset is the navbar's height, measured, the way the Scoreboard does
-    // it. Re-measured when the webfont swaps in, which changes that height.
-    function syncStickyTop() {
-        var nav = document.getElementById('navbar');
-        var h = nav ? Math.floor(nav.getBoundingClientRect().height) : 0;
-        document.documentElement.style.setProperty('--ht-sticky-top', h + 'px');
-    }
-    syncStickyTop();
-    window.addEventListener('resize', syncStickyTop);
+    // Names are re-fitted when the room changes: a resize, or the webfont
+    // swapping in. (The kit keeps the sticky tabs under the navbar.)
     window.addEventListener('resize', function () { if (data) fitSchools(); });
     if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
-        document.fonts.ready.then(function () { syncStickyTop(); if (data) fitSchools(); }).catch(function () {});
+        document.fonts.ready.then(function () { if (data) fitSchools(); }).catch(function () {});
     }
 
     window.ccHoopsTeam = { render: render, load: load, state: state };

@@ -40,7 +40,8 @@ module.exports = {
         "public/standings-insights.js",
         "public/standings.js",
         "public/weekByWeek.js",
-        "public/search-match.js"
+        "public/search-match.js",
+        "public/sport-page.js"
     ],
     coveragePathIgnorePatterns: [
         "/node_modules/",
@@ -135,6 +136,14 @@ module.exports = {
             statements: 96,
             branches: 85,
             functions: 100,
+            lines: 100
+        },
+        // The shared kit behind every sport page (#506): escaping, dates,
+        // name fitting and the load/error path all four pages lean on.
+        "./public/sport-page.js": {
+            statements: 98,
+            branches: 84,
+            functions: 96,
             lines: 100
         },
         "./modules/hoops-live-poll.js": {

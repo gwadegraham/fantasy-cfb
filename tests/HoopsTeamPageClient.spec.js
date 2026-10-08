@@ -11,6 +11,9 @@ const fs = require('fs');
 const path = require('path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'hoopsTeam.js'), 'utf8');
+// The shared kit (#506) the page script builds on, loaded once as the page would.
+const KIT = fs.readFileSync(path.join(__dirname, '..', 'public', 'sport-page.js'), 'utf8');
+beforeAll(() => { (0, eval)(KIT); });
 
 const g = (id, o) => Object.assign({
     id, startDate: '2026-11-10T00:00:00.000Z', startTimeTbd: false, week: 1, venue: 'home',
@@ -107,10 +110,10 @@ test('no owner, no strip — and no point values, no "+N a win"', async () => {
 
 test('tabs: the hash picks the tab, a tap changes it and the hash', async () => {
     await render(payload(), 200, 'stats');
-    expect(document.querySelector('.ht-tab.on').textContent).toBe('Stats');
+    expect(document.querySelector('.sp-tab.on').textContent).toBe('Stats');
     tab('schedule');
     expect(window.location.hash).toBe('#schedule');
-    expect(document.querySelector('.ht-tab.on').textContent).toBe('Schedule');
+    expect(document.querySelector('.sp-tab.on').textContent).toBe('Schedule');
 });
 
 test('the conference tab is named for the conference, and hidden without standings', async () => {
@@ -123,7 +126,7 @@ test('the conference tab is named for the conference, and hidden without standin
 test('stats not imported yet: says so instead of an empty table', async () => {
     await render(payload());
     tab('stats');
-    expect(txt('.ht-empty')).toContain('arrive once the season tips off');
+    expect(txt('.sp-empty')).toContain('arrive once the season tips off');
 });
 
 test('stats imported: exactly the four factors, named and explained, with the edge marked', async () => {
@@ -165,11 +168,11 @@ test('schedule: the last five and the next three, then the whole season on reque
     for (let i = 9; i <= 14; i++) games.push(g(i, { final: false, us: null, them: null, points: null, quadrant: 1, opponent: { id: i, school: 'Next ' + i, rank: 5 } }));
     await render(payload({ games }));
     tab('schedule');
-    const shown = () => Array.from(document.querySelectorAll('.ht-log .ht-lg:not(.div)')).length;
+    const shown = () => Array.from(document.querySelectorAll('.sp-games .sp-gr:not(.div)')).length;
     expect(shown()).toBe(8);
-    expect(txt('.ht-log')).toContain('Up next');
-    expect(txt('.ht-log')).not.toContain('Played 3');
-    expect(document.querySelector('.ht-lg.up .res').textContent).toBe('+5 if won');
+    expect(txt('.sp-games')).toContain('Up next');
+    expect(txt('.sp-games')).not.toContain('Played 3');
+    expect(document.querySelector('.sp-gr.up .res').textContent).toBe('+5 if won');
     document.querySelector('[data-more="games"]').click();
     expect(shown()).toBe(14);
     expect(document.querySelector('[data-more="games"]').textContent).toBe('Show less');
@@ -178,7 +181,7 @@ test('schedule: the last five and the next three, then the whole season on reque
 test('a result shows its banked points', async () => {
     await render(payload());
     tab('schedule');
-    const florida = Array.from(document.querySelectorAll('.ht-lg')).find(n => n.textContent.includes('Florida'));
+    const florida = Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes('Florida'));
     expect(florida.querySelector('.res').textContent).toBe('W 80–70');
     expect(florida.querySelector('.p').textContent).toBe('+5');
 });
@@ -192,7 +195,7 @@ test('a postseason game is off the team sheet and off the table, and says its to
     expect(txt('.ht-own')).toContain('up to +6');                                                         // unchanged
     expect(txt('.ht-qlist')).not.toContain('Gonzaga');
     tab('schedule');
-    const row = Array.from(document.querySelectorAll('.ht-lg')).find(n => n.textContent.includes('Gonzaga'));
+    const row = Array.from(document.querySelectorAll('.sp-gr')).find(n => n.textContent.includes('Gonzaga'));
     expect(row.querySelector('.ht-qt').textContent).toBe('NCAA');
     expect(row.querySelector('.res').textContent).toBe('');
 });
@@ -201,11 +204,11 @@ test('game rows carry the opponent\'s logo, and none when there is no logo', asy
     const base = payload();
     base.games[0].opponent.logo = 'https://x/fla.png';
     await render(base);
-    const row = (school) => Array.from(document.querySelectorAll('.ht-qlist .ht-lg')).find(n => n.textContent.includes(school));
-    expect(row('Florida').querySelector('.ht-ologo').getAttribute('src')).toBe('https://x/fla.png');
-    expect(row('UConn').querySelector('.ht-ologo')).toBeNull();
+    const row = (school) => Array.from(document.querySelectorAll('.ht-qlist .sp-gr')).find(n => n.textContent.includes(school));
+    expect(row('Florida').querySelector('.sp-ologo').getAttribute('src')).toBe('https://x/fla.png');
+    expect(row('UConn').querySelector('.sp-ologo')).toBeNull();
     tab('schedule');
-    expect(document.querySelectorAll('.ht-log .ht-ologo')).toHaveLength(1);
+    expect(document.querySelectorAll('.sp-games .sp-ologo')).toHaveLength(1);
 });
 
 test('a row reads venue, rank, logo, then the school', async () => {
@@ -213,7 +216,7 @@ test('a row reads venue, rank, logo, then the school', async () => {
     base.games[0].opponent = { id: 2, school: 'Texas Tech', abbreviation: 'TTU', rank: 14, logo: 'https://x/ttu.png' };
     await render(base);
     const nm = document.querySelector('.ht-qlist .nm');
-    expect(Array.from(nm.children).map(c => c.className || c.tagName)).toEqual(['ht-v', 'ht-rk', 'ht-ologo', 'ht-school-nm']);
+    expect(Array.from(nm.children).map(c => c.className || c.tagName)).toEqual(['ht-v', 'ht-rk', 'sp-ologo', 'ht-school-nm']);
     expect(nm.textContent).toBe('@14 Texas Tech');
 });
 
@@ -255,7 +258,7 @@ test('a non-D-I opponent is plain text, not a link to a missing page', async () 
     const base = payload();
     base.games[0].opponent = { id: 9999, school: 'Division II College', rank: null, hasPage: false };
     await render(base);
-    const row = Array.from(document.querySelectorAll('.ht-qlist .ht-lg')).find(n => n.textContent.includes('Division II'));
+    const row = Array.from(document.querySelectorAll('.ht-qlist .sp-gr')).find(n => n.textContent.includes('Division II'));
     expect(row.querySelector('.opp').tagName).toBe('SPAN');
     expect(row.querySelector('a.opp')).toBeNull();
     expect(document.querySelectorAll('.ht-qlist a.opp').length).toBeGreaterThan(0);   // the rest still link
@@ -269,5 +272,5 @@ test('names the tab after the team and repaints the league chrome', async () => 
 
 test('an API error is shown, not a blank page', async () => {
     await render({ message: 'No such basketball team this season' }, 404);
-    expect(txt('.ht-error')).toBe('No such basketball team this season');
+    expect(txt('.sp-error')).toBe('No such basketball team this season');
 });
