@@ -26,7 +26,7 @@ useMongo();
 const SEASON = 2027;
 
 // roles: null = signed out; [] = a member; ['League Manager']; ['Admin'].
-function appAs(roles) {
+function appAs(roles, viewing) {
     const a = express();
     a.set('views', path.join(__dirname, '..', 'views'));
     a.set('view engine', 'ejs');
@@ -38,7 +38,8 @@ function appAs(roles) {
         next();
     });
     a.use('/hoops/admin', hoopsAdmin.build({
-        pageLocals: () => ({ user: { userId: 'u1', firstName: 'Garrett', role: (roles || [])[0] || '' }, userState: '{}' })
+        pageLocals: () => ({ user: { userId: 'u1', firstName: 'Garrett', role: (roles || [])[0] || '' }, userState: '{}',
+            viewerLeagueCode: viewing, draftDefaults: '{}' })
     }));
     // What server.js does with a request no route answered.
     a.use((req, res) => res.status(404).send('Not found'));
@@ -72,6 +73,121 @@ describe('the page', () => {
         const res = await request(appAs(roles)).get('/hoops/admin');
         expect(res.status).toBe(404);
         expect(res.text).not.toContain('hoops-admin');
+    });
+});
+
+// League setup on the basketball page: football's commissioner tools,
+// pointed at the basketball league and its season.
+describe('the page manages a basketball league', () => {
+    const League = require('../models/league');
+    beforeEach(async () => {
+        await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
+                             { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
+        activeSeason._reset();
+        await activeSeason.prime();
+    });
+    const page = async (viewing) => (await request(appAs(['Admin'], viewing)).get('/hoops/admin')).text;
+
+    // An Admin arriving from football's page is still VIEWING football.
+    test.each([['viewing basketball', 'hoops-league'], ['viewing nothing yet', undefined]])(
+        '%s, it manages the basketball league in its own season', async (_, viewing) => {
+            const html = await page(viewing);
+            expect(html).toContain('window.ADMIN_LEAGUE = "hoops-league"');
+            expect(html).toContain('window.APP_YEAR = "2027"');
+            expect(html).toContain('Hardwood Heroes');
+            expect(html).toContain('src="/admin.js"');
+        });
+
+    test("League setup without what basketball doesn't have", async () => {
+        const html = await page('hoops-league');
+        ['displayLeagueNameContainer', 'displayDraftConfigContainer', 'displayScoringConfigContainer',
+         'displayCreateUserContainer', 'displaySeasonRosterContainer', 'displayManagerLoginsContainer',
+         'displayAuditLogContainer'].forEach(fn => expect(html).toContain(fn + '()'));
+        // No Captain or H2H in basketball scoring; always quadrants; the roster
+        // fix offers football teams only.
+        ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         'name="rule-shape"'].forEach(bit => expect(html).not.toContain(bit));
+        expect(html).toContain('user-table-body');
+        // Nothing football-only in the words either.
+        expect(html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')).not.toMatch(/football|captain|kickoff|FBS/i);
+    });
+
+    // The badge counts the tools actually shown, on both pages.
+    test.each([['basketball', 'hoops'], ['football', 'admin']])('%s: the League setup count matches its tools', async (sport) => {
+        const PARTIAL = path.join(__dirname, '..', 'views', 'partials', 'admin-league-setup.ejs');
+        const html = ejs.render(fs.readFileSync(PARTIAL, 'utf8'), { sport }, { filename: PARTIAL });
+        const shown = (html.match(/class="function-container/g) || []).length;
+        expect(html).toContain('<span class="group-count">' + shown + '</span>');
+    });
+
+    // Graham: "If I am on the CBB Admin page and click the league switcher, I
+    // want the Admin page to switch to the other sport's admin page." The
+    // switcher reloads, so viewing football here has to land on /admin.
+    test('viewing a football league sends an Admin to football\'s /admin', async () => {
+        const res = await request(appAs(['Admin'], 'graham-league')).get('/hoops/admin');
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/admin');
+    });
+
+    test('no basketball league: the data tasks only, and no league tools', async () => {
+        await League.deleteMany({ sport: 'basketball' });
+        activeSeason._reset();
+        await activeSeason.prime();
+        const html = await page(undefined);
+        expect(html).toContain('window.ADMIN_LEAGUE = null');
+        expect(html).not.toContain('src="/admin.js"');
+        expect(html).not.toContain('displayDraftConfigContainer');
+    });
+});
+
+describe("football's /admin sends an Admin viewing basketball to this page", () => {
+    test('an Admin viewing basketball is redirected', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'basketball')).toBe('/hoops/admin');
+    });
+    test('an Admin viewing football stays', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['Admin'], 'football')).toBeNull();
+    });
+    // A League Manager manages their own football league on /admin, and the
+    // basketball page would 404 them anyway.
+    test('a League Manager stays, whatever they view', () => {
+        expect(hoopsAdmin.footballAdminRedirect(['League Manager'], 'basketball')).toBeNull();
+    });
+});
+
+describe("football's /admin works in the season of the league it manages", () => {
+    const League = require('../models/league');
+    const lm = { user_metadata: { metadata: { league: 'gg' } } };
+    beforeEach(async () => {
+        await League.create([{ code: 'graham-league', name: 'The Polar Depressed', sport: 'football' },
+                             { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }]);
+        activeSeason._reset();
+        await activeSeason.prime();
+    });
+    test('a League Manager viewing basketball still gets football\'s season', () => {
+        expect(hoopsAdmin.footballAdminSeason(['League Manager'], 'hoops-league', lm)).toBe(2026);
+    });
+    // The viewed league and the Admin's own Auth0 league must differ in
+    // season, or reading the wrong one passes too.
+    test('an Admin gets the season of the league they view, not their own', async () => {
+        await League.updateOne({ code: 'graham-league' }, { $set: { season: 2025 } });
+        await League.create({ code: 'claunts-league', name: 'Goofballers', sport: 'football' });
+        activeSeason._reset();
+        await activeSeason.prime();
+        const claunts = { user_metadata: { metadata: { league: 'claunts' } } };
+        expect(hoopsAdmin.footballAdminSeason(['Admin'], 'graham-league', claunts)).toBe(2025);
+    });
+});
+
+describe("football's admin page is unchanged by the split", () => {
+    const ADMIN = path.join(__dirname, '..', 'views', 'admin.ejs');
+    test('it keeps every League setup tool, Fixed/Stacking included', () => {
+        const html = ejs.render(fs.readFileSync(ADMIN, 'utf8'), {
+            user: { userId: 'u1', firstName: 'Garrett', role: 'League Manager' },
+            userState: '{}', year: 2026, isAdmin: false, draftDefaults: '{}'
+        }, { filename: ADMIN });
+        ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         'name="rule-shape"', 'displayDraftConfigContainer'].forEach(bit => expect(html).toContain(bit));
+        expect(html).toContain('<span class="group-count">10</span>');
     });
 });
 
@@ -192,7 +308,8 @@ describe('windowsFor', () => {
     });
 });
 
-describe("football's admin page links here for Admins only", () => {
+// Graham: viewing football, "I only want to see CFB admin functions and info".
+describe("football's admin page says nothing about basketball", () => {
     const ADMIN = path.join(__dirname, '..', 'views', 'admin.ejs');
     const template = fs.readFileSync(ADMIN, 'utf8');
     const render = (isAdmin) => ejs.render(template, {
@@ -200,10 +317,12 @@ describe("football's admin page links here for Admins only", () => {
         userState: '{}', year: 2026, isAdmin, draftDefaults: '{}'
     }, { filename: ADMIN });
 
-    test('an Admin sees the link', () => {
-        expect(render(true)).toContain('href="/hoops/admin"');
-    });
-    test('a League Manager does not', () => {
-        expect(render(false)).not.toContain('/hoops/admin');
+    // The navbar is rendered too, and its league switcher legitimately
+    // lists every league; the page body is what has to be football-only.
+    const body = (html) => html.slice(html.indexOf('<div class="header">'));
+    test.each([['an Admin', true], ['a League Manager', false]])('%s: no basketball link or wording', (_, isAdmin) => {
+        const html = body(render(isAdmin));
+        expect(html).not.toContain('/hoops/admin');
+        expect(html).not.toMatch(/basketball/i);
     });
 });

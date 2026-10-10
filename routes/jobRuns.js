@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const JobRun = require('../models/jobRun');
 const { latestPerJob } = require('../modules/job-runs-util');
+// A namespace, so a test can stand in for the viewer.
+const hoopsVisibility = require('../modules/hoops-visibility');
 
 // Latest run per job — powers the admin status strip's "last run / outcome".
 //
@@ -26,7 +28,13 @@ router.get('/', async (req, res) => {
         // Already one row per job; the helper stays as the single definition of
         // that invariant, so a future change to the query above cannot start
         // serving duplicates without this catching it.
-        res.json(latestPerJob(runs));
+        // Basketball's jobs (hoops-*) only to someone who may know basketball
+        // exists. This GET is open to every signed-in member and football's
+        // admin strip reads it, so a job name alone gave the league away to
+        // a League Manager (#518). The basketball admin page reads its own.
+        const seesHoops = await hoopsVisibility.seesBasketball(req);
+        const rows = seesHoops ? runs : runs.filter(r => !/^hoops-/.test(r.jobName || ''));
+        res.json(latestPerJob(rows));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

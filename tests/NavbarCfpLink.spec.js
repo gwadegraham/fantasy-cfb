@@ -44,3 +44,24 @@ describe('the CFP bracket nav link', () => {
         expect(html).not.toContain('/cfp-bracket');
     });
 });
+
+// #518: football and basketball have separate admin pages. An Admin viewing a
+// basketball league is linked to its page; a League Manager always manages
+// their own football league on /admin.
+describe('the admin link follows the sport being viewed', () => {
+    const renderAs = (role, viewerSport) => ejs.render(template, {
+        user: { userId: 'u1', firstName: 'Garrett', role }, viewerSport
+    }, { filename: NAVBAR });
+
+    test('an Admin viewing basketball goes to the basketball admin page', () => {
+        expect(renderAs('Admin', 'basketball')).toContain('admin-page href="/hoops/admin"');
+    });
+    test('an Admin viewing football goes to /admin', () => {
+        expect(renderAs('Admin', 'football')).toContain('admin-page href="/admin"');
+    });
+    test('a League Manager goes to /admin whatever they view', () => {
+        const html = renderAs('League Manager', 'basketball');
+        expect(html).toContain('admin-page href="/admin"');
+        expect(html).not.toContain('/hoops/admin');
+    });
+});
