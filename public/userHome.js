@@ -611,6 +611,16 @@ async function hydrateGames(user, activeYear) {
     const tile = document.getElementById('uh-tile-games');
     const season = uhSeasonFor(user, activeYear);
     if (!(season.teams || []).length) { if (tile) tile.hidden = true; return; }
+    // A basketball league has its own weeks and games (#501) — and must not
+    // touch football's week storage below, which carries no sport.
+    if (window.ccHoopsWeekGames && window.ccLeague && window.ccLeague.sport && window.ccLeague.sport() === 'basketball') {
+        return window.ccHoopsWeekGames.hydrate({
+            season: activeYear, seasonEntry: season, roster: season.teams,
+            glanceEl: document.getElementById('uh-glance-games'),
+            poss: uhPoss(uhOwns(user)), logoOf: t => ccLogo(t.logos),
+            setDrawer: fn => { uhDrawer.games = fn; }
+        });
+    }
     // weekCode isn't season-scoped — reset it when the active season changes so a
     // new season doesn't inherit last season's selected week (e.g. Postseason).
     if (window.localStorage.getItem('weekSeason') !== String(activeYear)) {
