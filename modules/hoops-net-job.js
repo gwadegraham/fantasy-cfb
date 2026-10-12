@@ -170,8 +170,18 @@ async function snapshotSeason(season, now, fetchImpl) {
             $lt: easternMidnight(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))
         }
     });
+    // Stale is an alarm either way. But a stale page can still be NEWER than
+    // what the week holds — NCAA skipping a weekend's updates must not leave
+    // next week graded on the even older snapshot from earlier in the week.
+    // So it is written when its stamp beats the stored one, and refused only
+    // when it does not.
+    let stale = null;
     if (unreflected) {
-        throw new Error(`the NET is stale: through ${fmtDay(parsed.throughGames)}, but ${unreflected} game(s) before ${fmtDay(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))} are not in it — wk${target.week} not written`);
+        stale = `the NET is stale: through ${fmtDay(parsed.throughGames)}, but ${unreflected} game(s) before ${fmtDay(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))} are not in it`;
+        const stored = await HoopsNetRank.findOne({ season, week: target.week }, { throughGames: 1, _id: 0 }).lean();
+        if (stored && !(stored.throughGames < parsed.throughGames)) {
+            throw new Error(`${stale} — wk${target.week} already holds a NET through ${fmtDay(stored.throughGames)}, not replaced`);
+        }
     }
 
     const m = matchNet(parsed.rows, teams);
@@ -198,11 +208,15 @@ async function snapshotSeason(season, now, fetchImpl) {
     const skippedNote = m.ignored.length ? `, ${m.ignored.length} listed as not ours: ${list(m.ignored)}` : '';
     const written = `${season} wk${target.week}: ${m.matched.length} team(s), NET through ${fmtDay(parsed.throughGames)}${skippedNote} (snapshot taken in wk${target.during})`;
 
-    // Written, because every rank in it is right — but a team on file with
-    // no NET rank grades as unranked, which is Q4. Someone has to look.
+    // Written, but still a failure someone has to look at:
+    //   - stale: the newest NET there is, and still behind the games
+    //   - a team on file with no NET rank grades as unranked, which is Q4
+    const after = [];
+    if (stale) after.push(stale);
     if (m.unclaimed.length) {
-        throw new Error(`${written}, but ${m.unclaimed.length} team(s) on file have no NET rank and will grade as unranked: ${list(m.unclaimed)}`);
+        after.push(`${m.unclaimed.length} team(s) on file have no NET rank and will grade as unranked: ${list(m.unclaimed)}`);
     }
+    if (after.length) throw new Error(`${written} — written, but ${after.join('; ')}`);
     return { written };
 }
 

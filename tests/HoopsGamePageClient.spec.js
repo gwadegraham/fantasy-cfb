@@ -295,6 +295,14 @@ describe('official NET (#533)', () => {
         expect(head().textContent).toBe('Official NETNET: NCAA');
     });
 
+    test('a live game shows it too — live games render the preview path', async () => {
+        const p = withNet(upcoming(), NET(37), NET(4));
+        p.game = Object.assign({}, p.game, { live: true, status: 'in_progress', period: 2, clock: '8:43' });
+        p.home.points = 40; p.away.points = 38;
+        await render(p);
+        expect(txt('.hg-net-row')).toMatch(/^TEX#37/);
+    });
+
     test('before the NET publishes: no card', async () => {
         await render(payload());
         expect(q('.hg-net')).toBeNull();

@@ -12,7 +12,7 @@
 
 const { useMongo } = require('./helpers/mongo');
 const {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, _resetThinLog,
     FULLY_PRESEASON, FULLY_LIVE
 } = require('../modules/hoops-ranks');
 const HoopsRating = require('../models/hoopsRating');
@@ -390,6 +390,40 @@ describe('the official NET takes over once it publishes (#533)', () => {
         console.error.mockRestore();
     });
 
+    test('a thin NET week is logged once per process, not on every read', async () => {
+        _resetThinLog();
+        await field();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        await HoopsNetRank.create([netRank(1, 7, 1)]);
+        const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+        for (let i = 0; i < 3; i++) await ranksFor(SEASON, 7);
+        expect(err.mock.calls.filter(c => /ignoring NET week 7/.test(c[0]))).toHaveLength(1);
+        err.mockRestore();
+    });
+
+    test('one round of reads: the NET weeks and the CBBD week are asked for before the preseason field answers', async () => {
+        await field();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        let release;
+        const gate = new Promise(r => { release = r; });
+        const realFind = HoopsTeam.find.bind(HoopsTeam);
+        jest.spyOn(HoopsTeam, 'find').mockImplementation((...a) => {
+            const q = realFind(...a);
+            return { lean: () => gate.then(() => q.lean()) };
+        });
+        const agg = jest.spyOn(HoopsNetRank, 'aggregate');
+        const cbbd = jest.spyOn(HoopsRating, 'find');
+        const pending = ranksFor(SEASON, 6);
+        await new Promise(r => setTimeout(r, 20));
+        expect(agg).toHaveBeenCalledTimes(1);
+        expect(cbbd).toHaveBeenCalled();
+        release();
+        expect((await pending).source).toBe('ncaa-net');
+        // netRanks used the weeks already fetched, not a second aggregate.
+        expect(agg).toHaveBeenCalledTimes(1);
+        jest.restoreAllMocks();
+    });
+
     test('with only thin NET weeks, the week falls through to CBBD and Torvik as before', async () => {
         await field();
         await HoopsNetRank.create([netRank(1, FULLY_LIVE, 1)]);
@@ -410,10 +444,13 @@ describe('the official NET takes over once it publishes (#533)', () => {
         expect((await ranksFor(SEASON, 3)).source).not.toBe('ncaa-net');
     });
 
-    test('netRanks: null for an unreadable season or week', async () => {
+    test('netRanks: null for an unreadable season or week; fetches its own weeks when not handed them', async () => {
         expect(await netRanks('x', 3, 0)).toBeNull();
         expect(await netRanks(SEASON, undefined, 0)).toBeNull();
+        await HoopsNetRank.create([netRank(7, 3, 1)]);
+        expect(await netRanks(SEASON, 4, 0)).toEqual({ ranks: { 7: 1 }, week: 3, stale: true });
     });
+
 });
 
 describe('the ranking feeds quadrants end to end', () => {

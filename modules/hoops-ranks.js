@@ -163,24 +163,39 @@ async function liveRanks(season, week) {
 // NET week is skipped in favour of the whole week before it, rather than
 // discarded and replaced by a different source. With no preseason field to
 // measure against, any rows count, as they do for CBBD.
-async function netRanks(season, week, preCount) {
+//
+// `weeks` is netWeeks()'s answer when the caller already has it in flight —
+// ranksFor fetches it alongside the preseason field, since only the floor
+// needs that count.
+async function netRanks(season, week, preCount, weeks) {
     const yr = Number(season);
     const wk = Number(week);
     if (!Number.isFinite(yr) || !Number.isFinite(wk)) return null;
-    const weeks = await HoopsNetRank.aggregate([
-        { $match: { season: yr, week: { $lte: wk } } },
-        { $group: { _id: '$week', n: { $sum: 1 } } },
-        { $sort: { _id: -1 } }
-    ]);
+    const found = await (weeks || netWeeks(yr, wk));
     const floor = preCount > 0 ? preCount * MIN_LIVE_COVERAGE : 1;
-    const whole = weeks.find(w => w.n >= floor);
-    for (const w of weeks) {
+    const whole = found.find(w => w.n >= floor);
+    for (const w of found) {
         if (w === whole) break;
+        // Once per process per week: ranksFor runs on every page view past
+        // the rank cache, and the job's own JobRun is the alarm.
+        const key = `${yr}:${w._id}`;
+        if (thinLogged.has(key)) continue;
+        thinLogged.add(key);
         console.error(`hoops-ranks: ignoring NET week ${w._id} — only ${w.n} of ${preCount} teams ranked`);
     }
     if (!whole) return null;
     const rows = await HoopsNetRank.find({ season: yr, week: whole._id }, { teamId: 1, rank: 1, _id: 0 }).lean();
     return { ranks: byTeam(rows), week: whole._id, stale: whole._id !== wk };
+}
+const thinLogged = new Set();
+
+// Row counts of every NET week at or before `week`, newest first.
+function netWeeks(season, week) {
+    return HoopsNetRank.aggregate([
+        { $match: { season: Number(season), week: { $lte: Number(week) } } },
+        { $group: { _id: '$week', n: { $sum: 1 } } },
+        { $sort: { _id: -1 } }
+    ]);
 }
 
 function byTeam(rows) {
@@ -196,14 +211,21 @@ function byTeam(rows) {
 // — and with scores banked at time of play it is a question that gets asked
 // months later.
 async function ranksFor(season, week) {
-    const pre = await preseasonRanks(season);
+    // One round of reads, in parallel: the free tier's cost is round trips,
+    // and this runs on every rank-cache miss and every scoring pass. The
+    // CBBD week is fetched even when the NET wins — a wasted read is
+    // cheaper than a second round.
+    const [pre, weeks, live] = await Promise.all([
+        preseasonRanks(season),
+        netWeeks(season, week),
+        liveRanks(season, week)
+    ]);
     const preCount = Object.keys(pre).length;
 
     // The NET, once it has published, outranks everything below.
-    const net = await netRanks(season, week, preCount);
+    const net = await netRanks(season, week, preCount, weeks);
     if (net) return { ranks: net.ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null };
 
-    const live = await liveRanks(season, week);
     const liveCount = Object.keys(live.ranks).length;
 
     // A partially-written week is a FAILED refresh, not a thin one.
@@ -229,6 +251,7 @@ async function ranksFor(season, week) {
 }
 
 module.exports = {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, rankOf, MIN_LIVE_COVERAGE,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, netWeeks, rankOf,
+    _resetThinLog: () => thinLogged.clear(), MIN_LIVE_COVERAGE,
     FULLY_PRESEASON, FULLY_LIVE
 };

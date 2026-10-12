@@ -157,7 +157,7 @@ describe('run — a good page', () => {
         await HoopsTeam.create({ id: 107, season: SEASON, school: 'West Florida', conference: 'ASUN' });
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS)) });
         expect(out.status).toBe('error');
-        expect(out.summary).toMatch(/1 team\(s\) on file have no NET rank and will grade as unranked: West Florida/);
+        expect(out.summary).toMatch(/ — written, but 1 team\(s\) on file have no NET rank and will grade as unranked: West Florida/);
         expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
         expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(6);
     });
@@ -278,11 +278,49 @@ describe('run — loud failures, nothing written', () => {
         expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(5);
     });
 
-    test('a stale Through Games date: games final for over two days that the NET has not counted', async () => {
+    describe('a stale Through Games date: games final before the grace that the NET has not counted', () => {
         // Through Dec 5; a game on the 7th went final and it is now the 10th.
-        await HoopsGame.create(game(3, '2026-12-08T00:30:00Z', { status: 'final', homePoints: 70, awayPoints: 60 }));
-        const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 05 2026' })) });
-        await expectLoudFailure(out, /the NET is stale: through 2026-12-05, but 1 game\(s\) before 2026-12-08 are not in it/);
+        const staleGame = () => HoopsGame.create(game(3, '2026-12-08T00:30:00Z', { status: 'final', homePoints: 70, awayPoints: 60 }));
+        const stalePage = () => page(netPage(ROWS, { through: 'Dec. 05 2026' }));
+        const STALE = /the NET is stale: through 2026-12-05, but 1 game\(s\) before 2026-12-08 are not in it/;
+        const stamped = async () => (await HoopsNetRank.findOne({ week: 7 }).lean()).throughGames;
+
+        test('nothing on file for the week: written — it is the newest NET there is — and still an error', async () => {
+            await staleGame();
+            const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: stalePage() });
+            expect(out.status).toBe('error');
+            expect(out.summary).toMatch(/^2027: FAILED 2027 wk7: 6 team\(s\), NET through 2026-12-05 .* — written, but the NET is stale/);
+            expect(out.summary).toMatch(STALE);
+            expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+            expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(6);
+        });
+
+        test('an OLDER snapshot on file for the week: replaced, and still an error', async () => {
+            // NCAA skipped the weekend: Monday's stamp was Dec 3, Thursday's
+            // is Dec 5. Next week must grade on the Dec 5 one.
+            await HoopsNetRank.create(TEAMS.map((t, i) => ({ season: SEASON, week: 7, teamId: t.id, rank: i + 1,
+                throughGames: new Date('2026-12-03T00:00:00Z') })));
+            await staleGame();
+            const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: stalePage() });
+            expect(out.status).toBe('error');
+            expect(await stamped()).toEqual(new Date('2026-12-05T00:00:00Z'));
+        });
+
+        test('the same or a NEWER snapshot on file: refused, the stored one kept', async () => {
+            for (const held of ['2026-12-05', '2026-12-06']) {
+                await HoopsNetRank.deleteMany({});
+                await HoopsNetRank.create(TEAMS.map((t, i) => ({ season: SEASON, week: 7, teamId: t.id, rank: 6 - i,
+                    throughGames: new Date(`${held}T00:00:00Z`) })));
+                jobMailer.sendJobEmail.mockClear();
+                if (held === '2026-12-05') await staleGame();
+                const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: stalePage() });
+                expect(out.status).toBe('error');
+                expect(out.summary).toMatch(new RegExp(`wk7 already holds a NET through ${held}, not replaced`));
+                expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+                expect(await stamped()).toEqual(new Date(`${held}T00:00:00Z`));
+                expect((await HoopsNetRank.findOne({ week: 7, teamId: 101 }).lean()).rank).toBe(6);
+            }
+        });
     });
 
     test('not stale: a game ON the stamp\'s day, a game inside the grace, and a quiet Christmas', async () => {
