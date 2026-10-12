@@ -161,6 +161,14 @@ module.exports = {
             functions: 96,
             lines: 100
         },
+        // The football game page's fantasy read (#506 Phase 3): which owner,
+        // what was banked, and what a win would pay. Small and pure, so all of it.
+        "./modules/game-fantasy.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-live-poll.js": {
             statements: 98,
             branches: 84,

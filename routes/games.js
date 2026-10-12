@@ -9,6 +9,11 @@ const TeamSeasonStat = require('../models/teamSeasonStat');
 const PlayerSeasonLeader = require('../models/playerSeasonLeader');
 const franchiseRepo = require('../modules/franchise-repo');
 const Team = require('../models/team');
+const League = require('../models/league');
+const { DEFAULTS: DEFAULT_LEAGUES } = require('../modules/league-catalog');
+const scoring = require('../modules/scoring');
+const { sideRead, stakeFor, captainFor } = require('../modules/game-fantasy');
+const { engagementForSeason } = require('../modules/scoring-defaults');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
@@ -355,6 +360,96 @@ router.get('/detail/:gameId', async (req, res) => {
             obj.bettingLines = merged;
         }
         res.status(200).json(obj);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// The fantasy read of one game for one league (#506 Phase 3): each side's
+// owner, what the game banked them, and — until it is final — what a win or
+// a loss would pay. modules/game-fantasy.js has the why.
+//
+// Football leagues only. Basketball franchises own BASKETBALL team ids, and
+// 130 of them share a number with a football team (#489): asked about a
+// basketball league, this would name a hoops manager as the owner of a
+// football team. A league that is neither on file nor one of the hardcoded
+// defaults is refused the same way.
+//
+// Zero CFBD calls: the game, the rosters and the banked points are in Mongo;
+// the stakes read the scoring config and the week's poll through the scoring
+// engine's own (cached) lookups. Those are a nicety — if either fails, the
+// read still answers, just without stakes.
+// The league's rosters, held for a few seconds. Every open game page asks
+// once a minute while a game is live, and each read pulls every franchise's
+// full roster subdocs over the M0 tier (~85 KB/s); one read per league per
+// window serves them all. Short enough that points banked by the live scorer
+// show up on the next tick or the one after.
+const FANTASY_ROSTER_TTL_MS = 20000;
+const fantasyRosterCache = new Map();
+async function fantasyRosters(league, season, now = Date.now(), { fresh = false } = {}) {
+    const key = league + ':' + season;
+    const hit = fantasyRosterCache.get(key);
+    if (!fresh && hit && now - hit.at < FANTASY_ROSTER_TTL_MS) return hit.users;
+    const users = await franchiseRepo.byLeagueAndSeason(league, season, { fields: ['firstName', 'lastName', 'seasons'] });
+    fantasyRosterCache.set(key, { at: now, users });
+    return users;
+}
+router.clearFantasyRosterCache = () => fantasyRosterCache.clear();
+
+router.get('/fantasy/:league/:gameId', async (req, res) => {
+    try {
+        const league = req.params.league;
+        const gameId = Number(req.params.gameId);
+        if (!Number.isFinite(gameId)) return res.status(400).json({ message: 'Invalid game id' });
+        const doc = await League.findOne({ code: league }, { sport: 1, _id: 0 }).lean();
+        const known = doc || DEFAULT_LEAGUES.some(d => d.code === league);
+        if (!known || (doc && doc.sport && doc.sport !== 'football')) {
+            return res.status(404).json({ message: 'No such football league' });
+        }
+        const game = await Game.findOne({ id: gameId }).lean();
+        if (!game) return res.status(404).json({ message: 'Game not found' });
+
+        // Before kickoff the read is fresh: it decides the Captain note, and a
+        // manager who just changed their captain must not see the old one.
+        // Pre-game pages don't poll, so there is no load to share.
+        // Before the START TIME, not merely before a period is written: a
+        // postponed game keeps completed=false and no period long after its
+        // date, and the page polls it like a live one — each of those reads
+        // must not be a fresh roster read plus an uncached rankings fetch.
+        const startMs = Date.parse(game.startDate);
+        const pregame = !game.completed && !game.period && Number.isFinite(startMs) && startMs > Date.now();
+        const users = await fantasyRosters(league, game.season, Date.now(), { fresh: pregame });
+        const owners = ownersByTeam(users, game.season);
+        const points = pointsByTeamGame(users, game.season, game.week);
+        const out = {
+            league,
+            final: !!game.completed,
+            away: sideRead(game, 'away', owners, points),
+            home: sideRead(game, 'home', owners, points)
+        };
+
+        // Before kickoff only — the page shows the stakes only then, and a
+        // live game re-reads this on every score change.
+        if (pregame && (out.away.owner || out.home.owner)) {
+            try {
+                const resolved = await scoring.cachedScoringConfig(league);
+                const cfg = Object.assign(scoring.normalizeCfg(resolved.model, resolved), { model: resolved.model });
+                const rankings = await scoring.getRankingsForGame(game, game.week, game.season);
+                const bracket = await scoring.getBracketForGame(game, game.season);
+                const engagement = engagementForSeason(resolved.engagementBySeason, game.season);
+                ['away', 'home'].forEach(which => {
+                    const side = out[which];
+                    if (!side.owner) return;
+                    Object.assign(side, stakeFor(scoring.evaluate, cfg, game, side.teamId, rankings, bracket));
+                    const franchise = users.find(u => String(u._id) === String(side.owner.userId));
+                    const mult = captainFor(franchise, game.season, game, side.teamId, engagement);
+                    if (mult) side.captain = { multiplier: mult };
+                });
+            } catch (e) {
+                console.error(`game fantasy stakes for ${gameId}: ${e.message}`);
+            }
+        }
+        res.json(out);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

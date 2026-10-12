@@ -326,7 +326,12 @@ module.exports= {
                 "score": score,
                 "scoreByTeam": teamScores
             };
-            if (captainTeamId != null && captainBonus > 0) {
+            // Recorded whenever it moved the score, negative included: the
+            // pages split it back across the captained team's games
+            // (league-scoreboard captainShare, team.js ownerPointsFor), and a
+            // negative bonus left off the row made them show base points
+            // for a week the manager was charged N× them.
+            if (captainTeamId != null && captainBonus !== 0) {
                 scoreObject.captainTeamId = captainTeamId;
                 scoreObject.captainBonus = captainBonus;
             }

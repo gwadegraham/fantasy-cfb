@@ -23,6 +23,20 @@ const { MAX_GAME_MS } = require('./game-window');
 // { '<teamId>:<gameId>': points } for one league season+week. Keyed by BOTH ids
 // because a team can appear in more than one week's entry and we only ever want
 // the points earned in the game we're rendering.
+//
+// INCLUDING the Captain bonus. Scoring stores it on the week row
+// (captainBonus, captainTeamId), not on the team's game entries, and adds it
+// only to the week's total — so a game read straight off scoreByTeam showed a
+// captained team's base points while the manager was paid N× them. Each of the
+// captained team's games that week gets the bonus in proportion to its own
+// base points, which is exactly how captainWeeklyBonus built it.
+function captainShare(w, t) {
+    if (!w.captainBonus || t.teamId == null || Number(t.teamId) !== Number(w.captainTeamId)) return 0;
+    const base = (w.scoreByTeam || []).filter(x => Number(x.teamId) === Number(w.captainTeamId))
+        .reduce((sum, x) => sum + (Number(x.score) || 0), 0);
+    return base ? w.captainBonus * (Number(t.score) || 0) / base : 0;
+}
+
 function pointsByTeamGame(users, season, week) {
     const out = {};
     (users || []).forEach(u => {
@@ -33,7 +47,9 @@ function pointsByTeamGame(users, season, week) {
             .forEach(w => {
                 (w.scoreByTeam || []).forEach(t => {
                     if (t.teamId == null || t.gameId == null) return;
-                    out[`${t.teamId}:${t.gameId}`] = t.score || 0;
+                    // To one decimal, as points are shown: a 1.7x multiplier
+                    // over 1 + 2 base points is 0.7000000000000001 otherwise.
+                    out[`${t.teamId}:${t.gameId}`] = Math.round(((t.score || 0) + captainShare(w, t)) * 10) / 10;
                 });
             });
     });
@@ -380,7 +396,7 @@ function shapeGames(games, ctx) {
 }
 
 module.exports = {
-    pointsByTeamGame, ownersByTeam, weekWindows, defaultWeek, weekState,
+    pointsByTeamGame, captainShare, ownersByTeam, weekWindows, defaultWeek, weekState,
     gameState, conferenceList, conferenceLabel, fbsConferenceNames, weekRangeOf,
     recordsByTeam, spreadSideOf, weekList, shapeGame, shapeGames, initialsOf, hasPossession,
     CONFERENCE_ABBR, WEEK_TAIL_MS, MAX_GAME_MS
