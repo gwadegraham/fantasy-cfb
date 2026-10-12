@@ -2,10 +2,13 @@
    Game Detail / Box Score
    ========================================================================== */
 
-html.gd-page, .gd-page body {
-    overflow-x: hidden;
-    max-width: 100vw;
-}
+/* No overflow-x: hidden on <html>/<body> any more. Setting it on both
+   turns them into scroll containers, and with the full-bleed kit hero that
+   left a sliver of the away team's colour painted down the left edge while
+   scrolling (#506). Nothing on the page overflows now; clip (unlike hidden)
+   is a safety net that creates no scroll container and keeps the sticky
+   tabs sticky. */
+.sp-page.fg { overflow-x: clip; }
 .gd-page body {
     justify-content: flex-start;
 }
