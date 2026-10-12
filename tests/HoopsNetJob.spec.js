@@ -330,6 +330,16 @@ describe('run — loud failures, nothing written', () => {
         });
     });
 
+    test('a page OLDER than the week holds, inside the grace (a CDN serving yesterday): a skip, the newer week kept', async () => {
+        await HoopsNetRank.create(TEAMS.map((t, i) => ({ season: SEASON, week: 7, teamId: t.id, rank: 6 - i,
+            throughGames: new Date('2026-12-10T00:00:00Z') })));
+        const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS)) });     // through Dec 09
+        expect(out.status).toBe('skipped');
+        expect(out.summary).toMatch(/older than the 2026-12-10 wk7 already holds — not replaced/);
+        expect((await HoopsNetRank.findOne({ week: 7, teamId: 101 }).lean()).rank).toBe(6);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
+    });
+
     test('not stale: a game ON the stamp\'s day, a game inside the grace, and a quiet Christmas', async () => {
         await HoopsGame.create([
             // 9pm Eastern on the 5th is the 6th in UTC — but the 5th's game.

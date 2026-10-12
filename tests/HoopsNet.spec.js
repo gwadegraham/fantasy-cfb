@@ -95,6 +95,24 @@ describe('parseNetPage', () => {
     });
 });
 
+describe('parseNetPage — markup NCAA could change without changing the data', () => {
+    const rows = [netRow(1, 'Iowa St.', 'Big 12'), netRow(2, 'Duke', 'ACC')];
+    test('a rank cell marked up as <th scope="row"> in the body still reads, and the header is only the <thead>', () => {
+        const html = netPage(rows).replace(/<td>(\d+)<\/td>(\s*<td>(Iowa St\.|Duke)<\/td>)/g, '<th scope="row">$1</th>$2');
+        expect(html).toContain('<th scope="row">1</th>');                    // the fixture really changed
+        const parsed = net.parseNetPage(html);
+        expect(parsed.rows.map(r => [r.rank, r.school])).toEqual([[1, 'Iowa St.'], [2, 'Duke']]);
+    });
+    test('a table with no rows at all is no ranking table (the cold start), not a layout error', () => {
+        expect(net.parseNetPage('<p>Through Games Dec. 09 2026</p><table class="ad"></table>').hasTable).toBe(false);
+    });
+    test('a table with no <tbody>: the header row is not read as a team', () => {
+        const html = netPage(rows).replace(/<\/?tbody>/g, '').replace(/<\/?thead>/g, '');
+        expect(html).not.toContain('tbody');
+        expect(net.parseNetPage(html).rows.map(r => r.school)).toEqual(['Iowa St.', 'Duke']);
+    });
+});
+
 describe('parseThroughGames', () => {
     test('reads NCAA\'s "Mon. DD YYYY" stamp as an Eastern day at UTC midnight', () => {
         expect(net.parseThroughGames('Through Games Apr. 06 2026')).toEqual(new Date('2026-04-06T00:00:00Z'));

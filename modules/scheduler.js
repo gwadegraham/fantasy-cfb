@@ -59,7 +59,11 @@ const JOB_SCHEDULES = [
     // off-season. Once a day by design — NCAA's terms make the footprint the
     // point. 11:30 Central is 12:30 Eastern, after NCAA's morning update with
     // the previous day's games, and well inside the Eastern day, so Sunday's
-    // run files under the week it was taken in, +1.
+    // run files under the week it was taken in, +1. That makes week N+1's
+    // NET the one through SATURDAY: Sunday's games reach the page on Monday
+    // morning, which is already week N+1 and so files under N+2. Intended —
+    // a week's ranks must be fixed before its first game, and nothing is
+    // published in time to include Sunday.
     { job: 'hoops-net', modulePath: '../modules/hoops-net-job', rule: { hour: 11, minute: 30 } }
 ];
 

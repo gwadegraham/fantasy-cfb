@@ -175,13 +175,21 @@ async function snapshotSeason(season, now, fetchImpl) {
     // next week graded on the even older snapshot from earlier in the week.
     // So it is written when its stamp beats the stored one, and refused only
     // when it does not.
+    //
+    // And a page OLDER than what the week already holds is never written,
+    // stale or not: a CDN serving yesterday's page after today's landed would
+    // otherwise quietly roll the week back to the older ranking. Within the
+    // grace that is a skip (the newer one is already on file); stale, it is
+    // the alarm above.
     let stale = null;
+    const stored = await HoopsNetRank.findOne({ season, week: target.week }, { throughGames: 1, _id: 0 }).lean();
     if (unreflected) {
         stale = `the NET is stale: through ${fmtDay(parsed.throughGames)}, but ${unreflected} game(s) before ${fmtDay(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))} are not in it`;
-        const stored = await HoopsNetRank.findOne({ season, week: target.week }, { throughGames: 1, _id: 0 }).lean();
         if (stored && !(stored.throughGames < parsed.throughGames)) {
             throw new Error(`${stale} — wk${target.week} already holds a NET through ${fmtDay(stored.throughGames)}, not replaced`);
         }
+    } else if (stored && stored.throughGames > parsed.throughGames) {
+        return { skip: `the page shows a NET through ${fmtDay(parsed.throughGames)}, older than the ${fmtDay(stored.throughGames)} wk${target.week} already holds — not replaced` };
     }
 
     const m = matchNet(parsed.rows, teams);

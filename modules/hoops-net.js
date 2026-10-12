@@ -85,7 +85,13 @@ function parseNetPage(html) {
     let table = null;
     let header = null;
     for (const t of tables) {
-        const ths = (t.match(/<th(?:\s[^>]*)?>[\s\S]*?<\/th>/gi) || []).map(cellText);
+        // The header cells from the table's <thead> (its first header row),
+        // not every <th> in the table: a body that marks each rank cell as
+        // <th scope="row">, or a second header row, would otherwise inflate
+        // the header and fail every row's cell count, daily.
+        const inHead = /<thead[^>]*>[\s\S]*?(<tr[^>]*>[\s\S]*?<\/tr>)/i.exec(t);
+        const firstRow = inHead ? inHead[1] : ((/<tr[^>]*>[\s\S]*?<\/tr>/i.exec(t) || [''])[0]);
+        const ths = (firstRow.match(/<th(?:\s[^>]*)?>[\s\S]*?<\/th>/gi) || []).map(cellText);
         if (ths.includes('School')) { table = t; header = ths; break; }
     }
     if (!table) return { throughGames, hasTable: false, rows: [] };
@@ -97,8 +103,11 @@ function parseNetPage(html) {
     const body = (/<tbody[^>]*>([\s\S]*?)<\/tbody>/i.exec(table) || [null, table])[1];
     const rows = [];
     for (const tr of body.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || []) {
-        const cells = (tr.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || []).map(cellText);
-        if (!cells.length) continue;   // a header row repeated inside the body
+        // A row with no <td> is a header row (a table without <tbody>, or a
+        // header repeated inside the body), not a team.
+        if (!/<td[\s>]/i.test(tr)) continue;
+        // <td> and a body <th scope="row"> alike, in document order.
+        const cells = tr.match(/<t[dh](?:\s[^>]*)?>[\s\S]*?<\/t[dh]>/gi).map(cellText);
         // A single spanning cell is a message, not a team ("Rankings will be
         // released..."): skipped, so a table of nothing else reads as empty —
         // the cold start — rather than as a layout change.
