@@ -293,13 +293,24 @@ describe('page renders carry the viewed league’s season', () => {
     // basketball page booted with window.APP_YEAR = the football year.
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
 
-    test('My Team, the draft room, the board, the scoreboard and admin all use it', () => {
-        for (const view of ['userHome', 'draftRoom', 'admin']) {
+    test('My Team, the draft room, the board and the scoreboard all use it', () => {
+        for (const view of ['userHome', 'draftRoom']) {
             const m = new RegExp(`res\\.render\\('${view}'[\\s\\S]{0,160}?\\}\\)`).exec(src);
             expect(m).not.toBeNull();
             expect(m[0]).toContain('viewerSeason(res)');
             expect(m[0]).not.toContain("activeSeason('football')");
         }
+    });
+
+    // Admin is the exception: its tools write to the league it MANAGES, which
+    // for a League Manager viewing basketball is still their football league
+    // (#518). Its season comes from that league — behaviour tested on
+    // footballAdminSeason in HoopsAdmin.spec.js.
+    test("admin uses the managed league's season, never football's outright", () => {
+        const m = /res\.render\('admin'[\s\S]{0,240}?\}\)/.exec(src);
+        expect(m).not.toBeNull();
+        expect(m[0]).toContain('hoopsAdmin.footballAdminSeason(');
+        expect(m[0]).not.toContain("activeSeason('football')");
     });
 
     test('and server.js delegates rather than keeping its own copy', () => {

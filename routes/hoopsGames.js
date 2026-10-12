@@ -25,7 +25,8 @@ const gamePage = require('../modules/hoops-game-page');
 const board = require('../modules/hoops-league-scoreboard');
 const boardHelpers = require('../modules/league-scoreboard');
 const hoopsTeamPage = require('../modules/hoops-team-page');
-const { dropStale } = require('../modules/hoops-stale-duplicates');
+const staleDuplicates = require('../modules/hoops-stale-duplicates');
+const { dropStale } = staleDuplicates;
 const franchiseRepo = require('../modules/franchise-repo');
 const HoopsTeam = require('../models/hoopsTeam');
 const { pickLogo } = require('../public/logo.js');
@@ -381,6 +382,111 @@ router.get('/scoreboard/:league/:season/:week?', async (req, res) => {
     } catch (err) {
         console.error(`hoops scoreboard: ${err && err.message}`);
         res.status(500).json({ message: 'Could not load the scoreboard' });
+    }
+});
+
+// A season's week windows ({ week, first, last } in ms), the input the shared
+// weekWindows/weekState pair works on. Grouped in Mongo rather than scanning
+// every row's startDate as the scoreboard does: ~5,000 rows a season against
+// an M0 tier that is bound by bytes, for ~22 rows of answer.
+async function seasonWindows(season) {
+    const rows = await HoopsGame.aggregate([
+        { $match: { season, week: { $type: 'number' } } },
+        { $group: { _id: '$week', first: { $min: '$startDate' }, last: { $max: '$startDate' } } }
+    ]);
+    return rows
+        .map(r => ({ week: r._id, first: new Date(r.first).getTime(), last: new Date(r.last).getTime() }))
+        .filter(w => Number.isFinite(w.first) && Number.isFinite(w.last))
+        .sort((a, b) => a.week - b.week);
+}
+
+// "What week is it" for basketball (#501) — public/current-week.js asks this
+// on a basketball league instead of football's /games/current-week, whose
+// calendar is empty for a basketball season. Same answer shape, and the same
+// weekState the basketball scoreboard opens on, so the two never disagree.
+//
+// Basketball weeks are one sequence through March, so there is no seasonType
+// to choose; `liveNow` names 'regular' because that is how a basketball
+// weeklyScore entry reads to the standings (it carries no season type).
+router.get('/current-week/:season', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const season = Number(req.params.season);
+        if (!Number.isFinite(season)) return res.status(400).json({ message: 'Invalid season' });
+        const st = boardHelpers.weekState(await seasonWindows(season), Date.now());
+        res.json({
+            season,
+            seasonType: 'regular',
+            week: Number.isFinite(st.week) ? st.week : null,
+            liveNow: st.live ? { week: st.week, seasonType: 'regular' } : null
+        });
+    } catch (err) {
+        console.error(`hoops current week: ${err && err.message}`);
+        res.status(500).json({ message: 'Could not resolve the current week' });
+    }
+});
+
+// Some teams' games for one week (#501): My Team's Games tile on a basketball
+// league. The basketball twin of football's
+// GET /games/seasonType/:type/week/:week/teams — the ids are basketball ids
+// and are looked up in hoopsgames only (the two id spaces overlap, #489).
+//
+// Shaped by the scoreboard's shapeGames so live/final and the period read the
+// same everywhere. No owners or ranks: the caller already knows whose teams
+// these are, and the points banked come off that manager's own weeklyScore.
+// `weeks` is the season's real week list, for the drawer's picker.
+const MAX_TEAM_IDS = 40;
+router.get('/teams/:season/:week', async (req, res) => {
+    try {
+        if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
+        const season = Number(req.params.season);
+        const week = Number(req.params.week);
+        if (!Number.isFinite(season)) return res.status(400).json({ message: 'Invalid season' });
+        if (!Number.isInteger(week) || week < 1) return res.status(400).json({ message: 'Invalid week' });
+        const ids = [...new Set(String(req.query.ids || '').split(',')
+            .map(s => Number(s.trim())).filter(Number.isInteger))];
+        if (ids.length > MAX_TEAM_IDS) return res.status(400).json({ message: `At most ${MAX_TEAM_IDS} teams` });
+
+        const windows = await seasonWindows(season);
+        const weeks = boardHelpers.weekList(windows);
+        if (!ids.length) return res.json({ season, week, weeks, games: [] });
+
+        const FIELDS = {
+            id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
+            period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homePoints: 1,
+            awayTeamId: 1, awayTeam: 1, awayPoints: 1, gameNotes: 1, _id: 0
+        };
+        const nowMs = Date.now();
+        const listed = await HoopsGame.find({
+            season, week, $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }]
+        }, FIELDS).lean();
+
+        // A rescheduled game's old listing never tips (#498). Its played twin
+        // can sit in ANOTHER week, so the scoreboard's in-week check would
+        // miss it here; fetch the finals of just the overdue matchups.
+        const overdue = listed.filter(g => staleDuplicates.overdue(g, nowMs));
+        let twins = [];
+        if (overdue.length) {
+            twins = await HoopsGame.find({
+                season, status: 'final',
+                $or: overdue.map(g => ({ homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId }))
+            }, FIELDS).lean();
+        }
+        const listedIds = new Set(listed.map(g => g.id));
+        const pool = listed.concat(twins.filter(t => !listedIds.has(t.id)));
+        const games = staleDuplicates.dropStale(pool, nowMs).filter(g => listedIds.has(g.id));
+
+        const teamIds = [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))];
+        const teamDocs = teamIds.length ? await HoopsTeam.find({ season, id: { $in: teamIds } },
+            { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean() : [];
+        const teams = {};
+        teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
+
+        const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: {}, nowMs });
+        res.json({ season, week, weeks, games: shaped });
+    } catch (err) {
+        console.error(`hoops team games: ${err && err.message}`);
+        res.status(500).json({ message: 'Could not load the games' });
     }
 });
 

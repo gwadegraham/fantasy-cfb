@@ -229,6 +229,22 @@ describe('GET /audit-log', () => {
         expect(res.body.entries.map(e => e.summary)).toEqual(['G two', 'G one']);
     });
 
+    // The basketball admin page's Activity asks for its own league (#518).
+    test('?league= narrows an Admin to that one league', async () => {
+        await seed();
+        const res = await request(adminApp).get('/audit-log?league=claunts-league').set(TOKEN);
+        expect(res.body.scope).toEqual(['claunts-league']);
+        expect(res.body.entries.map(e => e.summary)).toEqual(['C one']);
+    });
+
+    test('?league= never widens: a League Manager asking for another league is refused', async () => {
+        await seed();
+        const lmApp = appAs(['League Manager'], { user_metadata: { roles: ['League Manager'], metadata: { league: 'gg' } } });
+        const res = await request(lmApp).get('/audit-log?league=claunts-league');
+        expect(res.status).toBe(403);
+        expect(res.body.entries).toBeUndefined();
+    });
+
     test('someone who manages nothing sees nothing', async () => {
         await seed();
         const res = await request(appAs([])).get('/audit-log');

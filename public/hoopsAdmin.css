@@ -3,7 +3,6 @@
    class is ha- prefixed: the navbar loads Bootstrap on every page. */
 
 .ha-top { padding: 22px 0 6px; }
-.ha-back { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--cc-muted) !important; }
 .ha-top h1 { font: 700 24px Poppins, sans-serif; margin: 8px 0 4px; }
 .ha-top h1 i { color: var(--cc-accent); margin-right: 6px; }
 .ha-season { font-size: 14px; color: var(--cc-muted-bright); display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
@@ -42,3 +41,9 @@
 .ha-job + .ha-job { border-top: 1px solid var(--cc-border); }
 .ha-job span:last-child { margin-left: auto; color: var(--cc-muted); font-size: 12px; }
 .ha .sp-h { margin-top: 22px; }
+
+/* League setup — football's admin markup and CSS (admin.css), pointed at the
+   basketball league. This only frames it under the data tasks. */
+.ha-league { width: 100%; max-width: 880px; margin: 0 auto; padding: 0 16px 56px; box-sizing: border-box; min-width: 0; }
+.ha-league-h { font: 700 20px Poppins, sans-serif; color: var(--cc-text); margin: 8px 0 12px; }
+.ha-league-h small { font-size: 13px; font-weight: 500; color: var(--cc-muted); margin-left: 6px; }

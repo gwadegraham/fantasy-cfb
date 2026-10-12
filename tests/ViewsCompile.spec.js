@@ -22,3 +22,17 @@ test('the scoreboard tells its script which sport it is showing', () => {
     expect(render({ viewerSport: 'basketball' }).trim()).toBe("var SPORT = 'basketball';");
     expect(render({}).trim()).toBe("var SPORT = 'football';");
 });
+
+// #501: basketball's Games tile scripts load on a basketball league only —
+// a football manager's My Team page must not even name them (basketball
+// stays invisible, and football's page is unchanged).
+test('My Team loads the basketball Games tile only on a basketball league', () => {
+    const file = path.join(VIEWS, 'userHome.ejs');
+    const src = fs.readFileSync(file, 'utf8');
+    const block = src.slice(src.indexOf('<% if (typeof viewerSport'), src.indexOf('<% } %>') + 7);
+    expect(block).toContain('hoops-week-games.js');
+    const render = (locals) => ejs.render(block, locals);
+    expect(render({ viewerSport: 'basketball' })).toMatch(/hoops-week-games\.js[\s\S]*sport-page\.css|sport-page\.css[\s\S]*hoops-week-games\.js/);
+    expect(render({ viewerSport: 'football' })).not.toMatch(/hoops|sport-page/);
+    expect(render({})).not.toMatch(/hoops|sport-page/);
+});

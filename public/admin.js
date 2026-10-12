@@ -178,8 +178,10 @@ function displayUsers(data) {
     // viewing basketball is still their football league. Saying which sport
     // these ids are keeps public/league.js from sending a football id to the
     // basketball team page.
+    var managedSport = null;
     if (userTableBody && window.ccLeague && window.ccLeague.sportOf && window.ccManageLeagueCode) {
-        userTableBody.setAttribute('data-page-sport', window.ccLeague.sportOf(window.ccManageLeagueCode()));
+        managedSport = window.ccLeague.sportOf(window.ccManageLeagueCode());
+        userTableBody.setAttribute('data-page-sport', managedSport);
     }
     var str = '';
 
@@ -191,7 +193,12 @@ function displayUsers(data) {
         
         for (var i = 0; i < (userSeason.teams || []).length; i++) {
             var team = userSeason.teams[i];
-            var refLink = `/team?team=${team.id}`;
+            // A basketball league's ids go straight to the basketball team page.
+            // Leaving them as /team?team= relied on public/league.js rewriting
+            // them, which it only does while a BASKETBALL league is viewed — on
+            // the basketball admin page an Admin may be viewing football, and a
+            // basketball id then opened whichever football team shares it.
+            var refLink = managedSport === 'basketball' ? `/hoops/team/${team.id}` : `/team?team=${team.id}`;
 
             str += '<div>';
             str += '<a href="' + refLink + '"><img src="' + ccLogo(team.logos) + '" alt="' + team.mascot + '">'
@@ -251,7 +258,7 @@ async function loadAdminStatus() {
         var jobs = [];
         try {
             var jobsRes = await fetch('/job-runs', { headers: { 'Accept': 'application/json' } });
-            if (jobsRes.ok) { jobs = await jobsRes.json(); }
+            if (jobsRes.ok) { jobs = footballJobs(await jobsRes.json()); }
         } catch (e) { /* job history is optional */ }
         renderAdminStatus(el, s, api, year, jobs);
     } catch (e) { /* leave the strip hidden on error */ }
@@ -278,9 +285,15 @@ var JOB_LABELS = {
     'daily-scores': 'Daily', 'saturday-scores': 'Saturday', 'sunday-scores': 'Sunday',
     'live-scores': 'Live', 'enrichment': 'Schedule / SP+ / media',
     'season-stats': 'Team stats', 'player-season-leaders': 'Player stats',
-    'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts',
-    'hoops-scores': 'Basketball', 'hoops-stats': 'Basketball stats', 'hoops-media': 'Basketball TV', 'hoops-live': 'Basketball live'
+    'captain-reminder': 'Captain alerts', 'recap-notice': 'Recap alerts'
 };
+
+// Basketball's jobs (hoops-*) are on the basketball admin page (#518), not
+// here. This strip is shown to League Managers too, and basketball stays
+// invisible to anyone not in on it — a job name is enough to give it away.
+function footballJobs(jobs) {
+    return (jobs || []).filter(function (j) { return !/^hoops-/.test(j && j.jobName); });
+}
 
 function renderAdminStatus(el, s, api, year, jobs) {
     var behind = !s.upToDate;
@@ -308,7 +321,6 @@ function renderAdminStatus(el, s, api, year, jobs) {
         // scoring jobs — so a new job name has to be added here, not just to
         // JOB_LABELS, or it silently jumps the queue.
         var order = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores',
-                     'hoops-live', 'hoops-scores', 'hoops-stats', 'hoops-media',
                      'enrichment', 'season-stats', 'player-season-leaders',
                      'captain-reminder', 'recap-notice'];
         // Collapse to the latest run per job — the live poller writes a run every
@@ -378,6 +390,8 @@ function auditLeagueTag(entry, multiLeague) {
 var auditKind = 'commissioner';
 
 function auditTabs() {
+    // Basketball has no Captain, so its admin page has no Captain picks tab.
+    if (window.ADMIN_SPORT === 'basketball') return '';
     return '<div class="al-tabs">'
         + ['commissioner', 'captain'].map(function (k) {
             return '<button type="button" class="al-tab' + (auditKind === k ? ' is-on' : '')
@@ -400,7 +414,10 @@ async function loadAuditLog() {
     if (!body) return;
     auditPaint(body, '<p class="al-empty">Loading…</p>');
     try {
-        var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind), { headers: { 'Accept': 'application/json' } });
+        // The league this page manages, only — on football's page too, so an
+        // Admin there sees football changes and never the basketball league's.
+        var only = '&league=' + encodeURIComponent(getDraftLeagueCode());
+        var res = await fetch('/audit-log?limit=25&kind=' + encodeURIComponent(auditKind) + only, { headers: { 'Accept': 'application/json' } });
         var data = await res.json();
         if (!res.ok) { auditPaint(body, '<p class="al-empty">' + escapeHtml(data.message || 'Could not load activity.') + '</p>'); return; }
         if (!data.entries.length) {
@@ -716,7 +733,9 @@ window.onload = async function() {
     // Hamburger toggle is owned by the navbar partial (views/partials/navbar.ejs).
     detectMobile();
     getUserProfile();
-    getTeams();
+    // Football's team list (~1 MB) — names for the football-only tools. The
+    // basketball admin page has none of them.
+    if (window.ADMIN_SPORT !== 'basketball') getTeams();
     setSeasonOptions();
     setSeasonTypeOptions();
     setWeekOptions();
@@ -2399,7 +2418,7 @@ async function loadScoringConfig(model) {
 }
 
 // Plain-language name for each rule shape (the league's `model`).
-var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values' };
+var SHAPE_LABEL = { claunts: 'Fixed win values', graham: 'Stacking win values', hoops: 'Quadrant win values' };
 
 // "<League> — <rule shape>". The name comes from ccLeague rather than a
 // hardcoded map: League setup, a few sections up this same page, can rename a

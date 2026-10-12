@@ -127,8 +127,22 @@ describe('admin job strip covers every scheduled job', () => {
     const adminSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
 
     // The jobs the scheduler can register: the always-on set plus the opt-in
-    // live poller.
-    const scheduled = JOB_SCHEDULES.map(s => s.job).concat(LIVE_POLL_SCHEDULE.job);
+    // live poller. Basketball's (hoops-*) are shown on the basketball admin
+    // page instead (#518) — football's strip is visible to League Managers —
+    // so they are checked against that page's list below.
+    const all = JOB_SCHEDULES.map(s => s.job).concat(LIVE_POLL_SCHEDULE.job);
+    const scheduled = all.filter(j => !/^hoops-/.test(j));
+    const basketball = all.filter(j => /^hoops-/.test(j));
+
+    it('every basketball job is on the basketball admin page', () => {
+        const { HOOPS_JOBS } = require('../routes/hoopsAdmin');
+        expect(basketball.length).toBeGreaterThan(0);
+        expect(basketball.filter(j => !HOOPS_JOBS.includes(j))).toEqual([]);
+    });
+
+    it("and none is labelled on football's strip", () => {
+        expect(literal('JOB_LABELS')).not.toMatch(/hoops-/);
+    });
 
     function literal(name) {
         const m = adminSrc.match(new RegExp('var ' + name + '\\s*=\\s*([\\s\\S]*?);'));

@@ -65,6 +65,33 @@ describe('GET /job-runs', () => {
         expect(res.body[0]).toMatchObject({ jobName: 'season-stats', status: 'success' });
     });
 
+    // #518: a job name alone gives the basketball league away, and this GET
+    // is open to every signed-in member.
+    describe('basketball jobs', () => {
+        const visibility = require('../modules/hoops-visibility');
+        afterEach(() => jest.restoreAllMocks());
+        const seed = () => JobRun.create([
+            { jobName: 'daily-scores', status: 'success', startedAt: new Date('2026-09-15T11:00:00Z') },
+            { jobName: 'hoops-scores', status: 'success', startedAt: new Date('2026-09-15T11:00:00Z') },
+            { jobName: 'hoops-live', status: 'error', startedAt: new Date('2026-09-15T11:00:00Z') }
+        ]);
+
+        it('are left out for someone who does not see basketball', async () => {
+            jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(false);
+            await seed();
+            const res = await request(app).get('/job-runs');
+            expect(res.body.map(r => r.jobName)).toEqual(['daily-scores']);
+            expect(JSON.stringify(res.body)).not.toMatch(/hoops/);
+        });
+
+        it('are included for someone who does', async () => {
+            jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(true);
+            await seed();
+            const res = await request(app).get('/job-runs');
+            expect(res.body.map(r => r.jobName).sort()).toEqual(['daily-scores', 'hoops-live', 'hoops-scores']);
+        });
+    });
+
     it('answers an empty list when nothing has run', async () => {
         const res = await request(app).get('/job-runs');
         expect(res.status).toBe(200);

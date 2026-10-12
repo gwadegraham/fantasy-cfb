@@ -27,6 +27,7 @@ const League = require('./models/league');
 const leagueCatalog = require('./modules/league-catalog');
 const draftDefaults = require('./modules/draft-defaults');
 const hoopsVisibility = require('./modules/hoops-visibility');
+const hoopsAdmin = require('./routes/hoopsAdmin');
 const Draft = require('./models/draft');
 const seasons = require('./modules/active-season');
 const franchiseRepo = require('./modules/franchise-repo');
@@ -696,15 +697,19 @@ app.get('/admin', (req, res) => {
         if (!roles.includes('Admin') && !roles.includes('League Manager')) {
             return res.redirect('/');
         }
-        const userState = safeJson(req.effUser);
         const isAdmin = roles.includes('Admin');
+        // Football and basketball admin are separate pages (#518).
+        const elsewhere = hoopsAdmin.footballAdminRedirect(roles, res.locals.viewerSport);
+        if (elsewhere) return res.redirect(elsewhere);
+        const userState = safeJson(req.effUser);
 
         // The per-sport draft defaults, so the settings form can SHOW them
         // rather than relying on a server-side fallback the form can never
         // trigger — it always sends a poolSize key, so an absent-key default
         // was dead on the only path that creates a draft.
         res.render('admin', {
-            user, userState, year: viewerSeason(res), isAdmin,
+            user, userState, isAdmin,
+            year: hoopsAdmin.footballAdminSeason(roles, res.locals.viewerLeagueCode, req.effUser),
             draftDefaults: safeJson(draftDefaults.BY_SPORT)
         });
     } else {
@@ -872,8 +877,12 @@ app.use('/hoops/teams', requireAuthOrToken, hoopsTeamsRouter);
 // The basketball admin page (#518) — separate from football's /admin. Admin
 // only, and its gate lives in the router: both routes are GETs, which the path
 // list above lets through.
-app.use('/hoops/admin', require('./routes/hoopsAdmin').build({
-    pageLocals: (req) => ({ user: buildUserContext(req.effUser), userState: safeJson(req.effUser) })
+app.use('/hoops/admin', hoopsAdmin.build({
+    pageLocals: (req, res) => ({
+        user: buildUserContext(req.effUser), userState: safeJson(req.effUser),
+        viewerLeagueCode: res.locals.viewerLeagueCode,
+        draftDefaults: safeJson(draftDefaults.BY_SPORT)
+    })
 }));
 
 const rankingsRouter = require('./routes/rankings');

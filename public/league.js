@@ -406,6 +406,10 @@
     // write on that page came back 403 with only a generic toast: roster
     // blank, create-user refused, rename refused.
     window.ccManageLeagueCode = function () {
+        // A per-sport admin page names its league outright (#518): the
+        // basketball admin page manages a basketball league even while a
+        // football one is being viewed.
+        if (window.ADMIN_LEAGUE) return window.ADMIN_LEAGUE;
         if (SEED.isAdmin) return window.ccLeagueCode();
         try {
             var meta = window.userState && window.userState.user_metadata
