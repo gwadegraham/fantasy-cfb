@@ -1131,6 +1131,14 @@
                         v = '<span class="v zero">no points</span>';
                     } else {
                         var notes = [];
+                        // The stakes are the base rules. When this team is the
+                        // manager's captain this week, say what it's worth
+                        // with the multiplier — and only then (the server
+                        // drops `captain` once they pick someone else).
+                        if (side.captain && side.captain.multiplier) {
+                            var m = side.captain.multiplier;
+                            notes.push('×' + m + ' as captain: +' + Math.round(side.ifWin * m * 10) / 10);
+                        }
                         if (loss) notes.push('+' + loss + ' even in a loss');
                         if (winP != null) notes.push('expected +' + (Math.round((side.ifWin * winP + loss * (1 - winP)) * 10) / 10));
                         v = '<span class="v">+' + side.ifWin + (notes.length ? '<small>' + notes.join(' · ') + '</small>' : '') + '</span>';

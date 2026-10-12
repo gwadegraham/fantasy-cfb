@@ -197,6 +197,15 @@ describe('before kickoff: the stakes', () => {
         expect(document.querySelector('.sp-fan')).toBeNull();
     });
 
+    test('a captained team says what a win is worth with the multiplier; the other side says nothing of it', async () => {
+        const f = fantasyOf('pre');
+        f.home.captain = { multiplier: 2 };
+        await boot('pre', { fantasy: Promise.resolve(f) });
+        const rows = Array.from(document.querySelectorAll('.fg-stakes .sp-stake')).map(r => r.textContent);
+        expect(rows[1]).toContain('×2 as captain: +6');
+        expect(rows[0]).not.toContain('captain');
+    });
+
     test('one manager owning both teams is “fantasy stakes”, not a matchup against themself', async () => {
         const f = fantasyOf('pre');
         f.home.owner = f.away.owner;

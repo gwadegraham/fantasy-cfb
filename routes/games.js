@@ -12,7 +12,8 @@ const Team = require('../models/team');
 const League = require('../models/league');
 const { DEFAULTS: DEFAULT_LEAGUES } = require('../modules/league-catalog');
 const scoring = require('../modules/scoring');
-const { sideRead, stakeFor } = require('../modules/game-fantasy');
+const { sideRead, stakeFor, captainFor } = require('../modules/game-fantasy');
+const { engagementForSeason } = require('../modules/scoring-defaults');
 const { massCreateInputError, gamesResponseError, stripAbsentScores } = require('../modules/retrieve-games');
 const { pickLogo } = require('../public/logo.js');
 const { getLivePlays, summarizeForStorage, isFinalPayload } = require('../modules/live-plays');
@@ -385,10 +386,10 @@ router.get('/detail/:gameId', async (req, res) => {
 // show up on the next tick or the one after.
 const FANTASY_ROSTER_TTL_MS = 20000;
 const fantasyRosterCache = new Map();
-async function fantasyRosters(league, season, now = Date.now()) {
+async function fantasyRosters(league, season, now = Date.now(), { fresh = false } = {}) {
     const key = league + ':' + season;
     const hit = fantasyRosterCache.get(key);
-    if (hit && now - hit.at < FANTASY_ROSTER_TTL_MS) return hit.users;
+    if (!fresh && hit && now - hit.at < FANTASY_ROSTER_TTL_MS) return hit.users;
     const users = await franchiseRepo.byLeagueAndSeason(league, season, { fields: ['firstName', 'lastName', 'seasons'] });
     fantasyRosterCache.set(key, { at: now, users });
     return users;
@@ -408,7 +409,11 @@ router.get('/fantasy/:league/:gameId', async (req, res) => {
         const game = await Game.findOne({ id: gameId }).lean();
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
-        const users = await fantasyRosters(league, game.season);
+        // Before kickoff the read is fresh: it decides the Captain note, and a
+        // manager who just changed their captain must not see the old one.
+        // Pre-game pages don't poll, so there is no load to share.
+        const pregame = !game.completed && !game.period;
+        const users = await fantasyRosters(league, game.season, Date.now(), { fresh: pregame });
         const owners = ownersByTeam(users, game.season);
         const points = pointsByTeamGame(users, game.season, game.week);
         const out = {
@@ -420,14 +425,20 @@ router.get('/fantasy/:league/:gameId', async (req, res) => {
 
         // Before kickoff only — the page shows the stakes only then, and a
         // live game re-reads this on every score change.
-        if (!game.completed && !game.period && (out.away.owner || out.home.owner)) {
+        if (pregame && (out.away.owner || out.home.owner)) {
             try {
                 const resolved = await scoring.cachedScoringConfig(league);
                 const cfg = Object.assign(scoring.normalizeCfg(resolved.model, resolved), { model: resolved.model });
                 const rankings = await scoring.getRankingsForGame(game, game.week, game.season);
                 const bracket = await scoring.getBracketForGame(game, game.season);
+                const engagement = engagementForSeason(resolved.engagementBySeason, game.season);
                 ['away', 'home'].forEach(which => {
-                    if (out[which].owner) Object.assign(out[which], stakeFor(scoring.evaluate, cfg, game, out[which].teamId, rankings, bracket));
+                    const side = out[which];
+                    if (!side.owner) return;
+                    Object.assign(side, stakeFor(scoring.evaluate, cfg, game, side.teamId, rankings, bracket));
+                    const franchise = users.find(u => String(u._id) === String(side.owner.userId));
+                    const mult = captainFor(franchise, game.season, game, side.teamId, engagement);
+                    if (mult) side.captain = { multiplier: mult };
                 });
             } catch (e) {
                 console.error(`game fantasy stakes for ${gameId}: ${e.message}`);

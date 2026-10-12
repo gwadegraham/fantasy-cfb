@@ -203,3 +203,71 @@ describe('the roster read is shared for a few seconds (#526 QA)', () => {
         } finally { spy.mockRestore(); now.mockRestore(); }
     });
 });
+
+// Before kickoff, a team that is its manager's captain this week says what a
+// win is worth with the multiplier — only while it IS the captain.
+describe('the Captain note on the stakes', () => {
+    const Franchise = require('../models/franchise');
+    const captainCfg = (on = true) => resolveConfig(LEAGUE, { engagementBySeason: { [SEASON]: { captainEnabled: on, captainMultiplier: 2 } } });
+    const setCaptain = (teamId) => Franchise.updateOne(
+        { league: LEAGUE, 'seasons.franchiseName': 'Name, Image, & Sadness' },
+        { $set: { 'seasons.$.captains': [{ week: 5, teamId }] } });
+    const read = () => request(app).get(`/games/fantasy/${LEAGUE}/900`).then(r => r.body);
+
+    test('the captained side carries the multiplier — a manual pick, or the auto-captain scoring would pay', async () => {
+        stubEngine({ cfg: captainCfg() });
+        await setCaptain(MICH);
+        const body = await read();
+        expect(body.away.captain).toEqual({ multiplier: 2 });      // Michigan: Garrett's pick
+        expect(body.home.captain).toEqual({ multiplier: 2 });      // Minnesota: Treyce's only team, so his auto-captain
+    });
+
+    test('change the captain and the note goes away on the next read — no stale cache', async () => {
+        stubEngine({ cfg: captainCfg() });
+        await setCaptain(MICH);
+        expect((await read()).away.captain).toEqual({ multiplier: 2 });
+        await setCaptain(BSU);
+        expect((await read()).away.captain).toBeUndefined();
+    });
+
+    test('Captain off in this league: no note', async () => {
+        stubEngine({ cfg: captainCfg(false) });
+        await setCaptain(MICH);
+        expect((await read()).away.captain).toBeUndefined();
+    });
+});
+
+describe('captainFor', () => {
+    const { captainFor } = require('../modules/game-fantasy');
+    const f = { seasons: [{ season: SEASON, teams: [{ id: MICH }], captains: [{ week: 5, teamId: MICH }], weeklyScore: [] }] };
+    const eng = { captainEnabled: true, captainMultiplier: 3 };
+    test('the pick for the game\'s week, at the league\'s multiplier', () => {
+        expect(captainFor(f, SEASON, { week: 5, seasonType: 'regular' }, MICH, eng)).toBe(3);
+    });
+    test('another week\'s pick does not count', () => {
+        const other = { seasons: [{ season: SEASON, teams: [{ id: MICH }, { id: BSU }], captains: [{ week: 4, teamId: MICH }], weeklyScore: [] }] };
+        expect(captainFor(other, SEASON, { week: 5, seasonType: 'regular' }, BSU, eng)).toBeNull();     // auto falls to the first team, Michigan
+    });
+    test('no Captain in the postseason, as in scoring', () => {
+        expect(captainFor(f, SEASON, { week: 5, seasonType: 'postseason' }, MICH, eng)).toBeNull();
+    });
+    test('no franchise for that season: no note', () => {
+        expect(captainFor({ seasons: [] }, SEASON, { week: 5 }, MICH, eng)).toBeNull();
+    });
+    test('no franchise at all, or no engagement settings: no note', () => {
+        expect(captainFor(null, SEASON, { week: 5 }, MICH, eng)).toBeNull();
+        expect(captainFor(f, SEASON, { week: 5 }, MICH, null)).toBeNull();
+    });
+    test('Captain on with no multiplier set is the default x2, as scoring uses', () => {
+        // (and a season with no weekly rows yet, as in week 1)
+        const fresh = { seasons: [{ season: SEASON, teams: [{ id: MICH }], captains: [{ week: 5, teamId: MICH }] }] };
+        expect(captainFor(fresh, SEASON, { week: 5 }, MICH, { captainEnabled: true })).toBe(2);
+    });
+    test('prior weeks feed the auto-captain; postseason rows are left out, as in scoring', () => {
+        const two = { seasons: [{ season: SEASON, teams: [{ id: MICH }, { id: BSU }], weeklyScore: [
+            { week: 3, scoreByTeam: [{ teamId: BSU, score: 9 }, { teamId: MICH, score: 1 }] },
+            { week: 1, season: 'postseason', scoreByTeam: [{ teamId: MICH, score: 50 }] }] }] };
+        expect(captainFor(two, SEASON, { week: 5 }, BSU, eng)).toBe(3);
+        expect(captainFor(two, SEASON, { week: 5 }, MICH, eng)).toBeNull();
+    });
+});

@@ -31,6 +31,8 @@ function sideRead(game, which, owners, points) {
 // same document with a 1–0 score filled in. Only the result is synthesised;
 // conference, season type, notes and week — everything the rules read — are
 // the game's own.
+const { resolveCaptain } = require('./captain');
+
 function asResult(game, teamId, won) {
     const isHome = Number(game.homeId) === Number(teamId);
     const homeWins = isHome === won;
@@ -46,4 +48,20 @@ function stakeFor(evaluate, cfg, game, teamId, rankings, bracket) {
     };
 }
 
-module.exports = { sideRead, asResult, stakeFor };
+// The Captain multiplier on this side's stakes, when — and only when — this
+// team is the manager's captain for the game's week RIGHT NOW: the pick if
+// they made one, else the auto-captain scoring would fall back to (the same
+// resolveCaptain the scoring pass uses, so the note can't promise a bonus
+// scoring won't pay). Regular season only, as in scoring. null otherwise, so
+// changing the captain makes the note go away on the next read.
+function captainFor(franchise, season, game, teamId, engagement) {
+    if (!engagement || !engagement.captainEnabled) return null;
+    if (game.seasonType === 'postseason') return null;
+    const s = ((franchise && franchise.seasons) || []).find(x => Number(x.season) === Number(season));
+    if (!s) return null;
+    const prior = (s.weeklyScore || []).filter(e => e.season !== 'postseason' && Number(e.week) < Number(game.week));
+    const captain = resolveCaptain(s.captains, game.week, s.teams, prior);
+    return captain != null && Number(captain) === Number(teamId) ? (engagement.captainMultiplier || 2) : null;
+}
+
+module.exports = { sideRead, asResult, stakeFor, captainFor };
