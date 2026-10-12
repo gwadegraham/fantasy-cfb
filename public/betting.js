@@ -203,7 +203,8 @@ async function loadSeasonSummary() {
         var data = await res.json();
         var r = data.record;
         var netClass = data.net >= 0 ? 'stat-positive' : 'stat-negative';
-        var netSign = data.net >= 0 ? '+' : '';
+        // Sign goes in front of the $, so a loss reads "−$12.50".
+        var netSign = data.net >= 0 ? '+' : '−';
         // money() everywhere, not raw interpolation: these are float sums, and
         // "+$14.810000000000002" is what the Net card showed before. The server
         // rounds too — this is the display half of the same fix, and it also
