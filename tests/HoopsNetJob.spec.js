@@ -151,15 +151,21 @@ describe('run — a good page', () => {
         await expectLoudFailure(bad, /write conflict/);
     });
 
-    test('a team on file with no NET rank: written, but an error naming it', async () => {
-        // Every rank written is right, so it is kept — but that team grades as
-        // unranked (Q4), and someone has to look.
-        await HoopsTeam.create({ id: 107, season: SEASON, school: 'West Florida', conference: 'ASUN' });
+    test('a team on file with no NET rank: written, a success with a WARNING naming it, no email', async () => {
+        // A school reclassifying into D-I: ranksFor grades it on its
+        // CBBD/Torvik rank, so it is a note for a person, not a daily alarm.
+        await HoopsTeam.create({ id: 107, season: SEASON, school: 'West Florida', conference: 'ASUN', preseason: { rank: 7 } });
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS)) });
-        expect(out.status).toBe('error');
-        expect(out.summary).toMatch(/ — written, but 1 team\(s\) on file have no NET rank and will grade as unranked: West Florida/);
-        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(out.status).toBe('success');
+        expect(out.summary).toMatch(/ — WARNING: 1 team\(s\) on file have no NET rank, graded on CBBD\/Torvik instead: West Florida/);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
         expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(6);
+        // And scoring does not leave it unranked.
+        const ranked = await ranksFor(SEASON, 7);
+        expect(ranked.source).toBe('ncaa-net');
+        expect(ranked.ranks['107']).toBe(7);
+        expect(ranked.notOnNet).toBe(1);
     });
 });
 
@@ -274,7 +280,8 @@ describe('run — loud failures, nothing written', () => {
         // have their own say; the count check is for a broken page.
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS.slice(0, 5))) });
         expect(out.summary).not.toMatch(/row\(s\), but/);
-        expect(out.summary).toMatch(/1 team\(s\) on file have no NET rank .*: Mississippi Valley State/);
+        expect(out.status).toBe('success');
+        expect(out.summary).toMatch(/WARNING: 1 team\(s\) on file have no NET rank.*: Mississippi Valley State/);
         expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(5);
     });
 
@@ -367,7 +374,7 @@ describe('run — loud failures, nothing written', () => {
             /1 team\(s\) claimed twice: Iowa State by Iowa St\. and Iowa State/);
     });
 
-    test('a conference that disagrees with the rest of its group fails the run', async () => {
+    test('a conference that disagrees with the rest of its group is a WARNING, and the week is still written', async () => {
         // Kansas listed in the SWAC: the shape a swapped alias pair leaves.
         // Two Big 12 rows are needed for the majority; give the field more.
         const more = [
@@ -376,8 +383,13 @@ describe('run — loud failures, nothing written', () => {
         await HoopsTeam.create(more.map(t => Object.assign({ season: SEASON }, t)));
         const rows = [...ROWS.map(r => (r.School === 'Kansas' ? Object.assign({}, r, { Conf: 'SWAC' }) : r)),
             netRow(7, 'Baylor', 'Big 12'), netRow(8, 'Houston', 'Big 12')];
-        await expectLoudFailure(await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(rows)) }),
-            /1 match\(es\) in the wrong conference \(a swapped alias\?\): Kansas — NET says SWAC, we have Big 12/);
+        // Ranks do not depend on conference, and NCAA's column can lag a
+        // realignment; matching never keys on it. So: a note, not a block.
+        const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(rows)) });
+        expect(out.status).toBe('success');
+        expect(out.summary).toMatch(/WARNING: 1 conference disagreement\(s\), check for a swapped alias: Kansas — NET says SWAC, we have Big 12/);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
+        expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(8);
     });
 
     test('a NET under ranksFor\'s coverage floor is refused', async () => {

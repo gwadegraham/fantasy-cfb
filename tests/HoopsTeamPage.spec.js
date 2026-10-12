@@ -98,12 +98,15 @@ describe('build', () => {
     test('the official NET (#533): the newest snapshot on file, null before it publishes', async () => {
         const HoopsNetRank = require('../models/hoopsNetRank');
         expect((await teamPage.build(1, { season: SEASON })).net).toBeNull();
+        teamPage.clearRankCache();   // drops the cached NET too
         const q = (w, l) => ({ w, l });
         await HoopsNetRank.create([
             { season: SEASON, week: 6, teamId: 1, rank: 9 },
             { season: SEASON, week: 7, teamId: 1, rank: 3, record: q(9, 1), quad1: q(3, 1), quad2: q(2, 0), quad3: q(1, 0), quad4: q(3, 0),
                 throughGames: new Date('2026-12-09T00:00:00Z') },
-            { season: SEASON, week: 7, teamId: 2, rank: 20 }
+            { season: SEASON, week: 7, teamId: 2, rank: 20 },
+            { season: SEASON, week: 7, teamId: 3, rank: 300 },
+            { season: SEASON, week: 7, teamId: 4, rank: 40 }
         ]);
         expect((await teamPage.build(1, { season: SEASON })).net).toEqual({
             rank: 3, record: q(9, 1), quads: [q(3, 1), q(2, 0), q(1, 0), q(3, 0)], throughGames: new Date('2026-12-09T00:00:00Z')

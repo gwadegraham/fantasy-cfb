@@ -16,6 +16,7 @@
 
 const HoopsNetRank = require('../models/hoopsNetRank');
 const { normaliseSchool, conferenceMismatches } = require('./torvik-pool');
+const { latestNetWeek } = require('./hoops-ranks');
 // The alias file also carries the two KNOWN gaps between NCAA's field and
 // ours — each a name someone checked, so a reclassifying school does not
 // turn into a daily failure email (or, for an NCAA name, no NET at all):
@@ -153,14 +154,15 @@ function nameKeys(name) {
 // Pair every NET row with a team row.
 //
 // Returns { matched, unmatched, doubleClaimed, unclaimed, ignored, conferenceMismatches }.
-// The job refuses to write while unmatched, doubleClaimed or
-// conferenceMismatches is non-empty: an unmatched team would sit unranked,
-// and an unranked opponent reads as Q4.
+// The job refuses to write while unmatched or doubleClaimed is non-empty.
+// conferenceMismatches and unclaimed are warnings on its JobRun: ranks do
+// not depend on conference (NCAA's column can lag realignment), and an
+// unclaimed team keeps its CBBD/Torvik rank in ranksFor.
 //
 // No fuzzy distance, for torvik-pool's reason: the near-misses are different
 // schools ("Miami (FL)"/"Miami (OH)", "Connecticut"/"Central Conn. St.").
-// And conferenceMismatches is the same guard against a swapped pair, fed
-// NCAA's Conf column.
+// conferenceMismatches is torvik-pool's swapped-pair check fed NCAA's Conf
+// column — a flag for a person, not a key: matching never uses conference.
 function matchNet(rows, teams, aliases = NAME_ALIASES, { notOurs = KNOWN_GAPS.notOurs, notRanked = KNOWN_GAPS.notRanked } = {}) {
     const byName = new Map();
     const byAbbr = new Map();
@@ -219,31 +221,45 @@ function matchNet(rows, teams, aliases = NAME_ALIASES, { notOurs = KNOWN_GAPS.no
 
 // The latest official NET for some teams, for display: { [teamId]: {...} }.
 //
-// The newest snapshot on file — the week filed furthest ahead, which is the
-// most recent fetch — not the week a game was graded on. A page shows "the
-// NET" as ncaa.com shows it today; what a game was PAID at is already banked
-// with its points.
-async function latestNet(season, teamIds) {
+// The newest WHOLE snapshot on file — the same coverage floor scoring
+// applies (hoops-ranks latestNetWeek), so a page never shows a part-written
+// week that scoring passed over — and not the week a game was graded on: a
+// page shows "the NET" as ncaa.com shows it today, and what a game was PAID
+// at is already banked with its points.
+//
+// Cached per season for ten minutes, as the team page caches ranks: every
+// basketball team and game page view asks, and the answer moves once a day.
+const NET_TTL_MS = 10 * 60 * 1000;
+const netCache = new Map();
+async function seasonNet(yr, now) {
+    const hit = netCache.get(yr);
+    if (hit && now - hit.at < NET_TTL_MS) return hit.byTeam;
+    const week = await latestNetWeek(yr);
+    const rows = week === null ? [] : await HoopsNetRank.find({ season: yr, week },
+        { _id: 0, teamId: 1, rank: 1, record: 1, quad1: 1, quad2: 1, quad3: 1, quad4: 1, throughGames: 1 }).lean();
+    const byTeam = new Map(rows.map(r => [String(r.teamId), {
+        rank: r.rank,
+        record: r.record || null,
+        quads: [r.quad1, r.quad2, r.quad3, r.quad4].map(q => (q ? { w: q.w, l: q.l } : null)),
+        throughGames: r.throughGames || null
+    }]));
+    netCache.set(yr, { at: now, byTeam });
+    return byTeam;
+}
+function clearNetCache() { netCache.clear(); }
+
+async function latestNet(season, teamIds, now = Date.now()) {
     const yr = Number(season);
     const ids = (teamIds || []).map(Number).filter(Number.isFinite);
     if (!Number.isFinite(yr) || !ids.length) return {};
-    const newest = await HoopsNetRank.findOne({ season: yr }, { week: 1, _id: 0 }).sort({ week: -1 }).lean();
-    if (!newest) return {};
-    const rows = await HoopsNetRank.find({ season: yr, week: newest.week, teamId: { $in: ids } },
-        { _id: 0, teamId: 1, rank: 1, record: 1, quad1: 1, quad2: 1, quad3: 1, quad4: 1, throughGames: 1 }).lean();
+    const byTeam = await seasonNet(yr, now);
     const out = {};
-    for (const r of rows) {
-        out[String(r.teamId)] = {
-            rank: r.rank,
-            record: r.record || null,
-            quads: [r.quad1, r.quad2, r.quad3, r.quad4].map(q => (q ? { w: q.w, l: q.l } : null)),
-            throughGames: r.throughGames || null
-        };
-    }
+    for (const id of ids) if (byTeam.has(String(id))) out[String(id)] = byTeam.get(String(id));
     return out;
 }
 
 module.exports = {
     NET_URL, REQUIRED_COLUMNS, NAME_ALIASES, KNOWN_GAPS, NetLayoutError,
-    parseNetPage, parseThroughGames, parseRecord, cellText, expandAbbreviations, nameKeys, matchNet, latestNet
+    parseNetPage, parseThroughGames, parseRecord, cellText, expandAbbreviations, nameKeys, matchNet, latestNet,
+    clearNetCache, NET_TTL_MS
 };

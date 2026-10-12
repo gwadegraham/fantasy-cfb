@@ -17,7 +17,7 @@ const HoopsTeamStats = require('../models/hoopsTeamStats');
 const roster = require('./hoops-roster');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
-const { latestNet } = require('./hoops-net');
+const { latestNet, clearNetCache } = require('./hoops-net');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { entryFor } = require('./roster-teams');
 const { pickLogo } = require('../public/logo.js');
@@ -37,7 +37,7 @@ async function cachedRanks(season, week, now = Date.now()) {
     rankCache.set(key, { at: now, ranks });
     return ranks;
 }
-function clearRankCache() { rankCache.clear(); weekCache.clear(); }
+function clearRankCache() { rankCache.clear(); weekCache.clear(); clearNetCache(); }
 
 // THE week a game still to play is quadranted against: the latest week of
 // the season in which ANY game has gone final. Season-wide, not per team —

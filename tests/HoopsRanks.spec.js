@@ -17,6 +17,7 @@ const {
 } = require('../modules/hoops-ranks');
 const HoopsRating = require('../models/hoopsRating');
 const HoopsNetRank = require('../models/hoopsNetRank');
+const { latestNetWeek } = require('../modules/hoops-ranks');
 const HoopsTeam = require('../models/hoopsTeam');
 
 const SEASON = 2027;
@@ -358,8 +359,26 @@ describe('the official NET takes over once it publishes (#533)', () => {
         await HoopsRating.create([1, 2, 3, 4, 5].map(id => rating(id, mid, id)));
         await netWeek(mid, [5, 4, 3, 2, 1]);
         expect(await ranksFor(SEASON, mid)).toEqual({
-            ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, source: 'ncaa-net', blendWeight: 0, staleWeek: null
+            ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, source: 'ncaa-net', blendWeight: 0, staleWeek: null, notOnNet: 0
         });
+    });
+
+    test('a team the NET leaves out keeps its CBBD rank, else its Torvik rank — never unranked', async () => {
+        // Ten teams; the NET ranks eight (the 80% floor), not 6 or 7.
+        await HoopsTeam.create([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(id => team(id, id)));
+        await HoopsRating.create([rating(6, 9, 40)]);                      // CBBD knows team 6
+        await HoopsNetRank.create([1, 2, 3, 4, 5, 8, 9, 10].map((id, i) => netRank(id, 9, i + 1)));
+        const out = await ranksFor(SEASON, 9);
+        expect(out.source).toBe('ncaa-net');
+        expect(out.ranks).toMatchObject({ 1: 1, 5: 5, 10: 8, 6: 40, 7: 7 });
+        expect(out.notOnNet).toBe(2);
+    });
+
+    test('the NET rank wins over CBBD and Torvik for a team it ranks', async () => {
+        await field();
+        await HoopsRating.create([rating(1, 9, 300)]);
+        await HoopsNetRank.create([1, 2, 3, 4, 5].map(id => netRank(id, 9, 6 - id)));
+        expect((await ranksFor(SEASON, 9)).ranks['1']).toBe(5);
     });
 
     test('a week before the first NET week is untouched by it', async () => {
@@ -442,6 +461,17 @@ describe('the official NET takes over once it publishes (#533)', () => {
         await field();
         await HoopsNetRank.create([1, 2, 3, 4, 5].map(id => Object.assign(netRank(id, 3, id), { season: SEASON - 1 })));
         expect((await ranksFor(SEASON, 3)).source).not.toBe('ncaa-net');
+    });
+
+    test('latestNetWeek: the newest WHOLE week, the one scoring would use, null before any', async () => {
+        await field();
+        expect(await latestNetWeek(SEASON)).toBeNull();
+        expect(await latestNetWeek('x')).toBeNull();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        await HoopsNetRank.create([netRank(1, 7, 1)]);                 // thin
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        expect(await latestNetWeek(SEASON)).toBe(6);
+        console.error.mockRestore();
     });
 
     test('netRanks: null for an unreadable season or week; fetches its own weeks when not handed them', async () => {

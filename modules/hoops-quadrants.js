@@ -7,10 +7,12 @@
 // answer — opponent strength crossed with WHERE the game was played, because
 // winning at Duke is not the same as hosting Duke.
 //
-// The boundaries are the NCAA selection committee's shape. The rank feeding
-// them is NOT the committee's NET: CBBD does not serve NET at all, and NET
-// first publishes in December, so it cannot rank a preseason draft pool
-// either. See rankSource below.
+// The boundaries are the NCAA selection committee's shape, and from the
+// first NET week on, so is the rank: the official NCAA NET, read daily off
+// ncaa.com (#533, modules/hoops-net-job.js). Before that — the NET first
+// publishes in December, too late to rank a preseason draft pool — the rank
+// is Torvik's, blending into CBBD's adjusted efficiency. modules/hoops-ranks.js
+// decides which, week by week.
 //
 // ---- BANKED AT TIME OF PLAY ----
 //

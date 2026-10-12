@@ -193,10 +193,6 @@ async function snapshotSeason(season, now, fetchImpl) {
     if (m.doubleClaimed.length) {
         refusals.push(`${m.doubleClaimed.length} team(s) claimed twice: ${list(m.doubleClaimed.map(d => `${d.school} by ${d.by.join(' and ')}`))}`);
     }
-    if (m.conferenceMismatches.length) {
-        refusals.push(`${m.conferenceMismatches.length} match(es) in the wrong conference (a swapped alias?): `
-            + list(m.conferenceMismatches.map(c => `${c.school} — NET says ${c.torvik}, we have ${c.cbbd}`)));
-    }
     if (refusals.length) throw new Error(`${refusals.join('; ')} — wk${target.week} not written`);
 
     const floor = await coverageFloor(season);
@@ -208,16 +204,25 @@ async function snapshotSeason(season, now, fetchImpl) {
     const skippedNote = m.ignored.length ? `, ${m.ignored.length} listed as not ours: ${list(m.ignored)}` : '';
     const written = `${season} wk${target.week}: ${m.matched.length} team(s), NET through ${fmtDay(parsed.throughGames)}${skippedNote} (snapshot taken in wk${target.during})`;
 
-    // Written, but still a failure someone has to look at:
-    //   - stale: the newest NET there is, and still behind the games
-    //   - a team on file with no NET rank grades as unranked, which is Q4
-    const after = [];
-    if (stale) after.push(stale);
+    // Written, but stale: the newest NET there is, and still behind the
+    // games. A failure someone has to look at.
+    if (stale) throw new Error(`${written} — written, but ${stale}`);
+
+    // Written, with a note on the JobRun — a success, no email:
+    //   - a team on file with no NET rank (a school reclassifying into D-I)
+    //     is graded on its CBBD/Torvik rank by ranksFor, not left unranked;
+    //     notRanked in the alias file silences the note once checked
+    //   - a conference disagreement: ranks do not depend on conference and
+    //     matching never keys on it, but a swapped alias pair shows up here
+    const warnings = [];
     if (m.unclaimed.length) {
-        after.push(`${m.unclaimed.length} team(s) on file have no NET rank and will grade as unranked: ${list(m.unclaimed)}`);
+        warnings.push(`${m.unclaimed.length} team(s) on file have no NET rank, graded on CBBD/Torvik instead: ${list(m.unclaimed)}`);
     }
-    if (after.length) throw new Error(`${written} — written, but ${after.join('; ')}`);
-    return { written };
+    if (m.conferenceMismatches.length) {
+        warnings.push(`${m.conferenceMismatches.length} conference disagreement(s), check for a swapped alias: `
+            + list(m.conferenceMismatches.map(c => `${c.school} — NET says ${c.torvik}, we have ${c.cbbd}`)));
+    }
+    return { written: warnings.length ? `${written} — WARNING: ${warnings.join('; ')}` : written };
 }
 
 async function run({ now = new Date(), fetchImpl = fetch } = {}) {

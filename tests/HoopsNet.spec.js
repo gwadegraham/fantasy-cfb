@@ -221,6 +221,7 @@ describe('expandAbbreviations', () => {
 
 describe('latestNet', () => {
     useMongo();
+    beforeEach(() => net.clearNetCache());
 
     const netDoc = (week, teamId, rank) => ({
         season: 2027, week, teamId, rank, school: `T${teamId}`, record: { w: 5, l: 1 },
@@ -237,9 +238,34 @@ describe('latestNet', () => {
         });
     });
 
+    test('a thin, part-written newest week is passed over for the whole one scoring uses', async () => {
+        const HoopsTeam = require('../models/hoopsTeam');
+        await HoopsTeam.create([1, 2, 3, 4, 5].map(id => ({ id, season: 2027, school: `T${id}`, preseason: { rank: id } })));
+        await HoopsNetRank.create([...[1, 2, 3, 4, 5].map(id => netDoc(7, id, id)), netDoc(8, 1, 99)]);
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        expect((await net.latestNet(2027, [1]))['1'].rank).toBe(1);
+        console.error.mockRestore();
+    });
+
+    test('cached per season for ten minutes; clearNetCache drops it', async () => {
+        const t0 = Date.UTC(2026, 11, 10);
+        await HoopsNetRank.create([netDoc(7, 1, 12)]);
+        expect((await net.latestNet(2027, [1], t0))['1'].rank).toBe(12);
+        await HoopsNetRank.create([netDoc(8, 1, 3)]);
+        const find = jest.spyOn(HoopsNetRank, 'find');
+        expect((await net.latestNet(2027, [1], t0 + net.NET_TTL_MS - 1))['1'].rank).toBe(12);
+        expect(find).not.toHaveBeenCalled();
+        expect((await net.latestNet(2027, [1], t0 + net.NET_TTL_MS))['1'].rank).toBe(3);
+        await HoopsNetRank.create([netDoc(9, 1, 1)]);
+        net.clearNetCache();
+        expect((await net.latestNet(2027, [1], t0 + net.NET_TTL_MS + 1))['1'].rank).toBe(1);
+        find.mockRestore();
+    });
+
     test('nothing before the NET publishes, and nothing for a bad season or no teams', async () => {
         expect(await net.latestNet(2027, [1])).toEqual({});
         await HoopsNetRank.create([netDoc(7, 1, 12)]);
+        net.clearNetCache();
         expect(await net.latestNet('x', [1])).toEqual({});
         expect(await net.latestNet(2027, [])).toEqual({});
         expect(await net.latestNet(2027, null)).toEqual({});

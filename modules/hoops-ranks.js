@@ -171,10 +171,20 @@ async function netRanks(season, week, preCount, weeks) {
     const yr = Number(season);
     const wk = Number(week);
     if (!Number.isFinite(yr) || !Number.isFinite(wk)) return null;
-    const found = await (weeks || netWeeks(yr, wk));
+    const whole = wholeNetWeek(yr, await (weeks || netWeeks(yr, wk)), preCount);
+    if (!whole) return null;
+    const rows = await HoopsNetRank.find({ season: yr, week: whole._id }, { teamId: 1, rank: 1, _id: 0 }).lean();
+    return { ranks: byTeam(rows), week: whole._id, stale: whole._id !== wk };
+}
+const thinLogged = new Set();
+
+// The newest of `weeks` (netWeeks()'s answer) that clears the coverage
+// floor, or undefined. Shared by scoring and the pages' display, so a page
+// never shows a NET week scoring has passed over.
+function wholeNetWeek(yr, weeks, preCount) {
     const floor = preCount > 0 ? preCount * MIN_LIVE_COVERAGE : 1;
-    const whole = found.find(w => w.n >= floor);
-    for (const w of found) {
+    const whole = weeks.find(w => w.n >= floor);
+    for (const w of weeks) {
         if (w === whole) break;
         // Once per process per week: ranksFor runs on every page view past
         // the rank cache, and the job's own JobRun is the alarm.
@@ -183,11 +193,22 @@ async function netRanks(season, week, preCount, weeks) {
         thinLogged.add(key);
         console.error(`hoops-ranks: ignoring NET week ${w._id} — only ${w.n} of ${preCount} teams ranked`);
     }
-    if (!whole) return null;
-    const rows = await HoopsNetRank.find({ season: yr, week: whole._id }, { teamId: 1, rank: 1, _id: 0 }).lean();
-    return { ranks: byTeam(rows), week: whole._id, stale: whole._id !== wk };
+    return whole;
 }
-const thinLogged = new Set();
+
+// The newest whole NET week of a season, or null — what the pages show as
+// "the NET": the latest snapshot scoring would accept, not merely the
+// highest week on file.
+async function latestNetWeek(season) {
+    const yr = Number(season);
+    if (!Number.isFinite(yr)) return null;
+    const [preCount, weeks] = await Promise.all([
+        HoopsTeam.countDocuments({ season: yr, 'preseason.rank': { $type: 'number' } }),
+        netWeeks(yr, Number.MAX_SAFE_INTEGER)
+    ]);
+    const whole = wholeNetWeek(yr, weeks, preCount);
+    return whole ? whole._id : null;
+}
 
 // Row counts of every NET week at or before `week`, newest first.
 function netWeeks(season, week) {
@@ -224,7 +245,17 @@ async function ranksFor(season, week) {
 
     // The NET, once it has published, outranks everything below.
     const net = await netRanks(season, week, preCount, weeks);
-    if (net) return { ranks: net.ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null };
+    if (net) {
+        // A team the NET does not rank — a school reclassifying into D-I, or
+        // one NCAA leaves off — keeps the rank the sources below give it:
+        // CBBD's for the week, else Torvik's. Left out, it would be
+        // unranked, and every win over it a silent Q4.
+        const ranks = Object.assign({}, pre, live.ranks, net.ranks);
+        return {
+            ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null,
+            notOnNet: Object.keys(ranks).length - Object.keys(net.ranks).length
+        };
+    }
 
     const liveCount = Object.keys(live.ranks).length;
 
@@ -251,7 +282,7 @@ async function ranksFor(season, week) {
 }
 
 module.exports = {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, netWeeks, rankOf,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, netWeeks, latestNetWeek, rankOf,
     _resetThinLog: () => thinLogged.clear(), MIN_LIVE_COVERAGE,
     FULLY_PRESEASON, FULLY_LIVE
 };
