@@ -257,6 +257,10 @@ async function settleWeekOpts(activeSeason, data) {
 // paint — this lands whenever it lands, and the classic schedule render awaits
 // the same promise so it never paints the wrong week.
 function applyCurrentWeek(cwCode, data) {
+    // Football's stored week, so never on basketball: a basketball week written
+    // there would land a football page on it after a league switch. The
+    // basketball schedule keeps its own (displayHoopsSchedule).
+    if (isBasketballLeague()) return null;
     // Fallback only: with no calendar to consult, seed a week when nothing is
     // stored and otherwise leave the stored one be.
     if (!cwCode && !window.localStorage.getItem('week') && latestWeek(data)) {
@@ -1203,6 +1207,11 @@ document.addEventListener('click', function (e) {
 });
 
 async function displaySchedule(data) {
+    // A basketball league's Rivalry Games read basketball (#528). Everything
+    // below is football's: its games collection (the id spaces overlap, #489),
+    // the AP poll, football logos and betting lines — betting is football-only
+    // (#491) — and its 1-16 + Postseason weeks.
+    if (isBasketballLeague()) return displayHoopsSchedule(data);
     const scheduleStart = new Date();
     var usersAndTeams = [];
 
@@ -1510,9 +1519,169 @@ async function displaySchedule(data) {
     document.querySelector('.schedule-table').style.display = "flex";
 }
 
+function isBasketballLeague() {
+    var lg = window.ccLeague;
+    try { return !!(lg && typeof lg.sport === 'function' && lg.sport() === 'basketball'); } catch (e) { return false; }
+}
+
+// The Rivalry Games week on a basketball league: null until the first render
+// asks ccCurrentWeek, then whatever the viewer picks. Never stored.
+var _hoopsRivalryWeek = null;
+// Newest render wins when quick week picks come back out of order.
+var _hoopsScheduleSeq = 0;
+
+function hoopsEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+// Banked points on a basketball card. Unlike football a side can bank a
+// NEGATIVE (a bad loss), and that is worth showing, so this is scoreBadge
+// with a sign rather than scoreBadge itself.
+function hoopsScoreBadge(teamId, gameId, pts) {
+    if (pts > 0) return scoreBadge(teamId, gameId, pts);
+    if (pts < 0) {
+        return '<button type="button" class="score-explain" data-team="' + teamId + '" data-game="' + gameId + '" data-pts="' + pts + '" title="Why these points?"><strong style="color: #E5484D;">−' + Math.abs(pts) + '</strong></button>';
+    }
+    return '';
+}
+
+// One side of a basketball rivalry card: T-Rank top 25 where football shows
+// the AP rank, the hoopsteams logo the route already joined on.
+function hoopsSideCell(side) {
+    var logo = side.logo
+        ? '<img src="' + hoopsEsc(side.logo) + '" style="padding-right: 5px;">'
+        : '<i class="fa-solid fa-basketball" style="padding-right: 5px;"></i>';
+    var rank = '<p style="display: inline; padding-right: 5px; color: #A4A9C2;">' + (side.rank ? side.rank : '') + '</p>';
+    return '<a href="/hoops/team/' + encodeURIComponent(side.id) + '">' + logo + rank + hoopsEsc(side.team) + '</a>';
+}
+
+// The football card's markup (same classes, so the same CSS), fed by a game
+// from GET /hoops/games/teams. ownerChip: { <teamId>: chip html }.
+function hoopsRivalryCard(g, ownerChip, pointsFor) {
+    var away = g.away, home = g.home;
+    var topData, bottomData;
+    var caret = '<i class="fa-solid fa-caret-left" style="padding-left: 2px;"></i>';
+    var hasScore = away.points != null && home.points != null;
+    if (g.state === 'final' && hasScore) {
+        var awayBadge = hoopsScoreBadge(away.id, g.id, pointsFor(away.id, g.id));
+        var homeBadge = hoopsScoreBadge(home.id, g.id, pointsFor(home.id, g.id));
+        topData = away.points + (away.points > home.points ? caret : '') + '</td><td class="score-added">' + awayBadge + '</td>';
+        bottomData = home.points + (home.points > away.points ? caret : '') + '</td><td class="score-added">' + homeBadge + '</td>';
+    } else if (g.state === 'live') {
+        var hw = window.ccHoopsWeekGames;
+        var clock = (hw ? hw.periodLabel(g.period) : 'Live') + (g.period != null && g.clock ? ' ' + g.clock : '');
+        topData = (away.points != null ? away.points : '-');
+        bottomData = (home.points != null ? home.points : '-') + ' <span class="gc-time">' + hoopsEsc(clock) + '</span>';
+    } else {
+        // ccKickoff, as football's cards: a TBD tip is stored as midnight
+        // Eastern (public/kickoff-day.js).
+        var tbd = g.startTimeTbd;
+        topData = '<span class="gc-date">' + window.ccKickoff.dayAbbr(g.startDate, tbd) + ' ' + window.ccKickoff.monthDay(g.startDate, tbd) + '</span>';
+        bottomData = '<span class="gc-time">' + window.ccKickoff.time(g.startDate, tbd) + '</span>';
+    }
+
+    // data-game-id goes through ccLeague.open, which sends a basketball
+    // league's card to /hoops/game/:id.
+    var t = '<td><table class="schedule-table game-table gc-clickable" data-game-id="' + hoopsEsc(g.id) + '"><tbody><tr firstRow></tr>';
+    t += '<tr id="awayUserRow"><td>' + (ownerChip[String(away.id)] || '') + '</td></tr>';
+    t += '<tr><td style="width: 250px;">' + hoopsSideCell(away) + '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 70px;">' + topData + '</tr>';
+    t += '<tr><td style="width: 250px;">' + hoopsSideCell(home) + '</td><td align="center" style="width: 20px; border-left: 1px solid #A4A9C2;"></td><td style="width: 100px;">' + bottomData + '</tr>';
+    t += '<tr><td>' + (ownerChip[String(home.id)] || '') + '</td></tr>';
+    if (g.outlet) {
+        t += '<tr><td class="game-broadcast">' + (window.ccIcon ? window.ccIcon('broadcast', { size: 15 }) : '') + ' ' + hoopsEsc(g.outlet) + '</td></tr>';
+    }
+    t += '<tr><td class="game-notes">' + hoopsEsc(g.notes || '') + '</td></tr>';
+    t += '<tbody></table></td>';
+    return t;
+}
+
+// The week picker, rebuilt from the season's real weeks — basketball's run
+// as one sequence through March, not football's 1-16 + Postseason.
+function paintHoopsWeekPicker(weeks, week) {
+    var sel = document.querySelector('[rivalry-week]');
+    if (!sel || !(weeks || []).length) return;
+    var hw = window.ccHoopsWeekGames;
+    sel.innerHTML = weeks.map(function (w) {
+        var label = hw && hw.weekLabel ? hw.weekLabel(w) : 'Week ' + w.week;
+        return '<option value="' + hoopsEsc(w.week) + '">' + hoopsEsc(label) + '</option>';
+    }).join('');
+    sel.value = String(week);
+}
+
+// Rivalry Games on a basketball league (#528): games where two managers'
+// basketball teams meet, from GET /hoops/games/teams in one request — T-Rank
+// and hoopsteams logos come back on the same answer, so there is no rankings,
+// logo or betting call to make.
+async function displayHoopsSchedule(data) {
+    var mine = ++_hoopsScheduleSeq;
+    var season = ccSeasonOf.payloadSeason(data);
+    if (_hoopsRivalryWeek == null) {
+        var wk = null;
+        try { wk = window.ccCurrentWeek && window.ccCurrentWeek.get ? await window.ccCurrentWeek.get(season) : null; } catch (e) { wk = null; }
+        if (_hoopsRivalryWeek == null) _hoopsRivalryWeek = wk || 1;
+    }
+    var week = _hoopsRivalryWeek;
+
+    // Whose team is whose, and the chip that names them.
+    var ownerOf = {};
+    var ownerChip = {};
+    var weeklyByTeamId = {};
+    data.forEach(function (u) {
+        var entry = ccSeasonOf.payloadSeasonEntry(u);
+        var chip = managerChipHtml(u);
+        (entry.teams || []).forEach(function (t) {
+            ownerOf[String(t.id)] = String(u._id);
+            ownerChip[String(t.id)] = chip;
+            weeklyByTeamId[t.id] = entry.weeklyScore;
+        });
+    });
+    var pointsFor = function (teamId, gameId) { return teamGameScoreById(weeklyByTeamId[teamId], teamId, gameId); };
+
+    var ids = Object.keys(ownerOf);
+    var hw = window.ccHoopsWeekGames;
+    var d = ids.length && hw ? await hw.load(season, week, ids) : null;
+    if (mine !== _hoopsScheduleSeq) return;   // a newer pick is on its way
+
+    var str = '<tr>';
+    var noGames = document.getElementById('no-games-container');
+    if (noGames) noGames.innerHTML = '';
+    if (d) {
+        paintHoopsWeekPicker(d.weeks, week);
+        var rivalries = (d.games || []).filter(function (g) {
+            var a = ownerOf[String(g.away.id)], h = ownerOf[String(g.home.id)];
+            return a && h && a !== h;
+        });
+        rivalries.forEach(function (g, k) {
+            if (isMobile) str += '</tr><tr>';
+            else if (k > 0 && k % 3 == 0) str += '</tr><tr>';
+            str += hoopsRivalryCard(g, ownerChip, pointsFor);
+            if (isMobile) str += '</tr><tr>';
+        });
+        if (!rivalries.length && noGames) {
+            noGames.innerHTML = '<div class="no-matchups-message"><div class="emoji">🏀</div><h3>No Rivalry Games This Week</h3><p>None of your teams meet another manager’s this week.</p></div>';
+        }
+    } else if (noGames) {
+        noGames.innerHTML = '<div class="no-matchups-message"><h3>Could not load the games.</h3></div>';
+    }
+    document.querySelector('[schedule-body]').innerHTML = str;
+    document.querySelector('.football-loader').style.display = "none";
+    document.querySelector('.schedule-table').style.display = "flex";
+}
+
 var _rivalryWeekEl = document.querySelector('[rivalry-week]');
 if (_rivalryWeekEl) {
     _rivalryWeekEl.addEventListener('change', function () {
+        // Basketball's picked week lives on the page: weekCode / week /
+        // weekPinned are football's and carry no sport (see current-week.js).
+        if (isBasketballLeague()) {
+            _hoopsRivalryWeek = Number(this.value);
+            document.querySelector('.football-loader').style.display = "flex";
+            document.querySelector('.schedule-table').style.display = "none";
+            displaySchedule(usersData);
+            return;
+        }
         var sel = this.options[this.selectedIndex];
         window.localStorage.setItem("week", sel.text);
         if (window.ccCurrentWeek) window.ccCurrentWeek.pin();

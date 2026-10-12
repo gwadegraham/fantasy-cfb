@@ -12,6 +12,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">    
     <script src="confetti.js"></script>
     <script src="pull-to-refresh.js"></script>
+    <%# Rivalry Games' basketball reads (#528): only for a basketball league,
+        which keeps basketball invisible to everyone else. %>
+    <% if (typeof viewerSport !== 'undefined' && viewerSport === 'basketball') { %>
+    <script defer src="hoops-week-games.js"></script>
+    <% } %>
     <script src="standings.js" type="module"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -130,11 +135,14 @@
         <option value="week-16">Week 16</option>
         <option value="week-17">Postseason</option>
     </select>
-    <!-- data-page-sport: these are FOOTBALL games whatever the league (#490/#501), so
-         public/league.js must not send their links to the basketball pages. -->
-    <div class="game-content" style="display:none" data-page-sport="football">
+    <%# data-page-sport: the sport of the games listed here, which public/league.js
+        reads before sending a link to the basketball pages. A basketball league's
+        Rivalry Games are basketball games since #528 (until then they were
+        football's whatever the league, #490/#501). Football is the default. %>
+    <% var _rivalrySport = (typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? 'basketball' : 'football'; %>
+    <div class="game-content" style="display:none" data-page-sport="<%= _rivalrySport %>">
         <div class="football-loader">
-            <div class="football-icon">🏈</div>
+            <div class="football-icon"><%= _rivalrySport === 'basketball' ? '🏀' : '🏈' %></div>
             <p class="loading-text">Scouting for games...</p>
         </div>
         <div class="get-users-container">

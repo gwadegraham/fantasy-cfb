@@ -15,6 +15,7 @@ const Game = require('../models/game');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const seasons = require('../modules/active-season');
+const hoopsTeamPage = require('../modules/hoops-team-page');
 const { GRACE_MS } = require('../modules/hoops-stale-duplicates');
 
 const LEAGUE = 'hoops-league';
@@ -109,6 +110,25 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect(res.body.games[0]).toMatchObject({ id: 10, state: 'final', home: { points: 80 }, away: { points: 70 } });
     });
 
+    // Standings asks for the whole LEAGUE's roster at once (#528): 8 managers
+    // x 10 rounds is 80 ids, which the old one-manager cap of 40 refused.
+    test("takes a whole league's roster in one request", async () => {
+        const league = Array.from({ length: 80 }, (_, i) => i + 1).join(',');
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=${league}`);
+        expect(res.status).toBe(200);
+        expect(res.body.games.map(g => g.id)).toEqual([20, 21, 22]);
+    });
+
+    // Rivalry Games shows T-Rank where football shows the AP poll (#528) —
+    // the scoreboard's cached ranks for that week, top 25 only.
+    test("carries the week's T-Rank top 25 and the TV outlet", async () => {
+        const ranks = jest.spyOn(hoopsTeamPage, 'cachedRanks').mockResolvedValue({ 1: 4, 3: 40 });
+        await HoopsGame.updateOne({ id: 20 }, { $set: { broadcasts: [{ name: 'ESPN', type: 'TV' }] } });
+        const res = await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1`);
+        expect(ranks).toHaveBeenCalledWith(SEASON, 2);
+        expect(res.body.games[0]).toMatchObject({ id: 20, outlet: 'ESPN', home: { id: 1, rank: 4 }, away: { id: 3, rank: null } });
+    });
+
     // The bug in #501: the tile asked FOOTBALL's games collection with
     // basketball ids. A football game between the same ids must never show.
     test('never reads football games, even with the same ids and week', async () => {
@@ -140,7 +160,7 @@ describe('GET /hoops/games/teams/:season/:week', () => {
         expect((await request(app).get(`/hoops/games/teams/abc/2?ids=1`)).status).toBe(400);
         expect((await request(app).get(`/hoops/games/teams/${SEASON}/0?ids=1`)).status).toBe(400);
         expect((await request(app).get(`/hoops/games/teams/${SEASON}/x?ids=1`)).status).toBe(400);
-        const many = Array.from({ length: 41 }, (_, i) => i + 1).join(',');
+        const many = Array.from({ length: 121 }, (_, i) => i + 1).join(',');
         expect((await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=${many}`)).status).toBe(400);
         leagueSelection.viewableBy.mockResolvedValue(['graham-league']);
         expect((await request(app).get(`/hoops/games/teams/${SEASON}/2?ids=1`)).status).toBe(404);
