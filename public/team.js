@@ -133,6 +133,8 @@ async function loadTeamPage() {
         rankings: val(5, []),
         bettingLines: val(6, []),
         owner: val(7, null),
+        // Whether the owner lookup answered at all (see getTeamOwner).
+        ownerKnown: results[7].status === 'fulfilled',
         fantasyRank: val(8, null),
         playerLeaders: val(9, null),
         teamStats: val(10, null),
@@ -151,15 +153,21 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
     // owner whose points are keyed by basketball games and blank every row.
     var lg = window.ccLeague;
     if (lg && typeof lg.sport === 'function' && lg.sport() !== 'football') return null;
-    try {
-        const res = await fetch(`/users/season/${seasonYear}`, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
-        });
-        const users = await res.json();
-        if (!Array.isArray(users)) return null;
+    // null = undrafted. A lookup that can't answer THROWS instead, and the
+    // page then says nothing about ownership rather than "Undrafted": with no
+    // league to scope to, every league's franchises would be searched
+    // (basketball's colliding ids included, #489), and a failed read is not
+    // evidence that nobody drafted the team.
+    if (!leagueCode) throw new Error('no league to look the owner up in');
+    const res = await fetch(`/users/season/${seasonYear}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    });
+    const users = await res.json();
+    if (!Array.isArray(users)) throw new Error('owner lookup failed (' + res.status + ')');
 
-        const scoped = leagueCode ? users.filter(u => u.league === leagueCode) : users;
+    {
+        const scoped = users.filter(u => u.league === leagueCode);
         for (const user of scoped) {
             const season = ccSeasonOf.seasonOf(user, seasonYear);
             const owns = season?.teams?.some(t => String(t.id) === String(teamId));
@@ -173,20 +181,26 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
             }
         }
         return null;
-    } catch (e) {
-        return null;
     }
 }
 
 // What this team has banked for its manager, game by game: { gameId: points }
 // off the franchise's weekly rows. Keyed by game id, so a week with two games
 // (or a postseason week holding several) keeps each game's own points.
+// Includes the Captain bonus, which scoring keeps on the week row rather than
+// the game entry: each of the captained team's games that week gets its share,
+// in proportion to its base points (the rule in modules/league-scoreboard.js
+// captainShare, which the game page and scoreboard use).
 function ownerPointsFor(season, teamId) {
     var out = {};
     (season && season.weeklyScore || []).forEach(function (w) {
+        var captained = w.captainBonus && String(w.captainTeamId) === String(teamId);
+        var base = captained ? (w.scoreByTeam || []).filter(function (s) { return String(s.teamId) === String(teamId); })
+            .reduce(function (sum, s) { return sum + (Number(s.score) || 0); }, 0) : 0;
         (w.scoreByTeam || []).forEach(function (s) {
             if (String(s.teamId) !== String(teamId) || s.gameId == null) return;
-            out[String(s.gameId)] = Number(s.score) || 0;
+            var pts = Number(s.score) || 0;
+            out[String(s.gameId)] = pts + (base ? w.captainBonus * pts / base : 0);
         });
     });
     return out;
@@ -697,6 +711,7 @@ function ftOwnerStrip(d) {
     var lg = window.ccLeague;
     if (lg && typeof lg.sport === 'function' && lg.sport() !== 'football') return '';
     var league = lg && typeof lg.name === 'function' ? lg.name() : '';
+    if (d.ownerKnown === false) return '';
     if (!d.owner) {
         return '<div class="sp-own free"><div class="who"><b>Undrafted</b>' + (league ? ' in ' + ftEsc(league) : '')
             + ', ' + ftEsc(d.year) + '</div></div>';

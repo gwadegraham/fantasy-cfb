@@ -335,6 +335,48 @@ describe('loadTeamPage asks about the league being viewed', () => {
     });
 });
 
+describe('the owner lookup (#526 QA)', () => {
+    const boot = async (fetchImpl, code = 'graham-league') => {
+        window.ccSeasonOf = require('../public/season-of.js');
+        window.localStorage.clear();
+        window.history.replaceState(null, '', '/team?team=150');
+        document.head.innerHTML = '<title>Team</title>';
+        document.body.innerHTML = '<main class="sp-page ft" id="team-page"></main>';
+        window.ccLeague = { sport: () => 'football', name: () => 'The Polar Depressed', title: (p) => p };
+        window.ccLeagueCode = () => code;
+        global.fetch = jest.fn(fetchImpl);
+        ftPage.bound = false;
+        await loadTeamPage();
+        delete window.ccLeagueCode;
+    };
+    const doc = { id: DUKE, school: 'Duke', mascot: 'Blue Devils', logos: [], seasons: [{ season: 2026, conference: 'ACC', weeklyScore: [{ week: 1 }] }] };
+    const answer = (users, status = 200) => (url) => Promise.resolve({ status, ok: status === 200,
+        json: () => Promise.resolve(/\/teams\/info\//.test(url) ? [doc] : /\/users\/season\//.test(url) ? users : []) });
+
+    test('a lookup that fails says nothing about ownership, not "Undrafted"', async () => {
+        await boot(answer({ message: 'boom' }, 500));
+        expect(txt('.sp-own')).toBe('');
+    });
+
+    test('no league to scope to: no lookup at all, and no strip', async () => {
+        await boot(answer([]), '');
+        expect(global.fetch.mock.calls.some(c => /\/users\/season\//.test(c[0]))).toBe(false);
+        expect(txt('.sp-own')).toBe('');
+    });
+
+    test('a lookup that answers with nobody is "Undrafted"', async () => {
+        await boot(answer([]));
+        expect(txt('.sp-own')).toContain('Undrafted');
+    });
+
+    test('points banked include the Captain bonus', async () => {
+        const users = [{ _id: 'u1', league: 'graham-league', firstName: 'G', seasons: [{ season: 2026, franchiseName: 'Hogs',
+            teams: [{ id: DUKE }], weeklyScore: [{ week: 1, captainTeamId: DUKE, captainBonus: 4, scoreByTeam: [{ teamId: DUKE, gameId: 77, score: 4 }] }] }] }];
+        await boot(answer(users));
+        expect(txt('.sp-own')).toContain('+8');                       // 4 base + 4 captain bonus
+    });
+});
+
 describe('a basketball league viewing a football team page', () => {
     test('no owner is looked up, so the points column falls back to the team\'s own weeks', async () => {
         window.ccSeasonOf = require('../public/season-of.js');

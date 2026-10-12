@@ -61,6 +61,19 @@ describe('ownersByTeam', () => {
 });
 
 describe('pointsByTeamGame', () => {
+    test('includes the Captain bonus, shared across the captained team\'s games by their base points', () => {
+        // Captained team 5 at 3x scored 2 + 1 = 3 base, so the week row carries
+        // a bonus of 6 (2 x 3) — on the WEEK, not on either game.
+        const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 6, scoreByTeam: [
+            { teamId: 5, gameId: 1, score: 2 }, { teamId: 5, gameId: 2, score: 1 }, { teamId: 7, gameId: 3, score: 4 }] }] }] }];
+        expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 6, '5:2': 3, '7:3': 4 });
+    });
+
+    test('a captained team that scored nothing earns no bonus (and no division by zero)', () => {
+        const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 0, scoreByTeam: [{ teamId: 5, gameId: 1, score: 0 }] }] }] }];
+        expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 0 });
+    });
+
     const users = [user({
         seasons: [{
             season: 2026,

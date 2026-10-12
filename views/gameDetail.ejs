@@ -1032,7 +1032,10 @@
             if (gdFantasyRetries >= GD_FANTASY_RETRIES) return;
             gdFantasyRetries++;
             setTimeout(function again() {
-                if (document.hidden) { setTimeout(again, GD_FANTASY_STALE_MS); return; }
+                // A hidden tab, or a read already under way, waits for the
+                // next minute instead of spending a try on a call that would
+                // not be made.
+                if (document.hidden || gdFantasyInFlight) { setTimeout(again, GD_FANTASY_STALE_MS); return; }
                 gdFetchFantasy(gdGame || game, true);
             }, GD_FANTASY_STALE_MS);
         }
@@ -1048,7 +1051,7 @@
             try {
                 var res = await fetch('/games/fantasy/' + encodeURIComponent(code) + '/' + encodeURIComponent(GAME_ID),
                     { headers: { 'Accept': 'application/json' } });
-                if (!res.ok) throw new Error('fantasy read failed: ' + res.status);
+                if (!res.ok) { var bad = new Error('fantasy read failed: ' + res.status); bad.status = res.status; throw bad; }
                 gdFantasy = await res.json();
                 gdFantasyKey = key;
                 gdFantasyAt = Date.now();
@@ -1060,7 +1063,9 @@
                 // ask again (the live refresh has stopped), so a failed read
                 // retries like an unposted one rather than ending the tries.
                 console.error('Fantasy read failed:', err);
-                if (game.completed) gdRetryFantasy(game);
+                // A 4xx (no such football league) answers the same every
+                // time; only a server or network failure is worth retrying.
+                if (game.completed && !(err.status >= 400 && err.status < 500)) gdRetryFantasy(game);
             } finally {
                 gdFantasyInFlight = false;
             }

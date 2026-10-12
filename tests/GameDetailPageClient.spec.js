@@ -72,6 +72,7 @@ async function boot(kind, opts = {}) {
         if (/\/teams\/teamLogos/.test(url)) return ok([{ id: BSU, abbreviation: 'BOIS', school: 'Boise State', color: '#0033a0', logos: [] },
             { id: WMU, abbreviation: 'WMU', school: 'Western Michigan', color: '#6c4023', logos: [] }]);
         if (/\/games\/plays\//.test(url)) return ok({ plays: [], drives: [], status: kind === 'pre' ? 'none' : 'final', source: 'db' });
+        if (/\/games\/fantasy\//.test(url) && opts.fantasyRes) return Promise.resolve(opts.fantasyRes);
         if (/\/games\/fantasy\//.test(url)) return opts.fantasy ? opts.fantasy.then(ok) : ok(fantasyOf(kind));
         return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
     });
@@ -288,6 +289,29 @@ describe('the read lands without re-rendering the page (#506 QA)', () => {
         later[0]();
         for (let i = 0; i < 4; i++) await tick();
         expect(fantasyCalls()).toHaveLength(2);
+    });
+
+    test('a 404 (no such football league) on a final is not retried: it would answer the same', async () => {
+        const later = [];
+        const realTimeout = window.setTimeout;
+        jest.spyOn(window, 'setTimeout').mockImplementation((fn, ms) => {
+            if (ms === 60000) { later.push(fn); return 0; }
+            return realTimeout(fn, ms);
+        });
+        await boot('final', { fantasyRes: { ok: false, status: 404, json: () => Promise.resolve({}) } });
+        expect(fantasyCalls()).toHaveLength(1);
+        expect(later).toHaveLength(0);
+    });
+
+    test('a 500 on a final is retried', async () => {
+        const later = [];
+        const realTimeout = window.setTimeout;
+        jest.spyOn(window, 'setTimeout').mockImplementation((fn, ms) => {
+            if (ms === 60000) { later.push(fn); return 0; }
+            return realTimeout(fn, ms);
+        });
+        await boot('final', { fantasyRes: { ok: false, status: 500, json: () => Promise.resolve({}) } });
+        expect(later).toHaveLength(1);
     });
 
     test('a hidden tab holds its retry rather than spending it', async () => {
