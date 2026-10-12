@@ -364,6 +364,22 @@ describe('the owner lookup (#526 QA)', () => {
         expect(txt('.sp-own')).toBe('');
     });
 
+    test('a stale league in browser storage is not used: no lookup, no strip', async () => {
+        window.ccSeasonOf = require('../public/season-of.js');
+        window.history.replaceState(null, '', '/team?team=150');
+        document.head.innerHTML = '<title>Team</title>';
+        document.body.innerHTML = '<main class="sp-page ft" id="team-page"></main>';
+        window.ccLeague = { sport: () => 'football', name: () => 'The Polar Depressed', title: (p) => p };
+        window.ccLeagueCode = () => '';
+        window.localStorage.setItem('leagueCode', 'claunts-league');
+        global.fetch = jest.fn(answer([]));
+        ftPage.bound = false;
+        await loadTeamPage();
+        delete window.ccLeagueCode;
+        expect(global.fetch.mock.calls.some(c => /\/users\/season\//.test(c[0]))).toBe(false);
+        expect(txt('.sp-own')).toBe('');
+    });
+
     test('a lookup that answers with nobody is "Undrafted"', async () => {
         await boot(answer([]));
         expect(txt('.sp-own')).toContain('Undrafted');

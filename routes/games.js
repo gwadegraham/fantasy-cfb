@@ -412,7 +412,12 @@ router.get('/fantasy/:league/:gameId', async (req, res) => {
         // Before kickoff the read is fresh: it decides the Captain note, and a
         // manager who just changed their captain must not see the old one.
         // Pre-game pages don't poll, so there is no load to share.
-        const pregame = !game.completed && !game.period;
+        // Before the START TIME, not merely before a period is written: a
+        // postponed game keeps completed=false and no period long after its
+        // date, and the page polls it like a live one — each of those reads
+        // must not be a fresh roster read plus an uncached rankings fetch.
+        const startMs = Date.parse(game.startDate);
+        const pregame = !game.completed && !game.period && Number.isFinite(startMs) && startMs > Date.now();
         const users = await fantasyRosters(league, game.season, Date.now(), { fresh: pregame });
         const owners = ownersByTeam(users, game.season);
         const points = pointsByTeamGame(users, game.season, game.week);

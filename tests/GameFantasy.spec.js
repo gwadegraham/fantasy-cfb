@@ -271,3 +271,20 @@ describe('captainFor', () => {
         expect(captainFor(two, SEASON, { week: 5 }, MICH, eng)).toBeNull();
     });
 });
+
+describe('a postponed game, past its date with no period (#526 QA)', () => {
+    beforeEach(async () => {
+        await Game.updateOne({ id: 900 }, { $set: { startDate: new Date(Date.now() - 6 * 3600e3).toISOString() } });
+    });
+    test('works out no stakes, and shares the roster read like a live game', async () => {
+        stubEngine();
+        const franchiseRepo = require('../modules/franchise-repo');
+        const spy = jest.spyOn(franchiseRepo, 'byLeagueAndSeason');
+        const body = (await request(app).get(`/games/fantasy/${LEAGUE}/900`)).body;
+        await request(app).get(`/games/fantasy/${LEAGUE}/900`);
+        expect(body.away.ifWin).toBeUndefined();
+        expect(scoring.getRankingsForGame).not.toHaveBeenCalled();
+        expect(spy).toHaveBeenCalledTimes(1);
+    });
+});
+

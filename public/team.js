@@ -95,7 +95,9 @@ async function loadTeamPage() {
     // mirror, which getUserProfile writes asynchronously and can still be
     // empty on a first visit (every league's franchises would then be
     // searched, basketball's colliding ids included, #489).
-    const leagueCode = (window.ccLeagueCode && window.ccLeagueCode()) || window.localStorage.getItem("leagueCode");
+    // No storage fallback: a stale code there is another league's, which
+    // would name the wrong owner. With no answer the owner strip hides.
+    const leagueCode = (window.ccLeagueCode && window.ccLeagueCode()) || '';
 
     // Fire the independent requests together. allSettled (not all) so one failed
     // request can't blank the whole page — each section falls back to a default.

@@ -1131,17 +1131,24 @@
                         v = '<span class="v zero">no points</span>';
                     } else {
                         var notes = [];
+                        // A signed number: "+3", and "−2" for a league that
+                        // gives a negative value (not "+-2").
+                        var pts = function (n) { n = Math.round(n * 10) / 10; return n < 0 ? '−' + Math.abs(n) : '+' + n; };
+                        var expected = winP != null ? side.ifWin * winP + loss * (1 - winP) : null;
+                        if (loss) notes.push(pts(loss) + ' even in a loss');
+                        if (expected != null) notes.push('expected ' + pts(expected));
                         // The stakes are the base rules. When this team is the
                         // manager's captain this week, say what it's worth
-                        // with the multiplier — and only then (the server
-                        // drops `captain` once they pick someone else).
+                        // with the multiplier — the win and the expectation
+                        // both, since the multiplier applies to whatever the
+                        // team scores — and only then (the server drops
+                        // `captain` once they pick someone else).
                         if (side.captain && side.captain.multiplier) {
                             var m = side.captain.multiplier;
-                            notes.push('×' + m + ' as captain: +' + Math.round(side.ifWin * m * 10) / 10);
+                            notes.push('×' + m + ' as captain: ' + pts(side.ifWin * m)
+                                + (expected != null ? ', expected ' + pts(expected * m) : ''));
                         }
-                        if (loss) notes.push('+' + loss + ' even in a loss');
-                        if (winP != null) notes.push('expected +' + (Math.round((side.ifWin * winP + loss * (1 - winP)) * 10) / 10));
-                        v = '<span class="v">+' + side.ifWin + (notes.length ? '<small>' + notes.join(' · ') + '</small>' : '') + '</span>';
+                        v = '<span class="v">' + pts(side.ifWin) + (notes.length ? '<small>' + notes.join(' · ') + '</small>' : '') + '</span>';
                     }
                 }
                 return '<div class="sp-stake"><span><b>' + who + '</b> · ' + esc(name) + '</span>' + v + '</div>';

@@ -110,6 +110,39 @@ describe('scoring aggregation', () => {
         });
     });
 
+    describe('the Captain bonus is recorded on the week row', () => {
+        async function weekRow(base) {
+            const user = { _id: 'u1', league: 'graham-league',
+                seasons: [{ season: '2025', teams: [{ id: 333, school: 'Alabama' }], weeklyScore: [], captains: [{ week: 1, teamId: 333 }] }] };
+            const game = { id: 1, homeId: 333, awayId: 8, homePoints: 30, awayPoints: 20, seasonType: 'regular' };
+            let patchBody;
+            global.fetch = jest.fn((url, opts) => {
+                if (url.includes('/users/season/')) return Promise.resolve({ status: 200, json: () => Promise.resolve([user]) });
+                if (url.includes('/scoring-config/')) return Promise.resolve({ status: 200, json: () => Promise.resolve({ model: 'graham', values: {},
+                    engagementBySeason: { '2025': { captainEnabled: true, captainMultiplier: 2 } } }) });
+                if (url.includes('/games/seasonType/')) return Promise.resolve({ status: 200, json: () => Promise.resolve([game]) });
+                patchBody = JSON.parse(opts.body);
+                return Promise.resolve({ status: 200, json: () => Promise.resolve({}) });
+            });
+            jest.spyOn(scoringModule, 'calculateScoreV2').mockResolvedValue(base);
+            await scoringModule.updateScores('regular', 1);
+            return patchBody.weeklyScore[0];
+        }
+
+        it('a positive bonus, as always', async () => {
+            expect(await weekRow(4)).toMatchObject({ score: 8, captainTeamId: 333, captainBonus: 4 });
+        });
+
+        it('a NEGATIVE bonus too — the score already carries it, and the pages need it to split it back', async () => {
+            expect(await weekRow(-3)).toMatchObject({ score: -6, captainTeamId: 333, captainBonus: -3 });
+        });
+
+        it('no bonus, no fields', async () => {
+            const row = await weekRow(0);
+            expect(row.captainBonus).toBeUndefined();
+        });
+    });
+
     describe('structural config is honored end-to-end', () => {
         // Regression: getScoringConfig forwarded only { model, values } to
         // resolveConfig, dropping combineMode/disabled — so the scoring jobs
