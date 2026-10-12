@@ -220,6 +220,53 @@ describe('Rivalry Games on a basketball league', () => {
         expect(page.q('#no-games-container').innerHTML).toContain('Could not load the games');
     });
 
+    // Before the draft: managers with season entries and no teams. Nothing
+    // failed, so "could not load" would be false — and the picker still
+    // needs the season's weeks.
+    it('with no rostered teams yet: no rivalry games, and the basketball weeks in the picker', async () => {
+        const users = [manager('a', 'Alice', []), manager('b', 'Bob', [])];
+        const page = await loadHoops({ page: { users } });
+        expect(page.urls().find(u => u.startsWith('/hoops/games/teams/'))).toBeDefined();
+        expect(page.q('#no-games-container').innerHTML).toContain('No Rivalry Games');
+        expect([...page.q('[rivalry-week]').options].map(o => o.value)).toEqual(['1', '2']);
+    });
+
+    it('a failed week pick keeps the last good week on screen and in the picker', async () => {
+        hoopsAnswer = (href) => {
+            if (href.includes(`/${SEASON}/1?`)) throw new Error('offline');
+            return { season: SEASON, week: 2, weeks: WEEKS, games: [hoopsGame(501, side(1, 'Duke'), side(3, 'Kansas'))] };
+        };
+        const page = await loadHoops();
+        const sel = page.q('[rivalry-week]');
+        sel.value = '1';
+        sel.dispatchEvent(new window.Event('change'));
+        await page.flush();
+        expect(page.q('.gc-clickable[data-game-id="501"]')).not.toBeNull();
+        expect(sel.value).toBe('2');
+        expect(page.q('#no-games-container').innerHTML).toContain('Could not load week 1');
+    });
+
+    it('the newest pick wins when an older one answers last', async () => {
+        let releaseWeek1;
+        hoopsAnswer = (href) => {
+            const wk = href.includes(`/${SEASON}/1?`) ? 1 : 2;
+            const body = { season: SEASON, week: wk, weeks: WEEKS, games: [hoopsGame(500 + wk, side(1, 'Duke'), side(3, 'Kansas'))] };
+            return wk === 1 ? new Promise(r => { releaseWeek1 = () => r(body); }) : body;
+        };
+        const page = await loadHoops();
+        const sel = page.q('[rivalry-week]');
+        sel.value = '1';
+        sel.dispatchEvent(new window.Event('change'));
+        await page.flush(5);
+        sel.value = '2';
+        sel.dispatchEvent(new window.Event('change'));
+        await page.flush();
+        releaseWeek1();
+        await page.flush();
+        expect(page.q('.gc-clickable[data-game-id="502"]')).not.toBeNull();
+        expect(page.q('.gc-clickable[data-game-id="501"]')).toBeNull();
+    });
+
     it('a failed load says so rather than showing an empty week', async () => {
         hoopsAnswer = () => { throw new Error('offline'); };
         const page = await loadHoops();
@@ -249,6 +296,14 @@ describe('the Rivalry Games container names its sport', () => {
         const el = render({ viewerSport: 'basketball' });
         expect(el.getAttribute('data-page-sport')).toBe('basketball');
         expect(el.textContent).toContain('🏀');
+    });
+
+    it('the basketball helper script is only in a basketball viewer\'s page', () => {
+        const tag = '<script defer src="hoops-week-games.js"></script>';
+        const head = view.slice(view.indexOf('<%# Rivalry Games\' basketball reads'), view.indexOf('<script src="standings.js"'));
+        expect(ejs.render(head, { viewerSport: 'basketball' })).toContain(tag);
+        expect(ejs.render(head, { viewerSport: 'football' })).not.toContain(tag);
+        expect(ejs.render(head, {})).not.toContain(tag);
     });
 
     it('football otherwise, as before', () => {

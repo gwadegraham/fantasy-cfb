@@ -1529,6 +1529,9 @@ function isBasketballLeague() {
 var _hoopsRivalryWeek = null;
 // Newest render wins when quick week picks come back out of order.
 var _hoopsScheduleSeq = 0;
+// The last week that rendered, so a failed pick keeps it rather than
+// blanking the section (My Team's tile does the same).
+var _hoopsLastGoodWeek = null;
 
 function hoopsEsc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -1639,15 +1642,30 @@ async function displayHoopsSchedule(data) {
     });
     var pointsFor = function (teamId, gameId) { return teamGameScoreById(weeklyByTeamId[teamId], teamId, gameId); };
 
+    // Asked even with no rostered teams (before the draft): the route still
+    // answers the season's weeks, and "no rivalry games" is then the truth
+    // rather than "could not load".
     var ids = Object.keys(ownerOf);
     var hw = window.ccHoopsWeekGames;
-    var d = ids.length && hw ? await hw.load(season, week, ids) : null;
+    var d = hw ? await hw.load(season, week, ids) : null;
     if (mine !== _hoopsScheduleSeq) return;   // a newer pick is on its way
 
     var str = '<tr>';
     var noGames = document.getElementById('no-games-container');
     if (noGames) noGames.innerHTML = '';
+    if (!d && _hoopsLastGoodWeek != null) {
+        // A failed week pick: the cards on screen are still the last good
+        // week's, so leave them and put the picker back on it.
+        _hoopsRivalryWeek = _hoopsLastGoodWeek;
+        var sel = document.querySelector('[rivalry-week]');
+        if (sel) sel.value = String(_hoopsLastGoodWeek);
+        if (noGames) noGames.innerHTML = '<div class="no-matchups-message"><h3>Could not load week ' + hoopsEsc(week) + '.</h3></div>';
+        document.querySelector('.football-loader').style.display = "none";
+        document.querySelector('.schedule-table').style.display = "flex";
+        return;
+    }
     if (d) {
+        _hoopsLastGoodWeek = week;
         paintHoopsWeekPicker(d.weeks, week);
         var rivalries = (d.games || []).filter(function (g) {
             var a = ownerOf[String(g.away.id)], h = ownerOf[String(g.home.id)];
@@ -1676,6 +1694,9 @@ if (_rivalryWeekEl) {
         // Basketball's picked week lives on the page: weekCode / week /
         // weekPinned are football's and carry no sport (see current-week.js).
         if (isBasketballLeague()) {
+            // Football's options ('week-3') are still up if the first
+            // basketball load never landed; they name no basketball week.
+            if (!Number.isFinite(Number(this.value))) return;
             _hoopsRivalryWeek = Number(this.value);
             document.querySelector('.football-loader').style.display = "flex";
             document.querySelector('.schedule-table').style.display = "none";
