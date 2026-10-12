@@ -147,3 +147,28 @@ describe('H2H card kickoffs', () => {
         expect(kicks(card([team('USC', USC_SJSU)], [team('Duke', USC_SJSU)]))[0]).toBe('Sat 2:00 PM');
     });
 });
+
+// Before kickoff the sub-line has no CFB score, so it carries no game link; the
+// kickoff time is the only way from a matchup card into the game page.
+describe('H2H card kickoff links', () => {
+    const DUKE = () => team('Duke', '2026-08-29T23:30:00.000Z');
+
+    test('a scheduled kickoff links to its game', () => {
+        const t = Object.assign(team('USC', USC_SJSU), { gameId: 401752 });
+        document.body.innerHTML = card([t], [DUKE()]);
+        const link = document.querySelector('.h2h-tv.sched').closest('a');
+        expect(link && link.getAttribute('href')).toBe('/game/401752');
+    });
+
+    test('a LIVE cell with no score yet links to its game', () => {
+        const t = Object.assign(team('USC', null), { status: 'live', gameId: 401752 });
+        document.body.innerHTML = card([t], [DUKE()]);
+        const link = document.querySelector('.h2h-tv.live').closest('a');
+        expect(link && link.getAttribute('href')).toBe('/game/401752');
+    });
+
+    test('no game id leaves the kickoff as plain text', () => {
+        document.body.innerHTML = card([team('USC', USC_SJSU)], [DUKE()]);
+        expect(document.querySelector('.h2h-tv.sched').closest('a')).toBeNull();
+    });
+});

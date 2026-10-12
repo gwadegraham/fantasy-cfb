@@ -103,5 +103,9 @@
 .h2h-tlink:focus-visible .h2h-tnm { outline: 2px solid var(--cc-info); outline-offset: 2px; border-radius: 4px; }
 .h2h-glink { color: var(--cc-interactive); text-decoration: none; }
 .h2h-glink:hover { text-decoration: underline; }
+/* Kickoff / LIVE cell linking to the game: keeps the cell's no-shrink slot and
+   takes the link colour so it reads as clickable. */
+.h2h-tvlink { flex-shrink: 0; display: flex; }
+.h2h-tvlink .h2h-tv.sched { color: var(--cc-interactive); }
 
 @media (prefers-reduced-motion: reduce) { .h2h-mcaret, .h2h-mbfill { transition: none; } }

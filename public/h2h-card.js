@@ -96,14 +96,18 @@
     function needsDate(iso, plan) {
         return plan !== null && weekKey(iso) !== plan;
     }
+    // The value cell as a link to the game. Before kickoff (and in a live game
+    // that hasn't scored yet) there is no CFB score on the sub-line to click,
+    // so this cell is the only way into the game page.
+    function valLink(id, inner) { return id != null ? '<a class="h2h-glink h2h-tvlink" href="/game/' + esc(id) + '">' + inner + '</a>' : inner; }
     // A team's value: final points, live score, or kickoff time.
     function teamVal(t, plan) {
         if (t.status === 'live') {
             return t.score != null
                 ? '<span class="h2h-tv live">' + t.score + '</span>'
-                : '<span class="h2h-tv live">LIVE</span>';
+                : valLink(t.gameId, '<span class="h2h-tv live">LIVE</span>');
         }
-        return t.status === 'scheduled' ? '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>'
+        return t.status === 'scheduled' ? valLink(t.gameId, '<span class="h2h-tv sched">' + esc(fmtKick(t.kickoff, needsDate(t.kickoff, plan))) + '</span>')
             : '<span class="h2h-tv">' + (t.score != null ? t.score : 0) + '</span>';
     }
     // A ranked opponent, tiered the way the scoring tiers it: rankValue pays
