@@ -1,11 +1,12 @@
 const fs = require('fs');
 const path = require('path');
+const { easternDay } = require('../modules/hoops-calendar');
 const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = require('../modules/scheduler');
 
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-scores', 'hoops-stats',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-ratings', 'hoops-scores', 'hoops-stats',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -67,6 +68,24 @@ describe('scheduler config', () => {
         expect(byJob['enrichment']).toEqual({ dayOfWeek: 2, hour: 5, minute: 30 });
         // Basketball TV: weekly, the Monday after Selection Sunday included.
         expect(byJob['hoops-media']).toEqual({ dayOfWeek: 1, hour: 6, minute: 0 });
+    });
+
+    // CBBD keeps no ratings history (#318), so the snapshot runs every day
+    // and the last run of the week wins. That last run is Sunday's late one,
+    // and it must still fall on SUNDAY in Eastern — the hoops calendar's
+    // zone — or it lands in the next week and is written one week too far.
+    it('snapshots basketball ratings every day, Sunday\'s last run still inside the Eastern week', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-ratings');
+        expect(spec.rule).toEqual({ hour: [6, 22], minute: 15 });
+        expect(spec.rule.dayOfWeek).toBeUndefined();
+        const rule = toRule(spec.rule);
+        // Saturday 7 Nov 2026 noon Central -> the last run before the week turns.
+        let next = rule.nextInvocationDate(new Date('2026-11-07T18:00:00Z'));
+        next = rule.nextInvocationDate(next);
+        next = rule.nextInvocationDate(next);
+        // Sunday 22:15 Central, and on the hoops calendar's day that is still Sunday.
+        expect(next.toISOString()).toBe('2026-11-09T04:15:00.000Z');
+        expect(easternDay(next).getUTCDay()).toBe(0);
     });
 
     it('builds a timezone-aware recurrence rule', () => {
