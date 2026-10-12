@@ -303,6 +303,20 @@ describe('the read lands without re-rendering the page (#506 QA)', () => {
         expect(later).toHaveLength(0);
     });
 
+    test('a failing read on a live game waits the full minute, not every 10s tick', async () => {
+        const ticks = [];
+        const realTimeout = window.setTimeout;
+        jest.spyOn(window, 'setTimeout').mockImplementation((fn, ms) => {
+            if (ms === 10000) { ticks.push(fn); return 0; }
+            return realTimeout(fn, ms);
+        });
+        await boot('live', { fantasyRes: { ok: false, status: 500, json: () => Promise.resolve({}) } });
+        expect(fantasyCalls()).toHaveLength(1);
+        await ticks.shift()();                                       // the next live tick, same score
+        for (let i = 0; i < 6; i++) await tick();
+        expect(fantasyCalls()).toHaveLength(1);
+    });
+
     test('a 500 on a final is retried', async () => {
         const later = [];
         const realTimeout = window.setTimeout;

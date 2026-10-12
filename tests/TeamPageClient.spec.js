@@ -369,6 +369,16 @@ describe('the owner lookup (#526 QA)', () => {
         expect(txt('.sp-own')).toContain('Undrafted');
     });
 
+    test('an older season, whose rows carry no game id, still totals what was banked', async () => {
+        const users = [{ _id: 'u1', league: 'graham-league', firstName: 'G', seasons: [{ season: 2026, franchiseName: 'Hogs',
+            teams: [{ id: DUKE }], weeklyScore: [
+                { week: 1, scoreByTeam: [{ teamId: DUKE, score: 3 }] },                 // 2024 shape: team id, no game id
+                { week: 2, scoreByTeam: [{ team: 'Duke', score: 2 }] }                  // 2023 shape: the school only
+            ] }] }];
+        await boot(answer(users));
+        expect(txt('.sp-own')).toContain('+5');
+    });
+
     test('points banked include the Captain bonus', async () => {
         const users = [{ _id: 'u1', league: 'graham-league', firstName: 'G', seasons: [{ season: 2026, franchiseName: 'Hogs',
             teams: [{ id: DUKE }], weeklyScore: [{ week: 1, captainTeamId: DUKE, captainBonus: 4, scoreByTeam: [{ teamId: DUKE, gameId: 77, score: 4 }] }] }] }];

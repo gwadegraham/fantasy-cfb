@@ -378,6 +378,23 @@ router.get('/detail/:gameId', async (req, res) => {
 // the stakes read the scoring config and the week's poll through the scoring
 // engine's own (cached) lookups. Those are a nicety — if either fails, the
 // read still answers, just without stakes.
+// The league's rosters, held for a few seconds. Every open game page asks
+// once a minute while a game is live, and each read pulls every franchise's
+// full roster subdocs over the M0 tier (~85 KB/s); one read per league per
+// window serves them all. Short enough that points banked by the live scorer
+// show up on the next tick or the one after.
+const FANTASY_ROSTER_TTL_MS = 20000;
+const fantasyRosterCache = new Map();
+async function fantasyRosters(league, season, now = Date.now()) {
+    const key = league + ':' + season;
+    const hit = fantasyRosterCache.get(key);
+    if (hit && now - hit.at < FANTASY_ROSTER_TTL_MS) return hit.users;
+    const users = await franchiseRepo.byLeagueAndSeason(league, season, { fields: ['firstName', 'lastName', 'seasons'] });
+    fantasyRosterCache.set(key, { at: now, users });
+    return users;
+}
+router.clearFantasyRosterCache = () => fantasyRosterCache.clear();
+
 router.get('/fantasy/:league/:gameId', async (req, res) => {
     try {
         const league = req.params.league;
@@ -391,8 +408,7 @@ router.get('/fantasy/:league/:gameId', async (req, res) => {
         const game = await Game.findOne({ id: gameId }).lean();
         if (!game) return res.status(404).json({ message: 'Game not found' });
 
-        const users = await franchiseRepo.byLeagueAndSeason(league, game.season,
-            { fields: ['firstName', 'lastName', 'seasons'] });
+        const users = await fantasyRosters(league, game.season);
         const owners = ownersByTeam(users, game.season);
         const points = pointsByTeamGame(users, game.season, game.week);
         const out = {

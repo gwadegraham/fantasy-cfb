@@ -107,7 +107,7 @@ async function loadTeamPage() {
         getScheduleGames(teamId, seasonYear),
         getRankings(seasonYear),
         getAllBettingLines(seasonYear),
-        getTeamOwner(teamId, seasonYear, leagueCode),
+        getTeamOwner(teamId, seasonYear, leagueCode, teamData.school),
         getTeamFantasyRank(teamId, seasonYear, leagueCode),
         getPlayerSeasonLeaders(teamData.school, seasonYear),
         getTeamSeasonStats(teamData.school, seasonYear),
@@ -147,7 +147,7 @@ async function loadTeamPage() {
 // Find the fantasy manager who drafted this team in the given season/league.
 // Returns { name, franchiseName, userId, points } or null if undrafted /
 // unavailable; points is what the team banked for them, by game id.
-async function getTeamOwner(teamId, seasonYear, leagueCode) {
+async function getTeamOwner(teamId, seasonYear, leagueCode, school) {
     // A basketball league drafts no football teams. Its franchises' ids
     // collide with football's (#489), so searching them would "find" an
     // owner whose points are keyed by basketball games and blank every row.
@@ -172,11 +172,13 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
             const season = ccSeasonOf.seasonOf(user, seasonYear);
             const owns = season?.teams?.some(t => String(t.id) === String(teamId));
             if (owns) {
+                const banked = ownerPointsFor(season, teamId, school);
                 return {
                     userId: user._id,
                     name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                     franchiseName: season.franchiseName || '',
-                    points: ownerPointsFor(season, teamId)
+                    points: banked.points,
+                    total: banked.total
                 };
             }
         }
@@ -191,19 +193,27 @@ async function getTeamOwner(teamId, seasonYear, leagueCode) {
 // the game entry: each of the captained team's games that week gets its share,
 // in proportion to its base points (the rule in modules/league-scoreboard.js
 // captainShare, which the game page and scoreboard use).
-function ownerPointsFor(season, teamId) {
-    var out = {};
+//
+// `total` is the season's banked total, counted separately because older
+// seasons' rows carry no game id (2023-24; 2023's not even a team id, only
+// the school), so a total summed from the per-game map would read 0 there.
+function ownerPointsFor(season, teamId, school) {
+    var out = {}, total = 0;
+    var mine = function (s) { return s.teamId != null ? String(s.teamId) === String(teamId) : (school && s.team === school); };
+    var r1 = function (n) { return Math.round(n * 10) / 10; };
     (season && season.weeklyScore || []).forEach(function (w) {
         var captained = w.captainBonus && String(w.captainTeamId) === String(teamId);
-        var base = captained ? (w.scoreByTeam || []).filter(function (s) { return String(s.teamId) === String(teamId); })
+        var base = captained ? (w.scoreByTeam || []).filter(mine)
             .reduce(function (sum, s) { return sum + (Number(s.score) || 0); }, 0) : 0;
         (w.scoreByTeam || []).forEach(function (s) {
-            if (String(s.teamId) !== String(teamId) || s.gameId == null) return;
+            if (!mine(s)) return;
             var pts = Number(s.score) || 0;
-            out[String(s.gameId)] = pts + (base ? w.captainBonus * pts / base : 0);
+            var withCaptain = pts + (base ? w.captainBonus * pts / base : 0);
+            total += withCaptain;
+            if (s.gameId != null) out[String(s.gameId)] = r1(withCaptain);
         });
     });
-    return out;
+    return { points: out, total: r1(total) };
 }
 
 // Rank this team's cumulative fantasy score against every FBS team for the
@@ -717,7 +727,8 @@ function ftOwnerStrip(d) {
             + ', ' + ftEsc(d.year) + '</div></div>';
     }
     var name = d.owner.franchiseName || d.owner.name || 'a manager';
-    var banked = Object.keys(d.owner.points || {}).reduce(function (sum, k) { return sum + d.owner.points[k]; }, 0);
+    var banked = d.owner.total != null ? d.owner.total
+        : Math.round(Object.keys(d.owner.points || {}).reduce(function (sum, k) { return sum + d.owner.points[k]; }, 0) * 10) / 10;
     var sub = [d.owner.franchiseName && d.owner.name ? d.owner.name : '', league].filter(Boolean).map(ftEsc).join(' · ');
     return '<a class="sp-own" href="/userHome?user=' + encodeURIComponent(d.owner.userId) + '">'
         + '<div class="who">On <b>' + ftEsc(name) + '</b>’s roster' + (sub ? '<br><span class="sub">' + sub + '</span>' : '') + '</div>'

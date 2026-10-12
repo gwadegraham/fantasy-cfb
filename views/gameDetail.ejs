@@ -1063,6 +1063,11 @@
                 // ask again (the live refresh has stopped), so a failed read
                 // retries like an unposted one rather than ending the tries.
                 console.error('Fantasy read failed:', err);
+                // Marked as read, so a live game's 10s ticks wait the full
+                // stale interval before asking again instead of hammering a
+                // route that is failing (each read is a roster read).
+                gdFantasyKey = key;
+                gdFantasyAt = Date.now();
                 // A 4xx (no such football league) answers the same every
                 // time; only a server or network failure is worth retrying.
                 if (game.completed && !(err.status >= 400 && err.status < 500)) gdRetryFantasy(game);

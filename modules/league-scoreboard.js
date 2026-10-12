@@ -47,7 +47,9 @@ function pointsByTeamGame(users, season, week) {
             .forEach(w => {
                 (w.scoreByTeam || []).forEach(t => {
                     if (t.teamId == null || t.gameId == null) return;
-                    out[`${t.teamId}:${t.gameId}`] = (t.score || 0) + captainShare(w, t);
+                    // To one decimal, as points are shown: a 1.7x multiplier
+                    // over 1 + 2 base points is 0.7000000000000001 otherwise.
+                    out[`${t.teamId}:${t.gameId}`] = Math.round(((t.score || 0) + captainShare(w, t)) * 10) / 10;
                 });
             });
     });

@@ -72,7 +72,7 @@ async function seed() {
     await mirrorUsers();
 }
 
-beforeEach(seed);
+beforeEach(async () => { gamesRouter.clearFantasyRosterCache(); await seed(); });
 
 // The scoring engine's network-backed lookups, stubbed with what the
 // scoring pass would read: Graham's default config, no poll, no bracket.
@@ -184,5 +184,22 @@ describe('modules/game-fantasy.js', () => {
         expect(stakeFor(evaluate, { model: 'graham' }, game, 1, null, null)).toEqual({ ifWin: 3, ifLoss: 1 });
         expect(evaluate.mock.calls[0][0]).toBe('graham');
         expect(evaluate.mock.calls[0][1]).toBe(1);
+    });
+});
+
+describe('the roster read is shared for a few seconds (#526 QA)', () => {
+    test('two reads inside the window make one roster read; a later one reads again', async () => {
+        const franchiseRepo = require('../modules/franchise-repo');
+        const spy = jest.spyOn(franchiseRepo, 'byLeagueAndSeason');
+        const now = jest.spyOn(Date, 'now').mockReturnValue(1e12);
+        try {
+            const path = `/games/fantasy/${LEAGUE}/901`;
+            expect((await request(app).get(path)).status).toBe(200);
+            await request(app).get(path);
+            expect(spy).toHaveBeenCalledTimes(1);
+            now.mockReturnValue(1e12 + 21000);
+            await request(app).get(path);
+            expect(spy).toHaveBeenCalledTimes(2);
+        } finally { spy.mockRestore(); now.mockRestore(); }
     });
 });

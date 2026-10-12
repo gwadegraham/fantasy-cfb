@@ -69,6 +69,13 @@ describe('pointsByTeamGame', () => {
         expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 6, '5:2': 3, '7:3': 4 });
     });
 
+    test('a fractional multiplier is shown to one decimal, not as floating-point noise', () => {
+        // 1.7x over 1 + 2 base: bonus 2.1, so game 1 is 1 + 0.7 (0.7000000000000001 unrounded).
+        const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 2.1, scoreByTeam: [
+            { teamId: 5, gameId: 1, score: 1 }, { teamId: 5, gameId: 2, score: 2 }] }] }] }];
+        expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 1.7, '5:2': 3.4 });
+    });
+
     test('a captained team that scored nothing earns no bonus (and no division by zero)', () => {
         const users = [{ seasons: [{ season: 2026, weeklyScore: [{ week: 2, captainTeamId: 5, captainBonus: 0, scoreByTeam: [{ teamId: 5, gameId: 1, score: 0 }] }] }] }];
         expect(pointsByTeamGame(users, 2026, 2)).toEqual({ '5:1': 0 });
