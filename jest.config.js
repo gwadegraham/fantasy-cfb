@@ -137,7 +137,7 @@ module.exports = {
         // them decides whether a lost week is loud or silent.
         "./modules/hoops-ratings-job.js": {
             statements: 100,
-            branches: 88,
+            branches: 90,
             functions: 100,
             lines: 100
         },

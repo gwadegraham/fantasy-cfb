@@ -16,6 +16,7 @@ const jobMailer = require('../modules/job-mailer');
 const { ranksFor } = require('../modules/hoops-ranks');
 const HoopsRating = require('../models/hoopsRating');
 const HoopsGame = require('../models/hoopsGame');
+const HoopsTeam = require('../models/hoopsTeam');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const seasons = require('../modules/active-season');
@@ -218,5 +219,78 @@ describe('run', () => {
         expect(out.summary).toMatch(/response shape changed/);
         expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
         expect(await HoopsRating.countDocuments()).toBe(0);
+    });
+});
+
+describe('a snapshot that is not whole (QA on #318)', () => {
+    // Ten teams with preseason ranks: ranksFor believes a week from 8 up.
+    const field = () => HoopsTeam.create(Array.from({ length: 10 }, (_, i) =>
+        ({ id: i + 1, season: SEASON, school: `S${i + 1}`, preseason: { rank: i + 1 } })));
+    const all = () => Array.from({ length: 10 }, (_, i) => row(i + 1, 50 - i));
+    // Week 9 is past the blend ramp, so it is graded on the live ranks alone.
+    const WEEK8_THURSDAY = new Date('2026-12-24T17:00:00Z');
+
+    test('a thin snapshot never replaces a whole week — the week is kept and the run is an error', async () => {
+        await field();
+        stubCbbd(all());
+        await job.run({ now: WEEK8_THURSDAY });
+        expect(await HoopsRating.countDocuments({ season: SEASON, week: 9 })).toBe(10);
+
+        // Sunday night: half the field back. Replacing the week with it would
+        // send week 9 to Torvik — ranksFor ignores a thin week outright.
+        cbbd.cbbdGet.mockResolvedValue({ data: all().slice(0, 5) });
+        const out = await job.run({ now: new Date('2026-12-27T20:00:00Z') });
+
+        expect(out.status).toBe('error');
+        expect(out.summary).toMatch(/only 5 team\(s\).*under the 8.*wk9's 10 stored team\(s\) kept/);
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(await HoopsRating.countDocuments({ season: SEASON, week: 9 })).toBe(10);
+        expect((await ranksFor(SEASON, 9)).source).toBe('cbbd-adjusted');
+    });
+
+    test('a thin snapshot with nothing whole stored is still written — and still an error', async () => {
+        await field();
+        stubCbbd(all().slice(0, 5));
+        const out = await job.run({ now: WEEK8_THURSDAY });
+        expect(out.status).toBe('error');
+        expect(out.summary).toMatch(/written to wk9 anyway/);
+        expect(await HoopsRating.countDocuments({ season: SEASON, week: 9 })).toBe(5);
+    });
+
+    test('rows dropped as unrankable count against the floor, and are reported', async () => {
+        await field();
+        stubCbbd(all().map((r, i) => (i < 3 ? Object.assign(r, { netRating: null }) : r)));
+        const out = await job.run({ now: WEEK8_THURSDAY });
+        expect(out.status).toBe('error');
+        expect(out.summary).toMatch(/only 7 team\(s\).*3 unrankable row\(s\) dropped/);
+    });
+
+    test('a whole snapshot with a few unrankable rows is a success that says so', async () => {
+        await field();
+        stubCbbd([...all(), row(77, null)]);
+        const out = await job.run({ now: WEEK8_THURSDAY });
+        expect(out.status).toBe('success');
+        expect(out.summary).toMatch(/^2027 wk9: 10 team\(s\) ranked, 1 unrankable row\(s\) dropped/);
+    });
+
+    test('CBBD going back to [] after the season was rated is an error, not the cold start', async () => {
+        await HoopsRating.create({ season: SEASON, week: 6, teamId: 1, rank: 1, source: 'cbbd-adjusted' });
+        stubCbbd([]);
+        const out = await job.run({ now: WEEK6_THURSDAY });
+        expect(out.status).toBe('error');
+        expect(out.summary).toMatch(/earlier weeks were rated — wk7 not written/);
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+    });
+
+    test('a write that fails once is retried and lands whole', async () => {
+        stubCbbd([row(1, 3), row(2, 1)]);
+        const real = HoopsRating.bulkWrite.bind(HoopsRating);
+        jest.spyOn(HoopsRating, 'bulkWrite')
+            .mockRejectedValueOnce(new Error('write conflict'))
+            .mockImplementation((...a) => real(...a));
+        const out = await job.run({ now: WEEK6_THURSDAY });
+        expect(out.status).toBe('success');
+        expect(HoopsRating.bulkWrite).toHaveBeenCalledTimes(2);
+        expect(await HoopsRating.countDocuments({ season: SEASON, week: 7 })).toBe(2);
     });
 });

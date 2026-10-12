@@ -50,6 +50,8 @@ const { resolveCurrentWeek, seasonStartFrom } = require('./hoops-calendar');
 const { basketballLeagues } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 const HoopsRating = require('./../models/hoopsRating');
+const HoopsTeam = require('./../models/hoopsTeam');
+const { MIN_LIVE_COVERAGE } = require('./hoops-ranks');
 
 const JOB_NAME = 'hoops-ratings';
 const LABEL = 'Hoops Ratings';
@@ -109,21 +111,69 @@ async function writeWeek(season, week, ranked, fetchedAt) {
     await HoopsRating.deleteMany({ season, week, teamId: { $nin: ranked.map(r => r.teamId) } });
 }
 
-// One season: { written } | { skip } — throws on a CBBD or write failure.
+// The fewest teams a snapshot must rank to be believed — hoops-ranks'
+// own floor, so a week this job calls whole is a week ranksFor will read.
+// 0 with no preseason ranks on file, when there is nothing to measure by.
+async function coverageFloor(season) {
+    const field = await HoopsTeam.countDocuments({ season, 'preseason.rank': { $type: 'number' } });
+    return Math.ceil(field * MIN_LIVE_COVERAGE);
+}
+
+// The write, retried once in-process. A bulkWrite that fails partway leaves
+// the week holding two snapshots' ranks; if that was Sunday's last run,
+// nothing after it ever rewrites the week. A second attempt replaces the
+// whole week again, so it either repairs the mix or fails loudly as well.
+async function writeWeekWithRetry(season, week, ranked, now) {
+    try {
+        await writeWeek(season, week, ranked, now);
+    } catch (first) {
+        console.error(`[${JOB_NAME}] ${season} wk${week} write failed, retrying once: ${first.message}`);
+        await writeWeek(season, week, ranked, now);
+    }
+}
+
+// One season: { written } | { skip } — throws on a CBBD or write failure, and
+// on a snapshot too thin to trust.
 async function snapshotSeason(season, now) {
     const target = await targetWeek(season, now);
     if (target.skip) return { skip: target.skip };
 
     const { data } = await cbbd.cbbdGet('/ratings/adjusted', { season });
-    if (!data.length) return { skip: `CBBD has no ratings for ${season} yet — wk${target.week} stays on preseason ranks` };
+    if (!data.length) {
+        // The cold start — unless this season has already been rated. CBBD
+        // going back to [] in January is a regression, and every run it
+        // spends as a quiet skip is a week lost for good.
+        const rated = await HoopsRating.exists({ season, week: { $lt: target.week } });
+        if (rated) throw new Error(`CBBD returned no ratings for ${season}, but earlier weeks were rated — wk${target.week} not written`);
+        return { skip: `CBBD has no ratings for ${season} yet — wk${target.week} stays on preseason ranks` };
+    }
 
     const ranked = rankRatings(data);
     // Rows came back and none could be ranked: the response shape changed.
     // Writing nothing would read as the cold start, every week, forever.
     if (!ranked.length) throw new Error(`CBBD returned ${data.length} rating row(s) for ${season} with no usable teamId/netRating — the response shape changed`);
+    const dropped = data.length - ranked.length;
+    const droppedNote = dropped ? `, ${dropped} unrankable row(s) dropped` : '';
 
-    await writeWeek(season, target.week, ranked, now);
-    return { written: `${season} wk${target.week}: ${ranked.length} team(s) ranked (snapshot taken in wk${target.during})` };
+    // A THIN snapshot never replaces a whole week. ranksFor ignores a week
+    // under its coverage floor and, because an exact-week hit returns
+    // early, does not fall back to the week before either — it goes to
+    // Torvik. So one partial response on Sunday night would overwrite a
+    // good week with one the reader throws away, and past the blend ramp
+    // that week's games are graded on preseason ranks. Kept if nothing
+    // whole is stored (it is still the only record of that night), and an
+    // error either way.
+    const floor = await coverageFloor(season);
+    if (ranked.length < floor) {
+        const stored = await HoopsRating.countDocuments({ season, week: target.week });
+        const kept = stored >= floor;
+        if (!kept) await writeWeekWithRetry(season, target.week, ranked, now);
+        throw new Error(`CBBD ranked only ${ranked.length} team(s) for ${season}, under the ${floor} ranksFor needs${droppedNote} — `
+            + (kept ? `wk${target.week}'s ${stored} stored team(s) kept` : `written to wk${target.week} anyway, nothing whole was stored`));
+    }
+
+    await writeWeekWithRetry(season, target.week, ranked, now);
+    return { written: `${season} wk${target.week}: ${ranked.length} team(s) ranked${droppedNote} (snapshot taken in wk${target.during})` };
 }
 
 async function run({ now = new Date() } = {}) {
@@ -171,4 +221,4 @@ async function run({ now = new Date() } = {}) {
     return { status, written, skipped, failed: failures.length ? summary : null, summary };
 }
 
-module.exports = { run, JOB_NAME, LABEL, rankRatings, targetWeek, snapshotSeason, writeWeek };
+module.exports = { run, JOB_NAME, LABEL, rankRatings, targetWeek, snapshotSeason, writeWeek, coverageFloor };
