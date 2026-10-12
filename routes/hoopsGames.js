@@ -432,10 +432,16 @@ router.get('/current-week/:season', async (req, res) => {
 // and are looked up in hoopsgames only (the two id spaces overlap, #489).
 //
 // Shaped by the scoreboard's shapeGames so live/final and the period read the
-// same everywhere. No owners or ranks: the caller already knows whose teams
-// these are, and the points banked come off that manager's own weeklyScore.
+// same everywhere. No owners: the caller already knows whose teams these are,
+// and the points banked come off that manager's own weeklyScore. Ranks are
+// the week's T-Rank top 25, the scoreboard's own (cached) answer — Standings'
+// Rivalry Games shows them where football shows the AP poll (#528).
 // `weeks` is the season's real week list, for the drawer's picker.
-const MAX_TEAM_IDS = 40;
+//
+// The cap is the whole LEAGUE's roster, not one manager's: Standings asks for
+// every rostered team at once — 8 managers x 10 rounds = 80 at the most. 120
+// is the draft pool, which no league's rosters can exceed.
+const MAX_TEAM_IDS = 120;
 router.get('/teams/:season/:week', async (req, res) => {
     try {
         if (!(await visibility.seesBasketball(req))) return res.status(404).json({ message: 'Not found' });
@@ -454,7 +460,7 @@ router.get('/teams/:season/:week', async (req, res) => {
         const FIELDS = {
             id: 1, week: 1, seasonType: 1, startDate: 1, startTimeTbd: 1, status: 1, neutralSite: 1,
             period: 1, clock: 1, homeTeamId: 1, homeTeam: 1, homePoints: 1,
-            awayTeamId: 1, awayTeam: 1, awayPoints: 1, gameNotes: 1, _id: 0
+            awayTeamId: 1, awayTeam: 1, awayPoints: 1, gameNotes: 1, broadcasts: 1, _id: 0
         };
         const nowMs = Date.now();
         const listed = await HoopsGame.find({
@@ -477,12 +483,15 @@ router.get('/teams/:season/:week', async (req, res) => {
         const games = staleDuplicates.dropStale(pool, nowMs).filter(g => listedIds.has(g.id));
 
         const teamIds = [...new Set(games.flatMap(g => [Number(g.homeTeamId), Number(g.awayTeamId)]))];
-        const teamDocs = teamIds.length ? await HoopsTeam.find({ season, id: { $in: teamIds } },
-            { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean() : [];
+        const [teamDocs, ranks] = teamIds.length ? await Promise.all([
+            HoopsTeam.find({ season, id: { $in: teamIds } },
+                { id: 1, school: 1, abbreviation: 1, logos: 1, _id: 0 }).lean(),
+            hoopsTeamPage.cachedRanks(season, week)
+        ]) : [[], {}];
         const teams = {};
         teamDocs.forEach(t => { teams[t.id] = { school: t.school, abbr: t.abbreviation || null, logo: pickLogo(t.logos) || null }; });
 
-        const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: {}, nowMs });
+        const shaped = board.shapeGames(games, { owners: {}, points: {}, teams, ranks: ranks || {}, nowMs });
         res.json({ season, week, weeks, games: shaped });
     } catch (err) {
         console.error(`hoops team games: ${err && err.message}`);
