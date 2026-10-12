@@ -48,6 +48,18 @@ describe('parseNetPage', () => {
         });
     });
 
+    test('a single spanning message row is not a team: the table reads as empty', () => {
+        const html = netPage([]).replace(/<tbody>/, '<tbody><tr><td colspan="13">Rankings will be released soon</td></tr>');
+        expect(net.parseNetPage(html)).toMatchObject({ hasTable: true, rows: [] });
+        // One cell WITHOUT a colspan is still a broken row.
+        expect(() => net.parseNetPage(netPage([]).replace(/<tbody>/, '<tbody><tr><td>1</td></tr>'))).toThrow(/a row has 1 cells/);
+    });
+
+    test('<thead> is not mistaken for a header cell', () => {
+        const html = netPage([netRow(1, 'Duke', 'ACC')]).replace('<thead>', '<thead class="x">Season 2027');
+        expect(net.parseNetPage(html).rows.map(r => r.school)).toEqual(['Duke']);
+    });
+
     test('an empty table is a table with no rows', () => {
         expect(net.parseNetPage(netPage([]))).toMatchObject({ hasTable: true, rows: [] });
     });

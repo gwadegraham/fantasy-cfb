@@ -64,11 +64,14 @@ const EXPECTED_BY = { month: 11, day: 20 };
 // table. Every row must ALSO match a team, so this is about the count alone.
 const ROW_TOLERANCE = 15;
 
-// How long a final game may go unreflected in the "Through Games" stamp. NCAA
-// updates each morning with the day before; two days covers one missed
-// update without calling it stale. Measured against games, not the calendar,
-// so the Christmas break is not a false alarm.
-const STALE_GRACE_MS = 2 * DAY_MS;
+// How many whole Eastern days a final game may go unreflected in the
+// "Through Games" stamp. NCAA updates each morning with the day before, at a
+// time we cannot see — so the measure is calendar DAYS, not hours since the
+// run: games from today and the two days before it never count. That covers
+// a page not yet updated when the job runs AND one missed update on top. And
+// it is measured against games, not the calendar, so the Christmas break is
+// not a false alarm.
+const STALE_GRACE_DAYS = 2;
 
 function seasonDate(season, { month, day }) {
     return new Date(Date.UTC(Number(season) - 1, month, day));
@@ -138,6 +141,12 @@ async function snapshotSeason(season, now, fetchImpl) {
     if (!parsed.rows.length) return notYet(parsed.hasTable ? 'the NET table is empty' : 'no NET table on the page');
     if (!parsed.throughGames) throw new Error('NET page layout changed: no readable "Through Games" date');
 
+    // A stamp from the future is a broken page, not a fresh one: it would
+    // also make the staleness check below match nothing.
+    if (parsed.throughGames > easternDay(now)) {
+        throw new Error(`NET page layout changed: "Through Games" ${fmtDay(parsed.throughGames)} is after today`);
+    }
+
     const first = await HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: 1 }).lean();
     if (parsed.throughGames < easternDay(first.startDate)) {
         return notYet(`the page is through ${fmtDay(parsed.throughGames)}, before ${season}'s first game (last season's final NET)`);
@@ -156,10 +165,13 @@ async function snapshotSeason(season, now, fetchImpl) {
     // caught up. Weeks of these and the "current" NET is a fossil.
     const unreflected = await HoopsGame.countDocuments({
         season, status: 'final',
-        startDate: { $gte: easternMidnight(new Date(parsed.throughGames.getTime() + DAY_MS)), $lt: new Date(now.getTime() - STALE_GRACE_MS) }
+        startDate: {
+            $gte: easternMidnight(new Date(parsed.throughGames.getTime() + DAY_MS)),
+            $lt: easternMidnight(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))
+        }
     });
     if (unreflected) {
-        throw new Error(`the NET is stale: through ${fmtDay(parsed.throughGames)}, but ${unreflected} game(s) since have been final for over two days — wk${target.week} not written`);
+        throw new Error(`the NET is stale: through ${fmtDay(parsed.throughGames)}, but ${unreflected} game(s) before ${fmtDay(new Date(easternDay(now).getTime() - STALE_GRACE_DAYS * DAY_MS))} are not in it — wk${target.week} not written`);
     }
 
     const m = matchNet(parsed.rows, teams);
@@ -183,7 +195,8 @@ async function snapshotSeason(season, now, fetchImpl) {
     }
 
     await writeWeekWithRetry(season, target.week, m.matched, parsed.throughGames, now);
-    const written = `${season} wk${target.week}: ${m.matched.length} team(s), NET through ${fmtDay(parsed.throughGames)} (snapshot taken in wk${target.during})`;
+    const skippedNote = m.ignored.length ? `, ${m.ignored.length} listed as not ours: ${list(m.ignored)}` : '';
+    const written = `${season} wk${target.week}: ${m.matched.length} team(s), NET through ${fmtDay(parsed.throughGames)}${skippedNote} (snapshot taken in wk${target.during})`;
 
     // Written, because every rank in it is right — but a team on file with
     // no NET rank grades as unranked, which is Q4. Someone has to look.
@@ -232,6 +245,6 @@ async function run({ now = new Date(), fetchImpl = fetch } = {}) {
 }
 
 module.exports = {
-    run, JOB_NAME, LABEL, USER_AGENT, FIRST_LOOK, EXPECTED_BY, ROW_TOLERANCE, STALE_GRACE_MS,
+    run, JOB_NAME, LABEL, USER_AGENT, FIRST_LOOK, EXPECTED_BY, ROW_TOLERANCE, STALE_GRACE_DAYS,
     snapshotSeason, writeWeek, seasonDate
 };

@@ -16,7 +16,14 @@
 
 const HoopsNetRank = require('../models/hoopsNetRank');
 const { normaliseSchool, conferenceMismatches } = require('./torvik-pool');
-const { aliases: NAME_ALIASES } = require('../data/ncaa-net-aliases.json');
+// The alias file also carries the two KNOWN gaps between NCAA's field and
+// ours — each a name someone checked, so a reclassifying school does not
+// turn into a daily failure email (or, for an NCAA name, no NET at all):
+//   notOurs    NCAA names with no team row of ours, left out of the match
+//   notRanked  our schools NCAA does not rank, which will grade as unranked
+const ALIAS_FILE = require('../data/ncaa-net-aliases.json');
+const NAME_ALIASES = ALIAS_FILE.aliases;
+const KNOWN_GAPS = { notOurs: ALIAS_FILE.notOurs, notRanked: ALIAS_FILE.notRanked };
 
 const NET_URL = 'https://www.ncaa.com/rankings/basketball-men/d1/ncaa-mens-basketball-net-rankings';
 
@@ -77,7 +84,7 @@ function parseNetPage(html) {
     let table = null;
     let header = null;
     for (const t of tables) {
-        const ths = (t.match(/<th[^>]*>[\s\S]*?<\/th>/gi) || []).map(cellText);
+        const ths = (t.match(/<th(?:\s[^>]*)?>[\s\S]*?<\/th>/gi) || []).map(cellText);
         if (ths.includes('School')) { table = t; header = ths; break; }
     }
     if (!table) return { throughGames, hasTable: false, rows: [] };
@@ -91,6 +98,10 @@ function parseNetPage(html) {
     for (const tr of body.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || []) {
         const cells = (tr.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || []).map(cellText);
         if (!cells.length) continue;   // a header row repeated inside the body
+        // A single spanning cell is a message, not a team ("Rankings will be
+        // released..."): skipped, so a table of nothing else reads as empty —
+        // the cold start — rather than as a layout change.
+        if (cells.length === 1 && /colspan/i.test(tr)) continue;
         if (cells.length !== header.length) {
             throw new NetLayoutError(`a row has ${cells.length} cells under ${header.length} headers: "${cells.join(' | ')}"`);
         }
@@ -141,7 +152,7 @@ function nameKeys(name) {
 
 // Pair every NET row with a team row.
 //
-// Returns { matched, unmatched, doubleClaimed, unclaimed, conferenceMismatches }.
+// Returns { matched, unmatched, doubleClaimed, unclaimed, ignored, conferenceMismatches }.
 // The job refuses to write while unmatched, doubleClaimed or
 // conferenceMismatches is non-empty: an unmatched team would sit unranked,
 // and an unranked opponent reads as Q4.
@@ -150,7 +161,7 @@ function nameKeys(name) {
 // schools ("Miami (FL)"/"Miami (OH)", "Connecticut"/"Central Conn. St.").
 // And conferenceMismatches is the same guard against a swapped pair, fed
 // NCAA's Conf column.
-function matchNet(rows, teams, aliases = NAME_ALIASES) {
+function matchNet(rows, teams, aliases = NAME_ALIASES, { notOurs = KNOWN_GAPS.notOurs, notRanked = KNOWN_GAPS.notRanked } = {}) {
     const byName = new Map();
     const byAbbr = new Map();
     const add = (map, key, team) => {
@@ -168,7 +179,11 @@ function matchNet(rows, teams, aliases = NAME_ALIASES) {
     const doubleClaimed = [];
     const claimedBy = new Map();
 
+    const ignored = [];
     for (const row of rows) {
+        // A school NCAA ranks that has no team row of ours, checked and
+        // listed by name in the alias file. Reported, never silent.
+        if (notOurs.includes(row.school)) { ignored.push(row.school); continue; }
         let hits = [];
         if (Object.prototype.hasOwnProperty.call(aliases, row.school)) {
             // An alias is the only key tried: a stale one must fail, not
@@ -197,9 +212,9 @@ function matchNet(rows, teams, aliases = NAME_ALIASES) {
         matched.push({ team, row });
     }
 
-    const unclaimed = teams.filter(t => !claimedBy.has(t.id)).map(t => t.school);
+    const unclaimed = teams.filter(t => !claimedBy.has(t.id) && !notRanked.includes(t.school)).map(t => t.school);
     const mismatches = conferenceMismatches(matched.map(m => ({ team: m.team, rating: { conference: m.row.conference } })));
-    return { matched, unmatched, doubleClaimed, unclaimed, conferenceMismatches: mismatches };
+    return { matched, unmatched, doubleClaimed, unclaimed, ignored, conferenceMismatches: mismatches };
 }
 
 // The latest official NET for some teams, for display: { [teamId]: {...} }.
@@ -229,6 +244,6 @@ async function latestNet(season, teamIds) {
 }
 
 module.exports = {
-    NET_URL, REQUIRED_COLUMNS, NAME_ALIASES, NetLayoutError,
+    NET_URL, REQUIRED_COLUMNS, NAME_ALIASES, KNOWN_GAPS, NetLayoutError,
     parseNetPage, parseThroughGames, parseRecord, cellText, expandAbbreviations, nameKeys, matchNet, latestNet
 };

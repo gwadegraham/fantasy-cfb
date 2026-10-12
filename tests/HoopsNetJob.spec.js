@@ -251,6 +251,13 @@ describe('run — loud failures, nothing written', () => {
             /layout changed: no readable "Through Games" date/);
     });
 
+    test('a stamp from the future is a broken page, not a fresh one', async () => {
+        await expectLoudFailure(await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 11 2026' })) }),
+            /"Through Games" 2026-12-11 is after today/);
+        // Today itself is fine.
+        expect((await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 10 2026' })) })).status).toBe('success');
+    });
+
     test('a changed layout: a rank repeated', async () => {
         const dup = ROWS.map((r, i) => (i === 1 ? Object.assign({}, r, { Rank: '1' }) : r));
         await expectLoudFailure(await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(dup)) }), /rank\(s\) repeated — #1 Memphis/);
@@ -267,13 +274,15 @@ describe('run — loud failures, nothing written', () => {
         // have their own say; the count check is for a broken page.
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS.slice(0, 5))) });
         expect(out.summary).not.toMatch(/row\(s\), but/);
+        expect(out.summary).toMatch(/1 team\(s\) on file have no NET rank .*: Mississippi Valley State/);
+        expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(5);
     });
 
     test('a stale Through Games date: games final for over two days that the NET has not counted', async () => {
         // Through Dec 5; a game on the 7th went final and it is now the 10th.
         await HoopsGame.create(game(3, '2026-12-08T00:30:00Z', { status: 'final', homePoints: 70, awayPoints: 60 }));
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 05 2026' })) });
-        await expectLoudFailure(out, /the NET is stale: through 2026-12-05, but 1 game\(s\) since have been final for over two days/);
+        await expectLoudFailure(out, /the NET is stale: through 2026-12-05, but 1 game\(s\) before 2026-12-08 are not in it/);
     });
 
     test('not stale: a game ON the stamp\'s day, a game inside the grace, and a quiet Christmas', async () => {
@@ -285,6 +294,14 @@ describe('run — loud failures, nothing written', () => {
         ]);
         const ok = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 05 2026' })) });
         expect(ok.status).toBe('success');
+
+        // Through the 7th on the 10th: NCAA has not posted yet today AND
+        // missed yesterday. An 11am game on the 8th is inside the grace —
+        // counted in hours it would be over two days old by the run.
+        await HoopsNetRank.deleteMany({});
+        await HoopsGame.create(game(5, '2026-12-08T16:00:00Z', { status: 'final', homePoints: 70, awayPoints: 60 }));
+        const late = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(ROWS, { through: 'Dec. 07 2026' })) });
+        expect(late.status).toBe('success');
 
         // Through the 23rd on the 27th, with no games played since: the
         // calendar says four days, the games say current.
@@ -339,6 +356,29 @@ describe('run — loud failures, nothing written', () => {
         await HoopsTeam.create(Array.from({ length: 8 }, (_, i) => ({ id: 200 + i, season: SEASON, school: `Pad ${i}` })));
         const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage(rows)) });
         expect(out.summary).toMatch(/Nowhere 11 … \(\+2\)/);
+    });
+});
+
+describe('known gaps between NCAA\'s field and ours (alias file)', () => {
+    afterEach(() => { net.KNOWN_GAPS.notOurs = []; net.KNOWN_GAPS.notRanked = []; });
+
+    test('a checked NCAA name with no team of ours is left out and named in the summary, not a failure', async () => {
+        net.KNOWN_GAPS.notOurs = ['Saint Francis'];
+        const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage([...ROWS, netRow(7, 'Saint Francis', 'NEC')])) });
+        expect(out.status).toBe('success');
+        expect(out.summary).toMatch(/6 team\(s\), NET through 2026-12-09, 1 listed as not ours: Saint Francis/);
+        expect(await HoopsNetRank.countDocuments({ week: 7 })).toBe(6);
+    });
+
+    test('without the entry, the same page fails loudly', async () => {
+        const out = await job.run({ now: WEEK6_THURSDAY, fetchImpl: page(netPage([...ROWS, netRow(7, 'Saint Francis', 'NEC')])) });
+        await expectLoudFailure(out, /1 NET name\(s\) match no team .*: Saint Francis/);
+    });
+
+    test('a checked school NCAA does not rank is not reported as unclaimed', () => {
+        const m = net.matchNet([{ rank: 1, school: 'Kansas', conference: 'Big 12' }], TEAMS, undefined,
+            { notRanked: TEAMS.filter(t => t.school !== 'Kansas').map(t => t.school) });
+        expect(m.unclaimed).toEqual([]);
     });
 });
 

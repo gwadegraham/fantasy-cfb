@@ -73,10 +73,6 @@
             + '</div><div class="pts"><div class="n" data-countup="' + banked + '" data-sign="+">' + (banked > 0 ? '+' : '') + banked + '</div><div class="l">pts banked</div></div></div>';
     }
 
-    // The team sheet, phone-first: four tiles in a row — each quadrant's
-    // record and what a win there pays — and ONE list under them, for the
-    // tile that is selected. Four full lists side by side was the longest
-    // stretch of the page on a phone.
     // "Dec 10" from the NET's Through Games day — stored as an Eastern
     // calendar day at UTC midnight, so it is read in UTC.
     var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -102,6 +98,10 @@
             + '<p class="ht-explain">NCAA sorts its quadrants by today’s NET, so they shift as opponents rise and fall. The tiles above are banked at the rank an opponent held the week the game was played.</p>';
     }
 
+    // The team sheet, phone-first: four tiles in a row — each quadrant's
+    // record and what a win there pays — and ONE list under them, for the
+    // tile that is selected. Four full lists side by side was the longest
+    // stretch of the page on a phone.
     function sheet(d) {
         var vals = d.quadrantValues;
         var h = '<div class="ht-tiles" role="tablist" aria-label="Quadrants">';
