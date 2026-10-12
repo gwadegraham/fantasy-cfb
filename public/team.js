@@ -146,6 +146,11 @@ async function loadTeamPage() {
 // Returns { name, franchiseName, userId, points } or null if undrafted /
 // unavailable; points is what the team banked for them, by game id.
 async function getTeamOwner(teamId, seasonYear, leagueCode) {
+    // A basketball league drafts no football teams. Its franchises' ids
+    // collide with football's (#489), so searching them would "find" an
+    // owner whose points are keyed by basketball games and blank every row.
+    var lg = window.ccLeague;
+    if (lg && typeof lg.sport === 'function' && lg.sport() !== 'football') return null;
     try {
         const res = await fetch(`/users/season/${seasonYear}`, {
             method: 'GET',

@@ -335,6 +335,28 @@ describe('loadTeamPage asks about the league being viewed', () => {
     });
 });
 
+describe('a basketball league viewing a football team page', () => {
+    test('no owner is looked up, so the points column falls back to the team\'s own weeks', async () => {
+        window.ccSeasonOf = require('../public/season-of.js');
+        window.history.replaceState(null, '', '/team?team=150');
+        document.head.innerHTML = '<title>Team</title>';
+        document.body.innerHTML = '<main class="sp-page ft" id="team-page"></main>';
+        window.ccLeague = { sport: () => 'basketball', name: () => 'Hardwood Heroes', title: (p) => p };
+        window.ccLeagueCode = () => 'hoops-league';
+        const doc = { id: DUKE, school: 'Duke', mascot: 'Blue Devils', logos: [], seasons: [{ season: 2026, conference: 'ACC', weeklyScore: [{ week: 1 }] }] };
+        // A basketball franchise in the viewed league owns basketball team 150 — Duke's football id.
+        const users = [{ _id: 'h1', league: 'hoops-league', firstName: 'H', seasons: [{ season: 2026, franchiseName: 'Bracket Busters',
+            teams: [{ id: 150 }], weeklyScore: [{ week: 1, scoreByTeam: [{ teamId: 150, gameId: 999999, score: 5 }] }] }] }];
+        global.fetch = jest.fn((url) => Promise.resolve({ status: 200, ok: true,
+            json: () => Promise.resolve(/\/teams\/info\//.test(url) ? [doc] : /\/users\/season\//.test(url) ? users : []) }));
+        ftPage.bound = false;
+        await loadTeamPage();
+        expect(global.fetch.mock.calls.some(c => /\/users\/season\//.test(c[0]))).toBe(false);
+        expect(txt('.sp-own')).toBe('');
+        delete window.ccLeagueCode;
+    });
+});
+
 describe('fits a phone (#506 click-through)', () => {
     test('a long conference name gets its short form on the tab, full name elsewhere', () => {
         const m = model();

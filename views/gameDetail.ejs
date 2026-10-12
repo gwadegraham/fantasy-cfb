@@ -1025,6 +1025,18 @@
         var GD_FANTASY_STALE_MS = 60000;
         var GD_FANTASY_RETRIES = 5;
 
+        // A final whose points have not posted yet (or whose read failed):
+        // ask again a minute later, a few times. A hidden tab waits for the
+        // next tick rather than spending a try.
+        function gdRetryFantasy(game) {
+            if (gdFantasyRetries >= GD_FANTASY_RETRIES) return;
+            gdFantasyRetries++;
+            setTimeout(function again() {
+                if (document.hidden) { setTimeout(again, GD_FANTASY_STALE_MS); return; }
+                gdFetchFantasy(gdGame || game, true);
+            }, GD_FANTASY_STALE_MS);
+        }
+
         async function gdFetchFantasy(game, force) {
             var lg = window.ccLeague;
             var code = window.ccLeagueCode ? window.ccLeagueCode() : (lg && lg.code ? lg.code() : '');
@@ -1042,13 +1054,13 @@
                 gdFantasyAt = Date.now();
                 gdPaintFantasy();
                 var unposted = ['away', 'home'].some(function (k) { return gdFantasy[k] && gdFantasy[k].owner && gdFantasy[k].banked == null; });
-                if (game.completed && unposted && gdFantasyRetries < GD_FANTASY_RETRIES) {
-                    gdFantasyRetries++;
-                    setTimeout(function () { if (!document.hidden) gdFetchFantasy(gdGame || game, true); }, GD_FANTASY_STALE_MS);
-                }
+                if (game.completed && unposted) gdRetryFantasy(game);
             } catch (err) {
-                // The page is whole without it.
+                // The page is whole without it. On a final nothing else will
+                // ask again (the live refresh has stopped), so a failed read
+                // retries like an unposted one rather than ending the tries.
                 console.error('Fantasy read failed:', err);
+                if (game.completed) gdRetryFantasy(game);
             } finally {
                 gdFantasyInFlight = false;
             }
@@ -1116,7 +1128,9 @@
                 }
                 return '<div class="sp-stake"><span><b>' + who + '</b> · ' + esc(name) + '</span>' + v + '</div>';
             };
-            var both = f.away.owner && f.home.owner;
+            // Two managers only when they are two people: one manager owning
+            // both sides is not a matchup against themself.
+            var both = f.away.owner && f.home.owner && String(f.away.owner.userId) !== String(f.home.owner.userId);
             return '<h2 class="sp-h">' + (both ? 'Manager matchup' : 'Fantasy stakes') + '<small>Points for a win</small></h2>'
                 + '<div class="sp-card fg-stakes">' + row(f.away, game.awayTeam, p == null ? null : 1 - p) + row(f.home, game.homeTeam, p) + '</div>';
         }

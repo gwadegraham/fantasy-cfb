@@ -196,6 +196,14 @@ describe('before kickoff: the stakes', () => {
         expect(document.querySelector('.sp-fan')).toBeNull();
     });
 
+    test('one manager owning both teams is “fantasy stakes”, not a matchup against themself', async () => {
+        const f = fantasyOf('pre');
+        f.home.owner = f.away.owner;
+        await boot('pre', { fantasy: Promise.resolve(f) });
+        expect(txt('.sp-h')).toContain('Fantasy stakes');
+        expect(txt('.sp-h')).not.toContain('Manager matchup');
+    });
+
     test('one rostered side is “fantasy stakes”; the other says it is not on a roster', async () => {
         const f = fantasyOf('pre');
         f.home = { teamId: WMU, owner: null, banked: null };
@@ -263,6 +271,43 @@ describe('the read lands without re-rendering the page (#506 QA)', () => {
         expect(fantasyCalls()).toHaveLength(1);
         expect(later).toHaveLength(1);
         later[0]();
+        for (let i = 0; i < 4; i++) await tick();
+        expect(fantasyCalls()).toHaveLength(2);
+    });
+
+    test('a failed read on a final still tries again — nothing else would ask', async () => {
+        const later = [];
+        const realTimeout = window.setTimeout;
+        jest.spyOn(window, 'setTimeout').mockImplementation((fn, ms) => {
+            if (ms === 60000) { later.push(fn); return 0; }
+            return realTimeout(fn, ms);
+        });
+        await boot('final', { fantasy: Promise.reject(new Error('H12')) });
+        expect(fantasyCalls()).toHaveLength(1);
+        expect(later).toHaveLength(1);
+        later[0]();
+        for (let i = 0; i < 4; i++) await tick();
+        expect(fantasyCalls()).toHaveLength(2);
+    });
+
+    test('a hidden tab holds its retry rather than spending it', async () => {
+        const f = fantasyOf('final');
+        f.away.banked = null;
+        const later = [];
+        const realTimeout = window.setTimeout;
+        jest.spyOn(window, 'setTimeout').mockImplementation((fn, ms) => {
+            if (ms === 60000) { later.push(fn); return 0; }
+            return realTimeout(fn, ms);
+        });
+        await boot('final', { fantasy: Promise.resolve(f) });
+        Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+        try {
+            later.shift()();
+            for (let i = 0; i < 4; i++) await tick();
+            expect(fantasyCalls()).toHaveLength(1);
+            expect(later).toHaveLength(1);                   // rescheduled, not dropped
+        } finally { delete document.hidden; }
+        later.shift()();
         for (let i = 0; i < 4; i++) await tick();
         expect(fantasyCalls()).toHaveLength(2);
     });
