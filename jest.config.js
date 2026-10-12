@@ -131,6 +131,16 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The weekly ratings snapshot (#318). CBBD keeps no ratings history,
+        // so a week this job misses or mis-files can never be rebuilt. The
+        // branches that matter are the skips and the failures — every one of
+        // them decides whether a lost week is loud or silent.
+        "./modules/hoops-ratings-job.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-game-page.js": {
             statements: 97,
             branches: 80,

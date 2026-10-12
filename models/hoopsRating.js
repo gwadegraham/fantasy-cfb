@@ -32,9 +32,12 @@ const hoopsRatingSchema = new mongoose.Schema({
         required: true
     },
 
-    // The underlying number, for display and for measuring the blend. Not
-    // used by scoring, which reads `rank`.
+    // The underlying numbers, for display and for measuring the blend. Not
+    // used by scoring, which reads `rank`. adjEM is CBBD's netRating, and
+    // `rank` is computed from it (modules/hoops-ratings-job.js).
     adjEM: { type: Number },
+    adjOff: { type: Number },
+    adjDef: { type: Number },
     fetchedAt: { type: Date, default: Date.now }
 });
 

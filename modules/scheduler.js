@@ -46,7 +46,14 @@ const JOB_SCHEDULES = [
     // Basketball TV listings for the game page (#506). 1 CBBD call a WEEK,
     // Monday after hoops-stats — the morning after Selection Sunday, so the
     // NCAA first round is listed. Free while nothing is scheduled.
-    { job: 'hoops-media', modulePath: '../modules/hoops-media-job', rule: { dayOfWeek: 1, hour: 6, minute: 0 } }
+    { job: 'hoops-media', modulePath: '../modules/hoops-media-job', rule: { dayOfWeek: 1, hour: 6, minute: 0 } },
+    // Basketball adjusted-efficiency ratings for quadrants (#318). 1 CBBD call
+    // a run, ~60 a month in season, nothing in the off-season. Twice a day
+    // because CBBD keeps no history: a missed week can never be backfilled,
+    // so every day is a retry and the last write of the week wins. 22:15
+    // Central is 23:15 Eastern — Sunday's late run still lands in the week
+    // it was taken in, which is what decides the week it is written to.
+    { job: 'hoops-ratings', modulePath: '../modules/hoops-ratings-job', rule: { hour: [6, 22], minute: 15 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;
