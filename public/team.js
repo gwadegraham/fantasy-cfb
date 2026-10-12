@@ -1096,6 +1096,12 @@ function ftStats(d) {
     return h || '<div class="sp-card sp-empty">Team stats and season leaders arrive once the season kicks off.</div>';
 }
 
+// The conference's short name for its tab: "Conference USA" or
+// "Mid-American" pushed the last tab off a phone's edge. The same
+// abbreviations as the league scoreboard's filter.
+var FT_CONF_SHORT = { 'American Athletic': 'AAC', 'Conference USA': 'CUSA', 'Mid-American': 'MAC', 'Mountain West': 'MWC' };
+function ftConfShort(conf) { return FT_CONF_SHORT[conf] || conf || 'Conference'; }
+
 function ftTabList(d) {
     return FT_TABS.filter(function (t) { return t !== 'conference' || d.standings.length; });
 }
@@ -1104,7 +1110,7 @@ function ftTabFromHash(d) {
     return ftTabList(d).indexOf(h) !== -1 ? h : 'overview';
 }
 function ftTabs(d) {
-    var label = { overview: 'Overview', schedule: 'Schedule', stats: 'Stats', conference: d.seasonObj.conference || 'Conference' };
+    var label = { overview: 'Overview', schedule: 'Schedule', stats: 'Stats', conference: ftConfShort(d.seasonObj.conference) };
     return window.ccSportPage.tabs(ftTabList(d).map(function (t) { return [t, label[t]]; }), ftPage.tab);
 }
 function ftPanel(d) {

@@ -278,3 +278,28 @@ describe('the read lands without re-rendering the page (#506 QA)', () => {
         expect(later).toHaveLength(0);
     });
 });
+
+describe('a final opened in a background tab (#506 click-through)', () => {
+    const playsCalls = () => global.fetch.mock.calls.filter(c => /\/games\/plays\//.test(c[0])).length;
+
+    test('fetches its plays once it is shown, so it gets its Play-by-play tab', async () => {
+        let hidden = true;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        try {
+            await boot('final');
+            expect(playsCalls()).toBe(0);
+            expect(document.querySelector('[data-tab="plays"]')).toBeNull();
+            hidden = false;
+            document.dispatchEvent(new Event('visibilitychange'));
+            for (let i = 0; i < 6; i++) await tick();
+            expect(playsCalls()).toBe(1);
+            expect(document.querySelector('[data-tab="plays"]')).not.toBeNull();
+            // Once only: it is a final.
+            document.dispatchEvent(new Event('visibilitychange'));
+            for (let i = 0; i < 6; i++) await tick();
+            expect(playsCalls()).toBe(1);
+        } finally {
+            delete document.hidden;
+        }
+    });
+});

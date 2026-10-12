@@ -334,3 +334,16 @@ describe('loadTeamPage asks about the league being viewed', () => {
         delete window.ccLeagueCode;
     });
 });
+
+describe('fits a phone (#506 click-through)', () => {
+    test('a long conference name gets its short form on the tab, full name elsewhere', () => {
+        const m = model();
+        m.seasonObj = Object.assign({}, m.seasonObj, { conference: 'Conference USA' });
+        render(m);
+        expect(txt('.sp-tab[data-tab="conference"]')).toBe('CUSA');
+        expect(txt('.ft-rec .l')).toContain('Conference USA');
+        m.seasonObj.conference = 'Big Ten';
+        render(m);
+        expect(txt('.sp-tab[data-tab="conference"]')).toBe('Big Ten');
+    });
+});

@@ -53,10 +53,12 @@
 .ft-chip b { color: var(--cc-text); }
 
 /* ---- weekly points ----------------------------------------------------- */
-.ft-weeks { display: flex; align-items: flex-end; gap: 6px; height: 140px; padding: 12px 12px 8px; overflow-x: auto; }
-.ft-week { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 0 28px; height: 100%; gap: 3px; }
-.ft-week .v { font-size: 11px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
-.ft-week .f { width: 60%; min-height: 4px; border-radius: 4px 4px 0 0; transform-origin: bottom;
+/* Every week fits a phone: a season plus a bowl is 16+ bars, and a
+   sideways scroll hid the latest weeks. */
+.ft-weeks { display: flex; align-items: flex-end; gap: 3px; height: 140px; padding: 12px 12px 8px; overflow-x: auto; }
+.ft-week { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; flex: 1 1 0; min-width: 0; height: 100%; gap: 3px; }
+.ft-week .v { font-size: 10px; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.ft-week .f { width: 70%; min-height: 4px; border-radius: 4px 4px 0 0; transform-origin: bottom;
     background: linear-gradient(180deg, var(--cc-accent), rgba(var(--cc-accent-rgb), .45)); }
 .ft-week .k { font-size: 10px; color: var(--cc-muted-2); }
 @media (prefers-reduced-motion: no-preference) {

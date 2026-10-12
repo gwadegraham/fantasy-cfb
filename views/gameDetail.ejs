@@ -175,6 +175,11 @@
             // Only catch up on a game that is still running — coming back to a
             // final game should cost nothing.
             if (gdArt && gdIsLive(gdGame)) gdRefresh();
+            // A final opened in a background tab never fetched its plays —
+            // the fetch skips a hidden tab — so it had no Play-by-play tab
+            // at all. It gets its one fetch now; gdFetchPlays's own latches
+            // keep it to one.
+            else if (gdArt && gdGame && gdGame.completed) gdFetchPlays(gdGame);
         });
 
         // ---- play-by-play fetch -------------------------------------------
