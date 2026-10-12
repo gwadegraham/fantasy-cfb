@@ -8,10 +8,20 @@
 //   once games accumulate    CBBD /ratings/adjusted net-efficiency rank
 //   in between               blended, so the standings do not lurch the week
 //                            the source changes
+//   once the NET publishes   the official NCAA NET, outright (#533)
 //
-// NET is never involved. CBBD does not serve it, and it first publishes in
-// December — too late to rank a preseason draft pool, which is the first
-// thing that needs a ranking.
+// ---- the NET takes over ----
+//
+// The NET is what managers know, and Graham decided (12 Oct 2026) that it
+// drives scoring once it exists. It first publishes in early-to-mid December,
+// too late to rank a preseason draft pool, so everything above still covers
+// the first month. From the first week that has NET rows (modules/
+// hoops-net-job.js files a snapshot taken in week N under week N + 1, as the
+// CBBD job does), that week and every later one is graded on the NET as
+// published — no blend, because the point is that the number on the page is
+// the number on ncaa.com. A later week the NET job missed uses the latest
+// earlier NET week rather than dropping back to CBBD: one source switch a
+// season, not one per missed fetch.
 //
 // ---- why blend at all ----
 //
@@ -31,6 +41,7 @@
 // how it would never get measured.
 
 const HoopsRating = require('../models/hoopsRating');
+const HoopsNetRank = require('../models/hoopsNetRank');
 const HoopsTeam = require('../models/hoopsTeam');
 
 // Weeks over which the live number takes over from the preseason one.
@@ -143,6 +154,35 @@ async function liveRanks(season, week) {
     return { ranks: byTeam(prior.filter(r => r.week === latest)), week: latest, stale: true };
 }
 
+// The NET ranks to grade a week on: that week's, else the latest EARLIER
+// week's, as { ranks, week, stale } — or null when no week at or before it
+// has a whole NET ranking on file.
+//
+// "Whole" is the same coverage floor as the CBBD weeks, measured against the
+// same preseason field, and checked per week BEFORE one is chosen: a thin
+// NET week is skipped in favour of the whole week before it, rather than
+// discarded and replaced by a different source. With no preseason field to
+// measure against, any rows count, as they do for CBBD.
+async function netRanks(season, week, preCount) {
+    const yr = Number(season);
+    const wk = Number(week);
+    if (!Number.isFinite(yr) || !Number.isFinite(wk)) return null;
+    const weeks = await HoopsNetRank.aggregate([
+        { $match: { season: yr, week: { $lte: wk } } },
+        { $group: { _id: '$week', n: { $sum: 1 } } },
+        { $sort: { _id: -1 } }
+    ]);
+    const floor = preCount > 0 ? preCount * MIN_LIVE_COVERAGE : 1;
+    const whole = weeks.find(w => w.n >= floor);
+    for (const w of weeks) {
+        if (w === whole) break;
+        console.error(`hoops-ranks: ignoring NET week ${w._id} — only ${w.n} of ${preCount} teams ranked`);
+    }
+    if (!whole) return null;
+    const rows = await HoopsNetRank.find({ season: yr, week: whole._id }, { teamId: 1, rank: 1, _id: 0 }).lean();
+    return { ranks: byTeam(rows), week: whole._id, stale: whole._id !== wk };
+}
+
 function byTeam(rows) {
     const out = {};
     for (const r of rows) out[String(r.teamId)] = r.rank;
@@ -156,12 +196,14 @@ function byTeam(rows) {
 // — and with scores banked at time of play it is a question that gets asked
 // months later.
 async function ranksFor(season, week) {
-    const [pre, live] = await Promise.all([
-        preseasonRanks(season),
-        liveRanks(season, week)
-    ]);
-
+    const pre = await preseasonRanks(season);
     const preCount = Object.keys(pre).length;
+
+    // The NET, once it has published, outranks everything below.
+    const net = await netRanks(season, week, preCount);
+    if (net) return { ranks: net.ranks, source: 'ncaa-net', blendWeight: 0, staleWeek: net.stale ? net.week : null };
+
+    const live = await liveRanks(season, week);
     const liveCount = Object.keys(live.ranks).length;
 
     // A partially-written week is a FAILED refresh, not a thin one.
@@ -187,6 +229,6 @@ async function ranksFor(season, week) {
 }
 
 module.exports = {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, rankOf, MIN_LIVE_COVERAGE,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks, rankOf, MIN_LIVE_COVERAGE,
     FULLY_PRESEASON, FULLY_LIVE
 };

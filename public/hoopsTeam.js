@@ -42,6 +42,7 @@
         var conf = done.filter(function (g) { return g.conferenceGame; });
         var q1 = done.filter(function (g) { return g.quadrant === 1; });
         var chips = '';
+        if (d.net) chips += '<span class="sp-chip" title="NET: NCAA">NET <b>#' + esc(d.net.rank) + '</b></span>';
         if (pre) {
             chips += '<span class="sp-chip">T-Rank <b>#' + esc(pre.rank) + '</b></span>';
             if (pre.projectedRecord) chips += '<span class="sp-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
@@ -76,6 +77,31 @@
     // record and what a win there pays — and ONE list under them, for the
     // tile that is selected. Four full lists side by side was the longest
     // stretch of the page on a phone.
+    // "Dec 10" from the NET's Through Games day — stored as an Eastern
+    // calendar day at UTC midnight, so it is read in UTC.
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function netDay(iso) {
+        var t = new Date(iso);
+        return isNaN(t.getTime()) ? '' : MONTHS[t.getUTCMonth()] + ' ' + t.getUTCDate();
+    }
+    function wl(r) { return r ? r.w + '–' + r.l : '—'; }
+
+    // The official NCAA team sheet (#533): NET rank and Quad 1-4 records as
+    // ncaa.com shows them today. Credited, and kept apart from the tiles
+    // above: NCAA re-sorts its quadrants daily on the current NET, while
+    // ours are banked at the rank an opponent held when the game was played.
+    function netSheet(d) {
+        var n = d.net;
+        if (!n) return '';
+        var through = n.throughGames ? netDay(n.throughGames) : '';
+        return '<h2 class="sp-h">Official NET<small>NET: NCAA' + (through ? ' · through ' + esc(through) : '') + '</small></h2>'
+            + '<div class="sp-card ht-net"><div class="ht-net-c ht-net-rk"><b>#' + esc(n.rank) + '</b><small>NET</small></div>'
+            + (n.quads || []).map(function (r, i) {
+                return '<div class="ht-net-c"><b>' + wl(r) + '</b><small>Quad ' + (i + 1) + '</small></div>';
+            }).join('') + '</div>'
+            + '<p class="ht-explain">NCAA sorts its quadrants by today’s NET, so they shift as opponents rise and fall. The tiles above are banked at the rank an opponent held the week the game was played.</p>';
+    }
+
     function sheet(d) {
         var vals = d.quadrantValues;
         var h = '<div class="ht-tiles" role="tablist" aria-label="Quadrants">';
@@ -350,7 +376,7 @@
         if (state.tab === 'schedule') return schedule(d);
         if (state.tab === 'stats') return efficiency(d) + stats(d);
         if (state.tab === 'conference') return standings(d);
-        return nextUp(d) + sheet(d) + splits(done) + standingsPeek(d);
+        return nextUp(d) + sheet(d) + netSheet(d) + splits(done) + standingsPeek(d);
     }
 
     // Scroll so the panel starts just under the sticky navbar and tabs.
@@ -427,6 +453,6 @@
         document.fonts.ready.then(function () { if (data) fitSchools(); }).catch(function () {});
     }
 
-    window.ccHoopsTeam = { render: render, load: load, state: state };
+    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay };
     load();
 })();

@@ -42,6 +42,13 @@
 .ht-q3 { border-top: 3px solid color-mix(in srgb, var(--cc-accent) 30%, var(--cc-surface)); }
 .ht-q4 { border-top: 3px solid var(--cc-border-2); }
 .ht-qlist { margin-top: 8px; overflow: hidden; }
+/* ---- official NET (#533) ---------------------------------------------- */
+.ht-net { display: grid; grid-template-columns: repeat(5, 1fr); padding: 10px 4px; }
+.ht-net-c { text-align: center; min-width: 0; }
+.ht-net-c + .ht-net-c { border-left: 1px solid var(--cc-border); }
+.ht-net-c b { display: block; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.ht-net-c small { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); }
+.ht-net-rk b { color: var(--cc-accent); }
 .ht-explain { font-size: 11px; color: var(--cc-muted-2); margin: 8px 2px 0; line-height: 1.45; }
 .ht-v { color: var(--cc-muted-2); font-size: 10px; margin-right: 3px; }
 .ht-rk { color: var(--cc-muted-2); font-size: 10px; font-variant-numeric: tabular-nums; }

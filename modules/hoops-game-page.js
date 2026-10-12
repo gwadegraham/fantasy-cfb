@@ -17,6 +17,7 @@ const { pickLogo } = require('../public/logo.js');
 const { homeWinProb } = require('./hoops-win-prob');
 const stale = require('./hoops-stale-duplicates');
 const { outlets } = require('./hoops-media');
+const { latestNet } = require('./hoops-net');
 
 // A team's record through this game — what it was walking off the floor,
 // not what it is today.
@@ -104,7 +105,7 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
     // so the two pages give an unplayed game the same quadrant.
     const nowWeek = final ? null : await teamPage.currentWeek(yr);
     const rankWeek = final || nowWeek === null ? Number(game.week) : nowWeek;
-    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed] = await Promise.all([
+    const [teams, ranks, homeRec, awayRec, homeOwner, awayOwner, values, boxed, net] = await Promise.all([
         HoopsTeam.find({ season: yr, id: { $in: [homeId, awayId] } },
             { id: 1, school: 1, abbreviation: 1, mascot: 1, color: 1, alt_color: 1, logos: 1, _id: 0 }).lean(),
         Number.isFinite(rankWeek) ? teamPage.cachedRanks(yr, rankWeek) : {},
@@ -113,7 +114,8 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
         teamPage.ownership(league, yr, homeId),
         teamPage.ownership(league, yr, awayId),
         teamPage.quadrantValues(league),
-        final ? boxScore.getBox(id) : null
+        final ? boxScore.getBox(id) : null,
+        latestNet(yr, [homeId, awayId])
     ]);
     const byId = new Map(teams.map(t => [Number(t.id), t]));
     // Jersey numbers on the box, from the once-a-season roster import (the
@@ -169,6 +171,10 @@ async function build(gameId, { league = null, viewerId = null, now = Date.now() 
             logo: t ? pickLogo(t.logos) || null : null,
             hasPage: !!t,
             rank: Number.isFinite(rank) ? rank : null,
+            // The official NCAA NET as ncaa.com shows it today (#533), or
+            // null before it publishes. Today's, not the game's: `rank` is
+            // what the game was graded against.
+            net: net[String(teamId)] || null,
             // Through this game when played; going INTO it when not.
             record: rec,
             points: (final || live) && Number.isFinite(Number(points)) && points != null ? Number(points) : null,

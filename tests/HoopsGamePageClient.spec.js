@@ -277,6 +277,33 @@ test('a game to play: the preview replaces the fantasy cards, tabs and box', asy
     expect(q('.hg-preview')).not.toBeNull();
 });
 
+describe('official NET (#533)', () => {
+    const NET = (rank) => ({ rank, record: { w: 9, l: 2 }, throughGames: '2026-12-09T00:00:00.000Z',
+        quads: [{ w: 3, l: 1 }, { w: 2, l: 1 }, null, { w: 4, l: 0 }] });
+    const withNet = (p, away, home) => { p.away.net = away; p.home.net = home; return p; };
+    const head = () => Array.from(document.querySelectorAll('.sp-h')).find(h => /Official NET/.test(h.textContent));
+
+    test('a final: both teams\' NET and Quad records, away first, credited to NCAA', async () => {
+        await render(withNet(payload(), NET(37), NET(4)));
+        expect(txt('.hg-net-row')).toBe('TEX#37Q13–1Q22–1Q3—Q44–0 | DUKE#4Q13–1Q22–1Q3—Q44–0');
+        expect(head().textContent).toBe('Official NETNET: NCAA · through Dec 9');
+    });
+
+    test('a preview shows it too; a side with no NET reads as a dash', async () => {
+        await render(withNet(upcoming(), null, Object.assign(NET(4), { throughGames: null })));
+        expect(txt('.hg-net-row')).toBe('TEX—Q1—Q2—Q3—Q4— | DUKE#4Q13–1Q22–1Q3—Q44–0');
+        expect(head().textContent).toBe('Official NETNET: NCAA');
+    });
+
+    test('before the NET publishes: no card', async () => {
+        await render(payload());
+        expect(q('.hg-net')).toBeNull();
+        await render(upcoming());
+        expect(q('.hg-net')).toBeNull();
+        expect(window.ccHoopsGame.netDay('nope')).toBe('');
+    });
+});
+
 test('key players: the number in front of the name, or the name alone', async () => {
     const p = upcoming();
     p.preview.home.topScorers = [{ name: 'Cameron Boozer', jersey: '12', position: 'F', ppg: 22.5, rpg: 10.2, apg: 4 },

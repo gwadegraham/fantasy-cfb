@@ -350,6 +350,32 @@
         }).join('') + '</div>';
     }
 
+    // "Dec 10" from the NET's Through Games day — an Eastern calendar day
+    // stored at UTC midnight, so it is read in UTC.
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function netDay(iso) {
+        var t = new Date(iso);
+        return isNaN(t.getTime()) ? '' : MONTHS[t.getUTCMonth()] + ' ' + t.getUTCDate();
+    }
+
+    // Both teams' official NCAA NET and Quad 1-4 records as ncaa.com shows
+    // them today (#533), credited. Nothing before the NET first publishes.
+    function netCard(d) {
+        if (!d.away.net && !d.home.net) return '';
+        var n = d.away.net || d.home.net;
+        var through = n.throughGames ? netDay(n.throughGames) : '';
+        var row = function (t) {
+            var x = t.net;
+            return '<div class="hg-net-row"><span class="nm">' + esc(abbr(t)) + '</span>'
+                + '<b class="rk">' + (x ? '#' + esc(x.rank) : '—') + '</b>'
+                + [0, 1, 2, 3].map(function (i) {
+                    return '<span class="q"><small>Q' + (i + 1) + '</small>' + (x && x.quads && x.quads[i] ? rec(x.quads[i]) : '—') + '</span>';
+                }).join('') + '</div>';
+        };
+        return '<h2 class="sp-h">Official NET<small>NET: NCAA' + (through ? ' · through ' + esc(through) : '') + '</small></h2>'
+            + '<div class="sp-card hg-net">' + row(d.away) + row(d.home) + '</div>';
+    }
+
     // An old listing of a game that moved (#498): send them to the real one.
     function moved(d) {
         var r = d.rescheduled, k = window.ccKickoff;
@@ -362,7 +388,7 @@
     function preview(d) {
         if (d.rescheduled) return moved(d);
         if (!d.preview) return '';
-        return winProbability(d) + stakes(d) + tape(d) + form(d) + keyPlayers(d) + meetings(d);
+        return winProbability(d) + stakes(d) + tape(d) + netCard(d) + form(d) + keyPlayers(d) + meetings(d);
     }
 
     function noBox(d) {
@@ -414,7 +440,7 @@
         state.side = mine(d.home) ? 'home' : mine(d.away) ? 'away'
             : (d.home.owner && !d.away.owner ? 'home' : 'away');
         root.innerHTML = d.game.final
-            ? hero(d) + fantasy(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
+            ? hero(d) + fantasy(d) + netCard(d) + tabs(d) + '<div class="hg-panel" role="tabpanel">' + panel(d) + '</div>'
             : hero(d) + '<div class="hg-preview">' + preview(d) + '</div>';
         var title = document.querySelector('title');
         if (title) title.setAttribute('data-league-title', abbr(d.away) + (d.game.neutralSite ? ' vs ' : ' at ') + abbr(d.home));
@@ -443,6 +469,6 @@
         return kit.load('/hoops/games/' + encodeURIComponent(id) + '/page', render, root, 'game');
     }
 
-    window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown };
+    window.ccHoopsGame = { render: render, load: load, state: state, shortNames: shortNames, countdown: countdown, netDay: netDay };
     load();
 })();

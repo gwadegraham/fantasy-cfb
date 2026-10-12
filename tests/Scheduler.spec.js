@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-ratings', 'hoops-scores', 'hoops-stats',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -86,6 +86,18 @@ describe('scheduler config', () => {
         // Sunday 22:15 Central, and on the hoops calendar's day that is still Sunday.
         expect(next.toISOString()).toBe('2026-11-09T04:15:00.000Z');
         expect(easternDay(next).getUTCDay()).toBe(0);
+    });
+
+    // The NET (#533) is one GET of ncaa.com a DAY — NCAA's terms make the
+    // footprint the point — after NCAA's morning update, and on the same
+    // Eastern day it fires in, so Sunday's run files under the right week.
+    it('reads the official NET once a day, midday, inside the Eastern day', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-net');
+        expect(spec.rule).toEqual({ hour: 11, minute: 30 });
+        const rule = toRule(spec.rule);
+        const sunday = rule.nextInvocationDate(new Date('2026-11-08T12:00:00Z'));
+        expect(sunday.toISOString()).toBe('2026-11-08T17:30:00.000Z');
+        expect(easternDay(sunday).getUTCDay()).toBe(0);
     });
 
     it('builds a timezone-aware recurrence rule', () => {

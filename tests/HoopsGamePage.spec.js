@@ -327,6 +327,21 @@ describe('build', () => {
         expect(p.away.altColor).toBeNull();
     });
 
+    test('each side carries the official NET as ncaa.com shows it today (#533), null before it publishes', async () => {
+        const HoopsNetRank = require('../models/hoopsNetRank');
+        let p = await gamePage.build(500);
+        expect(p.home.net).toBeNull();
+        expect(p.away.net).toBeNull();
+        await HoopsNetRank.create([
+            { season: SEASON, week: 9, teamId: 1, rank: 6, quad1: { w: 4, l: 2 } },
+            { season: SEASON, week: 8, teamId: 2, rank: 70 }
+        ]);
+        p = await gamePage.build(500);
+        expect(p.home.net).toMatchObject({ rank: 6, quads: [{ w: 4, l: 2 }, null, null, null] });
+        // Only the newest week is today's NET: Texas has no row in it.
+        expect(p.away.net).toBeNull();
+    });
+
     test('each side reads the game from its OWN point of view; the box is the stored one', async () => {
         const get = stubCbbd();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });

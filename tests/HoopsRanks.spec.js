@@ -12,10 +12,11 @@
 
 const { useMongo } = require('./helpers/mongo');
 const {
-    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks,
+    ranksFor, blendRanks, blendWeight, preseasonRanks, liveRanks, netRanks,
     FULLY_PRESEASON, FULLY_LIVE
 } = require('../modules/hoops-ranks');
 const HoopsRating = require('../models/hoopsRating');
+const HoopsNetRank = require('../models/hoopsNetRank');
 const HoopsTeam = require('../models/hoopsTeam');
 
 const SEASON = 2027;
@@ -339,6 +340,79 @@ describe('reading the ranking for a week', () => {
         expect(await liveRanks(SEASON, 4)).toMatchObject({ week: 4, stale: false });
         expect(await liveRanks(SEASON, 6)).toMatchObject({ week: 4, stale: true });
         expect(await liveRanks(SEASON, 2)).toMatchObject({ week: null });
+    });
+});
+
+describe('the official NET takes over once it publishes (#533)', () => {
+    useMongo();
+
+    const team = (id, rank) => ({ id, season: SEASON, school: `T${id}`, preseason: { rank } });
+    const rating = (teamId, week, rank) => ({ season: SEASON, week, teamId, rank, source: 'cbbd-adjusted' });
+    const netRank = (teamId, week, rank) => ({ season: SEASON, week, teamId, rank });
+    const field = () => HoopsTeam.create([team(1, 1), team(2, 2), team(3, 3), team(4, 4), team(5, 5)]);
+    const netWeek = (week, ranks) => HoopsNetRank.create(ranks.map((r, i) => netRank(i + 1, week, r)));
+
+    test('a week with NET rows is graded on the NET outright — over CBBD, and in the middle of the ramp', async () => {
+        await field();
+        const mid = Math.floor((FULLY_PRESEASON + FULLY_LIVE) / 2);
+        await HoopsRating.create([1, 2, 3, 4, 5].map(id => rating(id, mid, id)));
+        await netWeek(mid, [5, 4, 3, 2, 1]);
+        expect(await ranksFor(SEASON, mid)).toEqual({
+            ranks: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }, source: 'ncaa-net', blendWeight: 0, staleWeek: null
+        });
+    });
+
+    test('a week before the first NET week is untouched by it', async () => {
+        await field();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        expect((await ranksFor(SEASON, 5)).source).toBe('torvik');
+    });
+
+    test('a later week the NET job missed stays on the latest NET week — no drop back to CBBD', async () => {
+        await field();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        await HoopsRating.create([1, 2, 3, 4, 5].map(id => rating(id, 9, id)));
+        const out = await ranksFor(SEASON, 9);
+        expect(out.source).toBe('ncaa-net');
+        expect(out.staleWeek).toBe(6);
+        expect(out.ranks['5']).toBe(1);
+    });
+
+    test('a thin NET week is passed over for the whole week before it', async () => {
+        await field();
+        await netWeek(6, [5, 4, 3, 2, 1]);
+        await HoopsNetRank.create([netRank(1, 7, 1)]);          // 1 of 5: a broken write
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const out = await ranksFor(SEASON, 7);
+        expect(out).toMatchObject({ source: 'ncaa-net', staleWeek: 6 });
+        expect(out.ranks['1']).toBe(5);
+        expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/ignoring NET week 7 — only 1 of 5/));
+        console.error.mockRestore();
+    });
+
+    test('with only thin NET weeks, the week falls through to CBBD and Torvik as before', async () => {
+        await field();
+        await HoopsNetRank.create([netRank(1, FULLY_LIVE, 1)]);
+        await HoopsRating.create([1, 2, 3, 4, 5].map(id => rating(id, FULLY_LIVE, 6 - id)));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        expect((await ranksFor(SEASON, FULLY_LIVE)).source).toBe('cbbd-adjusted');
+        console.error.mockRestore();
+    });
+
+    test('with no preseason field to measure by, any NET rows count', async () => {
+        await HoopsNetRank.create([netRank(7, 3, 1)]);
+        expect(await ranksFor(SEASON, 3)).toMatchObject({ ranks: { 7: 1 }, source: 'ncaa-net' });
+    });
+
+    test('another season\'s NET is never read', async () => {
+        await field();
+        await HoopsNetRank.create([1, 2, 3, 4, 5].map(id => Object.assign(netRank(id, 3, id), { season: SEASON - 1 })));
+        expect((await ranksFor(SEASON, 3)).source).not.toBe('ncaa-net');
+    });
+
+    test('netRanks: null for an unreadable season or week', async () => {
+        expect(await netRanks('x', 3, 0)).toBeNull();
+        expect(await netRanks(SEASON, undefined, 0)).toBeNull();
     });
 });
 
