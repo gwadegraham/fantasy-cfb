@@ -241,6 +241,19 @@ describe('the schedule: game rows with fantasy points', () => {
         expect(txt('.sp-gr.div')).toBe('Up next');
     });
 
+    test('a tap anywhere on the row opens the game; only the name opens the opponent', () => {
+        render(model(), { hash: 'schedule' });
+        const go = jest.spyOn(window, 'ftGo').mockImplementation(() => {});
+        const row = rows()[0];
+        row.querySelector('.note').click();
+        row.querySelector('.ft-v').click();
+        expect(go.mock.calls).toEqual([['/game/1'], ['/game/1']]);
+        expect(row.querySelector('a.ft-team').getAttribute('href')).toBe('/team?team=' + WM);
+        expect(row.querySelector('a.ft-team').textContent).toBe('William & Mary');
+        row.querySelector('a.ft-team').click();
+        expect(go).toHaveBeenCalledTimes(2);
+    });
+
     test('an undrafted team’s points come off its own weekly rows, in this league’s model', () => {
         render(model(), { hash: 'schedule' });
         expect(rows().map(r => r.querySelector('.p').textContent)).toEqual(['+2', '+3', '', '']);

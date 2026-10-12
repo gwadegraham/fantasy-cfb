@@ -819,14 +819,18 @@ function ftGameRow(d, g, points) {
     var open = function (cls) { return href ? '<a class="' + cls + '" href="' + href + '">' : '<span class="' + cls + '">'; };
     var close = href ? '</a>' : '</span>';
 
-    return '<div class="sp-gr' + (g.completed ? '' : ' up') + '">'
+    // The whole row opens the game; only the opponent's logo and name go
+    // to their team page. (The opponent's link used to fill the middle of
+    // the row, so most taps meant for the game opened the other team.)
+    return '<div class="sp-gr ft-row' + (g.completed ? '' : ' up') + '"' + (href ? ' data-href="' + href + '"' : '') + '>'
         + open('d') + ftEsc(window.ccSportPage.dayOf(g)) + close
-        + '<a class="opp" href="/team?team=' + encodeURIComponent(o.id) + '"><span class="nm">'
+        + '<span class="opp"><span class="nm">'
         + '<span class="ft-v">' + o.mark + '</span>'
         + (rank ? '<span class="ft-rk">' + ftEsc(rank) + '</span> ' : '')
+        + '<a class="ft-team" href="/team?team=' + encodeURIComponent(o.id) + '">'
         + (logo ? '<img class="sp-ologo" src="' + ftEsc(logo) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
-        + ftEsc(o.name) + '</span>'
-        + (note.length ? '<span class="note">' + note.join(' · ') + '</span>' : '') + '</a>'
+        + ftEsc(o.name) + '</a></span>'
+        + (note.length ? '<span class="note">' + note.join(' · ') + '</span>' : '') + '</span>'
         + open('res') + res + close
         + '<span class="p' + (p && p.pts ? '' : ' z') + '"' + (p && p.week ? ' title="The week’s total: two games that week"' : '') + '>' + pts + '</span>'
         + '</div>';
@@ -1138,6 +1142,9 @@ function ftToPanelTop(root) {
     window.scrollTo(0, Math.max(0, panel.getBoundingClientRect().top + window.pageYOffset - cover - 8));
 }
 
+// A seam for the tests: jsdom cannot navigate.
+function ftGo(href) { window.location.href = href; }
+
 function renderTeamPage(d) {
     var root = document.getElementById('team-page');
     if (!root) return;
@@ -1158,6 +1165,8 @@ function renderTeamPage(d) {
     if (ftPage.bound) return;
     ftPage.bound = true;
     root.addEventListener('click', function (e) {
+        var row = e.target.closest('.ft-row[data-href]');
+        if (row && !e.target.closest('a')) { ftGo(row.getAttribute('data-href')); return; }
         var tab = e.target.closest('[data-tab]');
         if (!tab || !ftPage.data) return;
         ftPage.tab = tab.getAttribute('data-tab');
