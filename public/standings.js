@@ -499,8 +499,16 @@ async function displayLastUpdated(data) {
     const detail = run
         ? `Last successful scoring update — ${abs}${run.week != null ? ` · week ${run.week}` : ''}`
         : `Last updated — ${abs}`;
-    el.innerHTML = `<span class="lu-badge" title="${escapeHtml(detail)}">`
-        + `<span class="lu-dot" aria-hidden="true"></span>`
+    // The mascot head stands in for the dot and bounces while a scoring job is in
+    // flight (run.running). Without mascots.js (the test harness) the dot stays.
+    // Only football leagues: every scoring job behind this route is football's, so
+    // Dribbles bouncing for it would claim his league was being scored.
+    const busy = !!(run && run.running) && (!window.ccMascot || window.ccMascot.sport() === 'football');
+    const mark = window.ccMascot
+        ? `<span class="lu-mascot" aria-hidden="true">${window.ccMascot.html({ size: 'head', busy })}</span>`
+        : `<span class="lu-dot" aria-hidden="true"></span>`;
+    el.innerHTML = `<span class="lu-badge${busy ? ' is-scoring' : ''}" title="${escapeHtml(busy ? `Scoring in progress · ${detail}` : detail)}">`
+        + mark
         + `<span class="lu-text">Updated <b>${escapeHtml(relativeTime(when))}</b></span>`
         + `</span>`;
 }
@@ -1679,6 +1687,7 @@ async function displayHoopsSchedule(data) {
         });
         if (!rivalries.length && noGames) {
             noGames.innerHTML = '<div class="no-matchups-message"><div class="emoji">🏀</div><h3>No Rivalry Games This Week</h3><p>None of your teams meet another manager’s this week.</p></div>';
+            mascotForEmoji(noGames, 'basketball');
         }
     } else if (noGames) {
         noGames.innerHTML = '<div class="no-matchups-message"><h3>Could not load the games.</h3></div>';
@@ -1757,7 +1766,18 @@ function showRandomNoGamesMessage() {
   const container = document.getElementById("no-games-container");
   const randomIndex = Math.floor(Math.random() * noGamesMessages.length);
   container.innerHTML = noGamesMessages[randomIndex];
+  mascotForEmoji(container);
 }
+
+// The empty state's emoji becomes the mascot (Laces, or Dribbles where the page
+// is about basketball). Same spot, same message; standing still, since nothing
+// is running.
+function mascotForEmoji(container, sport) {
+  if (!window.ccMascot || !container) return;
+  const em = container.querySelector('.emoji, .tiger-icon, .football-icon');
+  if (em) em.outerHTML = `<div class="ccm-empty-mascot" aria-hidden="true">${window.ccMascot.html({ size: 'full', sport: sport || window.ccMascot.sport(container) })}</div>`;
+}
+
 
 // Legacy-account fallback: the navbar seeds the "My team" link + caches userId
 // from the Auth0 metadata. But some older accounts have no metadata.userId — for

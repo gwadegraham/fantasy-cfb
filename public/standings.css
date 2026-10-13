@@ -883,6 +883,11 @@
 @media (prefers-reduced-motion: no-preference) {
     .lu-dot { animation: lu-pulse 2.6s ease-in-out infinite; }
 }
+/* Mascot head in place of the dot; the badge pads tighter on the left so the
+   head sits flush. It only bounces while a scoring job runs (.is-scoring). */
+.lu-mascot { display: inline-flex; margin: -4px 0 -4px -5px; }
+.lu-mascot .ccm-wrap { width: 24px; height: 24px; }
+.lu-badge.is-scoring { background: rgba(224, 179, 65, 0.1); border-color: rgba(224, 179, 65, 0.35); }
 @keyframes lu-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(91, 208, 141, 0.55); }
     50% { box-shadow: 0 0 0 5px rgba(91, 208, 141, 0); }

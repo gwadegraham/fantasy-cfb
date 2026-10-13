@@ -111,8 +111,12 @@
         else if (e.key === 'ArrowLeft') openEl._prev();
     }
 
+    // Which slides get the mascot, and holding what. The greeting cheers; the
+    // league-best and league-worst beats get the trophy and the ice pack.
+    const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'icepack' };
+
     // One story beat. Big number/emoji, optional team logo, or a narrative line.
-    function slideHtml(s, ctaHref) {
+    function slideHtml(s, ctaHref, sport) {
         const logo = (Array.isArray(s.logos) && s.logos.length)
             ? `<div class="recap-slide-logos">${s.logos.map(u => `<img class="recap-slide-logo" src="${escapeHtml(u)}" alt="">`).join('')}</div>`
             : (s.logo ? `<img class="recap-slide-logo" src="${escapeHtml(s.logo)}" alt="">` : '');
@@ -120,11 +124,20 @@
         const text = s.text ? `<p class="recap-slide-text">${escapeHtml(s.text)}</p>` : '';
         const sub = s.sub ? `<div class="recap-slide-sub">${escapeHtml(s.sub)}</div>` : '';
         const cta = (s.cta && ctaHref) ? `<a class="recap-popup-link" href="${ctaHref}">See all weeks →</a>` : '';
+        const pose = MASCOT_POSE[s.id];
+        const mascot = (pose && !logo && window.ccMascot)
+            ? `<div class="recap-slide-mascot">${window.ccMascot.html({ sport, pose, size: 'full' })}</div>` : '';
+        // With a mascot, he stands beside the number instead of stacking above it,
+        // so the slide stays as short as one without him. He also replaces the
+        // kicker's icon (flame, trophy, heartbreak): his pose already says it.
+        const body = mascot && big
+            ? `<div class="recap-slide-hero">${mascot}<div class="recap-slide-hero-num">${big}${sub}</div></div>${text}`
+            : `${mascot}${big}${text}${sub}`;
         return `<div class="recap-slide tone-${s.tone || 'neutral'}" data-slide-id="${s.id || ''}">
-            <div class="recap-slide-kicker">${window.ccIcon ? window.ccIcon(s.icon, { size: 15 }) : ''} ${escapeHtml(s.kicker || '')}</div>
+            <div class="recap-slide-kicker">${(window.ccIcon && !mascot) ? window.ccIcon(s.icon, { size: 15 }) : ''} ${escapeHtml(s.kicker || '')}</div>
             ${logo}
             <div class="recap-slide-title">${escapeHtml(s.title || '')}</div>
-            ${big}${text}${sub}${cta}
+            ${body}${cta}
         </div>`;
     }
 
@@ -137,6 +150,9 @@
         const slides = (latest.slides && latest.slides.length) ? latest.slides
             : [{ id: 'only', icon: 'flame', kicker: 'Weekly Recap', title: latest.label, text: latest.narrative, tone: 'neutral', cta: true }];
         const ctaHref = userId ? `/userHome?user=${encodeURIComponent(userId)}` : null;
+        // Dribbles only ever greets a basketball league's recap; everyone else gets Laces.
+        const sport = (window.ccLeague && window.ccLeague.sportOf && data.league)
+            ? window.ccLeague.sportOf(data.league) : 'football';
 
         const el = document.createElement('div');
         el.className = 'recap-popup-backdrop';
@@ -146,7 +162,7 @@
                 <span class="recap-sr" aria-live="polite"></span>
                 <button type="button" class="recap-popup-close" aria-label="Close">&times;</button>
                 <div class="recap-story-viewport">
-                    <div class="recap-story-track">${slides.map(s => slideHtml(s, ctaHref)).join('')}</div>
+                    <div class="recap-story-track">${slides.map(s => slideHtml(s, ctaHref, sport)).join('')}</div>
                 </div>
                 <button type="button" class="recap-nav-hint left" aria-label="Previous">‹</button>
                 <button type="button" class="recap-nav-hint right" aria-label="Next">›</button>
@@ -171,6 +187,8 @@
             slideEls.forEach(s => s.classList.remove('is-active'));
             void slideEls[idx].offsetWidth;
             slideEls[idx].classList.add('is-active');
+            // The mascot only moves while its own slide is on screen.
+            if (window.ccMascot) slideEls.forEach((s, n) => window.ccMascot.setBusy(s, n === idx));
         };
         el._next = () => { if (idx < slides.length - 1) showSlide(idx + 1); else closePopup(); };
         el._prev = () => { if (idx > 0) showSlide(idx - 1); };

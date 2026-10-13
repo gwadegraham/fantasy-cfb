@@ -1,0 +1,121 @@
+/* Laces + Dribbles (public/mascots.js). Every class is ccm- prefixed: the navbar
+   loads Bootstrap on every page, and bare names like .row or .card would restyle
+   these SVGs. */
+
+:root {
+    /* Neutral body, shade and ink match the app's own text tokens; the accents
+       are fixed per mascot (Laces is always red, Dribbles always violet), so they
+       must NOT follow --cc-accent, which turns orange inside a basketball league. */
+    --ccm-ink: #0B0E1A;
+    --ccm-body: var(--cc-text, #F4F6FB);
+    --ccm-shade: var(--cc-muted-bright, #C9CEE6);
+    --ccm-red: #ed5858;
+    --ccm-gold: var(--cc-amber, #E0B341);
+    --ccm-violet: var(--cc-interactive, #8E8CF0);
+    --ccm-ice: #9FD3F2;
+    --ccm-leather: #8B4A2B;
+    --ccm-leather-shade: #6E3920;
+    --ccm-ball: #F0833F;
+    --ccm-ball-shade: #CC6629;
+}
+
+.ccm-wrap { display: inline-block; line-height: 0; vertical-align: middle; }
+.ccm { display: block; width: 100%; height: 100%; overflow: visible; }
+/* Bootstrap's reboot sets svg { overflow: hidden }, which outranks the nested
+   foam finger's overflow="visible" attribute and slices the top off the finger. */
+.ccm svg { overflow: visible; }
+.ccm.ccm-head { overflow: hidden; }
+.ccm.ccm-head .ccm-lmb { display: none; }
+
+/* Default sizes; callers override with their own width/height on .ccm-wrap. */
+.ccm-size-full { width: 112px; height: 126px; }
+.ccm-size-head { width: 40px; height: 40px; }
+
+/* fills */
+.ccm .ccm-f-body { fill: var(--ccm-body); }
+.ccm .ccm-f-ink { fill: var(--ccm-ink); }
+.ccm .ccm-f-red { fill: var(--ccm-red); }
+.ccm .ccm-f-gold { fill: var(--ccm-gold); }
+.ccm .ccm-f-violet { fill: var(--ccm-violet); }
+.ccm .ccm-f-ice { fill: var(--ccm-ice); }
+.ccm .ccm-f-leather { fill: var(--ccm-leather); }
+.ccm .ccm-f-leather-shade { fill: var(--ccm-leather-shade); }
+.ccm .ccm-f-ball { fill: var(--ccm-ball); }
+.ccm .ccm-f-ball-shade { fill: var(--ccm-ball-shade); }
+.ccm .ccm-f-tongue { fill: var(--ccm-red); }
+.ccm .ccm-none { fill: none; }
+.ccm .ccm-o { stroke: var(--ccm-ink); stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.ccm .ccm-shadow { fill: var(--ccm-ink); opacity: .35; }
+.ccm .ccm-limb-o { fill: none; stroke: var(--ccm-ink); stroke-width: 4.4; stroke-linecap: round; }
+.ccm .ccm-limb { fill: none; stroke: var(--ccm-shade); stroke-width: 2.6; stroke-linecap: round; }
+.ccm .ccm-lace { stroke: var(--ccm-body); stroke-width: 1.3; stroke-linecap: round; }
+.ccm .ccm-seam { fill: none; stroke: var(--ccm-ink); stroke-width: 1.15; }
+.ccm .ccm-frown { fill: none; stroke: var(--ccm-ink); stroke-width: 1.5; stroke-linecap: round; }
+.ccm .ccm-cc { font: 400 6px Graduate, Poppins, sans-serif; fill: var(--ccm-body); text-anchor: middle; letter-spacing: .2px; }
+.ccm .ccm-cc-foam { font: 400 10px Graduate, Poppins, sans-serif; fill: var(--ccm-body); }
+
+/* rig pivots */
+.ccm g, .ccm rect, .ccm ellipse, .ccm circle { transform-box: fill-box; }
+.ccm .ccm-fig { transform-origin: 50% 100%; }
+.ccm .ccm-wave { transform-origin: 100% 100%; }
+.ccm .ccm-pump, .ccm .ccm-wag { transform-origin: 0% 100%; }
+.ccm .ccm-kick { transform-origin: 50% 0%; }
+.ccm .ccm-flag { transform-origin: 0% 50%; }
+.ccm .ccm-eyes { transform-origin: center; }
+
+/* Idle loops: only while busy. */
+.ccm-wrap.is-busy .ccm-fig { animation: ccm-bounce .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-wave { animation: ccm-wave .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-pump { animation: ccm-pump .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-wag { animation: ccm-wag .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-kick { animation: ccm-kick .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-flag { animation: ccm-flutter .3s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-look { animation: ccm-look 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-eyes { animation: ccm-blink 3.4s infinite; }
+
+@keyframes ccm-bounce { from { transform: translateY(0) scale(1, 1); } to { transform: translateY(1.5px) scale(1.035, .965); } }
+@keyframes ccm-wave { from { transform: rotate(-8deg); } to { transform: rotate(12deg); } }
+@keyframes ccm-pump { from { transform: rotate(0deg); } to { transform: rotate(-7deg); } }
+@keyframes ccm-wag { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes ccm-kick { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+@keyframes ccm-flutter { from { transform: scaleX(1) skewY(0deg); } to { transform: scaleX(.86) skewY(5deg); } }
+@keyframes ccm-look { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(.9px); } 65% { transform: translateX(-.9px); } }
+@keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
+
+/* The Griddy (pose 'griddy'). One beat = .52s: the body skips twice, each heel
+   kicks out on its own half, arms swing opposite the legs. */
+.ccm .ccm-gr-hop { transform-origin: 50% 100%; }
+.ccm .ccm-gr-legL, .ccm .ccm-gr-legR { transform-origin: 50% 0%; }
+.ccm .ccm-gr-armL { transform-origin: 100% 0%; }
+.ccm .ccm-gr-armR { transform-origin: 0% 0%; }
+.ccm .ccm-gr-shadow { transform-origin: center; }
+.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-legL { animation: ccm-gr-kickL .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-legR { animation: ccm-gr-kickR .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-swing .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-swing .52s ease-in-out infinite reverse; }
+.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow .52s ease-in-out infinite; }
+@keyframes ccm-gr-hop {
+    0%, 50%, 100% { transform: translateY(0) scale(1, 1); }
+    12% { transform: translateY(.6px) scale(1.03, .96); }
+    25% { transform: translateY(-3px) rotate(-3deg); }
+    62% { transform: translateY(.6px) scale(1.03, .96); }
+    75% { transform: translateY(-3px) rotate(3deg); }
+}
+@keyframes ccm-gr-kickL { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(32deg); } }
+@keyframes ccm-gr-kickR { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(-32deg); } }
+@keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
+@keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .ccm, .ccm * { animation: none !important; transition: none !important; }
+}
+
+/* Loader: bouncing head over a line of text. */
+.ccm-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px 16px; }
+.ccm-loader .ccm-size-head { width: 56px; height: 56px; }
+.ccm-loader-text { font-size: 14px; color: var(--cc-muted, #A4A9C2); letter-spacing: .02em; }
+
+/* Empty states: the full body standing where the message's emoji used to be. */
+.ccm-empty-mascot { display: flex; justify-content: center; margin-bottom: .4em; }
+.ccm-empty-mascot .ccm-size-full { width: 96px; height: 108px; }

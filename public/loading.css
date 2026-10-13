@@ -14,6 +14,9 @@
 	filter: drop-shadow(0 0 8px var(--cc-accent));
 }
 
+/* The mascot head that replaced .football-icon in these loaders (public/mascots.js). */
+.football-loader .ccm-loader-slot .ccm-wrap { width: 60px; height: 60px; }
+
 .loading-text {
 	margin-top: 1em;
 	font-size: 1rem;

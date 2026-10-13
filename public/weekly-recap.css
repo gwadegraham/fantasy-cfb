@@ -236,6 +236,13 @@
 }
 .recap-slide-kicker svg { width: 1em; height: 1em; }
 .recap-slide-logo { width: 66px; height: 66px; object-fit: contain; margin: 0.1em 0; }
+/* Laces / Dribbles on the hook, top-score and low-score beats (public/mascots.js). */
+.recap-slide-mascot { line-height: 0; }
+.recap-slide-mascot .ccm-size-full { width: 100px; height: 112px; }
+/* Mascot on the left, the number and its caption on the right. */
+.recap-slide-hero { display: flex; align-items: center; justify-content: center; gap: 0.9em; }
+.recap-slide-hero-num { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3em; text-align: left; min-width: 0; }
+.recap-slide.is-active .recap-slide-mascot { animation: recap-pop-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both 0.12s; }
 .recap-slide-logos { display: flex; gap: 0.7em; align-items: center; justify-content: center; flex-wrap: wrap; }
 .recap-slide-logos .recap-slide-logo { width: 54px; height: 54px; }
 .recap-slide-title { font-size: 1.35rem; font-weight: 700; color: var(--cc-text); line-height: 1.2; }
@@ -277,6 +284,7 @@
    navigation, so the beats replay each time you land on a slide. */
 .recap-slide-kicker,
 .recap-slide .recap-slide-logo,
+.recap-slide-mascot,
 .recap-slide-title,
 .recap-slide-big,
 .recap-slide-text,
@@ -333,6 +341,7 @@
     /* Keep every slide element visible with no motion. */
     .recap-slide-kicker,
     .recap-slide .recap-slide-logo,
+    .recap-slide-mascot,
     .recap-slide-title,
     .recap-slide-big,
     .recap-slide-text,

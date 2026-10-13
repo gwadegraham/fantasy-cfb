@@ -92,9 +92,10 @@
 
     <div id="scoreboard-content">
         <div class="football-loader">
-            <%# Spins while the slate loads; a football on a hoops league was
-                the most visible place the old hardcoded icon showed up. %>
-            <i class="fa-solid <%= (typeof sportIcon !== 'undefined' && sportIcon) || 'fa-football' %> football-icon"></i>
+            <%# Laces (or Dribbles on a hoops league) bounces while the slate
+                loads; a football on a hoops league was the most visible place
+                the old hardcoded icon showed up. %>
+            <span class="ccm-loader-slot" data-ccm="head" data-ccm-busy data-ccm-sport="<%= (typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? 'basketball' : 'football' %>"></span>
             <div class="loading-text">Loading the slate…</div>
         </div>
     </div>

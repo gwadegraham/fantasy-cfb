@@ -275,7 +275,8 @@ function renderPreseason(bento, data, activeYear, ctx) {
             ${own ? `<button class="uh-edit" edit-profile-btn type="button" aria-label="Edit profile" hidden>${pencil}</button>` : ''}
         </div>`
         // draft countdown (hydrated async)
-        + `<div class="uh-tile span2 uh-pre-draft" id="uh-pre-draft">
+        + `<div class="uh-tile span2 uh-pre-draft${window.ccMascot ? ' has-mascot' : ''}" id="uh-pre-draft">
+                ${window.ccMascot ? `<span class="uh-pd-mascot" aria-hidden="true">${window.ccMascot.html({ size: 'full' })}</span>` : ''}
                 <span class="uh-tlabel">${uhPoss(own, true)} draft</span>
                 <div class="uh-pd-body"><p class="uh-stub">Checking the draft schedule…</p></div>
             </div>`
@@ -657,7 +658,7 @@ async function hydrateGames(user, activeYear) {
         weeks.push(['week-17', 'Postseason']);
         const cur = window.localStorage.getItem('weekCode') || 'week-1';
         body.innerHTML = `<label class="uh-games-pick"><select uh-games-week aria-label="Week">${weeks.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-            <div class="football-loader" style="display:none"><div class="football-icon">🏈</div><p class="loading-text">Scouting for games...</p></div>
+            <div class="football-loader" style="display:none">${window.ccMascot ? `<span class="ccm-loader-slot">${window.ccMascot.html({ sport: 'football', size: 'head', busy: true })}</span>` : '<div class="football-icon">🏈</div>'}<p class="loading-text">Scouting for games...</p></div>
             <div class="schedule-grid" schedule-body data-page-sport="football"><div id="no-games-container"></div></div>`;
         const sel = body.querySelector('[uh-games-week]');
         const run = () => {
@@ -2244,7 +2245,19 @@ function showRandomNoGamesMessage() {
   const container = document.getElementById("no-games-container");
   const randomIndex = Math.floor(Math.random() * noGamesMessages.length);
   container.innerHTML = noGamesMessages[randomIndex];
+  // The My Team games drawer is football-only (data-page-sport="football").
+  mascotForEmoji(container, 'football');
 }
+
+// The empty state's emoji becomes the mascot (Laces, or Dribbles where the page
+// is about basketball). Same spot, same message; standing still, since nothing
+// is running.
+function mascotForEmoji(container, sport) {
+  if (!window.ccMascot || !container) return;
+  const em = container.querySelector('.emoji, .tiger-icon, .football-icon');
+  if (em) em.outerHTML = `<div class="ccm-empty-mascot" aria-hidden="true">${window.ccMascot.html({ size: 'full', sport: sport || window.ccMascot.sport(container) })}</div>`;
+}
+
 
 
 // The navbar owns the "My team" link + userId caching (views/partials/navbar.ejs).

@@ -223,6 +223,14 @@ function visibleGames() {
     });
 }
 
+// Laces (Dribbles on a hoops league) over an empty or failed slate. Standing
+// still: nothing is loading any more.
+function sbMascot(pose) {
+    if (!window.ccMascot) return '';
+    return '<div class="ccm-empty-mascot" aria-hidden="true">'
+        + window.ccMascot.html({ size: 'full', pose: pose, sport: isBasketball() ? 'basketball' : 'football' }) + '</div>';
+}
+
 function render() {
     var container = document.getElementById('scoreboard-content');
     var games = visibleGames();
@@ -235,7 +243,9 @@ function render() {
         var msg = sbState.games.length
             ? 'No games match this filter.'
             : 'No games scheduled this week.';
-        container.innerHTML = '<p class="sb-empty">' + msg + '</p>';
+        // The mascot only stands in for a truly empty week; a filter miss is the
+        // viewer's own doing and stays a plain line.
+        container.innerHTML = (sbState.games.length ? '' : sbMascot('cheer')) + '<p class="sb-empty">' + msg + '</p>';
         return;
     }
 
@@ -426,7 +436,7 @@ function loadWeek(week, jumpToCurrent, prevGames) {
     }).catch(function (err) {
         console.error('Scoreboard load failed:', err);
         document.getElementById('scoreboard-content').innerHTML =
-            '<p class="sb-empty">Couldn\'t load the slate. Try refreshing.</p>';
+            sbMascot('icepack') + '<p class="sb-empty">Couldn\'t load the slate. Try refreshing.</p>';
     });
 }
 
