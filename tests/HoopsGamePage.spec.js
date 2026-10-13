@@ -327,6 +327,24 @@ describe('build', () => {
         expect(p.away.altColor).toBeNull();
     });
 
+    test('each side carries the official NET as ncaa.com shows it today (#533), null before it publishes', async () => {
+        const HoopsNetRank = require('../models/hoopsNetRank');
+        let p = await gamePage.build(500);
+        expect(p.home.net).toBeNull();
+        expect(p.away.net).toBeNull();
+        teamPage.clearRankCache();   // drops the cached NET too
+        await HoopsNetRank.create([
+            { season: SEASON, week: 8, teamId: 1, rank: 6, quad1: { w: 4, l: 2 } },
+            { season: SEASON, week: 8, teamId: 2, rank: 70 },
+            // A part-written newer week: scoring passes it over, so the page does too.
+            { season: SEASON, week: 9, teamId: 1, rank: 1 }
+        ]);
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        p = await gamePage.build(500);
+        expect(p.home.net).toMatchObject({ rank: 6, quads: [{ w: 4, l: 2 }, null, null, null] });
+        expect(p.away.net).toMatchObject({ rank: 70 });
+    });
+
     test('each side reads the game from its OWN point of view; the box is the stored one', async () => {
         const get = stubCbbd();
         await HoopsBoxScore.create({ gameId: 500, season: SEASON, home: { teamId: 1, points: 75 }, away: { teamId: 2, points: 60 } });

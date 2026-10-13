@@ -17,6 +17,7 @@ const HoopsTeamStats = require('../models/hoopsTeamStats');
 const roster = require('./hoops-roster');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
+const { latestNet, clearNetCache } = require('./hoops-net');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { entryFor } = require('./roster-teams');
 const { pickLogo } = require('../public/logo.js');
@@ -36,7 +37,7 @@ async function cachedRanks(season, week, now = Date.now()) {
     rankCache.set(key, { at: now, ranks });
     return ranks;
 }
-function clearRankCache() { rankCache.clear(); weekCache.clear(); }
+function clearRankCache() { rankCache.clear(); weekCache.clear(); clearNetCache(); }
 
 // THE week a game still to play is quadranted against: the latest week of
 // the season in which ANY game has gone final. Season-wide, not per team —
@@ -170,7 +171,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     const team = await HoopsTeam.findOne({ id, season: yr }).lean();
     if (!team) return null;
 
-    const [listed, rated, confTeams, stats, owner, values] = await Promise.all([
+    const [listed, rated, confTeams, stats, owner, values, net] = await Promise.all([
         HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean(),
         HoopsTeam.find({ season: yr, 'preseason.adjOE': { $type: 'number' } },
             { 'preseason.adjOE': 1, 'preseason.adjDE': 1, _id: 0 }).lean(),
@@ -179,7 +180,8 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
             : [],
         HoopsTeamStats.findOne({ season: yr, teamId: id }, { _id: 0, __v: 0 }).lean(),
         ownership(league, yr, id),
-        quadrantValues(league)
+        quadrantValues(league),
+        latestNet(yr, [id])
     ]);
 
     // Jersey numbers, joined on athleteId from the once-a-season roster
@@ -285,6 +287,11 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
             deRank: rankAmong(des, pre.adjDE, false),
             ratedTeams: rated.length
         } : null,
+        // The official NCAA NET and its Quad records as ncaa.com shows them
+        // today (#533), or null before it publishes. NOT the quadrants in
+        // `games`: NCAA re-sorts its quadrants daily on the current NET,
+        // while ours are banked when each game is played.
+        net: net[String(id)] || null,
         owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName } : null,
         quadrantValues: values,
         games: out,

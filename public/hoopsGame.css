@@ -79,6 +79,14 @@
 .hg-form-row .nm { font-weight: 700; }
 .hg-form-row .chips { display: flex; gap: 5px; }
 .hg-form-row .sk { color: var(--cc-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* ---- official NET (#533) ---- */
+.hg-net { padding: 2px 0; }
+.hg-net-row { display: grid; grid-template-columns: 52px 44px repeat(4, minmax(0, 1fr)); gap: 6px; align-items: center; padding: 9px 14px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.hg-net-row + .hg-net-row { border-top: 1px solid var(--cc-border); }
+.hg-net-row .nm { font-weight: 700; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hg-net-row .rk { color: var(--cc-accent); font-weight: 800; }
+.hg-net-row .q { text-align: center; white-space: nowrap; }
+.hg-net-row .q small { color: var(--cc-muted-2); font-size: 10px; margin-right: 3px; }
 .hg-kps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .hg-kp { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: var(--cc-r-md); padding: 10px 12px; min-width: 0; }
 .hg-kp .k { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

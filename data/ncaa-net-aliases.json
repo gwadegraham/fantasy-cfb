@@ -1,0 +1,21 @@
+{
+  "_about": "NCAA NET page name -> hoopsteams `school`, for the names modules/hoops-net.js cannot match on its own (#533). Each entry was checked against the hoopsteams row it pairs with. A name that matches nothing fails the hoops-net job loudly, listing it: add it here. notOurs: NCAA names with NO hoopsteams row (left out of the match, named in every run's summary). notRanked: hoopsteams schools NCAA does not rank (they keep their CBBD-adjusted or Torvik rank in ranksFor, and the run notes them as a warning). Both start empty; add to them only after checking.",
+  "notOurs": [],
+  "notRanked": [],
+  "aliases": {
+    "A&M-Corpus Christi": "Texas A&M-Corpus Christi",
+    "Alcorn": "Alcorn State",
+    "Army West Point": "Army",
+    "CSU Bakersfield": "Cal State Bakersfield",
+    "Central Conn. St.": "Central Connecticut",
+    "Col. of Charleston": "Charleston",
+    "Lamar University": "Lamar",
+    "Mississippi Val.": "Mississippi Valley State",
+    "Southeastern La.": "SE Louisiana",
+    "Southern California": "USC",
+    "Southern U.": "Southern",
+    "St. Thomas (MN)": "St. Thomas-Minnesota",
+    "USC Upstate": "South Carolina Upstate",
+    "UTRGV": "UT Rio Grande Valley"
+  }
+}

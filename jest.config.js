@@ -141,6 +141,22 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The official NET (#533): ncaa.com keeps no history either, and the
+        // job's branches are the same kind — each decides whether a lost
+        // day is loud. The parser and matcher decide whether a team is
+        // ranked at all, and an unranked team grades as Q4.
+        "./modules/hoops-net-job.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-net.js": {
+            statements: 100,
+            branches: 100,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-game-page.js": {
             statements: 97,
             branches: 80,

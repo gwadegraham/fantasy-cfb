@@ -78,6 +78,37 @@ test('the hero: record, conference record, record vs Q1, and Torvik', async () =
 
 const tab = (name) => document.querySelector('[data-tab="' + name + '"]').click();
 
+describe('official NET (#533)', () => {
+    const NET = { rank: 12, record: { w: 9, l: 2 }, throughGames: '2026-12-09T00:00:00.000Z',
+        quads: [{ w: 3, l: 1 }, { w: 2, l: 1 }, null, { w: 4, l: 0 }] };
+
+    test('a NET chip in the hero, and the official team sheet on the Resume, credited to NCAA', async () => {
+        await render(payload({ net: NET }));
+        expect(txt('.ht-chips')).toMatch(/^NET #12/);
+        expect(txt('.ht-net')).toBe('#12NET3–1Quad 12–1Quad 2—Quad 34–0Quad 4');
+        const head = Array.from(document.querySelectorAll('.sp-h')).find(h => /Official NET/.test(h.textContent));
+        expect(head.textContent).toBe('Official NETNET: NCAA · through Dec 9');
+    });
+
+    test('before the NET publishes: no chip, no card', async () => {
+        await render(payload({ net: null }));
+        expect(txt('.ht-chips')).not.toMatch(/NET/);
+        expect(document.querySelector('.ht-net')).toBeNull();
+    });
+
+    test('only on the Resume tab', async () => {
+        await render(payload({ net: NET }), 200, 'schedule');
+        expect(document.querySelector('.ht-net')).toBeNull();
+    });
+
+    test('no Through Games date: credited without one', async () => {
+        await render(payload({ net: Object.assign({}, NET, { throughGames: null }) }));
+        const head = Array.from(document.querySelectorAll('.sp-h')).find(h => /Official NET/.test(h.textContent));
+        expect(head.textContent).toBe('Official NETNET: NCAA');
+        expect(window.ccHoopsTeam.netDay('garbage')).toBe('');
+    });
+});
+
 test('the team sheet: four tiles — each quadrant\'s record, what a win pays, and what is left', async () => {
     await render(payload());
     const tile = (n) => document.querySelector('.ht-tile[data-q="' + n + '"]');
