@@ -475,7 +475,13 @@ function animateScores(root) {
 // (/standings/last-updated → JobRun) — the honest refresh time — and only falls
 // back to the legacy per-user `lastUpdated` string if no run history exists yet
 // (fresh DB / pre-JobRun data), so the stamp never goes blank.
+// While a scoring job is in flight the badge re-checks every LU_REPOLL_MS, so
+// the mascot stops bouncing (and the time moves on) when the job finishes rather
+// than when the manager happens to reload. Nothing polls while no job runs.
+const LU_REPOLL_MS = 30 * 1000;
+let luRepoll = null;
 async function displayLastUpdated(data) {
+    clearTimeout(luRepoll);
     const el = document.querySelector('[last-updated]');
     if (!el) return;
 
@@ -511,6 +517,7 @@ async function displayLastUpdated(data) {
         + mark
         + `<span class="lu-text">Updated <b>${escapeHtml(relativeTime(when))}</b></span>`
         + `</span>`;
+    if (busy) luRepoll = setTimeout(() => displayLastUpdated(data), LU_REPOLL_MS);
 }
 
 // Absolute stamp, e.g. "7/23 at 11:58 PM" (shown in the badge's hover tooltip).

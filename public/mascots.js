@@ -5,10 +5,13 @@
 // design/mascots/campus-clash-mascots.html.
 //
 //   ccMascot.html({ sport, pose, size, busy, label })  → markup string
-//   ccMascot.loader(text, { sport })                   → a loading block (bouncing head + text)
 //   ccMascot.hydrate(root)                             → fills every [data-ccm] placeholder under root
 //   ccMascot.setBusy(el, on)                           → start/stop the idle loop on a rendered mascot
 //   ccMascot.sport()                                   → the sport this page is about
+//
+// Decorative by default (aria-hidden): every placement sits next to text that
+// already says what's happening, so a screen reader announcing "Laces, image"
+// on each loader is noise. Pass a `label` to make one a real image.
 //
 // size: 'full' (whole body, for heroes and empty states) or 'head' (the same
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
@@ -248,8 +251,8 @@
         const sp = o.sport === 'basketball' ? 'basketball' : 'football';
         const head = o.size === 'head';
         const u = 'ccm' + (uid++);
-        const label = o.label || NAME[sp];
-        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" role="img" aria-label="${esc(label)}">`
+        const a11y = o.label ? `role="img" aria-label="${esc(o.label)}"` : 'aria-hidden="true" focusable="false"';
+        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" data-mascot="${NAME[sp]}" ${a11y}>`
             + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
     }
 
@@ -257,13 +260,6 @@
         const o = Object.assign({ size: 'full' }, opts);
         if (!o.sport) o.sport = sport();
         return `<span class="ccm-wrap ccm-size-${o.size}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
-    }
-
-    // A loading block: the bouncing head plus a line of text. Drop-in for the
-    // football-icon loaders.
-    function loader(text, opts) {
-        const o = Object.assign({ size: 'head', busy: true }, opts);
-        return `<div class="ccm-loader" role="status">${html(o)}<div class="ccm-loader-text">${esc(text || 'Loading…')}</div></div>`;
     }
 
     // <span data-ccm="head|full" data-ccm-sport="football|basketball" data-ccm-pose="…" data-ccm-busy></span>
@@ -288,7 +284,7 @@
         if (wrap) wrap.classList.toggle('is-busy', !!on);
     }
 
-    window.ccMascot = { html, svg, loader, hydrate, setBusy, sport };
+    window.ccMascot = { html, svg, hydrate, setBusy, sport };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => hydrate(document));
     else hydrate(document);

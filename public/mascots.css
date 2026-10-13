@@ -111,11 +111,6 @@
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }
 
-/* Loader: bouncing head over a line of text. */
-.ccm-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px 16px; }
-.ccm-loader .ccm-size-head { width: 56px; height: 56px; }
-.ccm-loader-text { font-size: 14px; color: var(--cc-muted, #A4A9C2); letter-spacing: .02em; }
-
 /* Empty states: the full body standing where the message's emoji used to be. */
 .ccm-empty-mascot { display: flex; justify-content: center; margin-bottom: .4em; }
 .ccm-empty-mascot .ccm-size-full { width: 96px; height: 108px; }

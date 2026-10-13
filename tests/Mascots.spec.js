@@ -22,8 +22,8 @@ function load({ leagueSport, body = '' } = {}) {
     return window.ccMascot;
 }
 
-const isDribbles = html => /aria-label="Dribbles"/.test(html);
-const isLaces = html => /aria-label="Laces"/.test(html);
+const isDribbles = html => /data-mascot="Dribbles"/.test(html);
+const isLaces = html => /data-mascot="Laces"/.test(html);
 
 describe('which mascot a page gets', () => {
     test('a football league gets Laces', () => {
@@ -79,6 +79,24 @@ describe('placeholders and state', () => {
         const m = load({});
         const ids = [m.html(), m.html({ sport: 'basketball' })].join('').match(/clipPath id="([^"]+)"/g);
         expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    // Every placement sits beside text that already says what's happening; a
+    // screen reader announcing "Laces, image" on each loader is noise.
+    test('decorative by default; a label makes it a real image', () => {
+        const m = load({});
+        const plain = m.html();
+        expect(plain).toContain('aria-hidden="true"');
+        expect(plain).not.toContain('role="img"');
+        const named = m.html({ label: 'Laces <celebrating>' });
+        expect(named).toContain('role="img"');
+        expect(named).toContain('aria-label="Laces &lt;celebrating&gt;"');
+        expect(named).not.toContain('aria-hidden');
+    });
+
+    test('a pinned football page hydrates Laces even inside a basketball league', () => {
+        load({ leagueSport: 'basketball', body: '<main data-page-sport="football"><span id="s" data-ccm="head"></span></main>' });
+        expect(isLaces(document.getElementById('s').innerHTML)).toBe(true);
     });
 
     test('the ice-pack pose frowns instead of smiling', () => {
