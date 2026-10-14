@@ -52,17 +52,17 @@ const MIN_PORTAL = 500;
 const MIN_MATCH = 0.9;
 // Ranked classes that match our teams: 146 of 147 measured.
 const MIN_CLASSES = 50;
-// Stored rows that count as a whole season on file. D-I is 365.
-const MIN_TEAMS = 300;
 
 // How a season's stored rows stand: whether they are one whole fetch for the
-// right year, and when it was taken.
-async function storedFor(season) {
+// right year, and when it was taken. "Whole" is one row per team the season
+// has — a fixed floor would never be met by a season with fewer teams on
+// file, and the job would then spend its two calls every single day.
+async function storedFor(season, teamCount) {
     const groups = await HoopsTeamTurnover.aggregate([
         { $match: { season } },
         { $group: { _id: '$fromYear', n: { $sum: 1 }, oldest: { $min: '$fetchedAt' } } }
     ]);
-    const whole = groups.length === 1 && groups[0]._id === portalYear(season) && groups[0].n >= MIN_TEAMS;
+    const whole = groups.length === 1 && groups[0]._id === portalYear(season) && groups[0].n >= Math.max(1, teamCount);
     return { whole, oldest: groups.length ? new Date(groups[0].oldest) : null };
 }
 
@@ -91,12 +91,12 @@ async function writeSeason(season, year, byTeam, fetchedAt) {
 // failure.
 async function refreshSeason(season, now) {
     const year = portalYear(season);
-    const [stored, first, teams] = await Promise.all([
-        storedFor(season),
+    const [first, teams] = await Promise.all([
         HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: 1 }).lean(),
         HoopsTeam.find({ season }, { id: 1, school: 1, _id: 0 }).lean()
     ]);
     if (!teams.length) return { skip: `${season}: no teams ingested — nothing to attach turnover to` };
+    const stored = await storedFor(season, teams.length);
 
     const tip = first ? new Date(first.startDate).getTime() : null;
     if (tip != null && now.getTime() >= tip) {
@@ -176,5 +176,5 @@ async function run({ now = new Date() } = {}) {
 
 module.exports = {
     run, refreshSeason, storedFor, writeSeason,
-    JOB_NAME, LABEL, PORTAL_PATH, CLASS_PATH, REFRESH_MS, MIN_PORTAL, MIN_MATCH, MIN_CLASSES, MIN_TEAMS
+    JOB_NAME, LABEL, PORTAL_PATH, CLASS_PATH, REFRESH_MS, MIN_PORTAL, MIN_MATCH, MIN_CLASSES
 };

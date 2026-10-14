@@ -152,6 +152,19 @@ describe('cadence', () => {
         expect(get).toHaveBeenCalledTimes(2);
     });
 
+    // QA on #550: a fixed 300-row floor was never met by a season with fewer
+    // teams on file, so the job refetched every day and called it success.
+    test('a season with few teams is "on file" once every team has a row', async () => {
+        await HoopsTeam.deleteMany({ id: { $gt: 250 } });
+        // Moves among the 250 left, or the match-rate guard refuses them.
+        const get = stubCbbd({ p: portal(1500, (i) => ((i - 1) % 250) + 1) });
+        await job.run({ now: OCT });
+        expect(await HoopsTeamTurnover.countDocuments({ season: SEASON })).toBe(250);
+        const next = await job.run({ now: at(OCT, DAY) });
+        expect(next.status).toBe('skipped');
+        expect(get).toHaveBeenCalledTimes(2);
+    });
+
     test('rows from the wrong CBBD year are not "on file"', async () => {
         await HoopsTeamTurnover.insertMany(Array.from({ length: N }, (_, k) => ({
             season: SEASON, teamId: k + 1, fromYear: 2027, fetchedAt: OCT,

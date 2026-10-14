@@ -24,14 +24,17 @@ const MAX_LISTED = 15;
 // What a portal row says happened to the player:
 //   'moved' — a new school other than the one they left
 //   'left'  — gone, no new school listed (yet, or ever: pro, overseas)
-//   null    — stayed: withdrew with no new school, or "transferred" to the
-//             school they left (CBBD lists both; 37 such rows in 2026)
+//   null    — stayed: withdrew, or "transferred" to the school they left
+//             (38 such rows in 2026)
+//
+// Withdrawn wins over a listed destination: the one 2026 row with both
+// (Kyle Marshall, Air Force -> Bucknell) is on Air Force's 2026-27 roster.
 function outcome(r) {
     const from = r.origin && r.origin.id != null ? Number(r.origin.id) : null;
     const to = r.destination && r.destination.id != null ? Number(r.destination.id) : null;
-    if (from == null) return null;
+    if (from == null || r.eligibility === 'Withdrawn') return null;
     if (to != null) return to === from ? null : 'moved';
-    return r.eligibility === 'Withdrawn' ? null : 'left';
+    return 'left';
 }
 
 const num = (x) => (x == null || x === '' || !Number.isFinite(Number(x)) ? null : Number(x));
@@ -78,7 +81,9 @@ function summarize(portalRows, classRows, teams) {
     const arrivals = new Map();
     const departures = new Map();
     const push = (map, id, m) => { if (!map.has(id)) map.set(id, []); map.get(id).push(m); };
-    // A player CBBD lists twice for the same school pair counts once.
+    // A row CBBD sends twice counts once. Keyed on CBBD's own row id, so two
+    // players who share a name and a move are not merged; name + move only
+    // when a row has no id.
     const seen = new Set();
     let rows = 0, matched = 0;
 
@@ -88,7 +93,7 @@ function summarize(portalRows, classRows, teams) {
         if (!what || !nameOf(r)) continue;
         const from = Number(r.origin.id);
         const to = what === 'moved' ? Number(r.destination.id) : null;
-        const key = `${nameOf(r)}|${from}|${to}`;
+        const key = r.id != null ? `id:${r.id}` : `${nameOf(r)}|${from}|${to}`;
         if (seen.has(key)) continue;
         seen.add(key);
         rows++;

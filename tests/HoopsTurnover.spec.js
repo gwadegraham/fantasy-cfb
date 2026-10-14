@@ -40,6 +40,12 @@ describe('outcome', () => {
         expect(outcome(portal('A', 'B', 1, null, { eligibility: 'Withdrawn' }))).toBeNull();
     });
 
+    // 1 row in 2026: withdrawn WITH a destination. He is on his old
+    // school's 2026–27 roster, so withdrawn wins.
+    test('withdrawn stayed even when a destination is listed', () => {
+        expect(outcome(portal('Kyle', 'Marshall', 1, 2, { eligibility: 'Withdrawn' }))).toBeNull();
+    });
+
     // 2 rows in 2026: "transferred" to the school they left.
     test('a destination that is the origin stayed', () => {
         expect(outcome(portal('A', 'B', 1, 1))).toBeNull();
@@ -109,10 +115,20 @@ describe('summarize', () => {
         expect(two.in.topStars).toBe(2);
     });
 
-    test('a player listed twice for the same move counts once', () => {
-        const { byTeam } = summarize([portal('Dup', 'Licate', 1, 2), portal('Dup', 'Licate', 1, 2)], [], TEAMS);
+    test('a row CBBD sends twice counts once', () => {
+        const { byTeam } = summarize([portal('Dup', 'Licate', 1, 2, { id: 7 }), portal('Dup', 'Licate', 1, 2, { id: 7 })], [], TEAMS);
         expect(byTeam.get(2).in.count).toBe(1);
         expect(byTeam.get(1).out.count).toBe(1);
+    });
+
+    test('two players who share a name and a move are not merged', () => {
+        const { byTeam } = summarize([portal('Same', 'Name', 1, 2, { id: 7 }), portal('Same', 'Name', 1, 2, { id: 8 })], [], TEAMS);
+        expect(byTeam.get(2).in.count).toBe(2);
+    });
+
+    test('rows with no id fall back to name and move', () => {
+        const { byTeam } = summarize([portal('No', 'Id', 1, 2, { id: null }), portal('No', 'Id', 1, 2, { id: null })], [], TEAMS);
+        expect(byTeam.get(2).in.count).toBe(1);
     });
 
     test('a nameless row is skipped, not stored with a blank name', () => {
