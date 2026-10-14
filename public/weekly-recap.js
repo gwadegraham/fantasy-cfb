@@ -142,13 +142,14 @@
         const mascot = (pose && !logo && window.ccMascot)
             ? `<div class="recap-slide-mascot">${window.ccMascot.html({ sport, pose, size: 'full' })}</div>` : '';
         // With a mascot, he stands beside the number instead of stacking above it,
-        // so the slide stays as short as one without him. He also replaces the
-        // kicker's icon (flame, trophy, heartbreak): his pose already says it.
+        // so the slide stays as short as one without him. The kicker is text
+        // only: its 15px icon (flame, snowflake, heartbreak) was all but
+        // invisible on laptop and phone, and said nothing the words didn't.
         const body = mascot && big
             ? `<div class="recap-slide-hero">${mascot}<div class="recap-slide-hero-num">${big}${sub}</div></div>${text}`
             : `${mascot}${big}${text}${sub}`;
         return `<div class="recap-slide tone-${s.tone || 'neutral'}" data-slide-id="${s.id || ''}">
-            <div class="recap-slide-kicker">${(window.ccIcon && !mascot) ? window.ccIcon(s.icon, { size: 15 }) : ''} ${escapeHtml(s.kicker || '')}</div>
+            <div class="recap-slide-kicker">${escapeHtml(s.kicker || '')}</div>
             ${logo}
             <div class="recap-slide-title">${escapeHtml(s.title || '')}</div>
             ${body}${cta}
