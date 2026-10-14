@@ -94,9 +94,9 @@ describe('basketball: Dribbles has his own moves', () => {
         expect(p.seasonhigh).toEqual({ mascot: 'Dribbles', pose: 'dunkhang' });
     });
 
-    test('an untied #1 rank gets his "too small", not the Heisman', () => {
+    test('an untied #1 rank gets him cutting down the net, not the Heisman', () => {
         const p = posesFor('basketball', recap({ rank: 1 }));
-        expect(p.rank).toEqual({ mascot: 'Dribbles', pose: 'toosmall' });
+        expect(p.rank).toEqual({ mascot: 'Dribbles', pose: 'netcut' });
     });
 
     test('a league-low week gets his own rain cloud', () => {
@@ -127,12 +127,12 @@ describe('the drawing matches the pose', () => {
         window.ccRecap.closePopup();
     });
 
-    test('on basketball, Dribbles pats "too small" at #1 and hangs from the rim on a season high', () => {
+    test('on basketball, Dribbles cuts down the net at #1 and hangs from the rim on a season high', () => {
         load('basketball');
         window.ccRecap.showPopup({ league: 'x', recaps: [recap({ rank: 1, isSeasonHigh: true })] }, 'u1');
         const has = (id, cls) => !!document.querySelector(`.recap-slide[data-slide-id="${id}"] .recap-slide-mascot .${cls}`);
-        expect([has('rank', 'ccm-ts-pat'), has('rank', 'ccm-dh-swing')]).toEqual([true, false]);
-        expect([has('seasonhigh', 'ccm-dh-swing'), has('seasonhigh', 'ccm-ts-pat')]).toEqual([true, false]);
+        expect([has('rank', 'ccm-nc-snip'), has('rank', 'ccm-dh-swing')]).toEqual([true, false]);
+        expect([has('seasonhigh', 'ccm-dh-swing'), has('seasonhigh', 'ccm-nc-snip')]).toEqual([true, false]);
         window.ccRecap.closePopup();
     });
 
