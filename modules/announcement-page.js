@@ -35,7 +35,8 @@ const PAGES = {
         docTitle: 'Campus Clash Hardwood',
         title: 'Campus Clash Hardwood — fantasy college basketball',
         desc: 'Draft ten teams and ride them from November tip-off to the Final Four. '
-            + 'How the draft, the scoring and March work, and how to join.',
+            + 'How the draft, the scoring, the weekly Captain and head-to-head games, '
+            + 'and March work, and how to join.',
         image: '/images/hardwood-og.png',
         imageType: 'image/png',
         imageAlt: 'The Campus Clash Hardwood badge',
