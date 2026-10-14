@@ -234,52 +234,96 @@ describe('fetchTeams', () => {
     });
 });
 
-describe('logoIdsThatExist', () => {
-    // The function this whole finding was about. The CFBD logo CDN only hosts
-    // schools CFBD knows — football schools — so 101 of 365 basketball teams
-    // have nothing there, and synthesising the URL anyway gave them 16 links
-    // that all 403. Nothing detected it, because the check that existed
-    // measured array length, which is 16 for anyone with a sourceId.
-    const okFor = (ids) => async (url) => ({ ok: ids.some(id => url.includes(`/${id}.png`)) });
+describe('logoUrlsThatExist', () => {
+    // CBBD hands over the URLs now (#508); this checks they load. It exists
+    // because the first ingest stored 101 sets of dead links and nothing
+    // noticed — the check that existed measured array length.
+    const U = (id) => `https://cdn.collegefootballdata.com/cbb-logos/500/${id}.png`;
+    const okFor = (ids) => async (url) => {
+        const ok = ids.some(id => url === U(id));
+        return { ok, status: ok ? 200 : 404 };
+    };
+    const FAST = { retryDelayMs: 0 };
 
-    test('keeps only the ids the CDN actually serves', async () => {
-        const found = await client.logoIdsThatExist(['333', '2561'], { fetchImpl: okFor(['333']) });
-        expect([...found]).toEqual(['333']);
+    test('keeps only the URLs that load', async () => {
+        const found = await client.logoUrlsThatExist([U(333), U(2561)], { ...FAST, fetchImpl: okFor(['333']) });
+        expect([...found]).toEqual([U(333)]);
     });
 
-    test('a probe that throws counts as no logo, not as a logo', async () => {
-        // Storing a URL we could not confirm is the failure this exists to stop.
-        const found = await client.logoIdsThatExist(['333'], {
-            fetchImpl: async () => { throw new Error('CDN unreachable'); }
+    test('probes the URL it is given, with HEAD, and nothing else', async () => {
+        const seen = [];
+        await client.logoUrlsThatExist([U(333)], {
+            ...FAST, fetchImpl: async (u, o) => { seen.push([u, o.method]); return { ok: true }; }
+        });
+        expect(seen).toEqual([[U(333), 'HEAD']]);
+    });
+
+    // The retry #508 asked for: 9 of 5,840 probes hit a network error and were
+    // 200 on a second try, and a miss stores [] until the next ingest.
+    test('a transient network error is retried, not stored as "no logo"', async () => {
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(333)], {
+            ...FAST, fetchImpl: async () => { if (++calls === 1) throw new TypeError('fetch failed'); return { ok: true }; }
+        });
+        expect(found.has(U(333))).toBe(true);
+        expect(calls).toBe(2);
+    });
+
+    test('so is a 5xx or a 429', async () => {
+        const answers = [{ ok: false, status: 503 }, { ok: false, status: 429 }, { ok: true, status: 200 }];
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(333)], { ...FAST, fetchImpl: async () => answers[calls++] });
+        expect(found.size).toBe(1);
+        expect(calls).toBe(3);
+    });
+
+    test('but a 404 or 403 is the CDN\'s answer, and is not retried', async () => {
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(1), U(2)], {
+            ...FAST, fetchImpl: async (u) => { calls++; return { ok: false, status: u === U(1) ? 404 : 403 }; }
         });
         expect(found.size).toBe(0);
+        expect(calls).toBe(2);
     });
 
-    test('drops falsy ids and de-duplicates', async () => {
-        const seen = [];
-        await client.logoIdsThatExist(['333', '333', null, undefined, ''], {
-            fetchImpl: async (u) => { seen.push(u); return { ok: true }; }
+    test('a probe that fails on every attempt counts as no logo', async () => {
+        // Storing a URL we could not confirm is the failure this exists to stop.
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(333)], {
+            ...FAST, attempts: 3, fetchImpl: async () => { calls++; throw new Error('CDN unreachable'); }
         });
-        expect(seen).toHaveLength(1);
+        expect(found.size).toBe(0);
+        expect(calls).toBe(3);
     });
 
-    test('probes one size per team, at the size that exists', async () => {
-        const seen = [];
-        await client.logoIdsThatExist(['333'], {
-            fetchImpl: async (u, o) => { seen.push([u, o.method]); return { ok: true }; }
+    test('each attempt carries a timeout, so a stalled socket cannot hold the batch', async () => {
+        // Without one, undici waits ~300s per attempt — far past Heroku's 30s.
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(333)], {
+            ...FAST, timeoutMs: 20,
+            fetchImpl: (u, o) => new Promise((resolve, reject) => {
+                calls++;
+                if (!o.signal) return;   // no signal: hangs forever, test times out
+                o.signal.addEventListener('abort', () => reject(o.signal.reason));
+            })
         });
-        expect(seen).toHaveLength(1);
-        // 500 because it is the only size ESPN serves — probing football's /16/
-        // would 404 for every team and store no logos at all.
-        expect(seen[0][0]).toContain('/ncaa/500/333.png');
-        expect(seen[0][1]).toBe('HEAD');
+        expect(found.size).toBe(0);
+        expect(calls).toBe(3);
+    }, 2000);
+
+    test('drops empty and non-string entries and de-duplicates', async () => {
+        const seen = [];
+        await client.logoUrlsThatExist([U(333), U(333), null, undefined, '', 42], {
+            ...FAST, fetchImpl: async (u) => { seen.push(u); return { ok: true }; }
+        });
+        expect(seen).toEqual([U(333)]);
     });
 
     test('batches rather than firing 365 at once', async () => {
         let inFlight = 0, peak = 0;
-        const ids = Array.from({ length: 12 }, (_, i) => String(i));
-        await client.logoIdsThatExist(ids, {
-            batch: 4,
+        const urls = Array.from({ length: 12 }, (_, i) => U(i));
+        await client.logoUrlsThatExist(urls, {
+            ...FAST, batch: 4,
             fetchImpl: async () => {
                 inFlight++; peak = Math.max(peak, inFlight);
                 await new Promise(r => setTimeout(r, 1));
@@ -289,11 +333,12 @@ describe('logoIdsThatExist', () => {
         expect(peak).toBeLessThanOrEqual(4);
     });
 
-    test('an empty list makes no requests', async () => {
+    test('an empty or missing list makes no requests', async () => {
         const seen = [];
-        const found = await client.logoIdsThatExist([], { fetchImpl: async (u) => { seen.push(u); return { ok: true }; } });
+        const fetchImpl = async (u) => { seen.push(u); return { ok: true }; };
+        expect((await client.logoUrlsThatExist([], { fetchImpl })).size).toBe(0);
+        expect((await client.logoUrlsThatExist(undefined, { fetchImpl })).size).toBe(0);
         expect(seen).toHaveLength(0);
-        expect(found.size).toBe(0);
     });
 });
 

@@ -23,8 +23,7 @@ const hoopsGameSchema = new mongoose.Schema({
     // `unique` already creates the index; declaring both reads as two.
     id: { type: Number, required: true, unique: true },
 
-    // The ESPN id, and ALSO the id CFBD's logo CDN is keyed on, so basketball
-    // team logos come free off the existing CDN. A STRING from the API
+    // The game's ESPN id. A STRING from the API
     // ("401918976"), kept as one rather than coerced — nothing does arithmetic
     // on it and a leading zero would be a silent corruption.
     sourceId: { type: String },

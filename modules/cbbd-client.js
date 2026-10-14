@@ -170,40 +170,56 @@ async function fetchTeams(season) {
     return cbbdGet('/teams', { season });
 }
 
-// Which of these ESPN ids actually have a logo, checked before any URL is
-// stored.
+// Which of these logo URLs actually load, checked before any is stored.
 //
-// Kept even though ESPN currently serves all 365, because the reason it exists
-// has not gone away: the first version of this ingest synthesised URLs from
-// sourceId and 101 of 365 were dead, and nothing noticed because the check
-// measured array length. A probe is the only thing that distinguishes "we have
-// a logo" from "we built a string".
+// CBBD's /teams now sends a `logos` array per team (#508), so the URL is the
+// API's, not one we build. The probe stays anyway, because the reason it exists
+// has not gone away: the first version of this ingest synthesised URLs and 101
+// of 365 were dead, and nothing noticed because the check measured array
+// length. A probe is the only thing that distinguishes "we have a logo" from
+// "we were handed a string".
 //
-// One HEAD settles it because ESPN serves exactly one size, light and dark
-// together — verified on Gonzaga across eight sizes, only 500 exists.
+// The caller passes ONE URL per team (the largest light one). Measured 7 Oct
+// 2026: every one of the 5,840 URLs across all 365 teams returned 200, so one
+// size standing in for the ladder is a fair check.
+//
+// RETRIED, because a miss is sticky. That same sweep hit 9 network errors in
+// 5,840 requests, all 200 on a second try — and a probe that errors stores []
+// for that team until someone re-runs the ingest. Retried: a throw, a 5xx, a
+// 429. Not retried: a 403/404, which is the CDN's actual answer.
 //
 // Free: a CDN request, not a CBBD call, so it costs nothing against the quota.
 // Batched because 365 sequential round trips would run past Heroku's ceiling.
-// 500, because it is the ONLY size ESPN serves. Probing /16/ — football's
-// smallest — would have 404'd for every team and stored no logos at all.
-const LOGO_PROBE = 'https://a.espncdn.com/i/teamlogos/ncaa/500/';
-async function logoIdsThatExist(sourceIds, { batch = 25, fetchImpl } = {}) {
+// TIMED OUT per attempt. Without it one stalled socket holds its batch for
+// undici's ~300s default, retried twice — far past Heroku's 30s, which answers
+// H12 while the handler keeps running and invites a second click.
+async function logoUrlsThatExist(urls, { batch = 25, attempts = 3, retryDelayMs = 250, timeoutMs = 5000, fetchImpl } = {}) {
     const doFetch = fetchImpl || fetch;
-    const ids = [...new Set(sourceIds.filter(Boolean).map(String))];
+    const list = [...new Set((urls || []).filter(u => typeof u === 'string' && u))];
     const found = new Set();
-    for (let i = 0; i < ids.length; i += batch) {
-        const slice = ids.slice(i, i + batch);
-        await Promise.all(slice.map(async (id) => {
+    const probe = async (url) => {
+        for (let i = 0; i < attempts; i++) {
+            if (i && retryDelayMs) await new Promise(r => setTimeout(r, retryDelayMs * i));
             try {
-                const r = await doFetch(`${LOGO_PROBE}${id}.png`, { method: 'HEAD' });
-                if (r && r.ok) found.add(id);
+                const r = await doFetch(url, { method: 'HEAD', signal: AbortSignal.timeout(timeoutMs) });
+                if (r && r.ok) return true;
+                const status = r && r.status;
+                if (!(status >= 500 || status === 429)) return false;
             } catch (e) {
-                // A probe that errors is treated as "no logo". Storing a URL we
-                // could not confirm is the failure this function exists to stop.
+                // Fall through and retry. A probe that errors on every attempt
+                // counts as "no logo": storing a URL we could not confirm is the
+                // failure this function exists to stop.
             }
+        }
+        return false;
+    };
+    for (let i = 0; i < list.length; i += batch) {
+        const slice = list.slice(i, i + batch);
+        await Promise.all(slice.map(async (url) => {
+            if (await probe(url)) found.add(url);
         }));
     }
     return found;
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoIdsThatExist, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
+module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoUrlsThatExist, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };

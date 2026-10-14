@@ -38,10 +38,9 @@ const hoopsTeamSchema = new mongoose.Schema({
     // turns that guard into noise.
     season: { type: Number, required: true },
 
-    // The ESPN id, and the id CFBD's logo CDN is keyed on — which is why
-    // basketball logos cost nothing. Verified: Alabama is sourceId 333 and
-    // cdn.collegefootballdata.com/logos/500/333.png returns 200, the same id
-    // football's Alabama row already stores.
+    // The ESPN id. CBBD's own logo URLs are keyed on it
+    // (cdn.collegefootballdata.com/cbb-logos/500/<sourceId>.png), though the
+    // ingest stores the URLs the API sends rather than building them from this.
     //
     // A STRING, as the API sends it. Nothing does arithmetic on it and a
     // leading zero would be a silent corruption.
@@ -60,18 +59,15 @@ const hoopsTeamSchema = new mongoose.Schema({
     color: { type: String },
     alt_color: { type: String },
 
-    // In football's 16-entry shape (light and dark at 8 sizes) so public/logo.js
-    // pickLogo works unchanged — but ONLY for teams whose logo actually exists.
+    // Straight from CBBD's /teams `logos` array (#508), which is football's
+    // 16-entry shape (light and dark at 8 sizes), so public/logo.js pickLogo
+    // works unchanged.
     //
-    // ⚠️ THE LOGOS ARE NOT FREE FOR EVERY TEAM. The CFBD CDN only hosts schools
-    // CFBD knows about, which means football schools. Measured across all 365:
-    // 101 have NO logo there — every basketball-only program, including
-    // Gonzaga, Marquette, Creighton, Seton Hall, Saint Mary's and Siena.
-    //
-    // Synthesising the URL anyway gave those teams 16 links that all 403, and
-    // every render site emits a bare <img> with no onerror, so the row showed a
-    // broken-image icon instead of falling back. The ingest verifies existence
-    // and stores an EMPTY array on a miss, which pickLogo already answers '' for.
+    // ⚠️ ONLY FOR TEAMS WHOSE LOGO ACTUALLY LOADS. The ingest HEAD-probes one
+    // URL per team and stores an EMPTY array on a miss, which pickLogo already
+    // answers '' for. The first version of this ingest built URLs blindly and
+    // 101 of 365 teams got links that all 403 — shown as broken images, since
+    // the render sites emit a bare <img> with no onerror.
     logos: { type: [String] },
 
     conferenceId: { type: Number },

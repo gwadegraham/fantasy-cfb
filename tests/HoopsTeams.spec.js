@@ -14,6 +14,9 @@ const client = require('../modules/cbbd-client');
 const SportSeason = require('../models/sportSeason');
 const activeSeason = require('../modules/active-season');
 const { pickLogo } = require('../public/logo.js');
+const League = require('../models/league');
+const Draft = require('../models/draft');
+const mongoose = require('mongoose');
 
 const app = express();
 app.use(express.json());
@@ -28,8 +31,8 @@ beforeEach(async () => {
     await SportSeason.create([{ sport: 'football', season: 2026, status: 'in-season' },
                                { sport: 'basketball', season: SEASON, status: 'preseason' }]);
     await activeSeason.prime();
-    // Default: every fixture team has a logo. Tests that care override it.
-    jest.spyOn(client, 'logoIdsThatExist').mockImplementation(async (ids) => new Set(ids.filter(Boolean).map(String)));
+    // Default: every fixture team's logo loads. Tests that care override it.
+    jest.spyOn(client, 'logoUrlsThatExist').mockImplementation(async (urls) => new Set(urls.filter(Boolean)));
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -37,8 +40,17 @@ afterEach(() => jest.restoreAllMocks());
 const HAVE_ALL = { has: () => true };
 const HAVE_NONE = { has: () => false };
 
+// CBBD's /teams `logos`, in the order and shape it sends them (#508): light
+// and dark at eight sizes, keyed on sourceId.
+const SIZES = [500, 256, 128, 96, 64, 48, 32, 16];
+const cbbLogos = (sourceId) => SIZES.flatMap(n => [
+    `http://cdn.collegefootballdata.com/cbb-logos/${n}/${sourceId}.png`,
+    `http://cdn.collegefootballdata.com/cbb-logos-dark/${n}/${sourceId}.png`
+]);
+const probeOf = (sourceId) => `https://cdn.collegefootballdata.com/cbb-logos/500/${sourceId}.png`;
+
 const team = (over = {}) => Object.assign({
-    id: 264, sourceId: '2561', school: 'Siena', mascot: 'Saints', abbreviation: 'SIE',
+    id: 264, sourceId: '2561', logos: cbbLogos('2561'), school: 'Siena', mascot: 'Saints', abbreviation: 'SIE',
     displayName: 'Siena Saints', shortDisplayName: 'Siena',
     primaryColor: '037961', secondaryColor: 'eea60f',
     currentVenueId: 71, currentVenue: 'MVP Arena', currentCity: 'Albany', currentState: 'NY',
@@ -70,41 +82,79 @@ describe('buildUpsertOp', () => {
         expect(doc.color).toBe('#037961');
     });
 
-    test('logos come from ESPN, at the ONE size ESPN serves', () => {
-        // Measured on Gonzaga across 500/256/128/96/64/48/32/16: only 500
-        // exists, light and dark. Copying football's eight-size ladder would
-        // have reproduced the original bug — 14 of every 16 URLs dead.
+    test('logos are the 16 CBBD sends, stored as sent', () => {
+        // #508: CBBD's /teams carries football's exact shape now, so nothing is
+        // built from sourceId and nothing comes from ESPN.
         const doc = build(team()).updateOne.update.$set;
-        expect(doc.logos).toEqual([
-            'https://a.espncdn.com/i/teamlogos/ncaa/500/2561.png',
-            'https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2561.png'
-        ]);
+        expect(doc.logos).toEqual(cbbLogos('2561'));
+        expect(doc.logos.join(' ')).not.toMatch(/espncdn/);
     });
 
     test('and the football logo helper picks from them unchanged', () => {
         // The point of keeping the array shape: no sport branch in public/.
         const doc = build(team()).updateOne.update.$set;
-        expect(pickLogo(doc.logos, { dark: true })).toMatch(/500-dark\/2561\.png$/);
-        expect(pickLogo(doc.logos, { dark: false })).toMatch(/ncaa\/500\/2561\.png$/);
+        expect(pickLogo(doc.logos)).toBe('https://cdn.collegefootballdata.com/cbb-logos-dark/500/2561.png');
+        expect(pickLogo(doc.logos, { dark: false })).toBe(probeOf('2561'));
     });
 
-    test('a team with no sourceId gets no logos rather than a broken URL', () => {
-        const logos = build(team({ sourceId: null })).updateOne.update.$set.logos || [];
-        expect(logos).toHaveLength(0);
+    test('the probe set is keyed on the largest LIGHT url', () => {
+        const asked = [];
+        build(team(), { has: (u) => { asked.push(u); return true; } });
+        expect(asked).toEqual([probeOf('2561')]);
+    });
+
+    test('a team CBBD sends no logos for gets none, not a built URL', () => {
+        const logos = build(team({ logos: undefined })).updateOne.update.$set.logos;
+        expect(logos).toEqual([]);
         expect(pickLogo(logos)).toBe('');
+        expect(build(team({ logos: [] })).updateOne.update.$set.logos).toEqual([]);
+    });
+
+    test('non-string entries are dropped before they reach an <img src>', () => {
+        const logos = build(team({ logos: [null, 42, { u: 1 }, ...cbbLogos('2561')] })).updateOne.update.$set.logos;
+        expect(logos).toEqual(cbbLogos('2561'));
     });
 
     // ⚠️ The finding this file got wrong first time round.
-    test('a team the CDN does not serve gets NO logos, not 16 dead URLs', () => {
-        // The CFBD CDN only hosts schools CFBD knows about — football schools.
-        // 101 of 365 basketball teams have nothing there: Gonzaga, Marquette,
-        // Seton Hall, Saint Mary's, and Siena, which is this file's own fixture.
-        // Synthesising anyway gave them 16 links that all 403, and every render
-        // site emits a bare <img> with no onerror, so the row showed a broken
-        // image rather than falling back.
+    test('a team whose logo does not load gets NO logos, not 16 dead URLs', () => {
+        // The first version of this ingest built URLs blindly and 101 of 365
+        // teams got links that all 403. Every render site emits a bare <img>
+        // with no onerror, so the row showed a broken image.
         const logos = build(team(), HAVE_NONE).updateOne.update.$set.logos;
         expect(logos).toEqual([]);
         expect(pickLogo(logos)).toBe('');
+    });
+
+    describe('Arkansas wears the slobbering hog', () => {
+        // CBBD id 12 (sourceId 8). Graham's call, basketball only.
+        const HOG = '/images/logo-hoops-arkansas-hog.webp';
+        const ark = (over = {}) => team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8'), ...over });
+
+        test('replaces CBBD\'s logos, for light and dark alike', () => {
+            const logos = build(ark()).updateOne.update.$set.logos;
+            expect(logos).toEqual([HOG]);
+            expect(pickLogo(logos)).toBe(HOG);
+            expect(pickLogo(logos, { dark: false })).toBe(HOG);
+        });
+
+        test('even when CBBD\'s own logo failed its probe', () => {
+            expect(build(ark(), HAVE_NONE).updateOne.update.$set.logos).toEqual([HOG]);
+        });
+
+        test('is keyed on the CBBD id, not sourceId', () => {
+            // sourceId 8 on another id is not Arkansas.
+            expect(build(team({ id: 99, sourceId: '8', logos: cbbLogos('8') })).updateOne.update.$set.logos)
+                .toEqual(cbbLogos('8'));
+        });
+
+        test('every override points at a file images/ actually serves', () => {
+            const fs = require('fs');
+            const path = require('path');
+            Object.values(teamsRouter.LOGO_OVERRIDES).flat().forEach(u => {
+                expect(u).toMatch(/^\/images\/[^/]+$/);
+                expect(fs.existsSync(path.join(__dirname, '..', u))).toBe(true);
+            });
+        });
     });
 
     test('the season is part of the document AND the upsert key', () => {
@@ -197,17 +247,49 @@ describe('POST /:season/ingest', () => {
         expect(res.body.message).toMatch(/never/);
     });
 
-    test('teams without a CDN logo are counted and stored empty', async () => {
-        client.logoIdsThatExist.mockResolvedValue(new Set(['150']));
-        stub([team({ id: 1, sourceId: '150', school: 'Duke' }), team({ id: 2, sourceId: '2561', school: 'Siena' })]);
+    test('teams without a loadable logo are counted and stored empty', async () => {
+        client.logoUrlsThatExist.mockResolvedValue(new Set([probeOf('150')]));
+        stub([team({ id: 1, sourceId: '150', school: 'Duke', logos: cbbLogos('150') }), team({ id: 2, school: 'Siena' })]);
         const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.body.withLogos).toBe(1);
-        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toHaveLength(2);
+        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toHaveLength(16);
         expect((await HoopsTeam.findOne({ school: 'Siena' }).lean()).logos).toEqual([]);
     });
 
+    test('the probe is handed the API\'s own URLs, one per team', async () => {
+        stub([team({ id: 1, sourceId: '150', school: 'Duke', logos: cbbLogos('150') }), team({ id: 2, school: 'Siena' })]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(client.logoUrlsThatExist).toHaveBeenCalledWith([probeOf('150'), probeOf('2561')]);
+    });
+
+    // The "done when" test in #508, end to end through the real probe: CBBD
+    // hands over 16 URLs, the CDN 404s them, and nothing is stored.
+    test('API logos that 404 on the CDN are stored as []', async () => {
+        client.logoUrlsThatExist.mockRestore();
+        const seen = [];
+        jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+            seen.push(url);
+            return { ok: !url.includes('/2561.png'), status: url.includes('/2561.png') ? 404 : 200 };
+        });
+        stub([team({ id: 1, sourceId: '150', school: 'Duke', logos: cbbLogos('150') }), team({ id: 2, school: 'Siena' })]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.status).toBe(200);
+        expect(res.body.withLogos).toBe(1);
+        expect((await HoopsTeam.findOne({ school: 'Siena' }).lean()).logos).toEqual([]);
+        expect((await HoopsTeam.findOne({ school: 'Duke' }).lean()).logos).toEqual(cbbLogos('150'));
+        expect(seen.sort()).toEqual([probeOf('150'), probeOf('2561')]);
+    });
+
+    test('Arkansas is not probed, and is stored with the hog', async () => {
+        stub([team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8') }), team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(client.logoUrlsThatExist).toHaveBeenCalledWith([probeOf('2561')]);
+        expect(res.body.withLogos).toBe(2);
+        expect((await HoopsTeam.findOne({ id: 12 }).lean()).logos).toEqual(['/images/logo-hoops-arkansas-hog.webp']);
+    });
+
     test('a failed logo probe stores no logos rather than unverified ones', async () => {
-        client.logoIdsThatExist.mockRejectedValue(new Error('CDN down'));
+        client.logoUrlsThatExist.mockRejectedValue(new Error('CDN down'));
         stub([team()]);
         const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.status).toBe(200);
@@ -250,6 +332,105 @@ describe('POST /:season/ingest', () => {
         const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect(res.status).toBe(200);
         expect(res.body.created).toBe(1);
+    });
+});
+
+describe('refreshing the draft\'s copies of each team', () => {
+    // Draft picks store a full copy of the team, so a re-ingest alone left the
+    // draft room on ESPN URLs. Football has the same job in routes/teams.js.
+    const ESPN = ['https://a.espncdn.com/i/teamlogos/ncaa/500/2561.png'];
+    const pick = (overall, t) => ({ round: 1, overall, userId: new mongoose.Types.ObjectId(), team: t });
+    const draftOf = (league, season, picks) => Draft.create({ league, season, picks });
+
+    beforeEach(async () => {
+        await League.create([
+            { code: 'hoops-league', name: 'Hoops', sport: 'basketball', season: SEASON },
+            { code: 'graham-league', name: 'Graham', sport: 'football', season: 2026 }
+        ]);
+        await activeSeason.prime();
+    });
+
+    test('the ingest repaints this season\'s basketball picks', async () => {
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 264, school: 'Siena', logos: ESPN }),
+                                              pick(2, { id: 9999, school: 'Not ingested', logos: ESPN })]);
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.body.draftCopies).toEqual({ drafts: 1, failed: 0, skippedLive: 0 });
+        const d = await Draft.findOne({ league: 'hoops-league' }).lean();
+        expect(d.picks[0].team.logos).toEqual(cbbLogos('2561'));
+        expect(d.picks[0].team.color).toBe('#037961');
+        // A team the ingest did not return is left alone, not blanked.
+        expect(d.picks[1].team.logos).toEqual(ESPN);
+    });
+
+    test('but never a FOOTBALL draft, whose ids mean different teams', async () => {
+        // CBB 87 is Florida; football 87 is Notre Dame. 20 of the 60 real hoops
+        // picks share an id with a football team.
+        await draftOf('graham-league', SEASON, [pick(1, { id: 264, school: 'Football 264', logos: ESPN })]);
+        stub([team()]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        const d = await Draft.findOne({ league: 'graham-league' }).lean();
+        expect(d.picks[0].team).toMatchObject({ school: 'Football 264', logos: ESPN });
+    });
+
+    test('nor another season\'s basketball draft', async () => {
+        await draftOf('hoops-league', 2026, [pick(1, { id: 264, school: 'Siena', logos: ESPN })]);
+        stub([team()]);
+        await request(app).post('/hoops/teams/2026/ingest?force=1').send({});
+        expect((await Draft.findOne({ season: 2026 }).lean()).picks[0].team.logos).toEqual(cbbLogos('2561'));
+        stub([team({ logos: cbbLogos('X') })]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect((await Draft.findOne({ season: 2026 }).lean()).picks[0].team.logos).toEqual(cbbLogos('2561'));
+    });
+
+    test('a probe miss keeps the pick\'s logos rather than blanking them', async () => {
+        // One CDN outage during the prod re-run would otherwise strip all 60
+        // picks. The team row still stores [], so nothing unverified is served.
+        client.logoUrlsThatExist.mockResolvedValue(new Set());
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 264, school: 'Old name', logos: ESPN })]);
+        stub([team()]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect((await HoopsTeam.findOne({ id: 264 }).lean()).logos).toEqual([]);
+        const t = (await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team;
+        expect(t.logos).toEqual(ESPN);
+        expect(t.school).toBe('Siena');   // the other fields still refresh
+    });
+
+    test('Arkansas\'s draft picks get the hog too', async () => {
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 12, school: 'Arkansas', logos: ESPN })]);
+        stub([team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8') })]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect((await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team.logos)
+            .toEqual(['/images/logo-hoops-arkansas-hog.webp']);
+    });
+
+    test('a LIVE draft is left alone', async () => {
+        // The socket $pushes picks without bumping __v, so saving a picks array
+        // loaded a moment earlier would erase the pick made in between.
+        await Draft.create({ league: 'hoops-league', season: SEASON, status: 'active',
+            picks: [pick(1, { id: 264, school: 'Siena', logos: ESPN })] });
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.body.draftCopies).toMatchObject({ drafts: 0, skippedLive: 1 });
+        expect((await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team.logos).toEqual(ESPN);
+    });
+
+    test('an unprimed season cache does not silently skip the refresh', async () => {
+        // sportForLeague answers 'football' for every league when unprimed.
+        activeSeason._reset();
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 264, school: 'Siena', logos: ESPN })]);
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest?force=1`).send({});
+        expect(res.body.draftCopies.drafts).toBe(1);
+    });
+
+    test('a failed copy refresh still reports the team write', async () => {
+        jest.spyOn(Draft, 'find').mockRejectedValue(new Error('boom'));
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.status).toBe(200);
+        expect(res.body.draftCopies.error).toBe('boom');
+        expect(await HoopsTeam.countDocuments({})).toBe(1);
     });
 });
 
