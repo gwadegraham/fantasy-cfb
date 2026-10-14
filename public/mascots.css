@@ -251,6 +251,99 @@
     100% { transform: translateY(5px); opacity: 0; }
 }
 
+/* ---------- Handing you an L (pose 'handL') ----------
+   One 1.6s beat: he leans toward you and pushes the L out ("here, take it"),
+   then eases back. The L, its arms and gloves move together as one group. */
+.ccm .ccm-hl-body  { transform-box: view-box; transform-origin: 30px 61px; }
+.ccm .ccm-hl-offer { transform-box: view-box; transform-origin: 50px 30px; }
+.ccm-wrap.is-busy .ccm-hl-body  { animation: ccm-hl-lean 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hl-offer { animation: ccm-hl-offer 1.6s ease-in-out infinite; }
+@keyframes ccm-hl-lean { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(3deg); } }
+@keyframes ccm-hl-offer {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    40% { transform: translate(1.5px, -1px) scale(1.1); }
+    55% { transform: translate(1px, -.5px) scale(1.07); }
+}
+
+/* Shared by the tug-of-war: leaning back, and a sweat drop that falls. */
+.ccm .ccm-tw-lean { transform-box: view-box; transform-origin: 40px 60px; transform: rotate(-12deg); }
+.ccm .ccm-tw-sweat { transform-box: fill-box; }
+.ccm-wrap.is-busy .ccm-tw-sweat { animation: ccm-tw-sweat 1.3s ease-in infinite; }
+@keyframes ccm-tw-sweat {
+    0% { transform: translate(0, 0); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(-1px, 7px); opacity: 0; }
+}
+
+/* Two-Laces tug-of-war (pose 'tugduo', a 128x72 drawing). One 3s cycle: the
+   left one gains (25%), back to even (50%), the right one gains (75%), even
+   again. The winner leans further back, the loser is yanked forward, and the
+   rope and its flag drift toward the winner. The right Laces is the same
+   drawing mirrored and runs the same keyframes half a cycle late. */
+.ccm-wrap.ccm-wide.ccm-size-full { width: 224px; height: 126px; }
+.ccm .ccm-tw2-pull { transform-box: view-box; transform-origin: 40px 60px; }
+.ccm .ccm-tw2-rope { transform-box: view-box; }
+.ccm-wrap.is-busy .ccm-tw2-pull { animation: ccm-tw2-pull 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-tw2-late { animation-delay: -1.5s; }
+.ccm-wrap.is-busy .ccm-tw2-rope { animation: ccm-tw2-rope 3s ease-in-out infinite; }
+@keyframes ccm-tw2-pull {
+    0%, 50%, 100% { transform: translateX(0) rotate(0deg); }
+    6%, 12%, 18% { transform: translateX(-2.6px) rotate(-4deg); }
+    9%, 15%, 21% { transform: translateX(-3.2px) rotate(-5deg); }
+    25% { transform: translateX(-3px) rotate(-5deg); }
+    75% { transform: translateX(3px) rotate(6deg); }
+}
+@keyframes ccm-tw2-rope {
+    0%, 50%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+}
+
+/* ---------- Dribbles' moves ---------- */
+/* Dunk-and-hang: he swings from the rim grip, the free fist pumps (1.6s). */
+.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 26.6px 22.4px; }   /* the rim grip */
+.ccm .ccm-dh-pump { transform-box: view-box; transform-origin: 54px 35px; }
+.ccm-wrap.is-busy .ccm-dh-swing { animation: ccm-dh-swing 1.6s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-dh-pump { animation: ccm-dh-pump .4s ease-in-out infinite alternate; }
+@keyframes ccm-dh-swing { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes ccm-dh-pump { from { transform: rotate(0deg); } to { transform: rotate(-14deg); } }
+
+/* Cutting down the net: snip-snip with the scissors (the loose blade opens
+   and closes at the hand), the net piece waves overhead, and he bounces a
+   little on the ladder (1.6s). */
+.ccm .ccm-nc-wave { transform-box: view-box; transform-origin: 13.6px 29px; }
+.ccm .ccm-nc-blade { transform-box: view-box; transform-origin: 9px 11px; }   /* the scissors' pivot, in their own 20x20 box */
+.ccm .ccm-nc-bob { transform-box: view-box; transform-origin: 26px 52px; }
+.ccm-wrap.is-busy .ccm-nc-wave { animation: ccm-nc-wave .5s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-nc-blade { animation: ccm-nc-snip .4s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-nc-bob { animation: ccm-nc-bob .8s ease-in-out infinite alternate; }
+@keyframes ccm-nc-wave { from { transform: rotate(-10deg); } to { transform: rotate(12deg); } }
+@keyframes ccm-nc-snip { from { transform: rotate(0deg); } to { transform: rotate(16deg); } }
+@keyframes ccm-nc-bob { from { transform: translateY(0); } to { transform: translateY(-1.4px); } }
+
+/* Spinning the L on the foam finger: a flat spin faked with scaleX (.7s). */
+.ccm .ccm-sl-spin { transform-box: view-box; transform-origin: 57px 5.2px; }
+.ccm-wrap.is-busy .ccm-sl-spin { animation: ccm-sl-spin .7s linear infinite; }
+@keyframes ccm-sl-spin {
+    0% { transform: scaleX(1); }
+    25% { transform: scaleX(.12); }
+    50% { transform: scaleX(-1); }
+    75% { transform: scaleX(-.12); }
+    100% { transform: scaleX(1); }
+}
+
+/* Jump ball: they take turns. The left one leaps at 25% while the right one
+   lands, the right one (half a cycle late) at 75%; the ball hops a little on
+   each try, always just out of reach. Shadows shrink under whoever is up (1.4s). */
+.ccm .ccm-jb-shadow { transform-origin: center; }
+.ccm-wrap.is-busy .ccm-jb-jump { animation: ccm-jb-jump 1.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-jb-ball { animation: ccm-jb-ball 1.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-jb-shadow { animation: ccm-jb-shadow 1.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-jb-late { animation-delay: -.7s; }
+@keyframes ccm-jb-jump { 0%, 50%, 100% { transform: translateY(1px); } 25% { transform: translateY(-7px); } }
+@keyframes ccm-jb-ball { 0%, 50%, 100% { transform: translateY(0); } 25%, 75% { transform: translateY(-3px); } }
+@keyframes ccm-jb-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25% { transform: scaleX(.7); opacity: .18; } }
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }

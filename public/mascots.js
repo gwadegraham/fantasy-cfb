@@ -17,8 +17,13 @@
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
 // pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
 // Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
-// 'heisman' (the trophy pose, held). Both mascots have 'raincloud' for a
-// league-low week: drizzle and a slump, then shrugging it off.
+// 'heisman' (the trophy pose, held), plus 'handL' for a head-to-head loss
+// (handing you an L) and 'tugduo' for a tie (two of him in a tug-of-war, on a
+// wide canvas). Dribbles answers each with a basketball move: 'dunkhang' (season
+// high), 'netcut' (#1, cutting down the net), 'spinL' (H2H loss), 'jumpball' (H2H tie, wide); either
+// mascot asked for the other's move gets his own counterpart. Both have
+// 'raincloud' for a league-low week:
+// drizzle and a slump, then shrugging it off.
 //
 // Motion means something: the loops only run on a mascot marked busy, and
 // mascots.css freezes them under prefers-reduced-motion.
@@ -234,8 +239,69 @@
         </g>
         ${rainCloud(7.5)}`;
 
+    // Handing you an L: a big red block L held out toward you in both gloves,
+    // heavy lids and a smirk. While busy he leans in and pushes it at you
+    // ("here, this is yours") on a loop (mascots.css, ccm-hl-*).
+    const lacesHandL = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="34" cy="68" rx="17" ry="2"/>
+        <g class="ccm-hl-body">
+          <g class="ccm-lmb">${noodle('M24.5 42.5 Q22 51.75 22.5 61')}${noodle('M35.5 42.5 Q38 51.75 37.5 61')}
+            ${shoe(14.5, 59, 12, 'ccm-f-red')}${shoe(33.5, 59, 12, 'ccm-f-red')}</g>
+          <g transform="translate(-2 0)">${lacesBall(u)}</g>   <!-- the ball sits 2 left of center to make room for the L -->
+          ${eyes(24.6, 35.4, 27.2, 3.7, 5)}${lidsFor(24.6, 35.4, 27.2, 3.7, 5, 'ccm-f-leather')}
+          <path class="ccm-frown" d="M25.6 34.4 Q30 36.4 34.6 33"/>
+          <g class="ccm-hl-offer">
+            <g class="ccm-lmb">${noodle('M11.5 32 Q22 46 43 35')}${noodle('M48.5 32 Q61 33 59.6 39.4')}</g>
+            <path class="ccm-f-red ccm-o" d="M42 13 H50 V36 H63 V44 H42 Z"/>
+            <path d="M44 15 V41.5 H61" fill="none" stroke="var(--ccm-body)" stroke-width="1" opacity=".55" stroke-linecap="round"/>
+            <g class="ccm-lmb">${glove(44.4, 33.6, 'fist')}${glove(59.6, 40, 'fist')}</g>
+          </g>
+        </g>`;
+
+    // ---------- Ties ----------
+    // Tie: two Laces in a tug-of-war with each other, on a wide 128x72
+    // drawing (WIDE below). The left one is the tug drawing without its rope;
+    // the right one is the same drawing mirrored. One shared rope with a red
+    // flag at the middle drifts toward whoever is gaining; they trade the edge
+    // and it always comes back to dead center (mascots.css, ccm-tw2-*).
+    const tugger = u => `
+          <g class="ccm-lmb">${noodle('M26.5 42.5 Q31 52 35 60.5')}${noodle('M37.5 42.5 Q43 51 46.5 59.5')}
+            ${shoe(30, 58.6, 12, 'ccm-f-red')}${shoe(41.5, 57.6, 12, 'ccm-f-red')}
+            ${noodle('M14 31 Q30 34 48 40.4')}${noodle('M50 32 Q55 34 55.4 39.6')}</g>
+          ${lacesBall(u)}  <!-- both copies clip with the same #${u}c: it applies in each copy's own (mirrored) space -->
+          <g stroke="var(--ccm-ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+            <path d="M24 24.6 L28.4 27 L24 29.4"/><path d="M40 24.6 L35.6 27 L40 29.4"/></g>
+          <rect class="ccm-f-ink" x="27" y="31.6" width="10" height="4.6" rx="1.6"/>
+          <rect class="ccm-f-body" x="27.8" y="32.3" width="8.4" height="3.2" rx=".8"/>
+          <line x1="27.8" y1="33.9" x2="36.2" y2="33.9" stroke="var(--ccm-ink)" stroke-width=".6"/>
+          <ellipse class="ccm-f-ice ccm-tw-sweat" cx="14.6" cy="20" rx="1" ry="1.6"/>`;
+    const lacesTugDuo = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="38" cy="68" rx="15" ry="2"/>
+        <ellipse class="ccm-shadow ccm-lmb" cx="90" cy="68" rx="15" ry="2"/>
+        <g class="ccm-tw2-rope ccm-lmb">
+          <line x1="44" y1="40.4" x2="84" y2="40.4" stroke="var(--ccm-ink)" stroke-width="3.6" stroke-linecap="round"/>
+          <line x1="44" y1="40.4" x2="84" y2="40.4" stroke="#C9A36A" stroke-width="2.2" stroke-linecap="round"/>
+          <g stroke="#8B6B3A" stroke-width=".6">${[48, 52, 56, 60, 66, 70, 74, 78].map(x => `<line x1="${x}" y1="39.4" x2="${x + 1.4}" y2="41.4"/>`).join('')}</g>
+          <path class="ccm-f-red ccm-o" d="M62.6 40.4 H65.4 L64.8 47 L64 45.4 L63.2 47 Z"/>
+        </g>
+        <g class="ccm-tw-lean"><g class="ccm-tw2-pull">${tugger(u)}</g>
+          <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
+        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)">
+          <g class="ccm-tw-lean"><g class="ccm-tw2-pull ccm-tw2-late">${tugger(u)}</g>
+            <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
+        </g>`;
+
     // ---------- Laces: leather football, red cleats ----------
     const laces = (u, pose) => {
+        if (pose === 'tugduo') return lacesTugDuo(u);
+        // Dribbles' moves, asked of Laces, map to his football counterparts.
+        if (pose === 'dunkhang') pose = 'griddy';
+        if (pose === 'netcut') pose = 'heisman';
+        if (pose === 'spinL') pose = 'handL';
+        if (pose === 'jumpball') pose = 'tugduo';
+        if (pose === 'handL') return lacesHandL(u);
         if (pose === 'griddy') return lacesGriddy(u);
         if (pose === 'heisman') return lacesHeisman(u);
         if (pose === 'raincloud') return lacesRaincloud(u);
@@ -271,7 +337,155 @@
     };
 
     // ---------- Dribbles: orange basketball, violet sneakers ----------
+    // ---------- Dribbles' own moves (his answers to Laces' football moves) ----------
+    // His orange ball body at (cx, cy, r), clipped by ${u}c (defined by the caller).
+    const dBall = (u, cx, cy, r) => {
+        const off = r * 1.35, sr = r * .885, sy = cy - r * .15;
+        return `<circle class="ccm-f-ball" cx="${cx}" cy="${cy}" r="${r}"/>
+          <g clip-path="url(#${u}c)">
+            <rect class="ccm-f-ball-shade" x="${cx - r}" y="${cy + r * .42}" width="${r * 2}" height="${r}"/>
+            <g class="ccm-seam"><line x1="${cx}" y1="${cy - r}" x2="${cx}" y2="${cy + r}"/><line x1="${cx - r}" y1="${sy}" x2="${cx + r}" y2="${sy}"/>
+              <circle cx="${cx - off}" cy="${sy}" r="${sr}"/><circle cx="${cx + off}" cy="${sy}" r="${sr}"/></g>
+          </g>
+          <circle class="ccm-o ccm-none" cx="${cx}" cy="${cy}" r="${r}"/>`;
+    };
+    const dDefs = (u, cx, cy, r) => `<defs><clipPath id="${u}c"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath></defs>`;
+    const smirk = (x1, y1, x2, y2) => `<path class="ccm-frown" d="M${x1} ${y1} Q${(x1 + x2) / 2} ${y1 + 1.6} ${x2} ${y2}"/>`;
+    const dLegs = `<g class="ccm-lmb">${noodle('M27 42 Q25.5 52 25.5 61')}${noodle('M37 42 Q38.5 52 38.5 61')}
+            ${shoe(17.5, 59, 12, 'ccm-f-violet')}${shoe(34.5, 59, 12, 'ccm-f-violet')}</g>`;
+    const dHip = `<g class="ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>`;
+
+    // Season high: the dunk-and-hang. He hangs off the side of the rim by one
+    // hand, the other fist pumping, legs dangling, swinging from the grip. He
+    // hangs to the right of the hoop so the rim and net stay in view (with the
+    // hoop at real proportions, hanging below it would cover both) (ccm-dh-*).
+    const dribblesDunk = u => `
+        ${dDefs(u, 42, 38, 13)}
+        <rect class="ccm-f-body ccm-o" x="0" y="0" width="40" height="23.3" rx="1.2"/>
+        <rect x="13.3" y="11.2" width="13.4" height="10" fill="none" stroke="var(--ccm-ball)" stroke-width="1.1"/>
+        <g class="ccm-lmb" fill="none" stroke="var(--ccm-shade)" stroke-width=".9" stroke-linejoin="round">
+          <path d="M15.4 22.4 L17 31.4 L23 31.4 L24.6 22.4"/>
+          <path d="M15.4 22.4 L20 31.4 M18.4 22.4 L23 31.4 M21.6 22.4 L17 31.4 M24.6 22.4 L20 31.4 M16.2 27 L23.8 27"/></g>
+        <rect class="ccm-f-red ccm-o" x="15" y="21" width="10" height="2" rx="1"/>
+        <g class="ccm-dh-swing">
+          <g class="ccm-lmb">${noodle('M38 50 Q37 56 36.5 61.5')}${noodle('M46 50 Q47 56 48 61')}
+            ${shoe(27, 59.4, 12, 'ccm-f-violet')}${shoe(44, 59, 12, 'ccm-f-violet')}
+            ${noodle('M30.6 33 Q26 29 26.6 23.6')}</g>
+          <g class="ccm-dh-pump ccm-lmb">${noodle('M54 35 Q60.5 32 59 24')}${glove(59, 21.4, 'fist')}</g>
+          ${dBall(u, 42, 38, 13)}
+          ${eyes(37.6, 46.4, 36.8, 3.3, 4.8)}
+          ${smile(u + 'm', 42, 43, 4.6, 2.2)}
+          <g class="ccm-lmb">${glove(26.6, 22.4, 'fist')}</g>
+        </g>`;
+
+    // #1: cutting down the net, the college champion's ritual. He stands on a
+    // little step ladder under the rim, snipping the net with scissors in one
+    // hand and waving the strand he just cut (one cord with a knot, not a whole
+    // net) overhead in the other (ccm-nc-*).
+    const dribblesNetCut = u => `
+        ${dDefs(u, 26, 32, 13)}
+        <ellipse class="ccm-shadow ccm-lmb" cx="28" cy="68" rx="16" ry="2"/>
+        <!-- The hoop at real proportions: a 72x42 backboard (here 30 wide), the
+             24x18 shooter's square sitting on the rim, an 18" rim (a quarter of
+             the board) just above the board's bottom edge, a net about one rim
+             long, tapering. -->
+        <rect class="ccm-f-body ccm-o" x="30" y="0" width="30" height="17.5" rx="1"/>
+        <rect x="40" y="8.1" width="10" height="7.5" fill="none" stroke="var(--ccm-ball)" stroke-width="1"/>
+        <g fill="none" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linejoin="round">
+          <path d="M41.6 16.6 L42.8 23.6 L47.2 23.6 L48.4 16.6"/>
+          <path d="M41.6 16.6 L45 23.6 M43.8 16.6 L47.2 23.6 M46.2 16.6 L42.8 23.6 M48.4 16.6 L45 23.6 M42.2 20 L47.8 20"/></g>
+        <rect class="ccm-f-red ccm-o" x="41.2" y="15.4" width="7.6" height="1.8" rx=".9"/>
+        <g class="ccm-lmb">
+          <line x1="17" y1="53" x2="13" y2="66" stroke="var(--ccm-ink)" stroke-width="3" stroke-linecap="round"/>
+          <line x1="35" y1="53" x2="39" y2="66" stroke="var(--ccm-ink)" stroke-width="3" stroke-linecap="round"/>
+          <line x1="17" y1="53" x2="13" y2="66" stroke="var(--ccm-gold)" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="35" y1="53" x2="39" y2="66" stroke="var(--ccm-gold)" stroke-width="1.6" stroke-linecap="round"/>
+          <rect class="ccm-f-gold ccm-o" x="14.4" y="59" width="23.2" height="1.8" rx=".9"/>
+          <rect class="ccm-f-gold ccm-o" x="15" y="51.4" width="22" height="2.6" rx="1.2"/>
+        </g>
+        <g class="ccm-nc-bob">
+          <g class="ccm-lmb">${noodle('M22 44 Q21.5 47 21.5 49')}${noodle('M30 44 Q30.5 47 30.5 49')}
+            ${shoe(12.5, 46, 11, 'ccm-f-violet')}${shoe(28.5, 46, 11, 'ccm-f-violet')}</g>
+          <g class="ccm-nc-wave ccm-lmb">${noodle('M13.6 29 Q7 24 9 14.6')}
+            <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8.6 10 Q6.6 7.4 8.4 5.2 Q10.2 3 8.6 .6" stroke="var(--ccm-ink)" stroke-width="2.2"/>
+              <path d="M8.6 10 Q6.6 7.4 8.4 5.2 Q10.2 3 8.6 .6" stroke="var(--ccm-body)" stroke-width="1.1"/>
+              <path d="M8.4 5.2 L11.2 3.4" stroke="var(--ccm-ink)" stroke-width="2.2"/>
+              <path d="M8.4 5.2 L11.2 3.4" stroke="var(--ccm-body)" stroke-width="1.1"/>
+            </g>
+            <circle class="ccm-f-body ccm-o" cx="8.4" cy="5.2" r=".9"/>
+            ${glove(9, 12.4, 'fist')}</g>
+          <g class="ccm-lmb">${noodle('M37.4 27.6 Q40.6 27.6 40.4 24.8')}</g>
+          ${dBall(u, 26, 32, 13)}
+          ${eyes(21.6, 30.4, 30.4, 3.3, 4.8)}
+          ${smile(u + 'm', 26, 36.4, 4.8, 2.4)}
+          <g class="ccm-nc-snip ccm-lmb">
+            <!-- Scissors in their own 20x20 box (nested svg, no transform math):
+                 two finger loops, two pointed blades crossing at a pivot screw
+                 (9, 11), pointing up at the net. Drawn over the glove so the
+                 loops show like fingers through the handles. The loose blade
+                 and its loop open and close about the pivot. -->
+            ${glove(40.4, 24.8, 'fist')}
+            <svg x="37.6" y="14.9" width="11" height="11" viewBox="0 0 20 20" overflow="visible">
+              <g>
+                <path d="M9 11 L4.6 15.2" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="3.6" cy="16.2" r="2.6" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+                <circle cx="3.6" cy="16.2" r="2.6" fill="none" stroke="var(--ccm-violet)" stroke-width="1.4"/>
+                <path d="M7.4 9.8 L19 .8 L10.6 12.6 Z" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width=".7" stroke-linejoin="round"/>
+              </g>
+              <g class="ccm-nc-blade">
+                <path d="M9 11 L6.8 17.6" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="6.4" cy="19" r="2.4" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+                <circle cx="6.4" cy="19" r="2.4" fill="none" stroke="var(--ccm-violet)" stroke-width="1.4"/>
+                <path d="M8 12.6 L19.8 5 L9.4 9.4 Z" fill="var(--ccm-body)" stroke="var(--ccm-ink)" stroke-width=".7" stroke-linejoin="round"/>
+              </g>
+              <circle class="ccm-f-ink" cx="9" cy="11" r="1"/>
+            </svg>
+          </g>
+        </g>`;
+
+    // H2H loss: spinning the L. The foam finger up, a red L spinning on its
+    // tip like a ball on a fingertip; smug lids and a smirk (ccm-sl-*).
+    const dribblesSpinL = u => `
+        ${dDefs(u, 32, 27, 17)}
+        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-fig">
+          ${dLegs}${dHip}
+          <g class="ccm-lmb">${noodle('M48.4 30 Q53 34 53.6 33.4')}${foamFinger(46, 12, 15)}</g>
+          ${dBall(u, 32, 27, 17)}
+          ${eyes(26.4, 37.6, 25.2, 4, 5.8)}${lidsFor(26.4, 37.6, 25.2, 4, 5.8, 'ccm-f-ball')}
+          ${smirk(28.6, 34.2, 36.6, 32.6)}
+          <g class="ccm-sl-spin ccm-lmb"><path class="ccm-f-red ccm-o" d="M53.2 .4 H56.4 V7 H60.8 V10 H53.2 Z"/></g>
+        </g>`;
+
+    // H2H tie: a jump ball. Two Dribbles (the right one mirrored) take turns
+    // leaping for a ball floating between them; it hops a little on each try
+    // and neither ever reaches it. Wide 128x72 (ccm-jb-*).
+    // `s` keeps each jumper's smile clip-path id unique within the drawing.
+    const jumper = (u, s) => `
+          <g class="ccm-lmb">${noodle('M27 47 Q22 52 25 58')}${noodle('M36 47 Q38 53 35 58.6')}
+            ${shoe(16, 56.4, 12, 'ccm-f-violet')}${shoe(27, 57, 12, 'ccm-f-violet')}
+            ${noodle('M18.5 36 Q11 40 12 46')}${noodle('M45 29 Q53 20 56.4 11.4')}</g>
+          ${dBall(u, 32, 34, 15)}
+          ${eyes(28.6, 38.6, 31, 3.4, 5)}
+          ${smile(u + s + 'm', 33.6, 38, 4.6, 2.2)}
+          <g class="ccm-lmb">${glove(12.4, 46.6, 'fist')}${glove(57, 9, 'wave')}</g>`;
+    const dribblesJumpBall = u => `
+        ${dDefs(u, 32, 34, 15)}
+        <ellipse class="ccm-shadow ccm-jb-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
+        <ellipse class="ccm-shadow ccm-jb-shadow ccm-jb-late ccm-lmb" cx="98" cy="68" rx="13" ry="2"/>
+        <g class="ccm-jb-ball ccm-lmb">
+          <circle class="ccm-f-ball ccm-o" cx="64" cy="1.8" r="4.2"/>
+          <g class="ccm-seam" stroke-width=".8"><line x1="64" y1="-2.4" x2="64" y2="6"/><line x1="59.8" y1="1.2" x2="68.2" y2="1.2"/></g>
+        </g>
+        <g class="ccm-jb-jump">${jumper(u, 'a')}</g>
+        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)"><g class="ccm-jb-jump ccm-jb-late">${jumper(u, 'b')}</g></g>`;
+
     const dribbles = (u, pose) => {
+        if (pose === 'dunkhang' || pose === 'griddy') return dribblesDunk(u);
+        if (pose === 'netcut' || pose === 'heisman') return dribblesNetCut(u);
+        if (pose === 'spinL' || pose === 'handL') return dribblesSpinL(u);
+        if (pose === 'jumpball' || pose === 'tugduo') return dribblesJumpBall(u);
         // 'raincloud' is the ice-pack pose plus the cloud, a shrug from the hip
         // hand, and lids and mouth that can lift (mascots.css, ccm-rc-*).
         const rc = pose === 'raincloud';
@@ -311,6 +525,12 @@
     };
 
     const DRAW = { football: laces, basketball: dribbles };
+    // Poses drawn on a wider canvas than one mascot (two of him). Each Laces move
+    // has a Dribbles counterpart and the other way round (dribbles() maps them),
+    // so a tie is wide for both. One answer for html() and svg(): the viewBox,
+    // or null for the 64x72 default.
+    const WIDE_POSES = ['tugduo', 'jumpball'];
+    const wideBox = (sport, pose, size) => (size !== 'head' && WIDE_POSES.indexOf(pose) !== -1) ? '0 0 128 72' : null;
     const CROP = { football: '10 8 44 44', basketball: '12 7 40 40' };
     const NAME = { football: 'Laces', basketball: 'Dribbles' };
 
@@ -331,15 +551,17 @@
         const sp = o.sport === 'basketball' ? 'basketball' : 'football';
         const head = o.size === 'head';
         const u = 'ccm' + (uid++);
+        const wide = wideBox(sp, o.pose, o.size);
         const a11y = o.label ? `role="img" aria-label="${esc(o.label)}"` : 'aria-hidden="true" focusable="false"';
-        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" data-mascot="${NAME[sp]}" ${a11y}>`
+        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : (wide || '0 0 64 72')}" data-mascot="${NAME[sp]}" ${a11y}>`
             + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
     }
 
     function html(opts) {
         const o = Object.assign({ size: 'full' }, opts);
         if (!o.sport) o.sport = sport();
-        return `<span class="ccm-wrap ccm-size-${o.size}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
+        const wide = wideBox(o.sport, o.pose, o.size);
+        return `<span class="ccm-wrap ccm-size-${o.size}${wide ? ' ccm-wide' : ''}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
     }
 
     // <span data-ccm="head|full" data-ccm-sport="football|basketball" data-ccm-pose="…" data-ccm-busy></span>

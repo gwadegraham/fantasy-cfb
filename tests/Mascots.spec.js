@@ -75,9 +75,11 @@ describe('placeholders and state', () => {
         expect(x.querySelector('.ccm-wrap').classList.contains('is-busy')).toBe(false);
     });
 
-    test('every drawing gets its own clip-path ids', () => {
+    test('every drawing gets its own clip-path ids, including the two-mascot ties', () => {
         const m = load({});
-        const ids = [m.html(), m.html({ sport: 'basketball' })].join('').match(/clipPath id="([^"]+)"/g);
+        const html = [m.html(), m.html({ sport: 'basketball' }),
+            m.html({ pose: 'tugduo' }), m.html({ sport: 'basketball', pose: 'jumpball' })].join('');
+        const ids = html.match(/clipPath id="([^"]+)"/g);
         expect(new Set(ids).size).toBe(ids.length);
     });
 
