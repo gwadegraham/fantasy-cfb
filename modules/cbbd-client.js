@@ -190,7 +190,10 @@ async function fetchTeams(season) {
 //
 // Free: a CDN request, not a CBBD call, so it costs nothing against the quota.
 // Batched because 365 sequential round trips would run past Heroku's ceiling.
-async function logoUrlsThatExist(urls, { batch = 25, attempts = 3, retryDelayMs = 250, fetchImpl } = {}) {
+// TIMED OUT per attempt. Without it one stalled socket holds its batch for
+// undici's ~300s default, retried twice — far past Heroku's 30s, which answers
+// H12 while the handler keeps running and invites a second click.
+async function logoUrlsThatExist(urls, { batch = 25, attempts = 3, retryDelayMs = 250, timeoutMs = 5000, fetchImpl } = {}) {
     const doFetch = fetchImpl || fetch;
     const list = [...new Set((urls || []).filter(u => typeof u === 'string' && u))];
     const found = new Set();
@@ -198,7 +201,7 @@ async function logoUrlsThatExist(urls, { batch = 25, attempts = 3, retryDelayMs 
         for (let i = 0; i < attempts; i++) {
             if (i && retryDelayMs) await new Promise(r => setTimeout(r, retryDelayMs * i));
             try {
-                const r = await doFetch(url, { method: 'HEAD' });
+                const r = await doFetch(url, { method: 'HEAD', signal: AbortSignal.timeout(timeoutMs) });
                 if (r && r.ok) return true;
                 const status = r && r.status;
                 if (!(status >= 500 || status === 429)) return false;

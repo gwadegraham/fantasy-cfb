@@ -296,6 +296,21 @@ describe('logoUrlsThatExist', () => {
         expect(calls).toBe(3);
     });
 
+    test('each attempt carries a timeout, so a stalled socket cannot hold the batch', async () => {
+        // Without one, undici waits ~300s per attempt — far past Heroku's 30s.
+        let calls = 0;
+        const found = await client.logoUrlsThatExist([U(333)], {
+            ...FAST, timeoutMs: 20,
+            fetchImpl: (u, o) => new Promise((resolve, reject) => {
+                calls++;
+                if (!o.signal) return;   // no signal: hangs forever, test times out
+                o.signal.addEventListener('abort', () => reject(o.signal.reason));
+            })
+        });
+        expect(found.size).toBe(0);
+        expect(calls).toBe(3);
+    }, 2000);
+
     test('drops empty and non-string entries and de-duplicates', async () => {
         const seen = [];
         await client.logoUrlsThatExist([U(333), U(333), null, undefined, '', 42], {

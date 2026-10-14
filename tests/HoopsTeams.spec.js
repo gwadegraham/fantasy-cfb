@@ -315,7 +315,7 @@ describe('refreshing the draft\'s copies of each team', () => {
                                               pick(2, { id: 9999, school: 'Not ingested', logos: ESPN })]);
         stub([team()]);
         const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
-        expect(res.body.draftCopies).toEqual({ drafts: 1, failed: 0 });
+        expect(res.body.draftCopies).toEqual({ drafts: 1, failed: 0, skippedLive: 0 });
         const d = await Draft.findOne({ league: 'hoops-league' }).lean();
         expect(d.picks[0].team.logos).toEqual(cbbLogos('2561'));
         expect(d.picks[0].team.color).toBe('#037961');
@@ -341,6 +341,39 @@ describe('refreshing the draft\'s copies of each team', () => {
         stub([team({ logos: cbbLogos('X') })]);
         await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
         expect((await Draft.findOne({ season: 2026 }).lean()).picks[0].team.logos).toEqual(cbbLogos('2561'));
+    });
+
+    test('a probe miss keeps the pick\'s logos rather than blanking them', async () => {
+        // One CDN outage during the prod re-run would otherwise strip all 60
+        // picks. The team row still stores [], so nothing unverified is served.
+        client.logoUrlsThatExist.mockResolvedValue(new Set());
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 264, school: 'Old name', logos: ESPN })]);
+        stub([team()]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect((await HoopsTeam.findOne({ id: 264 }).lean()).logos).toEqual([]);
+        const t = (await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team;
+        expect(t.logos).toEqual(ESPN);
+        expect(t.school).toBe('Siena');   // the other fields still refresh
+    });
+
+    test('a LIVE draft is left alone', async () => {
+        // The socket $pushes picks without bumping __v, so saving a picks array
+        // loaded a moment earlier would erase the pick made in between.
+        await Draft.create({ league: 'hoops-league', season: SEASON, status: 'active',
+            picks: [pick(1, { id: 264, school: 'Siena', logos: ESPN })] });
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(res.body.draftCopies).toMatchObject({ drafts: 0, skippedLive: 1 });
+        expect((await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team.logos).toEqual(ESPN);
+    });
+
+    test('an unprimed season cache does not silently skip the refresh', async () => {
+        // sportForLeague answers 'football' for every league when unprimed.
+        activeSeason._reset();
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 264, school: 'Siena', logos: ESPN })]);
+        stub([team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest?force=1`).send({});
+        expect(res.body.draftCopies.drafts).toBe(1);
     });
 
     test('a failed copy refresh still reports the team write', async () => {

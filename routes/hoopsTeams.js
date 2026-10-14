@@ -106,14 +106,30 @@ function buildUpsertOp(t, season, haveLogo) {
 // ids are per-sport (CBB 87 is Florida, football 87 is Notre Dame), so an
 // unscoped pass would rename teams across sports; and HoopsTeam rows are
 // per-season, so a forced backfill must not repaint a different season's draft.
+//
+// Three more rules, each from QA on #543:
+//   - a probe MISS never blanks a pick. The team row stores [] so nothing
+//     unverified is served from it, but a pick's existing logos keep working
+//     until a later ingest confirms new ones. One CDN outage during this run
+//     would otherwise strip every logo off the draft room and board.
+//   - a LIVE draft is skipped. The draft socket $pushes picks without bumping
+//     __v, so saving a whole picks array loaded a moment earlier would erase
+//     the pick made in between. Re-run the ingest after the draft ends.
+//   - leagues are read by their stored sport, not the season cache, which
+//     answers 'football' for every league when unprimed — a silent no-op.
 async function refreshDraftCopies(season, docs) {
-    const out = { drafts: 0, failed: 0 };
-    const leagueDocs = await League.find({}, { code: 1, _id: 0 }).lean();
-    const codes = leagueDocs.map(l => l.code).filter(c => seasons.sportForLeague(c) === 'basketball');
+    const out = { drafts: 0, failed: 0, skippedLive: 0 };
+    const leagueDocs = await League.find({ sport: 'basketball' }, { code: 1, _id: 0 }).lean();
+    const codes = leagueDocs.map(l => l.code);
     if (!codes.length) return out;
-    const byId = teamsById(docs);
+    const byId = teamsById((docs || []).map(d => {
+        if (Array.isArray(d.logos) && d.logos.length) return d;
+        const { logos, ...rest } = d;
+        return rest;
+    }));
     const drafts = await Draft.find({ league: { $in: codes }, season, 'picks.0': { $exists: true } });
     for (const d of drafts) {
+        if (d.status === 'active') { out.skippedLive++; continue; }
         // picks[].team is Mixed: mutate, then flag the path for mongoose.
         if (!applyTeamFields((d.picks || []).map(p => p.team), byId)) continue;
         try { d.markModified('picks'); await d.save(); out.drafts++; } catch (err) {
@@ -228,7 +244,7 @@ router.post('/:season/ingest', async (req, res) => {
     // Draft picks hold their own copy of each team, so a re-ingest alone
     // leaves them on the old URLs. After the write, so a failure here never
     // costs the team rows.
-    let draftCopies = { drafts: 0, failed: 0 };
+    let draftCopies = { drafts: 0, failed: 0, skippedLive: 0 };
     try {
         draftCopies = await refreshDraftCopies(season, ops.map(o => o.updateOne.update.$set));
     } catch (err) {
