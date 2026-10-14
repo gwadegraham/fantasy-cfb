@@ -83,11 +83,11 @@
 @keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
 
 /* ---------- The Griddy (pose 'griddy') ----------
-   Arms and legs together, like the real dance: the feet never stop. One 3.2s
-   phrase is eight heel kicks on a skip (L, R, L, R ... every 12.5%). Over the
-   first four the arms swing, each flaring out on its own leg's kick (a glove
-   swinging inward landed on the kicked shoe); for the last four the hands are
-   up at the eyes holding the goggles while the feet keep going. The legs are
+   Arms and legs together, like the real dance: the feet never stop. One 1.6s
+   phrase is four heel kicks on a skip (L, R, L, R every 25%): two with the
+   arms swinging, each flaring out on its own leg's kick (a glove swinging
+   inward landed on the kicked shoe), then two with the hands up at the eyes
+   holding the goggles while the feet keep going. The legs are
    side-on, toes forward, so each heel visibly kicks back and up behind him.
    Pivots are the joints in the 64x72 drawing (view-box). */
 .ccm .ccm-gr-hop     { transform-box: view-box; transform-origin: 32px 61px; }
@@ -99,57 +99,57 @@
 .ccm .ccm-gr-armR    { transform-box: view-box; transform-origin: 50.5px 32px; }
 .ccm .ccm-gr-shadow  { transform-origin: center; }
 .ccm .ccm-gr-goggles { opacity: 0; }
-.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-l-thigh { animation: ccm-gr-l-thigh 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-l-shin { animation: ccm-gr-l-shin 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-r-thigh { animation: ccm-gr-r-thigh 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-r-shin { animation: ccm-gr-r-shin 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-armL 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-armR 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-goggles { animation: ccm-gr-goggles 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow 3.2s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-thigh { animation: ccm-gr-l-thigh 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-shin { animation: ccm-gr-l-shin 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-thigh { animation: ccm-gr-r-thigh 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-shin { animation: ccm-gr-r-shin 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-armL 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-armR 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-goggles { animation: ccm-gr-goggles 1.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow 1.6s ease-in-out infinite; }
 @keyframes ccm-gr-hop {
-    0%, 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, 100% { transform: translateY(.6px) scale(1.03, .96); }
-    6.25%, 31.25%, 56.25%, 81.25% { transform: translateY(-3px) rotate(-3deg); }
-    18.75%, 43.75%, 68.75%, 93.75% { transform: translateY(-3px) rotate(3deg); }
+    0%, 25%, 50%, 75%, 100% { transform: translateY(.6px) scale(1.03, .96); }
+    12.5%, 62.5% { transform: translateY(-3px) rotate(-3deg); }
+    37.5%, 87.5% { transform: translateY(-3px) rotate(3deg); }
 }
 @keyframes ccm-gr-l-thigh {
-    0%, 1.75%, 10.75%, 26.75%, 35.75%, 51.75%, 60.75%, 76.75%, 85.75%, 100% { transform: rotate(0deg); }
-    4.75%, 7.75%, 29.75%, 32.75%, 54.75%, 57.75%, 79.75%, 82.75% { transform: rotate(24deg); }
+    0%, 3.5%, 21.5%, 53.5%, 71.5%, 100% { transform: rotate(0deg); }
+    9.5%, 15.5%, 59.5%, 65.5% { transform: rotate(24deg); }
 }
 @keyframes ccm-gr-l-shin {
-    0%, 1.75%, 10.75%, 26.75%, 35.75%, 51.75%, 60.75%, 76.75%, 85.75%, 100% { transform: rotate(0deg); }
-    4.75%, 7.75%, 29.75%, 32.75%, 54.75%, 57.75%, 79.75%, 82.75% { transform: rotate(100deg); }
+    0%, 3.5%, 21.5%, 53.5%, 71.5%, 100% { transform: rotate(0deg); }
+    9.5%, 15.5%, 59.5%, 65.5% { transform: rotate(100deg); }
 }
 @keyframes ccm-gr-r-thigh {
-    0%, 14.25%, 23.25%, 39.25%, 48.25%, 64.25%, 73.25%, 89.25%, 98.25%, 100% { transform: rotate(0deg); }
-    17.25%, 20.25%, 42.25%, 45.25%, 67.25%, 70.25%, 92.25%, 95.25% { transform: rotate(24deg); }
+    0%, 28.5%, 46.5%, 78.5%, 96.5%, 100% { transform: rotate(0deg); }
+    34.5%, 40.5%, 84.5%, 90.5% { transform: rotate(24deg); }
 }
 @keyframes ccm-gr-r-shin {
-    0%, 14.25%, 23.25%, 39.25%, 48.25%, 64.25%, 73.25%, 89.25%, 98.25%, 100% { transform: rotate(0deg); }
-    17.25%, 20.25%, 42.25%, 45.25%, 67.25%, 70.25%, 92.25%, 95.25% { transform: rotate(100deg); }
+    0%, 28.5%, 46.5%, 78.5%, 96.5%, 100% { transform: rotate(0deg); }
+    34.5%, 40.5%, 84.5%, 90.5% { transform: rotate(100deg); }
 }
-/* Arms swing on the first four kicks, rise to the eyes, hold the goggles over
-   the last four kicks, and drop back as the phrase loops. */
+/* Arms swing on the first two kicks, rise to the eyes, hold the goggles over
+   the last two kicks, and drop back as the phrase loops. */
 @keyframes ccm-gr-armL {
     0%, 100% { transform: rotate(8deg); }
-    6.25%, 31.25% { transform: rotate(30deg); }
-    18.75%, 43.75% { transform: rotate(-4deg); }
-    53%, 96% { transform: rotate(-128deg); }
+    12.5% { transform: rotate(30deg); }
+    37.5% { transform: rotate(-4deg); }
+    52%, 93% { transform: rotate(-128deg); }
 }
 @keyframes ccm-gr-armR {
     0%, 100% { transform: rotate(-8deg); }
-    6.25%, 31.25% { transform: rotate(4deg); }
-    18.75%, 43.75% { transform: rotate(-30deg); }
-    53%, 96% { transform: rotate(126deg); }
+    12.5% { transform: rotate(4deg); }
+    37.5% { transform: rotate(-30deg); }
+    52%, 93% { transform: rotate(126deg); }
 }
 @keyframes ccm-gr-goggles {
-    0%, 49%, 99%, 100% { opacity: 0; }
-    54%, 95% { opacity: 1; }
+    0%, 46%, 98%, 100% { opacity: 0; }
+    53%, 92% { opacity: 1; }
 }
 @keyframes ccm-gr-shadow {
-    0%, 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, 100% { transform: scaleX(1); opacity: .35; }
-    6.25%, 18.75%, 31.25%, 43.75%, 56.25%, 68.75%, 81.25%, 93.75% { transform: scaleX(.82); opacity: .2; }
+    0%, 25%, 50%, 75%, 100% { transform: scaleX(1); opacity: .35; }
+    12.5%, 37.5%, 62.5%, 87.5% { transform: scaleX(.82); opacity: .2; }
 }
 
 /* ---------- The Heisman (pose 'heisman') ----------
