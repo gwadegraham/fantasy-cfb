@@ -1,0 +1,8 @@
+<%# The data credit, per sport. `viewerSport` comes from server.js off the
+    viewer's league; anything but basketball credits the football source. %>
+<% var _hoops = (typeof viewerSport !== 'undefined' && viewerSport) === 'basketball'; %>
+<% if (_hoops) { %>
+<a href="https://collegebasketballdata.com/" class="cfb-data">Powered by College Basketball Data</a>
+<% } else { %>
+<a href="https://collegefootballdata.com/" class="cfb-data">Powered by College Football Data</a>
+<% } %>
