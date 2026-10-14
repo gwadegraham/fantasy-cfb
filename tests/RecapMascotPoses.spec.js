@@ -122,6 +122,15 @@ describe('the drawing matches the pose', () => {
         window.ccRecap.closePopup();
     });
 
+    test('on basketball, Dribbles holds the trophy at #1 and waves the foam finger on a season high', () => {
+        load('basketball');
+        window.ccRecap.showPopup({ league: 'x', recaps: [recap({ rank: 1, isSeasonHigh: true })] }, 'u1');
+        const has = (id, cls) => !!document.querySelector(`.recap-slide[data-slide-id="${id}"] .recap-slide-mascot .${cls}`);
+        expect([has('rank', 'ccm-prop'), has('rank', 'ccm-cc-foam')]).toEqual([true, false]);
+        expect([has('seasonhigh', 'ccm-cc-foam'), has('seasonhigh', 'ccm-prop')]).toEqual([true, false]);
+        window.ccRecap.closePopup();
+    });
+
     test('the celebration only moves while its own slide is showing', () => {
         load('football');
         window.ccRecap.showPopup({ league: 'x', recaps: [recap({ rank: 1, isSeasonHigh: true })] }, 'u1');
