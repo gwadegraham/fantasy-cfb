@@ -13,48 +13,27 @@ const leagueSelection = require('../modules/league-selection');
 const teamPage = require('../modules/hoops-team-page');
 const roster = require('../modules/hoops-roster');
 const visibility = require('../modules/hoops-visibility');
+const Draft = require('../models/draft');
+const League = require('../models/league');
+const { pickLogo } = require('../public/logo.js');
+const { teamsById, applyTeamFields } = require('../modules/team-refresh');
 
-// Basketball logos come from ESPN's CDN, keyed on sourceId — which IS the ESPN
-// id, so no mapping is invented, only the image host is borrowed.
+// Basketball logos come straight from CBBD's /teams `logos` array (#508). It
+// is football's shape exactly — light and dark at 500/256/128/96/64/48/32/16,
+// on cdn.collegefootballdata.com/cbb-logos[-dark]/ keyed on sourceId — so
+// public/logo.js pickLogo works unchanged and nothing in public/ branches on
+// sport. Measured 7 Oct 2026: 365/365 teams carry 16 entries, every URL 200.
 //
-// ⚠️ THIS IS A STOPGAP WITH A KNOWN DESTINATION. The CBBD maintainer confirmed
-// the API returns no logos for basketball teams anywhere today, and has a
-// ticket open for future support. When that ships, this function is the only
-// thing that changes — edit it and re-run POST /hoops/teams/:season/ingest.
-// No migration, no schema change.
-//
-// Why not CFBD's CDN, which football already uses. Measured across all 365
-// teams for 2027:
-//
-//   cdn.collegefootballdata.com/logos/     (sourceId)  264/365
-//   cdn.collegefootballdata.com/cbb-logos/ (CBB id)    251/365
-//   both paths combined                                339/365
-//   a.espncdn.com/i/teamlogos/ncaa/        (sourceId)  365/365
-//
-// Both CFBD paths are partial mirrors — /logos only covers schools with a
-// football programme, and cbb-logos misses 26 including Gonzaga and Xavier
-// (403 at every size) and has no dark variants at all. ESPN is the origin the
-// ids belong to, and has both light and dark for every team.
-//
-// ⚠️ ESPN SERVES ONE SIZE: 500, light and dark. Every other size 404s —
-// measured on Gonzaga across 256/128/96/64/48/32/16, all missing in both
-// variants. Football's 16-entry ladder (eight sizes) does NOT exist here.
-//
-// Copying that ladder anyway would have reproduced the original bug exactly:
-// 14 of every 16 URLs dead. Two entries is the honest answer, and pickLogo
-// handles a short array fine — it filters by the dark preference, takes the
-// largest, and falls back to the whole list when the preferred variant is
-// absent.
-const LOGO_SIZES = [500];
-const ESPN_LOGOS = 'https://a.espncdn.com/i/teamlogos/ncaa';
-function logosFor(sourceId) {
-    if (!sourceId) return [];
-    const out = [];
-    LOGO_SIZES.forEach(size => {
-        out.push(`${ESPN_LOGOS}/${size}/${sourceId}.png`);
-        out.push(`${ESPN_LOGOS}/${size}-dark/${sourceId}.png`);
-    });
-    return out;
+// Only strings are kept: a null or object entry would reach an <img src>.
+function apiLogos(t) {
+    return Array.isArray(t && t.logos) ? t.logos.filter(u => typeof u === 'string' && u) : [];
+}
+
+// The one URL per team the ingest probes before storing any of them: the
+// largest light logo. Same selector the renderers use, so the probe checks a
+// URL a page could actually ask for.
+function probeUrl(logos) {
+    return pickLogo(logos, { dark: false });
 }
 
 // CBBD sends colours as bare hex — "037961", not "#037961" — while every
@@ -69,12 +48,14 @@ function withHash(c) {
     return v.startsWith('#') ? v.toLowerCase() : `#${v.toLowerCase()}`;
 }
 
-// `haveLogo` is the set of sourceIds the CDN actually serves. Passing it in
-// rather than synthesising blindly is the whole of finding #1: 101 of 365 teams
-// have no logo there and were being given 16 URLs that all 403.
+// `haveLogo` is the set of probe URLs that actually loaded (see
+// cbbd.logoUrlsThatExist). A team whose probe failed stores [] rather than 16
+// links the page would render as broken images — finding #1 of the original
+// ingest, when 101 of 365 teams were given URLs that all 403.
 function buildUpsertOp(t, season, haveLogo) {
     if (!t || t.id == null) return null;
-    const hasLogo = haveLogo ? haveLogo.has(String(t.sourceId)) : false;
+    const given = apiLogos(t);
+    const hasLogo = !!(given.length && haveLogo && haveLogo.has(probeUrl(given)));
     const doc = {
         id: t.id,
         season,
@@ -86,7 +67,7 @@ function buildUpsertOp(t, season, haveLogo) {
         shortDisplayName: t.shortDisplayName,
         color: withHash(t.primaryColor),
         alt_color: withHash(t.secondaryColor),
-        logos: hasLogo ? logosFor(t.sourceId) : [],
+        logos: hasLogo ? given : [],
         conferenceId: t.conferenceId,
         conference: t.conference,
         currentVenueId: t.currentVenueId,
@@ -113,6 +94,34 @@ function buildUpsertOp(t, season, haveLogo) {
     // conference between 2026 and 2027, so an id-only key let the wrong season
     // silently rewrite the live rows.
     return { updateOne: { filter: { id: t.id, season }, update, upsert: true } };
+}
+
+// Push fresh display fields (logos, school, colours) into the copy of each
+// team a basketball draft stored on its picks (drafts.picks[].team) — what
+// the draft room and board render. The same job routes/teams.js does for
+// football, with the same helper. Rosters need nothing: a basketball roster
+// holds references (seasons[].teamRefs), which resolve to these rows.
+//
+// Scoped to BASKETBALL leagues and THIS season, and both scopes matter. Team
+// ids are per-sport (CBB 87 is Florida, football 87 is Notre Dame), so an
+// unscoped pass would rename teams across sports; and HoopsTeam rows are
+// per-season, so a forced backfill must not repaint a different season's draft.
+async function refreshDraftCopies(season, docs) {
+    const out = { drafts: 0, failed: 0 };
+    const leagueDocs = await League.find({}, { code: 1, _id: 0 }).lean();
+    const codes = leagueDocs.map(l => l.code).filter(c => seasons.sportForLeague(c) === 'basketball');
+    if (!codes.length) return out;
+    const byId = teamsById(docs);
+    const drafts = await Draft.find({ league: { $in: codes }, season, 'picks.0': { $exists: true } });
+    for (const d of drafts) {
+        // picks[].team is Mixed: mutate, then flag the path for mongoose.
+        if (!applyTeamFields((d.picks || []).map(p => p.team), byId)) continue;
+        try { d.markModified('picks'); await d.save(); out.drafts++; } catch (err) {
+            out.failed++;
+            console.log(`Hoops draft copies: draft ${d._id} not saved: ${err.message}`);
+        }
+    }
+    return out;
 }
 
 // Ingest every D-I team for a season. One CBBD call; safe to re-run.
@@ -180,7 +189,7 @@ router.post('/:season/ingest', async (req, res) => {
     // not a CBBD call) and batched.
     let haveLogo;
     try {
-        haveLogo = await cbbd.logoIdsThatExist(result.data.map(t => t.sourceId));
+        haveLogo = await cbbd.logoUrlsThatExist(result.data.map(t => probeUrl(apiLogos(t))));
     } catch (err) {
         console.log(`Hoops team ingest: logo probe failed (${err.message}) — storing no logos`);
         haveLogo = new Set();
@@ -216,13 +225,24 @@ router.post('/:season/ingest', async (req, res) => {
         return res.status(500).json({ season, created, updated, message: `Team write failed: ${failure}` });
     }
 
+    // Draft picks hold their own copy of each team, so a re-ingest alone
+    // leaves them on the old URLs. After the write, so a failure here never
+    // costs the team rows.
+    let draftCopies = { drafts: 0, failed: 0 };
+    try {
+        draftCopies = await refreshDraftCopies(season, ops.map(o => o.updateOne.update.$set));
+    } catch (err) {
+        console.log(`Hoops team ingest: draft copy refresh failed: ${err.message}`);
+        draftCopies.error = err.message;
+    }
+
     // withLogos is reported because it is the number that silently regressed
     // before: "365 teams" was true while 101 of them carried dead URLs.
-    const withLogos = haveLogo.size;
+    const withLogos = ops.filter(o => o.updateOne.update.$set.logos.length).length;
     console.log(`Hoops teams · ${season}: ${created} created, ${updated} updated `
         + `(${ops.length} teams, ${withLogos} with logos)`);
     return res.status(200).json({
-        season, created, updated, teams: ops.length, withLogos,
+        season, created, updated, teams: ops.length, withLogos, draftCopies,
         fetched: result.data.length, remainingCalls: result.remainingCalls
     });
   } catch (err) {
@@ -304,5 +324,5 @@ router.get('/:id/page', async (req, res) => {
 
 module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
-module.exports.logosFor = logosFor;
+module.exports.refreshDraftCopies = refreshDraftCopies;
 module.exports.withHash = withHash;
