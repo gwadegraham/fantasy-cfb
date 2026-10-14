@@ -172,6 +172,20 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Roster turnover (#541). Which CBBD year, who counts as gone, and
+        // when the job spends its two calls or refuses a response.
+        "./modules/hoops-turnover.js": {
+            statements: 98,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-turnover-job.js": {
+            statements: 98,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-net.js": {
             statements: 100,
             branches: 100,

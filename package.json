@@ -11,7 +11,8 @@
     "sync:dev": "./scripts/sync-prod-to-dev.sh",
     "season:set": "node ./scripts/set-season.js",
     "migrate:accounts": "node ./scripts/migrate-accounts.js",
-    "hoops:styles": "node ./scripts/run-hoops-styles.js"
+    "hoops:styles": "node ./scripts/run-hoops-styles.js",
+    "hoops:turnover": "node ./scripts/run-hoops-turnover.js"
   },
   "author": "",
   "license": "ISC",

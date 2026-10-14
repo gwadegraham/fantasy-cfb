@@ -69,7 +69,11 @@ const JOB_SCHEDULES = [
     // 1 CBBD call a day, 0 before tip-off once last season's tags are stored
     // and 0 after the final. 07:00 Central, after hoops-stats, so last
     // night's games are in the leaderboard.
-    { job: 'hoops-styles', modulePath: '../modules/hoops-styles-job', rule: { hour: 7, minute: 0 } }
+    { job: 'hoops-styles', modulePath: '../modules/hoops-styles-job', rule: { hour: 7, minute: 0 } },
+    // Transfer portal + recruiting class per team (#541). Checked daily but
+    // fetched weekly before tip-off (2 CBBD calls), once more after it, then
+    // never: it is the offseason's history by the time anyone drafts.
+    { job: 'hoops-turnover', modulePath: '../modules/hoops-turnover-job', rule: { hour: 7, minute: 10 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

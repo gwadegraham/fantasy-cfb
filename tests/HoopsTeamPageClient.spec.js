@@ -101,6 +101,53 @@ test('tag text is escaped', async () => {
     expect(document.querySelector('.ht-tag img')).toBeNull();
 });
 
+// Roster turnover (#541) on the Resume tab: three chips, then who arrived
+// and who left, linked when the other school has a page.
+describe('roster turnover', () => {
+    const tv = (o) => Object.assign({
+        fromYear: 2026, season: 2027, in: 2, out: 3, inTop: 1, outTop: 0, classRank: 12, classRating: 51.3,
+        arrivals: [
+            { name: 'Al Pha', position: 'SG', stars: 4, rating: 0.95, teamId: 51, school: 'Cincinnati' },
+            { name: 'Be Ta', position: 'C', stars: null, rating: null, teamId: null, school: 'Lander' }
+        ],
+        departures: [{ name: 'Ga Mma', position: 'PF', stars: 3, rating: 0.85, teamId: null, school: null }]
+    }, o);
+
+    test('the panel: counts, class rank, and each name with where they came from or went', async () => {
+        await render(payload({ turnover: tv() }));
+        expect(txt('.sp-h')).toContain('Roster turnoverSpring 2026 portal and class, into 2026\u201327');
+        expect(txt('.ht-to-sum b')).toBe('+2 | \u22123 | #12');
+        expect(txt('.ht-to-sum small')).toContain('transfers in \u00b7 1 four-star+');
+        expect(txt('.ht-to-col h3')).toBe('Arrived | Left');
+        expect(txt('.ht-to-nm')).toBe('Al Pha | Be Ta | Ga Mma');
+        expect(txt('.ht-to-wh')).toBe('from Cincinnati | from Lander | to no school listed');
+        expect(document.querySelector('.ht-to-wh a').getAttribute('href')).toBe('/hoops/team/51');
+        // Division II: named, not linked to a page that does not exist.
+        expect(document.querySelectorAll('.ht-to-wh a')).toHaveLength(1);
+        expect(txt('.ht-to-st')).toBe('4\u2605 | 3\u2605');
+        // 3 out but one name listed: the other two are "+2 more".
+        expect(txt('.ht-to-more')).toBe('+2 more');
+    });
+
+    test('an unranked class is a dash; an empty side says None', async () => {
+        await render(payload({ turnover: tv({ in: 0, arrivals: [], classRank: null }) }));
+        expect(txt('.ht-to-sum b')).toBe('+0 | \u22123 | \u2014');
+        expect(txt('.ht-to-col .ht-to-none')).toContain('None');
+    });
+
+    test('no turnover on file, no panel', async () => {
+        await render(payload({ turnover: null }));
+        expect(document.querySelector('.ht-to')).toBeNull();
+        expect(txt('.sp-h')).not.toContain('Roster turnover');
+    });
+
+    test('names are escaped', async () => {
+        await render(payload({ turnover: tv({ arrivals: [{ name: '<img src=x onerror=alert(1)>', school: '<b>x</b>' }] }) }));
+        expect(document.querySelector('.ht-to img')).toBeNull();
+        expect(document.querySelector('.ht-to-wh b')).toBeNull();
+    });
+});
+
 const tab = (name) => document.querySelector('[data-tab="' + name + '"]').click();
 
 describe('official NET (#533)', () => {

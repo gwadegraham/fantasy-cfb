@@ -553,6 +553,10 @@ table.pool-table { width: 100%; border-collapse: collapse; background: #131725; 
 .dp-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .dp-tag { font-size: 0.74em; font-weight: 600; line-height: 1.3; padding: 1px 8px; white-space: nowrap;
     border-radius: var(--cc-r-pill); color: var(--cc-muted-bright); background: var(--cc-surface-3); cursor: default; }
+/* Roster turnover (#541): "Portal +4 / −3 · Class #12", one quiet line under
+   the name. Tabular figures so the counts line up down the board. */
+.dp-turnover { display: block; margin-top: 3px; font-size: 0.78em; color: var(--cc-muted-bright);
+    font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
 .dp-tags-note { margin: 0 0 10px; color: var(--cc-muted-2); font-size: 0.85em; }
 
 .xwins-wrap { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }

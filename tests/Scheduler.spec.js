@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats', 'hoops-styles',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats', 'hoops-styles', 'hoops-turnover',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -106,6 +106,14 @@ describe('scheduler config', () => {
         const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-styles');
         expect(spec.rule).toEqual({ hour: 7, minute: 0 });
         expect(spec.modulePath).toBe('../modules/hoops-styles-job');
+    });
+
+    // Roster turnover (#541): checked every morning, but the job itself
+    // decides whether to spend its two calls (weekly before tip-off).
+    it('checks basketball roster turnover every morning', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-turnover');
+        expect(spec.rule).toEqual({ hour: 7, minute: 10 });
+        expect(spec.modulePath).toBe('../modules/hoops-turnover-job');
     });
 
     it('builds a timezone-aware recurrence rule', () => {

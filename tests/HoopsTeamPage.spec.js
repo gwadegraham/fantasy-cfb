@@ -131,6 +131,32 @@ describe('build', () => {
         expect((await teamPage.build(3, { season: SEASON })).style).toBeNull();
     });
 
+    // Roster turnover (#541): the team's own, names included.
+    test('roster turnover: the team\'s own with its names, labelled with its offseason; null when none is stored', async () => {
+        const HoopsTeamTurnover = require('../models/hoopsTeamTurnover');
+        expect((await teamPage.build(1, { season: SEASON })).turnover).toBeNull();
+        const at = new Date('2026-10-14T12:00:00Z');
+        const side = (count) => ({ count, topStars: 0, avgRating: null });
+        await HoopsTeamTurnover.create([
+            { season: SEASON, teamId: 1, fromYear: SEASON - 1, fetchedAt: at, in: side(1), out: side(0), classRank: 3, classRating: 60,
+                arrivals: [{ name: 'Al Pha', position: 'G', stars: 4, rating: 0.95, teamId: 2, school: 'Two' }] },
+            { season: SEASON, teamId: 2, fromYear: SEASON - 1, fetchedAt: at, in: side(0), out: side(1),
+                departures: [{ name: 'Al Pha', teamId: 1, school: 'Duke' }] }
+        ]);
+        const t = (await teamPage.build(1, { season: SEASON })).turnover;
+        expect(t).toMatchObject({ fromYear: SEASON - 1, season: SEASON, in: 1, out: 0, classRank: 3, classRating: 60, departures: [] });
+        expect(t.arrivals).toEqual([{ name: 'Al Pha', position: 'G', stars: 4, rating: 0.95, teamId: 2, school: 'Two' }]);
+    });
+
+    test('a failed turnover read costs the panel, not the page', async () => {
+        const HoopsTeamTurnover = require('../models/hoopsTeamTurnover');
+        jest.spyOn(HoopsTeamTurnover, 'find').mockImplementation(() => { throw new Error('Atlas hiccup'); });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const p = await teamPage.build(1, { season: SEASON });
+        expect(p.team.school).toBe('Duke');
+        expect(p.turnover).toBeNull();
+    });
+
     test('a failed tag read costs the tags, not the page', async () => {
         const HoopsTeamStyle = require('../models/hoopsTeamStyle');
         jest.spyOn(HoopsTeamStyle, 'find').mockImplementation(() => { throw new Error('Atlas hiccup'); });
