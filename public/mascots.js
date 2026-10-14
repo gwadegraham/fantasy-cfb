@@ -359,20 +359,23 @@
     // legs dangling; he swings from the rim (ccm-dh-*).
     const dribblesDunk = u => `
         ${dDefs(u, 32, 33, 15)}
-        <rect class="ccm-f-body ccm-o" x="14" y=".6" width="36" height="8.4" rx="1.4"/>
-        <rect x="25" y="2.6" width="14" height="6.4" fill="none" stroke="var(--ccm-ball)" stroke-width="1.2"/>
-        <g class="ccm-lmb net"><g stroke="var(--ccm-shade)" stroke-width="1" fill="none">
-          <path d="M20 11 L23 19 M26 11 L27 18 M38 11 L37 18 M44 11 L41 19"/></g></g>
-        <rect class="ccm-f-red ccm-o" x="17" y="8.6" width="30" height="2.8" rx="1.4"/>
+        <!-- The same real-proportion hoop as the net cutting: 30-wide board,
+             the shooter's square on a quarter-width rim, a tapered net. -->
+        <rect class="ccm-f-body ccm-o" x="17" y="0" width="30" height="17.5" rx="1"/>
+        <rect x="27" y="8.1" width="10" height="7.5" fill="none" stroke="var(--ccm-ball)" stroke-width="1"/>
+        <g class="ccm-lmb" fill="none" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linejoin="round">
+          <path d="M28.6 16.6 L29.8 23.6 L34.2 23.6 L35.4 16.6"/>
+          <path d="M28.6 16.6 L32 23.6 M30.8 16.6 L34.2 23.6 M33.2 16.6 L29.8 23.6 M35.4 16.6 L32 23.6 M29.2 20 L34.8 20"/></g>
+        <rect class="ccm-f-red ccm-o" x="28.2" y="15.4" width="7.6" height="1.8" rx=".9"/>
         <g class="ccm-dh-swing">
           <g class="ccm-lmb">${noodle('M28 47 Q27 54 26.5 61')}${noodle('M36 47 Q37 54 38 60.5')}
             ${shoe(17, 59, 12, 'ccm-f-violet')}${shoe(34, 58.6, 12, 'ccm-f-violet')}
-            ${noodle('M44.5 26 Q48 16 41 11.6')}</g>
+            ${noodle('M44.5 27 Q47 18 36.8 16.8')}</g>
           <g class="ccm-dh-pump ccm-lmb">${noodle('M18.5 30 Q9 27 11 18')}${glove(11, 15.4, 'fist')}</g>
           ${dBall(u, 32, 33, 15)}
           ${eyes(26.8, 37.2, 31.6, 3.6, 5.2)}
           ${smile(u + 'm', 32, 38.6, 5.4, 2.6)}
-          <g class="ccm-lmb">${glove(40.6, 10, 'fist')}</g>
+          <g class="ccm-lmb">${glove(35.6, 15.8, 'fist')}</g>
         </g>`;
 
     // #1: cutting down the net, the college champion's ritual. He stands on a
@@ -382,12 +385,16 @@
     const dribblesNetCut = u => `
         ${dDefs(u, 26, 32, 13)}
         <ellipse class="ccm-shadow ccm-lmb" cx="28" cy="68" rx="16" ry="2"/>
-        <rect class="ccm-f-body ccm-o" x="34" y=".6" width="26" height="6.2" rx="1.2"/>
-        <rect x="42" y="2.2" width="10" height="4.6" fill="none" stroke="var(--ccm-ball)" stroke-width="1.1"/>
-        <g fill="none" stroke="var(--ccm-shade)" stroke-width="1" stroke-linejoin="round">
-          <path d="M33 9 L36 18 L41 9 L44 18 L49 9 L52 18 L57 9"/><path d="M36 18 L52 18"/>
-          <path d="M57 9 L58.6 15.6"/></g>
-        <rect class="ccm-f-red ccm-o" x="31" y="6.8" width="28" height="2.6" rx="1.3"/>
+        <!-- The hoop at real proportions: a 72x42 backboard (here 30 wide), the
+             24x18 shooter's square sitting on the rim, an 18" rim (a quarter of
+             the board) just above the board's bottom edge, a net about one rim
+             long, tapering. -->
+        <rect class="ccm-f-body ccm-o" x="30" y="0" width="30" height="17.5" rx="1"/>
+        <rect x="40" y="8.1" width="10" height="7.5" fill="none" stroke="var(--ccm-ball)" stroke-width="1"/>
+        <g fill="none" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linejoin="round">
+          <path d="M41.6 16.6 L42.8 23.6 L47.2 23.6 L48.4 16.6"/>
+          <path d="M41.6 16.6 L45 23.6 M43.8 16.6 L47.2 23.6 M46.2 16.6 L42.8 23.6 M48.4 16.6 L45 23.6 M42.2 20 L47.8 20"/></g>
+        <rect class="ccm-f-red ccm-o" x="41.2" y="15.4" width="7.6" height="1.8" rx=".9"/>
         <g class="ccm-lmb">
           <line x1="17" y1="53" x2="13" y2="66" stroke="var(--ccm-ink)" stroke-width="3" stroke-linecap="round"/>
           <line x1="35" y1="53" x2="39" y2="66" stroke="var(--ccm-ink)" stroke-width="3" stroke-linecap="round"/>
@@ -408,7 +415,7 @@
             </g>
             <circle class="ccm-f-body ccm-o" cx="8.4" cy="5.2" r=".9"/>
             ${glove(9, 12.4, 'fist')}</g>
-          <g class="ccm-lmb">${noodle('M38 27 Q44 23 44.6 18.6')}</g>
+          <g class="ccm-lmb">${noodle('M37.4 27.6 Q40.6 27.6 40.4 24.8')}</g>
           ${dBall(u, 26, 32, 13)}
           ${eyes(21.6, 30.4, 30.4, 3.3, 4.8)}
           ${smile(u + 'm', 26, 36.4, 4.8, 2.4)}
@@ -418,8 +425,8 @@
                  (9, 11), pointing up at the net. Drawn over the glove so the
                  loops show like fingers through the handles. The loose blade
                  and its loop open and close about the pivot. -->
-            ${glove(44.6, 18.6, 'fist')}
-            <svg x="38.6" y="1" width="21" height="21" viewBox="0 0 20 20" overflow="visible">
+            ${glove(40.4, 24.8, 'fist')}
+            <svg x="37.6" y="14.9" width="11" height="11" viewBox="0 0 20 20" overflow="visible">
               <g>
                 <path d="M9 11 L4.6 15.2" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
                 <circle cx="3.6" cy="16.2" r="2.6" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>

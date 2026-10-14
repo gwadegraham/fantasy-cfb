@@ -301,7 +301,7 @@
 
 /* ---------- Dribbles' moves ---------- */
 /* Dunk-and-hang: he swings from the rim grip, the free fist pumps (1.6s). */
-.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 40.6px 10px; }
+.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 35.6px 15.8px; }   /* the rim grip */
 .ccm .ccm-dh-pump { transform-box: view-box; transform-origin: 18.5px 30px; }
 .ccm-wrap.is-busy .ccm-dh-swing { animation: ccm-dh-swing 1.6s ease-in-out infinite alternate; }
 .ccm-wrap.is-busy .ccm-dh-pump { animation: ccm-dh-pump .4s ease-in-out infinite alternate; }
