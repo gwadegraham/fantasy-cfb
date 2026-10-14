@@ -627,6 +627,7 @@ describe('pure helpers', () => {
         expect(leagueAdmin.stateOf({ draftStatus: 'scheduled', managers: 1 })).toBe('setup');
         // …with 2+ it is Ready to draft; managers alone (no draft saved) are not.
         expect(leagueAdmin.stateOf({ draftStatus: 'scheduled', managers: 8 })).toBe('ready');
+        expect(leagueAdmin.stateOf({ draftStatus: 'pending', managers: 2 })).toBe('ready'); // saved with no date
         expect(leagueAdmin.stateOf({ managers: 8 })).toBe('setup');
         expect(leagueAdmin.stateOf({ draftStatus: 'active', managers: 8 })).toBe('live');
         expect(leagueAdmin.stateOf({})).toBe('setup');
