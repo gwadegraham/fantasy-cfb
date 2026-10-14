@@ -727,9 +727,17 @@ async function updateFranchise(accountId, update, { league, filter } = {}) {
 // is also why it returns documents rather than a loadForWrite context: the
 // caller already loops, and wrapping each one in a two-key object it would never
 // use would be ceremony.
-async function rosteredForWrite() {
+//
+// `league` is a condition on the franchise's league code, and the refresh
+// passes one: team ids are only unique WITHIN a sport (CFBD and CBBD number
+// their teams independently), so a refresh that reaches every roster rewrites
+// the other sport's teams that happen to share an id (#545). Omitted, it
+// answers every league.
+async function rosteredForWrite({ league } = {}) {
     const Model = Franchise;
-    return Model.find({ 'seasons.teams.0': { $exists: true } });
+    const query = { 'seasons.teams.0': { $exists: true } };
+    if (league !== undefined) query.league = league;
+    return Model.find(query);
 }
 
 // Create a manager: one person and their entry in one league.
