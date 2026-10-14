@@ -72,6 +72,28 @@ function side(moves) {
     };
 }
 
+// ONE ROW PER PLAYER. CBBD can list a player more than once under different
+// row ids but the same `sourceId` (247Sports' player id): four players in
+// 2026. Marville came twice, from UNC Wilmington and UNC Greensboro — our
+// 2025-26 roster has him at Greensboro, the newer row. Aberdeen came as
+// Kentucky -> Florida and as a stale Florida -> Florida; he was at Kentucky
+// in 2025-26, so the real move wins even though its row is OLDER. Hence:
+// a move beats a departure beats a stay, then the newest row id.
+const RANK = { moved: 2, left: 1 };
+function onePerPlayer(portalRows) {
+    const best = new Map();
+    (portalRows || []).forEach((r, i) => {
+        if (!r) return;
+        const key = r.sourceId != null ? `src:${r.sourceId}` : r.id != null ? `id:${r.id}` : `row:${i}`;
+        const have = best.get(key);
+        const score = (x) => [RANK[outcome(x)] || 0, Number(x.id) || 0];
+        if (!have) { best.set(key, r); return; }
+        const [a, b] = [score(r), score(have)];
+        if (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) best.set(key, r);
+    });
+    return [...best.values()];
+}
+
 // Map teamId -> slim record, for the teams in `teams` ([{ id, school }]) —
 // every one of them, so "no transfers" reads as +0 / −0 rather than missing.
 // Also returns the match counts the job reports, since an id scheme change
@@ -81,23 +103,17 @@ function summarize(portalRows, classRows, teams) {
     const arrivals = new Map();
     const departures = new Map();
     const push = (map, id, m) => { if (!map.has(id)) map.set(id, []); map.get(id).push(m); };
-    // A row CBBD sends twice counts once. Keyed on CBBD's own row id, so two
-    // players who share a name and a move are not merged; name + move only
-    // when a row has no id.
-    const seen = new Set();
-    let rows = 0, matched = 0;
+    let rows = 0, matched = 0, toKnown = 0;
 
-    for (const r of portalRows || []) {
-        const what = r ? outcome(r) : null;
+    for (const r of onePerPlayer(portalRows)) {
+        const what = outcome(r);
         // A nameless row has nothing to list, and the stored name is required.
         if (!what || !nameOf(r)) continue;
         const from = Number(r.origin.id);
         const to = what === 'moved' ? Number(r.destination.id) : null;
-        const key = r.id != null ? `id:${r.id}` : `${nameOf(r)}|${from}|${to}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
         rows++;
         if (known.has(from) || (to != null && known.has(to))) matched++;
+        if (to != null && known.has(to)) toKnown++;
         if (known.has(from)) push(departures, from, move(r, what === 'moved' ? r.destination : null, known));
         if (to != null && known.has(to)) push(arrivals, to, move(r, r.origin, known));
     }
@@ -125,7 +141,7 @@ function summarize(portalRows, classRows, teams) {
             classRating: cls.rating != null ? cls.rating : null
         });
     }
-    return { byTeam: out, rows, matched, classes: classes.size };
+    return { byTeam: out, rows, matched, toKnown, classes: classes.size };
 }
 
 // Where the turnover came from, for the caption: "spring 2026".
@@ -146,8 +162,9 @@ async function turnoverFor(season, teamIds = null, { full = false } = {}) {
     const byTeam = {};
     let source = null;
     for (const r of rows) {
-        // One season's rows always come from one fetch: the job replaces
-        // them wholesale.
+        // One season's rows come from one fetch — the job replaces them
+        // wholesale — except mid-write, or after a write that failed twice,
+        // when the job refetches the next morning.
         if (!source) source = sourceOf(season, r.fromYear, r.fetchedAt);
         const rec = { in: r.in.count, out: r.out.count, inTop: r.in.topStars, outTop: r.out.topStars, classRank: r.classRank == null ? null : r.classRank };
         if (full) {
@@ -164,4 +181,4 @@ async function turnoverFor(season, teamIds = null, { full = false } = {}) {
     return { source, byTeam };
 }
 
-module.exports = { portalYear, outcome, summarize, turnoverFor, sourceOf, MAX_LISTED };
+module.exports = { portalYear, outcome, onePerPlayer, summarize, turnoverFor, sourceOf, MAX_LISTED };

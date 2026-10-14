@@ -35,7 +35,7 @@ const game = (id, at) => ({
 // A portal of `n` moves, team i -> team i+1, all between our teams.
 const portal = (n = 1500, idOf = (i) => i) => Array.from({ length: n }, (_, k) => {
     const i = (k % (N - 1)) + 1;
-    return { year: 2026, firstName: `F${k}`, lastName: 'L', position: 'G', stars: 3, rating: 0.85, eligibility: 'Immediate',
+    return { id: k + 1, sourceId: `s${k}`, year: 2026, firstName: `F${k}`, lastName: 'L', position: 'G', stars: 3, rating: 0.85, eligibility: 'Immediate',
         origin: { id: idOf(i), name: `T${i}` }, destination: { id: idOf(i + 1), name: `T${i + 1}` } };
 });
 const classes = (n = 147) => Array.from({ length: n }, (_, k) => ({ teamId: k + 1, team: `T${k + 1}`, year: 2026, ranking: k + 1, rating: 70 - k / 3 }));
@@ -226,6 +226,16 @@ describe('refusing a response that would zero the board', () => {
         jest.spyOn(console, 'log').mockImplementation(() => {});
         stubCbbd({ p: mixed(150) });
         expect((await job.run({ now: OCT })).status).toBe('success');
+    });
+
+    // The overall share counts a move if EITHER end is ours, so a
+    // destination-only id change would pass it with every team at +0 in.
+    test('destination ids that no longer match ours fail, even with origins intact', async () => {
+        await seeded();
+        stubCbbd({ p: portal(1500).map(r => Object.assign({}, r, { destination: { id: r.destination.id + 100000, name: 'X' } })) });
+        const out = await job.run({ now: LATER });
+        expect(out.failed).toMatch(/only 0 of 1500 2026 portal move\(s\) land on a 2027 team id/);
+        await unchanged();
     });
 
     test('too few ranked classes fail', async () => {

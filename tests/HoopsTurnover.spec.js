@@ -9,7 +9,7 @@ const { portalYear, outcome, summarize, turnoverFor, MAX_LISTED } = require('../
 const HoopsTeamTurnover = require('../models/hoopsTeamTurnover');
 
 const portal = (first, last, from, to, o = {}) => Object.assign({
-    id: Math.floor(Math.random() * 1e9), year: 2026, firstName: first, lastName: last, position: 'G',
+    id: Math.floor(Math.random() * 1e9), sourceId: String(Math.random()), year: 2026, firstName: first, lastName: last, position: 'G',
     origin: from == null ? null : { id: from, name: `S${from}`, conference: 'X' },
     destination: to == null ? null : { id: to, name: `S${to}`, conference: 'Y' },
     stars: 3, rating: 0.85, eligibility: 'Immediate', yearsRemaining: null
@@ -115,20 +115,53 @@ describe('summarize', () => {
         expect(two.in.topStars).toBe(2);
     });
 
-    test('a row CBBD sends twice counts once', () => {
-        const { byTeam } = summarize([portal('Dup', 'Licate', 1, 2, { id: 7 }), portal('Dup', 'Licate', 1, 2, { id: 7 })], [], TEAMS);
+    // CBBD's real duplicates (four players in 2026) share a sourceId — the
+    // 247Sports player id — under DIFFERENT row ids.
+    test('one player listed from two schools counts once, from the newer row', () => {
+        const { byTeam, rows } = summarize([
+            portal('Lilian', 'Marville', 1, 2, { id: 167478, sourceId: '46166372' }),
+            portal('Lilian', 'Marville', 3, 2, { id: 187937, sourceId: '46166372' })
+        ], [], TEAMS);
+        expect(rows).toBe(1);
+        expect(byTeam.get(2).in.count).toBe(1);
+        expect(byTeam.get(2).arrivals.map(m => m.school)).toEqual(['S3']);
+        // The older row's school did not lose him.
+        expect(byTeam.get(1).out.count).toBe(0);
+        expect(byTeam.get(3).out.count).toBe(1);
+    });
+
+    test('a real move beats a newer stale stay (Aberdeen: Kentucky -> Florida)', () => {
+        const { byTeam } = summarize([
+            portal('Denzel', 'Aberdeen', 1, 2, { id: 2802, sourceId: 'a' }),
+            portal('Denzel', 'Aberdeen', 2, 2, { id: 2792527, sourceId: 'a' })
+        ], [], TEAMS);
         expect(byTeam.get(2).in.count).toBe(1);
         expect(byTeam.get(1).out.count).toBe(1);
     });
 
+    test('a move beats a newer "no school" departure (McMillan)', () => {
+        const { byTeam } = summarize([
+            portal('Paul', 'McMillan', 1, null, { id: 9000, sourceId: 'm' }),
+            portal('Paul', 'McMillan', 3, 2, { id: 100, sourceId: 'm' })
+        ], [], TEAMS);
+        expect(byTeam.get(1).out.count).toBe(0);
+        expect(byTeam.get(3).out.count).toBe(1);
+        expect(byTeam.get(2).in.count).toBe(1);
+    });
+
     test('two players who share a name and a move are not merged', () => {
-        const { byTeam } = summarize([portal('Same', 'Name', 1, 2, { id: 7 }), portal('Same', 'Name', 1, 2, { id: 8 })], [], TEAMS);
+        const { byTeam } = summarize([
+            portal('Same', 'Name', 1, 2, { id: 7, sourceId: 's7' }),
+            portal('Same', 'Name', 1, 2, { id: 8, sourceId: 's8' })
+        ], [], TEAMS);
         expect(byTeam.get(2).in.count).toBe(2);
     });
 
-    test('rows with no id fall back to name and move', () => {
-        const { byTeam } = summarize([portal('No', 'Id', 1, 2, { id: null }), portal('No', 'Id', 1, 2, { id: null })], [], TEAMS);
-        expect(byTeam.get(2).in.count).toBe(1);
+    test('with no sourceId, the row id is the player; with neither, every row counts', () => {
+        expect(summarize([portal('A', 'B', 1, 2, { id: 7, sourceId: null }), portal('A', 'B', 1, 2, { id: 7, sourceId: null })], [], TEAMS)
+            .byTeam.get(2).in.count).toBe(1);
+        expect(summarize([portal('A', 'B', 1, 2, { id: null }), portal('C', 'D', 1, 2, { id: null })], [], TEAMS)
+            .byTeam.get(2).in.count).toBe(2);
     });
 
     test('a nameless row is skipped, not stored with a blank name', () => {

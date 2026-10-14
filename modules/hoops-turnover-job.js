@@ -26,6 +26,10 @@
 // A short portal list, or one whose team ids mostly match no team of ours,
 // would write a board of +0 / −0 that looks exactly like a quiet offseason.
 // Both throw instead, keeping what is stored, and the failure is mailed.
+// A failure is retried the next morning, so one that persists costs 2 calls
+// and an email a day until someone looks — ~60 calls a month, deliberately
+// not backed off: the email is the point, and the likeliest cause (a season
+// rolled over before the portal window filled) clears itself.
 
 const jobLogger = require('./job-logger');
 const jobMailer = require('./job-mailer');
@@ -50,6 +54,10 @@ const MIN_PORTAL = 500;
 // are Division II and NAIA schools). Well under that means CBBD's ids no
 // longer match ours.
 const MIN_MATCH = 0.9;
+// Share of moves whose DESTINATION is one of ours: 1,292 of 1,308
+// destinations measured (the 236 with none count against it, so ~84% of
+// moves overall).
+const MIN_DEST_MATCH = 0.5;
 // Ranked classes that match our teams: 146 of 147 measured.
 const MIN_CLASSES = 50;
 
@@ -116,14 +124,20 @@ async function refreshSeason(season, now) {
     if (!sum.rows || sum.matched / sum.rows < MIN_MATCH) {
         throw new Error(`only ${sum.matched} of ${sum.rows} ${year} portal move(s) match a ${season} team id — CBBD's ids changed? Stored turnover kept`);
     }
+    // Checked on its own: the share above counts a move if EITHER end is
+    // ours, so a destination-only id change would pass it while every team
+    // showed +0 arrivals. 98.8% measured.
+    if (sum.toKnown / sum.rows < MIN_DEST_MATCH) {
+        throw new Error(`only ${sum.toKnown} of ${sum.rows} ${year} portal move(s) land on a ${season} team id — CBBD's destination ids changed? Stored turnover kept`);
+    }
     if (sum.classes < MIN_CLASSES) {
         throw new Error(`only ${sum.classes} ${year} recruiting class(es) match a ${season} team, expected ${MIN_CLASSES}+ — stored turnover kept`);
     }
 
     try {
         await writeSeason(season, year, sum.byTeam, now);
-    } catch (first) {
-        console.error(`[${JOB_NAME}] ${season} write failed, retrying once: ${first.message}`);
+    } catch (writeErr) {
+        console.error(`[${JOB_NAME}] ${season} write failed, retrying once: ${writeErr.message}`);
         await writeSeason(season, year, sum.byTeam, now);
     }
     const pct = Math.round(sum.matched / sum.rows * 100);
@@ -176,5 +190,5 @@ async function run({ now = new Date() } = {}) {
 
 module.exports = {
     run, refreshSeason, storedFor, writeSeason,
-    JOB_NAME, LABEL, PORTAL_PATH, CLASS_PATH, REFRESH_MS, MIN_PORTAL, MIN_MATCH, MIN_CLASSES
+    JOB_NAME, LABEL, PORTAL_PATH, CLASS_PATH, REFRESH_MS, MIN_PORTAL, MIN_MATCH, MIN_DEST_MATCH, MIN_CLASSES
 };
