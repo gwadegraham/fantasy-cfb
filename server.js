@@ -320,54 +320,9 @@ db.on('open', async () => {
 
 
 
-// Public, no-login landing page for the season announcement. Same source that
-// gets published as a claude.ai artifact (docs/announcements/offseason-2026.html),
-// but wrapped in a standalone HTML shell and served from our own domain so it
-// can actually be emailed/shared and opened on any device — the claude.ai
-// artifact is private (owner-only) and 404s for anyone else. authRequired is
-// false, and this handler doesn't gate on auth, so it needs no login.
-app.get('/season-preview', (req, res) => {
-    try {
-        const fragment = fs.readFileSync(path.join(__dirname, 'docs/announcements/offseason-2026.html'), 'utf8');
-        // Canonical, absolute URLs so link previews (iMessage, Slack, etc.)
-        // resolve the image no matter where the page is opened from.
-        const SITE = 'https://campusclash.io';
-        const TITLE = 'The 2026 Season Is Loaded — Campus Clash';
-        const DESC = 'We rebuilt the league from the turf up — new ways to play, '
-            + 'new places to go, and a home screen that feels like game day. '
-            + "Here's everything worth knowing before kickoff.";
-        const OG_IMAGE = SITE + '/images/season-preview-og.png';
-        res.type('html').send(
-            '<!DOCTYPE html><html lang="en"><head>'
-            + '<meta charset="utf-8">'
-            + '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            + '<meta name="robots" content="noindex">'
-            + '<title>Campus Clash — The 2026 Season Is Loaded</title>'
-            + '<meta name="description" content="' + DESC + '">'
-            // Open Graph (iMessage, Facebook, Slack, LinkedIn, …)
-            + '<meta property="og:type" content="website">'
-            + '<meta property="og:site_name" content="Campus Clash">'
-            + '<meta property="og:url" content="' + SITE + '/season-preview">'
-            + '<meta property="og:title" content="' + TITLE + '">'
-            + '<meta property="og:description" content="' + DESC + '">'
-            + '<meta property="og:image" content="' + OG_IMAGE + '">'
-            + '<meta property="og:image:secure_url" content="' + OG_IMAGE + '">'
-            + '<meta property="og:image:type" content="image/png">'
-            + '<meta property="og:image:width" content="1200">'
-            + '<meta property="og:image:height" content="630">'
-            + '<meta property="og:image:alt" content="Campus Clash — The 2026 Season Is Loaded">'
-            // Twitter/X large-image card
-            + '<meta name="twitter:card" content="summary_large_image">'
-            + '<meta name="twitter:title" content="' + TITLE + '">'
-            + '<meta name="twitter:description" content="' + DESC + '">'
-            + '<meta name="twitter:image" content="' + OG_IMAGE + '">'
-            + '<style>html,body{margin:0;background:#101322}</style>'
-            + '</head><body>' + fragment + '</body></html>'
-        );
-    } catch (err) {
-        res.status(404).send('Announcement not found.');
-    }
-});
+// Public, no-login announcement pages (/season-preview, /hardwood): see
+// modules/announcement-page.js.
+require('./modules/announcement-page').mount(app, __dirname);
 
 // Dev-only preview of the custom Auth0 login page (auth/login.html). That file
 // is the source of truth for the tenant's Custom Login Page, which normally can

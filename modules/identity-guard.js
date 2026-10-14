@@ -45,7 +45,7 @@ const ALLOW_EXT = /\.(?:css|js|mjs|map|png|jpe?g|svg|ico|webp|gif|woff2?|ttf|jso
 // Public / asset paths that should never be gated even for an authenticated,
 // mismatched session (the block page is self-contained, but these keep other
 // tabs and the public marketing page from throwing 403s).
-const ALLOW_PATH = new Set(['/season-preview', '/favicon.ico', '/profile']);
+const ALLOW_PATH = new Set(['/season-preview', '/hardwood', '/favicon.ico', '/profile']);
 
 // Self-contained block page — inline styles only, since this runs before the
 // static middleware and we can't rely on styles.css loading.

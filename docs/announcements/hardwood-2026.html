@@ -1,0 +1,267 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+  /* Layout: a court at night. Hero with a centre-circle mark, then the rules as
+     the sport's own documents: a quadrant sheet, a bracket ladder, a schedule. */
+  :root {
+    --ground:   #101322;
+    --ground-2: #151a2e;
+    --card:     #1a1f33;
+    --line:     #2a2f47;
+    --text:     #f4f6fb;
+    --dim:      #a9aec8;
+    --faint:    #858ca8;
+    --accent:   #f0833f;
+    --accent-2: #ffb07a;
+    --accent-wash: rgba(240, 131, 63, 0.14);
+    --gold:     #e0b341;
+    --gold-wash: rgba(224, 179, 65, 0.12);
+    --q1: #f0833f; --q2: #e0b341; --q3: #8f97b5; --q4: #4a5070;
+
+    --display: "Graduate", "Rockwell", Georgia, serif;
+    --cond: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    --body: "Barlow", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color-scheme: dark;
+  }
+  /* Deliberately single-theme: a night game. */
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--text); font-family: var(--body); font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding-inline: clamp(16px, 5vw, 48px); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .eyebrow { font-family: var(--cond); font-weight: 700; font-size: 14px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); padding-block: clamp(48px, 9vw, 104px) clamp(36px, 6vw, 72px); }
+  .hero::before { content: ""; position: absolute; inset: 0; background:
+      radial-gradient(90% 70% at 85% 0%, var(--accent-wash), transparent 60%),
+      repeating-linear-gradient(90deg, transparent 0 46px, rgba(255,255,255,0.025) 46px 48px); pointer-events: none; }
+  .hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(24px, 5vw, 56px); align-items: center; }
+  .hero h1 { font-family: var(--display); font-weight: 400; font-size: clamp(44px, 9vw, 96px); line-height: 0.95; letter-spacing: 0.01em; margin-top: 14px; }
+  .hero h1 span { color: var(--accent); display: block; }
+  .lede { margin-top: 22px; max-width: 34ch; font-size: clamp(18px, 2.4vw, 22px); color: var(--dim); }
+  .lede b { color: var(--text); font-weight: 600; }
+  .court { width: clamp(150px, 24vw, 250px); aspect-ratio: 1; max-width: 100%; }
+  .court circle, .court line { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .court .ball { fill: var(--accent); stroke: none; }
+  .court .seam { stroke: var(--ground); stroke-width: 3; fill: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .court .spin { transform-origin: 100px 100px; animation: spin 14s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  }
+
+  .dates { position: relative; margin-top: clamp(32px, 5vw, 52px); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; background: rgba(16,19,34,0.6); }
+  .dates > div { padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; }
+  .dates > div + div { border-left: 1px solid var(--line); }
+  .dates small { font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+  .dates b { font-family: var(--cond); font-weight: 700; font-size: 22px; letter-spacing: 0.02em; }
+  .dates .now b { color: var(--accent); }
+
+  /* ---------- sections ---------- */
+  section.block { padding-block: clamp(48px, 7vw, 84px); border-bottom: 1px solid var(--line); }
+  .head { display: flex; flex-direction: column; gap: 10px; max-width: 62ch; margin-bottom: clamp(24px, 4vw, 40px); }
+  .head h2 { font-family: var(--display); font-weight: 400; font-size: clamp(28px, 4.6vw, 44px); line-height: 1.05; }
+  .head p { color: var(--dim); }
+
+  .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 3vw, 36px); }
+  .three div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .three h3 { font-family: var(--cond); font-weight: 700; font-size: 24px; letter-spacing: 0.01em; }
+  .three p { color: var(--dim); }
+  .three .num { font-family: var(--display); color: var(--accent); font-size: 40px; line-height: 1; }
+
+  /* quadrant sheet */
+  .sheet-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table.sheet { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .sheet caption { caption-side: top; text-align: left; padding: 12px 16px; font-size: 15px; color: var(--dim); background: var(--ground-2); border-bottom: 1px solid var(--line); }
+  .sheet th, .sheet td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+  .sheet tr:last-child td { border-bottom: 0; }
+  .sheet thead th { font-family: var(--cond); font-weight: 700; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); background: var(--ground-2); }
+  .sheet td.q { font-family: var(--cond); font-weight: 700; font-size: 20px; white-space: nowrap; }
+  .sheet .chip { margin-right: 8px; vertical-align: 1px; }
+  .sheet .chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+  .sheet td.pts { font-family: var(--display); font-size: 26px; text-align: right; }
+  .sheet th.pts { text-align: right; }
+  .sheet td.rk { color: var(--dim); }
+  .note { margin-top: 14px; color: var(--faint); font-size: 15px; max-width: 70ch; }
+  .examples { margin-top: clamp(24px, 4vw, 36px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .ex { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ex b { font-family: var(--display); font-size: 34px; line-height: 1; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .ex span { color: var(--dim); font-size: 15px; }
+
+  /* bracket ladder */
+  .ladder { display: flex; flex-direction: column; gap: 8px; }
+  .rung { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr) 3.5rem; align-items: center; gap: 14px; }
+  .rung .lbl { font-family: var(--cond); font-weight: 600; font-size: 18px; }
+  .rung .bar { height: 26px; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); min-width: 6px; }
+  .rung .val { font-family: var(--display); font-size: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+  .rung.champ .bar { background: linear-gradient(90deg, var(--gold), #f3d27e); }
+  .rung.champ .val { color: var(--gold); }
+  .total { margin-top: 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding-top: 16px; border-top: 1px dashed var(--line); }
+  .total b { font-family: var(--display); font-size: 40px; color: var(--gold); line-height: 1; }
+  .total span { color: var(--dim); }
+  .bonuses { margin-top: clamp(24px, 4vw, 36px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .bonus { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .bonus h3 { font-family: var(--cond); font-weight: 700; font-size: 21px; }
+  .bonus h3 em { font-style: normal; color: var(--accent); }
+  .bonus p { color: var(--dim); font-size: 16px; }
+
+  /* app tour */
+  .tour { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(20px, 3vw, 32px) clamp(24px, 4vw, 48px); }
+  .tour div { display: flex; flex-direction: column; gap: 6px; padding-left: 16px; border-left: 2px solid var(--line); min-width: 0; }
+  .tour h3 { font-family: var(--cond); font-weight: 700; font-size: 22px; }
+  .tour p { color: var(--dim); }
+  .tag { font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.04em; padding: 1px 9px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-2); white-space: nowrap; }
+
+  /* join */
+  .join { padding-block: clamp(56px, 9vw, 104px); text-align: left; }
+  .join .wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: clamp(24px, 5vw, 56px); align-items: start; }
+  .join h2 { font-family: var(--display); font-weight: 400; font-size: clamp(32px, 5.5vw, 54px); line-height: 1.02; }
+  .join h2 span { color: var(--accent); }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: s; }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 12px; align-items: start; }
+  .steps li::before { content: counter(s); font-family: var(--display); font-size: 22px; color: var(--ground); background: var(--accent); width: 2.2rem; height: 2.2rem; border-radius: 50%; display: grid; place-items: center; }
+  .steps b { display: block; font-family: var(--cond); font-size: 20px; }
+  .steps span { color: var(--dim); }
+  footer { padding-block: 28px 40px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); }
+
+  @media (max-width: 760px) {
+    .hero .wrap { grid-template-columns: minmax(0, 1fr); }
+    .court { order: -1; width: 110px; }
+    .dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dates > div:nth-child(3) { border-left: 0; }
+    .dates > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .three, .examples, .bonuses, .tour, .join .wrap { grid-template-columns: minmax(0, 1fr); }
+    .rung { grid-template-columns: 7.5rem minmax(0, 1fr) 2.8rem; gap: 10px; }
+    .rung .lbl { font-size: 16px; }
+    .sheet th, .sheet td { padding: 12px 8px; }
+    .sheet th:first-child, .sheet td:first-child { padding-left: 14px; }
+    .sheet th:last-child, .sheet td:last-child { padding-right: 14px; }
+    .sheet td.q { font-size: 18px; }
+    .sheet td.pts { font-size: 22px; }
+    .sheet thead th { font-size: 12px; letter-spacing: 0.08em; }
+    .sheet .chip { margin-right: 6px; width: 10px; height: 10px; }
+  }
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Campus Clash · New this winter</div>
+      <h1>Campus Clash <span>Hardwood</span></h1>
+      <p class="lede"><b>Fantasy college basketball.</b> Draft ten teams, then ride them from November tip-off to the Final Four.</p>
+    </div>
+    <svg class="court" viewBox="0 0 200 200" role="img" aria-label="Basketball on a centre circle">
+      <circle cx="100" cy="100" r="94"/>
+      <line x1="100" y1="2" x2="100" y2="198"/>
+      <g class="spin">
+        <circle class="ball" cx="100" cy="100" r="46"/>
+        <path class="seam" d="M54 100 H146 M100 54 V146 M68 67 Q100 100 68 133 M132 67 Q100 100 132 133"/>
+      </g>
+    </svg>
+  </div>
+  <div class="wrap">
+    <div class="dates" role="list">
+      <div role="listitem" class="now"><small>Draft</small><b>Late October</b></div>
+      <div role="listitem"><small>Tip-off</small><b>3 November</b></div>
+      <div role="listitem"><small>Selection Sunday</small><b>March</b></div>
+      <div role="listitem"><small>Final Four</small><b>April</b></div>
+    </div>
+  </div>
+</header>
+
+<section class="block">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">How it works</div>
+      <h2>Same game you know. A sport built for it.</h2>
+    </div>
+    <div class="three">
+      <div><span class="num">10</span><h3>Draft teams, not players</h3><p>A snake draft, ten rounds, from a pool of the top 120 teams by preseason rating. No injuries, no lineups to set.</p></div>
+      <div><span class="num">Q1</span><h3>Wins are priced</h3><p>A team plays about 31 games, so not every win is equal. Beating Duke on the road pays far more than hosting a team ranked 300th.</p></div>
+      <div><span class="num">126</span><h3>March decides it</h3><p>The NCAA Tournament pays on every round a team reaches. A national champion banks 126 points in March alone.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">The regular season</div>
+      <h2>Every win goes in a quadrant</h2>
+      <p>The same system the selection committee uses to judge a résumé. What a win is worth depends on how good the opponent is and where the game was played.</p>
+    </div>
+    <div class="sheet-wrap">
+      <table class="sheet">
+        <caption>Opponent's rank, by where the game was played</caption>
+        <thead><tr><th>Quad</th><th>Home</th><th>Neutral</th><th>Away</th><th class="pts">Pts</th></tr></thead>
+        <tbody>
+          <tr><td class="q"><i class="chip" style="background:var(--q1)"></i>Q1</td><td class="rk">1–30</td><td class="rk">1–50</td><td class="rk">1–75</td><td class="pts">5</td></tr>
+          <tr><td class="q"><i class="chip" style="background:var(--q2)"></i>Q2</td><td class="rk">31–75</td><td class="rk">51–100</td><td class="rk">76–135</td><td class="pts">3</td></tr>
+          <tr><td class="q"><i class="chip" style="background:var(--q3)"></i>Q3</td><td class="rk">76–160</td><td class="rk">101–200</td><td class="rk">136–240</td><td class="pts">1</td></tr>
+          <tr><td class="q"><i class="chip" style="background:var(--q4)"></i>Q4</td><td class="rk">161+</td><td class="rk">201+</td><td class="rk">241+</td><td class="pts">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">A win is scored the night it happens and stays that way. If the team you beat falls apart in February, your points don't. Monday's standings are final.</p>
+    <div class="examples">
+      <div class="ex"><b>~57</b><span>a 26–5 team in the top 10</span></div>
+      <div class="ex"><b>~41</b><span>a 19–12 bubble team</span></div>
+      <div class="ex"><b>~10</b><span>a 24–7 mid-major that rarely plays anyone good</span></div>
+    </div>
+    <p class="note">Rough regular-season totals. A great record against weak opponents isn't enough.</p>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">The postseason</div>
+      <h2>Points for every round reached</h2>
+      <p>The rounds stack: a team that makes the Elite Eight collects the first four rungs.</p>
+    </div>
+    <div class="ladder" aria-label="NCAA Tournament points by round">
+      <div class="rung"><span class="lbl">First Round</span><span class="bar" style="width:20%"></span><span class="val">7</span></div>
+      <div class="rung"><span class="lbl">Second Round</span><span class="bar" style="width:25.7%"></span><span class="val">9</span></div>
+      <div class="rung"><span class="lbl">Sweet 16</span><span class="bar" style="width:34.3%"></span><span class="val">12</span></div>
+      <div class="rung"><span class="lbl">Elite Eight</span><span class="bar" style="width:45.7%"></span><span class="val">16</span></div>
+      <div class="rung"><span class="lbl">Final Four</span><span class="bar" style="width:60%"></span><span class="val">21</span></div>
+      <div class="rung"><span class="lbl">Title game</span><span class="bar" style="width:74.3%"></span><span class="val">26</span></div>
+      <div class="rung champ"><span class="lbl">Champion</span><span class="bar" style="width:100%"></span><span class="val">35</span></div>
+    </div>
+    <div class="total"><b>126</b><span>for a national champion, on top of everything it scored all winter.</span></div>
+    <div class="bonuses">
+      <div class="bonus"><h3>Upsets <em>+1 per seed</em></h3><p>A 12 seed that beats a 5 earns 7 extra points. Cinderella is worth drafting.</p></div>
+      <div class="bonus"><h3>Conference tournament title <em>+10</em></h3><p>Win your league's tournament in March and bank a bonus before the bracket is even out.</p></div>
+    </div>
+    <p class="note">These are the default rules. Your commissioner can adjust them for your league.</p>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">In the app</div>
+      <h2>Built for draft night and every night after</h2>
+    </div>
+    <div class="tour">
+      <div><h3>A draft room that does the homework</h3><p>Every team shows its preseason rating, projected record, how it plays <span class="tag">Slow pace</span> <span class="tag">3-point heavy</span>, and what changed over the summer <span class="tag">Portal +4 / −3 · Class #12</span>.</p></div>
+      <div><h3>A team sheet for every team</h3><p>Wins and losses by quadrant, the road wins that count most, and what each remaining game is worth to you.</p></div>
+      <div><h3>Live scores</h3><p>Scores update while games are being played, so you can follow your teams through the night.</p></div>
+      <div><h3>One login, both sports</h3><p>Already in the football league? Same account. Basketball shows up as its own league in the switcher, with its own standings.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="join">
+  <div class="wrap">
+    <h2>Want in? <span>Watch for your invite.</span></h2>
+    <ol class="steps">
+      <li><div><b>Get your link from Garrett</b><span>Each invite is made for one person, so it comes straight from the commissioner.</span></div></li>
+      <li><div><b>Sign in</b><span>Open the link and sign in. If you already play football, use the login you have.</span></div></li>
+      <li><div><b>Show up for the draft</b><span>Late October. Ten rounds, live in the draft room.</span></div></li>
+    </ol>
+  </div>
+</section>
+
+<footer><div class="wrap">Campus Clash Hardwood · 2026–27 season</div></footer>
