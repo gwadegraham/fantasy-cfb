@@ -164,6 +164,11 @@ describe('summarize', () => {
             .byTeam.get(2).in.count).toBe(2);
     });
 
+    test('a null row in CBBD\'s list, or no list at all, is skipped rather than thrown on', () => {
+        expect(summarize([null, portal('A', 'B', 1, 2), undefined], [], TEAMS).byTeam.get(2).in.count).toBe(1);
+        expect(summarize(null, null, TEAMS).rows).toBe(0);
+    });
+
     test('a nameless row is skipped, not stored with a blank name', () => {
         const { byTeam } = summarize([portal('', '', 1, 2)], [], TEAMS);
         expect(byTeam.get(2).in.count).toBe(0);
