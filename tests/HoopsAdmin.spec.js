@@ -451,6 +451,15 @@ describe('preseason ratings', () => {
         expect(await AuditLog.countDocuments()).toBe(0);
     });
 
+    test('last season\'s data file is refused, not imported as this season', async () => {
+        const rows = torvik.parsePaste(torvikJson()).rows;
+        const res = await preview(JSON.stringify({ season: SEASON - 1, source: 'old', teams: rows }));
+        expect(res.status).toBe(422);
+        expect(res.body.problems[0]).toMatch(/for season 2026, not 2027/);
+        const ok = await preview(JSON.stringify({ season: SEASON, source: 'x', teams: rows }));
+        expect(ok.body).toMatchObject({ ok: true, origin: 'file' });
+    });
+
     test('Apply needs rows and a known origin', async () => {
         const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows: [], origin: 'made-up' });
         expect(res.status).toBe(400);

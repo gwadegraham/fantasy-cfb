@@ -159,6 +159,9 @@
         renderResult();
         return post('/hoops/admin/preseason/apply', JSON.stringify({ rows: p.rows, origin: p.origin }), 'application/json')
             .then(function (r) {
+                // Before any redraw: a result area drawn while busy keeps a
+                // disabled Apply, and a failed write says "re-run".
+                state.busy = false;
                 if (r.ok) {
                     state.preview = null;
                     state.armed = false;
@@ -170,7 +173,7 @@
                 // A lock or a partial write both change what is on file.
                 return loadInfo();
             })
-            .catch(function (e) { renderResult(problems(['Request failed: ' + e.message])); })
+            .catch(function (e) { state.busy = false; renderResult(problems(['Request failed: ' + e.message])); })
             .then(function () { state.busy = false; renderButtons(); });
     }
 

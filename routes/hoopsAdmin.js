@@ -21,8 +21,10 @@
 // non-Admin gets a plain 404, never a 403 — a 403 says the page exists.
 //
 // The gate is in THIS router, not the path list in server.js. That list gates
-// non-GETs only, and most routes here are GETs. The preseason POSTs below are
-// behind that list's requireAdmin as well, and check again here.
+// non-GETs only, and most routes here are GETs. The preseason POSTs below sit
+// behind that list's requireAdmin too, which answers a non-Admin 403 before
+// this router runs (as it does for every /hoops POST, real or not, so it says
+// nothing about basketball); the 404 here is the second line.
 //
 // ---- preseason ratings (#544) ----
 //
@@ -237,6 +239,9 @@ function build({ pageLocals = () => ({}) } = {}) {
                     origin = 'fetch';
                 } else {
                     const parsed = torvik.parsePaste(typeof req.body === 'string' ? req.body : '');
+                    if (parsed.season != null && Number(parsed.season) !== season) {
+                        throw new Error(`that data file is for season ${parsed.season}, not ${season}`);
+                    }
                     rows = parsed.rows;
                     origin = parsed.format;
                 }

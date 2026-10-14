@@ -341,3 +341,7 @@ describe('apply', () => {
         expect(await torvik.current(SEASON)).toMatchObject({ teams: 12, ranked: 0, source: null, importedAt: null, sources: 0, ranks: [] });
     });
 });
+
+test('a pasted data file reports the season it names', () => {
+    expect(torvik.parsePaste(JSON.stringify({ season: 2027, teams: [] })).season).toBe(2027);
+});

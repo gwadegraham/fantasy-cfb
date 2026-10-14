@@ -75,7 +75,9 @@ async function main() {
     let source;
     let ratings;
     if (file) {
-        ratings = torvik.parsePaste(fs.readFileSync(file, 'utf8')).rows;
+        const parsed = torvik.parsePaste(fs.readFileSync(file, 'utf8'));
+        if (parsed.season != null && Number(parsed.season) !== season) throw new Error(`${file} is for season ${parsed.season}`);
+        ratings = parsed.rows;
         source = `${path.basename(file)}, parsed ${new Date().toISOString().slice(0, 10)}`;
     } else {
         const stored = JSON.parse(fs.readFileSync(dataFileFor(season), 'utf8'));
@@ -85,7 +87,10 @@ async function main() {
     }
 
     const result = await torvik.check(season, ratings);
-    console.log(`season ${season}: ${result.ratings} rating rows, ${result.teams} teams, ${result.matched.length} matched`);
+    // check() stops before reading teams when the rating set itself is bad,
+    // so "0 teams" would read as a missing teams ingest. Say it only when read.
+    console.log(`season ${season}: ${result.ratings} rating rows` +
+        (result.teams ? `, ${result.teams} teams, ${result.matched.length} matched` : ''));
     if (!result.ok) {
         result.problems.slice(0, 40).forEach(p => console.log(`  ${p}`));
         throw new Error('refusing to import');
@@ -97,7 +102,9 @@ async function main() {
         // perfect-looking top ten here while 183 rows all claimed rank 1.
         [...result.matched].sort((a, b) => a.rating.rank - b.rating.rank).slice(0, 10)
             .forEach(m => console.log(`  ${String(m.rating.rank).padStart(3)}  ${m.team.school} (${m.team.conference})`));
-        console.log('\nRe-run with --apply to write.');
+        console.log(await torvik.seasonUnderway(season)
+            ? `\nLOCKED: season ${season} already has scored basketball games, so --apply will refuse.`
+            : '\nRe-run with --apply to write.');
         return;
     }
 

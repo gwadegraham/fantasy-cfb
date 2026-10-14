@@ -159,6 +159,8 @@ test('Apply refused by the server (e.g. locked in between) shows why and re-read
     await click('[data-pre-confirm]');
     expect(root.textContent).toContain('Locked: basketball 2027 already has scored games.');
     expect(global.fetch.mock.calls.filter(c => c[0] === '/hoops/admin/preseason').length).toBe(reads + 1);
+    // Not stuck disabled: a failed write says to re-run it.
+    expect(root.querySelector('[data-pre-apply]').disabled).toBe(false);
 });
 
 test('an unreadable reply (Heroku\'s HTML timeout page) is reported, not thrown', async () => {

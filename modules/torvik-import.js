@@ -144,7 +144,9 @@ function parsePaste(text) {
             throw new Error(`that looks like JSON but does not parse (${err.message}) — was all of it copied?`);
         }
         // Our own shape: the committed data/torvik-preseason-*.json file.
-        if (data && !Array.isArray(data) && Array.isArray(data.teams)) return { format: 'file', rows: data.teams };
+        // It names its season; the caller refuses one that is not the season
+        // being imported, or last year's file ranks this year's pool.
+        if (data && !Array.isArray(data) && Array.isArray(data.teams)) return { format: 'file', rows: data.teams, season: data.season };
         return { format: 'json', rows: parseTorvikJson(data) };
     }
 
