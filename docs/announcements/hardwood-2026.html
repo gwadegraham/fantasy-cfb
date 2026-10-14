@@ -106,6 +106,23 @@
   .bonus h3 em { font-style: normal; color: var(--accent); }
   .bonus p { color: var(--dim); font-size: 16px; }
 
+  /* weekly game modes */
+  .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .mode { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: clamp(18px, 3vw, 26px); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .mode .num { font-family: var(--display); color: var(--accent); font-size: 40px; line-height: 1; }
+  .mode h3 { font-family: var(--cond); font-weight: 700; font-size: 24px; }
+  .mode p { color: var(--dim); }
+  .mode .fine { font-size: 15px; color: var(--faint); }
+  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin-block: 4px; }
+  .week span { font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; padding: 8px 0; border-radius: 4px; border: 1px solid var(--line); color: var(--faint); }
+  .week .on { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+  .vs { display: flex; align-items: center; gap: 12px; margin-block: 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; }
+  .vs span { display: flex; flex-direction: column; font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); line-height: 1.2; }
+  .vs span b { font-family: var(--display); font-weight: 400; font-size: 28px; letter-spacing: 0; color: var(--text); }
+  .vs span + i + span b { color: var(--faint); }
+  .vs i { font-family: var(--cond); font-style: normal; color: var(--faint); }
+  .vs em { margin-left: auto; font-family: var(--display); font-style: normal; font-size: 26px; color: var(--gold); }
+
   /* app tour */
   .tour { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(20px, 3vw, 32px) clamp(24px, 4vw, 48px); }
   .tour div { display: flex; flex-direction: column; gap: 6px; padding-left: 16px; border-left: 2px solid var(--line); min-width: 0; }
@@ -131,7 +148,7 @@
     .dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .dates > div:nth-child(3) { border-left: 0; }
     .dates > div:nth-child(n+3) { border-top: 1px solid var(--line); }
-    .three, .examples, .bonuses, .tour, .join .wrap { grid-template-columns: minmax(0, 1fr); }
+    .three, .examples, .bonuses, .modes, .tour, .join .wrap { grid-template-columns: minmax(0, 1fr); }
     .rung { grid-template-columns: 7.5rem minmax(0, 1fr) 2.8rem; gap: 10px; }
     .rung .lbl { font-size: 16px; }
     .sheet th, .sheet td { padding: 12px 8px; }
@@ -210,6 +227,37 @@
       <div class="ex"><b>~10</b><span>a 24–7 mid-major that rarely plays anyone good</span></div>
     </div>
     <p class="note">Rough regular-season totals. A great record against weak opponents isn't enough.</p>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <div class="head">
+      <div class="eyebrow">Every week</div>
+      <h2>Two reasons to check in on a Monday</h2>
+      <p>A week runs Monday to Sunday. Most teams play twice in it, some once, some not at all. On top of your season total, two weekly games run all regular season.</p>
+    </div>
+    <div class="modes">
+      <div class="mode">
+        <span class="num">2×</span>
+        <h3>Captain</h3>
+        <p>Pick one of your teams each week. Every game it plays that week counts double.</p>
+        <div class="week" aria-label="Example week: a captain playing Tuesday and Saturday">
+          <span>Mon</span><span class="on">Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span class="on">Sat</span><span>Sun</span>
+        </div>
+        <p class="fine">Your best team isn't always the right call. A team with two games, or a road shot at a top-30 opponent, can be worth more. Your pick locks when your first team of the week tips off.</p>
+      </div>
+      <div class="mode">
+        <span class="num">+3</span>
+        <h3>Head-to-head</h3>
+        <p>Every week you're matched against another manager. Score more than them that week and bank 3 bonus points.</p>
+        <div class="vs" aria-label="Example matchup: 31 points beats 24, winner banks 3">
+          <span><b>31</b>You</span><i>vs</i><span><b>24</b>Them</span><em>+3</em>
+        </div>
+        <p class="fine">Everyone plays everyone, and the schedule repeats until the regular season ends. A tie pays nothing.</p>
+      </div>
+    </div>
+    <p class="note">Both are bonuses on your season total. The standings are still points, not wins and losses. The conference tournaments and March are scored without them.</p>
   </div>
 </section>
 
