@@ -378,7 +378,7 @@
             // a commissioner shouldn't have to understand to start a league.
             // The sport's default (or what's already saved) is sent; it can be
             // changed under Configure Draft on the league's admin page.
-            + '<label class="lg-field"><span class="lg-label">Draft date (optional)</span><input type="datetime-local" data-when value="' + esc(localInput(draft && draft.scheduledAt)) + '"></label>'
+            + '<label class="lg-field lg-field-wide"><span class="lg-label">Draft date (optional)</span><input type="datetime-local" data-when value="' + esc(localInput(draft && draft.scheduledAt)) + '"></label>'
             + '</div>'
             + '<p class="lg-hint">Scoring, game modes and everything else are on the league\'s admin page.</p>'
             + '<div class="lg-foot lg-foot-split">'

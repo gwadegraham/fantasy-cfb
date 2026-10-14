@@ -97,3 +97,5 @@
     width: 32px; height: 32px; cursor: pointer; }
 .lg-mv:disabled { opacity: .35; cursor: default; }
 .lg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 12px; }
+/* Date and time together need the whole row; half of a phone cut the time off. */
+.lg-field-wide { grid-column: 1 / -1; }
