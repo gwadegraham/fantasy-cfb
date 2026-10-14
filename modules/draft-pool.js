@@ -14,6 +14,7 @@ const Team = require('../models/team');
 const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('./team-scope');
 const { sportForLeague, seasonForLeague, primed } = require('./active-season');
+const { stylesFor } = require('./hoops-styles');
 
 // What identifies a team on the board, in either sport.
 const CARD = { _id: 0, id: 1, school: 1, mascot: 1, abbreviation: 1, conference: 1, color: 1, alt_color: 1, logos: 1 };
@@ -150,10 +151,24 @@ async function poolFor(league, { poolSize = null, season } = {}) {
     }
 
     const teams = await basketballPool(year, poolSize);
+
+    // Style tags (#542) ride along per team, plus where they came from: in
+    // preseason they are LAST season's, and the board says so. A failed read
+    // costs the tags, never the pool — they are a reading aid, and a draft
+    // must not be blocked on one.
+    let styles = null;
+    try {
+        const s = await stylesFor(year, teams.map(t => t.id));
+        styles = s.source;
+        teams.forEach(t => { t.tags = s.byTeam[String(t.id)] || []; });
+    } catch (err) {
+        console.log(`Draft pool: style tags for ${year} not read: ${err.message}`);
+    }
+
     // `count` is the pool; `seasonTotal` is everything it was drawn from. One
     // field named `total` meant both, so an admin preview rendering "N of
     // total" read "120 of 120".
-    return { sport, season: year, poolSize: poolSize || null, count: teams.length, seasonTotal: inSeason, teams };
+    return { sport, season: year, poolSize: poolSize || null, count: teams.length, seasonTotal: inSeason, styles, teams };
 }
 
 // The team a pick is allowed to store, or null.

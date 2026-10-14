@@ -11,6 +11,12 @@
 .ht-school { font-family: Graduate, serif; font-size: 30px; line-height: 1; letter-spacing: .5px; }
 .ht-mascot { color: var(--cc-muted-bright); font-size: 14px; margin-top: 4px; }
 .ht-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+/* Style tags (#542): words, not numbers, so outlined in the accent rather
+   than shaped like the stat chips beside them. */
+.ht-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.ht-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: var(--cc-r-pill); cursor: default;
+    background: rgba(0, 0, 0, .28); border: 1px solid rgba(var(--cc-accent-rgb), .6); color: var(--cc-text); }
+.ht-tags-src { font-size: 11px; color: var(--cc-muted-bright); }
 .ht-rec { position: relative; display: flex; gap: 22px; margin-top: 20px; }
 .ht-rec .n { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .ht-rec .l { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); margin-top: 4px; }

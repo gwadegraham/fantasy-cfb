@@ -6,7 +6,7 @@ const { JOB_SCHEDULES, LIVE_POLL_SCHEDULE, livePollEnabled, TZ, toRule } = requi
 describe('scheduler config', () => {
     it('schedules the three score jobs plus enrichment (expected wins is manual)', () => {
         const jobs = JOB_SCHEDULES.map(s => s.job).sort();
-        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats',
+        expect(jobs).toEqual(['captain-reminder', 'daily-scores', 'enrichment', 'hoops-media', 'hoops-net', 'hoops-ratings', 'hoops-scores', 'hoops-stats', 'hoops-styles',
             'player-season-leaders', 'recap-notice', 'saturday-scores', 'season-stats', 'sunday-scores']);
         expect(JOB_SCHEDULES.find(s => s.job === 'expected-wins')).toBeUndefined();
     });
@@ -98,6 +98,14 @@ describe('scheduler config', () => {
         const sunday = rule.nextInvocationDate(new Date('2026-11-08T12:00:00Z'));
         expect(sunday.toISOString()).toBe('2026-11-08T17:30:00.000Z');
         expect(easternDay(sunday).getUTCDay()).toBe(0);
+    });
+
+    // Style tags (#542): one leaderboard call a day at most, after the
+    // morning stats import so last night's games are in it.
+    it('refreshes basketball style tags once a day, after hoops-stats', () => {
+        const spec = JOB_SCHEDULES.find(s => s.job === 'hoops-styles');
+        expect(spec.rule).toEqual({ hour: 7, minute: 0 });
+        expect(spec.modulePath).toBe('../modules/hoops-styles-job');
     });
 
     it('builds a timezone-aware recurrence rule', () => {

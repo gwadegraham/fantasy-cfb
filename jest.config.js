@@ -151,6 +151,27 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // Style tags (#542). The tagger decides what every manager reads
+        // beside a name; the job decides WHICH season's leaderboard a page
+        // shows, and every branch is a skip, a fallback or a refusal.
+        "./modules/hoops-style-tags.js": {
+            statements: 98,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-styles-job.js": {
+            statements: 98,
+            branches: 88,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-styles.js": {
+            statements: 100,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-net.js": {
             statements: 100,
             branches: 100,

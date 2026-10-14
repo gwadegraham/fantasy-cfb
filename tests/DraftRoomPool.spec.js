@@ -194,6 +194,23 @@ describe('basketball', () => {
         expect(cells[cells.length - 1]).toContain('num');
     });
 
+    // Style tags (#542): under the name in the table AND on the phone card.
+    test('style tags render under the name, in the table and on the card', () => {
+        const tags = [{ key: 'slow', label: 'Slow pace', detail: 'Bottom 3% in pace' }, { key: 'elite-defense', label: 'Elite defense', detail: '#1 adjusted defense' }];
+        const r = room({ sport: 'basketball', pool: [hoopsRow({ tags })] });
+        const nameCell = r.body().match(/<td[^>]*>(.*?)<\/td>/)[1];
+        expect(nameCell).toContain('class="dp-tags"');
+        expect(nameCell).toContain('title="Bottom 3% in pace">Slow pace</span>');
+        expect(nameCell).toContain('>Elite defense</span>');
+        expect(r.cards()).toContain('>Slow pace</span>');
+    });
+
+    test('a team with no tags renders no empty tag row', () => {
+        const r = room({ sport: 'basketball', pool: [hoopsRow({ tags: [] })] });
+        expect(r.body()).not.toContain('dp-tags');
+        expect(r.cards()).not.toContain('dp-tags');
+    });
+
     test('a missing metric is a dash rather than undefined', () => {
         const html = room({ sport: 'basketball', pool: [hoopsRow({ barthag: null, adjOE: null, projectedRecord: null })] }).body();
         expect(html).not.toContain('undefined');

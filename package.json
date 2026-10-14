@@ -10,7 +10,8 @@
     "test:coverage": "jest --config ./jest.config.js --coverage",
     "sync:dev": "./scripts/sync-prod-to-dev.sh",
     "season:set": "node ./scripts/set-season.js",
-    "migrate:accounts": "node ./scripts/migrate-accounts.js"
+    "migrate:accounts": "node ./scripts/migrate-accounts.js",
+    "hoops:styles": "node ./scripts/run-hoops-styles.js"
   },
   "author": "",
   "license": "ISC",

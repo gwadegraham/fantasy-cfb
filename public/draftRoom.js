@@ -162,6 +162,13 @@ async function getTeams() {
     teamList = payload.teams;
     teamList.forEach(t => { teamsById[String(t.id)] = t; });
 
+    // Where the basketball style tags came from (#542), above the board.
+    var note = document.getElementById('poolStylesNote');
+    if (note) {
+        note.textContent = poolSport === 'basketball' ? ccDraftPool.stylesNote(payload.styles) : '';
+        note.hidden = !note.textContent;
+    }
+
     // Recruiting rankings are a football signal and a CFBD call; basketball's
     // equivalent is already in the pool rows.
     const recruiting = poolSport === 'basketball' ? [] : await getRecruitingRankings();
@@ -259,7 +266,8 @@ function poolCell(p, key, action) {
     if (key === 'draft') return action;
     if (key === 'name') {
         return `<a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener">`
-            + `<span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>`;
+            + `<span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>`
+            + ccDraftPool.tagsHtml(p.tags, escapeHtml);
     }
     if (key === 'conf') return escapeHtml(p.conf);
     if (key === 'sp') {
@@ -362,6 +370,7 @@ function renderPool() {
                 <div class="pool-card-main">
                     <a class="team-link" href="/team?team=${p.id}" target="_blank" rel="noopener"><span class="team-cell"><img src="${p.logo}" alt="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span></a>
                     <span class="pool-card-meta">${confHtml}${badge}</span>
+                    ${ccDraftPool.tagsHtml(p.tags, escapeHtml)}
                 </div>
                 <div class="pool-card-stats">${stats}</div>
             </div>`;

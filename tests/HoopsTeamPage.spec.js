@@ -113,6 +113,24 @@ describe('build', () => {
         });
     });
 
+    // Style tags (#542): the team's own, with the leaderboard they came from.
+    test('style tags: the team\'s own, labelled with their season; null when it has none', async () => {
+        const HoopsTeamStyle = require('../models/hoopsTeamStyle');
+        expect((await teamPage.build(1, { season: SEASON })).style).toBeNull();
+        await HoopsTeamStyle.create([
+            { season: SEASON, teamId: 1, fromSeason: 2026, fetchedAt: new Date(),
+                tags: [{ key: 'rim', label: 'Rim attackers', detail: 'Top 12% in shots at the rim', share: 0.12 }] },
+            { season: SEASON, teamId: 2, fromSeason: 2026, fetchedAt: new Date(),
+                tags: [{ key: 'fast', label: 'Fast pace', share: 0.01 }] },
+            { season: SEASON, teamId: 3, fromSeason: 2026, fetchedAt: new Date(), tags: [] }
+        ]);
+        expect((await teamPage.build(1, { season: SEASON })).style).toEqual({
+            tags: [{ key: 'rim', label: 'Rim attackers', detail: 'Top 12% in shots at the rim' }],
+            fromSeason: 2026, label: '2025–26', lastSeason: true
+        });
+        expect((await teamPage.build(3, { season: SEASON })).style).toBeNull();
+    });
+
     test('a game still to play is quadranted against the latest PLAYED week, not a future one', async () => {
         await HoopsGame.create([
             game(10, 1, 1, 3),

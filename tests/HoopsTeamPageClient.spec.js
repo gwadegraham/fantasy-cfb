@@ -76,6 +76,31 @@ test('the hero: record, conference record, record vs Q1, and Torvik', async () =
     expect(document.querySelector('.ht-hero').getAttribute('style')).toContain('--team:#013088');
 });
 
+// Style tags (#542) in the hero, with the season they describe when it is
+// not this one.
+test('the hero shows style tags, and says when they are last season\'s', async () => {
+    await render(payload({ style: { fromSeason: 2026, label: '2025–26', lastSeason: true, tags: [
+        { key: 'elite-both', label: 'Elite both ends', detail: '#4 adjusted offense, #1 adjusted defense' },
+        { key: 'rim', label: 'Rim attackers', detail: null }
+    ] } }));
+    expect(txt('.ht-tag')).toBe('Elite both ends | Rim attackers');
+    expect(document.querySelector('.ht-tag').getAttribute('title')).toBe('#4 adjusted offense, #1 adjusted defense');
+    expect(txt('.ht-tags-src')).toBe('from 2025–26');
+});
+
+test('this season\'s tags carry no season note; no tags, no row', async () => {
+    await render(payload({ style: { fromSeason: 2027, label: '2026–27', lastSeason: false, tags: [{ key: 'slow', label: 'Slow pace' }] } }));
+    expect(txt('.ht-tag')).toBe('Slow pace');
+    expect(document.querySelector('.ht-tags-src')).toBeNull();
+    await render(payload({ style: null }));
+    expect(document.querySelector('.ht-tags')).toBeNull();
+});
+
+test('tag text is escaped', async () => {
+    await render(payload({ style: { lastSeason: false, tags: [{ key: 'x', label: '<img src=x onerror=alert(1)>' }] } }));
+    expect(document.querySelector('.ht-tag img')).toBeNull();
+});
+
 const tab = (name) => document.querySelector('[data-tab="' + name + '"]').click();
 
 describe('official NET (#533)', () => {

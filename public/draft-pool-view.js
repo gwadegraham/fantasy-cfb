@@ -112,8 +112,30 @@
             barthag: t.barthag == null ? null : t.barthag,
             adjOE: t.adjOE == null ? null : t.adjOE,
             adjDE: t.adjDE == null ? null : t.adjDE,
-            projectedRecord: t.projectedRecord || null
+            projectedRecord: t.projectedRecord || null,
+            tags: Array.isArray(t.tags) ? t.tags : []
         };
+    }
+
+    // Style tags (#542) as chips: "3-point heavy", "Slow pace". The detail —
+    // "Top 4% in pace: 71.2 possessions a game" — is the tooltip. `esc` is
+    // the page's own escaper, passed in so this file stays loadable by a test.
+    function tagsHtml(tags, esc) {
+        if (!tags || !tags.length) return '';
+        return '<span class="dp-tags">' + tags.map(function (t) {
+            return '<span class="dp-tag" data-tag="' + esc(t.key) + '"'
+                + (t.detail ? ' title="' + esc(t.detail) + '"' : '') + '>' + esc(t.label) + '</span>';
+        }).join('') + '</span>';
+    }
+
+    // The line above the board saying where the tags came from. Said out
+    // loud in preseason, when they describe LAST season's team — the draft
+    // is in October, so that is the case every manager sees.
+    function stylesNote(styles) {
+        if (!styles || !styles.label) return '';
+        return styles.lastSeason
+            ? 'Style tags are from last season (' + styles.label + ') until this season has a few games played.'
+            : 'Style tags are from this season (' + styles.label + '), updated daily.';
     }
 
     // Ported unchanged from public/draftRoom.js, including the preseason
@@ -157,6 +179,8 @@
         columnsFor: columnsFor,
         sortValue: sortValue,
         defaultSort: defaultSort,
-        buildPool: buildPool
+        buildPool: buildPool,
+        tagsHtml: tagsHtml,
+        stylesNote: stylesNote
     };
 }));

@@ -56,7 +56,7 @@ function windowsFor(start, end) {
 // this page's tasks (it calls the same refresh as POST /hoops/games/refresh,
 // nightly); the rest are shown because "did last night's run work?" is the
 // question an admin opens this page with.
-const HOOPS_JOBS = ['hoops-scores', 'hoops-live', 'hoops-stats', 'hoops-media', 'hoops-ratings', 'hoops-net'];
+const HOOPS_JOBS = ['hoops-scores', 'hoops-live', 'hoops-stats', 'hoops-media', 'hoops-ratings', 'hoops-net', 'hoops-styles'];
 
 // What is on file for the season, per task, plus the latest scheduled run of
 // each basketball job. Free: Mongo reads only, never a CBBD call — this runs
