@@ -376,8 +376,19 @@ describe('step 2: existing managers', () => {
         expect(await Franchise.countDocuments({ accountId: ann._id, league: code })).toBe(1);
     });
 
-    test('someone in no other league is refused, not added', async () => {
-        const loner = await Account.create({ firstName: 'Lo', lastName: 'Ner' });
+    test('someone who only ever played THIS league, in a past season, is brought back', async () => {
+        const cole = await Account.create({ firstName: 'Cole', lastName: 'Old', email: 'cole@example.com' });
+        await Franchise.create({ accountId: cole._id, league: code, seasons: [{ season: 2020 }] });
+        expect((await as(ADMIN).get(`/leagues/admin/account?email=cole@example.com&league=${code}`)).body)
+            .toMatchObject({ inLeague: false, joined: true });
+        const res = await add([String(cole._id)]);
+        expect(res.body).toMatchObject({ added: [String(cole._id)], refused: [] });
+        expect(await Franchise.countDocuments({ accountId: cole._id })).toBe(1);
+    });
+
+    test('someone with no team anywhere is refused, not added', async () => {
+        const loner = await Account.create({ firstName: 'Lo', lastName: 'Ner', email: 'lo@example.com' });
+        expect((await as(ADMIN).get(`/leagues/admin/account?email=lo@example.com&league=${code}`)).body.joined).toBe(false);
         const res = await add([String(loner._id)]);
         expect(res.body.refused).toEqual([String(loner._id)]);
         expect(await Franchise.countDocuments({ league: code })).toBe(0);
@@ -435,7 +446,7 @@ describe("step 2's email check", () => {
 
     test('an existing email, in any case, is found — with where they play', async () => {
         const res = await look('  ANN@Example.com ');
-        expect(res.body).toEqual({ found: true, _id: String(ann._id), firstName: 'Ann', lastName: 'Lee', inLeague: false, elsewhere: true });
+        expect(res.body).toEqual({ found: true, _id: String(ann._id), firstName: 'Ann', lastName: 'Lee', inLeague: false, joined: true });
         await repo.addFranchise(ann._id, code, { season: HOOPS });
         expect((await look('ann@example.com')).body.inLeague).toBe(true);
     });

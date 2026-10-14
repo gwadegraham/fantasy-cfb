@@ -237,14 +237,17 @@ function build({ pageLocals = () => ({}) } = {}) {
             const acct = await Account.findOne({ email: new RegExp(`^${escaped}$`, 'i') }, { firstName: 1, lastName: 1 }).lean();
             if (!acct) return res.json({ found: false });
             const doc = await League.findOne({ code: league }, { code: 1, sport: 1, season: 1, _id: 0 }).lean();
-            const [inLeague, elsewhere] = await Promise.all([
+            const [inLeague, joined] = await Promise.all([
                 // In it THIS season; a former member can be added back.
                 Franchise.exists({ accountId: acct._id, league, 'seasons.season': seasonOf(doc) }),
-                Franchise.exists({ accountId: acct._id, league: { $ne: league } })
+                // Has a team anywhere — THIS league's past seasons included, so
+                // someone who only ever played here can come back. No team at
+                // all is an account that never finished joining.
+                Franchise.exists({ accountId: acct._id })
             ]);
             return res.json({
                 found: true, _id: String(acct._id), firstName: acct.firstName, lastName: acct.lastName,
-                inLeague: !!inLeague, elsewhere: !!elsewhere
+                inLeague: !!inLeague, joined: !!joined
             });
         } catch (err) {
             console.error(`leagues account lookup: ${err && err.message}`);
@@ -341,11 +344,12 @@ function build({ pageLocals = () => ({}) } = {}) {
             const already = [];
             const refused = [];
             for (const id of [...new Set(ids.map(String))]) {
-                // From the other leagues, which is what this step offers. An
-                // account with no franchise anywhere is someone who never
-                // finished joining, and belongs to Add a Player's invite.
-                const elsewhere = await Franchise.exists({ accountId: id, league: { $ne: code } });
-                if (!elsewhere) { refused.push(id); continue; }
+                // Anyone with a team somewhere — another league, or a past
+                // season of this one. An account with no franchise anywhere is
+                // someone who never finished joining, and belongs to Add a
+                // Player's invite.
+                const joined = await Franchise.exists({ accountId: id });
+                if (!joined) { refused.push(id); continue; }
                 const out = await franchiseRepo.addFranchise(id, code, { season, lastUpdated });
                 (out.created ? added : already).push(id);
             }

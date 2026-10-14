@@ -269,7 +269,7 @@ describe('Create league', () => {
     test('step 2: an email that already has a login joins under it — no second account', async () => {
         await toStep2();
         routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] =
-            () => json({ found: true, _id: 'c3', firstName: 'Cy', lastName: 'Old', inLeague: false, elsewhere: true });
+            () => json({ found: true, _id: 'c3', firstName: 'Cy', lastName: 'Old', inLeague: false, joined: true });
         routes['POST /leagues/admin/hardwood/members'] = () => json({ added: ['c3'], already: [], refused: [] });
         $('[data-first]').value = 'Cy'; $('[data-last]').value = 'New'; $('[data-email]').value = 'cy@example.com';
         submit($('[data-new-person]'));
@@ -280,8 +280,8 @@ describe('Create league', () => {
     });
 
     test.each([
-        [{ inLeague: true, elsewhere: true }, 'Cy Old is already in this league'],
-        [{ inLeague: false, elsewhere: false }, 'That email already belongs to Cy Old, who is in no league. Ask an admin to sort out that account.']
+        [{ inLeague: true, joined: true }, 'Cy Old is already in this league'],
+        [{ inLeague: false, joined: false }, 'That email already belongs to Cy Old, who is in no league. Ask an admin to sort out that account.']
     ])('step 2: an existing email that cannot be added (%j) is refused, and nothing is created', async (flags, msg) => {
         await toStep2();
         routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] =
@@ -292,6 +292,18 @@ describe('Create league', () => {
         expect(posted('POST /users')).toEqual([]);
         expect(posted('POST /leagues/admin/hardwood/members')).toEqual([]);
         expect(toasts).toContainEqual(['err', msg]);
+    });
+
+    test('step 2: an existing email the server then refuses says so, not "added"', async () => {
+        await toStep2();
+        routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] =
+            () => json({ found: true, _id: 'c3', firstName: 'Cy', lastName: 'Old', inLeague: false, joined: true });
+        routes['POST /leagues/admin/hardwood/members'] = () => json({ added: [], already: [], refused: ['c3'] });
+        $('[data-first]').value = 'Cy'; $('[data-last]').value = 'New'; $('[data-email]').value = 'cy@example.com';
+        submit($('[data-new-person]'));
+        await flush();
+        expect(toasts).toContainEqual(['err', "Cy Old couldn't be added. Ask an admin to sort out that account."]);
+        expect(toasts.some(t => /added under it/.test(t[1]))).toBe(false);
     });
 
     test('step 2: a refused new person says why and sends no invite', async () => {

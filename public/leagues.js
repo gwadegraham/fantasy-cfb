@@ -253,7 +253,7 @@
                 picked = {};
                 refused.forEach(function (id) { picked[id] = true; });
                 if (refused.length) {
-                    toast('error', plural(refused.length, 'manager') + ' couldn\'t be added — they no longer play in another league. Add them as someone new instead.');
+                    toast('error', plural(refused.length, 'manager') + ' couldn\'t be added — they never finished joining. Ask an admin to sort out that account.');
                     return startStep2();
                 }
                 return startStep3();
@@ -278,8 +278,9 @@
             if (found.found) {
                 var who = memberName(found);
                 if (found.inLeague) throw new Error(who + ' is already in this league');
-                if (!found.elsewhere) throw new Error('That email already belongs to ' + who + ', who is in no league. Ask an admin to sort out that account.');
-                return api('POST', '/leagues/admin/' + code + '/members', { accountIds: [found._id] }).then(function () {
+                if (!found.joined) throw new Error('That email already belongs to ' + who + ', who is in no league. Ask an admin to sort out that account.');
+                return api('POST', '/leagues/admin/' + code + '/members', { accountIds: [found._id] }).then(function (out) {
+                    if ((out.refused || []).length) throw new Error(who + ' couldn\'t be added. Ask an admin to sort out that account.');
                     toast('success', who + ' already has a login — added under it, no invite needed');
                     return startStep2();
                 });
