@@ -299,6 +299,44 @@
     75% { transform: translateX(3px); }
 }
 
+/* ---------- Dribbles' moves ---------- */
+/* Dunk-and-hang: he swings from the rim grip, the free fist pumps (1.6s). */
+.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 40.6px 10px; }
+.ccm .ccm-dh-pump { transform-box: view-box; transform-origin: 18.5px 30px; }
+.ccm-wrap.is-busy .ccm-dh-swing { animation: ccm-dh-swing 1.6s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-dh-pump { animation: ccm-dh-pump .4s ease-in-out infinite alternate; }
+@keyframes ccm-dh-swing { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes ccm-dh-pump { from { transform: rotate(0deg); } to { transform: rotate(14deg); } }
+
+/* "Too small": three pats down at knee height, then a beat to let it land (2s). */
+.ccm-wrap.is-busy .ccm-ts-pat { animation: ccm-ts-pat 2s ease-in-out infinite; }
+@keyframes ccm-ts-pat {
+    0%, 60%, 100% { transform: translateY(0); }
+    10%, 30%, 50% { transform: translateY(2.6px); }
+    20%, 40% { transform: translateY(0); }
+}
+
+/* Spinning the L on the foam finger: a flat spin faked with scaleX (.7s). */
+.ccm .ccm-sl-spin { transform-box: view-box; transform-origin: 57px 5.2px; }
+.ccm-wrap.is-busy .ccm-sl-spin { animation: ccm-sl-spin .7s linear infinite; }
+@keyframes ccm-sl-spin {
+    0% { transform: scaleX(1); }
+    25% { transform: scaleX(.12); }
+    50% { transform: scaleX(-1); }
+    75% { transform: scaleX(-.12); }
+    100% { transform: scaleX(1); }
+}
+
+/* Jump ball: both leap together, the ball floats up just out of reach,
+   shadows shrink with the jump (1.4s). */
+.ccm .ccm-jb-shadow { transform-origin: center; }
+.ccm-wrap.is-busy .ccm-jb-jump { animation: ccm-jb-jump 1.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-jb-ball { animation: ccm-jb-ball 1.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-jb-shadow { animation: ccm-jb-shadow 1.4s ease-in-out infinite; }
+@keyframes ccm-jb-jump { 0%, 100% { transform: translateY(1px); } 45%, 55% { transform: translateY(-6px); } }
+@keyframes ccm-jb-ball { 0%, 100% { transform: translateY(0); } 45%, 55% { transform: translateY(-5px); } }
+@keyframes ccm-jb-shadow { 0%, 100% { transform: scaleX(1); opacity: .35; } 50% { transform: scaleX(.7); opacity: .18; } }
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }

@@ -88,15 +88,15 @@ describe('football: Laces celebrates', () => {
     });
 });
 
-describe('basketball: Dribbles falls back to his own poses', () => {
-    test('a season high gets a cheer, not the Griddy', () => {
+describe('basketball: Dribbles has his own moves', () => {
+    test('a season high gets his dunk-and-hang, not the Griddy', () => {
         const p = posesFor('basketball', recap({ isSeasonHigh: true }));
-        expect(p.seasonhigh).toEqual({ mascot: 'Dribbles', pose: 'cheer' });
+        expect(p.seasonhigh).toEqual({ mascot: 'Dribbles', pose: 'dunkhang' });
     });
 
-    test('an untied #1 rank gets the trophy, not the Heisman', () => {
+    test('an untied #1 rank gets his "too small", not the Heisman', () => {
         const p = posesFor('basketball', recap({ rank: 1 }));
-        expect(p.rank).toEqual({ mascot: 'Dribbles', pose: 'trophy' });
+        expect(p.rank).toEqual({ mascot: 'Dribbles', pose: 'toosmall' });
     });
 
     test('a league-low week gets his own rain cloud', () => {
@@ -127,12 +127,12 @@ describe('the drawing matches the pose', () => {
         window.ccRecap.closePopup();
     });
 
-    test('on basketball, Dribbles holds the trophy at #1 and waves the foam finger on a season high', () => {
+    test('on basketball, Dribbles pats "too small" at #1 and hangs from the rim on a season high', () => {
         load('basketball');
         window.ccRecap.showPopup({ league: 'x', recaps: [recap({ rank: 1, isSeasonHigh: true })] }, 'u1');
         const has = (id, cls) => !!document.querySelector(`.recap-slide[data-slide-id="${id}"] .recap-slide-mascot .${cls}`);
-        expect([has('rank', 'ccm-prop'), has('rank', 'ccm-cc-foam')]).toEqual([true, false]);
-        expect([has('seasonhigh', 'ccm-cc-foam'), has('seasonhigh', 'ccm-prop')]).toEqual([true, false]);
+        expect([has('rank', 'ccm-ts-pat'), has('rank', 'ccm-dh-swing')]).toEqual([true, false]);
+        expect([has('seasonhigh', 'ccm-dh-swing'), has('seasonhigh', 'ccm-ts-pat')]).toEqual([true, false]);
         window.ccRecap.closePopup();
     });
 

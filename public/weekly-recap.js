@@ -118,15 +118,15 @@
     const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'raincloud' };
 
     // The pose for one slide, or null for no mascot. Two beats earn a
-    // celebration: a new season high gets the Griddy, and sitting alone at #1
-    // gets the Heisman (a shared #1 is not his to strike). Both moves are
-    // Laces' only, so a basketball recap hands Dribbles a cheer or the trophy.
+    // celebration: a new season high (Laces' Griddy, Dribbles' dunk-and-hang)
+    // and sitting alone at #1 (Laces' Heisman, Dribbles' "too small"). A shared
+    // #1 is not theirs to celebrate.
     function mascotPose(s, recap, sport) {
         const hoops = sport === 'basketball';
-        if (s.id === 'seasonhigh') return hoops ? 'cheer' : 'griddy';
+        if (s.id === 'seasonhigh') return hoops ? 'dunkhang' : 'griddy';
         if (s.id === 'rank') {
             if (!recap || recap.rank !== 1 || recap.rankTie) return null;
-            return hoops ? 'trophy' : 'heisman';
+            return hoops ? 'toosmall' : 'heisman';
         }
         return MASCOT_POSE[s.id] || null;
     }

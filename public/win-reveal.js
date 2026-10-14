@@ -91,19 +91,20 @@
         if (opts.bonus > 0 && result !== 'loss') sub += result === 'tie' ? (' · +' + opts.bonus + ' each') : (' · +' + opts.bonus + ' bonus');
         var hasScore = opts.myScore != null && opts.oppScore != null;
 
-        // Laces in the moment: holding up the trophy beside a W; walking up to
-        // hand you the L himself; or two of him locked in a tug-of-war nobody
-        // wins. The L and the tug-of-war ARE the result, so they replace the
-        // stamp (a screen-reader-only copy keeps it). Dribbles has neither, so
-        // a basketball loss or tie keeps the stamp beside his ice pack or cheer.
+        // The mascot in the moment. A win: the trophy beside the W. A loss: Laces
+        // hands you the L, Dribbles spins one on his foam finger. A tie: two of
+        // him in a tug-of-war (Laces) or a jump ball (Dribbles) nobody wins. The
+        // loss and tie drawings ARE the result, so they replace the stamp (a
+        // screen-reader-only copy keeps it).
         var M = window.ccMascot;
         var sport = M ? M.sport() : 'football';
-        var drawn = !!M && sport === 'football' && result !== 'win';   // the drawing is the result
+        var hoops = sport === 'basketball';
+        var drawn = !!M && result !== 'win';   // the drawing is the result
         var pose = result === 'win' ? 'trophy'
-            : result === 'loss' ? (drawn ? 'handL' : 'icepack')
-            : (drawn ? 'tugduo' : 'cheer');
+            : result === 'loss' ? (hoops ? 'spinL' : 'handL')
+            : (hoops ? 'jumpball' : 'tugduo');
         var mascot = M
-            ? '<div class="cwr-mascot' + (drawn && result === 'loss' ? ' cwr-hand' : '') + '" aria-hidden="true">' + M.html({ sport: sport, pose: pose, busy: true }) + '</div>'
+            ? '<div class="cwr-mascot' + (drawn && result === 'loss' && !hoops ? ' cwr-hand' : '') + '" aria-hidden="true">' + M.html({ sport: sport, pose: pose, busy: true }) + '</div>'
             : '';
         var stampHtml = drawn ? '' : '<div class="cwr-stamp">' + stamp + '</div>';
 
