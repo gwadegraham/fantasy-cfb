@@ -27,6 +27,7 @@
 
 const Account = require('../models/account');
 const Franchise = require('../models/franchise');
+const draftOrder = require('./draft-order');
 
 // ---- the switch is gone ----
 //
@@ -779,12 +780,26 @@ async function createManager(fields) {
     // and built from the CREATED documents, not from the input. Echoing the
     // input back skips schema defaults, casting and subdocument ids, so the
     // response would differ from what a read returns a moment later.
+    for (const s of franchise.seasons || []) await joinDraftOrder(franchise.league, s.season, account._id);
     const shaped = toUserShape(account.toObject(), franchise.toObject());
     // __v, for the same reason the two PATCH responses carry it: flag-off this
     // route echoed a mongoose document, and "merging changes nothing" should be
     // literally true rather than nearly true.
     if (franchise.__v !== undefined) shaped.__v = franchise.__v;
     return shaped;
+}
+
+// Someone new in a league's season goes last in a draft order already saved
+// for it (modules/draft-order.js). Never fails the add: the franchise exists
+// either way, and the setup screen appends anyone missing when it is next
+// opened — so this is logged loudly rather than thrown.
+async function joinDraftOrder(league, season, accountId) {
+    try {
+        await draftOrder.appendManager(league, season, accountId);
+    } catch (e) {
+        console.error(`draft order: could not add ${accountId} to ${league} ${season} — `
+            + `re-save the order on the Leagues page. ${e && e.message}`);
+    }
 }
 
 // Put an EXISTING person in another league (#536): a new Franchise under the
@@ -819,6 +834,7 @@ async function addFranchise(accountId, league, { season, lastUpdated } = {}) {
         const hasSeason = season == null || (existing.seasons || []).some(s => Number(s.season) === Number(season));
         if (hasSeason) return { created: false, franchiseId: existing._id };
         await Franchise.updateOne({ _id: existing._id, 'seasons.season': { $ne: season } }, { $push: { seasons: { season } } });
+        await joinDraftOrder(league, season, account._id);
         return { created: true, rejoined: true, franchiseId: existing._id };
     }
 
@@ -826,6 +842,7 @@ async function addFranchise(accountId, league, { season, lastUpdated } = {}) {
     if (lastUpdated) fields.lastUpdated = lastUpdated;
     try {
         const made = await Franchise.create(fields);
+        await joinDraftOrder(league, season, account._id);
         return { created: true, franchiseId: made._id };
     } catch (e) {
         // Two ticks racing: the other one won, which is the same answer.

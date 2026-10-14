@@ -105,6 +105,75 @@ afterEach(() => { jest.restoreAllMocks(); seasons._reset(); });
 const as = (who) => request(appAs(who));
 const create = (body, who = ADMIN) => as(who).post('/leagues/admin').send(body);
 
+// A manager added after the draft order was saved goes LAST in it, through
+// every door that adds one. Without this they get no slots in the draft room
+// (it builds every pick from draftOrder) and nothing says so on draft night.
+describe('late joiners go last in a saved draft order', () => {
+    const { pickOrder } = require('../modules/draft-engine');
+    const orderOf = async (league, season = FOOTBALL) =>
+        ((await Draft.findOne({ league, season }).lean()).draftOrder || []).map(String);
+    let cal;
+    beforeEach(async () => {
+        cal = await person('Cal', 'graham-league');
+        await Draft.create({ league: 'graham-league', season: FOOTBALL, status: 'scheduled', draftOrder: [cal._id, ann._id] });
+    });
+
+    test('the Leagues page step 2 adds them last, and they get picks', async () => {
+        const res = await as(ADMIN).post('/leagues/admin/graham-league/members').send({ accountIds: [String(bob._id)] });
+        expect(res.body.added).toEqual([String(bob._id)]);
+        expect(await orderOf('graham-league')).toEqual([String(cal._id), String(ann._id), String(bob._id)]);
+        const draft = await Draft.findOne({ league: 'graham-league', season: FOOTBALL }).lean();
+        expect(pickOrder(draft).filter(p => p.userId === String(bob._id))).toHaveLength(draft.totalRounds);
+    });
+
+    test('Add a Player adds the new account last', async () => {
+        const res = await as(ADMIN).post('/users').send({ firstName: 'Dee', lastName: 'Lee', email: 'dee@example.com', league: 'graham-league' });
+        expect(res.status).toBe(201);
+        expect((await orderOf('graham-league')).slice(-1)).toEqual([String(res.body._id)]);
+    });
+
+    test('someone rejoining for this season goes last too', async () => {
+        await Draft.create({ league: 'graham-league', season: 2030, status: 'pending', draftOrder: [cal._id] });
+        await repo.addFranchise(ann._id, 'graham-league', { season: 2030 });
+        expect(await orderOf('graham-league', 2030)).toEqual([String(cal._id), String(ann._id)]);
+    });
+
+    test('a pending draft (saved with no date) takes them too', async () => {
+        await Draft.updateOne({ league: 'graham-league' }, { $set: { status: 'pending' } });
+        await repo.addFranchise(bob._id, 'graham-league', { season: FOOTBALL });
+        expect((await orderOf('graham-league')).slice(-1)).toEqual([String(bob._id)]);
+    });
+
+    test.each(['active', 'complete'])('a draft that is %s is left alone', async (status) => {
+        await Draft.updateOne({ league: 'graham-league' }, { $set: { status } });
+        await repo.addFranchise(bob._id, 'graham-league', { season: FOOTBALL });
+        expect(await orderOf('graham-league')).toEqual([String(cal._id), String(ann._id)]);
+    });
+
+    test('an order never set stays empty — setup fills it from everyone', async () => {
+        await Draft.updateOne({ league: 'graham-league' }, { $set: { draftOrder: [] } });
+        await repo.addFranchise(bob._id, 'graham-league', { season: FOOTBALL });
+        expect(await orderOf('graham-league')).toEqual([]);
+    });
+
+    test('only that season\'s draft, and nobody twice', async () => {
+        await Draft.create({ league: 'graham-league', season: 2025, status: 'pending', draftOrder: [cal._id] });
+        const draftOrder = require('../modules/draft-order');
+        await repo.addFranchise(bob._id, 'graham-league', { season: FOOTBALL });
+        await draftOrder.appendManager('graham-league', FOOTBALL, bob._id);
+        expect(await orderOf('graham-league')).toEqual([String(cal._id), String(ann._id), String(bob._id)]);
+        expect(await orderOf('graham-league', 2025)).toEqual([String(cal._id)]);
+    });
+
+    test('a failed append never fails the add', async () => {
+        jest.spyOn(Draft, 'updateOne').mockRejectedValueOnce(new Error('mongo down'));
+        const res = await as(ADMIN).post('/leagues/admin/graham-league/members').send({ accountIds: [String(bob._id)] });
+        expect(res.status).toBe(200);
+        expect(res.body.added).toEqual([String(bob._id)]);
+        expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/draft order: could not add/));
+    });
+});
+
 describe('franchiseRepo.addFranchise', () => {
     test('a franchise under the SAME account, and no new account', async () => {
         const before = await Account.countDocuments({});
