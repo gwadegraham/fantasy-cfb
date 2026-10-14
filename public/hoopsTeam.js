@@ -251,6 +251,43 @@
             + '<h2 class="sp-h">Rotation<small>Top nine by minutes per game</small></h2><div class="sp-card">' + rotation(s) + '</div>';
     }
 
+    // Who arrived and who left before this season (#541): the transfer portal
+    // and the recruiting class. College rosters turn over far more than
+    // football's, so last season's numbers say less without it. CBBD files
+    // both under the spring they happened in, a year before the season label.
+    function stars(n) { return n ? '<span class="ht-to-st" title="' + n + '-star">' + n + '\u2605</span>' : ''; }
+    function moveRow(m, dir) {
+        var where = m.school
+            ? (m.teamId != null ? '<a href="' + teamHref(m.teamId) + '">' + esc(m.school) + '</a>' : esc(m.school))
+            : '<span class="ht-to-none">no school listed</span>';
+        return '<li><span class="ht-to-nm">' + esc(m.name) + '</span>'
+            + (m.position ? '<span class="ht-to-pos">' + esc(m.position) + '</span>' : '') + stars(m.stars)
+            + '<span class="ht-to-wh">' + dir + ' ' + where + '</span></li>';
+    }
+    function moveList(title, list, count, dir) {
+        var more = count - list.length;
+        return '<div class="ht-to-col"><h3>' + title + '</h3>'
+            + (list.length ? '<ul>' + list.map(function (m) { return moveRow(m, dir); }).join('') + '</ul>' : '<p class="ht-to-none">None</p>')
+            + (more > 0 ? '<p class="ht-to-more">+' + more + ' more</p>' : '') + '</div>';
+    }
+    function turnover(d) {
+        var tv = d.turnover;
+        if (!tv) return '';
+        var chip = function (n, l) { return '<div class="ht-style-c"><b>' + n + '</b><small>' + l + '</small></div>'; };
+        var label = tv.season != null ? (tv.season - 1) + '\u2013' + String(tv.season).slice(-2) : '';
+        return '<h2 class="sp-h">Roster turnover<small>Spring ' + esc(tv.fromYear) + ' portal and class, into ' + esc(label) + '</small></h2>'
+            + '<div class="sp-card ht-to">'
+            + '<div class="ht-style ht-to-sum">'
+            + chip('+' + esc(tv.in), 'transfers in' + (tv.inTop ? ' \u00b7 ' + esc(tv.inTop) + ' four-star+' : ''))
+            + chip('\u2212' + esc(tv.out), 'transfers out' + (tv.outTop ? ' \u00b7 ' + esc(tv.outTop) + ' four-star+' : ''))
+            + chip(tv.classRank != null ? '#' + esc(tv.classRank) : '\u2014', 'recruiting class')
+            + '</div>'
+            + '<div class="ht-to-cols">'
+            + moveList('Arrived', tv.arrivals || [], tv.in, 'from')
+            + moveList('Left', tv.departures || [], tv.out, 'to')
+            + '</div></div>';
+    }
+
     // The next game, one tap from its preview: when, where, who, and what a
     // win there pays this manager's league.
     // A game more than this far past its tip with no final (cancelled, or
@@ -388,7 +425,7 @@
         if (state.tab === 'schedule') return schedule(d);
         if (state.tab === 'stats') return efficiency(d) + stats(d);
         if (state.tab === 'conference') return standings(d);
-        return nextUp(d) + sheet(d) + netSheet(d) + splits(done) + standingsPeek(d);
+        return nextUp(d) + sheet(d) + netSheet(d) + turnover(d) + splits(done) + standingsPeek(d);
     }
 
     // Scroll so the panel starts just under the sticky navbar and tabs.
@@ -465,6 +502,6 @@
         document.fonts.ready.then(function () { if (data) fitSchools(); }).catch(function () {});
     }
 
-    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay, styleTags: styleTags };
+    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay, styleTags: styleTags, turnover: turnover };
     load();
 })();

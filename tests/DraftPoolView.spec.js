@@ -93,7 +93,7 @@ describe('basketball', () => {
         const [row] = view.buildPool('basketball', [hoops()], [], 2027);
         expect(row).toEqual({
             id: 10, name: 'Duke', logos: ['d.png'], conf: 'ACC',
-            rank: 1, barthag: 0.9629, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6', tags: []
+            rank: 1, barthag: 0.9629, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6', tags: [], turnover: null
         });
     });
 
@@ -122,6 +122,35 @@ describe('basketball', () => {
         expect(view.stylesNote({ fromSeason: 2027, label: '2026–27', lastSeason: false }))
             .toBe('Style tags are from this season (2026–27), updated daily.');
         expect(view.stylesNote(null)).toBe('');
+    });
+
+    // Roster turnover (#541): "Portal +4 / −3 · Class #12".
+    test('a team\'s turnover reaches its row', () => {
+        const turnover = { in: 4, out: 3, inTop: 1, outTop: 0, classRank: 12 };
+        expect(view.buildPool('basketball', [hoops({ turnover })], [], 2027)[0].turnover).toEqual(turnover);
+    });
+
+    test('the turnover line: real minus sign, class rank only when ranked', () => {
+        expect(view.turnoverLine({ in: 4, out: 3, classRank: 12 })).toBe('Portal +4 / \u22123 \u00b7 Class #12');
+        expect(view.turnoverLine({ in: 0, out: 0, classRank: null })).toBe('Portal +0 / \u22120');
+        expect(view.turnoverLine(null)).toBe('');
+    });
+
+    test('the turnover chip is escaped, with the star counts as the tooltip', () => {
+        const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        expect(view.turnoverHtml({ in: 1, out: 3, inTop: 1, outTop: 2, classRank: 12 }, esc)).toBe(
+            '<span class="dp-turnover" title="1 transfer in (1 four-star+), 3 out (2 four-star+); recruiting class #12">'
+            + 'Portal +1 / \u22123 \u00b7 Class #12</span>');
+        expect(view.turnoverHtml({ in: 2, out: 0, inTop: 0, outTop: 0, classRank: null }, esc))
+            .toContain('title="2 transfers in, 0 out; class not ranked"');
+        expect(view.turnoverHtml(null, esc)).toBe('');
+    });
+
+    test('the note says which offseason — CBBD\'s year is the spring BEFORE the season', () => {
+        expect(view.turnoverNote({ fromYear: 2026, season: 2027 }))
+            .toBe('Portal and Class are the spring 2026 transfer window and recruiting class: the moves into 2026\u201327.');
+        expect(view.turnoverNote(null)).toBe('');
+        expect(view.turnoverNote({ fromYear: null, season: 2027 })).toBe('');
     });
 
     test('its columns are its own, with no football metric among them', () => {

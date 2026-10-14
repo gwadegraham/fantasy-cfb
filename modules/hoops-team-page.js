@@ -19,6 +19,7 @@ const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
 const { latestNet, clearNetCache } = require('./hoops-net');
 const { stylesFor } = require('./hoops-styles');
+const { turnoverFor } = require('./hoops-turnover');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { entryFor } = require('./roster-teams');
 const { pickLogo } = require('../public/logo.js');
@@ -172,7 +173,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     const team = await HoopsTeam.findOne({ id, season: yr }).lean();
     if (!team) return null;
 
-    const [listed, rated, confTeams, stats, owner, values, net, styles] = await Promise.all([
+    const [listed, rated, confTeams, stats, owner, values, net, styles, turnover] = await Promise.all([
         HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean(),
         HoopsTeam.find({ season: yr, 'preseason.adjOE': { $type: 'number' } },
             { 'preseason.adjOE': 1, 'preseason.adjDE': 1, _id: 0 }).lean(),
@@ -186,6 +187,10 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         // A failed tag read costs the tags, not the page, as in the pool.
         stylesFor(yr, [id]).catch(err => {
             console.error(`hoops team page ${id}: style tags not read: ${err.message}`);
+            return { source: null, byTeam: {} };
+        }),
+        turnoverFor(yr, [id], { full: true }).catch(err => {
+            console.error(`hoops team page ${id}: roster turnover not read: ${err.message}`);
             return { source: null, byTeam: {} };
         })
     ]);
@@ -302,6 +307,11 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         // season's until this one has enough games — or null if none.
         style: styles.source && (styles.byTeam[String(id)] || []).length
             ? { tags: styles.byTeam[String(id)], ...styles.source }
+            : null,
+        // Who arrived and who left through the portal, and the recruiting
+        // class (#541) — the offseason going into this season — or null.
+        turnover: turnover.source && turnover.byTeam[String(id)]
+            ? { ...turnover.byTeam[String(id)], ...turnover.source }
             : null,
         owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName } : null,
         quadrantValues: values,

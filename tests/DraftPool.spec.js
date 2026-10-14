@@ -16,6 +16,7 @@ const Draft = require('../models/draft');
 const activeSeason = require('../modules/active-season');
 const draftPool = require('../modules/draft-pool');
 const draftRouter = require('../routes/draft');
+const visibility = require('../modules/hoops-visibility');
 
 useMongo();
 
@@ -423,7 +424,74 @@ describe('the pool carries what the board ranks on', () => {
     });
 });
 
+describe('poolFor — basketball roster turnover (#541)', () => {
+    const HoopsTeamTurnover = require('../models/hoopsTeamTurnover');
+    const tv = (teamId, o = {}) => Object.assign({
+        season: SEASON, teamId, fromYear: SEASON - 1, fetchedAt: new Date('2026-10-14T12:00:00Z'),
+        in: { count: 4, topStars: 2, avgRating: 0.9 }, out: { count: 3, topStars: 0, avgRating: 0.85 },
+        arrivals: [{ name: 'Secret Name', stars: 4 }], departures: [], classRank: 12, classRating: 50
+    }, o);
+
+    test('each team carries its counts and class rank — not the names — and the pool says which offseason', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Middle', 50)]);
+        await HoopsTeamTurnover.create(tv(1));
+
+        const pool = await draftPool.poolFor(HOOPS);
+        expect(pool.turnover).toEqual({ fromYear: SEASON - 1, season: SEASON, fetchedAt: new Date('2026-10-14T12:00:00Z') });
+        expect(pool.teams.find(t => t.school === 'Best').turnover).toEqual({ in: 4, out: 3, inTop: 2, outTop: 0, classRank: 12 });
+        expect(pool.teams.find(t => t.school === 'Middle').turnover).toBeNull();
+        expect(JSON.stringify(pool)).not.toContain('Secret Name');
+    });
+
+    test('a failed turnover read costs the line, never the pool', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1)]);
+        jest.spyOn(HoopsTeamTurnover, 'find').mockImplementation(() => { throw new Error('Atlas hiccup'); });
+        const pool = await draftPool.poolFor(HOOPS);
+        expect(pool.count).toBe(1);
+        expect(pool.turnover).toBeNull();
+    });
+
+    test('football pools carry no turnover', async () => {
+        await leagues();
+        await Team.create([fbs(1, 'Alabama')]);
+        const pool = await draftPool.poolFor(BALL);
+        expect(pool).not.toHaveProperty('turnover');
+        expect(pool.teams[0]).not.toHaveProperty('turnover');
+    });
+});
+
+// Hoops stays hidden (#541 put portal lines on this route): someone not in on
+// basketball gets exactly what a league code that does not exist gets.
+describe('GET /draft/pool/:league — basketball visibility', () => {
+    test('a hidden basketball league answers as an unknown code does', async () => {
+        jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(false);
+        await leagues();
+        await Team.create([fbs(1, 'Alabama')]);
+        await HoopsTeam.create([hoops(1, 'Best', 1)]);
+        await Draft.create({ league: HOOPS, season: SEASON, poolSize: 1, totalRounds: 9, draftOrder: [new (require('mongoose').Types.ObjectId)(), new (require('mongoose').Types.ObjectId)()] });
+
+        const hidden = await request(app).get(`/draft/pool/${HOOPS}`);
+        const missing = await request(app).get('/draft/pool/no-such-league');
+        expect(hidden.status).toBe(200);
+        expect(hidden.body).toEqual(missing.body);
+        expect(hidden.body.sport).toBe('football');
+        expect(JSON.stringify(hidden.body)).not.toContain('Best');
+    });
+
+    test('a football league is not asked about basketball at all', async () => {
+        const sees = jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(false);
+        await leagues();
+        await Team.create([fbs(1, 'Alabama')]);
+        expect((await request(app).get(`/draft/pool/${BALL}`)).body.teams[0].school).toBe('Alabama');
+        expect(sees).not.toHaveBeenCalled();
+    });
+});
+
 describe('GET /draft/pool/:league', () => {
+    beforeEach(() => { jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(true); });
+
     test('answers the pool for a basketball league', async () => {
         await leagues();
         await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Next', 2), hoops(3, 'Out', 3)]);

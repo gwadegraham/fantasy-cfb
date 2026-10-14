@@ -113,7 +113,8 @@
             adjOE: t.adjOE == null ? null : t.adjOE,
             adjDE: t.adjDE == null ? null : t.adjDE,
             projectedRecord: t.projectedRecord || null,
-            tags: Array.isArray(t.tags) ? t.tags : []
+            tags: Array.isArray(t.tags) ? t.tags : [],
+            turnover: t.turnover || null
         };
     }
 
@@ -136,6 +137,31 @@
         return styles.lastSeason
             ? 'Style tags are from last season (' + styles.label + ') until this season has a few games played.'
             : 'Style tags are from this season (' + styles.label + '), updated daily.';
+    }
+
+    // Roster turnover (#541): "Portal +4 / −3 · Class #12". The minus is a
+    // real minus sign, so it lines up with the plus. The tooltip spells out
+    // the star counts the line has no room for.
+    function turnoverLine(tv) {
+        if (!tv) return '';
+        return 'Portal +' + tv.in + ' / \u2212' + tv.out + (tv.classRank != null ? ' \u00b7 Class #' + tv.classRank : '');
+    }
+
+    function turnoverHtml(tv, esc) {
+        if (!tv) return '';
+        var tip = tv.in + ' transfer' + (tv.in === 1 ? '' : 's') + ' in'
+            + (tv.inTop ? ' (' + tv.inTop + ' four-star+)' : '')
+            + ', ' + tv.out + ' out' + (tv.outTop ? ' (' + tv.outTop + ' four-star+)' : '')
+            + (tv.classRank != null ? '; recruiting class #' + tv.classRank : '; class not ranked');
+        return '<span class="dp-turnover" title="' + esc(tip) + '">' + esc(turnoverLine(tv)) + '</span>';
+    }
+
+    // Which offseason the line describes: the spring before the season, which
+    // CBBD files a year earlier than the season's own label.
+    function turnoverNote(src) {
+        if (!src || src.fromYear == null || src.season == null) return '';
+        return 'Portal and Class are the spring ' + src.fromYear + ' transfer window and recruiting class: the moves into '
+            + (src.season - 1) + '\u2013' + String(src.season).slice(-2) + '.';
     }
 
     // Ported unchanged from public/draftRoom.js, including the preseason
@@ -181,6 +207,9 @@
         defaultSort: defaultSort,
         buildPool: buildPool,
         tagsHtml: tagsHtml,
-        stylesNote: stylesNote
+        stylesNote: stylesNote,
+        turnoverLine: turnoverLine,
+        turnoverHtml: turnoverHtml,
+        turnoverNote: turnoverNote
     };
 }));

@@ -177,7 +177,14 @@ const boardCache = new Map();     // `${league}:${season}` -> { projections, ran
 // the PATCH /users/draft/:id hang in #461 and the hoops teams ingest in #317.
 router.get('/pool/:league', async (req, res) => {
     try {
-        const league = req.params.league;
+        // A basketball pool only to someone who may know basketball exists
+        // (#541): it now carries portal and recruiting lines, and the pool
+        // alone names the league's sport. Anyone else is answered as a code
+        // that does not exist is — the football pool — since any difference
+        // confirms the league is real. '' is no league's code.
+        const hidden = sportForLeague(req.params.league) === 'basketball'
+            && !(await hoopsVisibility.seesBasketball(req));
+        const league = hidden ? '' : req.params.league;
 
         // THE SEASON IS RESOLVED ONCE, AND THE DRAFT IS LOOKED UP FOR IT.
         //

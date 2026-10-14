@@ -205,6 +205,22 @@ describe('basketball', () => {
         expect(r.cards()).toContain('>Slow pace</span>');
     });
 
+    // Roster turnover (#541): the line under the name, table and card.
+    test('the portal line renders under the name, in the table and on the card', () => {
+        const turnover = { in: 4, out: 3, inTop: 1, outTop: 0, classRank: 12 };
+        const r = room({ sport: 'basketball', pool: [hoopsRow({ turnover })] });
+        const nameCell = r.body().match(/<td[^>]*>(.*?)<\/td>/)[1];
+        expect(nameCell).toContain('class="dp-turnover"');
+        expect(nameCell).toContain('>Portal +4 / \u22123 \u00b7 Class #12</span>');
+        expect(r.cards()).toContain('>Portal +4 / \u22123 \u00b7 Class #12</span>');
+    });
+
+    test('no turnover on file, no portal line', () => {
+        const r = room({ sport: 'basketball', pool: [hoopsRow({ turnover: null })] });
+        expect(r.body()).not.toContain('dp-turnover');
+        expect(r.cards()).not.toContain('dp-turnover');
+    });
+
     test('a team with no tags renders no empty tag row', () => {
         const r = room({ sport: 'basketball', pool: [hoopsRow({ tags: [] })] });
         expect(r.body()).not.toContain('dp-tags');
