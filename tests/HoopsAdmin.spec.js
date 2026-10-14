@@ -326,3 +326,187 @@ describe("football's admin page says nothing about basketball", () => {
         expect(html).not.toMatch(/basketball/i);
     });
 });
+
+// The Preseason ratings card's three routes (#544). Mounted behind the same
+// app-wide express.json() server.js puts in front of every router, so the
+// 100 KB limit a real paste would hit is the real one.
+describe('preseason ratings', () => {
+    const League = require('../models/league');
+    const Franchise = require('../models/franchise');
+    const AuditLog = require('../models/auditLog');
+    const mongoose = require('mongoose');
+    const torvik = require('../modules/torvik-import');
+
+    const SCHOOLS = ['Duke', 'Virginia', 'Louisville', 'Clemson', 'Kansas', 'Houston', 'Baylor', 'Arizona'];
+    const conf = (i) => (i < 4 ? ['ACC', 'ACC'] : ['B12', 'Big 12']);
+    // Torvik's JSON file, in its positional shape, padded the way the real
+    // ~300 KB one is so it cannot ride under the 100 KB JSON limit.
+    const torvikJson = () => JSON.stringify(SCHOOLS.map((s, i) =>
+        [i + 1, s, conf(i)[0], '0-0', 120 - i, i + 1, 90 + i, i + 1, 0.95 - i * 0.05, i + 1, 25 - i, 5 + i,
+            ...new Array(30).fill(0.123456789012345)])) + ' '.repeat(150 * 1024);
+
+    function app(roles = ['Admin']) {
+        const a = express();
+        a.use(express.json());
+        a.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => roles !== null,
+                user: roles === null ? null : { name: 'Garrett', email: 'g@example.com', user_metadata: { roles } } };
+            next();
+        });
+        a.use('/hoops/admin', hoopsAdmin.build());
+        a.use((req, res) => res.status(404).send('Not found'));
+        return a;
+    }
+    const preview = (body = torvikJson()) => request(app()).post('/hoops/admin/preseason/preview')
+        .set('Content-Type', 'text/plain').send(body);
+
+    beforeEach(async () => {
+        await League.create({ code: 'hoops-league', name: 'Hoops', sport: 'basketball' });
+        await HoopsTeam.create(SCHOOLS.map((school, i) => ({ id: i + 1, season: SEASON, school, conference: conf(i)[1] })));
+    });
+
+    test.each([['a League Manager', ['League Manager']], ['a member', []], ['signed out', null]])(
+        '%s gets a 404 from all three', async (_, roles) => {
+            const a = app(roles);
+            expect((await request(a).get('/hoops/admin/preseason')).status).toBe(404);
+            expect((await request(a).post('/hoops/admin/preseason/preview').set('Content-Type', 'text/plain').send(torvikJson())).status).toBe(404);
+            expect((await request(a).post('/hoops/admin/preseason/apply').send({ rows: [], origin: 'json' })).status).toBe(404);
+            expect(await HoopsTeam.countDocuments({ 'preseason.rank': { $exists: true } })).toBe(0);
+        });
+
+    test('what is on file: never imported, unlocked', async () => {
+        const res = await request(app()).get('/hoops/admin/preseason');
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ season: SEASON, locked: false, url: 'https://barttorvik.com/2027_team_results.json',
+            current: { teams: 8, ranked: 0, source: null, importedAt: null, top: [] } });
+    });
+
+    test('a pasted JSON file larger than the app-wide JSON limit previews, and writes nothing', async () => {
+        expect(Buffer.byteLength(torvikJson())).toBeGreaterThan(100 * 1024);
+        const res = await preview();
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ ok: true, origin: 'json', locked: false, counts: { ratings: 8, teams: 8, matched: 8 } });
+        expect(res.body.compare.newTop.map(t => t.school)).toEqual(SCHOOLS);
+        expect(res.body.rows).toHaveLength(8);
+        expect(res.body.source).toMatch(/pasted team_results\.json \(2027_team_results\.json\)/);
+        expect(await HoopsTeam.countDocuments({ 'preseason.rank': { $exists: true } })).toBe(0);
+    });
+
+    test('a browser copy of the table is refused with directions', async () => {
+        const res = await preview('1\tDuke\tACC\t120.8\n2\tVirginia\tACC\t119');
+        expect(res.status).toBe(422);
+        expect(res.body.problems[0]).toMatch(/copied text/);
+    });
+
+    test('Fetch reads Torvik\'s JSON server-side', async () => {
+        const spy = jest.spyOn(torvik, 'fetchFromTorvik').mockResolvedValue({ rows: torvik.parsePaste(torvikJson()).rows });
+        const res = await request(app()).post('/hoops/admin/preseason/preview').send({ fetch: true });
+        expect(spy).toHaveBeenCalledWith(SEASON);
+        expect(res.body).toMatchObject({ ok: true, origin: 'fetch' });
+        expect(res.body.source).toMatch(/fetched from barttorvik\.com/);
+    });
+
+    test('a fetch that hits the wall is the admin\'s message, not a 500', async () => {
+        jest.spyOn(torvik, 'fetchFromTorvik').mockRejectedValue(new Error('answered with a web page, not data'));
+        const res = await request(app()).post('/hoops/admin/preseason/preview').send({ fetch: true });
+        expect(res.status).toBe(422);
+        expect(res.body.problems).toEqual(['answered with a web page, not data']);
+    });
+
+    test('a failing check comes back as problems, with no rows to apply', async () => {
+        // Ranks numbered from the bottom: the worst team ranked 1.
+        const reversed = JSON.parse(torvikJson());
+        reversed.forEach((r, i) => { r[0] = reversed.length - i; });
+        const res = await preview(JSON.stringify(reversed));
+        expect(res.status).toBe(200);
+        expect(res.body.ok).toBe(false);
+        expect(res.body.rows).toBeUndefined();
+        expect(res.body.problems.join('\n')).toMatch(/sort may be reversed/);
+    });
+
+    test('Apply writes every team, records an audit row, and shows on file', async () => {
+        const { rows, origin } = (await preview()).body;
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows, origin });
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ ok: true, stamped: 8, teams: 8 });
+        expect(await HoopsTeam.countDocuments({ season: SEASON, 'preseason.rank': { $exists: true } })).toBe(8);
+
+        const log = await AuditLog.find({ action: 'hoops.preseason' }).lean();
+        expect(log).toHaveLength(1);
+        expect(log[0]).toMatchObject({ season: '2027', league: null, actorName: 'Garrett', meta: { stamped: 8, teams: 8 } });
+        expect(log[0].summary).toMatch(/8 \/ 8 teams ranked/);
+
+        const on = (await request(app()).get('/hoops/admin/preseason')).body.current;
+        expect(on).toMatchObject({ ranked: 8, source: res.body.source, importedAt: res.body.importedAt });
+        expect(on.top[0]).toMatchObject({ rank: 1, school: 'Duke' });
+    });
+
+    test('Apply re-runs the checks: rows tampered with after the preview are refused', async () => {
+        const { rows } = (await preview()).body;
+        rows.forEach(r => { r.rank = 1; });
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows, origin: 'json' });
+        expect(res.status).toBe(422);
+        expect(res.body.problems.join('\n')).toMatch(/not unique/);
+        expect(await HoopsTeam.countDocuments({ 'preseason.rank': { $exists: true } })).toBe(0);
+        expect(await AuditLog.countDocuments()).toBe(0);
+    });
+
+    test('Apply needs rows and a known origin', async () => {
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows: [], origin: 'made-up' });
+        expect(res.status).toBe(400);
+    });
+
+    test('LOCKED once a basketball league has banked points: 423, nothing written', async () => {
+        const { rows, origin } = (await preview()).body;
+        await Franchise.create({ accountId: new mongoose.Types.ObjectId(), league: 'hoops-league',
+            seasons: [{ season: SEASON, weeklyScore: [{ week: 1, score: 14 }] }] });
+        expect((await request(app()).get('/hoops/admin/preseason')).body.locked).toBe(true);
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows, origin });
+        expect(res.status).toBe(423);
+        expect(res.body.message).toMatch(/Locked/);
+        expect(await HoopsTeam.countDocuments({ 'preseason.rank': { $exists: true } })).toBe(0);
+    });
+
+    test('a zero-point week (seeded before tip-off) does not lock it', async () => {
+        await Franchise.create({ accountId: new mongoose.Types.ObjectId(), league: 'hoops-league',
+            seasons: [{ season: SEASON, weeklyScore: [{ week: 1, score: 0 }] }] });
+        expect((await request(app()).get('/hoops/admin/preseason')).body.locked).toBe(false);
+    });
+
+    test('a failed write is audited and reported, not thrown', async () => {
+        const { rows, origin } = (await preview()).body;
+        jest.spyOn(torvik, 'apply').mockRejectedValue(Object.assign(new Error('PARTIAL IMPORT: 3 of 8'), { partial: 3 }));
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows, origin });
+        expect(res.status).toBe(500);
+        expect(res.body.problems).toEqual(['PARTIAL IMPORT: 3 of 8']);
+        const log = await AuditLog.findOne({ action: 'hoops.preseason' }).lean();
+        expect(log.summary).toMatch(/FAILED/);
+        expect(log.meta.partial).toBe(3);
+    });
+
+    test('no basketball season: a plain answer, not a 500', async () => {
+        await SportSeason.deleteMany({ sport: 'basketball' });
+        activeSeason._reset();
+        await activeSeason.prime();
+        expect((await request(app()).get('/hoops/admin/preseason')).body).toEqual({ season: null });
+        expect((await preview()).status).toBe(409);
+        expect((await request(app()).post('/hoops/admin/preseason/apply').send({ rows: [], origin: 'json' })).status).toBe(409);
+    });
+
+    test('a database failure is a clean JSON 500 on every route', async () => {
+        jest.spyOn(torvik, 'current').mockRejectedValue(new Error('db down'));
+        jest.spyOn(torvik, 'seasonUnderway').mockRejectedValue(new Error('db down'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        expect((await request(app()).get('/hoops/admin/preseason')).status).toBe(500);
+        expect((await preview()).status).toBe(500);
+        const res = await request(app()).post('/hoops/admin/preseason/apply').send({ rows: [], origin: 'json' });
+        expect(res.status).toBe(500);
+        expect(res.body.message).toMatch(/Could not apply/);
+    });
+});
+
+test('the page loads the preseason card into its own container', async () => {
+    const res = await request(appAs(['Admin'])).get('/hoops/admin');
+    expect(res.text).toContain('id="hoops-preseason"');
+    expect(res.text).toContain('src="/hoopsPreseason.js"');
+});

@@ -47,3 +47,21 @@
 .ha-league { width: 100%; max-width: 880px; margin: 0 auto; padding: 0 16px 56px; box-sizing: border-box; min-width: 0; }
 .ha-league-h { font: 700 20px Poppins, sans-serif; color: var(--cc-text); margin: 8px 0 12px; }
 .ha-league-h small { font-size: 13px; font-weight: 500; color: var(--cc-muted); margin-left: 6px; }
+
+/* Preseason ratings (#544, public/hoopsPreseason.js). */
+#hoops-preseason { padding-bottom: 8px; }
+.ha-pre-paste { margin-top: 10px; font-size: 13px; }
+.ha-pre-paste summary { cursor: pointer; color: var(--cc-muted-bright); }
+.ha-pre-text { width: 100%; box-sizing: border-box; background: var(--cc-surface-2); color: var(--cc-text);
+    border: 1px solid var(--cc-border); border-radius: var(--cc-r-sm); padding: 8px; font: 12px ui-monospace, Menlo, monospace; }
+.ha-pre-ok { margin-top: 12px; font-size: 13px; color: var(--cc-success); }
+.ha-pre-problems { margin-top: 12px; font-size: 12px; color: var(--cc-danger); overflow-wrap: anywhere; }
+.ha-pre-problems ul { margin: 4px 0 0; padding-left: 18px; }
+.ha-pre-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+.ha-pre-cols > div { min-width: 0; }
+.ha-pre-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.ha-pre-list li { display: flex; gap: 8px; padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ha-pre-r { width: 28px; flex: none; text-align: right; color: var(--cc-muted); }
+.ha-pre-d { margin-left: auto; font-size: 11px; color: var(--cc-muted); }
+.ha-pre-d.up { color: var(--cc-success); }
+.ha-pre-d.down { color: var(--cc-danger); }

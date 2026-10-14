@@ -21,7 +21,19 @@
 // non-Admin gets a plain 404, never a 403 — a 403 says the page exists.
 //
 // The gate is in THIS router, not the path list in server.js. That list gates
-// non-GETs only, and both routes here are GETs.
+// non-GETs only, and most routes here are GETs. The preseason POSTs below are
+// behind that list's requireAdmin as well, and check again here.
+//
+// ---- preseason ratings (#544) ----
+//
+//   GET  /preseason           what is on file, and whether the write is locked
+//   POST /preseason/preview   a paste (text/plain) or {fetch: true}; every
+//                             check, the comparison, nothing written
+//   POST /preseason/apply     {rows, origin} from a preview; every check AGAIN,
+//                             then the write and an audit row
+//
+// Apply re-checks rather than trusting the preview: the rows come back from
+// the browser, and the season may have scored in between.
 
 const express = require('express');
 const HoopsTeam = require('../models/hoopsTeam');
@@ -34,6 +46,8 @@ const roster = require('../modules/hoops-roster');
 const { effectiveRoles } = require('../modules/dev-role');
 const leagueCatalog = require('../modules/league-catalog');
 const { leagueCodeFor } = require('../modules/league-access');
+const torvik = require('../modules/torvik-import');
+const audit = require('../modules/audit-log');
 // A namespace, read at call time, so a test can widen the default and see
 // the quote follow it.
 const hoopsGames = require('./hoopsGames');
@@ -188,7 +202,127 @@ function build({ pageLocals = () => ({}) } = {}) {
         }
     });
 
+    // ---- preseason ratings ------------------------------------------------
+
+    // The paste is the JSON file (~300 KB) or the page source, both past the
+    // app-wide JSON parser's 100 KB. Sent as text/plain, which that parser
+    // ignores, and read here with a limit sized for it.
+    const pasteBody = express.text({ type: 'text/plain', limit: '3mb' });
+
+    router.get('/preseason', async (req, res) => {
+        if (!isAdmin(req)) return res.status(404).json({ message: 'Not found' });
+        try {
+            const season = seasons.activeSeason('basketball');
+            if (!Number.isFinite(season)) return res.json({ season: null });
+            const [now, locked] = await Promise.all([torvik.current(season), torvik.seasonUnderway(season)]);
+            const { ranks, ...rest } = now;
+            return res.json({ season, locked, url: torvik.jsonUrlFor(season), current: Object.assign(rest, { top: ranks.slice(0, 25) }) });
+        } catch (err) {
+            console.error(`hoops admin preseason: ${err && err.message}`);
+            return res.status(500).json({ message: 'Could not read the preseason ratings' });
+        }
+    });
+
+    router.post('/preseason/preview', pasteBody, async (req, res) => {
+        if (!isAdmin(req)) return res.status(404).json({ message: 'Not found' });
+        try {
+            const season = seasons.activeSeason('basketball');
+            if (!Number.isFinite(season)) return res.status(409).json({ message: 'No active basketball season' });
+
+            let rows;
+            let origin;
+            try {
+                if (req.body && typeof req.body === 'object' && req.body.fetch) {
+                    rows = (await torvik.fetchFromTorvik(season)).rows;
+                    origin = 'fetch';
+                } else {
+                    const parsed = torvik.parsePaste(typeof req.body === 'string' ? req.body : '');
+                    rows = parsed.rows;
+                    origin = parsed.format;
+                }
+            } catch (err) {
+                // The admin's input, not a server fault: say what was wrong.
+                return res.status(422).json({ ok: false, problems: [err.message] });
+            }
+            return res.json(await previewOf(season, rows, origin));
+        } catch (err) {
+            console.error(`hoops admin preseason preview: ${err && err.message}`);
+            return res.status(500).json({ message: 'Could not preview the preseason ratings' });
+        }
+    });
+
+    router.post('/preseason/apply', async (req, res) => {
+        if (!isAdmin(req)) return res.status(404).json({ message: 'Not found' });
+        try {
+            const season = seasons.activeSeason('basketball');
+            if (!Number.isFinite(season)) return res.status(409).json({ message: 'No active basketball season' });
+            const { rows, origin } = req.body || {};
+            if (!Array.isArray(rows) || !SOURCES[origin]) {
+                return res.status(400).json({ message: 'Send the rows and origin a preview returned' });
+            }
+            if (await torvik.seasonUnderway(season)) {
+                return res.status(423).json({ message: `Locked: basketball ${season} already has scored games. A new preseason rank now would re-rank games not yet played.` });
+            }
+            const result = await torvik.check(season, rows);
+            if (!result.ok) return res.status(422).json({ ok: false, problems: result.problems });
+
+            const source = sourceLabel(season, origin);
+            let written;
+            try {
+                written = await torvik.apply(season, result.matched, source);
+            } catch (err) {
+                // A partial write or a short stamp count. Audited too: the
+                // data DID change, and this is what someone will look for.
+                await audit.record(req, {
+                    action: 'hoops.preseason', season: String(season),
+                    summary: `Preseason ratings import FAILED for ${season}: ${err.message}`,
+                    meta: { source, partial: err.partial, result: err.result || null }
+                });
+                return res.status(500).json({ ok: false, problems: [err.message] });
+            }
+            await audit.record(req, {
+                action: 'hoops.preseason', season: String(season),
+                summary: `Imported Torvik preseason ratings for ${season}: ${written.stamped} / ${written.teams} teams ranked (${source})`,
+                meta: { source, written: written.written, matched: written.matched, stamped: written.stamped, teams: written.teams }
+            });
+            return res.json(Object.assign({ ok: true }, written));
+        } catch (err) {
+            console.error(`hoops admin preseason apply: ${err && err.message}`);
+            return res.status(500).json({ message: 'Could not apply the preseason ratings' });
+        }
+    });
+
     return router;
 }
 
-module.exports = { build, status, windowsFor, managedLeague, footballAdminRedirect, basketballAdminRedirect, footballAdminSeason, HOOPS_JOBS };
+// Where an import came from, as stamped on every team's preseason.source and
+// shown on the card. Keyed so the browser sends a word, never the label.
+const SOURCES = {
+    fetch: 'fetched from barttorvik.com',
+    json: 'pasted team_results.json',
+    html: 'pasted T-Rank page source',
+    file: 'pasted data file'
+};
+
+function sourceLabel(season, origin) {
+    const file = origin === 'fetch' || origin === 'json' ? ` (${season}_team_results.json)` : '';
+    return `barttorvik.com T-Rank preseason, ${SOURCES[origin]}${file}, ${new Date().toISOString().slice(0, 10)}`;
+}
+
+// Every check plus the comparison. `rows` goes back only when the checks pass,
+// so Apply cannot be offered for a set that failed them.
+async function previewOf(season, rows, origin) {
+    const [result, now, locked] = await Promise.all([
+        torvik.check(season, rows), torvik.current(season), torvik.seasonUnderway(season)
+    ]);
+    const out = { ok: result.ok, problems: result.problems, origin, locked,
+        counts: { ratings: result.ratings, teams: result.teams, matched: result.matched.length } };
+    if (!result.ok) return out;
+    return Object.assign(out, {
+        source: sourceLabel(season, origin),
+        compare: torvik.compare(now.ranks, result.matched),
+        rows
+    });
+}
+
+module.exports = { build, sourceLabel, status, windowsFor, managedLeague, footballAdminRedirect, basketballAdminRedirect, footballAdminSeason, HOOPS_JOBS };
