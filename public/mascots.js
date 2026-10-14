@@ -17,8 +17,9 @@
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
 // pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
 // Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
-// 'heisman' (the trophy pose, held). Both mascots have 'raincloud' for a
-// league-low week: drizzle and a slump, then shrugging it off.
+// 'heisman' (the trophy pose, held), plus 'handL' for a head-to-head loss
+// (handing you an L). Both mascots have 'raincloud' for a league-low week:
+// drizzle and a slump, then shrugging it off.
 //
 // Motion means something: the loops only run on a mascot marked busy, and
 // mascots.css freezes them under prefers-reduced-motion.
@@ -234,8 +235,29 @@
         </g>
         ${rainCloud(7.5)}`;
 
+    // Handing you an L: a big red block L held out toward you in both gloves,
+    // heavy lids and a smirk. While busy he leans in and pushes it at you
+    // ("here, this is yours") on a loop (mascots.css, ccm-hl-*).
+    const lacesHandL = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="34" cy="68" rx="17" ry="2"/>
+        <g class="ccm-hl-body">
+          <g class="ccm-lmb">${noodle('M24.5 42.5 Q22 51.75 22.5 61')}${noodle('M35.5 42.5 Q38 51.75 37.5 61')}
+            ${shoe(14.5, 59, 12, 'ccm-f-red')}${shoe(33.5, 59, 12, 'ccm-f-red')}</g>
+          <g transform="translate(-2 0)">${lacesBall(u)}</g>   <!-- the ball sits 2 left of center to make room for the L -->
+          ${eyes(24.6, 35.4, 27.2, 3.7, 5)}${lidsFor(24.6, 35.4, 27.2, 3.7, 5, 'ccm-f-leather')}
+          <path class="ccm-frown" d="M25.6 34.4 Q30 36.4 34.6 33"/>
+          <g class="ccm-hl-offer">
+            <g class="ccm-lmb">${noodle('M11.5 32 Q22 46 43 35')}${noodle('M48.5 32 Q61 33 59.6 39.4')}</g>
+            <path class="ccm-f-red ccm-o" d="M42 13 H50 V36 H63 V44 H42 Z"/>
+            <path d="M44 15 V41.5 H61" fill="none" stroke="var(--ccm-body)" stroke-width="1" opacity=".55" stroke-linecap="round"/>
+            <g class="ccm-lmb">${glove(44.4, 33.6, 'fist')}${glove(59.6, 40, 'fist')}</g>
+          </g>
+        </g>`;
+
     // ---------- Laces: leather football, red cleats ----------
     const laces = (u, pose) => {
+        if (pose === 'handL') return lacesHandL(u);
         if (pose === 'griddy') return lacesGriddy(u);
         if (pose === 'heisman') return lacesHeisman(u);
         if (pose === 'raincloud') return lacesRaincloud(u);
@@ -272,6 +294,8 @@
 
     // ---------- Dribbles: orange basketball, violet sneakers ----------
     const dribbles = (u, pose) => {
+        // Laces-only moves: handing you an L falls back to his ice pack.
+        if (pose === 'handL') pose = 'icepack';
         // 'raincloud' is the ice-pack pose plus the cloud, a shrug from the hip
         // hand, and lids and mouth that can lift (mascots.css, ccm-rc-*).
         const rc = pose === 'raincloud';

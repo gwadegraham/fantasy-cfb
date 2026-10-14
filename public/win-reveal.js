@@ -35,7 +35,16 @@
         '.cwr-score{font-size:1.5rem;font-weight:800;color:var(--cc-text,#F4F6FB);font-variant-numeric:tabular-nums}' +
         '.cwr-tap{font-size:.72rem;color:var(--cc-muted,#8A90A8);margin-top:14px;opacity:.7}' +
         '#cwr-burst{position:fixed;inset:0;z-index:4001;pointer-events:none}' +
-        '@media (prefers-reduced-motion:reduce){.cwr-stamp{opacity:1;transform:none}.cwr-bar i,.cwr-scrim{transition:none}}';
+        // Laces beside the W, or holding out the L himself (public/mascots.js).
+        '.cwr-hero{display:flex;align-items:center;justify-content:center;gap:2px}' +
+        '.cwr-mascot{line-height:0;opacity:0}.cwr-mascot .ccm-wrap{width:144px;height:162px}' +
+        '.cwr-hand .ccm-wrap{width:200px;height:225px}' +
+        '.cwr-scrim.show .cwr-mascot{animation:cwr-pop .45s cubic-bezier(.3,1.4,.4,1) .12s forwards}' +
+        '.cwr-scrim.show .cwr-hand{animation:cwr-hand .55s cubic-bezier(.2,1.2,.4,1) .08s forwards}' +
+        '@keyframes cwr-pop{0%{opacity:0;transform:translateY(14px) scale(.9)}100%{opacity:1;transform:none}}' +
+        '@keyframes cwr-hand{0%{opacity:0;transform:translateX(90px)}100%{opacity:1;transform:none}}' +
+        '@media (prefers-reduced-motion:reduce){.cwr-stamp{opacity:1;transform:none}.cwr-bar i,.cwr-scrim{transition:none}' +
+        '.cwr-mascot{opacity:1;animation:none!important}}';
         var s = document.createElement('style'); s.id = 'cwr-style'; s.textContent = css; document.head.appendChild(s);
     }
 
@@ -81,11 +90,26 @@
         if (opts.bonus > 0 && result !== 'loss') sub += result === 'tie' ? (' · +' + opts.bonus + ' each') : (' · +' + opts.bonus + ' bonus');
         var hasScore = opts.myScore != null && opts.oppScore != null;
 
+        // Laces in the moment: holding up the trophy beside a W, or walking up
+        // to hand you the L himself (his L replaces the stamp). Dribbles has no
+        // L to hand you, so a basketball loss keeps the stamp and his ice pack.
+        // The tie keeps the plain stamp for now.
+        var M = window.ccMascot;
+        var sport = M ? M.sport() : 'football';
+        var handsL = !!M && result === 'loss' && sport === 'football';
+        var pose = result === 'win' ? 'trophy' : result === 'loss' ? (handsL ? 'handL' : 'icepack') : null;
+        var mascot = (M && pose)
+            ? '<div class="cwr-mascot' + (handsL ? ' cwr-hand' : '') + '" aria-hidden="true">' + M.html({ sport: sport, pose: pose, busy: true }) + '</div>'
+            : '';
+        var stampHtml = handsL ? '' : '<div class="cwr-stamp">' + stamp + '</div>';
+
         var scrim = document.createElement('div');
         scrim.className = 'cwr-scrim cwr-' + result;
         scrim.innerHTML =
             '<div class="cwr-card">' +
-                '<div class="cwr-stamp">' + stamp + '</div>' +
+                '<div class="cwr-hero">' + mascot + stampHtml + '</div>' +
+                // Screen readers still get the result when the L is a drawing.
+                (handsL ? '<span class="sr-only">L</span>' : '') +
                 '<div class="cwr-head"></div>' +
                 '<div class="cwr-sub"></div>' +
                 (hasScore ? '<div class="cwr-bar"><i></i></div><div class="cwr-score"></div>' : '') +
@@ -102,7 +126,8 @@
 
         requestAnimationFrame(function () {
             scrim.classList.add('show');
-            if (!isReduced) scrim.querySelector('.cwr-stamp').classList.add('slam');
+            var stampEl = scrim.querySelector('.cwr-stamp');
+            if (!isReduced && stampEl) stampEl.classList.add('slam');
             if (bar) setTimeout(function () { bar.style.width = result === 'win' ? '100%' : result === 'loss' ? '8%' : '50%'; }, 300);
             if (result === 'win' && !isReduced) {
                 setTimeout(function () { burst(window.innerWidth / 2, window.innerHeight * 0.42, ['#ffffff', '#22C37A', '#8E8CF0', '#E0B341']); }, 380);
