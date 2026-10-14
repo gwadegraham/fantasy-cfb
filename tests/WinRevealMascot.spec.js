@@ -3,9 +3,10 @@
  *
  * The head-to-head reveal on My Team (public/win-reveal.js) brings Laces in:
  * he holds up the trophy beside a W, and on a loss he hands you the L himself,
- * so his L replaces the stamp. Dribbles has no L to hand over, so a basketball
- * loss keeps the stamp and shows his ice pack. The result must still reach a
- * screen reader when the L is a drawing.
+ * so his L replaces the stamp, and a tie is two of him in a tug-of-war nobody
+ * wins, which replaces the T. Dribbles has neither, so a basketball loss or tie
+ * keeps the stamp. The result must still reach a screen reader when it is a
+ * drawing.
  */
 const fs = require('fs');
 const path = require('path');
@@ -29,6 +30,7 @@ function reveal(result, sport) {
         stamp: scrim.querySelector('.cwr-stamp') && scrim.querySelector('.cwr-stamp').textContent,
         handsL: !!scrim.querySelector('.ccm-hl-offer'),
         trophy: !!scrim.querySelector('.cwr-mascot .ccm-prop'),
+        tug: !!scrim.querySelector('.ccm-tw2-rope'),
         text: scrim.textContent
     };
 }
@@ -50,8 +52,14 @@ describe('Laces in the head-to-head reveal', () => {
         expect(r).toMatchObject({ mascot: 'Dribbles', stamp: 'L', handsL: false });
     });
 
-    test('a tie keeps the plain stamp for now', () => {
+    test('a tie: two Laces in a tug-of-war, which replaces the stamp', () => {
         const r = reveal('tie', 'football');
-        expect(r).toMatchObject({ mascot: null, stamp: 'T' });
+        expect(r).toMatchObject({ mascot: 'Laces', stamp: null, tug: true });
+        expect(r.text).toContain('T');   // the screen-reader copy of the result
+    });
+
+    test('a basketball tie keeps the stamp beside Dribbles', () => {
+        const r = reveal('tie', 'basketball');
+        expect(r).toMatchObject({ mascot: 'Dribbles', stamp: 'T', tug: false });
     });
 });

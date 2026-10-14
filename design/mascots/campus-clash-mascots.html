@@ -531,57 +531,38 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     55% { transform: translate(1px, -.5px) scale(1.07); }
 }
 
-/* ---------- Tie candidates (previews) ---------- */
-/* Balance scale: the beam wobbles about its pivot, overshooting less each
-   swing, settles level, holds, and goes again (3.2s). Eyes follow the tilt. */
-.ccm .ccm-sb-beam { transform-box: view-box; transform-origin: 53.8px 4.7px; }
-.ccm-wrap.is-busy .ccm-sb-beam { animation: ccm-sb-beam 3.2s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-sb-eyes .ccm-look { animation: ccm-sb-look 3.2s ease-in-out infinite; }
-@keyframes ccm-sb-beam {
-    0%, 70%, 100% { transform: rotate(0deg); }
-    12% { transform: rotate(-9deg); }
-    26% { transform: rotate(7deg); }
-    38% { transform: rotate(-4deg); }
-    50% { transform: rotate(2deg); }
-    60% { transform: rotate(-.6deg); }
-}
-@keyframes ccm-sb-look {
-    0%, 70%, 100% { transform: translateX(0); }
-    12% { transform: translateX(1.2px); }
-    26% { transform: translateX(-1.2px); }
-    38% { transform: translateX(.8px); }
-    50% { transform: translateX(-.5px); }
-}
-
-/* Tug-of-war: leaning back the whole time; a fast strain shake, a yank
-   forward at 55%, then he digs back in (2.6s). The sweat drop falls. */
+/* Shared by the tug-of-war: leaning back, and a sweat drop that falls. */
 .ccm .ccm-tw-lean { transform-box: view-box; transform-origin: 40px 60px; transform: rotate(-12deg); }
-.ccm .ccm-tw-strain { transform-box: view-box; transform-origin: 40px 60px; }
 .ccm .ccm-tw-sweat { transform-box: fill-box; }
-.ccm-wrap.is-busy .ccm-tw-strain { animation: ccm-tw-strain 2.6s ease-in-out infinite; }
 .ccm-wrap.is-busy .ccm-tw-sweat { animation: ccm-tw-sweat 1.3s ease-in infinite; }
-@keyframes ccm-tw-strain {
-    0%, 8%, 16%, 24%, 32%, 40%, 100% { transform: translateX(0) rotate(0deg); }
-    4%, 12%, 20%, 28%, 36% { transform: translateX(-.7px) rotate(0deg); }
-    55% { transform: translateX(2px) rotate(9deg); }
-    66% { transform: translateX(1.4px) rotate(7deg); }
-    80% { transform: translateX(-.4px) rotate(-1deg); }
-}
 @keyframes ccm-tw-sweat {
     0% { transform: translate(0, 0); opacity: 0; }
     20% { opacity: 1; }
     100% { transform: translate(-1px, 7px); opacity: 0; }
 }
 
-/* "Meh": the open hand wobbles at the wrist (so-so), the eyes drift off to
-   the side and back (2.4s). */
-.ccm .ccm-mh-hand { transform-box: view-box; transform-origin: 56px 26.6px; }
-.ccm-wrap.is-busy .ccm-mh-hand { animation: ccm-mh-hand .5s ease-in-out infinite alternate; }
-.ccm-wrap.is-busy .ccm-mh-eyes .ccm-look { animation: ccm-mh-look 2.4s ease-in-out infinite; }
-@keyframes ccm-mh-hand { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
-@keyframes ccm-mh-look {
-    0%, 15%, 100% { transform: translate(0, 0); }
-    30%, 70% { transform: translate(-1.3px, -.4px); }
+/* Two-Laces tug-of-war (pose 'tugduo', a 128x72 drawing). One 3s cycle: the
+   left one gains (25%), back to even (50%), the right one gains (75%), even
+   again. The winner leans further back, the loser is yanked forward, and the
+   rope and its flag drift toward the winner. The right Laces is the same
+   drawing mirrored and runs the same keyframes half a cycle late. */
+.ccm-wrap.ccm-wide.ccm-size-full { width: 224px; height: 126px; }
+.ccm .ccm-tw2-pull { transform-box: view-box; transform-origin: 40px 60px; }
+.ccm .ccm-tw2-rope { transform-box: view-box; }
+.ccm-wrap.is-busy .ccm-tw2-pull { animation: ccm-tw2-pull 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-tw2-late { animation-delay: -1.5s; }
+.ccm-wrap.is-busy .ccm-tw2-rope { animation: ccm-tw2-rope 3s ease-in-out infinite; }
+@keyframes ccm-tw2-pull {
+    0%, 50%, 100% { transform: translateX(0) rotate(0deg); }
+    6%, 12%, 18% { transform: translateX(-2.6px) rotate(-4deg); }
+    9%, 15%, 21% { transform: translateX(-3.2px) rotate(-5deg); }
+    25% { transform: translateX(-3px) rotate(-5deg); }
+    75% { transform: translateX(3px) rotate(6deg); }
+}
+@keyframes ccm-tw2-rope {
+    0%, 50%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -594,6 +575,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 
 .moves { --a: var(--fb-a); }
 .move-slot .ccm-wrap { width: 210px; height: 236px; }
+.move-slot .ccm-wrap.ccm-wide { width: 100%; max-width: 300px; height: auto; aspect-ratio: 128 / 72; }
 
 .reveal-demo { --a: var(--fb-a); }
 .reveal-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -628,19 +610,15 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
   </section>
 
   <section class="moves">
-    <h2>Moves <span>Celebrations, the rain cloud, the L, and tie options</span></h2>
+    <h2>Moves <span>Celebrations, the rain cloud, the L and the tie</span></h2>
     <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). Both loop while he's busy; here they always run.</p>
     <div class="study-grid">
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="griddy" data-ccm-busy></span></div>
         <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Arms and legs together: two heel kicks with the arms swinging, then one with the goggles up, feet skipping the whole time.</dd></dl></div></article>
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman" data-ccm-busy></span></div>
         <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Starts standing on both feet; the stiff arm swings out, the other arm pulls in, the knee drives up with the shin folded under, he holds it, then resets.</dd></dl></div></article>
-      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="scale" data-ccm-busy></span></div>
-        <div class="info"><header><h3>Balance Scale</h3><span class="tag new">Tie · option 1</span></header><dl><dt>Move</dt><dd>Holds up a gold scale; the beam wobbles, overshoots and settles dead level while his eyes follow the tilt.</dd></dl></div></article>
-      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="tugofwar" data-ccm-busy></span></div>
-        <div class="info"><header><h3>Tug-of-War</h3><span class="tag new">Tie · option 3</span></header><dl><dt>Move</dt><dd>Leaning back, heels dug in, gritted teeth; he strains, gets yanked forward, digs back in, and nobody gains an inch.</dd></dl></div></article>
-      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="meh" data-ccm-busy></span></div>
-        <div class="info"><header><h3>Meh</h3><span class="tag new">Tie · option 5</span></header><dl><dt>Move</dt><dd>The so-so hand: an open palm wobbling side to side, a squiggle of a mouth, eyes drifting off.</dd></dl></div></article>
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="tugduo" data-ccm-busy></span></div>
+        <div class="info"><header><h3>Tug-of-War</h3><span class="tag new">H2H tie</span></header><dl><dt>Move</dt><dd>Two Laces on one rope. They trade the edge, the flag drifts toward whoever's gaining, and it always comes back to dead center. On the head-to-head tie reveal.</dd></dl></div></article>
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="handL" data-ccm-busy></span></div>
         <div class="info"><header><h3>Hand You an L</h3><span class="tag new">H2H loss</span></header><dl><dt>Move</dt><dd>Smug lids and a smirk; he leans in and pushes a big red L at you, on a loop. On the head-to-head loss reveal.</dd></dl></div></article>
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="raincloud" data-ccm-busy></span></div>
@@ -689,7 +667,8 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 // pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
 // Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
 // 'heisman' (the trophy pose, held), plus 'handL' for a head-to-head loss
-// (handing you an L). Both mascots have 'raincloud' for a league-low week:
+// (handing you an L) and 'tugduo' for a tie (two of him in a tug-of-war, on a
+// wide canvas). Both mascots have 'raincloud' for a league-low week:
 // drizzle and a slump, then shrugging it off.
 //
 // Motion means something: the loops only run on a mascot marked busy, and
@@ -926,80 +905,44 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
           </g>
         </g>`;
 
-    // ---------- Tie candidates (previews; not wired into the tie reveal yet) ----------
-    const lacesDefs = u => `<defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>`;
-    const hipHand = `<g class="ccm-lmb">${noodle('M13.5 31 Q6 34 11 41')}${glove(11.6, 41.6, 'fist')}</g>`;
-
-    // Tie: a balance scale held up beside him. The beam wobbles, overshoots and
-    // settles dead level; his eyes follow the tilt (ccm-sb-*).
-    const lacesScale = u => `
-        ${lacesDefs(u)}
-        <ellipse class="ccm-shadow ccm-lmb" cx="34" cy="68" rx="16" ry="2"/>
-        <g class="ccm-fig">
-          <g class="ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${noodle('M37.5 42.5 Q40 51.75 39.5 61')}
-            ${shoe(16.5, 59, 12, 'ccm-f-red')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
-          ${hipHand}
-          ${lacesBall(u)}
-          <g class="ccm-sb-eyes">${eyes(26.6, 37.4, 27.2, 3.7, 5)}</g>
-          <path class="ccm-frown" d="M29 34.4 H35"/>
-          <g class="ccm-lmb">
-            <rect class="ccm-f-gold ccm-o" x="52.6" y="3" width="2.4" height="39" rx="1.1"/>
-            <rect class="ccm-f-gold ccm-o" x="49" y="41" width="9.6" height="2.6" rx="1.2"/>
-            <g class="ccm-sb-beam">
-              <rect class="ccm-f-gold ccm-o" x="41.4" y="3.6" width="24.8" height="2.2" rx="1.1"/>
-              <g stroke="var(--ccm-ink)" stroke-width=".7"><line x1="43" y1="5" x2="40.4" y2="12"/><line x1="43" y1="5" x2="45.6" y2="12"/>
-                <line x1="64.6" y1="5" x2="62" y2="12"/><line x1="64.6" y1="5" x2="67.2" y2="12"/></g>
-              <path class="ccm-f-gold ccm-o" d="M38.8 12 H47.2 Q47 16.2 43 16.2 Q39 16.2 38.8 12 Z"/>
-              <path class="ccm-f-gold ccm-o" d="M60.4 12 H68.8 Q68.6 16.2 64.6 16.2 Q60.6 16.2 60.4 12 Z"/>
-            </g>
-            <circle class="ccm-f-gold ccm-o" cx="53.8" cy="4.7" r="1.7"/>
-            ${noodle('M50.5 31 Q55 34 53.8 30')}${glove(53.8, 30, 'fist')}
-          </g>
-        </g>`;
-
-    // Tie: tug-of-war against someone off to the right. Leaning back, heels
-    // dug in, gritted teeth and squeezed eyes; he strains, gets yanked forward,
-    // digs back in, and nobody moves an inch (ccm-tw-*).
-    const lacesTug = u => `
-        ${lacesDefs(u)}
-        <ellipse class="ccm-shadow ccm-lmb" cx="36" cy="68" rx="15" ry="2"/>
-        <g class="ccm-tw-lean"><g class="ccm-tw-strain">
+    // ---------- Ties ----------
+    // Tie: two Laces in a tug-of-war with each other, on a wide 128x72
+    // drawing (WIDE below). The left one is the tug drawing without its rope;
+    // the right one is the same drawing mirrored. One shared rope with a red
+    // flag at the middle drifts toward whoever is gaining; they trade the edge
+    // and it always comes back to dead center (mascots.css, ccm-tw2-*).
+    const tugger = u => `
           <g class="ccm-lmb">${noodle('M26.5 42.5 Q31 52 35 60.5')}${noodle('M37.5 42.5 Q43 51 46.5 59.5')}
-            ${shoe(30, 58.6, 12, 'ccm-f-red')}${shoe(41.5, 57.6, 12, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M14 31 Q30 34 48 40.4')}${noodle('M50 32 Q55 34 55.4 39.6')}
-            <line x1="44" y1="40.4" x2="78" y2="40.4" stroke="var(--ccm-ink)" stroke-width="3.6" stroke-linecap="round"/>
-            <line x1="44" y1="40.4" x2="78" y2="40.4" stroke="#C9A36A" stroke-width="2.2" stroke-linecap="round"/>
-            <g stroke="#8B6B3A" stroke-width=".6">${[48, 52, 56, 60, 64, 68, 72, 76].map(x => `<line x1="${x}" y1="39.4" x2="${x + 1.4}" y2="41.4"/>`).join('')}</g></g>
+            ${shoe(30, 58.6, 12, 'ccm-f-red')}${shoe(41.5, 57.6, 12, 'ccm-f-red')}
+            ${noodle('M14 31 Q30 34 48 40.4')}${noodle('M50 32 Q55 34 55.4 39.6')}</g>
           ${lacesBall(u)}
           <g stroke="var(--ccm-ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
             <path d="M24 24.6 L28.4 27 L24 29.4"/><path d="M40 24.6 L35.6 27 L40 29.4"/></g>
           <rect class="ccm-f-ink" x="27" y="31.6" width="10" height="4.6" rx="1.6"/>
           <rect class="ccm-f-body" x="27.8" y="32.3" width="8.4" height="3.2" rx=".8"/>
           <line x1="27.8" y1="33.9" x2="36.2" y2="33.9" stroke="var(--ccm-ink)" stroke-width=".6"/>
-          <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g>
-          <ellipse class="ccm-f-ice ccm-tw-sweat" cx="14.6" cy="20" rx="1" ry="1.6"/>
-        </g></g>`;
-
-    // Tie: "meh". An open hand wobbling side to side (so-so), a squiggle of a
-    // mouth, eyes drifting off to the side (ccm-mh-*).
-    const lacesMeh = u => `
-        ${lacesDefs(u)}
-        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
-        <g class="ccm-fig">
-          <g class="ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${noodle('M37.5 42.5 Q40 51.75 39.5 61')}
-            ${shoe(16.5, 59, 12, 'ccm-f-red')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
-          ${hipHand}
-          ${lacesBall(u)}
-          <g class="ccm-mh-eyes">${eyes(26.6, 37.4, 27.2, 3.7, 5)}</g>
-          <path class="ccm-frown" d="M27.6 34.2 Q29.8 32.6 32 34.2 Q34.2 35.8 36.4 34.2"/>
-          <g class="ccm-lmb">${noodle('M50.5 31 Q58 34 56 26.6')}<g class="ccm-mh-hand">${glove(56, 23.4, 'wave')}</g></g>
+          <ellipse class="ccm-f-ice ccm-tw-sweat" cx="14.6" cy="20" rx="1" ry="1.6"/>`;
+    const lacesTugDuo = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath>
+          <clipPath id="${u}d"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="38" cy="68" rx="15" ry="2"/>
+        <ellipse class="ccm-shadow ccm-lmb" cx="90" cy="68" rx="15" ry="2"/>
+        <g class="ccm-tw2-rope ccm-lmb">
+          <line x1="44" y1="40.4" x2="84" y2="40.4" stroke="var(--ccm-ink)" stroke-width="3.6" stroke-linecap="round"/>
+          <line x1="44" y1="40.4" x2="84" y2="40.4" stroke="#C9A36A" stroke-width="2.2" stroke-linecap="round"/>
+          <g stroke="#8B6B3A" stroke-width=".6">${[48, 52, 56, 60, 66, 70, 74, 78].map(x => `<line x1="${x}" y1="39.4" x2="${x + 1.4}" y2="41.4"/>`).join('')}</g>
+          <path class="ccm-f-red ccm-o" d="M62.6 40.4 H65.4 L64.8 47 L64 45.4 L63.2 47 Z"/>
+        </g>
+        <g class="ccm-tw-lean"><g class="ccm-tw2-pull">${tugger(u)}</g>
+          <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
+        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)">
+          <g class="ccm-tw-lean"><g class="ccm-tw2-pull ccm-tw2-late">${tugger(u + 'r').replace(`url(#${u}rc)`, `url(#${u}d)`)}</g>
+            <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
         </g>`;
 
     // ---------- Laces: leather football, red cleats ----------
     const laces = (u, pose) => {
-        if (pose === 'scale') return lacesScale(u);
-        if (pose === 'tugofwar') return lacesTug(u);
-        if (pose === 'meh') return lacesMeh(u);
+        if (pose === 'tugduo') return lacesTugDuo(u);
         if (pose === 'handL') return lacesHandL(u);
         if (pose === 'griddy') return lacesGriddy(u);
         if (pose === 'heisman') return lacesHeisman(u);
@@ -1037,10 +980,10 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 
     // ---------- Dribbles: orange basketball, violet sneakers ----------
     const dribbles = (u, pose) => {
-        // Laces-only moves: handing you an L falls back to his ice pack, and the
-        // tie candidates to a plain cheer.
+        // Laces-only moves: handing you an L falls back to his ice pack, the
+        // two-Laces tug-of-war to a plain cheer.
         if (pose === 'handL') pose = 'icepack';
-        if (pose === 'scale' || pose === 'tugofwar' || pose === 'meh') pose = 'cheer';
+        if (pose === 'tugduo') pose = 'cheer';
         // 'raincloud' is the ice-pack pose plus the cloud, a shrug from the hip
         // hand, and lids and mouth that can lift (mascots.css, ccm-rc-*).
         const rc = pose === 'raincloud';
@@ -1080,6 +1023,8 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     };
 
     const DRAW = { football: laces, basketball: dribbles };
+    // Laces poses drawn on a wider canvas than one mascot (two of him).
+    const WIDE = { tugduo: '0 0 128 72' };
     const CROP = { football: '10 8 44 44', basketball: '12 7 40 40' };
     const NAME = { football: 'Laces', basketball: 'Dribbles' };
 
@@ -1100,15 +1045,17 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         const sp = o.sport === 'basketball' ? 'basketball' : 'football';
         const head = o.size === 'head';
         const u = 'ccm' + (uid++);
+        const wide = !head && sp === 'football' && WIDE[o.pose];
         const a11y = o.label ? `role="img" aria-label="${esc(o.label)}"` : 'aria-hidden="true" focusable="false"';
-        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" data-mascot="${NAME[sp]}" ${a11y}>`
+        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : (wide || '0 0 64 72')}" data-mascot="${NAME[sp]}" ${a11y}>`
             + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
     }
 
     function html(opts) {
         const o = Object.assign({ size: 'full' }, opts);
         if (!o.sport) o.sport = sport();
-        return `<span class="ccm-wrap ccm-size-${o.size}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
+        const wide = o.size !== 'head' && o.sport === 'football' && WIDE[o.pose];
+        return `<span class="ccm-wrap ccm-size-${o.size}${wide ? ' ccm-wide' : ''}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
     }
 
     // <span data-ccm="head|full" data-ccm-sport="football|basketball" data-ccm-pose="…" data-ccm-busy></span>
@@ -1183,6 +1130,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         '.cwr-hero{display:flex;align-items:center;justify-content:center;gap:2px}' +
         '.cwr-mascot{line-height:0;opacity:0}.cwr-mascot .ccm-wrap{width:144px;height:162px}' +
         '.cwr-hand .ccm-wrap{width:200px;height:225px}' +
+        '.cwr-scrim .cwr-mascot .ccm-wrap.ccm-wide{width:min(320px,84vw);height:auto;aspect-ratio:128/72}' +
         '.cwr-scrim.show .cwr-mascot{animation:cwr-pop .45s cubic-bezier(.3,1.4,.4,1) .12s forwards}' +
         '.cwr-scrim.show .cwr-hand{animation:cwr-hand .55s cubic-bezier(.2,1.2,.4,1) .08s forwards}' +
         '@keyframes cwr-pop{0%{opacity:0;transform:translateY(14px) scale(.9)}100%{opacity:1;transform:none}}' +
@@ -1234,26 +1182,29 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         if (opts.bonus > 0 && result !== 'loss') sub += result === 'tie' ? (' · +' + opts.bonus + ' each') : (' · +' + opts.bonus + ' bonus');
         var hasScore = opts.myScore != null && opts.oppScore != null;
 
-        // Laces in the moment: holding up the trophy beside a W, or walking up
-        // to hand you the L himself (his L replaces the stamp). Dribbles has no
-        // L to hand you, so a basketball loss keeps the stamp and his ice pack.
-        // The tie keeps the plain stamp for now.
+        // Laces in the moment: holding up the trophy beside a W; walking up to
+        // hand you the L himself; or two of him locked in a tug-of-war nobody
+        // wins. The L and the tug-of-war ARE the result, so they replace the
+        // stamp (a screen-reader-only copy keeps it). Dribbles has neither, so
+        // a basketball loss or tie keeps the stamp beside his ice pack or cheer.
         var M = window.ccMascot;
         var sport = M ? M.sport() : 'football';
-        var handsL = !!M && result === 'loss' && sport === 'football';
-        var pose = result === 'win' ? 'trophy' : result === 'loss' ? (handsL ? 'handL' : 'icepack') : null;
-        var mascot = (M && pose)
-            ? '<div class="cwr-mascot' + (handsL ? ' cwr-hand' : '') + '" aria-hidden="true">' + M.html({ sport: sport, pose: pose, busy: true }) + '</div>'
+        var drawn = !!M && sport === 'football' && result !== 'win';   // the drawing is the result
+        var pose = result === 'win' ? 'trophy'
+            : result === 'loss' ? (drawn ? 'handL' : 'icepack')
+            : (drawn ? 'tugduo' : 'cheer');
+        var mascot = M
+            ? '<div class="cwr-mascot' + (drawn && result === 'loss' ? ' cwr-hand' : '') + '" aria-hidden="true">' + M.html({ sport: sport, pose: pose, busy: true }) + '</div>'
             : '';
-        var stampHtml = handsL ? '' : '<div class="cwr-stamp">' + stamp + '</div>';
+        var stampHtml = drawn ? '' : '<div class="cwr-stamp">' + stamp + '</div>';
 
         var scrim = document.createElement('div');
         scrim.className = 'cwr-scrim cwr-' + result;
         scrim.innerHTML =
             '<div class="cwr-card">' +
                 '<div class="cwr-hero">' + mascot + stampHtml + '</div>' +
-                // Screen readers still get the result when the L is a drawing.
-                (handsL ? '<span class="sr-only">L</span>' : '') +
+                // Screen readers still get the result when it is a drawing.
+                (drawn ? '<span class="sr-only">' + stamp + '</span>' : '') +
                 '<div class="cwr-head"></div>' +
                 '<div class="cwr-sub"></div>' +
                 (hasScore ? '<div class="cwr-bar"><i></i></div><div class="cwr-score"></div>' : '') +
