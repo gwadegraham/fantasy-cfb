@@ -82,57 +82,123 @@
 @keyframes ccm-look { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(.9px); } 65% { transform: translateX(-.9px); } }
 @keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
 
-/* The Griddy (pose 'griddy'). One beat = .52s: the body skips twice, each heel
-   kicks out on its own half, arms swing opposite the legs. */
-.ccm .ccm-gr-hop { transform-origin: 50% 100%; }
-.ccm .ccm-gr-legL, .ccm .ccm-gr-legR { transform-origin: 50% 0%; }
-.ccm .ccm-gr-armL { transform-origin: 100% 0%; }
-.ccm .ccm-gr-armR { transform-origin: 0% 0%; }
+/* ---------- The Griddy (pose 'griddy') ----------
+   One 2.6s phrase: four heel flicks on a skip (L 8%, R 24%, L 40%, R 56%), the
+   arms swinging against the legs, then both hands up to the eyes for the
+   goggles (70-90%). Pivots are the joints in the 64x72 drawing (view-box). */
+.ccm .ccm-gr-hop { transform-box: view-box; transform-origin: 32px 61px; }
+.ccm .ccm-gr-l-thigh { transform-box: view-box; transform-origin: 27px 42.5px; }
+.ccm .ccm-gr-l-shin  { transform-box: view-box; transform-origin: 26px 52px; }
+.ccm .ccm-gr-r-thigh { transform-box: view-box; transform-origin: 37px 42.5px; }
+.ccm .ccm-gr-r-shin  { transform-box: view-box; transform-origin: 38px 52px; }
+.ccm .ccm-gr-armL { transform-box: view-box; transform-origin: 13.5px 32px; }
+.ccm .ccm-gr-armR { transform-box: view-box; transform-origin: 50.5px 32px; }
 .ccm .ccm-gr-shadow { transform-origin: center; }
-.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-legL { animation: ccm-gr-kickL .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-legR { animation: ccm-gr-kickR .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-swing .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-swing .52s ease-in-out infinite reverse; }
-.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow .52s ease-in-out infinite; }
+.ccm .ccm-gr-goggles { opacity: 0; }
+.ccm-wrap.is-busy .ccm-gr-hop     { animation: ccm-gr-hop 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-thigh { animation: ccm-gr-l-thigh 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-shin  { animation: ccm-gr-l-shin 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-thigh { animation: ccm-gr-r-thigh 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-shin  { animation: ccm-gr-r-shin 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armL    { animation: ccm-gr-armL 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armR    { animation: ccm-gr-armR 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-goggles { animation: ccm-gr-goggles 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-shadow  { animation: ccm-gr-shadow 2.6s ease-in-out infinite; }
 @keyframes ccm-gr-hop {
-    0%, 50%, 100% { transform: translateY(0) scale(1, 1); }
-    12% { transform: translateY(.6px) scale(1.03, .96); }
-    25% { transform: translateY(-3px) rotate(-3deg); }
-    62% { transform: translateY(.6px) scale(1.03, .96); }
-    75% { transform: translateY(-3px) rotate(3deg); }
+    0%, 16%, 32%, 48%, 64%, 100% { transform: translateY(0) scale(1, 1); }
+    4%, 20%, 36%, 52% { transform: translateY(.6px) scale(1.03, .96); }
+    8%, 40% { transform: translateY(-3px) rotate(-3deg); }
+    24%, 56% { transform: translateY(-3px) rotate(3deg); }
+    74%, 90% { transform: translateY(-1px) scale(1.02, .98); }
 }
-@keyframes ccm-gr-kickL { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(32deg); } }
-@keyframes ccm-gr-kickR { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(-32deg); } }
-@keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
-@keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
+/* Left leg flicks on 8% and 40%: knee out a touch, heel up and out. */
+@keyframes ccm-gr-l-thigh {
+    0%, 3%, 13%, 35%, 45%, 100% { transform: rotate(0deg); }
+    8%, 40% { transform: rotate(14deg); }
+}
+@keyframes ccm-gr-l-shin {
+    0%, 3%, 13%, 35%, 45%, 100% { transform: rotate(0deg); }
+    8%, 40% { transform: rotate(105deg); }
+}
+/* Right leg flicks on 24% and 56%. */
+@keyframes ccm-gr-r-thigh {
+    0%, 19%, 29%, 51%, 61%, 100% { transform: rotate(0deg); }
+    24%, 56% { transform: rotate(-14deg); }
+}
+@keyframes ccm-gr-r-shin {
+    0%, 19%, 29%, 51%, 61%, 100% { transform: rotate(0deg); }
+    24%, 56% { transform: rotate(-105deg); }
+}
+/* Arms swing against the legs, then come up to the eyes for the goggles. */
+@keyframes ccm-gr-armL {
+    0% { transform: rotate(-18deg); }
+    8%, 40% { transform: rotate(24deg); }
+    24%, 56% { transform: rotate(-24deg); }
+    64% { transform: rotate(0deg); }
+    72%, 90% { transform: rotate(-128deg); }
+    98%, 100% { transform: rotate(-18deg); }
+}
+@keyframes ccm-gr-armR {
+    0% { transform: rotate(18deg); }
+    8%, 40% { transform: rotate(-24deg); }
+    24%, 56% { transform: rotate(24deg); }
+    64% { transform: rotate(0deg); }
+    72%, 90% { transform: rotate(126deg); }
+    98%, 100% { transform: rotate(18deg); }
+}
+@keyframes ccm-gr-goggles {
+    0%, 68%, 94%, 100% { opacity: 0; }
+    74%, 90% { opacity: 1; }
+}
+@keyframes ccm-gr-shadow {
+    0%, 16%, 32%, 48%, 64%, 100% { transform: scaleX(1); opacity: .35; }
+    8%, 24%, 40%, 56% { transform: scaleX(.82); opacity: .2; }
+}
 
-/* The Heisman (pose 'heisman'). One 2.8s cycle: stand neutral, snap the stiff
-   arm out from the shoulder and drive the knee up from the hip (with a little
-   overshoot), lean into it and hold, then reset. Pivots are the joints in the
-   drawing's own coordinates (64x72 viewBox), hence view-box rather than fill-box. */
-.ccm .ccm-hz-arm { transform-box: view-box; transform-origin: 12.5px 29.5px; }
-.ccm .ccm-hz-leg { transform-box: view-box; transform-origin: 37.5px 42px; }
+/* ---------- The Heisman (pose 'heisman') ----------
+   One 3s cycle: stand neutral (stiff arm hanging, tucked arm loose, both feet
+   on the ground), then strike it: stiff arm swings out from the shoulder, the
+   other arm pulls in, the knee drives up and the shin folds under, he leans in
+   and holds, then resets. Without .is-busy the static transforms below hold
+   the finished pose. */
+.ccm .ccm-hz-arm  { transform-box: view-box; transform-origin: 12.5px 29.5px; }
+.ccm .ccm-hz-tuck { transform-box: view-box; transform-origin: 51px 31px; }
 .ccm .ccm-hz-body { transform-box: view-box; transform-origin: 27px 61px; }
-.ccm-wrap.is-busy .ccm-hz-arm { animation: ccm-hz-arm 2.8s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-hz-leg { animation: ccm-hz-leg 2.8s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-hz-body { animation: ccm-hz-body 2.8s ease-in-out infinite; }
+.ccm .ccm-hz-k-thigh { transform-box: view-box; transform-origin: 37px 42.5px; transform: rotate(-78deg); }
+.ccm .ccm-hz-k-shin  { transform-box: view-box; transform-origin: 37.5px 52px; transform: rotate(92deg); }
+.ccm-wrap.is-busy .ccm-hz-arm     { animation: ccm-hz-arm 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-tuck    { animation: ccm-hz-tuck 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-k-thigh { animation: ccm-hz-thigh 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-k-shin  { animation: ccm-hz-shin 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-body    { animation: ccm-hz-body 3s ease-in-out infinite; }
 @keyframes ccm-hz-arm {
-    0%, 8% { transform: rotate(-85deg); }
-    20% { transform: rotate(7deg); }
-    27%, 78% { transform: rotate(0deg); }
-    92%, 100% { transform: rotate(-85deg); }
+    0%, 12% { transform: rotate(-85deg); }
+    24% { transform: rotate(7deg); }
+    30%, 80% { transform: rotate(0deg); }
+    94%, 100% { transform: rotate(-85deg); }
 }
-@keyframes ccm-hz-leg {
-    0%, 8% { transform: rotate(48deg); }
-    20% { transform: rotate(-7deg); }
-    27%, 78% { transform: rotate(0deg); }
-    92%, 100% { transform: rotate(48deg); }
+@keyframes ccm-hz-tuck {
+    0%, 12% { transform: rotate(-38deg); }
+    24% { transform: rotate(5deg); }
+    30%, 80% { transform: rotate(0deg); }
+    94%, 100% { transform: rotate(-38deg); }
+}
+@keyframes ccm-hz-thigh {
+    0%, 12% { transform: rotate(0deg); }
+    24% { transform: rotate(-84deg); }
+    30%, 80% { transform: rotate(-78deg); }
+    94%, 100% { transform: rotate(0deg); }
+}
+@keyframes ccm-hz-shin {
+    0%, 12% { transform: rotate(0deg); }
+    24% { transform: rotate(98deg); }
+    30%, 80% { transform: rotate(92deg); }
+    94%, 100% { transform: rotate(0deg); }
 }
 @keyframes ccm-hz-body {
-    0%, 8% { transform: rotate(0deg); }
-    24%, 78% { transform: translateY(-1px) rotate(-4deg); }
-    92%, 100% { transform: rotate(0deg); }
+    0%, 12% { transform: rotate(0deg); }
+    28%, 80% { transform: translateY(-1px) rotate(-4deg); }
+    94%, 100% { transform: rotate(0deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

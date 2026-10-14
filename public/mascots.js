@@ -133,32 +133,41 @@
           <rect class="ccm-f-body" x="25.5" y="19.3" width="13" height="1.5" rx=".75"/>
           ${[-4.5, -1.5, 1.5, 4.5].map(d => `<line class="ccm-lace" x1="${32 + d}" y1="18.2" x2="${32 + d}" y2="21.9"/>`).join('')}`;
 
-    // The Griddy: heels kick out one at a time on a skip, arms swing opposite.
-    // Every limb is its own group so the CSS can run them half a beat apart.
+    // A leg with a knee: the thigh pivots at the hip and carries the shin, which
+    // pivots at the knee and carries the shoe. Drawn straight and planted; the
+    // CSS bends it. `side` is 'L' or 'R' (toes point outward).
+    const kneeLeg = (cls, hipX, kneeX, footX, shoeX) => `
+        <g class="${cls}-thigh">${noodle(`M${hipX} 42.5 Q${(hipX + kneeX) / 2 + (kneeX < hipX ? -.5 : .5)} 47.5 ${kneeX} 52`)}
+          <g class="${cls}-shin">${noodle(`M${kneeX} 52 Q${(kneeX + footX) / 2} 56.5 ${footX} 61`)}${shoe(shoeX, 59, 12, 'ccm-f-red')}</g></g>`;
+
+    // The Griddy: four heel flicks on a skip (left, right, left, right), arms
+    // swinging against the legs, then both hands up to the eyes for the goggles.
+    // Each limb is its own group with its own joint pivot (mascots.css, ccm-gr-*).
     const lacesGriddy = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-gr-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
         <g class="ccm-gr-hop">
-          <g class="ccm-gr-legL ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${shoe(16.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-gr-legR ccm-lmb">${noodle('M37.5 42.5 Q40 51.75 39.5 61')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-gr-armL ccm-lmb">${noodle('M13.5 32 Q8 38 10 44')}${glove(10.5, 45, 'fist')}</g>
-          <g class="ccm-gr-armR ccm-lmb">${noodle('M50.5 32 Q56 38 54 44')}${glove(53.5, 45, 'fist')}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 27, 26, 25.5, 15.5)}${kneeLeg('ccm-gr-r', 37, 38, 38.5, 36.5)}</g>
           ${lacesBall(u)}
           ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 32, 33, 5.8, 2.6)}
+          <g class="ccm-gr-goggles" fill="none" stroke="var(--ccm-body)" stroke-width="1.5">
+            <circle cx="26.6" cy="27.2" r="5.6"/><circle cx="37.4" cy="27.2" r="5.6"/></g>
+          <g class="ccm-gr-armL ccm-lmb">${noodle('M13.5 32 Q8 38 10 44')}${glove(10.5, 45, 'fist')}</g>
+          <g class="ccm-gr-armR ccm-lmb">${noodle('M50.5 32 Q56 38 54 44')}${glove(53.5, 45, 'fist')}</g>
         </g>`;
 
     // The Heisman: stiff arm straight out, other arm tucked, one knee driven up.
-    // Drawn IN the pose, so a still render (or reduced motion) shows the finished
-    // statue; while busy, the stiff arm and the knee swing in from a neutral
-    // stance about the shoulder and hip, hold, and reset (mascots.css, ccm-hz-*).
+    // The arms are drawn IN the pose and the raised leg is a planted kneeLeg
+    // that the CSS bends into it, so a still render (or reduced motion) shows the
+    // finished statue. While busy he starts standing, strikes it, holds, resets.
     const lacesHeisman = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
         <g class="ccm-hz-body">
           <g class="ccm-lmb">${noodle('M28 42.5 Q26 52 26.5 61')}${shoe(18.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-hz-leg ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-hz-k', 37, 37.5, 37.5, 35.5)}</g>
+          <g class="ccm-hz-tuck ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
           <g class="ccm-hz-arm ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
           ${lacesBall(u)}
           ${eyes(25.6, 36.4, 27.2, 3.7, 5)}
