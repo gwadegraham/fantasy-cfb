@@ -41,7 +41,8 @@ function apiLogos(t) {
 //
 //   12 Arkansas — the slobbering hog, over CBBD's running Razorback, whose
 //      light and dark files are byte-identical anyway. Master in
-//      design/brand/slobbering-hog.png; the served copy is 256px wide.
+//      design/brand/slobbering-hog.png; the served copy is 320px wide, enough for the
+//      104px draft-room pick reveal at 3x.
 const LOGO_OVERRIDES = {
     12: ['/images/logo-hoops-arkansas-hog.webp']
 };
