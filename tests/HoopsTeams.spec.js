@@ -125,6 +125,38 @@ describe('buildUpsertOp', () => {
         expect(pickLogo(logos)).toBe('');
     });
 
+    describe('Arkansas wears the slobbering hog', () => {
+        // CBBD id 12 (sourceId 8). Graham's call, basketball only.
+        const HOG = '/images/logo-hoops-arkansas-hog.webp';
+        const ark = (over = {}) => team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8'), ...over });
+
+        test('replaces CBBD\'s logos, for light and dark alike', () => {
+            const logos = build(ark()).updateOne.update.$set.logos;
+            expect(logos).toEqual([HOG]);
+            expect(pickLogo(logos)).toBe(HOG);
+            expect(pickLogo(logos, { dark: false })).toBe(HOG);
+        });
+
+        test('even when CBBD\'s own logo failed its probe', () => {
+            expect(build(ark(), HAVE_NONE).updateOne.update.$set.logos).toEqual([HOG]);
+        });
+
+        test('is keyed on the CBBD id, not sourceId', () => {
+            // sourceId 8 on another id is not Arkansas.
+            expect(build(team({ id: 99, sourceId: '8', logos: cbbLogos('8') })).updateOne.update.$set.logos)
+                .toEqual(cbbLogos('8'));
+        });
+
+        test('every override points at a file images/ actually serves', () => {
+            const fs = require('fs');
+            const path = require('path');
+            Object.values(teamsRouter.LOGO_OVERRIDES).flat().forEach(u => {
+                expect(u).toMatch(/^\/images\/[^/]+$/);
+                expect(fs.existsSync(path.join(__dirname, '..', u))).toBe(true);
+            });
+        });
+    });
+
     test('the season is part of the document AND the upsert key', () => {
         // /teams answers for ANY season and 27 teams change conference between
         // 2026 and 2027, so an id-only key let the wrong season rewrite live rows.
@@ -248,6 +280,14 @@ describe('POST /:season/ingest', () => {
         expect(seen.sort()).toEqual([probeOf('150'), probeOf('2561')]);
     });
 
+    test('Arkansas is not probed, and is stored with the hog', async () => {
+        stub([team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8') }), team()]);
+        const res = await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect(client.logoUrlsThatExist).toHaveBeenCalledWith([probeOf('2561')]);
+        expect(res.body.withLogos).toBe(2);
+        expect((await HoopsTeam.findOne({ id: 12 }).lean()).logos).toEqual(['/images/logo-hoops-arkansas-hog.webp']);
+    });
+
     test('a failed logo probe stores no logos rather than unverified ones', async () => {
         client.logoUrlsThatExist.mockRejectedValue(new Error('CDN down'));
         stub([team()]);
@@ -354,6 +394,14 @@ describe('refreshing the draft\'s copies of each team', () => {
         const t = (await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team;
         expect(t.logos).toEqual(ESPN);
         expect(t.school).toBe('Siena');   // the other fields still refresh
+    });
+
+    test('Arkansas\'s draft picks get the hog too', async () => {
+        await draftOf('hoops-league', SEASON, [pick(1, { id: 12, school: 'Arkansas', logos: ESPN })]);
+        stub([team({ id: 12, sourceId: '8', school: 'Arkansas', logos: cbbLogos('8') })]);
+        await request(app).post(`/hoops/teams/${SEASON}/ingest`).send({});
+        expect((await Draft.findOne({ league: 'hoops-league' }).lean()).picks[0].team.logos)
+            .toEqual(['/images/logo-hoops-arkansas-hog.webp']);
     });
 
     test('a LIVE draft is left alone', async () => {

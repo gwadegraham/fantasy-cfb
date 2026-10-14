@@ -29,6 +29,27 @@ function apiLogos(t) {
     return Array.isArray(t && t.logos) ? t.logos.filter(u => typeof u === 'string' && u) : [];
 }
 
+// Our own marks, replacing CBBD's for a team, keyed on the CBBD team id
+// (HoopsTeam.id — NOT sourceId). Basketball-only by construction: this file
+// writes hoopsteams and basketball draft picks and nothing else.
+//
+// One file stands in for the whole ladder: pickLogo serves it for light and
+// dark alike (no entry says "dark", so it falls back to the full list), and
+// every render box uses object-fit: contain, so a 2:1 mark is letterboxed,
+// never stretched. Served from images/, so it is not probed; the test checks
+// the file exists instead.
+//
+//   12 Arkansas — the slobbering hog, over CBBD's running Razorback, whose
+//      light and dark files are byte-identical anyway. Master in
+//      design/brand/slobbering-hog.png; the served copy is 256px wide.
+const LOGO_OVERRIDES = {
+    12: ['/images/logo-hoops-arkansas-hog.webp']
+};
+function overrideFor(t) {
+    const o = t && LOGO_OVERRIDES[t.id];
+    return o ? o.slice() : null;
+}
+
 // The one URL per team the ingest probes before storing any of them: the
 // largest light logo. Same selector the renderers use, so the probe checks a
 // URL a page could actually ask for.
@@ -67,7 +88,7 @@ function buildUpsertOp(t, season, haveLogo) {
         shortDisplayName: t.shortDisplayName,
         color: withHash(t.primaryColor),
         alt_color: withHash(t.secondaryColor),
-        logos: hasLogo ? given : [],
+        logos: overrideFor(t) || (hasLogo ? given : []),
         conferenceId: t.conferenceId,
         conference: t.conference,
         currentVenueId: t.currentVenueId,
@@ -205,7 +226,7 @@ router.post('/:season/ingest', async (req, res) => {
     // not a CBBD call) and batched.
     let haveLogo;
     try {
-        haveLogo = await cbbd.logoUrlsThatExist(result.data.map(t => probeUrl(apiLogos(t))));
+        haveLogo = await cbbd.logoUrlsThatExist(result.data.filter(t => !overrideFor(t)).map(t => probeUrl(apiLogos(t))));
     } catch (err) {
         console.log(`Hoops team ingest: logo probe failed (${err.message}) — storing no logos`);
         haveLogo = new Set();
@@ -342,3 +363,4 @@ module.exports = router;
 module.exports.buildUpsertOp = buildUpsertOp;
 module.exports.refreshDraftCopies = refreshDraftCopies;
 module.exports.withHash = withHash;
+module.exports.LOGO_OVERRIDES = LOGO_OVERRIDES;
