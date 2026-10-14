@@ -32,7 +32,8 @@ const ACTIONS = {
     'user.invite': 'Invite',
     'captain.set': 'Captain',
     'captain.locked': 'Captain',
-    'parlay.backfill': 'Betting'
+    'parlay.backfill': 'Betting',
+    'hoops.preseason': 'Preseason ratings'
 };
 
 // Actions a MANAGER performs on their own team, as opposed to a commissioner

@@ -11,6 +11,14 @@
 // (#318), so this is the only thing that ranks the pool until NET publishes in
 // December.
 //
+// The commissioner's way to do this is the "Preseason ratings" card on
+// /hoops/admin (#544), which needs no terminal. This script runs the SAME
+// checks and the SAME write — both live in modules/torvik-import.js — and is
+// kept for a developer with the committed file in hand.
+//
+// --file takes anything the card's paste box takes: the page's HTML source,
+// the {season}_team_results.json text, or a committed data file.
+//
 // Dry run by default, and every check runs BEFORE the write, because the
 // failure that matters here is silent: a team missing from the pool is a team
 // nobody can draft, and a team holding another program's rating looks entirely
@@ -34,8 +42,7 @@ if (process.env.NODE_ENV !== 'production') {
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const HoopsTeam = require('../models/hoopsTeam');
-const { parseTRank, matchTeams, conferenceMismatches } = require('../modules/torvik-pool');
+const torvik = require('../modules/torvik-import');
 const { activeSeason, prime } = require('../modules/active-season');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -44,56 +51,6 @@ const dataFileFor = (season) => path.join(DATA_DIR, `torvik-preseason-${season}.
 function arg(name) {
     const i = process.argv.indexOf(name);
     return i === -1 ? undefined : process.argv[i + 1];
-}
-
-// Everything that has to be true of a rating set before it can rank a draft.
-//
-// These used to live only in the spec, hard-wired to the committed file — so
-// --file, the path that produces NEXT year's data, skipped all of them. A
-// paste where 183 rows all claimed rank 1 imported cleanly and printed a
-// plausible top ten.
-function problemsWith(rows) {
-    const bad = [];
-    const ranks = rows.map(r => r.rank);
-
-    // A reordered column would swap AdjOE and AdjDE without changing the row
-    // count. The bands are generous: the real spread across 365 teams is
-    // 87.8-121.3.
-    for (const r of rows) {
-        if (!Number.isFinite(r.rank) || !r.school) bad.push(`malformed row: ${JSON.stringify(r)}`);
-        else if (!(r.adjOE > 70 && r.adjOE < 140)) bad.push(`${r.school}: adjOE ${r.adjOE} out of range`);
-        else if (!(r.adjDE > 70 && r.adjDE < 140)) bad.push(`${r.school}: adjDE ${r.adjDE} out of range`);
-        else if (!(r.barthag >= 0 && r.barthag <= 1)) bad.push(`${r.school}: barthag ${r.barthag} out of range`);
-        else if (!/^\d+-\d+$/.test(String(r.projectedRecord))) bad.push(`${r.school}: projected record "${r.projectedRecord}"`);
-    }
-
-    // RANK IS THE POOL. A duplicated or missing rank is the one corruption
-    // that still looks entirely normal in every other column.
-    if (new Set(ranks).size !== ranks.length) bad.push(`ranks are not unique (${ranks.length} rows, ${new Set(ranks).size} distinct)`);
-    const sorted = [...ranks].sort((a, b) => a - b);
-    if (sorted[0] !== 1 || sorted[sorted.length - 1] !== ranks.length) {
-        bad.push(`ranks run ${sorted[0]}..${sorted[sorted.length - 1]} across ${ranks.length} rows — expected 1..${ranks.length}`);
-    }
-    if (new Set(rows.map(r => r.school)).size !== rows.length) bad.push('a school is named more than once');
-
-    // And the right way up: barthag is win probability, so it falls as the
-    // rank number rises. Catches a reversed sort, which otherwise ranks the
-    // worst 120 teams as the draft pool.
-    const best = rows.find(r => r.rank === 1);
-    const worst = rows.find(r => r.rank === ranks.length);
-    if (best && worst) {
-        if (!(best.barthag > worst.barthag)) {
-            bad.push(`rank 1 (${best.school}, barthag ${best.barthag}) is not stronger than rank ${ranks.length} (${worst.school}, ${worst.barthag}) — the sort may be reversed`);
-        }
-        // AdjOE and AdjDE occupy adjacent cells and share a plausible range,
-        // so exchanging them passes every band check above and simply inverts
-        // the pool. The best team scores MORE and concedes LESS than the
-        // worst; that asymmetry is what tells the two columns apart.
-        if (!(best.adjOE > worst.adjOE) || !(best.adjDE < worst.adjDE)) {
-            bad.push(`rank 1 (${best.school}: OE ${best.adjOE}, DE ${best.adjDE}) does not outscore and outdefend rank ${ranks.length} (${worst.school}: OE ${worst.adjOE}, DE ${worst.adjDE}) — the two columns may be swapped`);
-        }
-    }
-    return bad;
 }
 
 async function main() {
@@ -118,7 +75,9 @@ async function main() {
     let source;
     let ratings;
     if (file) {
-        ratings = parseTRank(fs.readFileSync(file, 'utf8'));
+        const parsed = torvik.parsePaste(fs.readFileSync(file, 'utf8'));
+        if (parsed.season != null && Number(parsed.season) !== season) throw new Error(`${file} is for season ${parsed.season}`);
+        ratings = parsed.rows;
         source = `${path.basename(file)}, parsed ${new Date().toISOString().slice(0, 10)}`;
     } else {
         const stored = JSON.parse(fs.readFileSync(dataFileFor(season), 'utf8'));
@@ -126,75 +85,38 @@ async function main() {
         source = stored.source;
         ratings = stored.teams;
     }
-    if (!ratings.length) throw new Error('parsed 0 rating rows — check the paste actually contains the T-Rank table');
 
-    const bad = problemsWith(ratings);
-    if (bad.length) {
-        bad.slice(0, 10).forEach(b => console.log(`  BAD  ${b}`));
-        throw new Error(`${bad.length} problem(s) with the rating set — refusing to import`);
-    }
-
-    const teams = await HoopsTeam.find({ season }, { school: 1, conference: 1 }).lean();
-    if (!teams.length) throw new Error(`no hoopsteams rows for season ${season} — run the teams ingest first`);
-
-    const { matched, unmatched, doubleClaimed, unclaimed } = matchTeams(ratings, teams);
-    console.log(`season ${season}: ${ratings.length} rating rows, ${teams.length} teams, ${matched.length} matched`);
-
-    if (unmatched.length || doubleClaimed.length || unclaimed.length) {
-        for (const u of unmatched) console.log(`  UNMATCHED  ${u.school} (looked for "${u.wanted}", ${u.candidates} candidates)`);
-        for (const d of doubleClaimed) console.log(`  DOUBLE     ${d.school} claimed by ${d.by.join(' and ')}`);
-        for (const u of unclaimed) console.log(`  NO RATING  ${u}`);
-        throw new Error('refusing to import: add the missing names to NAME_ALIASES in modules/torvik-pool.js');
-    }
-
-    // The bijection above is satisfied by a SWAPPED pair of aliases, which is
-    // the only way left to get a silently mis-rated pool. Two swapped schools
-    // almost always sit in different leagues, and that lands here.
-    const drifted = conferenceMismatches(matched);
-    if (drifted.length) {
-        drifted.forEach(d => console.log(`  CONFERENCE  ${d.school}: torvik says ${d.torvik} (= ${d.expected}), we have ${d.cbbd}`));
-        throw new Error('refusing to import: check these are not a swapped pair of aliases, then record them in KNOWN_CONFERENCE_DRIFT');
+    const result = await torvik.check(season, ratings);
+    // check() stops before reading teams when the rating set itself is bad,
+    // so "0 teams" would read as a missing teams ingest. Say it only when read.
+    console.log(`season ${season}: ${result.ratings} rating rows` +
+        (result.teams ? `, ${result.teams} teams, ${result.matched.length} matched` : ''));
+    if (!result.ok) {
+        result.problems.slice(0, 40).forEach(p => console.log(`  ${p}`));
+        throw new Error('refusing to import');
     }
 
     if (!apply) {
         console.log('\nDRY RUN. Top 10 by Torvik rank:');
         // Sorted, not sliced off the match order — a corrupt paste printed a
         // perfect-looking top ten here while 183 rows all claimed rank 1.
-        [...matched].sort((a, b) => a.rating.rank - b.rating.rank).slice(0, 10)
+        [...result.matched].sort((a, b) => a.rating.rank - b.rating.rank).slice(0, 10)
             .forEach(m => console.log(`  ${String(m.rating.rank).padStart(3)}  ${m.team.school} (${m.team.conference})`));
-        console.log('\nRe-run with --apply to write.');
+        console.log(await torvik.seasonUnderway(season)
+            ? `\nLOCKED: season ${season} already has scored basketball games, so --apply will refuse.`
+            : '\nRe-run with --apply to write.');
         return;
     }
 
-    const importedAt = new Date().toISOString();
-    const ops = matched.map(({ team, rating }) => ({
-        updateOne: {
-            filter: { season, school: team.school },
-            update: { $set: { preseason: {
-                rank: rating.rank, adjOE: rating.adjOE, adjDE: rating.adjDE,
-                barthag: rating.barthag, projectedRecord: rating.projectedRecord,
-                source, importedAt
-            } } }
-        }
-    }));
-    // ordered:false keeps going past a rejected op, so a failure here means a
-    // PARTIAL import — exactly what the header promises not to do. Rethrowing
-    // the raw driver error loses the one number the operator needs: how many
-    // rows actually landed. routes/hoopsTeams.js reads err.result for this.
-    let res;
-    try {
-        res = await HoopsTeam.bulkWrite(ops, { ordered: false });
-    } catch (err) {
-        const partial = err.result ? err.result.nModified : 0;
-        console.log(`PARTIAL IMPORT: ${partial} of ${ops.length} rows written before the failure.`);
-        console.log('The pool is half-ranked. Fix the cause and re-run — the write is an upsert, so repeating it is safe.');
-        throw err;
+    // The admin card's lock, honoured here too: once a basketball league has
+    // banked points, a new preseason rank re-ranks unplayed games mid-season.
+    if (await torvik.seasonUnderway(season)) {
+        throw new Error(`season ${season} already has scored basketball games — preseason ratings are locked`);
     }
-    console.log(`wrote ${res.modifiedCount} (matched ${res.matchedCount})`);
 
-    const stamped = await HoopsTeam.countDocuments({ season, 'preseason.rank': { $exists: true } });
-    console.log(`teams now carrying a preseason rank: ${stamped} / ${teams.length}`);
-    if (stamped !== teams.length) throw new Error(`${teams.length - stamped} team(s) still have no preseason rank`);
+    const res = await torvik.apply(season, result.matched, source);
+    console.log(`wrote ${res.written} (matched ${res.matched})`);
+    console.log(`teams now carrying a preseason rank: ${res.stamped} / ${res.teams}`);
 }
 
 main()

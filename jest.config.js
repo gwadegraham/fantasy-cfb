@@ -363,6 +363,15 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The shared Torvik import (#544): the checks, the write and the lock
+        // that the CLI and the admin card both run. A refusal path nobody
+        // exercises is how a corrupt paste ranks a draft.
+        "./modules/torvik-import.js": {
+            statements: 100,
+            branches: 95,
+            functions: 100,
+            lines: 100
+        },
         "./modules/active-season.js": {
             statements: 90,
             branches: 85,
