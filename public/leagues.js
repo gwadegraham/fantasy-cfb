@@ -26,6 +26,7 @@
     ];
     var STATE = {
         live: { label: 'Live', cls: 'live' },
+        ready: { label: 'Ready to draft', cls: 'ready' },
         setup: { label: 'Setting up', cls: 'setup' },
         archived: { label: 'Archived', cls: 'archived' }
     };
@@ -64,8 +65,8 @@
         var sp = sportOf(l.sport);
         var st = STATE[l.state] || STATE.setup;
         var actions = l.state === 'archived' ? ''
-            : (l.state === 'setup'
-                ? '<button type="button" class="lg-btn lg-ghost" data-continue="' + esc(l.code) + '">Continue setup</button>'
+            : (l.state === 'setup' || l.state === 'ready'
+                ? '<button type="button" class="lg-btn lg-ghost" data-continue="' + esc(l.code) + '">' + (l.state === 'ready' ? 'Edit setup' : 'Continue setup') + '</button>'
                 : '')
               + '<a class="lg-btn" data-manage href="' + esc(openHref(l.code)) + '">Manage</a>';
         return '<li class="lg-row sp-card" data-league="' + esc(l.code) + '">'

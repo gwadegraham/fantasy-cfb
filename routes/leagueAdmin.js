@@ -99,11 +99,13 @@ function seasonOf(doc) {
 // Live, Setting up, or Archived.
 //
 // Live once anyone holds a team this season or the draft has started — the
-// two ways a league's season is visibly underway. Everything before that is
-// setup, which is where a newly created league sits until its draft.
-function stateOf({ status, rostered, draftStatus }) {
+// two ways a league's season is visibly underway. Before that: Ready to
+// draft once it has the managers a draft needs (2+) and a saved draft, so a
+// finished setup doesn't keep reading "Setting up"; otherwise setup.
+function stateOf({ status, rostered, draftStatus, managers = 0 }) {
     if (status === 'archived') return 'archived';
     if (rostered || draftStatus === 'active' || draftStatus === 'complete') return 'live';
+    if (draftStatus && managers >= 2) return 'ready';
     return 'setup';
 }
 
@@ -124,7 +126,7 @@ async function rows(req) {
         ]);
         return {
             code: l.code, name: l.name, sport, season, managers,
-            state: stateOf({ status: doc.status, rostered: !!rostered, draftStatus: draft && draft.status })
+            state: stateOf({ status: doc.status, rostered: !!rostered, draftStatus: draft && draft.status, managers })
         };
     }));
 }

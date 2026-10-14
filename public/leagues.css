@@ -25,6 +25,7 @@
     border: 1px solid var(--cc-border-2); color: var(--cc-muted-bright); white-space: nowrap; }
 .lg-chip.live { color: var(--cc-success); border-color: color-mix(in srgb, var(--cc-success) 45%, transparent); }
 .lg-chip.setup { color: var(--cc-amber); border-color: color-mix(in srgb, var(--cc-amber) 45%, transparent); }
+.lg-chip.ready { color: var(--cc-interactive); border-color: color-mix(in srgb, var(--cc-interactive) 45%, transparent); }
 .lg-chip.archived { color: var(--cc-muted); }
 .lg-actions { grid-area: actions; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .lg-actions:empty { display: none; }

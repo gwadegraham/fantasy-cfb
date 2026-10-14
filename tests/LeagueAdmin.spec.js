@@ -554,6 +554,15 @@ describe('the page and the list', () => {
         expect(by.old).toMatchObject({ state: 'archived' });
     });
 
+    test('rows: managers in and a draft saved reads ready', async () => {
+        const hoops = (await create({ sport: 'basketball', name: 'Dunkaroos' })).body.code;
+        await as(ADMIN).post(`/leagues/admin/${hoops}/members`).send({ accountIds: [String(ann._id), String(bob._id)] });
+        await Draft.create({ league: hoops, season: HOOPS, status: 'scheduled' });
+
+        const res = await as(ADMIN).get('/leagues/admin/rows');
+        expect(res.body.find(r => r.code === hoops)).toMatchObject({ managers: 2, state: 'ready' });
+    });
+
     test('rows: a failure is a 500', async () => {
         jest.spyOn(Franchise, 'countDocuments').mockRejectedValue(new Error('down'));
         expect((await as(ADMIN).get('/leagues/admin/rows')).status).toBe(500);
@@ -613,7 +622,13 @@ describe('pure helpers', () => {
         expect(leagueAdmin.stateOf({ status: 'archived', rostered: true })).toBe('archived');
         expect(leagueAdmin.stateOf({ rostered: true })).toBe('live');
         expect(leagueAdmin.stateOf({ draftStatus: 'complete' })).toBe('live');
+        // A saved draft with too few managers is still setup…
         expect(leagueAdmin.stateOf({ draftStatus: 'scheduled' })).toBe('setup');
+        expect(leagueAdmin.stateOf({ draftStatus: 'scheduled', managers: 1 })).toBe('setup');
+        // …with 2+ it is Ready to draft; managers alone (no draft saved) are not.
+        expect(leagueAdmin.stateOf({ draftStatus: 'scheduled', managers: 8 })).toBe('ready');
+        expect(leagueAdmin.stateOf({ managers: 8 })).toBe('setup');
+        expect(leagueAdmin.stateOf({ draftStatus: 'active', managers: 8 })).toBe('live');
         expect(leagueAdmin.stateOf({})).toBe('setup');
     });
 });

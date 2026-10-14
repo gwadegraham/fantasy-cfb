@@ -94,6 +94,15 @@ describe('the list', () => {
         expect($('[data-league="hardwood"] [data-continue]')).not.toBeNull();
     });
 
+    test('a league with managers in and a draft saved reads Ready to draft, and can still be edited', async () => {
+        ROWS.push({ code: 'dunks', name: 'Dunkaroos', sport: 'basketball', season: 2027, managers: 6, state: 'ready' });
+        try { await render(); } finally { ROWS.pop(); }
+        const row = $('[data-league="dunks"]');
+        expect(row.querySelector('.lg-chip').textContent).toBe('Ready to draft');
+        expect(row.querySelector('[data-continue]').textContent).toBe('Edit setup');
+        expect($('[data-league="hardwood"] [data-continue]').textContent).toBe('Continue setup');
+    });
+
     test('archived leagues are collapsed, and cannot be managed', async () => {
         await render();
         const box = $('details.lg-archived');
