@@ -149,14 +149,17 @@
         </g>`;
 
     // The Heisman: stiff arm straight out, other arm tucked, one knee driven up.
+    // Drawn IN the pose, so a still render (or reduced motion) shows the finished
+    // statue; while busy, the stiff arm and the knee swing in from a neutral
+    // stance about the shoulder and hip, hold, and reset (mascots.css, ccm-hz-*).
     const lacesHeisman = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
-        <g class="ccm-fig">
+        <g class="ccm-hz-body">
           <g class="ccm-lmb">${noodle('M28 42.5 Q26 52 26.5 61')}${shoe(18.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
+          <g class="ccm-hz-leg ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
           <g class="ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
-          <g class="ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
+          <g class="ccm-hz-arm ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
           ${lacesBall(u)}
           ${eyes(25.6, 36.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 31, 33, 5.4, 2.4)}

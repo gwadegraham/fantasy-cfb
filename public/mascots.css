@@ -107,6 +107,34 @@
 @keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
 @keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
 
+/* The Heisman (pose 'heisman'). One 2.8s cycle: stand neutral, snap the stiff
+   arm out from the shoulder and drive the knee up from the hip (with a little
+   overshoot), lean into it and hold, then reset. Pivots are the joints in the
+   drawing's own coordinates (64x72 viewBox), hence view-box rather than fill-box. */
+.ccm .ccm-hz-arm { transform-box: view-box; transform-origin: 12.5px 29.5px; }
+.ccm .ccm-hz-leg { transform-box: view-box; transform-origin: 37.5px 42px; }
+.ccm .ccm-hz-body { transform-box: view-box; transform-origin: 27px 61px; }
+.ccm-wrap.is-busy .ccm-hz-arm { animation: ccm-hz-arm 2.8s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-leg { animation: ccm-hz-leg 2.8s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-body { animation: ccm-hz-body 2.8s ease-in-out infinite; }
+@keyframes ccm-hz-arm {
+    0%, 8% { transform: rotate(-85deg); }
+    20% { transform: rotate(7deg); }
+    27%, 78% { transform: rotate(0deg); }
+    92%, 100% { transform: rotate(-85deg); }
+}
+@keyframes ccm-hz-leg {
+    0%, 8% { transform: rotate(48deg); }
+    20% { transform: rotate(-7deg); }
+    27%, 78% { transform: rotate(0deg); }
+    92%, 100% { transform: rotate(48deg); }
+}
+@keyframes ccm-hz-body {
+    0%, 8% { transform: rotate(0deg); }
+    24%, 78% { transform: translateY(-1px) rotate(-4deg); }
+    92%, 100% { transform: rotate(0deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }

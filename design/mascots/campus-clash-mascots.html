@@ -287,6 +287,9 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 
 .ccm-wrap { display: inline-block; line-height: 0; vertical-align: middle; }
 .ccm { display: block; width: 100%; height: 100%; overflow: visible; }
+/* Bootstrap's reboot sets svg { overflow: hidden }, which outranks the nested
+   foam finger's overflow="visible" attribute and slices the top off the finger. */
+.ccm svg { overflow: visible; }
 .ccm.ccm-head { overflow: hidden; }
 .ccm.ccm-head .ccm-lmb { display: none; }
 
@@ -370,14 +373,37 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 @keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
 @keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
 
+/* The Heisman (pose 'heisman'). One 2.8s cycle: stand neutral, snap the stiff
+   arm out from the shoulder and drive the knee up from the hip (with a little
+   overshoot), lean into it and hold, then reset. Pivots are the joints in the
+   drawing's own coordinates (64x72 viewBox), hence view-box rather than fill-box. */
+.ccm .ccm-hz-arm { transform-box: view-box; transform-origin: 12.5px 29.5px; }
+.ccm .ccm-hz-leg { transform-box: view-box; transform-origin: 37.5px 42px; }
+.ccm .ccm-hz-body { transform-box: view-box; transform-origin: 27px 61px; }
+.ccm-wrap.is-busy .ccm-hz-arm { animation: ccm-hz-arm 2.8s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-leg { animation: ccm-hz-leg 2.8s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-body { animation: ccm-hz-body 2.8s ease-in-out infinite; }
+@keyframes ccm-hz-arm {
+    0%, 8% { transform: rotate(-85deg); }
+    20% { transform: rotate(7deg); }
+    27%, 78% { transform: rotate(0deg); }
+    92%, 100% { transform: rotate(-85deg); }
+}
+@keyframes ccm-hz-leg {
+    0%, 8% { transform: rotate(48deg); }
+    20% { transform: rotate(-7deg); }
+    27%, 78% { transform: rotate(0deg); }
+    92%, 100% { transform: rotate(48deg); }
+}
+@keyframes ccm-hz-body {
+    0%, 8% { transform: rotate(0deg); }
+    24%, 78% { transform: translateY(-1px) rotate(-4deg); }
+    92%, 100% { transform: rotate(0deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }
-
-/* Loader: bouncing head over a line of text. */
-.ccm-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px 16px; }
-.ccm-loader .ccm-size-head { width: 56px; height: 56px; }
-.ccm-loader-text { font-size: 14px; color: var(--cc-muted, #A4A9C2); letter-spacing: .02em; }
 
 /* Empty states: the full body standing where the message's emoji used to be. */
 .ccm-empty-mascot { display: flex; justify-content: center; margin-bottom: .4em; }
@@ -407,12 +433,12 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 
   <section class="moves">
     <h2>Moves <span>Laces · celebrations</span></h2>
-    <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). The Griddy loops while he's busy; the Heisman is a held pose.</p>
+    <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). Both loop while he's busy; here they always run.</p>
     <div class="study-grid">
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="griddy" data-ccm-busy></span></div>
         <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Skips on the beat, kicking each heel out in turn, arms swinging opposite. Always dancing here.</dd></dl></div></article>
-      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman"></span></div>
-        <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Stiff arm straight out, the other arm tucked, one knee driven up. Bounces when Busy is on.</dd></dl></div></article>
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman" data-ccm-busy></span></div>
+        <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Strikes the pose from a standing start: stiff arm snaps out, knee drives up, he leans in and holds it, then resets. Always posing here.</dd></dl></div></article>
     </div>
   </section>
 
@@ -442,10 +468,13 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 // design/mascots/campus-clash-mascots.html.
 //
 //   ccMascot.html({ sport, pose, size, busy, label })  → markup string
-//   ccMascot.loader(text, { sport })                   → a loading block (bouncing head + text)
 //   ccMascot.hydrate(root)                             → fills every [data-ccm] placeholder under root
 //   ccMascot.setBusy(el, on)                           → start/stop the idle loop on a rendered mascot
 //   ccMascot.sport()                                   → the sport this page is about
+//
+// Decorative by default (aria-hidden): every placement sits next to text that
+// already says what's happening, so a screen reader announcing "Laces, image"
+// on each loader is noise. Pass a `label` to make one a real image.
 //
 // size: 'full' (whole body, for heroes and empty states) or 'head' (the same
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
@@ -462,6 +491,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     'use strict';
 
     let uid = 0;
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
     // ---------- shapes ----------
     const noodle = d => `<path class="ccm-limb-o" d="${d}"/><path class="ccm-limb" d="${d}"/>`;
@@ -582,14 +612,17 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         </g>`;
 
     // The Heisman: stiff arm straight out, other arm tucked, one knee driven up.
+    // Drawn IN the pose, so a still render (or reduced motion) shows the finished
+    // statue; while busy, the stiff arm and the knee swing in from a neutral
+    // stance about the shoulder and hip, hold, and reset (mascots.css, ccm-hz-*).
     const lacesHeisman = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
-        <g class="ccm-fig">
+        <g class="ccm-hz-body">
           <g class="ccm-lmb">${noodle('M28 42.5 Q26 52 26.5 61')}${shoe(18.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
+          <g class="ccm-hz-leg ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
           <g class="ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
-          <g class="ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
+          <g class="ccm-hz-arm ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
           ${lacesBall(u)}
           ${eyes(25.6, 36.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 31, 33, 5.4, 2.4)}
@@ -684,8 +717,8 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         const sp = o.sport === 'basketball' ? 'basketball' : 'football';
         const head = o.size === 'head';
         const u = 'ccm' + (uid++);
-        const label = o.label || NAME[sp];
-        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" role="img" aria-label="${label}">`
+        const a11y = o.label ? `role="img" aria-label="${esc(o.label)}"` : 'aria-hidden="true" focusable="false"';
+        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" data-mascot="${NAME[sp]}" ${a11y}>`
             + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
     }
 
@@ -693,13 +726,6 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         const o = Object.assign({ size: 'full' }, opts);
         if (!o.sport) o.sport = sport();
         return `<span class="ccm-wrap ccm-size-${o.size}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
-    }
-
-    // A loading block: the bouncing head plus a line of text. Drop-in for the
-    // football-icon loaders.
-    function loader(text, opts) {
-        const o = Object.assign({ size: 'head', busy: true }, opts);
-        return `<div class="ccm-loader" role="status">${html(o)}<div class="ccm-loader-text">${text || 'Loading…'}</div></div>`;
     }
 
     // <span data-ccm="head|full" data-ccm-sport="football|basketball" data-ccm-pose="…" data-ccm-busy></span>
@@ -724,7 +750,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         if (wrap) wrap.classList.toggle('is-busy', !!on);
     }
 
-    window.ccMascot = { html, svg, loader, hydrate, setBusy, sport };
+    window.ccMascot = { html, svg, hydrate, setBusy, sport };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => hydrate(document));
     else hydrate(document);
@@ -1256,8 +1282,6 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
   function render() {
     const p = state.pct / 100;
     document.querySelectorAll('.card').forEach(c => c.classList.toggle('busy', state.busy));
-    const h = document.querySelector('.move-slot[data-ccm-pose="heisman"]');
-    if (h && window.ccMascot) window.ccMascot.setBusy(h, state.busy);
     $('pctOut').textContent = state.pct + '%';
     $('countOut').textContent = state.count;
     $('busy').checked = state.busy;
