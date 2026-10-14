@@ -158,7 +158,9 @@ describe('step 1: create', () => {
     test('writes the League with the sport, and the season is the sport\'s', async () => {
         const res = await create({ sport: 'basketball', name: '  Hardwood Heroes ' });
         expect(res.status).toBe(201);
-        expect(res.body).toEqual({ code: 'hardwood-heroes', name: 'Hardwood Heroes', sport: 'basketball', season: HOOPS });
+        // creatorJoined false here: this Admin is a made-up identity with no
+        // account on file (see the next describe for a real one).
+        expect(res.body).toEqual({ code: 'hardwood-heroes', name: 'Hardwood Heroes', sport: 'basketball', season: HOOPS, creatorJoined: false });
         const doc = await League.findOne({ code: 'hardwood-heroes' }).lean();
         expect(doc.sport).toBe('basketball');
         // Unset, so it follows its sport when the sport rolls over.
@@ -168,6 +170,28 @@ describe('step 1: create', () => {
         expect(seasons.sportForLeague('hardwood-heroes')).toBe('basketball');
         expect(seasons.seasonForLeague('hardwood-heroes')).toBe(HOOPS);
         expect(await AuditLog.countDocuments({ action: 'league.create', league: 'hardwood-heroes' })).toBe(1);
+    });
+
+    test('the creator plays in it: a team under their OWN account, no second account', async () => {
+        const me = await person('Gar', 'graham-league');
+        const ME = { roles: ['Admin'], accountId: me._id, email: 'gar@example.com' };
+        const accounts = await Account.countDocuments({});
+        const res = await create({ sport: 'basketball', name: 'Bracket Busters' }, ME);
+        expect(res.status).toBe(201);
+        expect(res.body.creatorJoined).toBe(true);
+        const mine = await Franchise.findOne({ accountId: me._id, league: res.body.code }).lean();
+        expect(mine.seasons.map(x => x.season)).toEqual([HOOPS]);
+        expect(await Account.countDocuments({})).toBe(accounts);
+        expect((await AuditLog.findOne({ action: 'league.create', league: res.body.code }).lean()).summary).toMatch(/and joined it$/);
+        // …and their football team is untouched.
+        expect(await Franchise.countDocuments({ accountId: me._id })).toBe(2);
+    });
+
+    test('a creator with no account on file still gets the league — the join is not fatal', async () => {
+        const res = await create({ sport: 'football', name: 'Lonely League' });
+        expect(res.status).toBe(201);
+        expect(res.body.creatorJoined).toBe(false);
+        expect(await League.countDocuments({ code: res.body.code })).toBe(1);
     });
 
     test('creates no account and no franchise', async () => {

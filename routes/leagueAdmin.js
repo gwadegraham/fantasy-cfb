@@ -286,12 +286,27 @@ function build({ pageLocals = () => ({}) } = {}) {
             // Admin it was not — then refuse the retry as a duplicate name.
             // The interval re-prime, and /open below, catch this dyno up.
             await seasons.prime().catch(e => console.error(`league create: re-prime failed: ${e && e.message}`));
+            // Whoever creates a league plays in it by default: a team under
+            // their OWN account (the same login, no invite), like any manager
+            // added from another league. Not fatal — the league exists either
+            // way, and they can still add themselves on step 2.
+            let creatorJoined = false;
+            const meta = (req.effUser && req.effUser.user_metadata) || {};
+            const creatorId = meta.metadata && meta.metadata.userId;
+            if (creatorId && mongoose.isValidObjectId(creatorId)) {
+                try {
+                    const lastUpdated = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
+                    creatorJoined = (await franchiseRepo.addFranchise(creatorId, doc.code, { season, lastUpdated })).created;
+                } catch (e) {
+                    console.error(`league create: adding the creator failed: ${e && e.message}`);
+                }
+            }
             await audit.record(req, {
                 action: 'league.create', league: doc.code, season: String(season),
-                summary: `Created ${sport} league "${doc.name}"`,
-                meta: { sport }
+                summary: `Created ${sport} league "${doc.name}"` + (creatorJoined ? ', and joined it' : ''),
+                meta: { sport, creatorJoined }
             });
-            return res.status(201).json({ code: doc.code, name: doc.name, sport, season });
+            return res.status(201).json({ code: doc.code, name: doc.name, sport, season, creatorJoined });
         } catch (err) {
             console.error(`league create: ${err && err.message}`);
             return res.status(500).json({ message: 'Could not create the league' });
