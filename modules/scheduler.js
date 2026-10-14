@@ -64,7 +64,12 @@ const JOB_SCHEDULES = [
     // morning, which is already week N+1 and so files under N+2. Intended —
     // a week's ranks must be fixed before its first game, and nothing is
     // published in time to include Sunday.
-    { job: 'hoops-net', modulePath: '../modules/hoops-net-job', rule: { hour: 11, minute: 30 } }
+    { job: 'hoops-net', modulePath: '../modules/hoops-net-job', rule: { hour: 11, minute: 30 } },
+    // Basketball style tags for the draft pool and team page (#542). At most
+    // 1 CBBD call a day, 0 before tip-off once last season's tags are stored
+    // and 0 after the final. 07:00 Central, after hoops-stats, so last
+    // night's games are in the leaderboard.
+    { job: 'hoops-styles', modulePath: '../modules/hoops-styles-job', rule: { hour: 7, minute: 0 } }
 ];
 
 // Opt-in game-day live poller (modules/live-poll.js). Fires every 10 seconds;

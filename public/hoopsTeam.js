@@ -37,6 +37,17 @@
             + end(false) + end(true) + '</g></svg>';
     }
 
+    // How the team plays, in two plain words (#542). Before this season has
+    // enough games the tags describe LAST season's team, and say so.
+    function styleTags(st) {
+        if (!st || !st.tags || !st.tags.length) return '';
+        return '<div class="ht-tags">' + st.tags.map(function (g) {
+            return '<span class="ht-tag"' + (g.detail ? ' title="' + esc(g.detail) + '"' : '') + '>' + esc(g.label) + '</span>';
+        }).join('')
+            + (st.lastSeason ? '<span class="ht-tags-src">from ' + esc(st.label) + '</span>' : '')
+            + '</div>';
+    }
+
     function hero(d, done) {
         var t = d.team, pre = d.preseason;
         var conf = done.filter(function (g) { return g.conferenceGame; });
@@ -48,11 +59,12 @@
             if (pre.projectedRecord) chips += '<span class="sp-chip">Torvik proj. <b>' + esc(pre.projectedRecord) + '</b></span>';
         }
         var sub = [t.mascot, t.conference, t.venue].filter(Boolean).map(esc).join(' · ');
+        var tags = styleTags(d.style);
         return '<section class="sp-hero team ht-hero"' + (t.color ? ' style="--team:' + esc(t.color) + '"' : '') + '>' + court()
             + '<div class="ht-id">' + (t.logo ? '<img class="ht-logo" src="' + esc(t.logo) + '" alt="">' : '')
             + '<div><div class="ht-school">' + esc(t.school).toUpperCase() + '</div>'
             + '<div class="ht-mascot">' + sub + '</div>'
-            + (chips ? '<div class="ht-chips">' + chips + '</div>' : '') + '</div></div>'
+            + (chips ? '<div class="ht-chips">' + chips + '</div>' : '') + tags + '</div></div>'
             + '<div class="ht-rec">'
             + '<div><div class="n">' + record(done) + '</div><div class="l">Overall</div></div>'
             + (t.conference ? '<div><div class="n">' + record(conf) + '</div><div class="l">' + esc(t.conference) + '</div></div>' : '')
@@ -453,6 +465,6 @@
         document.fonts.ready.then(function () { if (data) fitSchools(); }).catch(function () {});
     }
 
-    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay };
+    window.ccHoopsTeam = { render: render, load: load, state: state, netDay: netDay, styleTags: styleTags };
     load();
 })();

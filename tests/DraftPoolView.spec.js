@@ -93,8 +93,35 @@ describe('basketball', () => {
         const [row] = view.buildPool('basketball', [hoops()], [], 2027);
         expect(row).toEqual({
             id: 10, name: 'Duke', logos: ['d.png'], conf: 'ACC',
-            rank: 1, barthag: 0.9629, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6'
+            rank: 1, barthag: 0.9629, adjOE: 120.8, adjDE: 91, projectedRecord: '26-6', tags: []
         });
+    });
+
+    // Style tags (#542) ride along from the pool payload.
+    test('a team\'s style tags reach its row', () => {
+        const tags = [{ key: 'slow', label: 'Slow pace', detail: 'Bottom 3% in pace' }];
+        expect(view.buildPool('basketball', [hoops({ tags })], [], 2027)[0].tags).toEqual(tags);
+    });
+
+    test('tags render as escaped chips, with the detail as the tooltip', () => {
+        const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        const html = view.tagsHtml([
+            { key: 'three-heavy', label: '3-point heavy', detail: 'Top 4% in three-point rate: 45.9% of shots are threes' },
+            { key: 'x', label: '<b>bad</b>', detail: '"quoted"' }
+        ], esc);
+        expect(html).toContain('<span class="dp-tag" data-tag="three-heavy" title="Top 4% in three-point rate: 45.9% of shots are threes">3-point heavy</span>');
+        expect(html).toContain('&lt;b>bad&lt;/b>');
+        expect(html).toContain('title="&quot;quoted&quot;"');
+        expect(view.tagsHtml([], esc)).toBe('');
+        expect(view.tagsHtml(undefined, esc)).toBe('');
+    });
+
+    test('the note above the board says when the tags are LAST season\'s', () => {
+        expect(view.stylesNote({ fromSeason: 2026, label: '2025–26', lastSeason: true }))
+            .toBe('Style tags are from last season (2025–26) until this season has a few games played.');
+        expect(view.stylesNote({ fromSeason: 2027, label: '2026–27', lastSeason: false }))
+            .toBe('Style tags are from this season (2026–27), updated daily.');
+        expect(view.stylesNote(null)).toBe('');
     });
 
     test('its columns are its own, with no football metric among them', () => {

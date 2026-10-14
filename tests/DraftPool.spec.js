@@ -204,6 +204,57 @@ describe('poolFor — basketball', () => {
     });
 });
 
+// Style tags (#542) ride along on the basketball pool, with where they came
+// from so the board can say "last season".
+describe('poolFor — basketball style tags', () => {
+    const HoopsTeamStyle = require('../models/hoopsTeamStyle');
+    const style = (teamId, labels, fromSeason = SEASON - 1) => ({
+        season: SEASON, teamId, fromSeason, fetchedAt: new Date(),
+        tags: labels.map(l => ({ key: l.toLowerCase(), label: l, detail: `about ${l}`, share: 0.05 }))
+    });
+
+    test('each team carries its tags, and the pool says they are last season\'s', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1), hoops(2, 'Middle', 50)]);
+        await HoopsTeamStyle.create([style(1, ['Slow pace', 'Elite defense']), style(2, [])]);
+
+        const pool = await draftPool.poolFor(HOOPS);
+        expect(pool.styles).toEqual({ fromSeason: SEASON - 1, label: '2025–26', lastSeason: true });
+        const best = pool.teams.find(t => t.school === 'Best');
+        expect(best.tags).toEqual([
+            { key: 'slow pace', label: 'Slow pace', detail: 'about Slow pace' },
+            { key: 'elite defense', label: 'Elite defense', detail: 'about Elite defense' }
+        ]);
+        expect(pool.teams.find(t => t.school === 'Middle').tags).toEqual([]);
+    });
+
+    test('another season\'s tags never reach this pool', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1)]);
+        await HoopsTeamStyle.create([Object.assign(style(1, ['Fast pace']), { season: SEASON - 1 })]);
+        const pool = await draftPool.poolFor(HOOPS);
+        expect(pool.styles).toBeNull();
+        expect(pool.teams[0].tags).toEqual([]);
+    });
+
+    test('a failed tag read costs the tags, never the pool', async () => {
+        await leagues();
+        await HoopsTeam.create([hoops(1, 'Best', 1)]);
+        jest.spyOn(HoopsTeamStyle, 'find').mockImplementation(() => { throw new Error('Atlas hiccup'); });
+        const pool = await draftPool.poolFor(HOOPS);
+        expect(pool.count).toBe(1);
+        expect(pool.styles).toBeNull();
+    });
+
+    test('football pools carry no tags', async () => {
+        await leagues();
+        await Team.create([fbs(1, 'Alabama')]);
+        const pool = await draftPool.poolFor(BALL);
+        expect(pool).not.toHaveProperty('styles');
+        expect(pool.teams[0]).not.toHaveProperty('tags');
+    });
+});
+
 describe('poolFor — football is unchanged', () => {
     test('every FBS team, alphabetically, with no cap', async () => {
         await leagues();

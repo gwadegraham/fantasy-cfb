@@ -18,6 +18,7 @@ const roster = require('./hoops-roster');
 const franchiseRepo = require('./franchise-repo');
 const { ranksFor } = require('./hoops-ranks');
 const { latestNet, clearNetCache } = require('./hoops-net');
+const { stylesFor } = require('./hoops-styles');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { entryFor } = require('./roster-teams');
 const { pickLogo } = require('../public/logo.js');
@@ -171,7 +172,7 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
     const team = await HoopsTeam.findOne({ id, season: yr }).lean();
     if (!team) return null;
 
-    const [listed, rated, confTeams, stats, owner, values, net] = await Promise.all([
+    const [listed, rated, confTeams, stats, owner, values, net, styles] = await Promise.all([
         HoopsGame.find({ season: yr, $or: [{ homeTeamId: id }, { awayTeamId: id }] }).sort({ startDate: 1 }).lean(),
         HoopsTeam.find({ season: yr, 'preseason.adjOE': { $type: 'number' } },
             { 'preseason.adjOE': 1, 'preseason.adjDE': 1, _id: 0 }).lean(),
@@ -181,7 +182,12 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         HoopsTeamStats.findOne({ season: yr, teamId: id }, { _id: 0, __v: 0 }).lean(),
         ownership(league, yr, id),
         quadrantValues(league),
-        latestNet(yr, [id])
+        latestNet(yr, [id]),
+        // A failed tag read costs the tags, not the page, as in the pool.
+        stylesFor(yr, [id]).catch(err => {
+            console.error(`hoops team page ${id}: style tags not read: ${err.message}`);
+            return { source: null, byTeam: {} };
+        })
     ]);
 
     // Jersey numbers, joined on athleteId from the once-a-season roster
@@ -292,6 +298,11 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         // `games`: NCAA re-sorts its quadrants daily on the current NET,
         // while ours are banked when each game is played.
         net: net[String(id)] || null,
+        // Plain style tags (#542) and the leaderboard they came from — last
+        // season's until this one has enough games — or null if none.
+        style: styles.source && (styles.byTeam[String(id)] || []).length
+            ? { tags: styles.byTeam[String(id)], ...styles.source }
+            : null,
         owner: owner ? { franchiseName: owner.franchiseName, firstName: owner.firstName } : null,
         quadrantValues: values,
         games: out,
