@@ -183,7 +183,11 @@ async function build(teamId, { season, league = null, now = Date.now() } = {}) {
         ownership(league, yr, id),
         quadrantValues(league),
         latestNet(yr, [id]),
-        stylesFor(yr, [id])
+        // A failed tag read costs the tags, not the page, as in the pool.
+        stylesFor(yr, [id]).catch(err => {
+            console.error(`hoops team page ${id}: style tags not read: ${err.message}`);
+            return { source: null, byTeam: {} };
+        })
     ]);
 
     // Jersey numbers, joined on athleteId from the once-a-season roster

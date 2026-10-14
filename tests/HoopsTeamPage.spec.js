@@ -131,6 +131,15 @@ describe('build', () => {
         expect((await teamPage.build(3, { season: SEASON })).style).toBeNull();
     });
 
+    test('a failed tag read costs the tags, not the page', async () => {
+        const HoopsTeamStyle = require('../models/hoopsTeamStyle');
+        jest.spyOn(HoopsTeamStyle, 'find').mockImplementation(() => { throw new Error('Atlas hiccup'); });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const p = await teamPage.build(1, { season: SEASON });
+        expect(p.team.school).toBe('Duke');
+        expect(p.style).toBeNull();
+    });
+
     test('a game still to play is quadranted against the latest PLAYED week, not a future one', async () => {
         await HoopsGame.create([
             game(10, 1, 1, 3),

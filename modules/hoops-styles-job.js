@@ -57,7 +57,8 @@ const MIN_RANKED = 0.9;
 const MIN_FIELD = 300;
 // How long after the season's last scheduled game before a stored current
 // leaderboard is taken as final and no longer refetched.
-const FINAL_GRACE_MS = 3 * 86400000;
+const DAY_MS = 86400000;
+const FINAL_GRACE_MS = 3 * DAY_MS;
 
 function median(values) {
     const v = values.filter(x => Number.isFinite(x)).sort((a, b) => a - b);
@@ -78,12 +79,32 @@ function notReady(rows) {
 
 async function fetchRows(fromSeason) {
     const { data } = await cbbd.cbbdGet(PATH, { season: fromSeason });
-    const rows = data.map(slimRow).filter(Boolean);
+    // De-duplicated by team: CBBD has served the same team twice on /games
+    // (a rescheduled listing), and a twin here would count twice in every
+    // percentile. The last row for a team wins, as an upsert would.
+    const byTeam = new Map();
+    data.map(slimRow).filter(Boolean).forEach(r => byTeam.set(r.teamId, r));
+    const rows = [...byTeam.values()];
     // Rows came back and none had a team id: the response shape changed.
     if (data.length && !rows.length) {
         throw new Error(`CBBD returned ${data.length} leaderboard row(s) for ${fromSeason} with no teamId — the response shape changed`);
     }
     return rows;
+}
+
+// What a season's stored rows hold: how many came from each leaderboard,
+// and the OLDEST write. "On file" has to mean a whole, single-leaderboard
+// field — a write that failed partway leaves some rows, and a skip that
+// trusted any row would keep that partial field until tip-off, re-runs
+// included.
+async function storedFor(season) {
+    const groups = await HoopsTeamStyle.aggregate([
+        { $match: { season } },
+        { $group: { _id: '$fromSeason', n: { $sum: 1 }, oldest: { $min: '$fetchedAt' } } }
+    ]);
+    const whole = (from) => groups.length === 1 && groups[0]._id === from && groups[0].n >= MIN_FIELD;
+    const any = (from) => groups.some(g => g._id === from);
+    return { whole, any, oldest: groups.length ? groups[0].oldest : null };
 }
 
 // Replace a season's rows wholesale, so the tags never mix two leaderboards.
@@ -113,16 +134,19 @@ const tagged = (rows) => [...tagTeams(rows).values()].filter(t => t.length).leng
 // One season: { written } | { skip } — throws on a CBBD or write failure.
 async function refreshSeason(season, now) {
     const [stored, first, last] = await Promise.all([
-        HoopsTeamStyle.findOne({ season }, { fromSeason: 1, fetchedAt: 1, _id: 0 }).sort({ fetchedAt: -1 }).lean(),
+        storedFor(season),
         HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: 1 }).lean(),
         HoopsGame.findOne({ season }, { startDate: 1, _id: 0 }).sort({ startDate: -1 }).lean()
     ]);
+    const fetchedAfter = (t) => stored.oldest != null && new Date(stored.oldest).getTime() > t;
 
     let why = first ? `${season} has not tipped off` : `no ${season} schedule ingested`;
     if (first && now >= new Date(first.startDate)) {
+        // Final: past the last game by the grace, AND every stored row was
+        // fetched a day after it — a leaderboard taken on championship day
+        // is not the final one.
         const end = last ? new Date(last.startDate).getTime() : null;
-        if (stored && stored.fromSeason === season && end != null
-            && now.getTime() > end + FINAL_GRACE_MS && new Date(stored.fetchedAt).getTime() > end + 86400000) {
+        if (end != null && stored.whole(season) && now.getTime() > end + FINAL_GRACE_MS && fetchedAfter(end + DAY_MS)) {
             return { skip: `${season}: the final leaderboard is on file — not fetched` };
         }
         const rows = await fetchRows(season);
@@ -134,13 +158,16 @@ async function refreshSeason(season, now) {
         // Once the season's own tags are showing, a thin leaderboard is a
         // regression, not the cold start — and falling back would quietly
         // swap every page back to last year's teams.
-        if (stored && stored.fromSeason === season) {
+        if (stored.any(season)) {
             throw new Error(`the ${season} leaderboard is in use, but today ${why} — stored tags kept`);
         }
     }
 
+    // Last season's leaderboard is fetched once — once it is FINAL. One
+    // taken before last season ended (a league rolled over mid-March) is
+    // refetched, so preseason tags include the tournament.
     const prev = season - 1;
-    if (stored && stored.fromSeason === prev) {
+    if (stored.whole(prev) && fetchedAfter(cbbd.seasonRange(prev).end.getTime())) {
         return { skip: `${season}: ${why} — ${prev} tags already on file, not fetched` };
     }
     const rows = await fetchRows(prev);
@@ -194,4 +221,4 @@ async function run({ now = new Date() } = {}) {
     return { status, written, skipped, failed: failures.length ? summary : null, summary };
 }
 
-module.exports = { run, JOB_NAME, LABEL, PATH, MIN_GAMES, MIN_RANKED, MIN_FIELD, refreshSeason, notReady, writeSeason, median };
+module.exports = { run, JOB_NAME, LABEL, PATH, MIN_GAMES, MIN_RANKED, MIN_FIELD, refreshSeason, notReady, writeSeason, median, storedFor };

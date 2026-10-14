@@ -196,6 +196,75 @@ describe('in season: this season\'s leaderboard, once it has games', () => {
     });
 });
 
+// QA on #548: "on file" must mean a whole field from one leaderboard, and
+// "final" must mean fetched after the season was over.
+describe('what counts as on file', () => {
+    const quiet = () => {
+        jest.restoreAllMocks();
+        jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-2');
+        jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
+        jest.spyOn(jobMailer, 'sendJobEmail').mockResolvedValue();
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+    };
+
+    test('a write that failed partway is refetched the next day, not skipped as "on file" until tip-off', async () => {
+        stubCbbd({ 2026: board(2026, 33) });
+        await job.run({ now: PRESEASON });
+        // What a bulkWrite cut off mid-batch leaves behind.
+        await HoopsTeamStyle.deleteMany({ season: SEASON, teamId: { $gt: 40 } });
+        quiet();
+        const get = stubCbbd({ 2026: board(2026, 33) });
+
+        const out = await job.run({ now: new Date('2026-10-21T12:00:00Z') });
+        expect(get).toHaveBeenCalledTimes(1);
+        expect(out.status).toBe('success');
+        expect(await HoopsTeamStyle.countDocuments({ season: SEASON })).toBe(365);
+    });
+
+    test('last season\'s leaderboard fetched BEFORE last season ended is refetched once it is final', async () => {
+        stubCbbd({ 2026: board(2026, 30) });
+        await job.run({ now: new Date('2026-03-20T12:00:00Z') });   // a mid-tournament rollover
+        quiet();
+        const get = stubCbbd({ 2026: board(2026, 35) });
+
+        await job.run({ now: PRESEASON });
+        expect(get).toHaveBeenCalledTimes(1);
+        expect((await HoopsTeamStyle.findOne({ season: SEASON, teamId: 1 }).lean()).games).toBe(35);
+        await job.run({ now: new Date('2026-10-21T12:00:00Z') });
+        expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    test('a leaderboard fetched on championship day is not taken as final', async () => {
+        stubCbbd({ 2027: board(2027, 33) });
+        await job.run({ now: new Date('2027-04-06T20:00:00Z') });   // the last game is 2027-04-06
+        quiet();
+        const get = stubCbbd({ 2027: board(2027, 34) });
+        await job.run({ now: new Date('2027-05-01T12:00:00Z') });
+        expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    test('inside the grace after the last game, it still refetches', async () => {
+        stubCbbd({ 2027: board(2027, 33) });
+        await job.run({ now: new Date('2027-04-08T12:00:00Z') });
+        quiet();
+        const get = stubCbbd({ 2027: board(2027, 34) });
+        await job.run({ now: new Date('2027-04-08T18:00:00Z') });
+        expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    // Counted twice, a twin moves every percentile and can lift a short
+    // field over the size floor. One short of the floor plus one twin must
+    // still be refused.
+    test('a team listed twice counts once', async () => {
+        const twice = board(2026, 33, job.MIN_FIELD - 1);
+        twice.push(row(1, 2026, 33));
+        stubCbbd({ 2026: twice });
+        const out = await job.run({ now: PRESEASON });
+        expect(out.failed).toMatch(new RegExp(`only ${job.MIN_FIELD - 1} team\\(s\\)`));
+    });
+});
+
 describe('failures and the quiet cases', () => {
     test('no basketball league: silent, no call, no JobRun', async () => {
         await League.deleteMany({});
