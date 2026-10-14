@@ -140,14 +140,16 @@
         <g class="${cls}-thigh">${noodle(`M${hipX} 42.5 Q${(hipX + kneeX) / 2 + (kneeX < hipX ? -.5 : .5)} 47.5 ${kneeX} 52`)}
           <g class="${cls}-shin">${noodle(`M${kneeX} 52 Q${(kneeX + footX) / 2} 56.5 ${footX} 61`)}${shoe(shoeX, 59, 12, 'ccm-f-red')}</g></g>`;
 
-    // The Griddy: four heel flicks on a skip (left, right, left, right), arms
+    // The Griddy: four heel kicks on a skip (left, right, left, right), arms
     // swinging against the legs, then both hands up to the eyes for the goggles.
-    // Each limb is its own group with its own joint pivot (mascots.css, ccm-gr-*).
+    // The legs move side-on, toes forward (right): a heel kicking BACK is the
+    // whole move, and from straight on it reads as flailing. Each limb is its
+    // own group with its own joint pivot (mascots.css, ccm-gr-*).
     const lacesGriddy = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-gr-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
         <g class="ccm-gr-hop">
-          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 27, 26, 25.5, 15.5)}${kneeLeg('ccm-gr-r', 37, 38, 38.5, 36.5)}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 29, 29, 29, 25)}${kneeLeg('ccm-gr-r', 35, 35, 35, 31)}</g>
           ${lacesBall(u)}
           ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 32, 33, 5.8, 2.6)}

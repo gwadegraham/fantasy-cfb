@@ -349,14 +349,14 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 @keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
 
 /* ---------- The Griddy (pose 'griddy') ----------
-   One 2.6s phrase: four heel flicks on a skip (L 8%, R 24%, L 40%, R 56%), the
+   One 2.6s phrase: four heel kicks on a skip (L 8%, R 24%, L 40%, R 56%), the
    arms swinging against the legs, then both hands up to the eyes for the
    goggles (70-90%). Pivots are the joints in the 64x72 drawing (view-box). */
 .ccm .ccm-gr-hop { transform-box: view-box; transform-origin: 32px 61px; }
-.ccm .ccm-gr-l-thigh { transform-box: view-box; transform-origin: 27px 42.5px; }
-.ccm .ccm-gr-l-shin  { transform-box: view-box; transform-origin: 26px 52px; }
-.ccm .ccm-gr-r-thigh { transform-box: view-box; transform-origin: 37px 42.5px; }
-.ccm .ccm-gr-r-shin  { transform-box: view-box; transform-origin: 38px 52px; }
+.ccm .ccm-gr-l-thigh { transform-box: view-box; transform-origin: 29px 42.5px; }
+.ccm .ccm-gr-l-shin  { transform-box: view-box; transform-origin: 29px 52px; }
+.ccm .ccm-gr-r-thigh { transform-box: view-box; transform-origin: 35px 42.5px; }
+.ccm .ccm-gr-r-shin  { transform-box: view-box; transform-origin: 35px 52px; }
 .ccm .ccm-gr-armL { transform-box: view-box; transform-origin: 13.5px 32px; }
 .ccm .ccm-gr-armR { transform-box: view-box; transform-origin: 50.5px 32px; }
 .ccm .ccm-gr-shadow { transform-origin: center; }
@@ -377,40 +377,43 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     24%, 56% { transform: translateY(-3px) rotate(3deg); }
     74%, 90% { transform: translateY(-1px) scale(1.02, .98); }
 }
-/* Left leg flicks on 8% and 40%: knee out a touch, heel up and out. */
+/* Side-on heel kicks, toes forward: the thigh drifts back a touch and the shin
+   swings up behind him, sole to the sky. Left kicks on 8% and 40%. */
 @keyframes ccm-gr-l-thigh {
-    0%, 3%, 13%, 35%, 45%, 100% { transform: rotate(0deg); }
-    8%, 40% { transform: rotate(14deg); }
+    0%, 2%, 15%, 34%, 47%, 100% { transform: rotate(0deg); }
+    7%, 10%, 39%, 42% { transform: rotate(24deg); }
 }
 @keyframes ccm-gr-l-shin {
-    0%, 3%, 13%, 35%, 45%, 100% { transform: rotate(0deg); }
-    8%, 40% { transform: rotate(105deg); }
+    0%, 2%, 15%, 34%, 47%, 100% { transform: rotate(0deg); }
+    7%, 10%, 39%, 42% { transform: rotate(100deg); }
 }
-/* Right leg flicks on 24% and 56%. */
+/* Right kicks on 24% and 56%. */
 @keyframes ccm-gr-r-thigh {
-    0%, 19%, 29%, 51%, 61%, 100% { transform: rotate(0deg); }
-    24%, 56% { transform: rotate(-14deg); }
+    0%, 18%, 31%, 50%, 63%, 100% { transform: rotate(0deg); }
+    23%, 26%, 55%, 58% { transform: rotate(24deg); }
 }
 @keyframes ccm-gr-r-shin {
-    0%, 19%, 29%, 51%, 61%, 100% { transform: rotate(0deg); }
-    24%, 56% { transform: rotate(-105deg); }
+    0%, 18%, 31%, 50%, 63%, 100% { transform: rotate(0deg); }
+    23%, 26%, 55%, 58% { transform: rotate(100deg); }
 }
-/* Arms swing against the legs, then come up to the eyes for the goggles. */
+/* Each arm flares out on its own leg's kick, clear of the heel coming up behind
+   (a glove swinging inward landed on the kicked shoe), then both come up to
+   the eyes for the goggles. */
 @keyframes ccm-gr-armL {
-    0% { transform: rotate(-18deg); }
-    8%, 40% { transform: rotate(24deg); }
-    24%, 56% { transform: rotate(-24deg); }
+    0% { transform: rotate(8deg); }
+    8%, 40% { transform: rotate(30deg); }
+    24%, 56% { transform: rotate(-4deg); }
     64% { transform: rotate(0deg); }
     72%, 90% { transform: rotate(-128deg); }
-    98%, 100% { transform: rotate(-18deg); }
+    98%, 100% { transform: rotate(8deg); }
 }
 @keyframes ccm-gr-armR {
-    0% { transform: rotate(18deg); }
-    8%, 40% { transform: rotate(-24deg); }
-    24%, 56% { transform: rotate(24deg); }
+    0% { transform: rotate(-8deg); }
+    8%, 40% { transform: rotate(4deg); }
+    24%, 56% { transform: rotate(-30deg); }
     64% { transform: rotate(0deg); }
     72%, 90% { transform: rotate(126deg); }
-    98%, 100% { transform: rotate(18deg); }
+    98%, 100% { transform: rotate(-8deg); }
 }
 @keyframes ccm-gr-goggles {
     0%, 68%, 94%, 100% { opacity: 0; }
@@ -502,7 +505,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). Both loop while he's busy; here they always run.</p>
     <div class="study-grid">
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="griddy" data-ccm-busy></span></div>
-        <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Four heel flicks on a skip, arms swinging against the legs, then both hands up to the eyes for the goggles.</dd></dl></div></article>
+        <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Four heel kicks on a skip, legs side-on so each heel comes up behind him sole-first, arms flaring with each kick, then both hands up to the eyes for the goggles.</dd></dl></div></article>
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman" data-ccm-busy></span></div>
         <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Starts standing on both feet; the stiff arm swings out, the other arm pulls in, the knee drives up with the shin folded under, he holds it, then resets.</dd></dl></div></article>
     </div>
@@ -669,14 +672,16 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         <g class="${cls}-thigh">${noodle(`M${hipX} 42.5 Q${(hipX + kneeX) / 2 + (kneeX < hipX ? -.5 : .5)} 47.5 ${kneeX} 52`)}
           <g class="${cls}-shin">${noodle(`M${kneeX} 52 Q${(kneeX + footX) / 2} 56.5 ${footX} 61`)}${shoe(shoeX, 59, 12, 'ccm-f-red')}</g></g>`;
 
-    // The Griddy: four heel flicks on a skip (left, right, left, right), arms
+    // The Griddy: four heel kicks on a skip (left, right, left, right), arms
     // swinging against the legs, then both hands up to the eyes for the goggles.
-    // Each limb is its own group with its own joint pivot (mascots.css, ccm-gr-*).
+    // The legs move side-on, toes forward (right): a heel kicking BACK is the
+    // whole move, and from straight on it reads as flailing. Each limb is its
+    // own group with its own joint pivot (mascots.css, ccm-gr-*).
     const lacesGriddy = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-gr-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
         <g class="ccm-gr-hop">
-          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 27, 26, 25.5, 15.5)}${kneeLeg('ccm-gr-r', 37, 38, 38.5, 36.5)}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 29, 29, 29, 25)}${kneeLeg('ccm-gr-r', 35, 35, 35, 31)}</g>
           ${lacesBall(u)}
           ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 32, 33, 5.8, 2.6)}
