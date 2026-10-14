@@ -265,6 +265,59 @@
     55% { transform: translate(1px, -.5px) scale(1.07); }
 }
 
+/* ---------- Tie candidates (previews) ---------- */
+/* Balance scale: the beam wobbles about its pivot, overshooting less each
+   swing, settles level, holds, and goes again (3.2s). Eyes follow the tilt. */
+.ccm .ccm-sb-beam { transform-box: view-box; transform-origin: 53.8px 4.7px; }
+.ccm-wrap.is-busy .ccm-sb-beam { animation: ccm-sb-beam 3.2s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-sb-eyes .ccm-look { animation: ccm-sb-look 3.2s ease-in-out infinite; }
+@keyframes ccm-sb-beam {
+    0%, 70%, 100% { transform: rotate(0deg); }
+    12% { transform: rotate(-9deg); }
+    26% { transform: rotate(7deg); }
+    38% { transform: rotate(-4deg); }
+    50% { transform: rotate(2deg); }
+    60% { transform: rotate(-.6deg); }
+}
+@keyframes ccm-sb-look {
+    0%, 70%, 100% { transform: translateX(0); }
+    12% { transform: translateX(1.2px); }
+    26% { transform: translateX(-1.2px); }
+    38% { transform: translateX(.8px); }
+    50% { transform: translateX(-.5px); }
+}
+
+/* Tug-of-war: leaning back the whole time; a fast strain shake, a yank
+   forward at 55%, then he digs back in (2.6s). The sweat drop falls. */
+.ccm .ccm-tw-lean { transform-box: view-box; transform-origin: 40px 60px; transform: rotate(-12deg); }
+.ccm .ccm-tw-strain { transform-box: view-box; transform-origin: 40px 60px; }
+.ccm .ccm-tw-sweat { transform-box: fill-box; }
+.ccm-wrap.is-busy .ccm-tw-strain { animation: ccm-tw-strain 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-tw-sweat { animation: ccm-tw-sweat 1.3s ease-in infinite; }
+@keyframes ccm-tw-strain {
+    0%, 8%, 16%, 24%, 32%, 40%, 100% { transform: translateX(0) rotate(0deg); }
+    4%, 12%, 20%, 28%, 36% { transform: translateX(-.7px) rotate(0deg); }
+    55% { transform: translateX(2px) rotate(9deg); }
+    66% { transform: translateX(1.4px) rotate(7deg); }
+    80% { transform: translateX(-.4px) rotate(-1deg); }
+}
+@keyframes ccm-tw-sweat {
+    0% { transform: translate(0, 0); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translate(-1px, 7px); opacity: 0; }
+}
+
+/* "Meh": the open hand wobbles at the wrist (so-so), the eyes drift off to
+   the side and back (2.4s). */
+.ccm .ccm-mh-hand { transform-box: view-box; transform-origin: 56px 26.6px; }
+.ccm-wrap.is-busy .ccm-mh-hand { animation: ccm-mh-hand .5s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-mh-eyes .ccm-look { animation: ccm-mh-look 2.4s ease-in-out infinite; }
+@keyframes ccm-mh-hand { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
+@keyframes ccm-mh-look {
+    0%, 15%, 100% { transform: translate(0, 0); }
+    30%, 70% { transform: translate(-1.3px, -.4px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }
