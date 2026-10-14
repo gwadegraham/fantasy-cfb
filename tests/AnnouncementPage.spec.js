@@ -30,7 +30,17 @@ describe('/hardwood — the basketball launch page', () => {
     test('link previews point at absolute URLs on our domain', async () => {
         const { text } = await request(app).get('/hardwood');
         expect(text).toContain('<meta property="og:url" content="https://campusclash.io/hardwood">');
-        expect(text).toContain('<meta property="og:image" content="https://campusclash.io/images/campus-clash-og.png">');
+        expect(text).toContain('<meta property="og:image" content="https://campusclash.io/images/hardwood-og.png">');
+    });
+
+    // The tags promise 1200x630; a card of another size gets letterboxed or
+    // cropped differently by every app. Read from the PNG header.
+    test('every preview card is really 1200x630', () => {
+        const fs = require('fs');
+        Object.values(page.PAGES).forEach(p => {
+            const png = fs.readFileSync(path.join(ROOT, p.image));
+            expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
+        });
     });
 
     test('every image a preview or the page names exists in the repo', () => {

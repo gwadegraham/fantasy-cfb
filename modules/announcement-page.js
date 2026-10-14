@@ -28,17 +28,17 @@ const PAGES = {
         imageType: 'image/png',
         imageAlt: 'Campus Clash — The 2026 Season Is Loaded'
     },
-    // Basketball's launch. Its link preview uses the sport-neutral card: a
-    // Hardwood one is #321, deliberately deferred.
+    // Basketball's launch. Its preview card is the Hardwood badge on navy
+    // (#321): design/tools/make_badge_og.py.
     '/hardwood': {
         file: 'docs/announcements/hardwood-2026.html',
         docTitle: 'Campus Clash Hardwood',
         title: 'Campus Clash Hardwood — fantasy college basketball',
         desc: 'Draft ten teams and ride them from November tip-off to the Final Four. '
             + 'How the draft, the scoring and March work, and how to join.',
-        image: '/images/campus-clash-og.png',
+        image: '/images/hardwood-og.png',
         imageType: 'image/png',
-        imageAlt: 'Campus Clash',
+        imageAlt: 'The Campus Clash Hardwood badge',
         icons: '<link rel="icon" type="image/svg+xml" href="/images/favicon-hardwood.svg">'
             + '<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-hardwood-32.png">'
             + '<link rel="apple-touch-icon" href="/images/apple-touch-icon-hardwood.png">'
