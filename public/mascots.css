@@ -308,11 +308,13 @@
 @keyframes ccm-dh-swing { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
 @keyframes ccm-dh-pump { from { transform: rotate(0deg); } to { transform: rotate(14deg); } }
 
-/* "Too small": three pats down at knee height, then a beat to let it land (2s). */
+/* "Too small": leaning over to the side from the hips (static), three pats
+   down near the floor, then a beat to let it land (2s). */
+.ccm .ccm-ts-lean { transform-box: view-box; transform-origin: 32px 44px; transform: rotate(14deg); }
 .ccm-wrap.is-busy .ccm-ts-pat { animation: ccm-ts-pat 2s ease-in-out infinite; }
 @keyframes ccm-ts-pat {
     0%, 60%, 100% { transform: translateY(0); }
-    10%, 30%, 50% { transform: translateY(2.6px); }
+    10%, 30%, 50% { transform: translateY(2.2px); }
     20%, 40% { transform: translateY(0); }
 }
 
@@ -327,15 +329,17 @@
     100% { transform: scaleX(1); }
 }
 
-/* Jump ball: both leap together, the ball floats up just out of reach,
-   shadows shrink with the jump (1.4s). */
+/* Jump ball: they take turns. The left one leaps at 25% while the right one
+   lands, the right one (half a cycle late) at 75%; the ball hops a little on
+   each try, always just out of reach. Shadows shrink under whoever is up (1.4s). */
 .ccm .ccm-jb-shadow { transform-origin: center; }
 .ccm-wrap.is-busy .ccm-jb-jump { animation: ccm-jb-jump 1.4s ease-in-out infinite; }
 .ccm-wrap.is-busy .ccm-jb-ball { animation: ccm-jb-ball 1.4s ease-in-out infinite; }
 .ccm-wrap.is-busy .ccm-jb-shadow { animation: ccm-jb-shadow 1.4s ease-in-out infinite; }
-@keyframes ccm-jb-jump { 0%, 100% { transform: translateY(1px); } 45%, 55% { transform: translateY(-6px); } }
-@keyframes ccm-jb-ball { 0%, 100% { transform: translateY(0); } 45%, 55% { transform: translateY(-5px); } }
-@keyframes ccm-jb-shadow { 0%, 100% { transform: scaleX(1); opacity: .35; } 50% { transform: scaleX(.7); opacity: .18; } }
+.ccm-wrap.is-busy .ccm-jb-late { animation-delay: -.7s; }
+@keyframes ccm-jb-jump { 0%, 50%, 100% { transform: translateY(1px); } 25% { transform: translateY(-7px); } }
+@keyframes ccm-jb-ball { 0%, 50%, 100% { transform: translateY(0); } 25%, 75% { transform: translateY(-3px); } }
+@keyframes ccm-jb-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25% { transform: scaleX(.7); opacity: .18; } }
 
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }

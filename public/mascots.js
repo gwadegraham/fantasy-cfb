@@ -375,23 +375,27 @@
           <g class="ccm-lmb">${glove(40.6, 10, 'fist')}</g>
         </g>`;
 
-    // #1: "too small". A smug palm-down pat at knee height (a flat open hand,
-    // fingers out, not a glove), the other hand on his hip, heavy lids and a
-    // smirk (ccm-ts-*).
+    // #1: "too small". He leans over to the side and pats the air down near
+    // the floor, palm down (a flat open hand, fingers out, not a glove): you're
+    // this tall. The other hand on his hip, heavy lids and a smirk. The legs
+    // stay planted; everything above the hips leans (ccm-ts-*).
     const dribblesTooSmall = u => `
         ${dDefs(u, 32, 27, 17)}
-        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <ellipse class="ccm-shadow ccm-lmb" cx="36" cy="68" rx="17" ry="2"/>
         <g class="ccm-fig">
-          ${dLegs}${dHip}
-          <g class="ccm-lmb">${noodle('M48.4 30 Q57 40 53 47')}</g>
-          ${dBall(u, 32, 27, 17)}
-          ${eyes(26.4, 37.6, 25.2, 4, 5.8)}${lidsFor(26.4, 37.6, 25.2, 4, 5.8, 'ccm-f-ball')}
-          ${smirk(28.6, 34.2, 36.6, 32.6)}
-          <g class="ccm-ts-pat ccm-lmb">
-            <ellipse class="ccm-f-body ccm-o" cx="52.8" cy="49.2" rx="3.4" ry="1.4"/>
-            <rect class="ccm-f-body ccm-o" x="55" y="48" width="6.4" height="2.6" rx="1.3"/>
-            <line x1="55.6" y1="49.3" x2="60.6" y2="49.3" stroke="var(--ccm-ink)" stroke-width=".5" opacity=".6"/>
-            <ellipse class="ccm-f-body ccm-o" cx="53.6" cy="47.6" rx="1.6" ry="1"/>
+          ${dLegs}
+          <g class="ccm-ts-lean">
+            ${dHip}
+            <g class="ccm-lmb">${noodle('M48.4 30 Q58 44 52.6 55.6')}</g>
+            ${dBall(u, 32, 27, 17)}
+            ${eyes(26.4, 37.6, 25.2, 4, 5.8)}${lidsFor(26.4, 37.6, 25.2, 4, 5.8, 'ccm-f-ball')}
+            ${smirk(28.6, 34.2, 36.6, 32.6)}
+            <g class="ccm-ts-pat ccm-lmb">
+              <ellipse class="ccm-f-body ccm-o" cx="53.6" cy="57.4" rx="3.4" ry="1.4"/>
+              <rect class="ccm-f-body ccm-o" x="55.8" y="56.2" width="6.4" height="2.6" rx="1.3"/>
+              <line x1="56.4" y1="57.5" x2="61.4" y2="57.5" stroke="var(--ccm-ink)" stroke-width=".5" opacity=".6"/>
+              <ellipse class="ccm-f-body ccm-o" cx="54.4" cy="55.8" rx="1.6" ry="1"/>
+            </g>
           </g>
         </g>`;
 
@@ -409,8 +413,9 @@
           <g class="ccm-sl-spin ccm-lmb"><path class="ccm-f-red ccm-o" d="M53.2 .4 H56.4 V7 H60.8 V10 H53.2 Z"/></g>
         </g>`;
 
-    // H2H tie: a jump ball. Two Dribbles (the right one mirrored) leap for a
-    // ball floating between them that neither ever reaches. Wide 128x72 (ccm-jb-*).
+    // H2H tie: a jump ball. Two Dribbles (the right one mirrored) take turns
+    // leaping for a ball floating between them; it hops a little on each try
+    // and neither ever reaches it. Wide 128x72 (ccm-jb-*).
     const jumper = u => `
           <g class="ccm-lmb">${noodle('M27 47 Q22 52 25 58')}${noodle('M36 47 Q38 53 35 58.6')}
             ${shoe(16, 56.4, 12, 'ccm-f-violet')}${shoe(27, 57, 12, 'ccm-f-violet')}
@@ -422,13 +427,13 @@
     const dribblesJumpBall = u => `
         ${dDefs(u, 32, 34, 15)}
         <ellipse class="ccm-shadow ccm-jb-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
-        <ellipse class="ccm-shadow ccm-jb-shadow ccm-lmb" cx="98" cy="68" rx="13" ry="2"/>
+        <ellipse class="ccm-shadow ccm-jb-shadow ccm-jb-late ccm-lmb" cx="98" cy="68" rx="13" ry="2"/>
         <g class="ccm-jb-ball ccm-lmb">
           <circle class="ccm-f-ball ccm-o" cx="64" cy="1.8" r="4.2"/>
           <g class="ccm-seam" stroke-width=".8"><line x1="64" y1="-2.4" x2="64" y2="6"/><line x1="59.8" y1="1.2" x2="68.2" y2="1.2"/></g>
         </g>
         <g class="ccm-jb-jump">${jumper(u)}</g>
-        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)"><g class="ccm-jb-jump">${jumper(u)}</g></g>`;
+        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)"><g class="ccm-jb-jump ccm-jb-late">${jumper(u)}</g></g>`;
 
     const dribbles = (u, pose) => {
         if (pose === 'dunkhang' || pose === 'griddy') return dribblesDunk(u);
