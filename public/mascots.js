@@ -266,7 +266,7 @@
           <g class="ccm-lmb">${noodle('M26.5 42.5 Q31 52 35 60.5')}${noodle('M37.5 42.5 Q43 51 46.5 59.5')}
             ${shoe(30, 58.6, 12, 'ccm-f-red')}${shoe(41.5, 57.6, 12, 'ccm-f-red')}
             ${noodle('M14 31 Q30 34 48 40.4')}${noodle('M50 32 Q55 34 55.4 39.6')}</g>
-          ${lacesBall(u)}
+          ${lacesBall(u)}  <!-- both copies clip with the same #${u}c: it applies in each copy's own (mirrored) space -->
           <g stroke="var(--ccm-ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
             <path d="M24 24.6 L28.4 27 L24 29.4"/><path d="M40 24.6 L35.6 27 L40 29.4"/></g>
           <rect class="ccm-f-ink" x="27" y="31.6" width="10" height="4.6" rx="1.6"/>
@@ -274,8 +274,7 @@
           <line x1="27.8" y1="33.9" x2="36.2" y2="33.9" stroke="var(--ccm-ink)" stroke-width=".6"/>
           <ellipse class="ccm-f-ice ccm-tw-sweat" cx="14.6" cy="20" rx="1" ry="1.6"/>`;
     const lacesTugDuo = u => `
-        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath>
-          <clipPath id="${u}d"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="38" cy="68" rx="15" ry="2"/>
         <ellipse class="ccm-shadow ccm-lmb" cx="90" cy="68" rx="15" ry="2"/>
         <g class="ccm-tw2-rope ccm-lmb">
@@ -287,7 +286,7 @@
         <g class="ccm-tw-lean"><g class="ccm-tw2-pull">${tugger(u)}</g>
           <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
         <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)">
-          <g class="ccm-tw-lean"><g class="ccm-tw2-pull ccm-tw2-late">${tugger(u + 'r').replace(`url(#${u}rc)`, `url(#${u}d)`)}</g>
+          <g class="ccm-tw-lean"><g class="ccm-tw2-pull ccm-tw2-late">${tugger(u)}</g>
             <g class="ccm-lmb">${glove(48.4, 40.4, 'fist')}${glove(55.6, 40.4, 'fist')}</g></g>
         </g>`;
 
@@ -374,8 +373,11 @@
     };
 
     const DRAW = { football: laces, basketball: dribbles };
-    // Laces poses drawn on a wider canvas than one mascot (two of him).
+    // Laces poses drawn on a wider canvas than one mascot (two of him). One
+    // answer for html() and svg(): the viewBox, or null for the 64x72 default.
     const WIDE = { tugduo: '0 0 128 72' };
+    const wideBox = (sport, pose, size) =>
+        (size !== 'head' && sport !== 'basketball' && Object.prototype.hasOwnProperty.call(WIDE, pose)) ? WIDE[pose] : null;
     const CROP = { football: '10 8 44 44', basketball: '12 7 40 40' };
     const NAME = { football: 'Laces', basketball: 'Dribbles' };
 
@@ -396,7 +398,7 @@
         const sp = o.sport === 'basketball' ? 'basketball' : 'football';
         const head = o.size === 'head';
         const u = 'ccm' + (uid++);
-        const wide = !head && sp === 'football' && WIDE[o.pose];
+        const wide = wideBox(sp, o.pose, o.size);
         const a11y = o.label ? `role="img" aria-label="${esc(o.label)}"` : 'aria-hidden="true" focusable="false"';
         return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : (wide || '0 0 64 72')}" data-mascot="${NAME[sp]}" ${a11y}>`
             + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
@@ -405,7 +407,7 @@
     function html(opts) {
         const o = Object.assign({ size: 'full' }, opts);
         if (!o.sport) o.sport = sport();
-        const wide = o.size !== 'head' && o.sport === 'football' && WIDE[o.pose];
+        const wide = wideBox(o.sport, o.pose, o.size);
         return `<span class="ccm-wrap ccm-size-${o.size}${wide ? ' ccm-wide' : ''}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
     }
 

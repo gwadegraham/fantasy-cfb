@@ -31,6 +31,8 @@ function reveal(result, sport) {
         handsL: !!scrim.querySelector('.ccm-hl-offer'),
         trophy: !!scrim.querySelector('.cwr-mascot .ccm-prop'),
         tug: !!scrim.querySelector('.ccm-tw2-rope'),
+        srLetter: scrim.querySelector('.sr-only') && scrim.querySelector('.sr-only').textContent,
+        mascotHidden: !scrim.querySelector('.cwr-mascot') || scrim.querySelector('.cwr-mascot').getAttribute('aria-hidden') === 'true',
         text: scrim.textContent
     };
 }
@@ -38,13 +40,14 @@ function reveal(result, sport) {
 describe('Laces in the head-to-head reveal', () => {
     test('a win: Laces holds up the trophy beside the W', () => {
         const r = reveal('win', 'football');
-        expect(r).toMatchObject({ mascot: 'Laces', stamp: 'W', trophy: true, handsL: false });
+        expect(r).toMatchObject({ mascot: 'Laces', stamp: 'W', trophy: true, handsL: false, srLetter: null, mascotHidden: true });
     });
 
     test('a loss: Laces hands you the L, which replaces the stamp', () => {
         const r = reveal('loss', 'football');
         expect(r).toMatchObject({ mascot: 'Laces', stamp: null, handsL: true });
-        expect(r.text).toContain('L');   // the screen-reader copy of the result
+        // The drawing is hidden from screen readers; the letter is read instead.
+        expect(r).toMatchObject({ srLetter: 'L', mascotHidden: true });
     });
 
     test('a basketball loss keeps the stamp and gives Dribbles his ice pack', () => {
@@ -55,7 +58,7 @@ describe('Laces in the head-to-head reveal', () => {
     test('a tie: two Laces in a tug-of-war, which replaces the stamp', () => {
         const r = reveal('tie', 'football');
         expect(r).toMatchObject({ mascot: 'Laces', stamp: null, tug: true });
-        expect(r.text).toContain('T');   // the screen-reader copy of the result
+        expect(r).toMatchObject({ srLetter: 'T', mascotHidden: true });
     });
 
     test('a basketball tie keeps the stamp beside Dribbles', () => {
