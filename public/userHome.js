@@ -84,8 +84,15 @@ function uhSwitchToLinkedLeague() {
         var want = new URLSearchParams(location.search).get('league');
         var lg = window.ccLeague;
         if (!want || !lg || typeof lg.selectLeague !== 'function' || typeof lg.selected !== 'function') return false;
+        // Drop the param BEFORE switching: selectLeague reloads the same URL,
+        // and a param left behind would switch back every time the manager
+        // later picked another league from the navbar.
+        var params = new URLSearchParams(location.search);
+        params.delete('league');
+        var qs = params.toString();
+        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
         if (lg.selected() === want) return false;
-        lg.selectLeague(want).then(function (ok) { if (!ok) getUserProfile(); });
+        lg.selectLeague(want).then(function (ok) { if (!ok) getUserProfile(); }, function () { getUserProfile(); });
         return true;
     } catch (e) { return false; }
 }
@@ -1123,9 +1130,11 @@ async function hydrateCaptain(user, activeYear) {
             // Optimal: the team that would have earned the most captain bonus
             const mult = 2;  // captainMultiplier — already baked into bonus as base*(mult-1)
             let bestBase = 0;
-            (w.scoreByTeam || []).forEach(st => {
+            // noModes rows (basketball conference tournaments) were never
+            // eligible to be doubled, so they are not part of the optimum.
+            (w.scoreByTeam || []).filter(st => !st.noModes).forEach(st => {
                 const teamBase = (w.scoreByTeam || [])
-                    .filter(s => Number(s.teamId) === Number(st.teamId))
+                    .filter(s => !s.noModes && Number(s.teamId) === Number(st.teamId))
                     .reduce((sum, s) => sum + (s.score || 0), 0);
                 if (teamBase > bestBase) bestBase = teamBase;
             });

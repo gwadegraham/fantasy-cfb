@@ -295,6 +295,46 @@ describe('head-to-head on a basketball league', () => {
         expect((await weekOf(ann._id, 1)).score).toBe(10);
     });
 
+    test('if H2H fails, the season totals are still re-summed', async () => {
+        await modes({ h2h: true });
+        const { ann } = await twoManagers();
+        await HoopsGame.create([q1Win(1, 1), loss(1, 2)]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        expect((await entry(ann._id)).cumulativeScore).toBe(8);
+        // The week's game is corrected to a loss and rescored, and the H2H
+        // step blows up: the total must follow the rewritten rows anyway.
+        await HoopsGame.updateMany({ homeTeamId: 1 }, { $set: { homePoints: 60 } });
+        const hh = require('../modules/hoops-h2h');
+        jest.spyOn(hh, 'applyHoopsH2H').mockRejectedValueOnce(new Error('mongo down'));
+        await expect(scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 })).rejects.toThrow('mongo down');
+        expect((await entry(ann._id)).cumulativeScore).toBe(0);
+    });
+
+    test('two passes over one league at once run one after the other', async () => {
+        // The nightly job and the live poller share a dyno. Interleaved, the
+        // H2H write (a whole weeklyScore array from an earlier read) could
+        // put back a week the other pass had just rescored.
+        await modes({ h2h: true });
+        const { ann } = await twoManagers();
+        await HoopsGame.create([q1Win(1, 1), loss(1, 2), q1Win(2, 1), loss(2, 2)]);
+        const hh = require('../modules/hoops-h2h');
+        const real = hh.applyHoopsH2H;
+        let inFlight = 0, overlapped = false;
+        jest.spyOn(hh, 'applyHoopsH2H').mockImplementation(async (...a) => {
+            inFlight++; if (inFlight > 1) overlapped = true;
+            await new Promise(r => setTimeout(r, 30));
+            try { return await real(...a); } finally { inFlight--; }
+        });
+        await Promise.all([
+            scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 }),
+            scoreHoopsWeek(LEAGUE, { season: SEASON, week: 2 })
+        ]);
+        expect(overlapped).toBe(false);
+        expect((await weekOf(ann._id, 1)).score).toBe(8);
+        expect((await weekOf(ann._id, 2)).score).toBe(8);
+        expect((await entry(ann._id)).cumulativeScore).toBe(16);
+    });
+
     test('modeWeekBase leaves the H2H bonus and conference tournament rows out', () => {
         expect(modeWeekBase({ score: 18, h2hBonus: 3, scoreByTeam: [{ score: 5, noModes: true }, { score: 10 }] })).toBe(10);
         expect(modeWeekBase(null)).toBe(0);

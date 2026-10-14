@@ -74,7 +74,27 @@ async function configFor(league) {
 // Returns a summary rather than writing a log: the caller is a job that
 // already knows how to record one, and a pure-ish return is what makes this
 // testable without a scheduler.
-async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
+// ONE PASS PER LEAGUE AT A TIME, in this process.
+//
+// The nightly job and the live poller (modules/hoops-live-poll.js) both
+// score basketball, inside the same dyno, and can land on the same league
+// together. Since the H2H step, a pass writes each manager's WHOLE
+// weeklyScore array (modules/h2h-settle.js) from a snapshot it read a moment
+// earlier — so an interleaved pass could write a week back to what it was
+// before the other pass rescored it. Chaining passes per league closes that;
+// a failed pass does not block the next one.
+const leagueQueue = new Map();
+function scoreHoopsWeek(league, opts) {
+    const prev = leagueQueue.get(league) || Promise.resolve();
+    // `prev` is always a `tail` below, which never rejects.
+    const run = prev.then(() => scoreHoopsWeekNow(league, opts));
+    const tail = run.catch(() => {});
+    leagueQueue.set(league, tail);
+    tail.then(() => { if (leagueQueue.get(league) === tail) leagueQueue.delete(league); });
+    return run;
+}
+
+async function scoreHoopsWeekNow(league, { season, week, apply = true } = {}) {
     const yr = Number(season);
     const wk = Number(week);
 
@@ -206,12 +226,20 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
         //
         // Required here, not at the top: hoops-h2h reads this module's
         // helpers, and a load-time cycle hands one side an empty export.
-        if (results.length) {
-            h2h = await require('./hoops-h2h').applyHoopsH2H(league, yr, {
-                cfgDoc, weeks: modeWeeks.length ? modeWeeks : undefined
-            });
+        //
+        // try/finally: writeWeek has already replaced this week's rows, so
+        // the totals MUST be re-summed even if H2H fails — otherwise
+        // cumulativeScore is left holding a bonus the rows no longer carry
+        // (the 14 Sep 2026 drift). The error still reaches the caller.
+        try {
+            if (results.length) {
+                h2h = await require('./hoops-h2h').applyHoopsH2H(league, yr, {
+                    cfgDoc, weeks: modeWeeks.length ? modeWeeks : undefined
+                });
+            }
+        } finally {
+            for (const r of results) await writeCumulative(league, r.accountId, yr);
         }
-        for (const r of results) await writeCumulative(league, r.accountId, yr);
     }
 
     return {

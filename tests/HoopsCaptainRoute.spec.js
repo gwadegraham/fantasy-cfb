@@ -45,6 +45,11 @@ const hg = (week, homeId, startDate, o = {}) => Object.assign({
     startDate, startTimeTbd: false, homeTeamId: homeId, awayTeamId: 90, homeTeam: `Team ${homeId}`, awayTeam: 'Opp'
 }, o);
 
+function footballTeam(id, school) {
+    return { id, school, mascot: 'M', abbreviation: 'GRD', conference: 'SEC', color: '#000', logos: ['x.png'],
+        location: { venue_id: id, name: 'S', city: 'C', state: 'ST', zip: '0', latitude: 1, longitude: 1, capacity: 1, grass: true, dome: false } };
+}
+
 let account, app;
 const cookie = (league) => `cc_league=${league}`;
 
@@ -62,7 +67,7 @@ beforeEach(async () => {
     account = await Account.create({ firstName: 'Ann', lastName: 'Two', email: 'ann@example.invalid' });
     await Franchise.create([
         { accountId: account._id, league: HOOPS, seasons: [{ season: SEASON, teamRefs: [{ id: 1, sport: 'basketball' }, { id: 2, sport: 'basketball' }] }] },
-        { accountId: account._id, league: FOOTBALL, seasons: [{ season: SEASON, teams: [] }, { season: 2026, teams: [] }] }
+        { accountId: account._id, league: FOOTBALL, seasons: [{ season: SEASON, teams: [] }, { season: 2026, teams: [footballTeam(7, 'Gridiron')] }] }
     ]);
     await HoopsTeam.create([
         { id: 1, season: SEASON, school: 'Hoops One' },
@@ -77,6 +82,10 @@ beforeEach(async () => {
         // neither sets the lock nor appears on the slate.
         hg(1, 2, '2099-11-02T05:00:00.000Z', { conferenceGame: true, gameNotes: 'Big East Tournament - 1st Round' })
     ]);
+    // The football franchise's own 2026 week 3, far in the future.
+    await Game.create({ id: 2, season: 2026, week: 3, seasonType: 'regular', startDate: '2099-09-19T19:30:00Z',
+        startTimeTbd: false, neutralSite: false, conferenceGame: false,
+        homeId: 7, homeTeam: 'Gridiron', awayId: 8, awayTeam: 'Other', completed: false });
     await Game.create({ id: 1, season: SEASON, week: 1, seasonType: 'regular', startDate: '2020-01-01T00:00:00Z',
         startTimeTbd: false, neutralSite: false, conferenceGame: false,
         homeId: 1, homeTeam: 'Football One', awayId: 3, awayTeam: 'Football Three', completed: true });
@@ -111,7 +120,19 @@ describe('GET /users/me/captain on a basketball league', () => {
         const res = await request(app).get('/users/me/captain?season=2026').set('Cookie', cookie(FOOTBALL));
         expect(res.status).toBe(200);
         expect(res.body.sport).toBeUndefined();
-        expect(res.body.week).toBeNull();     // the football roster is empty
+        // The FOOTBALL franchise's week — the basketball one has no 2026.
+        expect(res.body.week).toBe(3);
+        expect(res.body.slate.map(s => s.teamId)).toEqual([7]);
+    });
+
+    test('a football pick lands on the football franchise', async () => {
+        const res = await request(app).patch('/users/me/captain').set('Cookie', cookie(FOOTBALL))
+            .send({ season: 2026, week: 3, teamId: 7 });
+        expect(res.status).toBe(200);
+        const football = await Franchise.findOne({ accountId: account._id, league: FOOTBALL }).lean();
+        expect(football.seasons.find(s => s.season === 2026).captains.map(c => c.teamId)).toEqual([7]);
+        const hoops = await Franchise.findOne({ accountId: account._id, league: HOOPS }).lean();
+        expect(hoops.seasons[0].captains).toBeUndefined();
     });
 });
 
