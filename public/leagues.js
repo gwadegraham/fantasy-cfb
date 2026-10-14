@@ -188,14 +188,27 @@
         });
     }
 
+    // Existing managers ticked but not yet added. Kept OUTSIDE the DOM so a
+    // re-render (adding someone new reloads the step) can't untick them, and
+    // added on "Next" — ticking IS choosing; there is no separate button to
+    // miss on the way out.
+    var picked = {};
+    function pickedIds() {
+        return Object.keys(picked).filter(function (id) { return candidates.some(function (c) { return String(c._id) === id; }); });
+    }
+    function nextLabel() {
+        var n = pickedIds().length;
+        return n ? 'Add ' + plural(n, 'manager') + ' and continue' : 'Next: draft';
+    }
+
     function renderStep2() {
         var pick = candidates.length
             ? '<ul class="lg-pick">' + candidates.map(function (c) {
-                return '<li><label><input type="checkbox" data-pick="' + esc(c._id) + '">'
+                return '<li><label><input type="checkbox" data-pick="' + esc(c._id) + '"' + (picked[String(c._id)] ? ' checked' : '') + '>'
                     + '<span class="lg-who"><b>' + esc(memberName(c)) + '</b><small>' + esc(c.leagues.join(', ')) + '</small></span>'
                     + '</label></li>';
             }).join('') + '</ul>'
-              + '<div class="lg-foot"><button type="button" class="lg-btn" data-add-picked disabled>Add selected</button></div>'
+              + '<p class="lg-hint">Everyone ticked is added when you continue.</p>'
             : '<div class="sp-empty">Everyone from your other leagues is already in this one.</div>';
 
         var inLeague = members.length
@@ -220,20 +233,21 @@
             + '<input type="email" data-email placeholder="Email" required autocomplete="off">'
             + '<button type="submit" class="lg-btn">Add</button>'
             + '</form>' + links
-            + '<div class="lg-foot lg-foot-split"><button type="button" class="lg-btn lg-primary" data-to-step3>Next: draft</button></div>');
+            + '<div class="lg-foot lg-foot-split"><button type="button" class="lg-btn lg-primary" data-to-step3>' + esc(nextLabel()) + '</button></div>');
     }
 
-    function addPicked(btn) {
-        var ids = Array.prototype.map.call(root.querySelectorAll('[data-pick]:checked'), function (c) {
-            return c.getAttribute('data-pick');
-        });
-        if (!ids.length) return Promise.resolve();
+    // "Next" from step 2: add whoever is ticked, then go on. A refusal stays
+    // on the step with the ticks intact, so nothing is silently dropped.
+    function continueFromStep2(btn) {
+        var ids = pickedIds();
+        if (!ids.length) return startStep3();
         btn.disabled = true;
         return api('POST', '/leagues/admin/' + encodeURIComponent(league.code) + '/members', { accountIds: ids })
             .then(function (out) {
                 var n = (out.added || []).length;
-                toast('success', n ? 'Added ' + plural(n, 'manager') : 'Already in the league');
-                return startStep2();
+                if (n) toast('success', 'Added ' + plural(n, 'manager'));
+                picked = {};
+                return startStep3();
             }).catch(function (e) {
                 btn.disabled = false;
                 toast('error', e.message);
@@ -349,7 +363,6 @@
             // A saved null is a deliberate "uncapped", not "use the default".
             if (draft.poolSize !== undefined) d.poolSize = draft.poolSize;
         }
-        var hoops = league.sport === 'basketball';
         var enough = order.length >= 2;
         root.innerHTML = frame(3, '<form data-step3>'
             + '<h2 class="sp-h">Draft order <small>' + (enough ? 'first pick at the top' : 'needs at least 2 managers') + '</small></h2>'
@@ -361,7 +374,10 @@
             + '<label class="lg-field"><span class="lg-label">Rounds</span><input type="number" data-rounds min="1" max="20" value="' + esc(d.totalRounds || 10) + '"></label>'
             + '<label class="lg-field"><span class="lg-label">Type</span><select data-type><option value="snake">Snake</option>'
             + '<option value="linear"' + (draft && draft.snake === false ? ' selected' : '') + '>Linear</option></select></label>'
-            + (hoops ? '<label class="lg-field"><span class="lg-label">Pool size</span><input type="number" data-pool min="1" max="400" value="' + esc(d.poolSize || '') + '" placeholder="all teams"></label>' : '')
+            // No pool size here: "how many teams can be drafted" is a setting
+            // a commissioner shouldn't have to understand to start a league.
+            // The sport's default (or what's already saved) is sent; it can be
+            // changed under Configure Draft on the league's admin page.
             + '<label class="lg-field"><span class="lg-label">Draft date (optional)</span><input type="datetime-local" data-when value="' + esc(localInput(draft && draft.scheduledAt)) + '"></label>'
             + '</div>'
             + '<p class="lg-hint">Scoring, game modes and everything else are on the league\'s admin page.</p>'
@@ -394,9 +410,13 @@
             autoOpen: !!(draft && draft.autoOpen),
             callUrl: (draft && draft.callUrl) || ''
         };
-        // Only basketball has a pool cap; football's route refuses one.
-        var pool = form.querySelector('[data-pool]');
-        if (pool) body.poolSize = parseInt(pool.value, 10) || null;
+        // Only basketball has a pool cap (football's route refuses one): the
+        // saved value if there is one — a saved null is a deliberate
+        // "uncapped" — else the sport's default.
+        if (league.sport === 'basketball') {
+            body.poolSize = draft && draft.poolSize !== undefined ? draft.poolSize
+                : ((DEFAULTS.basketball || {}).poolSize || null);
+        }
         var btn = form.querySelector('button[type="submit"]');
         btn.disabled = true;
         return api('POST', '/draft', body).then(function () {
@@ -419,18 +439,17 @@
     root.addEventListener('click', function (e) {
         var t = e.target.closest ? e.target.closest('button, a') : null;
         if (!t) return;
-        if (t.hasAttribute('data-create')) { league = null; members = []; invites = []; order = []; draft = null; return renderStep1(); }
+        if (t.hasAttribute('data-create')) { league = null; members = []; invites = []; order = []; draft = null; picked = {}; return renderStep1(); }
         if (t.hasAttribute('data-back-list')) { league = null; return loadList(); }
         if (t.hasAttribute('data-continue')) {
             var code = t.getAttribute('data-continue');
             var l = rows.filter(function (r) { return r.code === code; })[0];
             if (!l) return;
             league = { code: l.code, name: l.name, sport: l.sport, season: l.season };
-            members = []; invites = []; order = []; draft = null;
+            members = []; invites = []; order = []; draft = null; picked = {};
             return startStep2();
         }
-        if (t.hasAttribute('data-add-picked')) return addPicked(t);
-        if (t.hasAttribute('data-to-step3')) return startStep3();
+        if (t.hasAttribute('data-to-step3')) return continueFromStep2(t);
         if (t.hasAttribute('data-to-step2')) return startStep2();
         if (t.hasAttribute('data-randomize')) { order = shuffle(order); var list = root.querySelector('[data-order-list]'); if (list) list.innerHTML = renderOrder(); return; }
         if (t.hasAttribute('data-up')) return move(Number(t.getAttribute('data-up')), Number(t.getAttribute('data-up')) - 1);
@@ -451,12 +470,10 @@
 
     root.addEventListener('change', function (e) {
         if (e.target.hasAttribute && e.target.hasAttribute('data-pick')) {
-            var btn = root.querySelector('[data-add-picked]');
-            var n = root.querySelectorAll('[data-pick]:checked').length;
-            if (btn) {
-                btn.disabled = !n;
-                btn.textContent = n ? 'Add ' + plural(n, 'manager') : 'Add selected';
-            }
+            var id = e.target.getAttribute('data-pick');
+            if (e.target.checked) picked[id] = true; else delete picked[id];
+            var next = root.querySelector('[data-to-step3]');
+            if (next) next.textContent = nextLabel();
         }
     });
 

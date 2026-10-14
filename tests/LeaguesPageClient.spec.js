@@ -174,28 +174,60 @@ describe('Create league', () => {
         expect(posted('POST /leagues/admin')).toEqual([]);
     });
 
-    test('step 2: existing managers are ticked and added by ACCOUNT id — no invite', async () => {
+    const tick = (id, on = true) => {
+        const box = $(`[data-pick="${id}"]`);
+        box.checked = on;
+        box.dispatchEvent(new window.Event('change', { bubbles: true }));
+    };
+
+    test('step 2: ticked managers are added by ACCOUNT id when you continue — no invite, no separate button', async () => {
         await toStep2();
         expect($$('[data-pick]').map(c => c.getAttribute('data-pick'))).toEqual(['a1', 'b2']);
         expect($('[data-pick="b2"]').closest('li').textContent).toContain('Goofballers, The Polar Depressed');
-        const btn = $('[data-add-picked]');
-        expect(btn.disabled).toBe(true);
+        expect($('[data-add-picked]')).toBeNull();
+        expect($('[data-to-step3]').textContent).toBe('Next: draft');
 
-        const box = $('[data-pick="b2"]');
-        box.checked = true;
-        box.dispatchEvent(new window.Event('change', { bubbles: true }));
-        expect(btn.disabled).toBe(false);
-        expect(btn.textContent).toBe('Add 1 manager');
+        tick('b2');
+        expect($('[data-to-step3]').textContent).toBe('Add 1 manager and continue');
+        expect(posted('POST /leagues/admin/hardwood/members')).toEqual([]);      // ticking alone sends nothing
 
         routes['POST /leagues/admin/hardwood/members'] = () => {
             members = [{ _id: 'b2', firstName: 'Bob', lastName: 'Ray', seasons: [{ season: 2027 }] }];
             return json({ added: ['b2'], already: [], refused: [] });
         };
-        click(btn);
+        click($('[data-to-step3]'));
         await flush();
         expect(posted('POST /leagues/admin/hardwood/members')).toEqual([{ accountIds: ['b2'] }]);
         expect(posted('POST /users')).toEqual([]);
-        expect($('[data-member="b2"]').textContent).toContain('Bob Ray');
+        // …and step 3's draft order has them in it.
+        expect($$('[data-order]').map(li => li.getAttribute('data-order'))).toEqual(['b2']);
+    });
+
+    test('step 2: adding someone new keeps the managers you had ticked', async () => {
+        await toStep2();
+        tick('a1'); tick('b2');
+        routes['POST /users'] = () => json({ _id: 'c3', firstName: 'Cy' }, 201);
+        routes['POST /users/c3/invite-link'] = () => json({ link: 'https://campusclash.io/invite/tok' });
+        $('[data-first]').value = 'Cy'; $('[data-last]').value = 'New'; $('[data-email]').value = 'cy@example.com';
+        submit($('[data-new-person]'));
+        await flush();
+        expect($('[data-pick="a1"]').checked).toBe(true);
+        expect($('[data-pick="b2"]').checked).toBe(true);
+        expect($('[data-to-step3]').textContent).toBe('Add 2 managers and continue');
+    });
+
+    test('step 2: unticking takes them back out; a refused add stays on the step with the ticks kept', async () => {
+        await toStep2();
+        tick('a1'); tick('b2'); tick('a1', false);
+        expect($('[data-to-step3]').textContent).toBe('Add 1 manager and continue');
+        routes['POST /leagues/admin/hardwood/members'] = () => json({ message: 'Season is locked.' }, 423);
+        click($('[data-to-step3]'));
+        await flush();
+        expect(posted('POST /leagues/admin/hardwood/members')).toEqual([{ accountIds: ['b2'] }]);
+        expect($('[data-step="2"]')).not.toBeNull();
+        expect($('[data-pick="b2"]').checked).toBe(true);
+        expect($('[data-to-step3]').disabled).toBe(false);
+        expect(toasts).toContainEqual(['err', 'Season is locked.']);
     });
 
     test('step 2: someone new goes through Add a Player WITH the league\'s season, then gets a link', async () => {
@@ -321,8 +353,10 @@ describe('Create league', () => {
         expect($$('[data-order]').map(li => li.getAttribute('data-order'))).toEqual(['b2', 'a1']);
         expect($('[data-rounds]').value).toBe('8');
         expect($('[data-type]').value).toBe('linear');
-        // Uncapped stays uncapped, rather than the sport's 120.
-        expect($('[data-pool]').value).toBe('');
+        // No pool size on the page (a commissioner shouldn't need to know
+        // what it is) — and a saved uncapped draft stays uncapped below,
+        // rather than being reset to the sport's 120.
+        expect($('[data-pool]')).toBeNull();
         expect($('[data-when]').value).not.toBe('');
         routes['POST /draft'] = () => json({});
         submit($('[data-step3]'));
