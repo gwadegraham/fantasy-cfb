@@ -678,7 +678,7 @@ button.hw-run { background: var(--hw-a); border-color: var(--hw-a); }
       <article class="card hw"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="basketball" data-ccm-pose="dunkhang" data-ccm-busy></span></div>
         <div class="info"><header><h3>Dunk & Hang · Dribbles</h3><span class="tag new">Recap: season high</span></header><dl><dt>Move</dt><dd>His answer to the Griddy: one hand on the rim, the other pumping, legs dangling as he swings.</dd></dl></div></article>
       <article class="card hw"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="basketball" data-ccm-pose="netcut" data-ccm-busy></span></div>
-        <div class="info"><header><h3>Cutting Down the Net · Dribbles</h3><span class="tag new">Recap: #1</span></header><dl><dt>Move</dt><dd>His answer to the Heisman, the college champion's ritual: on a step ladder under the rim, snipping the net and waving a cut piece overhead.</dd></dl></div></article>
+        <div class="info"><header><h3>Cutting Down the Net · Dribbles</h3><span class="tag new">Recap: #1</span></header><dl><dt>Move</dt><dd>His answer to the Heisman, the college champion's ritual: on a step ladder under the rim, snipping the net and waving the strand he just cut overhead.</dd></dl></div></article>
       <article class="card hw"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="basketball" data-ccm-pose="spinL" data-ccm-busy></span></div>
         <div class="info"><header><h3>Spinning the L · Dribbles</h3><span class="tag new">H2H loss</span></header><dl><dt>Move</dt><dd>His answer to handing you an L: a red L spinning on his foam finger like a ball on a fingertip.</dd></dl></div></article>
       <article class="card hw"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="basketball" data-ccm-pose="jumpball" data-ccm-busy></span></div>
@@ -1088,7 +1088,8 @@ button.hw-run { background: var(--hw-a); border-color: var(--hw-a); }
 
     // #1: cutting down the net, the college champion's ritual. He stands on a
     // little step ladder under the rim, snipping the net with scissors in one
-    // hand and waving a cut piece of it overhead in the other (ccm-nc-*).
+    // hand and waving the strand he just cut (one cord with a knot, not a whole
+    // net) overhead in the other (ccm-nc-*).
     const dribblesNetCut = u => `
         ${dDefs(u, 26, 32, 13)}
         <ellipse class="ccm-shadow ccm-lmb" cx="28" cy="68" rx="16" ry="2"/>
@@ -1110,8 +1111,13 @@ button.hw-run { background: var(--hw-a); border-color: var(--hw-a); }
           <g class="ccm-lmb">${noodle('M22 44 Q21.5 47 21.5 49')}${noodle('M30 44 Q30.5 47 30.5 49')}
             ${shoe(12.5, 46, 11, 'ccm-f-violet')}${shoe(28.5, 46, 11, 'ccm-f-violet')}</g>
           <g class="ccm-nc-wave ccm-lmb">${noodle('M13.6 29 Q7 24 9 14.6')}
-            <path d="M5 2.6 H13 L11.4 9.6 H6.6 Z" fill="none" stroke="var(--ccm-body)" stroke-width="1" stroke-linejoin="round"/>
-            <path d="M5.6 4.8 L12.4 4.8 M6.2 7.2 L11.8 7.2 M7.6 2.6 L8.4 9.6 M10.4 2.6 L9.6 9.6" stroke="var(--ccm-body)" stroke-width=".7"/>
+            <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8.6 10 Q6.6 7.4 8.4 5.2 Q10.2 3 8.6 .6" stroke="var(--ccm-ink)" stroke-width="2.2"/>
+              <path d="M8.6 10 Q6.6 7.4 8.4 5.2 Q10.2 3 8.6 .6" stroke="var(--ccm-body)" stroke-width="1.1"/>
+              <path d="M8.4 5.2 L11.2 3.4" stroke="var(--ccm-ink)" stroke-width="2.2"/>
+              <path d="M8.4 5.2 L11.2 3.4" stroke="var(--ccm-body)" stroke-width="1.1"/>
+            </g>
+            <circle class="ccm-f-body ccm-o" cx="8.4" cy="5.2" r=".9"/>
             ${glove(9, 12.4, 'fist')}</g>
           <g class="ccm-lmb">${noodle('M38 27 Q44 22 45 17.4')}</g>
           ${dBall(u, 26, 32, 13)}
