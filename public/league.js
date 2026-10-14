@@ -117,6 +117,14 @@
         sel.addEventListener('change', async function () {
             var opt = this.options[this.selectedIndex];
             if (!opt) return;
+            // "Manage leagues" (#536): a link in the list, not a league.
+            // Put the dropdown back first so Back does not land on it.
+            var href = opt.getAttribute('data-href');
+            if (href) {
+                syncSwitcher();
+                window.location.assign(href);
+                return;
+            }
             // A refusal means it is not one of your leagues — put the
             // dropdown back rather than reloading into the same page and
             // looking like nothing happened.

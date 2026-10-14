@@ -750,6 +750,10 @@ body > * { position: relative; z-index: 1; }
 .league-sheet-row i { color: var(--cc-muted-bright); width: 18px; text-align: center; padding: 0; }
 .league-sheet-row.on { background: rgba(var(--cc-accent-rgb), .13); }
 .league-sheet-row.on i.chk { color: var(--cc-accent); margin-left: auto; }
+/* "Manage leagues" (#536): a link, so it needs the button's colours back,
+   and a hairline to set it apart from the leagues above it. */
+a.league-sheet-manage, a.league-sheet-manage:hover { color: var(--cc-muted-bright); text-decoration: none;
+    border-top: 1px solid var(--cc-border); border-radius: 0; margin-top: 4px; }
 /* The sheet scrolls the page behind it otherwise. */
 body.league-sheet-open { overflow: hidden; }
 

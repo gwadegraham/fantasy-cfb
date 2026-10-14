@@ -923,6 +923,14 @@ app.use('/scoring-config', requireAuthOrToken, scoringConfigRouter);
 
 const leaguesRouter = require('./routes/leagues');
 const seasonsRouter = require('./routes/seasons');
+// The Leagues page and Create league (#536). Admin only, gated in its router;
+// mounted FIRST because it answers GET /leagues for a browser, and hands a
+// JSON request on to leaguesRouter below.
+const leagueAdmin = require('./routes/leagueAdmin');
+app.use('/leagues', requireAuthOrToken, leagueAdmin.build({
+    pageLocals: (req) => ({ user: buildUserContext(req.effUser), userState: safeJson(req.effUser),
+        draftDefaults: safeJson(draftDefaults.BY_SPORT) })
+}));
 app.use('/leagues', requireAuthOrToken, leaguesRouter);
 
 // Which season each sport is in, and the admin-only rollover. The pivot that

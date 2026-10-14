@@ -1164,3 +1164,10 @@
 
 /* Secondary hint text next to a Game Mode toggle label (#230). */
 .mode-hint { color: var(--cc-muted-2); font-weight: 400; font-size: 0.85em; }
+
+/* The way to the Leagues page (#536), on both sports' admin pages. Its own
+   row under the header so the header's layout is untouched. */
+.admin-leagues-link { width: 100%; max-width: 880px; margin: 0 auto; padding: 0 16px; box-sizing: border-box; }
+.admin-leagues-link a, .admin-leagues-link a:hover { display: inline-flex; align-items: center; gap: 6px; color: var(--cc-muted-bright);
+    font: 600 13px Poppins, sans-serif; text-decoration: none; padding: 6px 12px; border: 1px solid var(--cc-border-2);
+    border-radius: var(--cc-r-pill); background: var(--cc-surface-2); }

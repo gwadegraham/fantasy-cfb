@@ -787,6 +787,44 @@ async function createManager(fields) {
     return shaped;
 }
 
+// Put an EXISTING person in another league (#536): a new Franchise under the
+// account they already log in with.
+//
+// The other half of createManager, and the reason it is a separate function
+// rather than an option on that one: this must never make an Account. An
+// Auth0 login resolves through metadata.userId to exactly one account _id, so
+// a second account for the same human is a franchise nobody can log in as —
+// which is what "Add a Player" produced for someone already in the app, since
+// invite-bind refuses to rebind an identity that is already linked. Here the
+// account is looked up, never created, and a missing one is an error.
+//
+// Idempotent on (account, league): the unique index already forbids a second
+// franchise, and a repeated tick of the same checkbox should say so rather
+// than 500. The existing franchise is left exactly as it is — its roster and
+// scores are not this function's to reset.
+async function addFranchise(accountId, league, { season, lastUpdated } = {}) {
+    if (!league) throw new Error('addFranchise: a league is required');
+    const account = await Account.findById(accountId, { _id: 1 }).lean();
+    if (!account) {
+        const err = new Error(`addFranchise: no account ${accountId}`);
+        err.status = 404;
+        throw err;
+    }
+    const existing = await Franchise.findOne({ accountId: account._id, league }, { _id: 1 }).lean();
+    if (existing) return { created: false, franchiseId: existing._id };
+
+    const fields = { accountId: account._id, league, seasons: season != null ? [{ season }] : [] };
+    if (lastUpdated) fields.lastUpdated = lastUpdated;
+    try {
+        const made = await Franchise.create(fields);
+        return { created: true, franchiseId: made._id };
+    } catch (e) {
+        // Two ticks racing: the other one won, which is the same answer.
+        if (e && e.code === 11000) return { created: false, franchiseId: null };
+        throw e;
+    }
+}
+
 // Trim an assembled document to the fields a caller asked for, `_id` always
 // surviving because every caller keys on it.
 function keepOnly(doc, fields) {
@@ -806,6 +844,6 @@ module.exports = {
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
-    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
+    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, addFranchise, rosteredForWrite,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };

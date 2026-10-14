@@ -26,6 +26,8 @@ const ACTIONS = {
     'draft.config': 'Draft',
     'draft.reset': 'Draft',
     'league.rename': 'League',
+    'league.create': 'League',
+    'league.members': 'League',
     'user.create': 'Manager',
     'user.invite': 'Invite',
     'captain.set': 'Captain',

@@ -44,6 +44,11 @@
             <%= isAdmin ? 'Admin' : 'League Management' %>
         </div>
     </div>
+    <%# Every league, both sports, and Create league (#536). Admins only:
+        a League Manager manages their own league here and nothing else. %>
+    <% if (isAdmin) { %>
+    <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
+    <% } %>
 
     <div class="get-users-container" get-users-container>
         <div class="table-wrapper">

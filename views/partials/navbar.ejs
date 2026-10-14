@@ -138,6 +138,15 @@
                     <% _mine.forEach(function (lg) { %>
                     <option value="<%= lg.code %>"<%= lg.code === _vlc ? ' selected' : '' %>><%= lg.name %></option>
                     <% }) %>
+                    <%# The way to the Leagues page (#536), Admins only. An
+                        EMPTY value, so nothing that reads the options as
+                        leagues (syncSwitcher, the rename patch) can take it
+                        for one; public/league.js follows its data-href
+                        instead of selecting it. %>
+                    <% if (_role === 'Admin') { %>
+                    <option disabled>──────────</option>
+                    <option value="" data-href="/leagues">Manage leagues…</option>
+                    <% } %>
                 </select>
             </li>
             <% } %>
@@ -299,6 +308,13 @@
             <% if (lg.code === _vlcTab) { %><i class="fa-solid fa-check chk" aria-hidden="true"></i><% } %>
         </button>
         <% }) %>
+        <%# The way to the Leagues page (#536), Admins only. %>
+        <% if (((user && user.role) || '') === 'Admin') { %>
+        <a class="league-sheet-row league-sheet-manage" href="/leagues">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+            <span>Manage leagues</span>
+        </a>
+        <% } %>
     </div>
 </div>
 <% } %>

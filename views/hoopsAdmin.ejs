@@ -42,6 +42,9 @@
         window.APP_YEAR = "<%= year %>";
         window.DRAFT_DEFAULTS = <%- draftDefaults %>;
     </script>
+    <%# Every league, both sports, and Create league (#536). This page is
+        Admin-only already, so the link is unconditional. %>
+    <nav class="admin-leagues-link"><a href="/leagues"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Leagues</a></nav>
     <main class="sp-page ha" id="hoops-admin">
         <div class="sp-loading">Loading…</div>
     </main>
