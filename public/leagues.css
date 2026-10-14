@@ -1,0 +1,102 @@
+/* The Leagues page (#536). Builds on the shared kit (sport-page.css) for the
+   frame, cards and states. Every class is lg- prefixed: the navbar loads
+   Bootstrap on every page, and bare .row/.card/.btn collide. */
+
+.lg-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 22px 0 10px; }
+.lg-top h1 { font: 700 24px Poppins, sans-serif; margin: 0; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+.lg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--cc-border-2);
+    border-radius: var(--cc-r-md); padding: 8px 14px; font: 600 13px Poppins, sans-serif; cursor: pointer;
+    background: var(--cc-surface-2); color: var(--cc-text); white-space: nowrap; }
+.sp-page a.lg-btn, .sp-page a.lg-btn:hover { color: var(--cc-text); }
+.lg-btn:disabled { opacity: .5; cursor: default; }
+.lg-primary, .sp-page a.lg-primary, .sp-page a.lg-primary:hover { background: var(--cc-accent); border-color: var(--cc-accent); color: #fff; }
+.lg-ghost { background: transparent; color: var(--cc-muted-bright); }
+
+/* ---- the list ---------------------------------------------------------- */
+.lg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.lg-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: "icon main chip" "icon actions actions";
+    align-items: center; gap: 6px 12px; padding: 12px 14px; }
+.lg-sport { grid-area: icon; font-size: 20px; color: var(--cc-muted-bright); text-align: center; }
+.lg-main { grid-area: main; min-width: 0; }
+.lg-name { font: 600 16px Poppins, sans-serif; overflow-wrap: anywhere; }
+.lg-meta { font-size: 13px; color: var(--cc-muted); }
+.lg-chip { grid-area: chip; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: var(--cc-r-pill);
+    border: 1px solid var(--cc-border-2); color: var(--cc-muted-bright); white-space: nowrap; }
+.lg-chip.live { color: var(--cc-success); border-color: color-mix(in srgb, var(--cc-success) 45%, transparent); }
+.lg-chip.setup { color: var(--cc-amber); border-color: color-mix(in srgb, var(--cc-amber) 45%, transparent); }
+.lg-chip.ready { color: var(--cc-interactive); border-color: color-mix(in srgb, var(--cc-interactive) 45%, transparent); }
+.lg-chip.archived { color: var(--cc-muted); }
+.lg-actions { grid-area: actions; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.lg-actions:empty { display: none; }
+@media (min-width: 640px) {
+    .lg-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; grid-template-areas: "icon main chip actions"; }
+}
+
+.lg-archived { margin-top: 18px; }
+.lg-archived summary { cursor: pointer; color: var(--cc-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px;
+    font-weight: 700; padding: 6px 0 10px; }
+.lg-archived .lg-row { opacity: .75; }
+
+/* ---- create: steps ----------------------------------------------------- */
+.lg-steps { list-style: none; display: flex; gap: 6px; margin: 0 0 6px; padding: 0; flex-wrap: wrap; }
+.lg-steps li { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--cc-muted); padding: 4px 10px 4px 4px;
+    border-radius: var(--cc-r-pill); background: var(--cc-surface-2); }
+.lg-steps li span { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--cc-surface-3); font-size: 12px; font-weight: 700; }
+.lg-steps li.on { color: var(--cc-text); }
+.lg-steps li.on span { background: var(--cc-accent); color: #fff; }
+.lg-steps li.done span { background: color-mix(in srgb, var(--cc-success) 40%, var(--cc-surface-3)); }
+
+.lg-step { padding-top: 8px; }
+.lg-field { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 0; min-width: 0; }
+.lg-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--cc-muted); font-weight: 700; }
+.lg-step input[type="text"], .lg-step input[type="email"], .lg-step input[type="number"], .lg-step input[type="datetime-local"], .lg-step select {
+    background: var(--cc-surface-2); color: var(--cc-text); border: 1px solid var(--cc-border-2); border-radius: var(--cc-r-sm);
+    padding: 9px 10px; font: 500 14px Poppins, sans-serif; min-width: 0; width: 100%; box-sizing: border-box; color-scheme: dark; }
+.lg-hint { font-size: 13px; color: var(--cc-muted); margin: 12px 0 0; }
+.lg-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.lg-foot-split { justify-content: space-between; margin-top: 24px; }
+.lg-foot-split > :only-child { margin-left: auto; }
+
+.lg-sports { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.lg-sport-card { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--cc-border-2);
+    border-radius: var(--cc-r-md); background: var(--cc-surface); cursor: pointer; }
+.lg-sport-card i { font-size: 20px; color: var(--cc-muted-bright); }
+.lg-sport-card span { display: flex; flex-direction: column; }
+.lg-sport-card small { color: var(--cc-muted); font-size: 12px; }
+.lg-sport-card:has(input:checked) { border-color: var(--cc-accent); background: var(--cc-surface-3); }
+.lg-sport-card.off { opacity: .5; cursor: default; }
+
+.lg-pick, .lg-in, .lg-order { list-style: none; margin: 0; padding: 0; }
+.lg-pick li, .lg-order li { border-top: 1px solid var(--cc-border); }
+.lg-pick li:first-child, .lg-order li:first-child { border-top: 0; }
+.lg-pick label { display: flex; align-items: center; gap: 10px; padding: 9px 2px; cursor: pointer; margin: 0; }
+.lg-pick input { width: 18px; height: 18px; flex: none; }
+.lg-who { display: flex; flex-direction: column; min-width: 0; }
+.lg-who b { font-weight: 600; overflow-wrap: anywhere; }
+.lg-who small { color: var(--cc-muted); font-size: 12px; }
+.lg-in { display: flex; flex-wrap: wrap; gap: 6px; }
+.lg-in li { font-size: 13px; padding: 4px 10px; border-radius: var(--cc-r-pill); background: var(--cc-surface-2); border: 1px solid var(--cc-border); }
+.lg-in li i { color: var(--cc-success); margin-right: 4px; }
+
+.lg-new { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lg-new input[type="email"] { grid-column: 1 / -1; }
+.lg-new button { grid-column: 1 / -1; justify-self: end; }
+@media (min-width: 640px) {
+    .lg-new { grid-template-columns: 1fr 1fr 1.4fr auto; }
+    .lg-new input[type="email"], .lg-new button { grid-column: auto; }
+}
+.lg-invite { margin-top: 12px; font-size: 13px; color: var(--cc-muted-bright); }
+.lg-invite-row { display: flex; gap: 8px; margin-top: 6px; }
+.lg-invite-row input { flex: 1 1 auto; font-size: 12px !important; }
+
+.lg-order li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; }
+.lg-order .lg-who { flex: 1 1 auto; }
+.lg-pos { width: 24px; text-align: right; color: var(--cc-muted); font-variant-numeric: tabular-nums; }
+.lg-mv { border: 1px solid var(--cc-border-2); background: var(--cc-surface-2); color: var(--cc-text); border-radius: var(--cc-r-sm);
+    width: 32px; height: 32px; cursor: pointer; }
+.lg-mv:disabled { opacity: .35; cursor: default; }
+.lg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 12px; }
+/* Date and time together need the whole row; half of a phone cut the time off. */
+.lg-field-wide { grid-column: 1 / -1; }

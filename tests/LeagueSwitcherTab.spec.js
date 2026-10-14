@@ -343,3 +343,24 @@ describe('the recap popup is remembered per LEAGUE', () => {
         expect(SRC).not.toMatch(/(get|set)Item\(SEEN_KEY\)/);
     });
 });
+
+// "Manage leagues" (#536): the last option on an Admin's <select>. It is a
+// link, not a league — choosing it must not POST a selection (the empty value
+// would be refused, and the dropdown would look broken) and must not leave
+// the dropdown on it.
+describe('Manage leagues in the dropdown', () => {
+    test('goes to /leagues without selecting anything', async () => {
+        const navs = [];
+        console.error.mockImplementation((e) => { if (/navigation/i.test(String((e && e.message) || e))) navs.push(e); });
+        page({ leagues: [OTHER, BALL, HOOPS], here: BALL.code, isAdmin: true });
+        const sel = document.querySelector('[league-select]');
+        const manage = [...sel.options].find(o => o.getAttribute('data-href') === '/leagues');
+        sel.value = manage.value;
+        manage.selected = true;
+        sel.dispatchEvent(new window.Event('change'));
+        await settle();
+        expect(posts).toEqual([]);
+        expect(sel.value).toBe(BALL.code);
+        expect(navs).toHaveLength(1);
+    });
+});

@@ -27,6 +27,7 @@
 
 const Account = require('../models/account');
 const Franchise = require('../models/franchise');
+const draftOrder = require('./draft-order');
 
 // ---- the switch is gone ----
 //
@@ -779,12 +780,75 @@ async function createManager(fields) {
     // and built from the CREATED documents, not from the input. Echoing the
     // input back skips schema defaults, casting and subdocument ids, so the
     // response would differ from what a read returns a moment later.
+    for (const s of franchise.seasons || []) await joinDraftOrder(franchise.league, s.season, account._id);
     const shaped = toUserShape(account.toObject(), franchise.toObject());
     // __v, for the same reason the two PATCH responses carry it: flag-off this
     // route echoed a mongoose document, and "merging changes nothing" should be
     // literally true rather than nearly true.
     if (franchise.__v !== undefined) shaped.__v = franchise.__v;
     return shaped;
+}
+
+// Someone new in a league's season goes last in a draft order already saved
+// for it (modules/draft-order.js). Never fails the add: the franchise exists
+// either way, and the setup screen appends anyone missing when it is next
+// opened — so this is logged loudly rather than thrown.
+async function joinDraftOrder(league, season, accountId) {
+    try {
+        await draftOrder.appendManager(league, season, accountId);
+    } catch (e) {
+        console.error(`draft order: could not add ${accountId} to ${league} ${season} — `
+            + `re-save the order on the Leagues page. ${e && e.message}`);
+    }
+}
+
+// Put an EXISTING person in another league (#536): a new Franchise under the
+// account they already log in with.
+//
+// The other half of createManager, and the reason it is a separate function
+// rather than an option on that one: this must never make an Account. An
+// Auth0 login resolves through metadata.userId to exactly one account _id, so
+// a second account for the same human is a franchise nobody can log in as —
+// which is what "Add a Player" produced for someone already in the app, since
+// invite-bind refuses to rebind an identity that is already linked. Here the
+// account is looked up, never created, and a missing one is an error.
+//
+// Idempotent on (account, league): the unique index already forbids a second
+// franchise, and a repeated tick of the same checkbox should say so rather
+// than 500. The existing franchise is left exactly as it is — its roster and
+// scores are not this function's to reset.
+async function addFranchise(accountId, league, { season, lastUpdated } = {}) {
+    if (!league) throw new Error('addFranchise: a league is required');
+    const account = await Account.findById(accountId, { _id: 1 }).lean();
+    if (!account) {
+        const err = new Error(`addFranchise: no account ${accountId}`);
+        err.status = 404;
+        throw err;
+    }
+    // Already has a team here. Someone who sat a season out keeps their
+    // franchise (and its history) but has no entry for THIS season, so they
+    // are given one: back in, rather than "already in" yet missing from the
+    // season's managers and its draft order.
+    const existing = await Franchise.findOne({ accountId: account._id, league }, { _id: 1, 'seasons.season': 1 }).lean();
+    if (existing) {
+        const hasSeason = season == null || (existing.seasons || []).some(s => Number(s.season) === Number(season));
+        if (hasSeason) return { created: false, franchiseId: existing._id };
+        await Franchise.updateOne({ _id: existing._id, 'seasons.season': { $ne: season } }, { $push: { seasons: { season } } });
+        await joinDraftOrder(league, season, account._id);
+        return { created: true, rejoined: true, franchiseId: existing._id };
+    }
+
+    const fields = { accountId: account._id, league, seasons: season != null ? [{ season }] : [] };
+    if (lastUpdated) fields.lastUpdated = lastUpdated;
+    try {
+        const made = await Franchise.create(fields);
+        await joinDraftOrder(league, season, account._id);
+        return { created: true, franchiseId: made._id };
+    } catch (e) {
+        // Two ticks racing: the other one won, which is the same answer.
+        if (e && e.code === 11000) return { created: false, franchiseId: null };
+        throw e;
+    }
 }
 
 // Trim an assembled document to the fields a caller asked for, `_id` always
@@ -806,6 +870,6 @@ module.exports = {
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
-    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, rosteredForWrite,
+    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, addFranchise, rosteredForWrite,
     ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
 };
