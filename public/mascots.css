@@ -301,12 +301,12 @@
 
 /* ---------- Dribbles' moves ---------- */
 /* Dunk-and-hang: he swings from the rim grip, the free fist pumps (1.6s). */
-.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 35.6px 15.8px; }   /* the rim grip */
-.ccm .ccm-dh-pump { transform-box: view-box; transform-origin: 18.5px 30px; }
+.ccm .ccm-dh-swing { transform-box: view-box; transform-origin: 26.6px 22.4px; }   /* the rim grip */
+.ccm .ccm-dh-pump { transform-box: view-box; transform-origin: 54px 35px; }
 .ccm-wrap.is-busy .ccm-dh-swing { animation: ccm-dh-swing 1.6s ease-in-out infinite alternate; }
 .ccm-wrap.is-busy .ccm-dh-pump { animation: ccm-dh-pump .4s ease-in-out infinite alternate; }
 @keyframes ccm-dh-swing { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
-@keyframes ccm-dh-pump { from { transform: rotate(0deg); } to { transform: rotate(14deg); } }
+@keyframes ccm-dh-pump { from { transform: rotate(0deg); } to { transform: rotate(-14deg); } }
 
 /* Cutting down the net: snip-snip with the scissors (the loose blade opens
    and closes at the hand), the net piece waves overhead, and he bounces a

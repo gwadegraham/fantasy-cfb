@@ -355,27 +355,27 @@
             ${shoe(17.5, 59, 12, 'ccm-f-violet')}${shoe(34.5, 59, 12, 'ccm-f-violet')}</g>`;
     const dHip = `<g class="ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>`;
 
-    // Season high: the dunk-and-hang. One hand on the rim, the other pumping,
-    // legs dangling; he swings from the rim (ccm-dh-*).
+    // Season high: the dunk-and-hang. He hangs off the side of the rim by one
+    // hand, the other fist pumping, legs dangling, swinging from the grip. He
+    // hangs to the right of the hoop so the rim and net stay in view (with the
+    // hoop at real proportions, hanging below it would cover both) (ccm-dh-*).
     const dribblesDunk = u => `
-        ${dDefs(u, 32, 33, 15)}
-        <!-- The same real-proportion hoop as the net cutting: 30-wide board,
-             the shooter's square on a quarter-width rim, a tapered net. -->
-        <rect class="ccm-f-body ccm-o" x="17" y="0" width="30" height="17.5" rx="1"/>
-        <rect x="27" y="8.1" width="10" height="7.5" fill="none" stroke="var(--ccm-ball)" stroke-width="1"/>
-        <g class="ccm-lmb" fill="none" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linejoin="round">
-          <path d="M28.6 16.6 L29.8 23.6 L34.2 23.6 L35.4 16.6"/>
-          <path d="M28.6 16.6 L32 23.6 M30.8 16.6 L34.2 23.6 M33.2 16.6 L29.8 23.6 M35.4 16.6 L32 23.6 M29.2 20 L34.8 20"/></g>
-        <rect class="ccm-f-red ccm-o" x="28.2" y="15.4" width="7.6" height="1.8" rx=".9"/>
+        ${dDefs(u, 42, 38, 13)}
+        <rect class="ccm-f-body ccm-o" x="0" y="0" width="40" height="23.3" rx="1.2"/>
+        <rect x="13.3" y="11.2" width="13.4" height="10" fill="none" stroke="var(--ccm-ball)" stroke-width="1.1"/>
+        <g class="ccm-lmb" fill="none" stroke="var(--ccm-shade)" stroke-width=".9" stroke-linejoin="round">
+          <path d="M15.4 22.4 L17 31.4 L23 31.4 L24.6 22.4"/>
+          <path d="M15.4 22.4 L20 31.4 M18.4 22.4 L23 31.4 M21.6 22.4 L17 31.4 M24.6 22.4 L20 31.4 M16.2 27 L23.8 27"/></g>
+        <rect class="ccm-f-red ccm-o" x="15" y="21" width="10" height="2" rx="1"/>
         <g class="ccm-dh-swing">
-          <g class="ccm-lmb">${noodle('M28 47 Q27 54 26.5 61')}${noodle('M36 47 Q37 54 38 60.5')}
-            ${shoe(17, 59, 12, 'ccm-f-violet')}${shoe(34, 58.6, 12, 'ccm-f-violet')}
-            ${noodle('M44.5 27 Q47 18 36.8 16.8')}</g>
-          <g class="ccm-dh-pump ccm-lmb">${noodle('M18.5 30 Q9 27 11 18')}${glove(11, 15.4, 'fist')}</g>
-          ${dBall(u, 32, 33, 15)}
-          ${eyes(26.8, 37.2, 31.6, 3.6, 5.2)}
-          ${smile(u + 'm', 32, 38.6, 5.4, 2.6)}
-          <g class="ccm-lmb">${glove(35.6, 15.8, 'fist')}</g>
+          <g class="ccm-lmb">${noodle('M38 50 Q37 56 36.5 61.5')}${noodle('M46 50 Q47 56 48 61')}
+            ${shoe(27, 59.4, 12, 'ccm-f-violet')}${shoe(44, 59, 12, 'ccm-f-violet')}
+            ${noodle('M30.6 33 Q26 29 26.6 23.6')}</g>
+          <g class="ccm-dh-pump ccm-lmb">${noodle('M54 35 Q60.5 32 59 24')}${glove(59, 21.4, 'fist')}</g>
+          ${dBall(u, 42, 38, 13)}
+          ${eyes(37.6, 46.4, 36.8, 3.3, 4.8)}
+          ${smile(u + 'm', 42, 43, 4.6, 2.2)}
+          <g class="ccm-lmb">${glove(26.6, 22.4, 'fist')}</g>
         </g>`;
 
     // #1: cutting down the net, the college champion's ritual. He stands on a
