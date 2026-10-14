@@ -1172,13 +1172,14 @@ button.hw-run { background: var(--hw-a); border-color: var(--hw-a); }
     // H2H tie: a jump ball. Two Dribbles (the right one mirrored) take turns
     // leaping for a ball floating between them; it hops a little on each try
     // and neither ever reaches it. Wide 128x72 (ccm-jb-*).
-    const jumper = u => `
+    // `s` keeps each jumper's smile clip-path id unique within the drawing.
+    const jumper = (u, s) => `
           <g class="ccm-lmb">${noodle('M27 47 Q22 52 25 58')}${noodle('M36 47 Q38 53 35 58.6')}
             ${shoe(16, 56.4, 12, 'ccm-f-violet')}${shoe(27, 57, 12, 'ccm-f-violet')}
             ${noodle('M18.5 36 Q11 40 12 46')}${noodle('M45 29 Q53 20 56.4 11.4')}</g>
           ${dBall(u, 32, 34, 15)}
           ${eyes(28.6, 38.6, 31, 3.4, 5)}
-          ${smile(u + 'm', 33.6, 38, 4.6, 2.2)}
+          ${smile(u + s + 'm', 33.6, 38, 4.6, 2.2)}
           <g class="ccm-lmb">${glove(12.4, 46.6, 'fist')}${glove(57, 9, 'wave')}</g>`;
     const dribblesJumpBall = u => `
         ${dDefs(u, 32, 34, 15)}
@@ -1188,8 +1189,8 @@ button.hw-run { background: var(--hw-a); border-color: var(--hw-a); }
           <circle class="ccm-f-ball ccm-o" cx="64" cy="1.8" r="4.2"/>
           <g class="ccm-seam" stroke-width=".8"><line x1="64" y1="-2.4" x2="64" y2="6"/><line x1="59.8" y1="1.2" x2="68.2" y2="1.2"/></g>
         </g>
-        <g class="ccm-jb-jump">${jumper(u)}</g>
-        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)"><g class="ccm-jb-jump ccm-jb-late">${jumper(u)}</g></g>`;
+        <g class="ccm-jb-jump">${jumper(u, 'a')}</g>
+        <g style="transform-box: view-box" transform="translate(128 0) scale(-1 1)"><g class="ccm-jb-jump ccm-jb-late">${jumper(u, 'b')}</g></g>`;
 
     const dribbles = (u, pose) => {
         if (pose === 'dunkhang' || pose === 'griddy') return dribblesDunk(u);

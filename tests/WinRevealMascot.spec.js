@@ -33,6 +33,7 @@ function reveal(result, sport) {
         tug: !!scrim.querySelector('.ccm-tw2-rope'),
         spinL: !!scrim.querySelector('.ccm-sl-spin'),
         jumpBall: !!scrim.querySelector('.ccm-jb-ball'),
+        slideIn: !!scrim.querySelector('.cwr-hand'),
         srLetter: scrim.querySelector('.sr-only') && scrim.querySelector('.sr-only').textContent,
         mascotHidden: !scrim.querySelector('.cwr-mascot') || scrim.querySelector('.cwr-mascot').getAttribute('aria-hidden') === 'true',
         text: scrim.textContent
@@ -47,7 +48,7 @@ describe('Laces in the head-to-head reveal', () => {
 
     test('a loss: Laces hands you the L, which replaces the stamp', () => {
         const r = reveal('loss', 'football');
-        expect(r).toMatchObject({ mascot: 'Laces', stamp: null, handsL: true });
+        expect(r).toMatchObject({ mascot: 'Laces', stamp: null, handsL: true, slideIn: true });
         // The drawing is hidden from screen readers; the letter is read instead.
         expect(r).toMatchObject({ srLetter: 'L', mascotHidden: true });
     });
@@ -55,6 +56,8 @@ describe('Laces in the head-to-head reveal', () => {
     test('a basketball loss: Dribbles spins the L on his foam finger, replacing the stamp', () => {
         const r = reveal('loss', 'basketball');
         expect(r).toMatchObject({ mascot: 'Dribbles', stamp: null, spinL: true, handsL: false, srLetter: 'L' });
+        // The big slide-in sizing is for Laces walking up with the L, not Dribbles.
+        expect(r.slideIn).toBe(false);
     });
 
     test('a tie: two Laces in a tug-of-war, which replaces the stamp', () => {
