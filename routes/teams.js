@@ -7,6 +7,7 @@ const Team = require('../models/team');
 const { FBS_ONLY } = require('../modules/team-scope');
 const franchiseRepo = require('../modules/franchise-repo');
 const Draft = require('../models/draft');
+const League = require('../models/league');
 const { parseOdds, americanToProb, buildTeamMatcher } = require('../modules/cfp-odds');
 const MarketSnapshot = require('../models/marketSnapshot');
 const { buildSnapshotTeams } = require('../modules/market-snapshot');
@@ -643,10 +644,22 @@ router.post('/refresh', async (req, res) => {
             // are synced and why conference is deliberately excluded.
             const map = teamsById(allTeams);
 
+            // FOOTBALL LEAGUES ONLY. The map is keyed by CFBD id, and CBBD numbers
+            // basketball teams independently — CBB 87 is Florida, CFBD 87 is
+            // Notre Dame — so an unscoped pass renamed a third of a hoops draft
+            // to football schools (#545). The sport comes from the stored League
+            // docs, not the active-season cache, which answers 'football' for
+            // every league until it is primed. Excluding basketball rather than
+            // selecting football keeps a league with no League doc in scope: the
+            // schema's default sport is football, and the original leagues
+            // pre-date the collection.
+            const basketballLeagues = await League.distinct('code', { sport: 'basketball' });
+            const footballLeague = { $nin: basketballLeagues };
+
             let rostersSynced = 0;
             // Franchise-side: rosters live on the season entry. Saved directly
             // rather than through saveBoth — nothing here touches the account.
-            const rosters = await franchiseRepo.rosteredForWrite();
+            const rosters = await franchiseRepo.rosteredForWrite({ league: footballLeague });
             for (const u of rosters) {
                 let changed = 0;
                 (u.seasons || []).forEach(s => { changed += applyTeamFields(s.teams, map); });
@@ -654,7 +667,7 @@ router.post('/refresh', async (req, res) => {
             }
 
             let draftsSynced = 0;
-            const drafts = await Draft.find({ 'picks.0': { $exists: true } });
+            const drafts = await Draft.find({ league: footballLeague, 'picks.0': { $exists: true } });
             for (const d of drafts) {
                 // picks[].team is Mixed, so mutate the team objects then flag the
                 // path for mongoose to persist.
