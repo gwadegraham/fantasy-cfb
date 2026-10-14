@@ -112,11 +112,27 @@
     }
 
     // Which slides get the mascot, and holding what. The greeting cheers; the
-    // league-best and league-worst beats get the trophy and the ice pack.
-    const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'icepack' };
+    // league-best beat gets the trophy; the league-worst gets the rain cloud
+    // (drizzle on the ice pack, a slump, then he shrugs it off). Both mascots
+    // have the rain cloud, so it needs no basketball fallback.
+    const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'raincloud' };
+
+    // The pose for one slide, or null for no mascot. Two beats earn a
+    // celebration: a new season high gets the Griddy, and sitting alone at #1
+    // gets the Heisman (a shared #1 is not his to strike). Both moves are
+    // Laces' only, so a basketball recap hands Dribbles a cheer or the trophy.
+    function mascotPose(s, recap, sport) {
+        const hoops = sport === 'basketball';
+        if (s.id === 'seasonhigh') return hoops ? 'cheer' : 'griddy';
+        if (s.id === 'rank') {
+            if (!recap || recap.rank !== 1 || recap.rankTie) return null;
+            return hoops ? 'trophy' : 'heisman';
+        }
+        return MASCOT_POSE[s.id] || null;
+    }
 
     // One story beat. Big number/emoji, optional team logo, or a narrative line.
-    function slideHtml(s, ctaHref, sport) {
+    function slideHtml(s, ctaHref, sport, recap) {
         const logo = (Array.isArray(s.logos) && s.logos.length)
             ? `<div class="recap-slide-logos">${s.logos.map(u => `<img class="recap-slide-logo" src="${escapeHtml(u)}" alt="">`).join('')}</div>`
             : (s.logo ? `<img class="recap-slide-logo" src="${escapeHtml(s.logo)}" alt="">` : '');
@@ -124,17 +140,18 @@
         const text = s.text ? `<p class="recap-slide-text">${escapeHtml(s.text)}</p>` : '';
         const sub = s.sub ? `<div class="recap-slide-sub">${escapeHtml(s.sub)}</div>` : '';
         const cta = (s.cta && ctaHref) ? `<a class="recap-popup-link" href="${ctaHref}">See all weeks →</a>` : '';
-        const pose = MASCOT_POSE[s.id];
+        const pose = mascotPose(s, recap, sport);
         const mascot = (pose && !logo && window.ccMascot)
             ? `<div class="recap-slide-mascot">${window.ccMascot.html({ sport, pose, size: 'full' })}</div>` : '';
         // With a mascot, he stands beside the number instead of stacking above it,
-        // so the slide stays as short as one without him. He also replaces the
-        // kicker's icon (flame, trophy, heartbreak): his pose already says it.
+        // so the slide stays as short as one without him. The kicker is text
+        // only: its 15px icon (flame, snowflake, heartbreak) was all but
+        // invisible on laptop and phone, and said nothing the words didn't.
         const body = mascot && big
             ? `<div class="recap-slide-hero">${mascot}<div class="recap-slide-hero-num">${big}${sub}</div></div>${text}`
             : `${mascot}${big}${text}${sub}`;
         return `<div class="recap-slide tone-${s.tone || 'neutral'}" data-slide-id="${s.id || ''}">
-            <div class="recap-slide-kicker">${(window.ccIcon && !mascot) ? window.ccIcon(s.icon, { size: 15 }) : ''} ${escapeHtml(s.kicker || '')}</div>
+            <div class="recap-slide-kicker">${escapeHtml(s.kicker || '')}</div>
             ${logo}
             <div class="recap-slide-title">${escapeHtml(s.title || '')}</div>
             ${body}${cta}
@@ -162,7 +179,7 @@
                 <span class="recap-sr" aria-live="polite"></span>
                 <button type="button" class="recap-popup-close" aria-label="Close">&times;</button>
                 <div class="recap-story-viewport">
-                    <div class="recap-story-track">${slides.map(s => slideHtml(s, ctaHref, sport)).join('')}</div>
+                    <div class="recap-story-track">${slides.map(s => slideHtml(s, ctaHref, sport, latest)).join('')}</div>
                 </div>
                 <button type="button" class="recap-nav-hint left" aria-label="Previous">‹</button>
                 <button type="button" class="recap-nav-hint right" aria-label="Next">›</button>
@@ -276,7 +293,7 @@
         if (!opts.force) localStorage.setItem(seenKeyFor(opts.league), recapWindowKey(now));
     }
 
-    window.ccRecap = { cardHtml, seenKeyFor, selectorHtml, fetchRecap, mountInline, showPopup, closePopup, maybeShowPopup, recapWindowKey, isRecapSeason, movement, ordinal };
+    window.ccRecap = { cardHtml, seenKeyFor, selectorHtml, fetchRecap, mountInline, showPopup, closePopup, maybeShowPopup, recapWindowKey, isRecapSeason, movement, ordinal, mascotPose };
 
     // App-wide auto-run: after the page's userState is in scope, offer the
     // weekly popup to the logged-in viewer (their own recap, not the profile

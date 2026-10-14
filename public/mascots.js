@@ -17,7 +17,8 @@
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
 // pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
 // Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
-// 'heisman' (the trophy pose, held).
+// 'heisman' (the trophy pose, held). Both mascots have 'raincloud' for a
+// league-low week: drizzle and a slump, then shrugging it off.
 //
 // Motion means something: the loops only run on a mascot marked busy, and
 // mascots.css freezes them under prefers-reduced-motion.
@@ -85,9 +86,24 @@
         <rect class="ccm-f-gold ccm-o" x="${x - 1}" y="${y + 8.6}" width="2" height="2.6"/>
         <rect class="ccm-f-gold ccm-o" x="${x - 3.6}" y="${y + 10.8}" width="7.2" height="2.2" rx="1"/></g>`;
 
-    const icepack = (x, y) => `<g class="ccm-prop">
-        <rect class="ccm-f-ice ccm-o" x="${x}" y="${y}" width="16" height="7" rx="3.5"/>
-        <rect class="ccm-f-body" x="${x + 2.4}" y="${y + 1.5}" width="6" height="1.4" rx=".7" opacity=".7"/></g>`;
+    // The plaid ice bag with a red screw cap, standing on his head and slumped
+    // under its own weight: a flat, wide base, a low dome, the cap on top. Its
+    // base sits at y + 7.2, centered on x + 8. (A plain blue bar read as
+    // anything but an ice pack; a round upright bag read as a bottle.)
+    const icepack = (x, y) => {
+        const cx = x + 8, base = y + 7.2, top = base - 7.2;
+        const bag = `M${cx - 7.4} ${base} Q${cx - 8.4} ${base - 4} ${cx - 3.2} ${top + .6} Q${cx} ${top - .5} ${cx + 3.2} ${top + .6} Q${cx + 8.4} ${base - 4} ${cx + 7.4} ${base} Q${cx} ${base + 1.4} ${cx - 7.4} ${base} Z`;
+        return `<g class="ccm-prop">
+          <rect class="ccm-f-ice ccm-o" x="${cx - 1.4}" y="${top - 2}" width="2.8" height="2.6"/>
+          <rect class="ccm-f-red ccm-o" x="${cx - 3}" y="${top - 4.8}" width="6" height="3.2" rx="1"/>
+          <g stroke="var(--ccm-ink)" stroke-width=".5" opacity=".45"><line x1="${cx - 1.2}" y1="${top - 4.3}" x2="${cx - 1.2}" y2="${top - 2.1}"/><line x1="${cx + 1.2}" y1="${top - 4.3}" x2="${cx + 1.2}" y2="${top - 2.1}"/></g>
+          <path class="ccm-f-ice ccm-o" d="${bag}"/>
+          <g stroke="var(--ccm-body)" stroke-width=".8" opacity=".8" stroke-linecap="round">
+            <line x1="${cx - 2.6}" y1="${top + 1.6}" x2="${cx - 3}" y2="${base}"/><line x1="${cx + 2.6}" y1="${top + 1.6}" x2="${cx + 3}" y2="${base}"/>
+            <line x1="${cx - 6.6}" y1="${base - 3.2}" x2="${cx + 6.6}" y2="${base - 3.2}"/></g>
+          <ellipse class="ccm-f-body" cx="${cx - 4.6}" cy="${base - 4.6}" rx=".8" ry="1.2" opacity=".8"/>
+        </g>`;
+    };
 
     const pennant = () => `
         <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
@@ -133,39 +149,96 @@
           <rect class="ccm-f-body" x="25.5" y="19.3" width="13" height="1.5" rx=".75"/>
           ${[-4.5, -1.5, 1.5, 4.5].map(d => `<line class="ccm-lace" x1="${32 + d}" y1="18.2" x2="${32 + d}" y2="21.9"/>`).join('')}`;
 
-    // The Griddy: heels kick out one at a time on a skip, arms swing opposite.
-    // Every limb is its own group so the CSS can run them half a beat apart.
+    // A leg with a knee: the thigh pivots at the hip and carries the shin, which
+    // pivots at the knee and carries the shoe. Drawn straight and planted; the
+    // CSS bends it. `side` is 'L' or 'R' (toes point outward).
+    const kneeLeg = (cls, hipX, kneeX, footX, shoeX) => `
+        <g class="${cls}-thigh">${noodle(`M${hipX} 42.5 Q${(hipX + kneeX) / 2 + (kneeX < hipX ? -.5 : .5)} 47.5 ${kneeX} 52`)}
+          <g class="${cls}-shin">${noodle(`M${kneeX} 52 Q${(kneeX + footX) / 2} 56.5 ${footX} 61`)}${shoe(shoeX, 59, 12, 'ccm-f-red')}</g></g>`;
+
+    // The Griddy: four heel kicks on a skip (left, right, left, right), arms
+    // swinging against the legs, then both hands up to the eyes for the goggles.
+    // The legs move side-on, toes forward (right): a heel kicking BACK is the
+    // whole move, and from straight on it reads as flailing. Each limb is its
+    // own group with its own joint pivot (mascots.css, ccm-gr-*).
     const lacesGriddy = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-gr-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
         <g class="ccm-gr-hop">
-          <g class="ccm-gr-legL ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${shoe(16.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-gr-legR ccm-lmb">${noodle('M37.5 42.5 Q40 51.75 39.5 61')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-gr-armL ccm-lmb">${noodle('M13.5 32 Q8 38 10 44')}${glove(10.5, 45, 'fist')}</g>
-          <g class="ccm-gr-armR ccm-lmb">${noodle('M50.5 32 Q56 38 54 44')}${glove(53.5, 45, 'fist')}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-gr-l', 29, 29, 29, 25)}${kneeLeg('ccm-gr-r', 35, 35, 35, 31)}</g>
           ${lacesBall(u)}
           ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 32, 33, 5.8, 2.6)}
+          <g class="ccm-gr-goggles" fill="none" stroke="var(--ccm-body)" stroke-width="1.5">
+            <circle cx="26.6" cy="27.2" r="5.6"/><circle cx="37.4" cy="27.2" r="5.6"/></g>
+          <g class="ccm-gr-armL ccm-lmb">${noodle('M13.5 32 Q8 38 10 44')}${glove(10.5, 45, 'fist')}</g>
+          <g class="ccm-gr-armR ccm-lmb">${noodle('M50.5 32 Q56 38 54 44')}${glove(53.5, 45, 'fist')}</g>
         </g>`;
 
     // The Heisman: stiff arm straight out, other arm tucked, one knee driven up.
+    // The arms are drawn IN the pose and the raised leg is a planted kneeLeg
+    // that the CSS bends into it, so a still render (or reduced motion) shows the
+    // finished statue. While busy he starts standing, strikes it, holds, resets.
     const lacesHeisman = u => `
         <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
-        <g class="ccm-fig">
+        <g class="ccm-hz-body">
           <g class="ccm-lmb">${noodle('M28 42.5 Q26 52 26.5 61')}${shoe(18.5, 59, 12, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
-          <g class="ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
-          <g class="ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
+          <g class="ccm-lmb">${kneeLeg('ccm-hz-k', 37, 37.5, 37.5, 35.5)}</g>
+          <g class="ccm-hz-tuck ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
+          <g class="ccm-hz-arm ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
           ${lacesBall(u)}
           ${eyes(25.6, 36.4, 27.2, 3.7, 5)}
           ${smile(u + 'm', 31, 33, 5.4, 2.4)}
         </g>`;
 
+    // Heavy lids on their own, so a pose can fade them (lidsFor) or roll the
+    // pupils up under them. Same arc as eyes()'s `lid` option.
+    const lidsFor = (x1, x2, y, rx, ry, fill, cls) => {
+        const ly = y - ry * .15, dx = rx * Math.sqrt(1 - .15 * .15);
+        return `<g class="${cls || ''}">${[x1, x2].map(x => `<path class="${fill}" d="M${x - dx} ${ly} A ${rx} ${ry} 0 0 1 ${x + dx} ${ly} Z" stroke="var(--ccm-ink)" stroke-width="1"/>`).join('')}</g>`;
+    };
+
+    // The rain cloud for 'raincloud', drawn with its left lobe at x = 26 + dx so
+    // each mascot can hang it clear of his ice pack's cap.
+    const rainCloud = (dx) => `
+        <g class="ccm-rc-cloud">
+          <g class="ccm-rc-drops">
+            <ellipse class="ccm-f-ice" cx="${27 + dx}" cy="11" rx=".8" ry="1.4"/>
+            <ellipse class="ccm-f-ice" cx="${32.5 + dx}" cy="11" rx=".8" ry="1.4"/>
+            <ellipse class="ccm-f-ice" cx="${38 + dx}" cy="11" rx=".8" ry="1.4"/>
+          </g>
+          ${[[26, 6.6, 3.6], [32.5, 5, 4.6], [38.6, 6.8, 3.4]].map(([cx, cy, r]) => `<circle cx="${cx + dx}" cy="${cy}" r="${r}" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width="1.2"/>`).join('')}
+          <rect x="${24 + dx}" y="6.4" width="16.6" height="3.8" rx="1.9" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width="1.2"/>
+          ${[[26, 6.6, 2.9], [32.5, 5, 3.9], [38.6, 6.8, 2.7]].map(([cx, cy, r]) => `<circle cx="${cx + dx}" cy="${cy}" r="${r}" fill="var(--ccm-shade)"/>`).join('')}
+          <rect x="${24.6 + dx}" y="7" width="15.4" height="2.6" fill="var(--ccm-shade)"/>
+        </g>`;
+
+    // Low score, sympathetic: a little cloud drizzles on his ice pack while he
+    // slumps, then he shrugs it off: the lids lift, the frown turns into a
+    // smile and the cloud drifts away (mascots.css, ccm-rc-*).
+    const lacesRaincloud = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-rc-body">
+          <g class="ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${noodle('M37.5 42.5 Q40 51.75 39.5 61')}
+            ${shoe(16.5, 59, 12, 'ccm-f-red')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
+          <g class="ccm-lmb">${noodle('M13.5 31 Q7 24 15 17.5')}${glove(15.6, 16.6, 'fist')}</g>
+          <g class="ccm-rc-shrug ccm-lmb">${noodle('M50.5 31 Q55 36 54 43')}${glove(54, 44, 'fist')}</g>
+          ${lacesBall(u)}
+          ${icepack(17, 9.6)}
+          ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
+          ${lidsFor(26.6, 37.4, 27.2, 3.7, 5, 'ccm-f-leather', 'ccm-rc-lids')}
+          <g class="ccm-rc-frown">${frown(32, 35, 3.4)}</g>
+          <g class="ccm-rc-smile">${smile(u + 'm', 32, 33, 5, 2.2)}</g>
+        </g>
+        ${rainCloud(7.5)}`;
+
     // ---------- Laces: leather football, red cleats ----------
     const laces = (u, pose) => {
         if (pose === 'griddy') return lacesGriddy(u);
         if (pose === 'heisman') return lacesHeisman(u);
+        if (pose === 'raincloud') return lacesRaincloud(u);
         const sad = pose === 'icepack';
         const left = pose === 'trophy'
             ? `<g class="ccm-wave ccm-lmb">${noodle('M13.5 31 Q6 27 8 18')}${trophy(8, 1.6)}${glove(8, 15, 'fist')}</g>`
@@ -199,7 +272,10 @@
 
     // ---------- Dribbles: orange basketball, violet sneakers ----------
     const dribbles = (u, pose) => {
-        const sad = pose === 'icepack';
+        // 'raincloud' is the ice-pack pose plus the cloud, a shrug from the hip
+        // hand, and lids and mouth that can lift (mascots.css, ccm-rc-*).
+        const rc = pose === 'raincloud';
+        const sad = pose === 'icepack' || rc;
         const off = 17 * 1.35, sr = 17 * .885, sy = 27 - 17 * .15;
         const right = pose === 'trophy'
             ? `<g class="ccm-wag ccm-lmb">${noodle('M48.4 26 Q55 26.5 55 21')}${trophy(55, 3.6)}${glove(55, 18, 'fist')}</g>`
@@ -212,10 +288,10 @@
         return `
         <defs><clipPath id="${u}c"><circle cx="32" cy="27" r="17"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
-        <g class="ccm-fig">
+        <g class="${rc ? 'ccm-rc-body' : 'ccm-fig'}">
           <g class="ccm-lmb">${noodle('M27 42 Q25.5 52 25.5 61')}${shoe(17.5, 59, 12, 'ccm-f-violet')}</g>
           ${kick}
-          <g class="ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>
+          <g class="${rc ? 'ccm-rc-shrugL ' : ''}ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>
           ${right}
           <circle class="ccm-f-ball" cx="32" cy="27" r="17"/>
           <g clip-path="url(#${u}c)">
@@ -225,9 +301,13 @@
           </g>
           <circle class="ccm-o ccm-none" cx="32" cy="27" r="17"/>
           ${sad ? icepack(31, 6.2) : ''}
-          ${eyes(26.4, 37.6, 25.2, 4, 5.8, sad ? 'ccm-f-ball' : null)}
-          ${sad ? frown(32, 35, 3.6) : smile(u + 'm', 32, 33.4, 6.4, 3.2)}
-        </g>`;
+          ${rc
+            ? `${eyes(26.4, 37.6, 25.2, 4, 5.8)}${lidsFor(26.4, 37.6, 25.2, 4, 5.8, 'ccm-f-ball', 'ccm-rc-lids')}
+               <g class="ccm-rc-frown">${frown(32, 35, 3.6)}</g><g class="ccm-rc-smile">${smile(u + 'm', 32, 33.4, 5.6, 2.6)}</g>`
+            : `${eyes(26.4, 37.6, 25.2, 4, 5.8, sad ? 'ccm-f-ball' : null)}
+               ${sad ? frown(32, 35, 3.6) : smile(u + 'm', 32, 33.4, 6.4, 3.2)}`}
+        </g>
+        ${rc ? rainCloud(-9) : ''}`;
     };
 
     const DRAW = { football: laces, basketball: dribbles };

@@ -38,6 +38,7 @@
 .ccm .ccm-f-gold { fill: var(--ccm-gold); }
 .ccm .ccm-f-violet { fill: var(--ccm-violet); }
 .ccm .ccm-f-ice { fill: var(--ccm-ice); }
+.ccm .ccm-f-shade { fill: var(--ccm-shade); }
 .ccm .ccm-f-leather { fill: var(--ccm-leather); }
 .ccm .ccm-f-leather-shade { fill: var(--ccm-leather-shade); }
 .ccm .ccm-f-ball { fill: var(--ccm-ball); }
@@ -82,30 +83,173 @@
 @keyframes ccm-look { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(.9px); } 65% { transform: translateX(-.9px); } }
 @keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
 
-/* The Griddy (pose 'griddy'). One beat = .52s: the body skips twice, each heel
-   kicks out on its own half, arms swing opposite the legs. */
-.ccm .ccm-gr-hop { transform-origin: 50% 100%; }
-.ccm .ccm-gr-legL, .ccm .ccm-gr-legR { transform-origin: 50% 0%; }
-.ccm .ccm-gr-armL { transform-origin: 100% 0%; }
-.ccm .ccm-gr-armR { transform-origin: 0% 0%; }
-.ccm .ccm-gr-shadow { transform-origin: center; }
-.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-legL { animation: ccm-gr-kickL .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-legR { animation: ccm-gr-kickR .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-swing .52s ease-in-out infinite; }
-.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-swing .52s ease-in-out infinite reverse; }
-.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow .52s ease-in-out infinite; }
+/* ---------- The Griddy (pose 'griddy') ----------
+   Arms and legs together, like the real dance: the feet never stop. Each
+   phrase is three heel kicks on a skip, two with the arms swinging (each arm
+   flaring out on its own leg's kick, so a glove never lands on the kicked
+   shoe) and one with the hands up at the eyes for the goggles. Three kicks
+   would put two lefts back to back at the loop, so one 2.4s loop is the
+   phrase twice, mirrored: L, R, L-goggles, R, L, R-goggles (every 16.67%).
+   The legs are side-on, toes forward, so each heel visibly kicks back and
+   up behind him.
+   Pivots are the joints in the 64x72 drawing (view-box). */
+.ccm .ccm-gr-hop     { transform-box: view-box; transform-origin: 32px 61px; }
+.ccm .ccm-gr-l-thigh { transform-box: view-box; transform-origin: 29px 42.5px; }
+.ccm .ccm-gr-l-shin  { transform-box: view-box; transform-origin: 29px 52px; }
+.ccm .ccm-gr-r-thigh { transform-box: view-box; transform-origin: 35px 42.5px; }
+.ccm .ccm-gr-r-shin  { transform-box: view-box; transform-origin: 35px 52px; }
+.ccm .ccm-gr-armL    { transform-box: view-box; transform-origin: 13.5px 32px; }
+.ccm .ccm-gr-armR    { transform-box: view-box; transform-origin: 50.5px 32px; }
+.ccm .ccm-gr-shadow  { transform-origin: center; }
+.ccm .ccm-gr-goggles { opacity: 0; }
+.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-thigh { animation: ccm-gr-l-thigh 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-l-shin { animation: ccm-gr-l-shin 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-thigh { animation: ccm-gr-r-thigh 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-r-shin { animation: ccm-gr-r-shin 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-armL 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-armR 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-goggles { animation: ccm-gr-goggles 2.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow 2.4s ease-in-out infinite; }
 @keyframes ccm-gr-hop {
-    0%, 50%, 100% { transform: translateY(0) scale(1, 1); }
-    12% { transform: translateY(.6px) scale(1.03, .96); }
-    25% { transform: translateY(-3px) rotate(-3deg); }
-    62% { transform: translateY(.6px) scale(1.03, .96); }
-    75% { transform: translateY(-3px) rotate(3deg); }
+    0%, 16.67%, 33.33%, 50%, 66.67%, 83.33%, 100% { transform: translateY(.6px) scale(1.03, .96); }
+    8.33%, 41.67%, 75% { transform: translateY(-3px) rotate(-3deg); }
+    25%, 58.33%, 91.67% { transform: translateY(-3px) rotate(3deg); }
 }
-@keyframes ccm-gr-kickL { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(32deg); } }
-@keyframes ccm-gr-kickR { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(-32deg); } }
-@keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
-@keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
+@keyframes ccm-gr-l-thigh {
+    0%, 2.33%, 14.33%, 35.67%, 47.67%, 69%, 81%, 100% { transform: rotate(0deg); }
+    6.33%, 10.33%, 39.67%, 43.67%, 73%, 77% { transform: rotate(24deg); }
+}
+@keyframes ccm-gr-l-shin {
+    0%, 2.33%, 14.33%, 35.67%, 47.67%, 69%, 81%, 100% { transform: rotate(0deg); }
+    6.33%, 10.33%, 39.67%, 43.67%, 73%, 77% { transform: rotate(100deg); }
+}
+@keyframes ccm-gr-r-thigh {
+    0%, 19%, 31%, 52.33%, 64.33%, 85.67%, 97.67%, 100% { transform: rotate(0deg); }
+    23%, 27%, 56.33%, 60.33%, 89.67%, 93.67% { transform: rotate(24deg); }
+}
+@keyframes ccm-gr-r-shin {
+    0%, 19%, 31%, 52.33%, 64.33%, 85.67%, 97.67%, 100% { transform: rotate(0deg); }
+    23%, 27%, 56.33%, 60.33%, 89.67%, 93.67% { transform: rotate(100deg); }
+}
+/* Two swinging kicks, then the goggles for the third, twice per loop. */
+@keyframes ccm-gr-armL {
+    0%, 52%, 100% { transform: rotate(8deg); }
+    8.33%, 75% { transform: rotate(30deg); }
+    25%, 58.33% { transform: rotate(-4deg); }
+    35%, 46%, 85%, 96% { transform: rotate(-128deg); }
+}
+@keyframes ccm-gr-armR {
+    0%, 52%, 100% { transform: rotate(-8deg); }
+    8.33%, 75% { transform: rotate(4deg); }
+    25%, 58.33% { transform: rotate(-30deg); }
+    35%, 46%, 85%, 96% { transform: rotate(126deg); }
+}
+@keyframes ccm-gr-goggles {
+    0%, 32%, 49%, 82%, 99%, 100% { opacity: 0; }
+    37%, 45%, 87%, 95% { opacity: 1; }
+}
+@keyframes ccm-gr-shadow {
+    0%, 16.67%, 33.33%, 50%, 66.67%, 83.33%, 100% { transform: scaleX(1); opacity: .35; }
+    8.33%, 25%, 41.67%, 58.33%, 75%, 91.67% { transform: scaleX(.82); opacity: .2; }
+}
+
+/* ---------- The Heisman (pose 'heisman') ----------
+   One 3s cycle: stand neutral (stiff arm hanging, tucked arm loose, both feet
+   on the ground), then strike it: stiff arm swings out from the shoulder, the
+   other arm pulls in, the knee drives up and the shin folds under, he leans in
+   and holds, then resets. Without .is-busy the static transforms below hold
+   the finished pose. */
+.ccm .ccm-hz-arm  { transform-box: view-box; transform-origin: 12.5px 29.5px; }
+.ccm .ccm-hz-tuck { transform-box: view-box; transform-origin: 51px 31px; }
+.ccm .ccm-hz-body { transform-box: view-box; transform-origin: 27px 61px; }
+.ccm .ccm-hz-k-thigh { transform-box: view-box; transform-origin: 37px 42.5px; transform: rotate(-78deg); }
+.ccm .ccm-hz-k-shin  { transform-box: view-box; transform-origin: 37.5px 52px; transform: rotate(92deg); }
+.ccm-wrap.is-busy .ccm-hz-arm     { animation: ccm-hz-arm 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-tuck    { animation: ccm-hz-tuck 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-k-thigh { animation: ccm-hz-thigh 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-k-shin  { animation: ccm-hz-shin 3s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-hz-body    { animation: ccm-hz-body 3s ease-in-out infinite; }
+@keyframes ccm-hz-arm {
+    0%, 12% { transform: rotate(-85deg); }
+    24% { transform: rotate(7deg); }
+    30%, 80% { transform: rotate(0deg); }
+    94%, 100% { transform: rotate(-85deg); }
+}
+@keyframes ccm-hz-tuck {
+    0%, 12% { transform: rotate(-38deg); }
+    24% { transform: rotate(5deg); }
+    30%, 80% { transform: rotate(0deg); }
+    94%, 100% { transform: rotate(-38deg); }
+}
+@keyframes ccm-hz-thigh {
+    0%, 12% { transform: rotate(0deg); }
+    24% { transform: rotate(-84deg); }
+    30%, 80% { transform: rotate(-78deg); }
+    94%, 100% { transform: rotate(0deg); }
+}
+@keyframes ccm-hz-shin {
+    0%, 12% { transform: rotate(0deg); }
+    24% { transform: rotate(98deg); }
+    30%, 80% { transform: rotate(92deg); }
+    94%, 100% { transform: rotate(0deg); }
+}
+@keyframes ccm-hz-body {
+    0%, 12% { transform: rotate(0deg); }
+    28%, 80% { transform: translateY(-1px) rotate(-4deg); }
+    94%, 100% { transform: rotate(0deg); }
+}
+
+/* ---------- Rain cloud (pose 'raincloud') ----------
+   One 4.4s cycle: the cloud drizzles while he slumps and slow-blinks (0-60%),
+   he shrugs (60-72%), then perks up: lids lift, the frown becomes a smile and
+   the cloud drifts off (72-92%), and everything settles back for the loop.
+   Without .is-busy he is the glum still: cloud up, lids down, frown. Laces
+   shrugs with his free right hand, Dribbles with his hip hand. */
+.ccm .ccm-rc-body { transform-box: view-box; transform-origin: 32px 61px; }
+.ccm .ccm-rc-shrug { transform-box: view-box; transform-origin: 50.5px 31px; }
+.ccm .ccm-rc-shrugL { transform-box: view-box; transform-origin: 15.6px 31px; }  /* Dribbles shrugs with his hip hand */
+.ccm .ccm-rc-smile { opacity: 0; }
+.ccm .ccm-rc-drops ellipse { transform-box: fill-box; }
+.ccm-wrap.is-busy .ccm-rc-body  { animation: ccm-rc-body 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrug { animation: ccm-rc-shrug 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrugL { animation: ccm-rc-shrugL 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-lids  { animation: ccm-rc-lids 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-frown { animation: ccm-rc-frown 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-smile { animation: ccm-rc-smile 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-cloud { animation: ccm-rc-cloud 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse { animation: ccm-rc-drop .7s linear infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(2) { animation-delay: .23s; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(3) { animation-delay: .46s; }
+@keyframes ccm-rc-body {
+    0%, 100% { transform: scale(1, 1); }
+    30%, 60% { transform: translateY(1px) scale(1.03, .95); }
+    68% { transform: translateY(-1.5px) scale(.98, 1.04); }
+    80%, 92% { transform: translateY(-1px) scale(1, 1); }
+}
+@keyframes ccm-rc-shrug {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(-48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-shrugL {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-lids  { 0%, 70%, 97%, 100% { opacity: 1; } 78%, 92% { opacity: 0; } }
+@keyframes ccm-rc-frown { 0%, 70%, 97%, 100% { opacity: 1; } 76%, 92% { opacity: 0; } }
+@keyframes ccm-rc-smile { 0%, 72%, 95%, 100% { opacity: 0; } 78%, 92% { opacity: 1; } }
+@keyframes ccm-rc-cloud {
+    0%, 70% { transform: translate(0, 0); opacity: 1; }
+    84%, 92% { transform: translate(14px, -6px); opacity: 0; }
+    97%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes ccm-rc-drop {
+    0% { transform: translateY(0); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translateY(5px); opacity: 0; }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
