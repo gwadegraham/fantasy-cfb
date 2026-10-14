@@ -140,13 +140,18 @@ async function rows(req) {
 async function candidates(req, league) {
     const [others, inLeague, named, docs] = await Promise.all([
         Franchise.find({ league: { $ne: league } }, { accountId: 1, league: 1, 'seasons.season': 1, _id: 0 }).lean(),
-        Franchise.find({ league }, { accountId: 1, _id: 0 }).lean(),
+        Franchise.find({ league }, { accountId: 1, 'seasons.season': 1, _id: 0 }).lean(),
         leagueCatalog.named(req),
         League.find({}, { code: 1, sport: 1, season: 1, _id: 0 }).lean()
     ]);
-    const already = new Set(inLeague.map(f => String(f.accountId)));
-    const names = new Map(named.map(l => [l.code, l.name]));
+    // "Already in" means playing THIS season. A former member (a franchise
+    // with no entry for it) is offered again, so they can be brought back.
     const docBy = new Map(docs.map(d => [d.code, d]));
+    const thisSeason = seasonOf(docBy.get(league) || null);
+    const already = new Set(inLeague
+        .filter(f => (f.seasons || []).some(s => Number(s.season) === thisSeason))
+        .map(f => String(f.accountId)));
+    const names = new Map(named.map(l => [l.code, l.name]));
     const leaguesBy = new Map();
     others.forEach(f => {
         const id = String(f.accountId);
@@ -229,8 +234,10 @@ function build({ pageLocals = () => ({}) } = {}) {
             const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const acct = await Account.findOne({ email: new RegExp(`^${escaped}$`, 'i') }, { firstName: 1, lastName: 1 }).lean();
             if (!acct) return res.json({ found: false });
+            const doc = await League.findOne({ code: league }, { code: 1, sport: 1, season: 1, _id: 0 }).lean();
             const [inLeague, elsewhere] = await Promise.all([
-                Franchise.exists({ accountId: acct._id, league }),
+                // In it THIS season; a former member can be added back.
+                Franchise.exists({ accountId: acct._id, league, 'seasons.season': seasonOf(doc) }),
                 Franchise.exists({ accountId: acct._id, league: { $ne: league } })
             ]);
             return res.json({

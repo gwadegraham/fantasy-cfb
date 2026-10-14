@@ -246,7 +246,15 @@
             .then(function (out) {
                 var n = (out.added || []).length;
                 if (n) toast('success', 'Added ' + plural(n, 'manager'));
+                // Anyone the server would not add stays ticked and the step
+                // stays put, so nobody silently drops out of the draft order.
+                var refused = (out.refused || []).map(String);
                 picked = {};
+                refused.forEach(function (id) { picked[id] = true; });
+                if (refused.length) {
+                    toast('error', plural(refused.length, 'manager') + ' couldn\'t be added — they no longer play in another league. Add them as someone new instead.');
+                    return startStep2();
+                }
                 return startStep3();
             }).catch(function (e) {
                 btn.disabled = false;

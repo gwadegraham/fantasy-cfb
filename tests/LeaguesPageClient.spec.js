@@ -216,6 +216,17 @@ describe('Create league', () => {
         expect($('[data-to-step3]').textContent).toBe('Add 2 managers and continue');
     });
 
+    test('step 2: a manager the server refuses is SAID, stays ticked, and the step stays put', async () => {
+        await toStep2();
+        tick('a1'); tick('b2');
+        routes['POST /leagues/admin/hardwood/members'] = () => json({ added: ['a1'], already: [], refused: ['b2'] });
+        click($('[data-to-step3]'));
+        await flush();
+        expect($('[data-step="2"]')).not.toBeNull();
+        expect($('[data-pick="b2"]') && $('[data-pick="b2"]').checked).toBe(true);
+        expect(toasts.some(([kind, msg]) => kind === 'err' && /1 manager couldn't be added/.test(msg))).toBe(true);
+    });
+
     test('step 2: unticking takes them back out; a refused add stays on the step with the ticks kept', async () => {
         await toStep2();
         tick('a1'); tick('b2'); tick('a1', false);

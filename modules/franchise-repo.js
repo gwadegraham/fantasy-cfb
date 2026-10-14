@@ -810,8 +810,17 @@ async function addFranchise(accountId, league, { season, lastUpdated } = {}) {
         err.status = 404;
         throw err;
     }
-    const existing = await Franchise.findOne({ accountId: account._id, league }, { _id: 1 }).lean();
-    if (existing) return { created: false, franchiseId: existing._id };
+    // Already has a team here. Someone who sat a season out keeps their
+    // franchise (and its history) but has no entry for THIS season, so they
+    // are given one: back in, rather than "already in" yet missing from the
+    // season's managers and its draft order.
+    const existing = await Franchise.findOne({ accountId: account._id, league }, { _id: 1, 'seasons.season': 1 }).lean();
+    if (existing) {
+        const hasSeason = season == null || (existing.seasons || []).some(s => Number(s.season) === Number(season));
+        if (hasSeason) return { created: false, franchiseId: existing._id };
+        await Franchise.updateOne({ _id: existing._id, 'seasons.season': { $ne: season } }, { $push: { seasons: { season } } });
+        return { created: true, rejoined: true, franchiseId: existing._id };
+    }
 
     const fields = { accountId: account._id, league, seasons: season != null ? [{ season }] : [] };
     if (lastUpdated) fields.lastUpdated = lastUpdated;

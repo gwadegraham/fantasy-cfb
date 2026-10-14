@@ -118,12 +118,22 @@ describe('franchiseRepo.addFranchise', () => {
         expect(added.lastUpdated).toBe('now');
     });
 
-    test('a second time is a no-op that leaves the first one alone', async () => {
-        const out = await repo.addFranchise(ann._id, 'graham-league', { season: 2030 });
+    test('a second time for the SAME season is a no-op that leaves the first one alone', async () => {
+        const out = await repo.addFranchise(ann._id, 'graham-league', { season: FOOTBALL });
         const f = await Franchise.findOne({ accountId: ann._id, league: 'graham-league' }).lean();
         expect(out).toEqual({ created: false, franchiseId: f._id });
         expect(f.seasons.map(s => s.season)).toEqual([FOOTBALL]);
         expect(await Franchise.countDocuments({ accountId: ann._id })).toBe(1);
+    });
+
+    test('someone who sat a season out is brought back: the season added, their history kept, still one franchise', async () => {
+        const out = await repo.addFranchise(ann._id, 'graham-league', { season: 2030 });
+        const f = await Franchise.findOne({ accountId: ann._id, league: 'graham-league' }).lean();
+        expect(out).toEqual({ created: true, rejoined: true, franchiseId: f._id });
+        expect(f.seasons.map(s => s.season)).toEqual([FOOTBALL, 2030]);
+        expect(await Franchise.countDocuments({ accountId: ann._id })).toBe(1);
+        // and a repeat is then the no-op
+        expect((await repo.addFranchise(ann._id, 'graham-league', { season: 2030 })).created).toBe(false);
     });
 
     test('an unknown account is an error, never a new account', async () => {
@@ -328,6 +338,24 @@ describe('step 2: existing managers', () => {
     test('nobody anywhere else: an empty list', async () => {
         await Franchise.deleteMany({ league: { $ne: code } });
         expect((await as(ADMIN).get(`/leagues/admin/candidates?league=${code}`)).body).toEqual([]);
+    });
+});
+
+describe('a former member is offered again (#538 QA)', () => {
+    test('candidates and the email check treat someone with no team THIS season as not in the league', async () => {
+        // Ann played graham-league in an older season only.
+        await Franchise.updateOne({ accountId: ann._id, league: 'graham-league' }, { $set: { seasons: [{ season: 2024 }] } });
+        await League.create({ code: 'hoops-x', name: 'Hoops X', sport: 'basketball' });
+        await seasons.prime();
+        await Franchise.create({ accountId: ann._id, league: 'hoops-x', seasons: [{ season: 2020 }] });   // sat out since
+        const cands = (await as(ADMIN).get('/leagues/admin/candidates?league=hoops-x')).body;
+        expect(cands.map(c => c.firstName)).toContain('Ann');
+        const look = (await as(ADMIN).get('/leagues/admin/account?email=ann@example.com&league=hoops-x')).body;
+        expect(look.inLeague).toBe(false);
+        const add = (await as(ADMIN).post('/leagues/admin/hoops-x/members').send({ accountIds: [String(ann._id)] })).body;
+        expect(add.added).toEqual([String(ann._id)]);
+        const f = await Franchise.findOne({ accountId: ann._id, league: 'hoops-x' }).lean();
+        expect(f.seasons.map(x => x.season)).toEqual([2020, HOOPS]);
     });
 });
 
