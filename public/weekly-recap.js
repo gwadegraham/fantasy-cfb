@@ -112,8 +112,10 @@
     }
 
     // Which slides get the mascot, and holding what. The greeting cheers; the
-    // league-best and league-worst beats get the trophy and the ice pack.
-    const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'icepack' };
+    // league-best beat gets the trophy; the league-worst gets the rain cloud
+    // (drizzle on the ice pack, a slump, then he shrugs it off). Both mascots
+    // have the rain cloud, so it needs no basketball fallback.
+    const MASCOT_POSE = { hook: 'cheer', weekhigh: 'trophy', weeklow: 'raincloud' };
 
     // The pose for one slide, or null for no mascot. Two beats earn a
     // celebration: a new season high gets the Griddy, and sitting alone at #1

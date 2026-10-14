@@ -304,6 +304,7 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 .ccm .ccm-f-gold { fill: var(--ccm-gold); }
 .ccm .ccm-f-violet { fill: var(--ccm-violet); }
 .ccm .ccm-f-ice { fill: var(--ccm-ice); }
+.ccm .ccm-f-shade { fill: var(--ccm-shade); }
 .ccm .ccm-f-leather { fill: var(--ccm-leather); }
 .ccm .ccm-f-leather-shade { fill: var(--ccm-leather-shade); }
 .ccm .ccm-f-ball { fill: var(--ccm-ball); }
@@ -465,6 +466,57 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
     94%, 100% { transform: rotate(0deg); }
 }
 
+/* ---------- Rain cloud (pose 'raincloud') ----------
+   One 4.4s cycle: the cloud drizzles while he slumps and slow-blinks (0-60%),
+   he shrugs (60-72%), then perks up: lids lift, the frown becomes a smile and
+   the cloud drifts off (72-92%), and everything settles back for the loop.
+   Without .is-busy he is the glum still: cloud up, lids down, frown. Laces
+   shrugs with his free right hand, Dribbles with his hip hand. */
+.ccm .ccm-rc-body { transform-box: view-box; transform-origin: 32px 61px; }
+.ccm .ccm-rc-shrug { transform-box: view-box; transform-origin: 50.5px 31px; }
+.ccm .ccm-rc-shrugL { transform-box: view-box; transform-origin: 15.6px 31px; }  /* Dribbles shrugs with his hip hand */
+.ccm .ccm-rc-smile { opacity: 0; }
+.ccm .ccm-rc-drops ellipse { transform-box: fill-box; }
+.ccm-wrap.is-busy .ccm-rc-body  { animation: ccm-rc-body 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrug { animation: ccm-rc-shrug 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrugL { animation: ccm-rc-shrugL 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-lids  { animation: ccm-rc-lids 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-frown { animation: ccm-rc-frown 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-smile { animation: ccm-rc-smile 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-cloud { animation: ccm-rc-cloud 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse { animation: ccm-rc-drop .7s linear infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(2) { animation-delay: .23s; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(3) { animation-delay: .46s; }
+@keyframes ccm-rc-body {
+    0%, 100% { transform: scale(1, 1); }
+    30%, 60% { transform: translateY(1px) scale(1.03, .95); }
+    68% { transform: translateY(-1.5px) scale(.98, 1.04); }
+    80%, 92% { transform: translateY(-1px) scale(1, 1); }
+}
+@keyframes ccm-rc-shrug {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(-48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-shrugL {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-lids  { 0%, 70%, 97%, 100% { opacity: 1; } 78%, 92% { opacity: 0; } }
+@keyframes ccm-rc-frown { 0%, 70%, 97%, 100% { opacity: 1; } 76%, 92% { opacity: 0; } }
+@keyframes ccm-rc-smile { 0%, 72%, 95%, 100% { opacity: 0; } 78%, 92% { opacity: 1; } }
+@keyframes ccm-rc-cloud {
+    0%, 70% { transform: translate(0, 0); opacity: 1; }
+    84%, 92% { transform: translate(14px, -6px); opacity: 0; }
+    97%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes ccm-rc-drop {
+    0% { transform: translateY(0); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translateY(5px); opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ccm, .ccm * { animation: none !important; transition: none !important; }
 }
@@ -496,13 +548,17 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
   </div>
 
   <section class="moves">
-    <h2>Moves <span>Laces · celebrations</span></h2>
+    <h2>Moves <span>Celebrations and the low-score rain cloud</span></h2>
     <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). Both loop while he's busy; here they always run.</p>
     <div class="study-grid">
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="griddy" data-ccm-busy></span></div>
         <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Arms and legs together: two heel kicks with the arms swinging, then one with the goggles up, feet skipping the whole time.</dd></dl></div></article>
       <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman" data-ccm-busy></span></div>
         <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Starts standing on both feet; the stiff arm swings out, the other arm pulls in, the knee drives up with the shin folded under, he holds it, then resets.</dd></dl></div></article>
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="raincloud" data-ccm-busy></span></div>
+        <div class="info"><header><h3>Rain Cloud</h3><span class="tag new">Low score</span></header><dl><dt>Move</dt><dd>A little cloud drizzles on his ice pack while he slumps; then he shrugs it off, the lids lift, he smiles and the cloud drifts away. On the recap's league-low slide.</dd></dl></div></article>
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="basketball" data-ccm-pose="raincloud" data-ccm-busy></span></div>
+        <div class="info"><header><h3>Rain Cloud · Dribbles</h3><span class="tag new">Low score</span></header><dl><dt>Move</dt><dd>The same beat for basketball: cloud on his left, ice bag on his right, and he shrugs with his hip hand.</dd></dl></div></article>
     </div>
   </section>
 
@@ -544,7 +600,8 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 // drawing cropped to the head with the limbs hidden, for chips and loaders).
 // pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
 // Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
-// 'heisman' (the trophy pose, held).
+// 'heisman' (the trophy pose, held). Both mascots have 'raincloud' for a
+// league-low week: drizzle and a slump, then shrugging it off.
 //
 // Motion means something: the loops only run on a mascot marked busy, and
 // mascots.css freezes them under prefers-reduced-motion.
@@ -612,9 +669,24 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         <rect class="ccm-f-gold ccm-o" x="${x - 1}" y="${y + 8.6}" width="2" height="2.6"/>
         <rect class="ccm-f-gold ccm-o" x="${x - 3.6}" y="${y + 10.8}" width="7.2" height="2.2" rx="1"/></g>`;
 
-    const icepack = (x, y) => `<g class="ccm-prop">
-        <rect class="ccm-f-ice ccm-o" x="${x}" y="${y}" width="16" height="7" rx="3.5"/>
-        <rect class="ccm-f-body" x="${x + 2.4}" y="${y + 1.5}" width="6" height="1.4" rx=".7" opacity=".7"/></g>`;
+    // The plaid ice bag with a red screw cap, standing on his head and slumped
+    // under its own weight: a flat, wide base, a low dome, the cap on top. Its
+    // base sits at y + 7.2, centered on x + 8. (A plain blue bar read as
+    // anything but an ice pack; a round upright bag read as a bottle.)
+    const icepack = (x, y) => {
+        const cx = x + 8, base = y + 7.2, top = base - 7.2;
+        const bag = `M${cx - 7.4} ${base} Q${cx - 8.4} ${base - 4} ${cx - 3.2} ${top + .6} Q${cx} ${top - .5} ${cx + 3.2} ${top + .6} Q${cx + 8.4} ${base - 4} ${cx + 7.4} ${base} Q${cx} ${base + 1.4} ${cx - 7.4} ${base} Z`;
+        return `<g class="ccm-prop">
+          <rect class="ccm-f-ice ccm-o" x="${cx - 1.4}" y="${top - 2}" width="2.8" height="2.6"/>
+          <rect class="ccm-f-red ccm-o" x="${cx - 3}" y="${top - 4.8}" width="6" height="3.2" rx="1"/>
+          <g stroke="var(--ccm-ink)" stroke-width=".5" opacity=".45"><line x1="${cx - 1.2}" y1="${top - 4.3}" x2="${cx - 1.2}" y2="${top - 2.1}"/><line x1="${cx + 1.2}" y1="${top - 4.3}" x2="${cx + 1.2}" y2="${top - 2.1}"/></g>
+          <path class="ccm-f-ice ccm-o" d="${bag}"/>
+          <g stroke="var(--ccm-body)" stroke-width=".8" opacity=".8" stroke-linecap="round">
+            <line x1="${cx - 2.6}" y1="${top + 1.6}" x2="${cx - 3}" y2="${base}"/><line x1="${cx + 2.6}" y1="${top + 1.6}" x2="${cx + 3}" y2="${base}"/>
+            <line x1="${cx - 6.6}" y1="${base - 3.2}" x2="${cx + 6.6}" y2="${base - 3.2}"/></g>
+          <ellipse class="ccm-f-body" cx="${cx - 4.6}" cy="${base - 4.6}" rx=".8" ry="1.2" opacity=".8"/>
+        </g>`;
+    };
 
     const pennant = () => `
         <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
@@ -703,10 +775,53 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
           ${smile(u + 'm', 31, 33, 5.4, 2.4)}
         </g>`;
 
+    // Heavy lids on their own, so a pose can fade them (lidsFor) or roll the
+    // pupils up under them. Same arc as eyes()'s `lid` option.
+    const lidsFor = (x1, x2, y, rx, ry, fill, cls) => {
+        const ly = y - ry * .15, dx = rx * Math.sqrt(1 - .15 * .15);
+        return `<g class="${cls || ''}">${[x1, x2].map(x => `<path class="${fill}" d="M${x - dx} ${ly} A ${rx} ${ry} 0 0 1 ${x + dx} ${ly} Z" stroke="var(--ccm-ink)" stroke-width="1"/>`).join('')}</g>`;
+    };
+
+    // The rain cloud for 'raincloud', drawn with its left lobe at x = 26 + dx so
+    // each mascot can hang it clear of his ice pack's cap.
+    const rainCloud = (dx) => `
+        <g class="ccm-rc-cloud">
+          <g class="ccm-rc-drops">
+            <ellipse class="ccm-f-ice" cx="${27 + dx}" cy="11" rx=".8" ry="1.4"/>
+            <ellipse class="ccm-f-ice" cx="${32.5 + dx}" cy="11" rx=".8" ry="1.4"/>
+            <ellipse class="ccm-f-ice" cx="${38 + dx}" cy="11" rx=".8" ry="1.4"/>
+          </g>
+          ${[[26, 6.6, 3.6], [32.5, 5, 4.6], [38.6, 6.8, 3.4]].map(([cx, cy, r]) => `<circle cx="${cx + dx}" cy="${cy}" r="${r}" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width="1.2"/>`).join('')}
+          <rect x="${24 + dx}" y="6.4" width="16.6" height="3.8" rx="1.9" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width="1.2"/>
+          ${[[26, 6.6, 2.9], [32.5, 5, 3.9], [38.6, 6.8, 2.7]].map(([cx, cy, r]) => `<circle cx="${cx + dx}" cy="${cy}" r="${r}" fill="var(--ccm-shade)"/>`).join('')}
+          <rect x="${24.6 + dx}" y="7" width="15.4" height="2.6" fill="var(--ccm-shade)"/>
+        </g>`;
+
+    // Low score, sympathetic: a little cloud drizzles on his ice pack while he
+    // slumps, then he shrugs it off: the lids lift, the frown turns into a
+    // smile and the cloud drifts away (mascots.css, ccm-rc-*).
+    const lacesRaincloud = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-rc-body">
+          <g class="ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${noodle('M37.5 42.5 Q40 51.75 39.5 61')}
+            ${shoe(16.5, 59, 12, 'ccm-f-red')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
+          <g class="ccm-lmb">${noodle('M13.5 31 Q7 24 15 17.5')}${glove(15.6, 16.6, 'fist')}</g>
+          <g class="ccm-rc-shrug ccm-lmb">${noodle('M50.5 31 Q55 36 54 43')}${glove(54, 44, 'fist')}</g>
+          ${lacesBall(u)}
+          ${icepack(17, 9.6)}
+          ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
+          ${lidsFor(26.6, 37.4, 27.2, 3.7, 5, 'ccm-f-leather', 'ccm-rc-lids')}
+          <g class="ccm-rc-frown">${frown(32, 35, 3.4)}</g>
+          <g class="ccm-rc-smile">${smile(u + 'm', 32, 33, 5, 2.2)}</g>
+        </g>
+        ${rainCloud(7.5)}`;
+
     // ---------- Laces: leather football, red cleats ----------
     const laces = (u, pose) => {
         if (pose === 'griddy') return lacesGriddy(u);
         if (pose === 'heisman') return lacesHeisman(u);
+        if (pose === 'raincloud') return lacesRaincloud(u);
         const sad = pose === 'icepack';
         const left = pose === 'trophy'
             ? `<g class="ccm-wave ccm-lmb">${noodle('M13.5 31 Q6 27 8 18')}${trophy(8, 1.6)}${glove(8, 15, 'fist')}</g>`
@@ -740,7 +855,10 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
 
     // ---------- Dribbles: orange basketball, violet sneakers ----------
     const dribbles = (u, pose) => {
-        const sad = pose === 'icepack';
+        // 'raincloud' is the ice-pack pose plus the cloud, a shrug from the hip
+        // hand, and lids and mouth that can lift (mascots.css, ccm-rc-*).
+        const rc = pose === 'raincloud';
+        const sad = pose === 'icepack' || rc;
         const off = 17 * 1.35, sr = 17 * .885, sy = 27 - 17 * .15;
         const right = pose === 'trophy'
             ? `<g class="ccm-wag ccm-lmb">${noodle('M48.4 26 Q55 26.5 55 21')}${trophy(55, 3.6)}${glove(55, 18, 'fist')}</g>`
@@ -753,10 +871,10 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
         return `
         <defs><clipPath id="${u}c"><circle cx="32" cy="27" r="17"/></clipPath></defs>
         <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
-        <g class="ccm-fig">
+        <g class="${rc ? 'ccm-rc-body' : 'ccm-fig'}">
           <g class="ccm-lmb">${noodle('M27 42 Q25.5 52 25.5 61')}${shoe(17.5, 59, 12, 'ccm-f-violet')}</g>
           ${kick}
-          <g class="ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>
+          <g class="${rc ? 'ccm-rc-shrugL ' : ''}ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>
           ${right}
           <circle class="ccm-f-ball" cx="32" cy="27" r="17"/>
           <g clip-path="url(#${u}c)">
@@ -766,9 +884,13 @@ footer code { font: 500 12px var(--mono); color: var(--muted); }
           </g>
           <circle class="ccm-o ccm-none" cx="32" cy="27" r="17"/>
           ${sad ? icepack(31, 6.2) : ''}
-          ${eyes(26.4, 37.6, 25.2, 4, 5.8, sad ? 'ccm-f-ball' : null)}
-          ${sad ? frown(32, 35, 3.6) : smile(u + 'm', 32, 33.4, 6.4, 3.2)}
-        </g>`;
+          ${rc
+            ? `${eyes(26.4, 37.6, 25.2, 4, 5.8)}${lidsFor(26.4, 37.6, 25.2, 4, 5.8, 'ccm-f-ball', 'ccm-rc-lids')}
+               <g class="ccm-rc-frown">${frown(32, 35, 3.6)}</g><g class="ccm-rc-smile">${smile(u + 'm', 32, 33.4, 5.6, 2.6)}</g>`
+            : `${eyes(26.4, 37.6, 25.2, 4, 5.8, sad ? 'ccm-f-ball' : null)}
+               ${sad ? frown(32, 35, 3.6) : smile(u + 'm', 32, 33.4, 6.4, 3.2)}`}
+        </g>
+        ${rc ? rainCloud(-9) : ''}`;
     };
 
     const DRAW = { football: laces, basketball: dribbles };

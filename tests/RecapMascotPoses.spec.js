@@ -78,7 +78,7 @@ describe('football: Laces celebrates', () => {
             weekhigh: { mascot: 'Laces', pose: 'trophy' }
         });
         expect(posesFor('football', recap({ weekLow: true })).weeklow)
-            .toEqual({ mascot: 'Laces', pose: 'icepack' });
+            .toEqual({ mascot: 'Laces', pose: 'raincloud' });
     });
 
     test('Dribbles never appears on a football recap', () => {
@@ -97,6 +97,11 @@ describe('basketball: Dribbles falls back to his own poses', () => {
     test('an untied #1 rank gets the trophy, not the Heisman', () => {
         const p = posesFor('basketball', recap({ rank: 1 }));
         expect(p.rank).toEqual({ mascot: 'Dribbles', pose: 'trophy' });
+    });
+
+    test('a league-low week gets his own rain cloud', () => {
+        const p = posesFor('basketball', recap({ weekLow: true }));
+        expect(p.weeklow).toEqual({ mascot: 'Dribbles', pose: 'raincloud' });
     });
 
     test('no basketball slide is handed a Laces-only move', () => {
@@ -129,6 +134,20 @@ describe('the drawing matches the pose', () => {
         expect([has('rank', 'ccm-prop'), has('rank', 'ccm-cc-foam')]).toEqual([true, false]);
         expect([has('seasonhigh', 'ccm-cc-foam'), has('seasonhigh', 'ccm-prop')]).toEqual([true, false]);
         window.ccRecap.closePopup();
+    });
+
+    // The rain cloud is the one low-score move both mascots draw: the cloud,
+    // the lids that lift and the smile that replaces the frown.
+    test('a league-low week draws the rain cloud, for Laces and for Dribbles', () => {
+        for (const sport of ['football', 'basketball']) {
+            load(sport);
+            window.ccRecap.showPopup({ league: 'x', recaps: [recap({ weekLow: true })] }, 'u1');
+            const low = document.querySelector('.recap-slide[data-slide-id="weeklow"] .recap-slide-mascot');
+            expect(low.querySelector('svg').getAttribute('data-mascot')).toBe(sport === 'football' ? 'Laces' : 'Dribbles');
+            expect(['ccm-rc-cloud', 'ccm-rc-lids', 'ccm-rc-smile', 'ccm-rc-frown'].map(c => !!low.querySelector('.' + c)))
+                .toEqual([true, true, true, true]);
+            window.ccRecap.closePopup();
+        }
     });
 
     test('the celebration only moves while its own slide is showing', () => {

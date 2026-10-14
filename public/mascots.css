@@ -38,6 +38,7 @@
 .ccm .ccm-f-gold { fill: var(--ccm-gold); }
 .ccm .ccm-f-violet { fill: var(--ccm-violet); }
 .ccm .ccm-f-ice { fill: var(--ccm-ice); }
+.ccm .ccm-f-shade { fill: var(--ccm-shade); }
 .ccm .ccm-f-leather { fill: var(--ccm-leather); }
 .ccm .ccm-f-leather-shade { fill: var(--ccm-leather-shade); }
 .ccm .ccm-f-ball { fill: var(--ccm-ball); }
@@ -197,6 +198,57 @@
     0%, 12% { transform: rotate(0deg); }
     28%, 80% { transform: translateY(-1px) rotate(-4deg); }
     94%, 100% { transform: rotate(0deg); }
+}
+
+/* ---------- Rain cloud (pose 'raincloud') ----------
+   One 4.4s cycle: the cloud drizzles while he slumps and slow-blinks (0-60%),
+   he shrugs (60-72%), then perks up: lids lift, the frown becomes a smile and
+   the cloud drifts off (72-92%), and everything settles back for the loop.
+   Without .is-busy he is the glum still: cloud up, lids down, frown. Laces
+   shrugs with his free right hand, Dribbles with his hip hand. */
+.ccm .ccm-rc-body { transform-box: view-box; transform-origin: 32px 61px; }
+.ccm .ccm-rc-shrug { transform-box: view-box; transform-origin: 50.5px 31px; }
+.ccm .ccm-rc-shrugL { transform-box: view-box; transform-origin: 15.6px 31px; }  /* Dribbles shrugs with his hip hand */
+.ccm .ccm-rc-smile { opacity: 0; }
+.ccm .ccm-rc-drops ellipse { transform-box: fill-box; }
+.ccm-wrap.is-busy .ccm-rc-body  { animation: ccm-rc-body 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrug { animation: ccm-rc-shrug 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-shrugL { animation: ccm-rc-shrugL 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-lids  { animation: ccm-rc-lids 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-frown { animation: ccm-rc-frown 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-smile { animation: ccm-rc-smile 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-cloud { animation: ccm-rc-cloud 4.4s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse { animation: ccm-rc-drop .7s linear infinite; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(2) { animation-delay: .23s; }
+.ccm-wrap.is-busy .ccm-rc-drops ellipse:nth-child(3) { animation-delay: .46s; }
+@keyframes ccm-rc-body {
+    0%, 100% { transform: scale(1, 1); }
+    30%, 60% { transform: translateY(1px) scale(1.03, .95); }
+    68% { transform: translateY(-1.5px) scale(.98, 1.04); }
+    80%, 92% { transform: translateY(-1px) scale(1, 1); }
+}
+@keyframes ccm-rc-shrug {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(-48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-shrugL {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    66%, 74% { transform: rotate(48deg); }
+    84% { transform: rotate(0deg); }
+}
+@keyframes ccm-rc-lids  { 0%, 70%, 97%, 100% { opacity: 1; } 78%, 92% { opacity: 0; } }
+@keyframes ccm-rc-frown { 0%, 70%, 97%, 100% { opacity: 1; } 76%, 92% { opacity: 0; } }
+@keyframes ccm-rc-smile { 0%, 72%, 95%, 100% { opacity: 0; } 78%, 92% { opacity: 1; } }
+@keyframes ccm-rc-cloud {
+    0%, 70% { transform: translate(0, 0); opacity: 1; }
+    84%, 92% { transform: translate(14px, -6px); opacity: 0; }
+    97%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes ccm-rc-drop {
+    0% { transform: translateY(0); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translateY(5px); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
