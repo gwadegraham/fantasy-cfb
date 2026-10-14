@@ -19,6 +19,8 @@
 
 /* ---- states ------------------------------------------------------------ */
 .sp-loading, .sp-error { padding: 48px 0; text-align: center; color: var(--cc-muted); }
+/* The bouncing mascot head above "Loading…" (public/mascots.js). */
+.sp-loading .ccm-wrap { display: block; width: 56px; height: 56px; margin: 0 auto 10px; }
 .sp-empty { padding: 16px 14px; color: var(--cc-muted); font-size: 13px; }
 
 /* ---- hero shell: full-bleed, team colour comes from the sport sheet ---- */

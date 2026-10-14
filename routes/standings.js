@@ -55,14 +55,30 @@ const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-
 // (roster toggles, draft/season assignment, new managers) and isn't gated on job
 // success — this only moves when a scoring job actually completed. Returns the
 // run record, or null if no scoring job has ever succeeded.
+//
+// `running` says whether a scoring job is in flight right now (the badge's mascot
+// bounces while it is). Only runs started in the last RUNNING_WINDOW_MS count: a
+// job that crashed mid-run never flips its row off 'running', and without the
+// window that stale row would keep the mascot busy until the TTL reaped it.
+// The live poller is left out: it writes a 'running' row every 10s tick of a
+// game day, so a page load that landed mid-tick would show "scoring in
+// progress" long after the tick ended (the badge reads this once, on load).
+const RUNNING_WINDOW_MS = 15 * 60 * 1000;
+const BATCH_SCORING_JOBS = SCORING_JOBS.filter(j => j !== 'live-scores');
 router.get('/last-updated', async (req, res) => {
     try {
-        const run = await JobRun.findOne(
-            { jobName: { $in: SCORING_JOBS }, status: 'success' },
-            { finishedAt: 1, startedAt: 1, jobName: 1, week: 1, seasonType: 1, season: 1 },
-            { sort: { finishedAt: -1 } }
-        ).lean();
-        res.json(run || null);
+        const [run, inFlight] = await Promise.all([
+            JobRun.findOne(
+                { jobName: { $in: SCORING_JOBS }, status: 'success' },
+                { finishedAt: 1, startedAt: 1, jobName: 1, week: 1, seasonType: 1, season: 1 },
+                { sort: { finishedAt: -1 } }
+            ).lean(),
+            JobRun.exists({
+                jobName: { $in: BATCH_SCORING_JOBS }, status: 'running',
+                startedAt: { $gte: new Date(Date.now() - RUNNING_WINDOW_MS) }
+            })
+        ]);
+        res.json(run ? { ...run, running: !!inFlight } : null);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

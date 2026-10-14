@@ -862,6 +862,17 @@ body.uh-drawer-open { overflow: hidden; }
 /* draft countdown */
 .uh-pre-draft { display: flex; flex-direction: column; background: linear-gradient(180deg, #1d2540, var(--cc-surface)); border-color: rgba(108,155,255,0.28); }
 .uh-pre-draft .uh-tlabel { color: var(--cc-info); }
+/* Laces / Dribbles waiting on draft day, bottom-right of the tile (public/mascots.js).
+   Still, not bouncing: nothing is running. The body keeps clear of him. */
+.uh-pre-draft.has-mascot { position: relative; min-height: 104px; }
+.uh-pre-draft.has-mascot .uh-pd-body { padding-right: 76px; }
+.uh-pd-mascot { position: absolute; right: 10px; bottom: 6px; pointer-events: none; }
+.uh-pd-mascot .ccm-size-full { width: 66px; height: 74px; }
+/* On a phone the countdown and CTA row need the full width; he sits this one out. */
+@media (max-width: 520px) {
+    .uh-pre-draft.has-mascot .uh-pd-body { padding-right: 0; }
+    .uh-pd-mascot { display: none; }
+}
 .uh-pd-h { font-size: 19px; font-weight: 800; color: var(--cc-text); margin: 2px 0 0; text-wrap: balance; }
 .uh-pd-sub { font-size: 14px; color: var(--cc-muted); margin: 8px 0 0; line-height: 1.5; }
 .uh-clock { display: flex; gap: 10px; margin: 16px 0 4px; }

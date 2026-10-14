@@ -1,0 +1,1304 @@
+<title>Campus Clash Mascots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: sticky control bar drives two sport rows of mascot cards; each card = big rig preview + real-size status chip. */
+:root {
+  color-scheme: dark;
+  --bg: #101322;
+  --surface: #1A1F33;
+  --surface-2: #171B31;
+  --border: #2A2E42;
+  --text: #F4F6FB;
+  --muted: #A4A9C2;
+  --muted-2: #8A90A8;
+  /* mascot palette: neutral body + shade tone + ink outline, accents set per sport */
+  --ink: #0B0E1A;
+  --body: #F4F6FB;
+  --shade: #C9CEE6;
+  --fb-a: #ed5858;
+  --fb-a2: #E0B341;
+  --hw-a: #F0833F;
+  --hw-a2: #8E8CF0;
+  --ball: #F0833F;
+  --leather: #8B4A2B;
+  --leather-shade: #6E3920;
+  --ball-shade: #CC6629;
+  --flame: #F2BC4B;
+  --display: "Graduate", "Rockwell", Georgia, serif;
+  --sans: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+
+header h1 { font: 400 clamp(28px, 5vw, 44px)/1.05 var(--display); margin: 0 0 8px; letter-spacing: .01em; text-wrap: balance; }
+header p { color: var(--muted); margin: 0; max-width: 64ch; }
+
+.controls {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
+  margin: 24px 0 8px; padding: 12px 16px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.ctl { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.ctl b { font: 600 13px var(--mono); color: var(--text); min-width: 3.5ch; font-variant-numeric: tabular-nums; }
+.lbl { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; font-weight: 600; }
+button { font: 600 13px var(--sans); color: var(--text); background: var(--surface); border: 1px solid #3A3F58; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+button:hover { background: #343954; }
+button:focus-visible, input:focus-visible { outline: 2px solid #6C9BFF; outline-offset: 2px; }
+button.run { background: var(--fb-a); border-color: var(--fb-a); color: var(--ink); }
+button.run:disabled { opacity: .5; cursor: default; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.switch input { appearance: none; width: 36px; height: 20px; border-radius: 999px; background: #343954; position: relative; cursor: pointer; margin: 0; transition: background .2s; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text); transition: transform .2s; }
+.switch input:checked { background: #22C37A; }
+.switch input:checked::after { transform: translateX(16px); }
+input[type=range] { width: 140px; accent-color: var(--fb-a2); }
+.stepper { display: inline-flex; align-items: center; gap: 6px; }
+.stepper button { padding: 2px 9px; }
+.rm-note { font-size: 12px; color: var(--muted-2); }
+
+section { margin-top: 40px; }
+section h2 { display: flex; align-items: baseline; gap: 12px; font: 400 22px var(--display); margin: 0 0 4px; }
+section h2 span { font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: .1em; color: var(--muted-2); }
+section > p { color: var(--muted); margin: 0 0 16px; font-size: 14px; }
+.fb { --a: var(--fb-a); --a2: var(--fb-a2); }
+.hw { --a: var(--hw-a); --a2: var(--hw-a2); }
+section h2::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--a); align-self: center; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.stage { position: relative; height: 160px; background: var(--surface-2); border-bottom: 1px solid var(--border); display: grid; place-items: center; }
+.stage .m { width: 116px; height: 116px; }
+.stage.travel { place-items: end start; }
+.stage.travel .runner { position: absolute; bottom: 30px; left: calc(14px + (100% - 28px - 88px) * var(--pct, 0)); width: 88px; height: 88px; transition: left .45s ease-out; }
+.stage.travel .runner .m { width: 88px; height: 88px; }
+.track { position: absolute; left: 14px; right: 14px; bottom: 26px; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.track i { display: block; height: 100%; width: calc(var(--pct, 0) * 100%); background: var(--a); transition: width .45s ease-out; }
+
+.info { padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.info header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.info h3 { margin: 0; font: 400 16px var(--display); letter-spacing: .02em; }
+.tag { font: 600 10px var(--sans); text-transform: uppercase; letter-spacing: .1em; padding: 2px 6px; border-radius: 4px; color: var(--muted-2); border: 1px solid var(--border); }
+.tag.new { color: var(--ink); background: var(--a2); border-color: var(--a2); }
+.rig { display: flex; flex-wrap: wrap; gap: 4px; }
+.rig span { font: 500 11px var(--mono); color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; }
+dt { color: var(--muted-2); text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; font-weight: 600; padding-top: 2px; }
+dd { margin: 0; color: var(--text); }
+
+.chip { margin: 0 12px 12px; display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); min-width: 0; }
+.chip .m { width: 50px; height: 50px; flex: none; }
+.chip span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.chip span b { color: var(--text); font-weight: 600; }
+
+/* rubber-hose study */
+.study { --a: var(--fb-a); }
+.study-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.m.head { overflow: hidden; }
+.m.head .lmb { display: none; }
+.m .num-band { font: 400 7px var(--display); fill: var(--body); text-anchor: middle; }
+.study-card.fb { --a: var(--fb-a); --a2: var(--fb-a2); }
+.study-card.hw { --a: var(--hw-a); --a2: var(--hw-a2); }
+.stage.tall { height: 290px; }
+.stage.tall .m { width: 210px; height: 236px; }
+.sizes { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 0 14px 14px; }
+.sizes .chip { margin: 0; flex: 1 1 220px; }
+.sizes .tiny { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-2); }
+.sizes .tiny .m { width: 32px; height: 32px; }
+.m .limb-o { fill: none; stroke: var(--ink); stroke-width: 4.4; stroke-linecap: round; }
+.m .limb { fill: none; stroke: var(--shade); stroke-width: 2.6; stroke-linecap: round; }
+.m .f-tongue { fill: var(--fb-a); }
+.rh-fig { transform-origin: 50% 100%; }
+.rh-flag { transform-origin: 0% 50%; }
+.busy .rh-flag { animation: rh-flutter .3s ease-in-out infinite alternate; }
+@keyframes rh-flutter { from { transform: scaleX(1) skewY(0deg); } to { transform: scaleX(.86) skewY(5deg); } }
+.m .pennant-text { font: 400 6px var(--display); fill: var(--body); text-anchor: middle; letter-spacing: .2px; }
+.rh-wave { transform-origin: 100% 100%; }
+.rh-pump, .rh-wag { transform-origin: 0% 100%; }
+.rh-kick { transform-origin: 50% 0%; }
+.busy .rh-fig { animation: rh-bounce .45s ease-in-out infinite alternate; }
+.busy .rh-wave { animation: rh-wave .45s ease-in-out infinite alternate; }
+.busy .rh-pump { animation: rh-pump .45s ease-in-out infinite alternate; }
+.busy .rh-wag { animation: rh-wag .45s ease-in-out infinite alternate; }
+.busy .rh-kick { animation: rh-kick .45s ease-in-out infinite alternate; }
+.busy .rh-look { animation: rh-look 2.6s ease-in-out infinite; }
+@keyframes rh-bounce { from { transform: translateY(0) scale(1, 1); } to { transform: translateY(1.5px) scale(1.035, .965); } }
+@keyframes rh-wave { from { transform: rotate(-8deg); } to { transform: rotate(12deg); } }
+@keyframes rh-pump { from { transform: rotate(0deg); } to { transform: rotate(-7deg); } }
+@keyframes rh-wag { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes rh-kick { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+@keyframes rh-look { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(.9px); } 65% { transform: translateX(-.9px); } }
+
+footer { margin-top: 48px; color: var(--muted-2); font-size: 13px; max-width: 70ch; }
+footer code { font: 500 12px var(--mono); color: var(--muted); }
+
+/* ---------- mascot art ---------- */
+.m { display: block; overflow: visible; }
+.m .f-b { fill: var(--body); } .m .f-s { fill: var(--shade); } .m .f-a { fill: var(--a); }
+.m .f-a2 { fill: var(--a2); } .m .f-k { fill: var(--ink); }
+.m .o { stroke: var(--ink); stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.m .no { fill: none; }
+.m .seam { fill: none; stroke: var(--ink); stroke-width: 1.15; }
+.m .f-lea { fill: var(--leather); } .m .f-leas { fill: var(--leather-shade); }
+.m .o-thin { stroke: var(--ink); stroke-width: .8; }
+.m .lace-w { stroke: var(--body); stroke-width: 1.3; stroke-linecap: round; }
+.m .f-ball { fill: var(--ball); } .m .f-bs { fill: var(--ball-shade); } .m .f-flame { fill: var(--flame); }
+.m .seam-ghost { fill: none; stroke: var(--shade); stroke-width: 1.2; opacity: .55; }
+.m .seam-on { fill: none; stroke: var(--a); stroke-width: 1.6; stroke-dasharray: 100; transition: stroke-dashoffset .45s ease-out; }
+.m .grill { fill: none; stroke: var(--shade); stroke-width: 1.4; stroke-linecap: round; }
+.m .net { fill: none; stroke: var(--shade); stroke-width: 1.1; stroke-linejoin: round; }
+.m .speed { stroke: var(--shade); stroke-width: 1.6; stroke-linecap: round; }
+.m .stitch { stroke: var(--body); stroke-width: 1; stroke-dasharray: 1.6 1.4; opacity: .8; }
+.m .strap { fill: none; stroke: var(--a2); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.m .smile { fill: none; stroke: var(--ink); stroke-width: 1.3; stroke-linecap: round; }
+.m .num { font: 400 10px var(--display); fill: var(--a); text-anchor: middle; }
+.m .num-w { font: 400 8.5px var(--display); fill: var(--body); text-anchor: middle; }
+.m g, .m rect, .m circle, .m ellipse { transform-box: fill-box; }
+.m .r-seams { transform-box: view-box; }
+.m .eyes { transform-origin: center; }
+.m .fill-bar { transition: height .45s ease-out, y .45s ease-out; }
+
+/* ---------- rig pivots ---------- */
+.r-ball, .r-spin, .r-shadow { transform-origin: 50% 50%; }
+.r-head, .r-pylon, .r-box, .r-shimmy { transform-origin: 50% 100%; }
+.r-flapL, .r-flapR, .r-hang, .r-legL, .r-legR { transform-origin: 50% 0%; }
+.r-flicker, .r-beat, .r-heat { transform-origin: 50% 100%; }
+.r-board, .r-armR { transform-origin: 0% 100%; }
+.r-armL { transform-origin: 100% 100%; }
+.r-exhaust { transform-origin: 50% 0%; }
+.r-drib { transform-origin: 50% 50%; }
+.m .r-impact { opacity: 0; }
+.m .lift { transition: transform .45s ease-out; }
+.r-rim { transform-origin: 50% 50%; }
+.m .flame-scale { transform-origin: 50% 100%; transition: transform .45s ease-out; }
+
+/* ---------- idle loops: only while busy ---------- */
+.busy .eyes { animation: blink 3.4s infinite; }
+/* football */
+.busy .r-ball { animation: roll .9s ease-in-out infinite alternate; }
+.busy .r-shadow { animation: breathe .9s ease-in-out infinite alternate; }
+.busy .r-head { animation: nod 1.4s ease-in-out infinite alternate; }
+.busy .r-stripe { animation: pulse 1.4s ease-in-out infinite; }
+.busy .r-pylon { animation: rock 1.1s ease-in-out infinite alternate; }
+.busy .r-band1 { animation: flash 1.1s steps(1) infinite; }
+.busy .r-band2 { animation: flash 1.1s steps(1) infinite .55s; }
+.busy .r-spiral { animation: drift .8s ease-in-out infinite alternate; }
+.busy .r-spin { animation: spin-laces .22s linear infinite alternate; }
+.busy .r-speed line { animation: flash .6s steps(1) infinite; }
+.busy .r-speed line:nth-child(2) { animation-delay: .2s; }
+.busy .r-speed line:nth-child(3) { animation-delay: .4s; }
+.busy .r-flapL { animation: flapL .45s ease-in-out infinite alternate; }
+.busy .r-flapR { animation: flapR .45s ease-in-out infinite alternate; }
+.busy .r-box { animation: rock-sm 1.6s ease-in-out infinite alternate; }
+.busy .r-box .num { animation: pulse 1s ease-in-out infinite; }
+.busy .r-boxband { animation: flash .8s steps(1) infinite; }
+.r-wobble, .r-lunge { transform-origin: 50% 100%; }
+.busy .r-wobble { animation: rock 1s ease-in-out infinite alternate; }
+.busy .r-thrust { animation: thrust .52s ease-in-out infinite alternate; }
+.busy .r-lunge { animation: lunge .6s ease-in-out infinite alternate; }
+.busy .r-td { animation: bob .5s ease-in-out infinite alternate; }
+.busy .r-puff circle { animation: puff 1.2s ease-out infinite; }
+.busy .r-puff circle:nth-child(2) { animation-delay: .15s; }
+.busy .r-puff circle:nth-child(3) { animation-delay: .3s; }
+/* basketball */
+.busy .r-jog { animation: jog .26s ease-in-out infinite alternate; }
+.busy .r-heat { animation: bob .6s ease-in-out infinite alternate; }
+.busy .r-flicker { animation: flicker .18s ease-in-out infinite alternate; }
+.busy .r-hang { animation: swing 1s ease-in-out infinite alternate; }
+.busy .r-rim { animation: rock-sm .5s ease-in-out infinite alternate; }
+.busy .r-beat { animation: beat .38s ease-in-out infinite alternate; }
+.busy .r-glint { animation: flash .76s steps(1) infinite; }
+.busy .r-board { animation: board .7s ease-in-out infinite alternate; }
+.busy .r-legL { animation: legL .26s ease-in-out infinite alternate; }
+.busy .r-legR { animation: legR .26s ease-in-out infinite alternate; }
+.busy .r-armL { animation: flexL .5s ease-in-out infinite alternate; }
+.busy .r-armR { animation: flexR .5s ease-in-out infinite alternate; }
+.busy .r-flex { animation: bob .5s ease-in-out infinite alternate; }
+.busy .r-exhaust { animation: flicker .14s ease-in-out infinite alternate; }
+.busy .r-rocket { animation: drift .5s ease-in-out infinite alternate; }
+.busy .r-drib { animation: dribble .7s cubic-bezier(.5,0,1,.5) infinite alternate; }
+.busy .r-drib-shadow { animation: breathe .7s cubic-bezier(.5,0,1,.5) infinite alternate-reverse; }
+.busy .r-impact { animation: impact 1.4s linear infinite; }
+
+@keyframes flicker { from { transform: scaleY(.86) skewX(-3deg); } to { transform: scaleY(1.06) skewX(3deg); } }
+@keyframes swing { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes beat { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(1.5px) rotate(-4deg); } }
+@keyframes board { from { transform: rotate(0deg); } to { transform: rotate(-7deg); } }
+@keyframes legL { from { transform: rotate(24deg); } to { transform: rotate(-24deg); } }
+@keyframes legR { from { transform: rotate(-24deg); } to { transform: rotate(24deg); } }
+@keyframes flexL { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+@keyframes flexR { from { transform: rotate(0deg); } to { transform: rotate(12deg); } }
+@keyframes dribble { from { transform: translateY(0) scale(1, 1); } 85% { transform: translateY(8px) scale(1, 1); } to { transform: translateY(9px) scale(1.07, .9); } }
+@keyframes impact { 0%, 42%, 62%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes thrust { from { transform: translateX(0); } to { transform: translateX(2.2px); } }
+@keyframes lunge { from { transform: translateX(-1px) rotate(0deg); } to { transform: translateX(1.5px) rotate(4deg); } }
+@keyframes puff { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: 1; } 100% { opacity: 0; transform: scale(1.2); } }
+@keyframes blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
+@keyframes roll { from { transform: translateY(0) rotate(-9deg); } to { transform: translateY(-2px) rotate(9deg); } }
+@keyframes breathe { from { transform: scaleX(1); opacity: .35; } to { transform: scaleX(.8); opacity: .2; } }
+@keyframes nod { from { transform: rotate(-4deg); } to { transform: rotate(4deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes rock { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes rock-sm { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+@keyframes flash { 0% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes drift { from { transform: translate(-1px, 1px); } to { transform: translate(1.5px, -1.5px); } }
+@keyframes spin-laces { from { transform: scaleY(1); } to { transform: scaleY(.3); } }
+@keyframes flapL { from { transform: rotate(0deg); } to { transform: rotate(12deg); } }
+@keyframes flapR { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+@keyframes jog { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
+@keyframes drop { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(9px); opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-1.5px); } }
+@keyframes sink { from { transform: translateY(-2px); } to { transform: translateY(7px); } }
+@keyframes stretch { from { transform: scaleY(1); } to { transform: scaleY(1.14); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .m *, .stage .runner, .track i { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 520px) {
+  .controls { gap: 10px 16px; }
+  input[type=range] { width: 110px; }
+}
+
+/* ---- embedded from public/mascots.css (the app's own module) ---- */
+/* Laces + Dribbles (public/mascots.js). Every class is ccm- prefixed: the navbar
+   loads Bootstrap on every page, and bare names like .row or .card would restyle
+   these SVGs. */
+
+:root {
+    /* Neutral body, shade and ink match the app's own text tokens; the accents
+       are fixed per mascot (Laces is always red, Dribbles always violet), so they
+       must NOT follow --cc-accent, which turns orange inside a basketball league. */
+    --ccm-ink: #0B0E1A;
+    --ccm-body: var(--cc-text, #F4F6FB);
+    --ccm-shade: var(--cc-muted-bright, #C9CEE6);
+    --ccm-red: #ed5858;
+    --ccm-gold: var(--cc-amber, #E0B341);
+    --ccm-violet: var(--cc-interactive, #8E8CF0);
+    --ccm-ice: #9FD3F2;
+    --ccm-leather: #8B4A2B;
+    --ccm-leather-shade: #6E3920;
+    --ccm-ball: #F0833F;
+    --ccm-ball-shade: #CC6629;
+}
+
+.ccm-wrap { display: inline-block; line-height: 0; vertical-align: middle; }
+.ccm { display: block; width: 100%; height: 100%; overflow: visible; }
+.ccm.ccm-head { overflow: hidden; }
+.ccm.ccm-head .ccm-lmb { display: none; }
+
+/* Default sizes; callers override with their own width/height on .ccm-wrap. */
+.ccm-size-full { width: 112px; height: 126px; }
+.ccm-size-head { width: 40px; height: 40px; }
+
+/* fills */
+.ccm .ccm-f-body { fill: var(--ccm-body); }
+.ccm .ccm-f-ink { fill: var(--ccm-ink); }
+.ccm .ccm-f-red { fill: var(--ccm-red); }
+.ccm .ccm-f-gold { fill: var(--ccm-gold); }
+.ccm .ccm-f-violet { fill: var(--ccm-violet); }
+.ccm .ccm-f-ice { fill: var(--ccm-ice); }
+.ccm .ccm-f-leather { fill: var(--ccm-leather); }
+.ccm .ccm-f-leather-shade { fill: var(--ccm-leather-shade); }
+.ccm .ccm-f-ball { fill: var(--ccm-ball); }
+.ccm .ccm-f-ball-shade { fill: var(--ccm-ball-shade); }
+.ccm .ccm-f-tongue { fill: var(--ccm-red); }
+.ccm .ccm-none { fill: none; }
+.ccm .ccm-o { stroke: var(--ccm-ink); stroke-width: 1.3; stroke-linejoin: round; stroke-linecap: round; }
+.ccm .ccm-shadow { fill: var(--ccm-ink); opacity: .35; }
+.ccm .ccm-limb-o { fill: none; stroke: var(--ccm-ink); stroke-width: 4.4; stroke-linecap: round; }
+.ccm .ccm-limb { fill: none; stroke: var(--ccm-shade); stroke-width: 2.6; stroke-linecap: round; }
+.ccm .ccm-lace { stroke: var(--ccm-body); stroke-width: 1.3; stroke-linecap: round; }
+.ccm .ccm-seam { fill: none; stroke: var(--ccm-ink); stroke-width: 1.15; }
+.ccm .ccm-frown { fill: none; stroke: var(--ccm-ink); stroke-width: 1.5; stroke-linecap: round; }
+.ccm .ccm-cc { font: 400 6px Graduate, Poppins, sans-serif; fill: var(--ccm-body); text-anchor: middle; letter-spacing: .2px; }
+.ccm .ccm-cc-foam { font: 400 10px Graduate, Poppins, sans-serif; fill: var(--ccm-body); }
+
+/* rig pivots */
+.ccm g, .ccm rect, .ccm ellipse, .ccm circle { transform-box: fill-box; }
+.ccm .ccm-fig { transform-origin: 50% 100%; }
+.ccm .ccm-wave { transform-origin: 100% 100%; }
+.ccm .ccm-pump, .ccm .ccm-wag { transform-origin: 0% 100%; }
+.ccm .ccm-kick { transform-origin: 50% 0%; }
+.ccm .ccm-flag { transform-origin: 0% 50%; }
+.ccm .ccm-eyes { transform-origin: center; }
+
+/* Idle loops: only while busy. */
+.ccm-wrap.is-busy .ccm-fig { animation: ccm-bounce .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-wave { animation: ccm-wave .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-pump { animation: ccm-pump .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-wag { animation: ccm-wag .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-kick { animation: ccm-kick .45s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-flag { animation: ccm-flutter .3s ease-in-out infinite alternate; }
+.ccm-wrap.is-busy .ccm-look { animation: ccm-look 2.6s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-eyes { animation: ccm-blink 3.4s infinite; }
+
+@keyframes ccm-bounce { from { transform: translateY(0) scale(1, 1); } to { transform: translateY(1.5px) scale(1.035, .965); } }
+@keyframes ccm-wave { from { transform: rotate(-8deg); } to { transform: rotate(12deg); } }
+@keyframes ccm-pump { from { transform: rotate(0deg); } to { transform: rotate(-7deg); } }
+@keyframes ccm-wag { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes ccm-kick { from { transform: rotate(0deg); } to { transform: rotate(-12deg); } }
+@keyframes ccm-flutter { from { transform: scaleX(1) skewY(0deg); } to { transform: scaleX(.86) skewY(5deg); } }
+@keyframes ccm-look { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(.9px); } 65% { transform: translateX(-.9px); } }
+@keyframes ccm-blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
+
+/* The Griddy (pose 'griddy'). One beat = .52s: the body skips twice, each heel
+   kicks out on its own half, arms swing opposite the legs. */
+.ccm .ccm-gr-hop { transform-origin: 50% 100%; }
+.ccm .ccm-gr-legL, .ccm .ccm-gr-legR { transform-origin: 50% 0%; }
+.ccm .ccm-gr-armL { transform-origin: 100% 0%; }
+.ccm .ccm-gr-armR { transform-origin: 0% 0%; }
+.ccm .ccm-gr-shadow { transform-origin: center; }
+.ccm-wrap.is-busy .ccm-gr-hop { animation: ccm-gr-hop .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-legL { animation: ccm-gr-kickL .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-legR { animation: ccm-gr-kickR .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armL { animation: ccm-gr-swing .52s ease-in-out infinite; }
+.ccm-wrap.is-busy .ccm-gr-armR { animation: ccm-gr-swing .52s ease-in-out infinite reverse; }
+.ccm-wrap.is-busy .ccm-gr-shadow { animation: ccm-gr-shadow .52s ease-in-out infinite; }
+@keyframes ccm-gr-hop {
+    0%, 50%, 100% { transform: translateY(0) scale(1, 1); }
+    12% { transform: translateY(.6px) scale(1.03, .96); }
+    25% { transform: translateY(-3px) rotate(-3deg); }
+    62% { transform: translateY(.6px) scale(1.03, .96); }
+    75% { transform: translateY(-3px) rotate(3deg); }
+}
+@keyframes ccm-gr-kickL { 0%, 50%, 100% { transform: rotate(0deg); } 25% { transform: rotate(32deg); } }
+@keyframes ccm-gr-kickR { 0%, 50%, 100% { transform: rotate(0deg); } 75% { transform: rotate(-32deg); } }
+@keyframes ccm-gr-swing { 0%, 100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
+@keyframes ccm-gr-shadow { 0%, 50%, 100% { transform: scaleX(1); opacity: .35; } 25%, 75% { transform: scaleX(.82); opacity: .2; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .ccm, .ccm * { animation: none !important; transition: none !important; }
+}
+
+/* Loader: bouncing head over a line of text. */
+.ccm-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px 16px; }
+.ccm-loader .ccm-size-head { width: 56px; height: 56px; }
+.ccm-loader-text { font-size: 14px; color: var(--cc-muted, #A4A9C2); letter-spacing: .02em; }
+
+/* Empty states: the full body standing where the message's emoji used to be. */
+.ccm-empty-mascot { display: flex; justify-content: center; margin-bottom: .4em; }
+.ccm-empty-mascot .ccm-size-full { width: 96px; height: 108px; }
+
+.moves { --a: var(--fb-a); }
+.move-slot .ccm-wrap { width: 210px; height: 236px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Campus Clash Mascots</h1>
+    <p>Rubber-hose style, one inline SVG each, rigged into parts. Big oval eyes, a wide smile, noodle limbs, white gloves and chunky shoes. They sit still until a job runs, then bounce. Each card shows the full body for big spots and the head alone at chip size.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Mascot state">
+    <button class="run" id="run" type="button">Play demo</button>
+    <label class="switch ctl"><input type="checkbox" id="busy"> <span class="lbl">Busy</span></label>
+    <label class="ctl" for="pct"><span class="lbl">Progress</span> <input type="range" id="pct" min="0" max="100" value="64"> <b id="pctOut">64%</b></label>
+    <div class="ctl"><span class="lbl" id="countLbl">Waiting</span>
+      <span class="stepper" role="group" aria-labelledby="countLbl">
+        <button type="button" id="dec" aria-label="Decrease waiting count">−</button><b id="countOut">3</b><button type="button" id="inc" aria-label="Increase waiting count">+</button>
+      </span>
+    </div>
+    <span class="rm-note" id="rmNote" hidden>Reduced motion is on, so the mascots stay still.</span>
+  </div>
+
+  <section class="moves">
+    <h2>Moves <span>Laces · celebrations</span></h2>
+    <p>Two celebration poses for Laces, drawn from the app's own mascot module (public/mascots.js). The Griddy loops while he's busy; the Heisman is a held pose.</p>
+    <div class="study-grid">
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="griddy" data-ccm-busy></span></div>
+        <div class="info"><h3>The Griddy</h3><dl><dt>Move</dt><dd>Skips on the beat, kicking each heel out in turn, arms swinging opposite. Always dancing here.</dd></dl></div></article>
+      <article class="card"><div class="stage tall"><span class="move-slot" data-ccm="full" data-ccm-sport="football" data-ccm-pose="heisman"></span></div>
+        <div class="info"><h3>The Heisman</h3><dl><dt>Move</dt><dd>Stiff arm straight out, the other arm tucked, one knee driven up. Bounces when Busy is on.</dd></dl></div></article>
+    </div>
+  </section>
+
+  <section class="fb">
+    <h2>Gridiron <span>Football · brand red + gold</span></h2>
+    <p>Leather-brown footballs with white laces, helmets in white or brand red, red cleats. Laces carries the CC pennant.</p>
+    <div class="study-grid" id="fbGrid"></div>
+  </section>
+
+  <section class="hw">
+    <h2>Hardwood <span>Basketball · hardwood orange + violet</span></h2>
+    <p>Orange ball with ink seams, violet sneakers. Dribbles carries the CC foam finger.</p>
+    <div class="study-grid" id="hwGrid"></div>
+  </section>
+
+  <footer>
+    Shapes are ellipses, rects and short quadratic curves on a 64×72 grid. The chip-size head is the same drawing cropped to the head with the limbs hidden. Every loop is gated on a <code>.busy</code> class, and nothing moves under <code>prefers-reduced-motion</code>.
+  </footer>
+</div>
+
+<script>
+/* ---- embedded from public/mascots.js (the app's own module) ---- */
+// Laces (football) and Dribbles (basketball): the Campus Clash mascots.
+//
+// Rubber-hose style, drawn as inline SVG so there are no image files and they stay
+// crisp at any size. Design source and every rejected direction live in
+// design/mascots/campus-clash-mascots.html.
+//
+//   ccMascot.html({ sport, pose, size, busy, label })  → markup string
+//   ccMascot.loader(text, { sport })                   → a loading block (bouncing head + text)
+//   ccMascot.hydrate(root)                             → fills every [data-ccm] placeholder under root
+//   ccMascot.setBusy(el, on)                           → start/stop the idle loop on a rendered mascot
+//   ccMascot.sport()                                   → the sport this page is about
+//
+// size: 'full' (whole body, for heroes and empty states) or 'head' (the same
+// drawing cropped to the head with the limbs hidden, for chips and loaders).
+// pose: 'cheer' (default: Laces' pennant, Dribbles' foam finger), 'trophy', 'icepack'.
+// Laces also has two celebrations: 'griddy' (the dance, looping while busy) and
+// 'heisman' (the trophy pose, held).
+//
+// Motion means something: the loops only run on a mascot marked busy, and
+// mascots.css freezes them under prefers-reduced-motion.
+//
+// Basketball must stay invisible to managers outside a basketball league, so
+// sport() only answers 'basketball' when the page itself is about basketball.
+(function () {
+    'use strict';
+
+    let uid = 0;
+
+    // ---------- shapes ----------
+    const noodle = d => `<path class="ccm-limb-o" d="${d}"/><path class="ccm-limb" d="${d}"/>`;
+
+    // White cartoon gloves: an open hand or a fist. Never a lone raised digit.
+    const glove = (x, y, kind) => {
+        const cuff = `<ellipse class="ccm-f-body ccm-o" cx="${x}" cy="${y + 3.4}" rx="3.1" ry="1.5"/>`;
+        const palm = `<circle class="ccm-f-body ccm-o" cx="${x}" cy="${y}" r="3.3"/>`;
+        if (kind === 'wave') {
+            return cuff
+                + `<circle class="ccm-f-body ccm-o" cx="${x - 2.3}" cy="${y - 2.6}" r="1.4"/>`
+                + `<circle class="ccm-f-body ccm-o" cx="${x}" cy="${y - 3.4}" r="1.4"/>`
+                + `<circle class="ccm-f-body ccm-o" cx="${x + 2.3}" cy="${y - 2.6}" r="1.4"/>`
+                + `<circle class="ccm-f-body ccm-o" cx="${x + 3.3}" cy="${y + .4}" r="1.3"/>` + palm;
+        }
+        return cuff + palm;
+    };
+
+    const shoe = (x, y, w, cls) =>
+        `<rect class="${cls} ccm-o" x="${x}" y="${y}" width="${w}" height="6.5" rx="3.2"/>`
+        + `<rect class="ccm-f-body" x="${x + 2}" y="${y + 1.4}" width="${w * .3}" height="1.3" rx=".65" opacity=".55"/>`;
+
+    // Big oval eyes with tall pupils. `lid` (a fill class) draws heavy lids for a rough week.
+    const eyes = (x1, x2, y, rx, ry, lid) => {
+        const one = x => `<ellipse class="ccm-f-body" cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" stroke="var(--ccm-ink)" stroke-width="1"/>`;
+        const pupil = x => `<ellipse class="ccm-f-ink" cx="${x + rx * .12}" cy="${y + ry * .14}" rx="${rx * .5}" ry="${ry * .62}"/>`
+            + `<ellipse class="ccm-f-body" cx="${x - rx * .08}" cy="${y - ry * .2}" rx="${rx * .17}" ry="${ry * .24}"/>`;
+        let lids = '';
+        if (lid) {
+            // Lid edge 15% above center; the arc follows the eye's own outline.
+            const ly = y - ry * .15, dx = rx * Math.sqrt(1 - .15 * .15);
+            lids = [x1, x2].map(x => `<path class="${lid}" d="M${x - dx} ${ly} A ${rx} ${ry} 0 0 1 ${x + dx} ${ly} Z" stroke="var(--ccm-ink)" stroke-width="1"/>`).join('');
+        }
+        return `<g class="ccm-eyes">${one(x1)}${one(x2)}<g class="ccm-look">${pupil(x1)}${pupil(x2)}</g>${lids}</g>`;
+    };
+
+    // Wide open smile with a red tongue, or a small frown.
+    const smile = (id, cx, y, w, depth) => {
+        const d = `M${cx - w} ${y} Q${cx} ${y + depth * 2} ${cx + w} ${y} Q${cx} ${y + depth * .75} ${cx - w} ${y} Z`;
+        return `<clipPath id="${id}"><path d="${d}"/></clipPath>`
+            + `<path class="ccm-f-ink" d="${d}" stroke="var(--ccm-ink)" stroke-width=".8" stroke-linejoin="round"/>`
+            + `<ellipse class="ccm-f-tongue" clip-path="url(#${id})" cx="${cx}" cy="${y + depth * 1.45}" rx="${w * .42}" ry="${depth * .55}"/>`;
+    };
+    const frown = (cx, y, w) => `<path class="ccm-frown" d="M${cx - w} ${y + 1.2} Q${cx} ${y - 1.6} ${cx + w} ${y + 1.2}"/>`;
+
+    // Gold cup held up by a glove at (x, y + 15).
+    const trophy = (x, y) => `<g class="ccm-prop">
+        <circle cx="${x - 5.8}" cy="${y + 3.6}" r="2.2" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+        <circle cx="${x + 5.8}" cy="${y + 3.6}" r="2.2" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+        <circle cx="${x - 5.8}" cy="${y + 3.6}" r="2.2" fill="none" stroke="var(--ccm-gold)" stroke-width="1.2"/>
+        <circle cx="${x + 5.8}" cy="${y + 3.6}" r="2.2" fill="none" stroke="var(--ccm-gold)" stroke-width="1.2"/>
+        <path class="ccm-f-gold ccm-o" d="M${x - 5.5} ${y} H${x + 5.5} V${y + 3.5} A 5.5 5.5 0 0 1 ${x - 5.5} ${y + 3.5} Z"/>
+        <rect class="ccm-f-body" x="${x - 3.6}" y="${y + 1}" width="1.4" height="4" rx=".7" opacity=".6"/>
+        <rect class="ccm-f-gold ccm-o" x="${x - 1}" y="${y + 8.6}" width="2" height="2.6"/>
+        <rect class="ccm-f-gold ccm-o" x="${x - 3.6}" y="${y + 10.8}" width="7.2" height="2.2" rx="1"/></g>`;
+
+    const icepack = (x, y) => `<g class="ccm-prop">
+        <rect class="ccm-f-ice ccm-o" x="${x}" y="${y}" width="16" height="7" rx="3.5"/>
+        <rect class="ccm-f-body" x="${x + 2.4}" y="${y + 1.5}" width="6" height="1.4" rx=".7" opacity=".7"/></g>`;
+
+    const pennant = () => `
+        <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
+        <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--ccm-gold)" stroke-width="1.1" stroke-linecap="round"/>
+        <g class="ccm-flag"><polygon class="ccm-f-red ccm-o" points="8.8,1.2 33,7.4 8.8,13.6"/>
+        <rect class="ccm-f-body" x="8.8" y="2" width="2.2" height="10.8"/>
+        <text class="ccm-cc" x="18.4" y="9.6">CC</text></g>`;
+
+    // Foam finger after the classic #1 shape: index up on the OUTER edge with the
+    // curled fingers stacked beside it, so it can never read as a middle finger.
+    // Own 40x60 viewBox via a nested svg, so no transform math.
+    const foamFinger = (x, y, w) => {
+        const sil = [
+            'x="23" y="-4" width="8.5" height="36" rx="4.25"',
+            'x="5" y="20" width="29.5" height="28" rx="9"',
+            'x="10" y="44" width="20" height="14" rx="3"',
+            'x="5.5" y="19" width="7" height="16" rx="3.5"',
+            'x="11.5" y="17" width="7" height="16" rx="3.5"',
+            'x="17.5" y="16" width="7" height="15" rx="3.5"',
+            'x="13" y="27" width="18" height="7.5" rx="3.75"'
+        ];
+        const layer = st => sil.map(a => `<rect ${a} ${st}/>`).join('');
+        const part = n => `<rect ${sil[n]} fill="var(--ccm-violet)" stroke="var(--ccm-body)" stroke-width="1.8"/>`;
+        return `<svg x="${x}" y="${y}" width="${w}" height="${w * 1.5}" viewBox="0 0 40 60" overflow="visible">
+            ${layer('fill="var(--ccm-ink)" stroke="var(--ccm-ink)" stroke-width="9" stroke-linejoin="round"')}
+            ${layer('fill="var(--ccm-body)" stroke="var(--ccm-body)" stroke-width="3.6" stroke-linejoin="round"')}
+            ${[0, 1, 2].map(n => `<rect ${sil[n]} fill="var(--ccm-violet)"/>`).join('')}
+            ${part(3)}${part(4)}${part(5)}<rect ${sil[6]} fill="var(--ccm-violet)"/>
+            <g stroke="var(--ccm-body)" stroke-width="1.6" stroke-linecap="round"><line x1="25.8" y1="11" x2="28.6" y2="11"/><line x1="25.8" y1="13.6" x2="28.6" y2="13.6"/></g>
+            <text x="20" y="45" text-anchor="middle" class="ccm-cc-foam">CC</text>
+        </svg>`;
+    };
+
+    // Laces' body, face and laces, shared by every pose.
+    const lacesBall = u => `
+          <ellipse class="ccm-f-leather" cx="32" cy="30" rx="20" ry="14"/>
+          <g clip-path="url(#${u}c)">
+            <rect class="ccm-f-leather-shade" x="12" y="35" width="40" height="14"/>
+            <rect class="ccm-f-body" x="15.6" y="16" width="2.2" height="28"/>
+            <rect class="ccm-f-body" x="46.2" y="16" width="2.2" height="28"/>
+          </g>
+          <ellipse class="ccm-o ccm-none" cx="32" cy="30" rx="20" ry="14"/>
+          <rect class="ccm-f-body" x="25.5" y="19.3" width="13" height="1.5" rx=".75"/>
+          ${[-4.5, -1.5, 1.5, 4.5].map(d => `<line class="ccm-lace" x1="${32 + d}" y1="18.2" x2="${32 + d}" y2="21.9"/>`).join('')}`;
+
+    // The Griddy: heels kick out one at a time on a skip, arms swing opposite.
+    // Every limb is its own group so the CSS can run them half a beat apart.
+    const lacesGriddy = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-gr-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-gr-hop">
+          <g class="ccm-gr-legL ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${shoe(16.5, 59, 12, 'ccm-f-red')}</g>
+          <g class="ccm-gr-legR ccm-lmb">${noodle('M37.5 42.5 Q40 51.75 39.5 61')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
+          <g class="ccm-gr-armL ccm-lmb">${noodle('M13.5 32 Q8 38 10 44')}${glove(10.5, 45, 'fist')}</g>
+          <g class="ccm-gr-armR ccm-lmb">${noodle('M50.5 32 Q56 38 54 44')}${glove(53.5, 45, 'fist')}</g>
+          ${lacesBall(u)}
+          ${eyes(26.6, 37.4, 27.2, 3.7, 5)}
+          ${smile(u + 'm', 32, 33, 5.8, 2.6)}
+        </g>`;
+
+    // The Heisman: stiff arm straight out, other arm tucked, one knee driven up.
+    const lacesHeisman = u => `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="30" cy="68" rx="13" ry="2"/>
+        <g class="ccm-fig">
+          <g class="ccm-lmb">${noodle('M28 42.5 Q26 52 26.5 61')}${shoe(18.5, 59, 12, 'ccm-f-red')}</g>
+          <g class="ccm-lmb">${noodle('M37.5 42 Q48 42.5 46.5 51')}${shoe(41.5, 49.5, 11, 'ccm-f-red')}</g>
+          <g class="ccm-lmb">${noodle('M51 31 Q57 36.5 49.5 40')}${glove(49, 40.6, 'fist')}</g>
+          <g class="ccm-lmb">${noodle('M12.5 29.5 Q7 29 3.5 28.5')}${glove(1.8, 27.4, 'wave')}</g>
+          ${lacesBall(u)}
+          ${eyes(25.6, 36.4, 27.2, 3.7, 5)}
+          ${smile(u + 'm', 31, 33, 5.4, 2.4)}
+        </g>`;
+
+    // ---------- Laces: leather football, red cleats ----------
+    const laces = (u, pose) => {
+        if (pose === 'griddy') return lacesGriddy(u);
+        if (pose === 'heisman') return lacesHeisman(u);
+        const sad = pose === 'icepack';
+        const left = pose === 'trophy'
+            ? `<g class="ccm-wave ccm-lmb">${noodle('M13.5 31 Q6 27 8 18')}${trophy(8, 1.6)}${glove(8, 15, 'fist')}</g>`
+            : sad
+                ? `<g class="ccm-lmb">${noodle('M13.5 31 Q7 24 15 17.5')}${glove(15.6, 16.6, 'fist')}</g>`
+                : `<g class="ccm-wave ccm-lmb">${noodle('M13.5 31 Q6 27 8 18')}${pennant()}${glove(8, 15, 'fist')}</g>`;
+        const right = sad
+            ? `<g class="ccm-lmb">${noodle('M50.5 31 Q55 36 54 43')}${glove(54, 44, 'fist')}</g>`
+            : `<g class="ccm-pump ccm-lmb">${noodle('M50.5 31 Q58 31 56 22.5')}${glove(56, 19.5, 'wave')}</g>`;
+        return `
+        <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-fig">
+          <g class="ccm-lmb">${noodle('M26.5 42.5 Q24 51.75 24.5 61')}${noodle('M37.5 42.5 Q40 51.75 39.5 61')}
+            ${shoe(16.5, 59, 12, 'ccm-f-red')}${shoe(35.5, 59, 12, 'ccm-f-red')}</g>
+          ${left}${right}
+          <ellipse class="ccm-f-leather" cx="32" cy="30" rx="20" ry="14"/>
+          <g clip-path="url(#${u}c)">
+            <rect class="ccm-f-leather-shade" x="12" y="35" width="40" height="14"/>
+            <rect class="ccm-f-body" x="15.6" y="16" width="2.2" height="28"/>
+            <rect class="ccm-f-body" x="46.2" y="16" width="2.2" height="28"/>
+          </g>
+          <ellipse class="ccm-o ccm-none" cx="32" cy="30" rx="20" ry="14"/>
+          <rect class="ccm-f-body" x="25.5" y="19.3" width="13" height="1.5" rx=".75"/>
+          ${[-4.5, -1.5, 1.5, 4.5].map(d => `<line class="ccm-lace" x1="${32 + d}" y1="18.2" x2="${32 + d}" y2="21.9"/>`).join('')}
+          ${sad ? icepack(17, 9.6) : ''}
+          ${eyes(26.6, 37.4, 27.2, 3.7, 5, sad ? 'ccm-f-leather' : null)}
+          ${sad ? frown(32, 35, 3.4) : smile(u + 'm', 32, 33, 5.8, 2.6)}
+        </g>`;
+    };
+
+    // ---------- Dribbles: orange basketball, violet sneakers ----------
+    const dribbles = (u, pose) => {
+        const sad = pose === 'icepack';
+        const off = 17 * 1.35, sr = 17 * .885, sy = 27 - 17 * .15;
+        const right = pose === 'trophy'
+            ? `<g class="ccm-wag ccm-lmb">${noodle('M48.4 26 Q55 26.5 55 21')}${trophy(55, 3.6)}${glove(55, 18, 'fist')}</g>`
+            : sad
+                ? `<g class="ccm-lmb">${noodle('M48.4 24 Q55 17 47.6 12')}${glove(47, 11.4, 'fist')}</g>`
+                : `<g class="ccm-wag ccm-lmb">${noodle('M48.4 26 Q55 26.5 55 23')}${foamFinger(47, 2, 16)}</g>`;
+        const kick = sad
+            ? `<g class="ccm-lmb">${noodle('M37 42 Q38.5 52 38.5 61')}${shoe(34.5, 59, 12, 'ccm-f-violet')}</g>`
+            : `<g class="ccm-kick ccm-lmb">${noodle('M37 42 Q45 49 46 56.5')}${shoe(41, 55, 12, 'ccm-f-violet')}</g>`;
+        return `
+        <defs><clipPath id="${u}c"><circle cx="32" cy="27" r="17"/></clipPath></defs>
+        <ellipse class="ccm-shadow ccm-lmb" cx="32" cy="68" rx="15" ry="2"/>
+        <g class="ccm-fig">
+          <g class="ccm-lmb">${noodle('M27 42 Q25.5 52 25.5 61')}${shoe(17.5, 59, 12, 'ccm-f-violet')}</g>
+          ${kick}
+          <g class="ccm-lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40, 'fist')}</g>
+          ${right}
+          <circle class="ccm-f-ball" cx="32" cy="27" r="17"/>
+          <g clip-path="url(#${u}c)">
+            <rect class="ccm-f-ball-shade" x="15" y="34.2" width="34" height="17"/>
+            <g class="ccm-seam"><line x1="32" y1="9" x2="32" y2="45"/><line x1="14" y1="${sy}" x2="50" y2="${sy}"/>
+              <circle cx="${32 - off}" cy="${sy}" r="${sr}"/><circle cx="${32 + off}" cy="${sy}" r="${sr}"/></g>
+          </g>
+          <circle class="ccm-o ccm-none" cx="32" cy="27" r="17"/>
+          ${sad ? icepack(31, 6.2) : ''}
+          ${eyes(26.4, 37.6, 25.2, 4, 5.8, sad ? 'ccm-f-ball' : null)}
+          ${sad ? frown(32, 35, 3.6) : smile(u + 'm', 32, 33.4, 6.4, 3.2)}
+        </g>`;
+    };
+
+    const DRAW = { football: laces, basketball: dribbles };
+    const CROP = { football: '10 8 44 44', basketball: '12 7 40 40' };
+    const NAME = { football: 'Laces', basketball: 'Dribbles' };
+
+    // The sport this page is about. A page pinned to football (data-page-sport, e.g.
+    // the game detail page) gets Laces even inside a basketball league; basketball
+    // only when the viewed league is a basketball league.
+    function sport(el) {
+        const pinned = (el && el.closest && el.closest('[data-page-sport]')) || document.body;
+        const fixed = pinned && pinned.getAttribute && pinned.getAttribute('data-page-sport');
+        if (fixed === 'football' || fixed === 'basketball') return fixed;
+        try {
+            return window.ccLeague && window.ccLeague.sport && window.ccLeague.sport() === 'basketball' ? 'basketball' : 'football';
+        } catch (e) { return 'football'; }
+    }
+
+    function svg(opts) {
+        const o = opts || {};
+        const sp = o.sport === 'basketball' ? 'basketball' : 'football';
+        const head = o.size === 'head';
+        const u = 'ccm' + (uid++);
+        const label = o.label || NAME[sp];
+        return `<svg class="ccm ${head ? 'ccm-head' : 'ccm-full'}" viewBox="${head ? CROP[sp] : '0 0 64 72'}" role="img" aria-label="${label}">`
+            + DRAW[sp](u, o.pose || 'cheer') + '</svg>';
+    }
+
+    function html(opts) {
+        const o = Object.assign({ size: 'full' }, opts);
+        if (!o.sport) o.sport = sport();
+        return `<span class="ccm-wrap ccm-size-${o.size}${o.busy ? ' is-busy' : ''}${o.className ? ' ' + o.className : ''}">${svg(o)}</span>`;
+    }
+
+    // A loading block: the bouncing head plus a line of text. Drop-in for the
+    // football-icon loaders.
+    function loader(text, opts) {
+        const o = Object.assign({ size: 'head', busy: true }, opts);
+        return `<div class="ccm-loader" role="status">${html(o)}<div class="ccm-loader-text">${text || 'Loading…'}</div></div>`;
+    }
+
+    // <span data-ccm="head|full" data-ccm-sport="football|basketball" data-ccm-pose="…" data-ccm-busy></span>
+    // A missing data-ccm-sport means "whatever this page is about".
+    function hydrate(root) {
+        (root || document).querySelectorAll('[data-ccm]').forEach(el => {
+            if (el.dataset.ccmDone) return;
+            el.dataset.ccmDone = '1';
+            el.innerHTML = html({
+                size: el.dataset.ccm === 'head' ? 'head' : 'full',
+                sport: el.dataset.ccmSport || sport(el),
+                pose: el.dataset.ccmPose,
+                busy: el.hasAttribute('data-ccm-busy'),
+                label: el.dataset.ccmLabel
+            });
+        });
+    }
+
+    function setBusy(el, on) {
+        if (!el) return;
+        const wrap = el.classList && el.classList.contains('ccm-wrap') ? el : el.querySelector && el.querySelector('.ccm-wrap');
+        if (wrap) wrap.classList.toggle('is-busy', !!on);
+    }
+
+    window.ccMascot = { html, svg, loader, hydrate, setBusy, sport };
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => hydrate(document));
+    else hydrate(document);
+})();
+
+</script>
+<script>
+(function () {
+  let uid = 0;
+
+  // ---------- shared shapes ----------
+  const ballDef = (id, cx, cy, r) => `<clipPath id="${id}"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>`;
+  const seamShapes = (cx, cy, r) => {
+    const off = r * 1.35, sr = r * .885;
+    return `<line x1="${cx}" y1="${cy - r - 1}" x2="${cx}" y2="${cy + r + 1}"/>
+      <line x1="${cx - r - 1}" y1="${cy - r * .15}" x2="${cx + r + 1}" y2="${cy - r * .15}"/>
+      <circle cx="${cx - off}" cy="${cy - r * .15}" r="${sr}"/><circle cx="${cx + off}" cy="${cy - r * .15}" r="${sr}"/>`;
+  };
+  // Basketball: orange body, darker lower shade, ink seams.
+  const ball = (id, cx, cy, r) => `
+    <circle class="f-ball" cx="${cx}" cy="${cy}" r="${r}"/>
+    <g clip-path="url(#${id})">
+      <rect class="f-bs" x="${cx - r}" y="${cy + r * .42}" width="${r * 2}" height="${r}"/>
+      <g class="seam">${seamShapes(cx, cy, r)}</g>
+    </g>
+    <circle class="o no" cx="${cx}" cy="${cy}" r="${r}"/>`;
+  // Football lying flat: leather, white stripes, white laces on top.
+  const football = (id, cx, cy, rx, ry) => `
+    <ellipse class="f-lea" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/>
+    <g clip-path="url(#${id})">
+      <rect class="f-leas" x="${cx - rx}" y="${cy + ry * .36}" width="${rx * 2}" height="${ry}"/>
+      <rect class="f-b" x="${cx - rx * .82}" y="${cy - ry}" width="2.2" height="${ry * 2}"/>
+      <rect class="f-b" x="${cx + rx * .82 - 2.2}" y="${cy - ry}" width="2.2" height="${ry * 2}"/>
+    </g>
+    <ellipse class="o no" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/>
+    <rect class="f-b" x="${cx - 6.5}" y="${cy - ry + 3.3}" width="13" height="1.5" rx=".75"/>
+    ${[-4.5, -1.5, 1.5, 4.5].map(d => `<line class="lace-w" x1="${cx + d}" y1="${cy - ry + 2.2}" x2="${cx + d}" y2="${cy - ry + 5.9}"/>`).join('')}`;
+  // Football standing on end: stripes across, laces down the top.
+  const footballUp = (id, cx, cy, rx, ry) => `
+    <ellipse class="f-lea" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/>
+    <g clip-path="url(#${id})">
+      <rect class="f-leas" x="${cx - rx}" y="${cy + ry * .45}" width="${rx * 2}" height="${ry}"/>
+      <rect class="f-b" x="${cx - rx}" y="${cy - ry * .8}" width="${rx * 2}" height="2"/>
+      <rect class="f-b" x="${cx - rx}" y="${cy + ry * .8 - 2}" width="${rx * 2}" height="2"/>
+    </g>
+    <ellipse class="o no" cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}"/>
+    <rect class="f-b" x="${cx - .75}" y="${cy - ry * .66}" width="1.5" height="${ry * .48}" rx=".75"/>
+    ${[0, 1, 2].map(i => `<line class="lace-w" x1="${cx - 2.2}" y1="${cy - ry * .6 + i * 2.2}" x2="${cx + 2.2}" y2="${cy - ry * .6 + i * 2.2}"/>`).join('')}`;
+
+  // ---------- rubber-hose kit ----------
+  // Big oval eyes, tall pupils with a highlight; pupils glance while busy. x2 = null draws one eye (profile).
+  const bigEyes = (x1, x2, y, rx, ry) => {
+    const xs = x2 == null ? [x1] : [x1, x2];
+    const one = x => `<ellipse class="f-b" cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" stroke="var(--ink)" stroke-width="1"/>`;
+    const pupil = x => `<ellipse class="f-k" cx="${x + rx * .12}" cy="${y + ry * .14}" rx="${rx * .5}" ry="${ry * .62}"/><ellipse class="f-b" cx="${x - rx * .08}" cy="${y - ry * .2}" rx="${rx * .17}" ry="${ry * .24}"/>`;
+    return `<g class="eyes">${xs.map(one).join('')}<g class="rh-look">${xs.map(pupil).join('')}</g></g>`;
+  };
+  // Wide open smile: a crescent, with a red tongue clipped inside unless turned off.
+  const bigSmile = (id, cx, y, w, depth, o = {}) => {
+    const d = `M${cx - w} ${y} Q${cx} ${y + depth * 2} ${cx + w} ${y} Q${cx} ${y + depth * .75} ${cx - w} ${y} Z`;
+    const tongue = o.tongue === false ? '' : `<ellipse class="f-tongue" clip-path="url(#${id})" cx="${cx}" cy="${y + depth * 1.45}" rx="${w * .42}" ry="${depth * .55}"/>`;
+    return `<clipPath id="${id}"><path d="${d}"/></clipPath><path class="${o.fill || 'f-k'}" d="${d}" stroke="var(--ink)" stroke-width=".8" stroke-linejoin="round"/>${tongue}`;
+  };
+  const noodle = d => `<path class="limb-o" d="${d}"/><path class="limb" d="${d}"/>`;
+  // White cartoon gloves: wave (open hand) or fist. No lone raised digits.
+  const glove = (x, y, kind = 'fist') => {
+    const cuff = `<ellipse class="f-b o" cx="${x}" cy="${y + 3.4}" rx="3.1" ry="1.5"/>`;
+    const palm = `<circle class="f-b o" cx="${x}" cy="${y}" r="3.3"/>`;
+    if (kind === 'wave') return `${cuff}<circle class="f-b o" cx="${x - 2.3}" cy="${y - 2.6}" r="1.4"/><circle class="f-b o" cx="${x}" cy="${y - 3.4}" r="1.4"/><circle class="f-b o" cx="${x + 2.3}" cy="${y - 2.6}" r="1.4"/><circle class="f-b o" cx="${x + 3.3}" cy="${y + .4}" r="1.3"/>${palm}`;
+    return `${cuff}${palm}`;
+  };
+  const shoe = (x, y, w = 12, cls = 'f-a') => `<rect class="${cls} o" x="${x}" y="${y}" width="${w}" height="6.5" rx="3.2"/><rect class="f-b" x="${x + 2}" y="${y + 1.4}" width="${w * .3}" height="1.3" rx=".65" opacity=".55"/>`;
+  // Two standing legs from a body bottom at y=top down to the floor, shoes toe-out.
+  const stand = (xL, xR, top, cls = 'f-a') => `<g class="lmb">
+      ${noodle(`M${xL} ${top} Q${xL - 2.5} ${(top + 61) / 2} ${xL - 2} 61`)}${noodle(`M${xR} ${top} Q${xR + 2.5} ${(top + 61) / 2} ${xR + 2} 61`)}
+      ${shoe(xL - 10, 59, 12, cls)}${shoe(xR - 2, 59, 12, cls)}</g>`;
+  const SH = (cx = 32, cy = 68, rx = 15) => `<ellipse class="r-shadow lmb f-k" cx="${cx}" cy="${cy}" rx="${rx}" ry="2" opacity=".35"/>`;
+  const speed = (ys, x1 = 1, len = 5.5) => `<g class="r-speed lmb">${ys.map((y, i) => `<line class="speed" x1="${x1 - (i % 2)}" y1="${y}" x2="${x1 - (i % 2) + len}" y2="${y}"/>`).join('')}</g>`;
+  // Foam finger after the classic #1 shape: index up on the outer edge, curled fingers
+  // stacked beside it, a fill-only thumb, palm tapering into a cuff. Own 40x60 viewBox.
+  const foamFinger = (x, y, w) => {
+    const sil = [
+      ['rect', 'x="23" y="-4" width="8.5" height="36" rx="4.25"'],
+      ['rect', 'x="5" y="20" width="29.5" height="28" rx="9"'],
+      ['rect', 'x="10" y="44" width="20" height="14" rx="3"'],
+      ['rect', 'x="5.5" y="19" width="7" height="16" rx="3.5"'],
+      ['rect', 'x="11.5" y="17" width="7" height="16" rx="3.5"'],
+      ['rect', 'x="17.5" y="16" width="7" height="15" rx="3.5"'],
+      ['rect', 'x="13" y="27" width="18" height="7.5" rx="3.75"']
+    ];
+    const layer = st => sil.map(([t, a]) => `<${t} ${a} ${st}/>`).join('');
+    const part = n => `<${sil[n][0]} ${sil[n][1]} fill="var(--a2)" stroke="var(--body)" stroke-width="1.8"/>`;
+    return `<svg x="${x}" y="${y}" width="${w}" height="${w * 1.5}" viewBox="0 0 40 60" overflow="visible">
+      ${layer('fill="var(--ink)" stroke="var(--ink)" stroke-width="9" stroke-linejoin="round"')}
+      ${layer('fill="var(--body)" stroke="var(--body)" stroke-width="3.6" stroke-linejoin="round"')}
+      ${[0, 1, 2].map(n => `<${sil[n][0]} ${sil[n][1]} fill="var(--a2)"/>`).join('')}
+      ${part(3)}${part(4)}${part(5)}<${sil[6][0]} ${sil[6][1]} fill="var(--a2)"/>
+      <g stroke="var(--body)" stroke-width="1.6" stroke-linecap="round"><line x1="25.8" y1="11" x2="28.6" y2="11"/><line x1="25.8" y1="13.6" x2="28.6" y2="13.6"/></g>
+      <text x="20" y="45" text-anchor="middle" style="font: 400 10px var(--display); fill: var(--body)">CC</text>
+    </svg>`;
+  };
+  const pennant = () => `
+    <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>
+    <line x1="8" y1="19" x2="8" y2=".8" stroke="var(--fb-a2)" stroke-width="1.1" stroke-linecap="round"/>
+    <g class="rh-flag"><polygon class="f-a o" points="8.8,1.2 33,7.4 8.8,13.6"/><rect class="f-b" x="8.8" y="2" width="2.2" height="10.8"/><text class="pennant-text" x="18.4" y="9.6">CC</text></g>`;
+
+  // ---------- the mascots (64x72 full body; `crop` is the chip-size head viewBox) ----------
+  const ART = {
+    laces: u => `
+      <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="20" ry="14"/></clipPath></defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(26.5, 37.5, 42.5)}
+        <g class="rh-wave lmb">${noodle('M13.5 31 Q6 27 8 18')}${pennant()}${glove(8, 15)}</g>
+        <g class="rh-pump lmb">${noodle('M50.5 31 Q58 31 56 22.5')}${glove(56, 19.5, 'wave')}</g>
+        ${football(u + 'c', 32, 30, 20, 14)}
+        ${bigEyes(26.6, 37.4, 27.2, 3.7, 5)}
+        ${bigSmile(u + 'm', 32, 33, 5.8, 2.6)}
+      </g>`,
+
+    spiral: u => `
+      <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="19" ry="12"/></clipPath></defs>
+      ${SH(34, 64, 13)}
+      ${speed([22, 30, 38], 2, 6)}
+      <g class="r-spiral">
+        <g class="rh-kick lmb">${noodle('M20 37 Q14 43 9 42')}${shoe(.5, 39, 9)}</g>
+        <g class="lmb">${noodle('M25 40.5 Q19 48 13.5 48')}${shoe(5, 45, 9)}</g>
+        <g class="lmb">${noodle('M19 23 Q13 19 10.5 20')}${glove(8.6, 20)}</g>
+        <g class="rh-pump lmb">${noodle('M46 22 Q52 17 56 16')}${glove(58, 15)}</g>
+        <g style="transform-box: view-box" transform="rotate(-14 32 30)">
+          ${football(u + 'c', 32, 30, 19, 12)}
+          ${bigEyes(27.2, 36.8, 29.4, 3.3, 4.5)}
+          ${bigSmile(u + 'm', 32, 34.6, 4.8, 2.2)}
+        </g>
+      </g>`,
+
+    stiffarm: u => `
+      <defs><clipPath id="${u}c"><ellipse cx="32" cy="26" rx="18" ry="12"/></clipPath></defs>
+      ${SH(30, 64, 16)}
+      ${speed([18, 25, 32])}
+      <g class="r-legL lmb">${noodle('M27 37 Q23 47 18 54')}${shoe(8.5, 52, 11)}</g>
+      <g class="r-legR lmb">${noodle('M37 37 Q42 46 44 56')}${shoe(39, 55, 12)}</g>
+      <g class="lmb">${noodle('M14.5 27 Q8 31 9 37')}${glove(9.5, 38)}</g>
+      <g class="r-thrust lmb">${noodle('M49.5 25 Q55 25 58.5 24')}${glove(60.5, 23, 'wave')}</g>
+      <g class="r-jog">
+        ${football(u + 'c', 32, 26, 18, 12)}
+        ${bigEyes(29, 38.4, 25.6, 3.3, 4.5)}
+        ${bigSmile(u + 'm', 34, 30.8, 4.6, 2.1)}
+      </g>`,
+
+    touchdown: u => `
+      <defs><clipPath id="${u}c"><ellipse cx="32" cy="30" rx="11" ry="16"/></clipPath></defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(28, 36, 45)}
+        <g class="rh-wave lmb">${noodle('M22 27 Q15 19 12 10.5')}${glove(11.6, 7.5, 'wave')}</g>
+        <g class="rh-pump lmb">${noodle('M42 27 Q49 19 52 10.5')}${glove(52.4, 7.5, 'wave')}</g>
+        ${footballUp(u + 'c', 32, 30, 11, 16)}
+        ${bigEyes(27.6, 36.4, 31.6, 3.2, 4.3)}
+        ${bigSmile(u + 'm', 32, 37, 4.4, 2)}
+      </g>`,
+
+    kickoff: u => `
+      <defs><clipPath id="${u}c"><ellipse cx="32" cy="35" rx="10" ry="15"/></clipPath></defs>
+      ${SH()}
+      <polygon class="f-a o" points="25,50 39,50 43,62 21,62"/>
+      <rect class="f-a o" x="16" y="61" width="32" height="4" rx="2"/>
+      <g class="r-wobble">
+        <g class="lmb">${noodle('M22.5 33 Q15 36 19 42')}${glove(19.8, 42.5)}</g>
+        <g class="lmb">${noodle('M41.5 33 Q49 36 45 42')}${glove(44.2, 42.5)}</g>
+        ${footballUp(u + 'c', 32, 35, 10, 15)}
+        ${bigEyes(28, 36, 37, 3, 4.1)}
+        ${bigSmile(u + 'm', 32, 42.4, 4, 1.8)}
+      </g>`,
+
+    facemask: u => `
+      <defs><clipPath id="${u}c"><circle cx="32" cy="28" r="17"/></clipPath></defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(27, 37, 43.5)}
+        <g class="rh-wave lmb">${noodle('M15.5 33 Q7 30 8 21')}${glove(8, 18, 'wave')}</g>
+        <g class="lmb">${noodle('M48.5 33 Q57 36 52 42.5')}${glove(51.5, 43)}</g>
+        <rect class="f-b o" x="12.5" y="26" width="7" height="13" rx="3"/>
+        <rect class="f-b o" x="44.5" y="26" width="7" height="13" rx="3"/>
+        <circle class="f-b" cx="32" cy="28" r="17"/>
+        <g clip-path="url(#${u}c)">
+          <rect class="f-s" x="0" y="38" width="64" height="12"/>
+          <rect class="f-s" x="29.5" y="8" width="5" height="14" opacity=".55"/>
+          <rect class="f-a r-stripe fill-bar" data-bind="stripe" data-base="22" data-max="14" x="29.5" y="22" width="5" height="0"/>
+        </g>
+        <circle class="o no" cx="32" cy="28" r="17"/>
+        <rect class="f-k" x="19.5" y="22" width="25" height="19" rx="6"/>
+        ${bigEyes(27, 37, 28, 3.5, 4.6)}
+        ${bigSmile(u + 'm', 32, 35.2, 4.6, 1.9, { fill: 'f-b', tongue: false })}
+        <g class="grill"><rect x="18" y="34.5" width="28" height="8.5" rx="3"/><line x1="26" y1="34.5" x2="26" y2="43"/><line x1="38" y1="34.5" x2="38" y2="43"/></g>
+      </g>`,
+
+    gameface: u => `
+      <defs><clipPath id="${u}c"><circle cx="32" cy="28" r="17"/></clipPath></defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(27, 37, 43.5)}
+        <rect class="f-a o" x="12.5" y="26" width="7" height="13" rx="3"/>
+        <rect class="f-a o" x="44.5" y="26" width="7" height="13" rx="3"/>
+        <circle class="f-a" cx="32" cy="28" r="17"/>
+        <g clip-path="url(#${u}c)">
+          <rect class="f-k" x="0" y="38" width="64" height="12" opacity=".22"/>
+          <rect class="f-b" x="30" y="8" width="4" height="13"/>
+        </g>
+        <circle class="o no" cx="32" cy="28" r="17"/>
+        <rect class="f-b o" x="19.5" y="21" width="25" height="20" rx="6"/>
+        ${bigEyes(27, 37, 27.2, 3.4, 4.4)}
+        <rect class="f-k" x="23.6" y="32.6" width="6.8" height="1.5" rx=".75"/><rect class="f-k" x="33.6" y="32.6" width="6.8" height="1.5" rx=".75"/>
+        <rect class="f-k" x="26" y="35.4" width="12" height="4.6" rx="2"/>
+        <rect class="f-b" x="27.2" y="36" width="9.6" height="1.6" rx=".6"/>
+        <g class="grill"><rect x="18" y="35" width="28" height="8" rx="3"/><line x1="26" y1="35" x2="26" y2="43"/><line x1="38" y1="35" x2="38" y2="43"/></g>
+        <g class="rh-wave lmb">${noodle('M15.5 34 Q9 32 12.5 25')}${glove(13.4, 22.6)}</g>
+        <g class="rh-pump lmb">${noodle('M48.5 34 Q55 32 51.5 25')}${glove(50.6, 22.6)}</g>
+      </g>
+      <g class="r-puff lmb"><circle class="f-s" cx="48" cy="41" r="1.1"/><circle class="f-s" cx="51.2" cy="39.4" r="1.4"/><circle class="f-s" cx="54.8" cy="38" r="1.7"/></g>`,
+
+    charger: u => `
+      <defs>
+        <clipPath id="${u}c"><circle cx="28" cy="28" r="16"/></clipPath>
+        <clipPath id="${u}t"><rect x="0" y="0" width="64" height="18.5"/></clipPath>
+      </defs>
+      ${SH(30, 64, 17)}
+      ${speed([20, 28, 36])}
+      <g class="r-lunge">
+        <g class="r-legL lmb">${noodle('M23 42 Q19 50 14 55')}${shoe(4.5, 53, 11)}</g>
+        <g class="r-legR lmb">${noodle('M33 43 Q38 50 41 57')}${shoe(36, 55.5, 12)}</g>
+        <g class="lmb">${noodle('M13 31 Q7 35 6.5 30.5')}${glove(5.6, 28.6)}</g>
+        <circle class="f-a" cx="28" cy="28" r="16"/>
+        <g clip-path="url(#${u}c)"><rect class="f-k" x="0" y="37" width="64" height="10" opacity=".22"/></g>
+        <g clip-path="url(#${u}t)"><circle cx="28" cy="28" r="12" fill="none" stroke="var(--body)" stroke-width="3"/></g>
+        <circle class="o no" cx="28" cy="28" r="16"/>
+        <circle class="f-b o" cx="20.5" cy="31" r="2.8"/><circle class="f-k" cx="20.5" cy="31" r="1.1"/>
+        <rect class="f-b o" x="31" y="20" width="14" height="17" rx="5"/>
+        ${bigEyes(38.2, null, 26, 3.3, 4.4)}
+        ${bigSmile(u + 'm', 39.4, 32.2, 3.6, 1.7)}
+        <g class="grill"><line x1="42" y1="31" x2="51" y2="31"/><line x1="42" y1="37" x2="50" y2="37"/><line x1="51" y1="28.5" x2="50" y2="39"/><line x1="46.5" y1="31" x2="46.5" y2="37"/></g>
+        <g class="lmb">${noodle('M40 40 Q47 44 53 42')}${glove(54.6, 41.2)}</g>
+      </g>`,
+
+    leather: u => `
+      <defs>
+        <clipPath id="${u}cap"><rect x="0" y="0" width="64" height="28.5"/></clipPath>
+        <clipPath id="${u}face"><circle cx="32" cy="31" r="13.5"/></clipPath>
+      </defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(27.5, 36.5, 43.5)}
+        <g class="rh-wave lmb">${noodle('M18.5 38 Q10 36 10 27')}${glove(10, 24, 'wave')}</g>
+        <g class="lmb">${noodle('M45.5 38 Q54 41 49.5 46.5')}${glove(49, 47)}</g>
+        <g class="r-flapL"><rect class="f-lea o" x="14.5" y="24" width="8" height="17" rx="4"/><line class="stitch" x1="18.5" y1="27" x2="18.5" y2="38"/></g>
+        <g class="r-flapR"><rect class="f-lea o" x="41.5" y="24" width="8" height="17" rx="4"/><line class="stitch" x1="45.5" y1="27" x2="45.5" y2="38"/></g>
+        <polyline class="strap" points="18.5,40 32,46.5 45.5,40" style="stroke: var(--leather-shade)"/>
+        <circle class="f-b" cx="32" cy="31" r="13.5"/>
+        <g clip-path="url(#${u}face)"><rect class="f-s" x="0" y="40" width="64" height="10"/></g>
+        <circle class="o no" cx="32" cy="31" r="13.5"/>
+        <g clip-path="url(#${u}cap)"><circle class="f-lea o" cx="32" cy="27" r="16.5"/></g>
+        <line class="o" x1="16" y1="28.5" x2="48" y2="28.5"/>
+        <rect class="f-a o" x="16.5" y="24.6" width="31" height="3.9" rx="1.4"/>
+        <line class="stitch" x1="32" y1="11.5" x2="32" y2="24"/><line class="stitch" x1="25" y1="13" x2="25" y2="24"/><line class="stitch" x1="39" y1="13" x2="39" y2="24"/>
+        ${bigEyes(27, 37, 34, 3.1, 3.9)}
+        ${bigSmile(u + 'm', 32, 39.2, 4.2, 1.9)}
+      </g>`,
+
+    pylon: u => `
+      <defs><clipPath id="${u}c"><polygon points="25,10 39,10 45,52 19,52"/></clipPath></defs>
+      ${SH(32, 60, 17)}
+      <g class="r-pylon">
+        <g class="rh-wave lmb">${noodle('M22.5 31 Q14 31 10 24')}${glove(9.4, 21, 'wave')}</g>
+        <g class="rh-pump lmb">${noodle('M41.5 31 Q50 31 54 24')}${glove(54.6, 21, 'wave')}</g>
+        <rect class="f-s o" x="15" y="51" width="34" height="6.5" rx="2"/>
+        <polygon class="f-b" points="25,10 39,10 45,52 19,52"/>
+        <g clip-path="url(#${u}c)">
+          <polygon class="f-s" points="35,10 39,10 46,52 40,52"/>
+          <rect class="f-a r-band1" x="0" y="15" width="64" height="5"/>
+          <rect class="f-a r-band2" x="0" y="42" width="64" height="5"/>
+        </g>
+        <polygon class="o no" points="25,10 39,10 45,52 19,52"/>
+        ${bigEyes(28.4, 35.6, 27, 2.9, 4)}
+        ${bigSmile(u + 'm', 32, 33, 3.8, 1.7)}
+      </g>`,
+
+    chains: u => `
+      <defs><clipPath id="${u}c"><rect x="16" y="8" width="32" height="25" rx="3"/></clipPath></defs>
+      ${SH(32, 68, 10)}
+      <rect class="f-s o" x="30.5" y="32" width="3" height="27"/>
+      <g class="lmb">${shoe(26, 59)}</g>
+      <g class="r-box">
+        <g class="lmb">${noodle('M16.5 23 Q10 26 12 31')}${glove(12.5, 32)}</g>
+        <g class="rh-pump lmb">${noodle('M47.5 21 Q54 21 57.5 19')}${glove(59.5, 17, 'wave')}</g>
+        <rect class="f-b" x="16" y="8" width="32" height="25" rx="3"/>
+        <g clip-path="url(#${u}c)">
+          <rect class="f-a r-boxband" x="0" y="8" width="64" height="8.5"/>
+          <rect class="f-s" x="0" y="30" width="64" height="4"/>
+        </g>
+        <rect class="o no" x="16" y="8" width="32" height="25" rx="3"/>
+        <text class="num-band" data-bind="count" x="32" y="15">3</text>
+        ${bigEyes(27, 37, 22.4, 2.8, 3.6)}
+        ${bigSmile(u + 'm', 32, 27.6, 4, 1.7)}
+      </g>`,
+
+    /* ---------------- basketball ---------------- */
+    dribbles: u => `
+      <defs>${ballDef(u + 'c', 32, 27, 17)}</defs>
+      ${SH()}
+      <g class="rh-fig">
+        <g class="lmb">${noodle('M27 42 Q25.5 52 25.5 61')}${shoe(17.5, 59, 12, 'f-a2')}</g>
+        <g class="rh-kick lmb">${noodle('M37 42 Q45 49 46 56.5')}${shoe(41, 55, 12, 'f-a2')}</g>
+        <g class="lmb">${noodle('M15.6 31 Q7 34 12.5 40.5')}${glove(13.5, 40)}</g>
+        <g class="rh-wag lmb">${noodle('M48.4 26 Q55 26.5 55 23')}${foamFinger(47, 2, 16)}</g>
+        ${ball(u + 'c', 32, 27, 17)}
+        ${bigEyes(26.4, 37.6, 25.2, 4, 5.8)}
+        ${bigSmile(u + 'm', 32, 33.4, 6.4, 3.2)}
+      </g>`,
+
+    heatcheck: u => `
+      <defs>${ballDef(u + 'c', 32, 33, 15)}</defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(27, 37, 46.5, 'f-a2')}
+        <g class="rh-wave lmb">${noodle('M18 33 Q9 32 10 22')}${glove(10, 19)}</g>
+        <g class="lmb">${noodle('M46.5 36 Q55 39 50 45')}${glove(49.5, 45.5)}</g>
+        <g class="flame-scale" data-bind="flame"><g class="r-flicker">
+          <polygon class="f-flame o" points="18,31 16,15 22,21 24,6 30,17 35,3 38.5,17 44,10 46,31"/>
+          <polygon class="f-b" points="22.5,31 22,21 26.5,24 29.5,13 33,23 37,17.5 38,31"/>
+        </g></g>
+        ${ball(u + 'c', 32, 33, 15)}
+        ${bigEyes(26.6, 37.4, 32, 3.6, 5)}
+        ${bigSmile(u + 'm', 32, 38.6, 5, 2.4)}
+      </g>`,
+
+    hangtime: u => `
+      <defs>${ballDef(u + 'c', 32, 33, 13)}</defs>
+      <rect class="f-b o" x="18" y=".5" width="28" height="10" rx="1.5"/>
+      <rect x="26" y="3" width="12" height="7.5" fill="none" stroke="var(--a)" stroke-width="1.3"/>
+      <g class="net"><line x1="12" y1="13" x2="15" y2="22"/><line x1="16" y1="13" x2="17.5" y2="19"/><line x1="52" y1="13" x2="49" y2="22"/><line x1="48" y1="13" x2="46.5" y2="19"/></g>
+      <rect class="f-a o r-rim" x="10" y="10" width="44" height="3.2" rx="1.6"/>
+      <g class="r-hang">
+        <g class="lmb">${noodle('M24.5 24 Q22.5 17 22.5 12.5')}${noodle('M39.5 24 Q41.5 17 41.5 12.5')}</g>
+        <g class="lmb">${noodle('M28 45 Q27 51 26.5 57')}${noodle('M36 45 Q37 51 37.5 57')}${shoe(16.5, 55, 12, 'f-a2')}${shoe(33.5, 55, 12, 'f-a2')}</g>
+        ${ball(u + 'c', 32, 33, 13)}
+        ${bigEyes(27, 37, 31.6, 3.4, 4.8)}
+        ${bigSmile(u + 'm', 32, 37.8, 4.8, 2.3)}
+        <g class="lmb"><circle class="f-b o" cx="22.5" cy="11.6" r="3.2"/><circle class="f-b o" cx="41.5" cy="11.6" r="3.2"/></g>
+      </g>`,
+
+    shades: u => `
+      <defs>${ballDef(u + 'c', 32, 30, 16)}</defs>
+      ${SH()}
+      <g class="r-beat">
+        ${stand(27, 37, 44.5, 'f-a2')}
+        <g class="lmb">${noodle('M16.5 34 Q9 37 14 43')}${glove(14.5, 43.5)}</g>
+        <g class="lmb">${noodle('M47.5 34 Q55 37 50 43')}${glove(49.5, 43.5)}</g>
+        ${ball(u + 'c', 32, 30, 16)}
+        <g clip-path="url(#${u}c)"><rect class="f-a2" x="0" y="0" width="64" height="21"/></g>
+        <line class="o" x1="18.8" y1="21" x2="45.2" y2="21"/>
+        <circle class="o no" cx="32" cy="30" r="16"/>
+        <rect class="f-a2 o" x="7" y="19.4" width="15" height="3.6" rx="1.8"/>
+        <rect class="f-k" x="19.5" y="25.5" width="11.5" height="7" rx="3"/>
+        <rect class="f-k" x="33" y="25.5" width="11.5" height="7" rx="3"/>
+        <rect class="f-k" x="30.5" y="26.4" width="3" height="1.5"/>
+        <g class="r-glint"><rect class="f-b" x="21.6" y="26.6" width="1.6" height="3.4" rx=".8"/><rect class="f-b" x="35.1" y="26.6" width="1.6" height="3.4" rx=".8"/></g>
+        ${bigSmile(u + 'm', 33.5, 37.2, 4.6, 1.9)}
+      </g>`,
+
+    coach: u => `
+      <defs>${ballDef(u + 'c', 28, 30, 15)}</defs>
+      ${SH()}
+      <g class="rh-fig">
+        ${stand(23.5, 32.5, 44, 'f-a2')}
+        <g class="lmb">${noodle('M13.5 34 Q6 37 11 43')}${glove(11.5, 43.5)}</g>
+        ${ball(u + 'c', 28, 30, 15)}
+        <g clip-path="url(#${u}c)"><rect class="f-a2" x="0" y="20.6" width="64" height="4"/></g>
+        <circle class="o no" cx="28" cy="30" r="15"/>
+        <rect class="f-a2 o" x="13" y="23.6" width="23" height="3.2" rx="1.6"/>
+        ${bigEyes(23.2, 32.8, 31.6, 3.2, 4.3)}
+        ${bigSmile(u + 'm', 28, 37.4, 4.4, 2)}
+        <g class="r-board lmb">
+          <rect class="f-s o" x="41" y="22" width="17" height="23" rx="2"/>
+          <rect class="f-b" x="43" y="27" width="13" height="16" rx=".8"/>
+          <rect class="f-k" x="46.5" y="20.4" width="6" height="3.6" rx="1"/>
+          <g class="o"><line x1="44.4" y1="28.6" x2="46.6" y2="30.8"/><line x1="46.6" y1="28.6" x2="44.4" y2="30.8"/></g>
+          <circle class="o no" cx="53.4" cy="29.7" r="1.1"/>
+          <text class="num" data-bind="count" x="49.5" y="41">3</text>
+        </g>
+        <g class="lmb">${noodle('M41.5 34 Q44.5 36 43.4 37')}${glove(43, 36.6)}</g>
+      </g>`,
+
+    fastbreak: u => `
+      <defs>${ballDef(u + 'c', 32, 24, 14)}</defs>
+      ${SH(30, 64, 16)}
+      ${speed([17, 24, 31])}
+      <g class="r-legL lmb">${noodle('M27 36.5 Q22 46 16 52')}${shoe(6.5, 50, 11, 'f-a2')}</g>
+      <g class="r-legR lmb">${noodle('M37 36.5 Q42 46 45 55')}${shoe(40, 53.5, 12, 'f-a2')}</g>
+      <g class="lmb">${noodle('M18.5 26 Q11 30 9.5 25.5')}${glove(8.6, 23.6)}</g>
+      <g class="lmb">${noodle('M45.5 27 Q52 31 55.5 28')}${glove(57.4, 26.6)}</g>
+      <g class="r-jog">
+        ${ball(u + 'c', 32, 24, 14)}
+        ${bigEyes(28.6, 38, 23, 3.4, 4.8)}
+        ${bigSmile(u + 'm', 34, 29.4, 4.6, 2.2)}
+      </g>`,
+
+    flex: u => `
+      <defs>${ballDef(u + 'c', 32, 32, 14)}</defs>
+      ${SH()}
+      <g class="rh-fig">
+        <g class="lmb">${noodle('M27 45 Q22 53 21 60')}${noodle('M37 45 Q42 53 43 60')}${shoe(11, 58, 12, 'f-a2')}${shoe(41, 58, 12, 'f-a2')}</g>
+        <g class="r-armL lmb">${noodle('M18.5 31 Q7 33 8.5 21')}${glove(8.5, 18)}</g>
+        <g class="r-armR lmb">${noodle('M45.5 31 Q57 33 55.5 21')}${glove(55.5, 18)}</g>
+        ${ball(u + 'c', 32, 32, 14)}
+        ${bigEyes(26.8, 37.2, 31, 3.5, 4.8)}
+        ${bigSmile(u + 'm', 32, 37.6, 5, 2.4)}
+      </g>`,
+
+    liftoff: u => `
+      <defs>${ballDef(u + 'c', 32, 22, 13)}</defs>
+      <g class="r-speed lmb"><line class="speed" x1="12" y1="40" x2="12" y2="50"/><line class="speed" x1="52" y1="38" x2="52" y2="48"/><line class="speed" x1="18" y1="50" x2="18" y2="58"/></g>
+      <g class="lift" data-bind="lift"><g class="r-rocket">
+        <g class="r-exhaust lmb"><polygon class="f-flame o" points="22,51 32,70 42,51"/><polygon class="f-b" points="26,51.5 32,63 38,51.5"/></g>
+        <g class="lmb">${noodle('M29.5 34.5 Q29 40 29.5 45')}${noodle('M34.5 34.5 Q35 40 34.5 45')}${shoe(22.5, 45, 9, 'f-a2')}${shoe(32.5, 45, 9, 'f-a2')}</g>
+        <g class="lmb">${noodle('M21.5 16 Q19 8 26 4.5')}${noodle('M42.5 16 Q45 8 38 4.5')}${glove(28.6, 3)}${glove(35.4, 3)}</g>
+        ${ball(u + 'c', 32, 22, 13)}
+        ${bigEyes(27, 37, 21, 3.4, 4.6)}
+        ${bigSmile(u + 'm', 32, 27, 4.6, 2.2)}
+      </g></g>`
+  };
+
+  const MASCOTS = {
+    fbGrid: [
+      { key: 'laces', name: 'Laces', crop: '10 8 44 44', uses: 'pct',
+        pose: 'Waves the red CC pennant and an open glove. Red cleats.',
+        chip: s => `Scoring Week 7 · <b>${s.pct}%</b>` },
+      { key: 'spiral', name: 'Spiral', crop: '10 8 44 44',
+        pose: 'Flies like a thrown pass, fist forward, legs trailing, speed lines behind.',
+        chip: () => `Fetching game lines` },
+      { key: 'stiffarm', name: 'Stiff Arm', crop: '12 4 42 42',
+        pose: 'Mid-stride with an open-hand stiff arm out front; legs churn.',
+        chip: s => `Pulling box scores · <b>${s.pct}%</b>`, uses: 'pct' },
+      { key: 'touchdown', name: 'Touchdown', crop: '10 9 44 44',
+        pose: 'Stands on end, both hands up for the score; arms pump.',
+        chip: () => `Settling H2H matchups` },
+      { key: 'kickoff', name: 'Kickoff', crop: '10 18 44 44',
+        pose: 'Hands on hips in the red tee, rocking and ready.',
+        chip: () => `Running the draft order` },
+      { key: 'facemask', name: 'Facemask', crop: '10 6 44 44', uses: 'pct',
+        pose: 'White helmet; waves with one hand, the other on the hip.',
+        data: 'Red center stripe fills to progress.',
+        chip: s => `Syncing rosters · <b>${s.pct}%</b>` },
+      { key: 'gameface', name: 'Game Face', crop: '10 6 44 44',
+        pose: 'Red helmet, eye black, fists up; snorts puffs out of the mask.',
+        chip: () => `Locking Captain picks` },
+      { key: 'charger', name: 'Charger', crop: '6 6 46 46',
+        pose: 'Red helmet in profile, charging forward with speed lines.',
+        chip: () => `Live poller running` },
+      { key: 'leather', name: 'Leatherhead', crop: '10 8 44 44',
+        pose: 'Vintage leather cap; ear flaps flap as he waves.',
+        chip: () => `Rebuilding draft history` },
+      { key: 'pylon', name: 'Pylon', crop: '10 9 44 44',
+        pose: 'Ta-da! Both hands out, wobbling on its base; bands flash.',
+        chip: () => `Settling parlays` },
+      { key: 'chains', name: 'Down Marker', crop: '10 2 44 44', uses: 'count',
+        pose: 'Signals the first down on its pole.',
+        data: 'Box shows the waiting count.',
+        chip: s => `<b>${s.count}</b> Captain picks to lock` }
+    ],
+    hwGrid: [
+      { key: 'dribbles', name: 'Dribbles', crop: '12 7 40 40', uses: 'pct',
+        pose: 'Hand on hip, violet CC foam finger up, back foot kicked.',
+        chip: s => `Pulling box scores · <b>${s.pct}%</b>` },
+      { key: 'heatcheck', name: 'Heat Check', crop: '10 5 44 44', uses: 'pct',
+        pose: 'Head on fire, fist pumped, other hand on hip.',
+        data: 'Flames grow taller with progress.',
+        chip: s => `Rating the week · <b>${s.pct}%</b>` },
+      { key: 'hangtime', name: 'Hangtime', crop: '10 4 44 44',
+        pose: 'Hangs off the rim after the dunk, legs dangling; swings.',
+        chip: () => `Live poller running` },
+      { key: 'shades', name: 'Shades', crop: '6 6 46 46',
+        pose: 'Sideways cap, shades, hands on hips; nods to a beat.',
+        chip: () => `Refreshing NET rankings` },
+      { key: 'coach', name: 'Coach', crop: '9 8 42 42', uses: 'count',
+        pose: 'Visor on, clipboard out, other hand on hip.',
+        data: 'Clipboard shows the waiting count.',
+        chip: s => `<b>${s.count}</b> new recaps` },
+      { key: 'fastbreak', name: 'Fast Break', crop: '10 2 44 44',
+        pose: 'Full sprint, arms pumping, speed lines behind.',
+        chip: () => `Syncing schedules` },
+      { key: 'flex', name: 'Flex', crop: '10 10 44 44',
+        pose: 'Wide stance, both arms flexed; pumps the biceps.',
+        chip: () => `Settling H2H matchups` },
+      { key: 'liftoff', name: 'Liftoff', crop: '10 0 44 44', uses: 'pct',
+        pose: 'Arms up, legs together, launching on a gold exhaust.',
+        data: 'Climbs higher as progress rises.',
+        chip: s => `Syncing rosters · <b>${s.pct}%</b>` }
+    ]
+  };
+
+  const svg = (key, label, vb, head) => {
+    const u = 'm' + (uid++);
+    return `<svg class="m${head ? ' head' : ''}" viewBox="${vb}" role="img" aria-label="${label}">${ART[key](u)}</svg>`;
+  };
+
+  const cards = [];
+  for (const [gridId, list] of Object.entries(MASCOTS)) {
+    const grid = document.getElementById(gridId);
+    for (const m of list) {
+      const el = document.createElement('article');
+      el.className = 'card';
+      el.innerHTML = `<div class="stage tall">${svg(m.key, m.name + ' full body', '0 0 64 72')}</div>
+        <div class="info">
+          <h3>${m.name}</h3>
+          <dl><dt>Pose</dt><dd>${m.pose}</dd>${m.data ? `<dt>Data</dt><dd>${m.data}</dd>` : ''}</dl>
+        </div>
+        <div class="sizes">
+          <div class="chip">${svg(m.key, m.name + ' head at 50 pixels', m.crop, true)}<span></span></div>
+          <div class="tiny">${svg(m.key, m.name + ' head at 32 pixels', m.crop, true)} 32px</div>
+        </div>`;
+      grid.appendChild(el);
+      cards.push({ m, chipText: el.querySelector('.chip span') });
+    }
+  }
+
+  const state = { busy: false, pct: 64, count: 3 };
+  const $ = id => document.getElementById(id);
+
+  function render() {
+    const p = state.pct / 100;
+    document.querySelectorAll('.card').forEach(c => c.classList.toggle('busy', state.busy));
+    const h = document.querySelector('.move-slot[data-ccm-pose="heisman"]');
+    if (h && window.ccMascot) window.ccMascot.setBusy(h, state.busy);
+    $('pctOut').textContent = state.pct + '%';
+    $('countOut').textContent = state.count;
+    $('busy').checked = state.busy;
+    document.querySelectorAll('[data-bind="stripe"]').forEach(r => {
+      const h = +r.dataset.max * p;
+      r.setAttribute('height', h); r.setAttribute('y', +r.dataset.base - h);
+    });
+    document.querySelectorAll('[data-bind="flame"]').forEach(f => f.style.transform = `scaleY(${.35 + .65 * p})`);
+    document.querySelectorAll('[data-bind="lift"]').forEach(l => l.style.transform = `translateY(${(1 - p) * 6}px)`);
+    document.querySelectorAll('[data-bind="count"]').forEach(n => n.textContent = state.count);
+    cards.forEach(({ m, chipText }) => {
+      chipText.innerHTML = state.busy ? m.chip(state)
+        : m.uses === 'pct' ? `Idle · <b>${state.pct}%</b>`
+        : m.uses === 'count' ? `Idle · <b>${state.count}</b> waiting` : 'Idle';
+    });
+  }
+
+  $('busy').addEventListener('change', e => { state.busy = e.target.checked; render(); });
+  $('pct').addEventListener('input', e => { state.pct = +e.target.value; render(); });
+  $('inc').addEventListener('click', () => { state.count = Math.min(99, state.count + 1); render(); });
+  $('dec').addEventListener('click', () => { state.count = Math.max(0, state.count - 1); render(); });
+
+  // Demo only: fakes a 7-second job so the busy-state wiring is visible. Calls nothing.
+  let timer = null;
+  $('run').addEventListener('click', () => {
+    clearInterval(timer);
+    state.busy = true; state.pct = 0; $('pct').value = 0; $('run').disabled = true; render();
+    timer = setInterval(() => {
+      state.pct = Math.min(100, state.pct + 4);
+      if (state.pct % 20 === 0 && state.count > 0) state.count--;
+      $('pct').value = state.pct;
+      if (state.pct >= 100) { clearInterval(timer); setTimeout(() => { state.busy = false; $('run').disabled = false; render(); }, 600); }
+      render();
+    }, 260);
+  });
+
+  const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const syncRm = () => { $('rmNote').hidden = !rm.matches; };
+  rm.addEventListener ? rm.addEventListener('change', syncRm) : rm.addListener(syncRm);
+  syncRm();
+
+  render();
+})();
+</script>

@@ -286,7 +286,8 @@ describe('the Rivalry Games container names its sport', () => {
     // The container's own lines, rendered for real: the full view needs the
     // navbar partial's locals.
     const start = view.indexOf('<% var _rivalrySport');
-    const end = view.indexOf('</div>', view.indexOf('class="football-icon"'));
+    // Ends after the loader, whose mascot slot names the sport too (Laces or Dribbles).
+    const end = view.indexOf('</div>', view.indexOf('class="ccm-loader-slot"'));
     const render = (locals) => {
         document.body.innerHTML = ejs.render(view.slice(start, end) + '</div></div>', locals);
         return document.querySelector('.game-content');
@@ -295,7 +296,7 @@ describe('the Rivalry Games container names its sport', () => {
     it('basketball on a basketball league, so a card opens the basketball game', () => {
         const el = render({ viewerSport: 'basketball' });
         expect(el.getAttribute('data-page-sport')).toBe('basketball');
-        expect(el.textContent).toContain('🏀');
+        expect(el.querySelector('[data-ccm]').getAttribute('data-ccm-sport')).toBe('basketball');
     });
 
     it('the basketball helper script is only in a basketball viewer\'s page', () => {
@@ -309,5 +310,6 @@ describe('the Rivalry Games container names its sport', () => {
     it('football otherwise, as before', () => {
         expect(render({ viewerSport: 'football' }).getAttribute('data-page-sport')).toBe('football');
         expect(render({}).getAttribute('data-page-sport')).toBe('football');
+        expect(render({}).querySelector('[data-ccm]').getAttribute('data-ccm-sport')).toBe('football');
     });
 });

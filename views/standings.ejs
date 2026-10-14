@@ -142,7 +142,7 @@
     <% var _rivalrySport = (typeof viewerSport !== 'undefined' && viewerSport === 'basketball') ? 'basketball' : 'football'; %>
     <div class="game-content" style="display:none" data-page-sport="<%= _rivalrySport %>">
         <div class="football-loader">
-            <div class="football-icon"><%= _rivalrySport === 'basketball' ? '🏀' : '🏈' %></div>
+            <span class="ccm-loader-slot" data-ccm="head" data-ccm-busy data-ccm-sport="<%= _rivalrySport %>"></span>
             <p class="loading-text">Scouting for games...</p>
         </div>
         <div class="get-users-container">

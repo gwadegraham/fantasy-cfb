@@ -9,7 +9,7 @@
  * ccIcon/ccH2H/ccLogo, userState), routes fetch, and runs window.onload. Every
  * assertion is on the resulting DOM or on which endpoints were called.
  */
-const { loadStandingsPage, resetStandingsPage, makeUser, respond } = require('./helpers/standings-dom');
+const { loadStandingsPage, resetStandingsPage, makeUser, respond, flush } = require('./helpers/standings-dom');
 
 afterEach(resetStandingsPage);
 
@@ -777,6 +777,77 @@ describe('score count-up', () => {
 // --- last updated badge ------------------------------------------------------
 
 describe('last updated badge', () => {
+    // A stand-in for public/mascots.js: enough to see which mascot, and whether busy.
+    const withMascot = (sport) => {
+        window.ccMascot = {
+            sport: () => sport,
+            html: (o) => `<i data-mascot="${sport}" data-busy="${!!o.busy}"></i>`
+        };
+    };
+    afterEach(() => { delete window.ccMascot; });
+
+    it('the mascot bounces while a football scoring job runs', async () => {
+        withMascot('football');
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10])],
+            lastUpdated: { finishedAt: new Date().toISOString(), running: true }
+        });
+        const badge = page.lastUpdated();
+        expect(badge.querySelector('[data-mascot]').getAttribute('data-busy')).toBe('true');
+        expect(badge.querySelector('.lu-badge').classList.contains('is-scoring')).toBe(true);
+        expect(badge.querySelector('.lu-badge').getAttribute('title')).toContain('Scoring in progress');
+    });
+
+    it('and stands still when nothing is running', async () => {
+        withMascot('football');
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10])],
+            lastUpdated: { finishedAt: new Date().toISOString(), running: false }
+        });
+        expect(page.lastUpdated().querySelector('[data-mascot]').getAttribute('data-busy')).toBe('false');
+        expect(page.lastUpdated().querySelector('.is-scoring')).toBeNull();
+    });
+
+    // Every job behind the route is football's: Dribbles bouncing would claim
+    // his basketball league was being scored.
+    it('Dribbles never bounces for a football job', async () => {
+        withMascot('basketball');
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10])],
+            lastUpdated: { finishedAt: new Date().toISOString(), running: true }
+        });
+        expect(page.lastUpdated().querySelector('[data-mascot]').getAttribute('data-busy')).toBe('false');
+    });
+
+    it('without the mascot module the dot stays', async () => {
+        const page = await loadStandingsPage({
+            users: [scored('a', 'Alice', 'Adams', [10])],
+            lastUpdated: { finishedAt: new Date().toISOString(), running: true }
+        });
+        expect(page.lastUpdated().querySelector('.lu-dot')).not.toBeNull();
+    });
+
+    // The flag is a snapshot, so while it's on the badge re-checks; otherwise a
+    // tab opened mid-job would bounce until the manager reloaded.
+    it('re-checks every 30s while running, and not at all otherwise', async () => {
+        withMascot('football');
+        const repolls = () => setTimeout.mock.calls.filter(c => c[1] === 30 * 1000);
+        const lastUpdatedCalls = () => global.fetch.mock.calls.filter(c => String(c[0]).includes('/standings/last-updated')).length;
+
+        jest.spyOn(global, 'setTimeout');
+        await loadStandingsPage({ users: [scored('a', 'Alice', 'Adams', [10])], lastUpdated: { finishedAt: new Date().toISOString(), running: true } });
+        expect(repolls()).toHaveLength(1);
+        const before = lastUpdatedCalls();
+        repolls()[0][0]();          // the 30s timer fires
+        await flush();
+        expect(lastUpdatedCalls()).toBe(before + 1);
+
+        resetStandingsPage();       // restores the spy
+        jest.spyOn(global, 'setTimeout');
+        await loadStandingsPage({ users: [scored('a', 'Alice', 'Adams', [10])], lastUpdated: { finishedAt: new Date().toISOString(), running: false } });
+        expect(repolls()).toHaveLength(0);
+    });
+
     it('prefers the last successful scoring run', async () => {
         const finishedAt = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
         const page = await loadStandingsPage({

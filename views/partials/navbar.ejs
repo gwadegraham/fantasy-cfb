@@ -49,6 +49,11 @@
      Eastern calendar date it is rather than as a local instant. Loaded app-wide
      because six surfaces format kickoffs. -->
 <script src="/kickoff-day.js"></script>
+<!-- Mascots (ccMascot): Laces (football) and Dribbles (basketball) as inline SVG.
+     After league.js, which decides which one a page gets; before weekly-recap.js,
+     whose popup draws one. Hydrates [data-ccm] placeholders on DOMContentLoaded. -->
+<link rel="stylesheet" type="text/css" href="/mascots.css">
+<script src="/mascots.js"></script>
 <!-- Weekly Recap: shared card rendering + the once-a-week popup, app-wide so the
      popup can greet the logged-in viewer on whatever page they land on. -->
 <link rel="stylesheet" type="text/css" href="/weekly-recap.css">
