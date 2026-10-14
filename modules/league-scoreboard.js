@@ -30,9 +30,13 @@ const { MAX_GAME_MS } = require('./game-window');
 // captained team's base points while the manager was paid N× them. Each of the
 // captained team's games that week gets the bonus in proportion to its own
 // base points, which is exactly how captainWeeklyBonus built it.
+//
+// A basketball row flagged `noModes` (a conference-tournament game) was not
+// doubled, so it takes no share and is not part of the base it is split by.
+// Football never sets the flag.
 function captainShare(w, t) {
-    if (!w.captainBonus || t.teamId == null || Number(t.teamId) !== Number(w.captainTeamId)) return 0;
-    const base = (w.scoreByTeam || []).filter(x => Number(x.teamId) === Number(w.captainTeamId))
+    if (!w.captainBonus || t.teamId == null || t.noModes || Number(t.teamId) !== Number(w.captainTeamId)) return 0;
+    const base = (w.scoreByTeam || []).filter(x => !x.noModes && Number(x.teamId) === Number(w.captainTeamId))
         .reduce((sum, x) => sum + (Number(x.score) || 0), 0);
     return base ? w.captainBonus * (Number(t.score) || 0) / base : 0;
 }

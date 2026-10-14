@@ -88,6 +88,13 @@ const weeklyTeamScoreSchema = new mongoose.Schema({
     },
     oppRank: {
         type: Number
+    },
+    // Basketball only: a conference-tournament or postseason game, which
+    // scores but sits outside the weekly game modes — Captain does not
+    // double it, H2H does not count it (modules/hoops-modes.js). Absent on
+    // every other row.
+    noModes: {
+        type: Boolean
     }
 });
 

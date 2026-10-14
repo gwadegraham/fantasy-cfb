@@ -69,8 +69,26 @@ window.onload = function() {
     // The navbar partial (views/partials/navbar.ejs) owns its hamburger and the
     // "My team" link + userId caching.
     detectMobile();
+    // A link that names a league (?league=, from the basketball Captain lock
+    // push) opens THAT league's My Team. One login can hold a football and a
+    // basketball franchise and this page shows the SELECTED one, so without
+    // the switch the reminder would open the other sport's picker. selectLeague
+    // reloads on success; a refusal (not your league) falls through to the
+    // page as it is.
+    if (uhSwitchToLinkedLeague()) return;
     getUserProfile();
 };
+
+function uhSwitchToLinkedLeague() {
+    try {
+        var want = new URLSearchParams(location.search).get('league');
+        var lg = window.ccLeague;
+        if (!want || !lg || typeof lg.selectLeague !== 'function' || typeof lg.selected !== 'function') return false;
+        if (lg.selected() === want) return false;
+        lg.selectLeague(want).then(function (ok) { if (!ok) getUserProfile(); });
+        return true;
+    } catch (e) { return false; }
+}
 
 var _uhRivalryWeek = document.querySelector('[rivalry-week]');
 if (_uhRivalryWeek) {
@@ -934,6 +952,15 @@ function uhAndList(names) {
     if (a.length <= 1) return a[0] || '';
     return a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 }
+// The day of a game whose tip time is not announced: "Tue · TBD". The day is
+// read in EASTERN time because the server sends the start of the game's
+// Eastern day (modules/hoops-modes.js), which is 23:00 the night before in
+// Central — formatting it in CT would name the wrong day.
+function uhTbdDay(iso) {
+    const t = iso ? Date.parse(iso) : NaN;
+    if (!Number.isFinite(t)) return 'TBD';
+    return new Date(t).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/New_York' }) + ' · TBD';
+}
 function uhTimeLeft(iso) {
     if (!iso) return '';
     const ms = new Date(iso).getTime() - Date.now();
@@ -985,13 +1012,19 @@ async function hydrateCaptain(user, activeYear) {
     // looking at — so name it rather than leaving "your first team" to be
     // guessed from a grid where every tile reads the same time.
     const lockMs = state.lockAt ? Date.parse(state.lockAt) : NaN;
-    const lockNames = (state.slate || [])
-        .filter(x => (x.games || []).some(gm => Date.parse(gm.kickoff) === lockMs))
-        .map(x => (teamById[x.teamId] || {}).school)
+    // Basketball names the locking teams itself: most of its tip-offs are TBD,
+    // so there is no kickoff on the slate for the lock to be matched against.
+    const hoops = state.sport === 'basketball';
+    const lockNames = (Array.isArray(state.lockTeamIds)
+        ? state.lockTeamIds.map(id => (teamById[id] || {}).school)
+        : (state.slate || [])
+            .filter(x => (x.games || []).some(gm => Date.parse(gm.kickoff) === lockMs))
+            .map(x => (teamById[x.teamId] || {}).school))
         .filter(Boolean);
+    const verb = hoops ? ['tips', 'tip'] : ['kicks', 'kick'];
     const lockWho = lockNames.length
-        ? `<b>${escapeHtml(uhAndList(lockNames))}</b> kick${lockNames.length === 1 ? 's' : ''} off`
-        : 'your first team kicks off';
+        ? `<b>${escapeHtml(uhAndList(lockNames))}</b> ${lockNames.length === 1 ? verb[0] : verb[1]} off`
+        : `your first team ${verb[0]} off`;
 
     const g = document.getElementById('uh-glance-captain');
     const setGlance = () => {
@@ -1014,10 +1047,22 @@ async function hydrateCaptain(user, activeYear) {
         const games = slateBy[t.id] || [];
         const badge = games.length > 1 ? `<span class="cap-2g">${games.length} games</span>` : '';
         const lines = games.length
-            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: uhNeedsDate(g.kickoff, datePlan) })) : ' · TBD'}</span>`).join('')
+            ? games.map(g => `<span class="cap-tg">${escapeHtml(g.ha)} ${uhRankTag(g.oppRank)}${escapeHtml(g.opp)}${g.kickoff ? ' · ' + escapeHtml(uhFmtLock(g.kickoff, { dated: uhNeedsDate(g.kickoff, datePlan) })) : ' · ' + uhTbdDay(g.day)}</span>`).join('')
             : `<span class="cap-tg">No game this week</span>`;
         return `<img src="${ccLogo(t.logos)}" alt="">
             <span class="cap-tid"><span class="cap-tnm"><span class="cap-nm">${escapeHtml(t.school)}</span>${badge}</span>${lines}</span>`;
+    };
+    // Basketball: the week already being played, once the picker has moved on
+    // to the next one (weeks run back to back, so a locked week cannot hold
+    // the picker the way football's does).
+    const currentLine = () => {
+        const c = state.current;
+        if (!c) return '';
+        const id = c.teamId != null ? c.teamId : c.autoTeamId;
+        const t = id != null ? teamById[id] : null;
+        return `<span class="cap-lock">Week ${c.week} is locked · `
+            + (t ? `<b>${escapeHtml(t.school)}</b> is your 2×${c.teamId == null ? ' (default)' : ''}` : 'no captain')
+            + `</span>`;
     };
     const paint = (container) => {
         if (state.locked) {
@@ -1031,12 +1076,12 @@ async function hydrateCaptain(user, activeYear) {
         }
         const lockLine = state.lockAt
             ? `<span class="cap-lock">Locks ${uhFmtLock(state.lockAt, { dated: uhNeedsDate(state.lockAt, datePlan) })} CT when ${lockWho}${uhTimeLeft(state.lockAt) ? ' · ' + uhTimeLeft(state.lockAt) + ' left' : ''}</span>`
-            : `<span class="cap-lock">Locks when your first team kicks off</span>`;
+            : `<span class="cap-lock">Locks when your first team ${verb[0]} off</span>`;
         const twoGamers = (season.teams || []).filter(t => (slateBy[t.id] || []).length > 1);
         const twoLine = twoGamers.length
             ? `<span class="cap-lock"><b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice — captaining one doubles both games</span>`
             : '';
-        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${lockLine}${twoLine}
+        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${currentLine()}${lockLine}${twoLine}
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {

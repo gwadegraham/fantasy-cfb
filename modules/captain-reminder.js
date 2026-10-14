@@ -106,7 +106,15 @@ function timeLeftLabel(lockMs, nowMs) {
 // do anything?" on a lock screen. "No pick yet" alone would send everyone into
 // the app to find out what the default was; "we'll use Georgia" lets the
 // manager who is happy with that ignore it.
-function buildCaptainReminderPayload({ userId, week, lockMs, nowMs, currentPick, autoPick }) {
+//
+// `league` + `sport` are for a basketball reminder (modules/push-notify.js
+// notifyHoopsCaptainLocks). One login can hold a football and a basketball
+// franchise, and My Team shows whichever league is SELECTED — so the link
+// names the league and public/userHome.js switches to it before opening the
+// picker. The tag carries the sport so a basketball reminder never replaces a
+// football one for the same week number on the lock screen. Football passes
+// neither and its payload is unchanged.
+function buildCaptainReminderPayload({ userId, week, lockMs, nowMs, currentPick, autoPick, league, sport }) {
     const left = timeLeftLabel(lockMs, nowMs);
     const pick = currentPick || autoPick || null;
     const body = currentPick
@@ -130,12 +138,14 @@ function buildCaptainReminderPayload({ userId, week, lockMs, nowMs, currentPick,
         // the template the session user either way, but public/userHome.js reads
         // the query param to decide whose profile to draw, so the id has to be
         // on the URL even though it is always the recipient's own.
-        url: userId ? `/userHome?user=${userId}#captain` : '/userHome#captain',
+        url: (userId ? `/userHome?user=${userId}` : '/userHome')
+            + (league ? `${userId ? '&' : '?'}league=${encodeURIComponent(league)}` : '')
+            + '#captain',
         // One tag per (week): a second send for the same week REPLACES the first
         // on the lock screen instead of stacking. The dedupe log should make that
         // impossible, but a tag costs nothing and a duplicated nag is the most
         // annoying way for this feature to fail.
-        tag: `captain-lock-w${week}`,
+        tag: sport === 'basketball' ? `captain-lock-hoops-w${week}` : `captain-lock-w${week}`,
         week,
         teamId: pick ? pick.id : null
     };

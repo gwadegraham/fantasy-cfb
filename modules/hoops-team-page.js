@@ -22,6 +22,7 @@ const { stylesFor } = require('./hoops-styles');
 const { turnoverFor } = require('./hoops-turnover');
 const { quadrantFor, venueFor } = require('./hoops-quadrants');
 const { entryFor } = require('./roster-teams');
+const { captainShare } = require('./league-scoreboard');
 const { pickLogo } = require('../public/logo.js');
 const ScoringConfig = require('../models/scoringConfig');
 const { resolveConfig, overridesFromDoc } = require('./scoring-defaults');
@@ -73,16 +74,10 @@ function rankAmong(values, value, higherIsBetter) {
     return better + 1;
 }
 
-// A conference TOURNAMENT game. CBBD files these as regular-season
-// conference games (see isConfTournamentFinal in hoops-detectors), so
-// conferenceGame alone would add a team's tournament run to its league
-// record and re-sort the standings every March. Same test as the detector:
-// no named tournament, and notes that say tournament/championship/playoffs.
-function isConfTournament(g) {
-    if (!g || !g.conferenceGame) return false;
-    if (String(g.tournament || '').trim()) return false;
-    return /\b(championship|tournament|playoffs?)\b/i.test(String(g.gameNotes || ''));
-}
+// A conference TOURNAMENT game. Lives in hoops-detectors now, next to
+// isConfTournamentFinal, because the weekly game modes (Captain, H2H) need
+// the same test and must not import a page module to get it.
+const { isConfTournament } = require('./hoops-detectors');
 const isLeagueGame = (g) => !!g.conferenceGame && !isConfTournament(g);
 
 // Conference standings from the season's games: conference record first,
@@ -142,7 +137,9 @@ async function ownership(league, season, teamId) {
         for (const wk of entry.weeklyScore || []) {
             for (const s of wk.scoreByTeam || []) {
                 if (Number(s.teamId) !== teamId) continue;
-                points[String(s.gameId)] = Number(s.score) || 0;
+                // With this game's share of a Captain bonus, the way the
+                // scoreboard and football's team page show it.
+                points[String(s.gameId)] = Math.round(((Number(s.score) || 0) + captainShare(wk, s)) * 10) / 10;
                 if (s.quadrant !== undefined) {
                     banked[String(s.gameId)] = {
                         quadrant: s.quadrant == null ? null : Number(s.quadrant),

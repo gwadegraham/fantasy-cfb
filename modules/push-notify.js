@@ -32,6 +32,7 @@ const webpush = require('web-push');
 const franchiseRepo = require('./franchise-repo');
 const Game = require('../models/game');
 const { activeSeason } = require('./active-season');
+const seasons = require('./active-season');
 const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
 const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
@@ -478,6 +479,20 @@ async function notifyCaptainLocks(nowMs) {
     if (!isConfigured()) return { sent: 0, due: 0, skipped: 'VAPID not configured' };
 
     const now = nowMs == null ? Date.now() : nowMs;
+    const football = await notifyFootballCaptainLocks(now);
+    const hoops = await notifyHoopsCaptainLocks(now);
+    // Football's answer, with basketball's counts added: a run where only
+    // basketball had someone due must still report (and log) them, and a
+    // run where neither did keeps football's skip reason for the job report.
+    const out = Object.assign({}, football, {
+        sent: football.sent + hoops.sent,
+        due: football.due + hoops.due
+    });
+    if (hoops.due && out.skipped) delete out.skipped;
+    return out;
+}
+
+async function notifyFootballCaptainLocks(now) {
     const season = activeSeason('football');
     if (season == null) return { sent: 0, due: 0, skipped: 'no active season' };
 
@@ -528,6 +543,11 @@ async function notifyCaptainLocks(nowMs) {
 
         for (const user of users) {
             if (!wantsType(user, 'captainLock')) continue;
+            // Basketball has its own pass below. Its season is a different
+            // year only until football rolls over to it, and then this
+            // football slate would lock a basketball pick by football games
+            // (130 team ids collide).
+            if (seasons.sportForLeague(user.league) === 'basketball') continue;
             if (!(await captainOn(user.league))) continue;
 
             const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
@@ -591,6 +611,99 @@ async function notifyCaptainLocks(nowMs) {
         console.log(`Push: notifyCaptainLocks failed: ${err && err.message}`);
     }
 
+    return { sent, due };
+}
+
+// The same reminder on every basketball league that plays Captain.
+//
+// Football's pass, fed by basketball: the lock is the manager's first TIP-OFF
+// of the week from `hoopsgames`, a TBD tip locks at the start of its Eastern
+// day, and the week offered is the first one not yet locked (see
+// modules/hoops-modes.js for both). The ledger is the same per-franchise
+// captainReminders, which is per league — a basketball reminder for week 3
+// never silences the football one.
+//
+// Never throws, like the football pass.
+async function notifyHoopsCaptainLocks(now) {
+    let sent = 0, due = 0;
+    try {
+        const League = require('../models/league');
+        const HoopsTeam = require('../models/hoopsTeam');
+        const { seasonModeWeeks, captainGames, captainFocus } = require('./hoops-modes');
+        const { rosterIds } = require('./hoops-scoring-pass');
+
+        const leagues = (await League.find({}, { code: 1, status: 1, _id: 0 }).lean())
+            .filter(l => l.status !== 'archived' && seasons.sportForLeague(l.code) === 'basketball');
+
+        for (const { code: league } of leagues) {
+            const season = seasons.seasonForLeague(league);
+            if (!Number.isFinite(season)) continue;
+            let on = false;
+            try {
+                const cfg = await scoringModule.getScoringConfig(league);
+                on = !!engagementForSeason(cfg.engagementBySeason, season).captainEnabled;
+            } catch (e) {
+                console.log(`Push: could not read scoring config for ${league}: ${e && e.message}`);
+            }
+            if (!on) continue;
+
+            const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+            if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
+            const users = await franchiseRepo.findManagers({
+                accountFilter,
+                franchiseFilter: { league, seasons: { $elemMatch: { season } } },
+                fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'captainReminders',
+                    'seasons.season', 'seasons.teamRefs', 'seasons.captains', 'seasons.weeklyScore']
+            });
+            if (!users.length) continue;
+            const weeks = await seasonModeWeeks(season);
+            if (!weeks.length) continue;
+
+            for (const user of users) {
+                if (!wantsType(user, 'captainLock')) continue;
+                const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
+                const teamIds = entry ? rosterIds(entry) : [];
+                if (!teamIds.length) continue;
+
+                const games = await captainGames(season, teamIds, weeks);
+                const focus = captainFocus(games, teamIds, now);
+                if (!focus) continue;
+                if (!isDue(focus.first, now, leadMsFor(user.pushPrefs))) continue;
+                if (alreadySent(user.captainReminders, season, focus.week)) continue;
+
+                due++;
+                const pickedId = captainForWeek(entry.captains, focus.week);
+                const prior = (entry.weeklyScore || []).filter(w => Number(w.week) < focus.week);
+                const autoId = pickedId != null ? null : autoCaptainTeamId(teamIds.map(id => ({ id })), prior);
+                const wanted = [pickedId, autoId].filter(id => id != null);
+                const names = {};
+                if (wanted.length) {
+                    (await HoopsTeam.find({ season, id: { $in: wanted } }, { id: 1, school: 1, _id: 0 }).lean())
+                        .forEach(t => { names[t.id] = t.school; });
+                }
+                const toTeam = id => (id != null && names[id]) ? { id: Number(id), school: names[id] } : null;
+
+                const payload = buildCaptainReminderPayload({
+                    userId: user._id, week: focus.week, lockMs: focus.first, nowMs: now,
+                    currentPick: toTeam(pickedId), autoPick: toTeam(autoId),
+                    league, sport: 'basketball'
+                });
+                const res = await sendToUser(user, payload);
+                sent += res.sent;
+                if (res.sent) {
+                    try {
+                        await franchiseRepo.updateFranchise(user._id,
+                            { $push: { captainReminders: { season, week: focus.week, sentAt: new Date() } } },
+                            { league });
+                    } catch (e) {
+                        console.log(`Push: could not log captain reminder for ${user._id}: ${e && e.message}`);
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyHoopsCaptainLocks failed: ${err && err.message}`);
+    }
     return { sent, due };
 }
 
@@ -729,7 +842,7 @@ async function sendTest(userId) {
 module.exports = {
     notifyEvents,
     notifyFinals,
-    notifyCaptainLocks,
+    notifyCaptainLocks, notifyHoopsCaptainLocks,
     notifyRecapReady,
     sendTest,
     isConfigured,

@@ -232,8 +232,19 @@ const round1 = (v) => Math.round(v * 10) / 10;
 //   weekFinal   { [week]: bool }
 //   finalWeeks  settled weeks, ascending
 //   currentWeek the first week with games that hasn't settled (or null)
-function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek, pinnedIds }) {
+//
+// Two optional inputs exist for basketball (modules/hoops-h2h.js), and both
+// default to football's behaviour:
+//   weeks     the H2H week list, fixed by the caller instead of derived from
+//             the slate. Basketball's range is decided from the whole
+//             schedule — football's thin-week cut-off would end the season
+//             at Christmas.
+//   weekBase  the matchup total for a stored week (default baseWeekScore).
+//             Basketball subtracts conference-tournament points, which score
+//             but are not part of the matchup.
+function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek, pinnedIds, weeks: fixedWeeks, weekBase }) {
     const bound = maxWeek || H2H_MAX_WEEK;
+    const baseOf = weekBase || baseWeekScore;
     const ids = h2hRoster(users, season, pinnedIds);
 
     const awards = {};
@@ -250,7 +261,7 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek, p
         const tw = {};
         (s.weeklyScore || []).forEach(e => {
             if (e.season === 'postseason' || e.week > bound) return;
-            tw[e.week] = (tw[e.week] || 0) + baseWeekScore(e);
+            tw[e.week] = (tw[e.week] || 0) + baseOf(e);
             scored.add(e.week);
         });
         totals[id] = tw;
@@ -266,8 +277,10 @@ function computeH2HAwards({ users, games, season, winBonus, tieBonus, maxWeek, p
         (gamesByWeek[g.week] = gamesByWeek[g.week] || []).push(g);
     });
 
-    // Derived, not assumed — see h2hWeekRange.
-    const weeks = h2hWeekRange(gamesByWeek, { maxWeek: bound });
+    // Derived, not assumed — see h2hWeekRange. Unless the caller fixed it.
+    const weeks = fixedWeeks
+        ? fixedWeeks.filter(w => w >= 1 && w <= bound)
+        : h2hWeekRange(gamesByWeek, { maxWeek: bound });
 
     const weekFinal = {};
     weeks.forEach(w => { weekFinal[w] = isWeekFinal(gamesByWeek[w]) && scored.has(w); });

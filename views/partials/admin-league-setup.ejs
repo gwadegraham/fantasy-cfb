@@ -1,12 +1,14 @@
 <%# League setup — the commissioner tools for ONE league, shared by football's
     /admin and basketball's /hoops/admin (#518: separate pages per sport).
     `sport` is the page's sport. Basketball leaves out what it does not have:
-    Game Modes and Captain Override (no Captain or H2H in basketball scoring),
-    the Fixed/Stacking cards (a basketball league always scores on quadrants),
-    and Correct a Roster (its replacement list is football teams only). %>
+    Captain Override (the admin route is football's), the Fixed/Stacking
+    cards (a basketball league always scores on quadrants), and Correct a
+    Roster (its replacement list is football teams only). Game Modes is
+    shared: Captain and H2H run on basketball too (modules/hoops-modes.js),
+    keyed by the league's own season. %>
 <% var football = sport !== 'basketball'; %>
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count"><%= football ? 10 : 7 %></span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count"><%= football ? 10 : 8 %></span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -23,7 +25,6 @@
                     </form>
                 </div>
             </div>
-            <% if (football) { %>
             <div class="function-container">
                 <div class="button-container">
                     <button onclick="displayEngagementContainer()">
@@ -44,7 +45,6 @@
                     </form>
                 </div>
             </div>
-            <% } %>
             <div class="function-container">
                 <div class="button-container">
                     <button onclick="displayDraftConfigContainer()">

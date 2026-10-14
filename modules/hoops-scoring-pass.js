@@ -14,11 +14,13 @@ const HoopsGame = require('../models/hoopsGame');
 const Franchise = require('../models/franchise');
 const ScoringConfig = require('../models/scoringConfig');
 const franchiseRepo = require('./franchise-repo');
-const { resolveConfig, overridesFromDoc } = require('./scoring-defaults');
+const { resolveConfig, overridesFromDoc, engagementForSeason } = require('./scoring-defaults');
 const { evaluate } = require('./scoring');
 const { buildHoopsContext } = require('./hoops-detectors');
 const { ranksFor } = require('./hoops-ranks');
 const { entryFor } = require('./roster-teams');
+const { resolveCaptain, captainWeeklyBonus } = require('./captain');
+const { isModeGame, seasonModeWeeks } = require('./hoops-modes');
 
 // ONLY FINAL GAMES SCORE.
 //
@@ -60,9 +62,11 @@ function rosterIds(entry) {
     return (entry.teams || []).map(t => Number(t.id)).filter(Number.isFinite);
 }
 
+// The resolved scoring config, and the raw document it came from — the game
+// modes (engagementBySeason) and the H2H roster pin live on the document.
 async function configFor(league) {
     const doc = await ScoringConfig.findOne({ league }).lean();
-    return resolveConfig(league, overridesFromDoc(doc));
+    return { cfg: resolveConfig(league, overridesFromDoc(doc)), doc };
 }
 
 // Score one week of one basketball league.
@@ -86,7 +90,7 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
         };
     }
 
-    const [cfg, ranked, managers] = await Promise.all([
+    const [{ cfg, doc: cfgDoc }, ranked, managers] = await Promise.all([
         configFor(league),
         ranksFor(yr, wk),
         franchiseRepo.byLeagueAndSeason(league, yr, {
@@ -109,6 +113,13 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
         season: yr, week: wk,
         $or: [{ homeTeamId: { $in: [...allIds] } }, { awayTeamId: { $in: [...allIds] } }]
     }).lean() : [];
+
+    // The weekly game modes (Captain, H2H) for THIS league's season. Read
+    // only when one is on: a league playing the classic game pays no extra
+    // query for them.
+    const eng = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, yr);
+    const modeWeeks = (eng.captainEnabled || eng.h2hEnabled) ? await seasonModeWeeks(yr) : [];
+    const inModeWeek = modeWeeks.includes(wk);
 
     const final = games.filter(isFinal);
     const byTeam = new Map();
@@ -138,21 +149,69 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
                 // a re-imported preseason), and the pages must show what
                 // was PAID, not what the ranks say today.
                 const ctx = buildHoopsContext(id, game, ranked.ranks);
-                scoreByTeam.push({
+                const row = {
                     teamId: id, gameId: game.id, score: pts,
                     quadrant: ctx.isRegular ? ctx.quadrant : null,
                     oppRank: ctx.oppRank
-                });
+                };
+                // A conference-tournament or postseason game: it scores,
+                // but Captain does not double it and H2H does not count it
+                // (modules/hoops-modes.js). Flagged on the row so every
+                // reader — the H2H total, the pages that split a Captain
+                // bonus across a team's games — can tell without
+                // re-reading the game. Absent rather than false otherwise.
+                if (!isModeGame(game)) row.noModes = true;
+                scoreByTeam.push(row);
             }
         }
-        results.push({ accountId: m._id, score, scoreByTeam });
+
+        // Captain (×N on one team) — football's helpers, basketball's games.
+        // Only in a mode week, and only on mode games: a captained team's
+        // conference tournament game in the same week is paid once.
+        // A manager who never picks gets the auto-captain, resolved from
+        // the weeks BEFORE this one, as football does.
+        let captainTeamId = null, captainBonus = 0;
+        if (eng.captainEnabled && inModeWeek) {
+            // `|| []` kept: these are LEAN reads, which apply no schema
+            // defaults, so an entry written by any other path (a raw insert,
+            // a migration) can lack the array — and a throw here would stop
+            // scoring for the whole league. Covered by a test that seeds
+            // exactly that document.
+            const entry = entryFor(m, yr);
+            const prior = (entry.weeklyScore || []).filter(e => Number(e.week) < wk);
+            captainTeamId = resolveCaptain(entry.captains, wk, ids.map(id => ({ id })), prior);
+            captainBonus = captainWeeklyBonus(scoreByTeam.filter(r => !r.noModes), captainTeamId, eng.captainMultiplier);
+            score += captainBonus;
+        }
+        const result = { accountId: m._id, score, scoreByTeam };
+        // Stored exactly as football stores it (modules/scoring.js): only
+        // when it moved the score, negative included, so the pages can
+        // split it back across the captained team's games.
+        if (captainTeamId != null && captainBonus !== 0) {
+            result.captainTeamId = captainTeamId;
+            result.captainBonus = captainBonus;
+        }
+        results.push(result);
     }
 
+    let h2h = null;
     if (apply) {
-        for (const r of results) {
-            await writeWeek(league, r.accountId, yr, wk, r);
-            await writeCumulative(league, r.accountId, yr);
+        for (const r of results) await writeWeek(league, r.accountId, yr, wk, r);
+        // H2H after every manager's week is written — a matchup reads both
+        // sides — and before the totals, which then sum the bonus in. It
+        // runs whether or not H2H is on: with it off, the pass strips any
+        // bonus a previous setting left behind. writeWeek above replaced
+        // this week's row whole, bonus fields and all, so this is also what
+        // puts this week's result back.
+        //
+        // Required here, not at the top: hoops-h2h reads this module's
+        // helpers, and a load-time cycle hands one side an empty export.
+        if (results.length) {
+            h2h = await require('./hoops-h2h').applyHoopsH2H(league, yr, {
+                cfgDoc, weeks: modeWeeks.length ? modeWeeks : undefined
+            });
         }
+        for (const r of results) await writeCumulative(league, r.accountId, yr);
     }
 
     return {
@@ -162,6 +221,7 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
         managers: results.length,
         games: final.length,
         skipped: games.length - final.length,
+        h2h,
         results
     };
 }
@@ -173,6 +233,10 @@ async function scoreHoopsWeek(league, { season, week, apply = true } = {}) {
 // appending would double every score in the season total.
 async function writeWeek(league, accountId, season, week, result) {
     const entry = { week, score: result.score, scoreByTeam: result.scoreByTeam };
+    if (result.captainTeamId != null) {
+        entry.captainTeamId = result.captainTeamId;
+        entry.captainBonus = result.captainBonus;
+    }
 
     const replaced = await Franchise.updateOne(
         { accountId, league, seasons: { $elemMatch: { season, 'weeklyScore.week': week } } },

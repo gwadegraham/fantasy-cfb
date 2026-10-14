@@ -97,6 +97,37 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball game modes (Captain, H2H). Which games and weeks
+        // the modes cover and when a basketball pick locks — a wrong answer
+        // here doubles a conference tournament game or locks a pick after
+        // the result.
+        "./modules/hoops-modes.js": {
+            statements: 95,
+            branches: 88,
+            functions: 100,
+            lines: 95
+        },
+        // Basketball H2H inputs + banking. Branch figure is lower because
+        // most branches are `|| []` / missing-field fallbacks on lean reads.
+        "./modules/hoops-h2h.js": {
+            statements: 95,
+            branches: 70,
+            functions: 100,
+            lines: 100
+        },
+        "./modules/hoops-captain.js": {
+            statements: 92,
+            branches: 78,
+            functions: 90,
+            lines: 95
+        },
+        // The ONE write path for an H2H bonus, both sports.
+        "./modules/h2h-settle.js": {
+            statements: 85,
+            branches: 75,
+            functions: 100,
+            lines: 90
+        },
         // The basketball team page's data (#494). It recomputes each game's
         // quadrant the way scoring banked it, so a drift here makes the team
         // sheet and the manager's points tell two different stories. The
