@@ -312,13 +312,13 @@
    and closes at the hand), the net piece waves overhead, and he bounces a
    little on the ladder (1.6s). */
 .ccm .ccm-nc-wave { transform-box: view-box; transform-origin: 13.6px 29px; }
-.ccm .ccm-nc-blade { transform-box: view-box; transform-origin: 45.6px 15.8px; }
+.ccm .ccm-nc-blade { transform-box: view-box; transform-origin: 9px 11px; }   /* the scissors' pivot, in their own 20x20 box */
 .ccm .ccm-nc-bob { transform-box: view-box; transform-origin: 26px 52px; }
 .ccm-wrap.is-busy .ccm-nc-wave { animation: ccm-nc-wave .5s ease-in-out infinite alternate; }
 .ccm-wrap.is-busy .ccm-nc-blade { animation: ccm-nc-snip .4s ease-in-out infinite alternate; }
 .ccm-wrap.is-busy .ccm-nc-bob { animation: ccm-nc-bob .8s ease-in-out infinite alternate; }
 @keyframes ccm-nc-wave { from { transform: rotate(-10deg); } to { transform: rotate(12deg); } }
-@keyframes ccm-nc-snip { from { transform: rotate(0deg); } to { transform: rotate(-20deg); } }
+@keyframes ccm-nc-snip { from { transform: rotate(0deg); } to { transform: rotate(16deg); } }
 @keyframes ccm-nc-bob { from { transform: translateY(0); } to { transform: translateY(-1.4px); } }
 
 /* Spinning the L on the foam finger: a flat spin faked with scaleX (.7s). */

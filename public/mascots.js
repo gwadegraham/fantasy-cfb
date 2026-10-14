@@ -408,16 +408,32 @@
             </g>
             <circle class="ccm-f-body ccm-o" cx="8.4" cy="5.2" r=".9"/>
             ${glove(9, 12.4, 'fist')}</g>
-          <g class="ccm-lmb">${noodle('M38 27 Q44 22 45 17.4')}</g>
+          <g class="ccm-lmb">${noodle('M38 27 Q44 23 44.6 18.6')}</g>
           ${dBall(u, 26, 32, 13)}
           ${eyes(21.6, 30.4, 30.4, 3.3, 4.8)}
           ${smile(u + 'm', 26, 36.4, 4.8, 2.4)}
           <g class="ccm-nc-snip ccm-lmb">
-            <line x1="45.6" y1="15.8" x2="52.6" y2="9.4" stroke="var(--ccm-ink)" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="45.6" y1="15.8" x2="52.6" y2="9.4" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linecap="round"/>
-            <g class="ccm-nc-blade"><line x1="45.6" y1="15.8" x2="53.6" y2="12" stroke="var(--ccm-ink)" stroke-width="1.8" stroke-linecap="round"/>
-              <line x1="45.6" y1="15.8" x2="53.6" y2="12" stroke="var(--ccm-shade)" stroke-width=".8" stroke-linecap="round"/></g>
-            ${glove(45, 17.4, 'fist')}
+            <!-- Scissors in their own 20x20 box (nested svg, no transform math):
+                 two finger loops, two pointed blades crossing at a pivot screw
+                 (9, 11), pointing up at the net. Drawn over the glove so the
+                 loops show like fingers through the handles. The loose blade
+                 and its loop open and close about the pivot. -->
+            ${glove(44.6, 18.6, 'fist')}
+            <svg x="38.6" y="1" width="21" height="21" viewBox="0 0 20 20" overflow="visible">
+              <g>
+                <path d="M9 11 L4.6 15.2" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="3.6" cy="16.2" r="2.6" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+                <circle cx="3.6" cy="16.2" r="2.6" fill="none" stroke="var(--ccm-violet)" stroke-width="1.4"/>
+                <path d="M7.4 9.8 L19 .8 L10.6 12.6 Z" fill="var(--ccm-shade)" stroke="var(--ccm-ink)" stroke-width=".7" stroke-linejoin="round"/>
+              </g>
+              <g class="ccm-nc-blade">
+                <path d="M9 11 L6.8 17.6" stroke="var(--ccm-ink)" stroke-width="2.4" stroke-linecap="round"/>
+                <circle cx="6.4" cy="19" r="2.4" fill="none" stroke="var(--ccm-ink)" stroke-width="2.6"/>
+                <circle cx="6.4" cy="19" r="2.4" fill="none" stroke="var(--ccm-violet)" stroke-width="1.4"/>
+                <path d="M8 12.6 L19.8 5 L9.4 9.4 Z" fill="var(--ccm-body)" stroke="var(--ccm-ink)" stroke-width=".7" stroke-linejoin="round"/>
+              </g>
+              <circle class="ccm-f-ink" cx="9" cy="11" r="1"/>
+            </svg>
           </g>
         </g>`;
 
