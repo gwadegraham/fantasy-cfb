@@ -129,6 +129,8 @@ describe('Create league', () => {
         routes['POST /leagues/admin'] = () => json(MADE, 201);
         routes['GET /users/league/hardwood/all'] = () => json(members);
         routes['GET /leagues/admin/candidates?league=hardwood'] = () => json(CANDIDATES);
+        routes['GET /draft/hardwood/2027'] = () => json(null);
+        routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] = () => json({ found: false });
     });
 
     async function toStep2() {
@@ -212,6 +214,34 @@ describe('Create league', () => {
         expect($('.lg-invite [data-copy]').getAttribute('data-copy')).toBe('https://campusclash.io/invite/tok');
     });
 
+    test('step 2: an email that already has a login joins under it — no second account', async () => {
+        await toStep2();
+        routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] =
+            () => json({ found: true, _id: 'c3', firstName: 'Cy', lastName: 'Old', inLeague: false, elsewhere: true });
+        routes['POST /leagues/admin/hardwood/members'] = () => json({ added: ['c3'], already: [], refused: [] });
+        $('[data-first]').value = 'Cy'; $('[data-last]').value = 'New'; $('[data-email]').value = 'cy@example.com';
+        submit($('[data-new-person]'));
+        await flush();
+        expect(posted('POST /users')).toEqual([]);
+        expect(posted('POST /leagues/admin/hardwood/members')).toEqual([{ accountIds: ['c3'] }]);
+        expect(toasts).toContainEqual(['ok', 'Cy Old already has a login — added under it, no invite needed']);
+    });
+
+    test.each([
+        [{ inLeague: true, elsewhere: true }, 'Cy Old is already in this league'],
+        [{ inLeague: false, elsewhere: false }, 'That email already belongs to Cy Old, who is in no league. Ask an admin to sort out that account.']
+    ])('step 2: an existing email that cannot be added (%j) is refused, and nothing is created', async (flags, msg) => {
+        await toStep2();
+        routes['GET /leagues/admin/account?email=cy%40example.com&league=hardwood'] =
+            () => json(Object.assign({ found: true, _id: 'c3', firstName: 'Cy', lastName: 'Old' }, flags));
+        $('[data-first]').value = 'Cy'; $('[data-last]').value = 'New'; $('[data-email]').value = 'cy@example.com';
+        submit($('[data-new-person]'));
+        await flush();
+        expect(posted('POST /users')).toEqual([]);
+        expect(posted('POST /leagues/admin/hardwood/members')).toEqual([]);
+        expect(toasts).toContainEqual(['err', msg]);
+    });
+
     test('step 2: a refused new person says why and sends no invite', async () => {
         await toStep2();
         routes['POST /users'] = () => json({ message: 'A valid league is required.' }, 400);
@@ -255,7 +285,7 @@ describe('Create league', () => {
         await flush();
         expect(posted('POST /draft')).toEqual([{
             league: 'hardwood', season: 2027, draftOrder: ['b2', 'a1'], orderMethod: 'manual',
-            snake: false, totalRounds: 12, scheduledAt: null, autoOpen: false, poolSize: 120
+            snake: false, totalRounds: 12, scheduledAt: null, autoOpen: false, callUrl: '', poolSize: 120
         }]);
         expect(window.localStorage.getItem('leagueCode')).toBe('hardwood');
         expect(navigations.length).toBe(1);
@@ -265,6 +295,7 @@ describe('Create league', () => {
         routes['POST /leagues/admin'] = () => json({ code: 'third', name: 'Third', sport: 'football', season: 2026 }, 201);
         routes['GET /users/league/third/all'] = () => json(PEOPLE.map(p => Object.assign({}, p, { seasons: [{ season: 2026 }] })));
         routes['GET /leagues/admin/candidates?league=third'] = () => json([]);
+        routes['GET /draft/third/2026'] = () => json(null);
         await render();
         click($('[data-create]'));
         $('[data-name]').value = 'Third';
@@ -279,6 +310,34 @@ describe('Create league', () => {
         await flush();
         expect(posted('POST /draft')[0]).not.toHaveProperty('poolSize');
         expect(posted('POST /draft')[0].draftOrder).toEqual(['a1', 'b2', 'z9']);
+    });
+
+    test('step 3: a saved draft is edited, not overwritten', async () => {
+        routes['GET /draft/hardwood/2027'] = () => json({
+            status: 'scheduled', draftOrder: ['b2', 'a1'], totalRounds: 8, snake: false, poolSize: null,
+            scheduledAt: '2026-11-01T23:00:00.000Z', autoOpen: true, callUrl: 'https://zoom.us/j/1'
+        });
+        await toStep3(PEOPLE);
+        expect($$('[data-order]').map(li => li.getAttribute('data-order'))).toEqual(['b2', 'a1']);
+        expect($('[data-rounds]').value).toBe('8');
+        expect($('[data-type]').value).toBe('linear');
+        // Uncapped stays uncapped, rather than the sport's 120.
+        expect($('[data-pool]').value).toBe('');
+        expect($('[data-when]').value).not.toBe('');
+        routes['POST /draft'] = () => json({});
+        submit($('[data-step3]'));
+        await flush();
+        const body = posted('POST /draft')[0];
+        expect(body).toMatchObject({ draftOrder: ['b2', 'a1'], totalRounds: 8, snake: false, poolSize: null,
+            autoOpen: true, callUrl: 'https://zoom.us/j/1', scheduledAt: '2026-11-01T23:00:00.000Z' });
+    });
+
+    test('step 3: a draft underway is locked, and nothing is sent', async () => {
+        routes['GET /draft/hardwood/2027'] = () => json({ status: 'active', draftOrder: ['a1', 'b2'] });
+        await toStep3(PEOPLE);
+        expect($('[data-step3]')).toBeNull();
+        expect($('[data-step="3"]').textContent).toContain('The draft is active, so its settings are locked.');
+        expect($('[data-finish-skip]').getAttribute('href')).toBe('/leagues/admin/hardwood/open');
     });
 
     test('step 3: fewer than two managers offers to skip the draft instead', async () => {

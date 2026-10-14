@@ -247,17 +247,32 @@
         if (!first || !last || !email) return toast('error', 'First name, last name and email are all needed');
         var btn = form.querySelector('button[type="submit"]');
         btn.disabled = true;
-        // Add a Player, the same call the admin page makes. The season is sent
-        // rather than left to the server, which would read it from a season
-        // cache another dyno may not have refreshed since step 1.
-        return api('POST', '/users', {
-            firstName: first, lastName: last, email: email,
-            league: league.code, seasons: [{ season: league.season }]
-        }).then(function (made) {
-            return api('POST', '/users/' + encodeURIComponent(made._id) + '/invite-link').then(function (inv) {
-                invites.push({ name: first + ' ' + last, link: inv.link });
-                toast('success', 'Added ' + first + ' ' + last);
-                return startStep2();
+        var code = encodeURIComponent(league.code);
+        // The email first. Add a Player always makes an Account, so someone
+        // who already has one would get a second — a team nobody can log in
+        // as. They join under the login they have instead.
+        return api('GET', '/leagues/admin/account?email=' + encodeURIComponent(email) + '&league=' + code).then(function (found) {
+            if (found.found) {
+                var who = memberName(found);
+                if (found.inLeague) throw new Error(who + ' is already in this league');
+                if (!found.elsewhere) throw new Error('That email already belongs to ' + who + ', who is in no league. Ask an admin to sort out that account.');
+                return api('POST', '/leagues/admin/' + code + '/members', { accountIds: [found._id] }).then(function () {
+                    toast('success', who + ' already has a login — added under it, no invite needed');
+                    return startStep2();
+                });
+            }
+            // Add a Player, the same call the admin page makes. The season is
+            // sent rather than left to the server, which would read it from a
+            // season cache another dyno may not have refreshed since step 1.
+            return api('POST', '/users', {
+                firstName: first, lastName: last, email: email,
+                league: league.code, seasons: [{ season: league.season }]
+            }).then(function (made) {
+                return api('POST', '/users/' + encodeURIComponent(made._id) + '/invite-link').then(function (inv) {
+                    invites.push({ name: first + ' ' + last, link: inv.link });
+                    toast('success', 'Added ' + first + ' ' + last);
+                    return startStep2();
+                });
             });
         }).catch(function (e) {
             btn.disabled = false;
@@ -268,6 +283,16 @@
     // ---- step 3 ------------------------------------------------------------
 
     var order = [];        // account ids, pick order
+    var draft = null;      // the league's draft for this season, if one is saved
+
+    // A datetime-local value, in the browser's own zone.
+    function localInput(iso) {
+        if (!iso) return '';
+        var d = new Date(iso);
+        if (isNaN(d)) return '';
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
 
     function shuffle(list) {
         var a = list.slice();
@@ -280,8 +305,15 @@
 
     function startStep3() {
         root.innerHTML = frame(3, '<div class="sp-loading">Loading…</div>');
-        return loadMembers().then(function () {
+        // The saved draft too, so coming back through Continue setup edits it
+        // rather than overwriting its order, date and call link with blanks.
+        return Promise.all([
+            loadMembers(),
+            api('GET', '/draft/' + encodeURIComponent(league.code) + '/' + encodeURIComponent(league.season))
+                .then(function (d) { draft = d || null; })
+        ]).then(function () {
             var ids = members.filter(function (m) { return m.inSeason; }).map(function (m) { return m._id; });
+            if (draft && draft.draftOrder && draft.draftOrder.length && !order.length) order = draft.draftOrder.map(String);
             // Keep an order already arranged on a return visit; append anyone new.
             order = order.filter(function (id) { return ids.indexOf(id) !== -1; })
                 .concat(ids.filter(function (id) { return order.indexOf(id) === -1; }));
@@ -304,7 +336,19 @@
     }
 
     function renderStep3() {
-        var d = DEFAULTS[league.sport] || {};
+        if (draft && (draft.status === 'active' || draft.status === 'complete')) {
+            root.innerHTML = frame(3, '<div class="sp-empty">The draft is ' + esc(draft.status)
+                + ', so its settings are locked.</div>'
+                + '<div class="lg-foot lg-foot-split"><button type="button" class="lg-btn lg-ghost" data-to-step2>Back</button>'
+                + '<a class="lg-btn lg-primary" data-finish-skip href="' + esc(openHref(league.code)) + '">Open admin</a></div>');
+            return;
+        }
+        var d = Object.assign({}, DEFAULTS[league.sport] || {});
+        if (draft) {
+            if (draft.totalRounds) d.totalRounds = draft.totalRounds;
+            // A saved null is a deliberate "uncapped", not "use the default".
+            if (draft.poolSize !== undefined) d.poolSize = draft.poolSize;
+        }
         var hoops = league.sport === 'basketball';
         var enough = order.length >= 2;
         root.innerHTML = frame(3, '<form data-step3>'
@@ -315,9 +359,10 @@
             + '<h2 class="sp-h">Settings</h2>'
             + '<div class="lg-grid">'
             + '<label class="lg-field"><span class="lg-label">Rounds</span><input type="number" data-rounds min="1" max="20" value="' + esc(d.totalRounds || 10) + '"></label>'
-            + '<label class="lg-field"><span class="lg-label">Type</span><select data-type><option value="snake">Snake</option><option value="linear">Linear</option></select></label>'
+            + '<label class="lg-field"><span class="lg-label">Type</span><select data-type><option value="snake">Snake</option>'
+            + '<option value="linear"' + (draft && draft.snake === false ? ' selected' : '') + '>Linear</option></select></label>'
             + (hoops ? '<label class="lg-field"><span class="lg-label">Pool size</span><input type="number" data-pool min="1" max="400" value="' + esc(d.poolSize || '') + '" placeholder="all teams"></label>' : '')
-            + '<label class="lg-field"><span class="lg-label">Draft date (optional)</span><input type="datetime-local" data-when></label>'
+            + '<label class="lg-field"><span class="lg-label">Draft date (optional)</span><input type="datetime-local" data-when value="' + esc(localInput(draft && draft.scheduledAt)) + '"></label>'
             + '</div>'
             + '<p class="lg-hint">Scoring, game modes and everything else are on the league\'s admin page.</p>'
             + '<div class="lg-foot lg-foot-split">'
@@ -345,7 +390,9 @@
             snake: form.querySelector('[data-type]').value === 'snake',
             totalRounds: parseInt(form.querySelector('[data-rounds]').value, 10) || (DEFAULTS[league.sport] || {}).totalRounds || 10,
             scheduledAt: when ? new Date(when).toISOString() : null,
-            autoOpen: false
+            // Not on this form, so kept as saved: POST /draft overwrites both.
+            autoOpen: !!(draft && draft.autoOpen),
+            callUrl: (draft && draft.callUrl) || ''
         };
         // Only basketball has a pool cap; football's route refuses one.
         var pool = form.querySelector('[data-pool]');
@@ -372,14 +419,14 @@
     root.addEventListener('click', function (e) {
         var t = e.target.closest ? e.target.closest('button, a') : null;
         if (!t) return;
-        if (t.hasAttribute('data-create')) { league = null; members = []; invites = []; order = []; return renderStep1(); }
+        if (t.hasAttribute('data-create')) { league = null; members = []; invites = []; order = []; draft = null; return renderStep1(); }
         if (t.hasAttribute('data-back-list')) { league = null; return loadList(); }
         if (t.hasAttribute('data-continue')) {
             var code = t.getAttribute('data-continue');
             var l = rows.filter(function (r) { return r.code === code; })[0];
             if (!l) return;
             league = { code: l.code, name: l.name, sport: l.sport, season: l.season };
-            members = []; invites = []; order = [];
+            members = []; invites = []; order = []; draft = null;
             return startStep2();
         }
         if (t.hasAttribute('data-add-picked')) return addPicked(t);

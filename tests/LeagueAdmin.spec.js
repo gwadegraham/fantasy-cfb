@@ -212,6 +212,13 @@ describe('step 1: create', () => {
         expect(await League.exists({ name: 'Too Early' })).toBeNull();
     });
 
+    test('a failed re-prime does not report a league that WAS made as failed', async () => {
+        jest.spyOn(seasons, 'prime').mockRejectedValueOnce(new Error('blip'));
+        const res = await create({ sport: 'football', name: 'Blip' });
+        expect(res.status).toBe(201);
+        expect(await League.exists({ code: 'blip' })).not.toBeNull();
+    });
+
     test('a database failure is a 500, not a half-made league', async () => {
         jest.spyOn(League, 'create').mockRejectedValueOnce(new Error('down'));
         expect((await create({ sport: 'football', name: 'Down' })).status).toBe(500);
@@ -297,6 +304,31 @@ describe('step 2: existing managers', () => {
     test('nobody anywhere else: an empty list', async () => {
         await Franchise.deleteMany({ league: { $ne: code } });
         expect((await as(ADMIN).get(`/leagues/admin/candidates?league=${code}`)).body).toEqual([]);
+    });
+});
+
+describe("step 2's email check", () => {
+    let code;
+    beforeEach(async () => { code = (await create({ sport: 'basketball', name: 'Hardwood Heroes' })).body.code; });
+    const look = (email, who = ADMIN) => as(who).get(`/leagues/admin/account?email=${encodeURIComponent(email)}&league=${code}`);
+
+    test('an existing email, in any case, is found — with where they play', async () => {
+        const res = await look('  ANN@Example.com ');
+        expect(res.body).toEqual({ found: true, _id: String(ann._id), firstName: 'Ann', lastName: 'Lee', inLeague: false, elsewhere: true });
+        await repo.addFranchise(ann._id, code, { season: HOOPS });
+        expect((await look('ann@example.com')).body.inLeague).toBe(true);
+    });
+
+    test('a new email is not found, and a regex in it is just text', async () => {
+        expect((await look('cy@example.com')).body).toEqual({ found: false });
+        expect((await look('.*')).body).toEqual({ found: false });
+    });
+
+    test('needs both, is Admin-only, and a failure is a 500', async () => {
+        expect((await as(ADMIN).get('/leagues/admin/account?email=a@b.c')).status).toBe(400);
+        expect((await look('ann@example.com', LM)).status).toBe(404);
+        jest.spyOn(Account, 'findOne').mockImplementationOnce(() => { throw new Error('down'); });
+        expect((await look('ann@example.com')).status).toBe(500);
     });
 });
 
@@ -446,6 +478,9 @@ describe('the page and the list', () => {
         const json = await as(ADMIN).get('/leagues').set('Accept', 'application/json');
         expect(json.status).toBe(200);
         expect(json.body.map(l => l.code).sort()).toEqual(['claunts-league', 'graham-league']);
+        // One URL, two types: both say so, or a cache could swap them.
+        expect(page.headers.vary).toMatch(/Accept/);
+        expect(json.headers.vary).toMatch(/Accept/);
     });
 
     test('rows: one per league, with sport, season, managers and status', async () => {

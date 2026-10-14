@@ -177,6 +177,9 @@ function build({ pageLocals = () => ({}) } = {}) {
     const router = express.Router();
 
     router.get('/', (req, res, next) => {
+        // One URL, two representations: say so, so no cache hands the page
+        // to the fetch or the JSON to the browser.
+        res.vary('Accept');
         // A JSON read of the league list: routes/leagues.js's, not ours.
         if (req.accepts(['json', 'html']) !== 'html') return next();
         if (!(req.oidc && req.oidc.isAuthenticated())) return res.redirect('/login');
@@ -210,6 +213,33 @@ function build({ pageLocals = () => ({}) } = {}) {
         } catch (err) {
             console.error(`leagues candidates: ${err && err.message}`);
             return res.status(500).json({ message: 'Could not read the managers' });
+        }
+    });
+
+    // Step 2's "someone new" checks the email here FIRST. Add a Player always
+    // makes an Account, so typing in an existing person's email would give
+    // them a second one — a franchise nobody can log in as. Matched without
+    // case, the way POST /users stores it. Admin-only like everything here,
+    // so this is not a way to probe who has an account.
+    router.get('/admin/account', async (req, res) => {
+        const email = String(req.query.email || '').trim().toLowerCase();
+        const league = String(req.query.league || '');
+        if (!email || !league) return res.status(400).json({ message: 'Which email, and which league?' });
+        try {
+            const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const acct = await Account.findOne({ email: new RegExp(`^${escaped}$`, 'i') }, { firstName: 1, lastName: 1 }).lean();
+            if (!acct) return res.json({ found: false });
+            const [inLeague, elsewhere] = await Promise.all([
+                Franchise.exists({ accountId: acct._id, league }),
+                Franchise.exists({ accountId: acct._id, league: { $ne: league } })
+            ]);
+            return res.json({
+                found: true, _id: String(acct._id), firstName: acct.firstName, lastName: acct.lastName,
+                inLeague: !!inLeague, elsewhere: !!elsewhere
+            });
+        } catch (err) {
+            console.error(`leagues account lookup: ${err && err.message}`);
+            return res.status(500).json({ message: 'Could not check that email' });
         }
     });
 
@@ -252,7 +282,10 @@ function build({ pageLocals = () => ({}) } = {}) {
             // This dyno knows the new league's sport at once. Other dynos pick
             // it up on their next re-prime (a minute at most); the routes on
             // this page read the document, not the cache, for that reason.
-            await seasons.prime();
+            // Not fatal: the league is written, and a 500 here would tell the
+            // Admin it was not — then refuse the retry as a duplicate name.
+            // The interval re-prime, and /open below, catch this dyno up.
+            await seasons.prime().catch(e => console.error(`league create: re-prime failed: ${e && e.message}`));
             await audit.record(req, {
                 action: 'league.create', league: doc.code, season: String(season),
                 summary: `Created ${sport} league "${doc.name}"`,
