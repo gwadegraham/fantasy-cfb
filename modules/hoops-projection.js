@@ -36,8 +36,11 @@
 // to be a Q1 is, more often than not, one that out-played its preseason
 // rating — so Q1 games are harder than the preseason ratings say (projected
 // win rate 0.41, actual 0.33, grading every game on end-of-season ranks).
-// The error is close to uniform across the pool, so the draft's relative
-// comparisons survive it; an absolute "you will score 57" does not.
+// It is NOT uniform across the pool: +4.2 for preseason ranks 1-40, +5.3
+// for 41-80 and -0.3 for 81-120, so mid-tier teams read a few points rich
+// against late picks. Within a tier the ordering is weak too (r = 0.25 for
+// ranks 41-80) — a season of basketball is noisy, and no preseason rating
+// knows which mid-major is about to out-play its number.
 //
 // Conference tournament games are left out (see isConfTournamentGame); in
 // 2025-26 they were worth about 4 banked points a pool team, which the March
@@ -131,15 +134,18 @@ function teamWinProb(myBarthag, oppBarthag, venue, homeOdds = HOME_ODDS) {
 // projected record actually is. Football does exactly this in margin space.
 //
 // Measured on 2025-26 with the D-I rate as the target, team's side, 10,694
-// team-games: logit shift Brier 0.1921 / log loss 0.5590, probability shift
-// 0.1920 / 0.5593, uncalibrated 0.1919 / 0.5587. So calibration buys nothing
+// team-games: logit shift Brier 0.1920 / log loss 0.5589, probability shift
+// 0.1920 / 0.5592, uncalibrated 0.1919 / 0.5587. So calibration buys nothing
 // MEASURABLE on a season where the record and the rating come from the same
 // Torvik model, and costs nothing either. It stays because the two inputs
 // will not always agree — a hand-pasted record from a different day than the
 // rating, and mid-season, where the target is the blended remaining pace.
 function calibrateProbs(probs, expectedWins) {
     const raw = probs.map(clampP);
-    if (expectedWins === null || expectedWins === undefined || !raw.length) return { probs: raw, delta: 0 };
+    // A target that is not a number is no target. Number('abc') is NaN, and
+    // a NaN target sends the bisection to its floor and every game to ~0%.
+    if (expectedWins === null || expectedWins === undefined || expectedWins === ''
+        || !Number.isFinite(Number(expectedWins)) || !raw.length) return { probs: raw, delta: 0 };
     const target = Math.min(raw.length - 1e-6, Math.max(1e-6, Number(expectedWins)));
     const x = raw.map(logit);
     const sumAt = (d) => x.reduce((s, xi) => s + sigmoid(xi + d), 0);
@@ -169,19 +175,33 @@ function winRateOf(projectedRecord) {
 // conference tournament as seasonType 'regular', and its title is a bonus
 // that the March estimate prices separately, so the regular projection
 // leaves those games out rather than counting them twice.
+//
+// conferenceGame is required on both paths: an early-season event (Maui,
+// the Battle 4 Atlantis) is not a conference game, and if CBBD ever gives one
+// a tournament code it must stay in the projection.
 function isConfTournamentGame(game) {
+    if (!game.conferenceGame) return false;
     if (String(game.tournament || '').trim()) return true;
-    return !!game.conferenceGame && /\b(championship|tournament|playoffs?)\b/i.test(String(game.gameNotes || ''));
+    return /\b(championship|tournament|playoffs?)\b/i.test(String(game.gameNotes || ''));
 }
 
-// The game as a win for `teamId`, for the scoring engine. Notes and the
-// tournament code are dropped so a synthesized win can only ever match a
+// A row that will never be played as listed. 18 of the 6,213 2025-26
+// regular-season rows were cancelled or postponed, most with a rescheduled
+// twin on file; projecting both would count the game twice.
+const DEAD_STATUSES = ['cancelled', 'canceled', 'postponed'];
+function isDead(game) {
+    return DEAD_STATUSES.includes(String(game.status || '').toLowerCase());
+}
+
+// The game as a result for `teamId`, for the scoring engine. Notes and the
+// tournament code are dropped so a synthesized result can only ever match a
 // quadrant rule.
-function synthWin(game, teamId) {
+function synthResult(game, teamId, won) {
     const isHome = Number(game.homeTeamId) === Number(teamId);
+    const teamPts = won ? 1 : 0, oppPts = won ? 0 : 1;
     return Object.assign({}, game, {
         seasonType: 'regular', tournament: null, gameNotes: null, status: 'final',
-        homePoints: isHome ? 1 : 0, awayPoints: isHome ? 0 : 1,
+        homePoints: isHome ? teamPts : oppPts, awayPoints: isHome ? oppPts : teamPts,
         homeSeed: null, awaySeed: null
     });
 }
@@ -189,7 +209,13 @@ function synthWin(game, teamId) {
 // What a win in this game is worth under this league's config, graded on the
 // opponent's rank in `ranks` ({ teamId: rank }) — the caller's CURRENT ranks.
 function pointsIfWin(teamId, game, ranks, cfg) {
-    return evaluate('hoops', Number(teamId), synthWin(game, teamId), ranks || {}, cfg);
+    return evaluate('hoops', Number(teamId), synthResult(game, teamId, true), ranks || {}, cfg);
+}
+
+// What a LOSS in this game is worth: 0 unless the league has opted into the
+// bad-loss penalty, and then negative on a Q4 loss.
+function pointsIfLoss(teamId, game, ranks, cfg) {
+    return evaluate('hoops', Number(teamId), synthResult(game, teamId, false), ranks || {}, cfg);
 }
 
 // Everything a projection reads that is the same for every team, built once.
@@ -217,6 +243,7 @@ function buildHoopsPoolContext(teams, { ranks, cfg, homeOdds = HOME_ODDS } = {})
 function scheduledRegular(teamId, games) {
     const id = Number(teamId);
     return (games || []).filter(g => String(g.seasonType || '').toLowerCase() === 'regular'
+        && !isDead(g)
         && !isConfTournamentGame(g)
         && (Number(g.homeTeamId) === id || Number(g.awayTeamId) === id));
 }
@@ -228,8 +255,8 @@ function scheduledRegular(teamId, games) {
 // the raw rate asked every team to win those games again against real
 // opponents: across 2025-26 the mean target rate was 0.524 where D-I against
 // D-I is 0.500 by construction, and the calibrated probabilities came out
-// biased high (logistic intercept -0.13). Taking the non-D-I wins out first
-// removes the bias (intercept +0.006).
+// biased high (logistic intercept -0.13, Brier 0.1929). Taking the non-D-I
+// wins out first removes the bias (intercept +0.001, Brier 0.1920).
 function d1WinRate(teamId, games, ctx) {
     const rate = ctx.winRateById[String(teamId)];
     if (rate === undefined) return null;
@@ -257,11 +284,19 @@ function projectableGames(teamId, games, ctx) {
 //
 // opts.expectedWins: the calibration target for the games passed. Default:
 //   the team's Torvik win rate (restated over D-I games, d1WinRate) times the
-//   number of projectable games — a full-season projection. Remaining-schedule callers pass their own (see
-//   projectRemaining). null disables calibration.
-// opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin }].
+//   number of projectable games — a full-season projection. Remaining-
+//   schedule callers pass their own (see projectRemaining). null disables
+//   calibration.
+// opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin,
+//   pointsIfLoss }]. The first four are football's entry; pointsIfLoss is
+//   only non-zero in a league that has opted into the bad-loss penalty, and
+//   h2h's matchupWinProb (which floors at 0) does not read it.
 //
-// The postseason terms are 0 here; the March estimate fills them.
+// `cfp` and `bowl` are always 0: they are football's postseason terms, kept so
+// a consumer that sums proj.cfp + proj.confChamp + proj.bowl (the standings
+// projection does) gets a number instead of NaN. The basketball postseason
+// is `postseason` (= confChamp + ncaa + upset); it is 0 here and the March
+// estimate fills it.
 function projectHoopsTeam(team, teamGames, ctx, opts = {}) {
     const teamId = Number(team.id);
     const key = String(teamId);
@@ -288,15 +323,16 @@ function projectHoopsTeam(team, teamGames, ctx, opts = {}) {
     const perGame = [];
     games.forEach((g, i) => {
         const pts = pointsIfWin(teamId, g, ctx.ranks, ctx.cfg);
-        regular += probs[i] * pts;
+        const lossPts = pointsIfLoss(teamId, g, ctx.ranks, ctx.cfg);
+        regular += probs[i] * pts + (1 - probs[i]) * lossPts;
         projWins += probs[i];
-        if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: probs[i], pointsIfWin: pts });
+        if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: probs[i], pointsIfWin: pts, pointsIfLoss: lossPts });
     });
 
     const confChamp = 0, ncaa = 0, upset = 0;
     const postseason = confChamp + ncaa + upset;
     return {
-        regular, confChamp, ncaa, upset, postseason,
+        regular, confChamp, ncaa, upset, postseason, cfp: 0, bowl: 0,
         total: regular + postseason,
         projWins, makeProb: null, perGame
     };
@@ -341,7 +377,7 @@ function projectRemaining(team, teamGames, ctx, opts = {}) {
 module.exports = {
     HOME_ODDS, BLEND_GAMES, NON_D1_WIN_RATE, d1WinRate, scheduledRegular,
     teamWinProb, calibrateProbs, winRateOf, venueOfGame, barthagOf,
-    pointsIfWin, isConfTournamentGame, projectableGames, wonGame,
+    pointsIfWin, pointsIfLoss, isConfTournamentGame, isDead, projectableGames, wonGame,
     buildHoopsPoolContext, projectHoopsTeam, remainingWinsTarget, projectRemaining,
     logit, sigmoid
 };

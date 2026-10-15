@@ -29,6 +29,7 @@ const { weekOf, seasonStartFrom } = require('../modules/hoops-calendar');
 const { blendRanks, blendWeight } = require('../modules/hoops-ranks');
 const { isFinal } = require('../modules/hoops-scoring-pass');
 const { evaluate } = require('../modules/scoring');
+const { quadrantFor } = require('../modules/hoops-quadrants');
 
 const argDir = process.argv.indexOf('--data');
 const DIR = argDir === -1 ? path.join(__dirname, '.dev-data', 'hoops-backtest') : process.argv[argDir + 1];
@@ -164,8 +165,20 @@ function main() {
     // Split-half stability: fit on Nov-Dec, check on Jan-Mar.
     const early = d1.filter(g => g.startDate < '2026-01-01'), late = d1.filter(g => g.startDate >= '2026-01-01');
     const fitH = (set) => { let b = null; for (let h = 1.0; h <= 2.4; h += 0.01) { const ll = logLoss(venueRows(h, set)); if (!b || ll < b.ll) b = { h, ll }; } return b.h; };
+    // Record against non-D-I opponents (NON_D1_WIN_RATE).
+    let nonN = 0, nonW = 0;
+    games.filter(isFinal).forEach(g => {
+        const h = rated(g.homeTeamId), a = rated(g.awayTeamId);
+        if (h === a) return;
+        nonN++;
+        if ((h && homeWon(g)) || (a && !homeWon(g))) nonW++;
+    });
+    console.log(`D-I teams against non-D-I opponents: ${nonW} of ${nonN} (${fmt(nonW / nonN, 3)})`);
     console.log(`split-half: best H on Nov-Dec = ${fitH(early).toFixed(2)}, on Jan-Mar = ${fitH(late).toFixed(2)}`);
 
+    // Everything below uses H fitted on this same season, so it is in-sample
+    // for H. Run with H=1.62 (the Nov-Dec-only fit) to see that it barely
+    // matters: the log-loss curve is flat from 1.5 to 1.6.
     const H = Number(process.env.H || bestH.h.toFixed(2));
 
     // ---- 2. team-perspective probabilities: raw vs calibrated ----
@@ -254,7 +267,13 @@ function main() {
         const sched = schedByTeam[id] || [];
         const proj = P.projectHoopsTeam(t, sched, ctx, { perGame: true });
         // Projected with END ranks for points-if-win (isolates win-prob error from rank drift).
-        const projEndRanks = P.projectHoopsTeam(t, sched, Object.assign({}, ctx, { ranks: endRank }));
+        // The same win probabilities, each game graded at the rank the
+        // "actual" column banks it at — isolates win-probability error from
+        // rank drift.
+        const projEndRanks = { regular: proj.perGame.reduce((s, pg) => {
+            const g = sched.find(x => x.id === pg.gameId);
+            return s + pg.winProb * P.pointsIfWin(t.id, g, rankByWeek[g.week], cfg);
+        }, 0) };
         const played = P.projectableGames(id, sched, ctx).filter(isFinal);
         let actual = 0, wins = 0;
         played.forEach(g => {
@@ -285,13 +304,32 @@ function main() {
         console.log(`| ${label} | ${set.length} | ${fmt(meanP, 1)} | ${fmt(meanA, 1)} | ${fmt(bias, 2)} | ${fmt(mae, 2)} | ${fmt(rmse, 2)} | ${fmt(corr(set.map(r => r.proj), set.map(r => r.actual)), 3)} | ${fmt(maeEnd, 2)} (bias ${fmt(biasEnd, 2)}) | ${fmt(winsMae, 2)} (bias ${fmt(winsBias, 2)}) | ${fmt(confT, 2)} |`);
     };
     console.log('\n## Regular-season points: preseason projection vs banked (approx.)');
-    console.log('| teams | n | mean proj | mean actual | bias | MAE | RMSE | r | MAE if ranks known | wins MAE | conf-tourney pts left out |');
+    console.log('| teams | n | mean proj | mean actual | bias | MAE | RMSE | r | MAE if banked ranks known | wins MAE | conf-tourney pts left out |');
     console.log('|---|---|---|---|---|---|---|---|---|---|---|');
     report('pool (rank 1-120)', rows.filter(r => r.rank <= 120));
     report('rank 1-40', rows.filter(r => r.rank <= 40));
     report('rank 41-80', rows.filter(r => r.rank > 40 && r.rank <= 80));
     report('rank 81-120', rows.filter(r => r.rank > 80 && r.rank <= 120));
     report('all D-I', rows);
+
+    // Where the points bias comes from: pool teams' win rate by quadrant,
+    // every game graded on END-of-season ranks.
+    console.log('\n## Pool teams by quadrant (graded on END-of-season ranks)');
+    console.log('| quadrant | games | projected win rate | actual win rate |');
+    console.log('|---|---|---|---|');
+    const qd = { 1: [0, 0, 0], 2: [0, 0, 0], 3: [0, 0, 0], 4: [0, 0, 0] };
+    hoopsTeams.filter(t => t.preseason.rank <= 120).forEach(t => {
+        const id = String(t.id), sched = schedByTeam[id] || [];
+        const gs = P.projectableGames(id, sched, ctx);
+        P.projectHoopsTeam(t, sched, ctx, { perGame: true }).perGame.forEach((pg, i) => {
+            const g = gs[i];
+            if (!isFinal(g)) return;
+            const opp = Number(g.homeTeamId) === t.id ? g.awayTeamId : g.homeTeamId;
+            const q = quadrantFor(endRank[opp], P.venueOfGame(t.id, g));
+            qd[q][0]++; qd[q][1] += pg.winProb; qd[q][2] += P.wonGame(id, g) ? 1 : 0;
+        });
+    });
+    [1, 2, 3, 4].forEach(q => console.log(`| Q${q} | ${qd[q][0]} | ${fmt(qd[q][1] / qd[q][0], 3)} | ${fmt(qd[q][2] / qd[q][0], 3)} |`));
 
     // ---- 5. remaining-wins blend constant K ----
     console.log('\n## Remaining-wins blend: K (games for reality to earn half the say)');

@@ -118,7 +118,8 @@ module.exports = {
         },
         // The basketball projection engine. Pure, and every consumer of it
         // (draft grades, the draft board, H2H odds, standings) reads its
-        // numbers without a second check, so it stays fully covered.
+        // numbers without a second check, so every line and function stays
+        // covered.
         "./modules/hoops-projection.js": {
             statements: 100,
             branches: 90,

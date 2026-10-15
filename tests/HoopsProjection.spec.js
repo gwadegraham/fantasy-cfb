@@ -89,6 +89,8 @@ describe('calibrateProbs (logit shift)', () => {
         expect(all).toBeLessThanOrEqual(4);
         expect(all).toBeGreaterThan(3.99);
         expect(P.calibrateProbs([], 2).probs).toEqual([]);
+        expect(P.calibrateProbs(probs, 'abc').probs).toEqual(probs);
+        expect(P.calibrateProbs(probs, NaN).delta).toBe(0);
     });
 });
 
@@ -122,6 +124,12 @@ describe('winRateOf and d1WinRate', () => {
 
 describe('pointsIfWin uses the real quadrants and the league config', () => {
     const ranks = { 2: 60, 3: 200 };
+
+    test('a rank-40 opponent is Q1 on a neutral floor and Q2 at home', () => {
+        const c = cfg();
+        expect(P.pointsIfWin(1, game(1, 1, 5), { 5: 40 }, c)).toBe(c.values.q2Win);
+        expect(P.pointsIfWin(1, game(1, 1, 5, { neutralSite: true }), { 5: 40 }, c)).toBe(c.values.q1Win);
+    });
 
     test('the same rank-60 opponent is Q1 away and Q2 at home', () => {
         const c = cfg();
@@ -164,7 +172,8 @@ describe('projectHoopsTeam', () => {
     test('perGame covers only regular D-I games, in football’s entry shape', () => {
         const out = P.projectHoopsTeam(teams[0], sched, ctx, { perGame: true });
         expect(out.perGame.map(g => g.gameId)).toEqual([101, 102, 103]);
-        out.perGame.forEach(g => expect(Object.keys(g).sort()).toEqual(['gameId', 'pointsIfWin', 'week', 'winProb']));
+        out.perGame.forEach(g => expect(Object.keys(g).sort()).toEqual(['gameId', 'pointsIfLoss', 'pointsIfWin', 'week', 'winProb']));
+        out.perGame.forEach(g => expect(g.pointsIfLoss).toBe(0));
         expect(out.perGame.map(g => g.week)).toEqual([1, 2, 3]);
         // vs #40 at home = Q2, at #150 away = Q3, vs #150 neutral = Q3
         expect(out.perGame.map(g => g.pointsIfWin)).toEqual([c.values.q2Win, c.values.q3Win, c.values.q3Win]);
@@ -178,7 +187,9 @@ describe('projectHoopsTeam', () => {
         const sum = out.perGame.reduce((s, g) => s + g.winProb * g.pointsIfWin, 0);
         expect(out.regular).toBeCloseTo(sum, 10);
         expect(out.total).toBe(out.regular);
-        expect(out).toMatchObject({ confChamp: 0, ncaa: 0, upset: 0, postseason: 0, makeProb: null });
+        expect(out).toMatchObject({ confChamp: 0, ncaa: 0, upset: 0, postseason: 0, cfp: 0, bowl: 0, makeProb: null });
+        // The standings projection sums football's three terms.
+        expect(out.cfp + out.confChamp + out.bowl).toBe(0);
     });
 
     test('opts.expectedWins overrides the target and null skips calibration', () => {
@@ -187,6 +198,25 @@ describe('projectHoopsTeam', () => {
         const raw = P.projectHoopsTeam(teams[0], sched, ctx, { expectedWins: null, perGame: true });
         expect(raw.perGame[0].winProb).toBeCloseTo(P.teamWinProb(0.9, 0.7, 'home'), 10);
         expect(raw.perGame[1].winProb).toBeCloseTo(P.teamWinProb(0.9, 0.4, 'away'), 10);
+    });
+
+    test('a league with the bad-loss penalty projects it on Q4 losses', () => {
+        const c2 = resolveConfig('any-league', { model: 'hoops', enabled: ['badLoss'] });
+        // #200 is Q4 at home and Q3 on the road, so only the home loss costs.
+        const ctx2 = P.buildHoopsPoolContext([team(1, 0.9, '25-7'), team(4, 0.2, '5-27')], { ranks: { 1: 5, 4: 200 }, cfg: c2 });
+        const out = P.projectHoopsTeam(teams[0], [game(1, 1, 4), game(2, 4, 1)], ctx2, { perGame: true });
+        expect(out.perGame[0].pointsIfLoss).toBe(c2.values.badLoss);
+        expect(out.perGame[0].pointsIfLoss).toBeLessThan(0);
+        expect(out.perGame[1].pointsIfLoss).toBe(0);
+        const sum = out.perGame.reduce((s, g) => s + g.winProb * g.pointsIfWin + (1 - g.winProb) * g.pointsIfLoss, 0);
+        expect(out.regular).toBeCloseTo(sum, 10);
+        expect(out.regular).toBeLessThan(out.perGame.reduce((s, g) => s + g.winProb * g.pointsIfWin, 0));
+    });
+
+    test('cancelled and postponed rows are never projected', () => {
+        const dead = [game(201, 1, 2, { status: 'postponed' }), game(202, 1, 2, { status: 'Cancelled' }), game(203, 1, 2)];
+        const out = P.projectHoopsTeam(teams[0], dead, ctx, { perGame: true });
+        expect(out.perGame.map(g => g.gameId)).toEqual([203]);
     });
 
     test('no perGame unless asked', () => {
@@ -245,7 +275,9 @@ describe('remaining-schedule projection', () => {
 
 describe('isConfTournamentGame', () => {
     test('named tournaments and conference-tournament notes, not ordinary conference games', () => {
-        expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'NIT' }))).toBe(true);
+        expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'X', conferenceGame: true }))).toBe(true);
+        // A coded early-season event is not a conference game and stays in.
+        expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'Maui' }))).toBe(false);
         expect(P.isConfTournamentGame(game(1, 1, 2, { conferenceGame: true, gameNotes: 'America East Playoffs - Final' }))).toBe(true);
         expect(P.isConfTournamentGame(game(1, 1, 2, { conferenceGame: true }))).toBe(false);
         expect(P.isConfTournamentGame(game(1, 1, 2, { gameNotes: 'Maui Invitational - Championship' }))).toBe(false);
