@@ -17,12 +17,21 @@
 //     proj.postseason instead. It also calls projectTeamPoints(team, games,
 //     poolCtx, rankings, cfg, season); basketball is
 //     projectHoopsTeam(team, games, ctx) with buildHoopsPoolContext +
-//     (PR 2) attachMarch.
+//     (PR 2) attachMarch. And its groupGamesByTeam keys games on g.homeId /
+//     g.awayId, which a HoopsGame does not have (homeTeamId / awayTeamId):
+//     fed basketball games as they are, it drops every one and every
+//     regular season projects to 0.
 //   standings projection (modules/standings-projection.js buildProjections,
 //     PR 5) — it filters the remaining schedule on g.completed and
 //     g.homeId, neither of which a HoopsGame has, and sums cfp + confChamp
 //     + bowl. Basketball calls projectRemaining(team, games, ctx), which
 //     filters on status (isFinal) itself, and reads proj.postseason.
+//     Nothing derives the March estimate's `decided` state (conference
+//     tournament progress, NCAA round) from HoopsGame rows yet; PR 5 has to
+//     build that. Its Monte Carlo and Captain term (simulateTitleOdds,
+//     expectedCaptainWeek) read only pointsIfWin, so with the bad-loss
+//     penalty on, projectedFinal (which includes it) and the simulated
+//     odds (which do not) disagree until PR 5 reads pointsIfLoss too.
 //
 // Pure: no database, no network. The caller supplies teams, games, a rank map
 // and the league's resolved scoring config.
@@ -297,7 +306,9 @@ function projectableGames(teamId, games, ctx) {
 // opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin,
 //   pointsIfLoss }]. The first four are football's entry; pointsIfLoss is
 //   only non-zero in a league that has opted into the bad-loss penalty, and
-//   h2h's matchupWinProb (which floors at 0) does not read it.
+//   h2h's matchupWinProb (which floors at 0) does not read it — nor do the
+//   standings projection's Monte Carlo and Captain term (see the consumer
+//   notes at the top).
 //
 // `cfp` and `bowl` are always 0: they are football's postseason terms, kept so
 // a consumer that sums proj.cfp + proj.confChamp + proj.bowl (the standings
