@@ -179,6 +179,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The outer net under the hoops jobs (#574): its catch is the only
+        // thing between an early failure and a console line nobody reads.
+        "./modules/job-guard.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         // The weekly ratings snapshot (#318). CBBD keeps no ratings history,
         // so a week this job misses or mis-files can never be rebuilt. The
         // branches that matter are the skips and the failures — every one of
