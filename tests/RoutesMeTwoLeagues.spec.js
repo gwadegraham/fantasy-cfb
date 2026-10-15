@@ -87,3 +87,39 @@ describe('PATCH /users/me/profile names the VIEWED league’s franchise (#565)',
         expect(await nameIn(HOOPS, BB_SEASON)).toBe('Hoops Name');
     });
 });
+
+describe('GET /users/me/push counts a roster in ANY league’s own season (#568)', () => {
+    // web-push is mocked above; nothing here sends, it only reads state.
+    const solo = async (league, season) => {
+        const a = await Account.create({ firstName: 'Solo', lastName: 'One', email: 'solo@example.invalid' });
+        await Franchise.create({ accountId: a._id, league, seasons: [{ season, teams: [] }] });
+        return a;
+    };
+    let before;
+    beforeEach(() => { before = process.env.PUSH_RECIPIENT_IDS; delete process.env.PUSH_RECIPIENT_IDS; });
+    afterEach(() => { if (before === undefined) delete process.env.PUSH_RECIPIENT_IDS; else process.env.PUSH_RECIPIENT_IDS = before; });
+
+    test('a basketball-only manager in the 2027 season is allowed', async () => {
+        const res = await request(appFor(await solo(HOOPS, BB_SEASON))).get('/users/me/push');
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ allowed: true, reason: null });
+    });
+
+    test('a two-league account with only a CURRENT basketball entry is allowed', async () => {
+        // The football franchise (found first) is a prior season only.
+        await Franchise.updateOne({ accountId: account._id, league: FOOTBALL }, { $set: { 'seasons.0.season': FB_SEASON - 1 } });
+        const res = await request(app).get('/users/me/push').set('Cookie', cookie(FOOTBALL));
+        expect(res.body).toMatchObject({ allowed: true, reason: null });
+    });
+
+    test('no roster this season anywhere: not allowed, and the reason says so', async () => {
+        const res = await request(appFor(await solo(HOOPS, BB_SEASON - 1))).get('/users/me/push');
+        expect(res.body).toMatchObject({ allowed: false, reason: 'no-roster' });
+    });
+
+    test('a narrowing allowlist that excludes them is reported as that', async () => {
+        process.env.PUSH_RECIPIENT_IDS = '64b1f00000000000000000aa';
+        const res = await request(app).get('/users/me/push');
+        expect(res.body).toMatchObject({ allowed: false, reason: 'restricted' });
+    });
+});

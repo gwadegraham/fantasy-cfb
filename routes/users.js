@@ -148,11 +148,8 @@ router.get('/me/push', async (req, res) => {
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
     try {
-        // seasons.season only — enough to answer "do they play this year", and
-        // seasons[].teams holds full team objects, so asking for the subtree
-        // would pull ~100KB to decide one boolean.
-        const user = await franchiseRepo.byAccountId(userId,
-            { fields: ['pushSubscriptions', 'pushPrefs', 'seasons.season'] });
+        // Account-side fields only, so no franchise is read here.
+        const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions', 'pushPrefs'] });
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
         // `allowed` answers "would an alert actually reach me". Eligibility is
@@ -160,10 +157,20 @@ router.get('/me/push', async (req, res) => {
         // alert is triggered by a game one of your teams is playing. A manager
         // carried over from a prior season would otherwise be told alerts are on
         // and then never hear a thing.
-        const playsThisSeason = (user.seasons || []).some(s => Number(s.season) === activeSeason('football'));
+        //
+        // Pushes are per PERSON, so any league counts — each in its OWN season
+        // (#568): basketball's 2026–27 is 2027, not football's 2026. Only
+        // seasons.season is read; rosters are ~100KB a franchise.
+        const franchises = await franchiseRepo.seasonsByLeague(userId);
+        const playsThisSeason = franchises.some(f => (f.seasons || [])
+            .some(s => Number(s.season) === Number(seasonFor(f.league))));
+        const recipientOk = pushNotify.isAllowedRecipient(userId);
         res.json({
             configured: pushNotify.isConfigured(),
-            allowed: pushNotify.isAllowedRecipient(userId) && playsThisSeason,
+            allowed: recipientOk && playsThisSeason,
+            // Why `allowed` is false, so the client does not blame the
+            // allowlist for a manager who simply has no roster this season.
+            reason: !recipientOk ? 'restricted' : (!playsThisSeason ? 'no-roster' : null),
             deviceCount: subs.length,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },

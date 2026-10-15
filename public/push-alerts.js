@@ -269,7 +269,10 @@
             }
 
             if (state.deviceCount > 0) {
-                var quiet = state.allowed ? '' : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
+                var quiet = state.allowed ? ''
+                    : state.reason === 'no-roster'
+                        ? ' This device is registered, but you have no roster this season — alerts start once your league drafts.'
+                        : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
                 say('Alerts are on for ' + state.deviceCount + (state.deviceCount === 1 ? ' device.' : ' devices.') + quiet, state.allowed ? 'ok' : 'info');
                 renderPrefs(state.prefs || {});
                 if (state.allowed) {
