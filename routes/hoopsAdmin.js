@@ -11,6 +11,8 @@
 //
 // Every one of them is billable against the shared 30k CBBD/CFBD pool, which
 // is why the page shows the call count before it runs anything.
+// Each also writes an audit row (#563) with that same call count, via
+// audit.onReply in the route itself — so a run from anywhere is recorded.
 //
 // ---- who sees it ----
 //
@@ -54,19 +56,12 @@ const audit = require('../modules/audit-log');
 // the quote follow it.
 const hoopsGames = require('./hoopsGames');
 
-const DAY = 24 * 3600 * 1000;
-
 function isAdmin(req) {
     return !!(req.oidc && req.oidc.isAuthenticated() && effectiveRoles(req).includes('Admin'));
 }
 
-// How many /games calls fetchGamesInRange makes for a range: one per window of
-// WINDOW_DAYS, inclusive on both ends. The same stepping, so the number the
-// confirm step quotes is the number the ingest spends.
-function windowsFor(start, end) {
-    const days = Math.floor((end.getTime() - start.getTime()) / DAY) + 1;
-    return days > 0 ? Math.ceil(days / cbbd.WINDOW_DAYS) : 0;
-}
+// Lives with fetchGamesInRange so the routes' audit rows quote the same cost.
+const { windowsFor } = cbbd;
 
 // The jobs the scheduler runs for basketball. Only hoops-scores does one of
 // this page's tasks (it calls the same refresh as POST /hoops/games/refresh,

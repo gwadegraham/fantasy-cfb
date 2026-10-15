@@ -31,6 +31,7 @@ const franchiseRepo = require('../modules/franchise-repo');
 const HoopsTeam = require('../models/hoopsTeam');
 const { pickLogo } = require('../public/logo.js');
 const roster = require('../modules/hoops-roster');
+const audit = require('../modules/audit-log');
 // PAGE_CAP only; seasonRange is reached through `cbbd` so it stays stubbable —
 // destructuring it here would re-arm the very trap the note above describes.
 const { PAGE_CAP } = cbbd;
@@ -544,6 +545,15 @@ router.post('/:season/schedule', async (req, res) => {
     const seasonType = req.body && req.body.seasonType === 'postseason' ? 'postseason' : 'regular';
     const { start, end } = cbbd.seasonRange(season);
 
+    // Every answer from here is audited (#563). The cost is the page's quote:
+    // the windows, plus the roster import when this run made one.
+    audit.onReply(req, res, (status, body) => {
+        const rosterCall = body.rosterError || (body.roster && body.roster.skippedReason !== 'already imported') ? 1 : 0;
+        return audit.cbbdTaskEntry('hoops.schedule', `${seasonType} schedule ingest`, season,
+            cbbd.windowsFor(start, end) + rosterCall, status, body,
+            `${body.games} games (${body.created} created, ${body.updated} updated)`);
+    });
+
     let result;
     try {
         result = await cbbd.fetchGamesInRange(season, seasonType, start, end);
@@ -759,6 +769,9 @@ router.post('/refresh', async (req, res) => {
     if (isNaN(start) || isNaN(end) || start > end) {
         return res.status(400).json({ message: 'Invalid start/end range.' });
     }
+    audit.onReply(req, res, (status, body) => audit.cbbdTaskEntry('hoops.refresh', `${seasonType} results refresh`, season,
+        cbbd.windowsFor(start, end), status, body,
+        `${body.games} games, ${body.finals} final (${body.created} created, ${body.updated} updated)`));
     const out = await refreshResults({ season, seasonType, start, end });
     return res.status(out.code).json(out.body);
 });

@@ -93,6 +93,15 @@ function addDays(d, n) {
 }
 const iso = (d) => d.toISOString().slice(0, 10);
 
+// How many /games calls fetchGamesInRange makes for a range: one per window of
+// WINDOW_DAYS, inclusive on both ends. The same stepping, so the number the
+// admin page quotes, and the audit row records, is the number the fetch spends.
+const DAY_MS = 24 * 3600 * 1000;
+function windowsFor(start, end) {
+    const days = Math.floor((end.getTime() - start.getTime()) / DAY_MS) + 1;
+    return days > 0 ? Math.ceil(days / WINDOW_DAYS) : 0;
+}
+
 // Every game in [start, end], fetched in windows, de-duplicated by id.
 //
 // Returns { games, windows, remainingCalls, capHits }. `capHits` is non-empty
@@ -222,4 +231,4 @@ async function logoUrlsThatExist(urls, { batch = 25, attempts = 3, retryDelayMs 
     return found;
 }
 
-module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoUrlsThatExist, seasonRange, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
+module.exports = { cbbdGet, fetchGamesInRange, fetchTeams, logoUrlsThatExist, seasonRange, windowsFor, BASE, PAGE_CAP, WINDOW_DAYS, MAX_WINDOWS };
