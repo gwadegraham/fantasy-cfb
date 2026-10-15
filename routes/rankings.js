@@ -110,12 +110,24 @@ router.post('/retrieveRankings', async (req, res) => {
         // racing on the same missing week — the Saturday job and the live poller
         // collide on the :00 mark — could each create a doc for it, and
         // getRankingsForGame's findOne would then pick whichever came back first.
+        //
+        // The unique index on those fields (models/ranking.js) is what makes
+        // that hold: the losing upsert of a race fails with a duplicate-key
+        // error instead of inserting a second doc. Retried once — by then the
+        // winner's doc exists, so the retry updates it.
         const filter = { season: req.body.season, seasonType: req.body.seasonType, week: req.body.week };
-        const newRanking = await Ranking.findOneAndUpdate(
+        const upsert = () => Ranking.findOneAndUpdate(
             filter,
             { $set: Object.assign({}, filter, { polls: data[0].polls }) },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
+        let newRanking;
+        try {
+            newRanking = await upsert();
+        } catch (err) {
+            if (err.code !== 11000) throw err;
+            newRanking = await upsert();
+        }
         console.log("New Ranking Record", newRanking);
 
         res.status(201).json(newRanking);
@@ -165,9 +177,17 @@ router.post('/:season/refresh', async (req, res) => {
             if (wk.week == null || !wk.seasonType) continue;
             const filter = { season: wk.season, seasonType: wk.seasonType, week: wk.week };
             const doc = { season: wk.season, seasonType: wk.seasonType, week: wk.week, polls: wk.polls || [] };
-            const existing = await Ranking.findOne(filter);
-            if (existing) { await Ranking.findOneAndUpdate(filter, doc); updated++; }
-            else { await new Ranking(doc).save(); created++; }
+            // One upsert, not find-then-insert: retrieveRankings can insert the
+            // same week in between, and the unique index (models/ranking.js)
+            // then fails the insert — which used to abort every week after it.
+            // Retried once on a duplicate key, like retrieveRankings.
+            const upsert = () => Ranking.updateOne(filter, { $set: doc }, { upsert: true });
+            let out;
+            try { out = await upsert(); } catch (err) {
+                if (err.code !== 11000) throw err;
+                out = await upsert();
+            }
+            if (out.upsertedCount) created++; else updated++;
         }
         return res.status(201).json({ season, weeks: data.length, created, updated });
     } catch (err) {
