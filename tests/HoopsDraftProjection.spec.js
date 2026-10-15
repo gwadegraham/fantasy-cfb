@@ -118,20 +118,76 @@ describe('boardRow', () => {
     });
 });
 
-describe('thinSchedules', () => {
+describe('scheduleFlags', () => {
     const p = (n) => ({ perGame: Array.from({ length: n }, (_, i) => ({ week: i })) });
 
-    it('names teams under 75% of the median schedule, shortest first', () => {
-        const proj = { 1: p(30), 2: p(31), 3: p(29), 4: p(14), 5: p(22), 6: p(23), 7: p(9) };
-        // median 23 → under 17.25 is thin; 22 and 23 are not
-        expect(HD.thinSchedules(proj, [{ id: 4, school: 'Saint Louis' }, { id: 7, school: 'Oregon State' }]))
-            .toEqual([{ id: 7, school: 'Oregon State', games: 9 }, { id: 4, school: 'Saint Louis', games: 14 }]);
+    it('flags under 75% of the median as thin and over 130% as thick, fewest games first', () => {
+        const proj = { 1: p(30), 2: p(31), 3: p(29), 4: p(14), 5: p(22), 6: p(23), 7: p(9), 8: p(29), 9: p(30), 10: p(48) };
+        // median 29 → thin under 21.75 (9, 14; 22 is not), thick over 37.7 (48; 31 is not)
+        expect(HD.scheduleFlags(proj, [{ id: 4, school: 'Saint Louis' }, { id: 7, school: 'Oregon State' }, { id: 10, school: 'Boston College' }]))
+            .toEqual([{ id: 7, school: 'Oregon State', games: 9, kind: 'thin' },
+                      { id: 4, school: 'Saint Louis', games: 14, kind: 'thin' },
+                      { id: 10, school: 'Boston College', games: 48, kind: 'thick' }]);
     });
 
     it('a full slate everywhere is nothing to report', () => {
-        expect(HD.thinSchedules({ 1: p(30), 2: p(28), 3: p(31) }, [])).toEqual([]);
-        expect(HD.thinSchedules({}, [])).toEqual([]);
-        expect(HD.thinSchedules({ 1: p(30), 2: p(3) }, null)).toEqual([{ id: 2, school: null, games: 3 }]);
+        expect(HD.scheduleFlags({ 1: p(30), 2: p(28), 3: p(31) }, [])).toEqual([]);
+        expect(HD.scheduleFlags({}, [])).toEqual([]);
+        expect(HD.scheduleFlags({ 1: p(30), 2: p(3) }, null)).toEqual([{ id: 2, school: null, games: 3, kind: 'thin' }]);
+    });
+});
+
+describe('dedupeListings', () => {
+    const at = (id, home, away, day, extra = {}) => Object.assign(game(id, home, away, 1),
+        { startDate: new Date(Date.UTC(2026, 10, 1) + day * 864e5) }, extra);
+    const kept = (games) => HD.dedupeListings(games).games.map(g => g.id).sort((a, b) => a - b);
+
+    it('collapses the same host and visitor under 12 days apart, keeping the newer listing', () => {
+        const out = HD.dedupeListings([at(1, 10, 20, 0), at(2, 10, 20, 11.1)]);
+        expect(out.games.map(g => g.id)).toEqual([2]);
+        expect(out.dropped).toEqual([1]);
+    });
+
+    it('keeps the played listing over a newer unplayed one', () => {
+        expect(kept([at(1, 10, 20, 0, { status: 'final', homePoints: 70, awayPoints: 60 }), at(2, 10, 20, 3)])).toEqual([1]);
+    });
+
+    // 2025-26's closest pair of real, both-played same-host games was 13
+    // days apart (a WAC triple round robin).
+    it('keeps a same-host rematch 13 days later — a real one', () => {
+        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 13)])).toEqual([1, 2]);
+    });
+
+    it('never touches a home-and-home, however close', () => {
+        expect(kept([at(1, 10, 20, 0), at(2, 20, 10, 1)])).toEqual([1, 2]);
+    });
+
+    it('collapses a neutral pairing listed within 3 days, either way round', () => {
+        expect(kept([at(1, 10, 20, 0, { neutralSite: true }), at(2, 20, 10, 1, { neutralSite: true })])).toEqual([2]);
+        expect(kept([at(1, 10, 20, 0, { neutralSite: true }), at(2, 20, 10, 4, { neutralSite: true })])).toEqual([1, 2]);
+    });
+
+    it('a neutral game and a home game between the same teams are different games', () => {
+        expect(kept([at(1, 10, 20, 0, { neutralSite: true }), at(2, 10, 20, 1)])).toEqual([1, 2]);
+    });
+
+    it('leaves conference tournament rematches, dead rows and undated rows alone', () => {
+        const tourney = { conferenceGame: true, tournament: 'ACC' };
+        expect(kept([at(1, 10, 20, 0, tourney), at(2, 10, 20, 2, tourney)])).toEqual([1, 2]);
+        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 2, { status: 'postponed' })])).toEqual([1, 2]);
+        expect(kept([game(1, 10, 20, 1), game(2, 10, 20, 1)])).toEqual([1, 2]);
+    });
+
+    it('chains from the first listing, so a third 13+ days out is its own game', () => {
+        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 6), at(3, 10, 20, 13)])).toEqual([2, 3]);
+    });
+
+    it('is applied before projecting, so a duplicate is not projected twice', () => {
+        const dup = GAMES.concat([Object.assign({}, GAMES[0], { id: 99 })]);   // undated: kept
+        const dated = GAMES.map((g, i) => Object.assign({}, g, { startDate: new Date(Date.UTC(2026, 10, 1 + i * 20)) }));
+        const twin = dated.concat([Object.assign({}, dated[0], { id: 98, startDate: new Date(Date.UTC(2026, 10, 3)) })]);
+        expect(HD.projectHoopsTeams(TEAMS, dup, { cfg, projectIds: [10] })['10'].perGame).toHaveLength(6);
+        expect(HD.projectHoopsTeams(TEAMS, twin, { cfg, projectIds: [10] })['10'].perGame).toHaveLength(5);
     });
 });
 
@@ -146,11 +202,11 @@ describe('the frozen snapshot', () => {
     });
 
     it('keeps only the projection\'s game fields', () => {
-        const [row] = HD.snapshotGames([Object.assign(game(1, 10, 20, 1), { homePoints: 80, venue: 'X', _id: 'abc' })]);
+        const [row] = HD.snapshotGames([Object.assign(game(1, 10, 20, 1), { homePoints: 80, venue: 'X', _id: 'abc', startDate: new Date('2026-11-04T00:00:00Z') })]);
         expect(row).not.toHaveProperty('homePoints');
         expect(row).not.toHaveProperty('venue');
         expect(row).not.toHaveProperty('_id');
-        expect(row).toEqual(expect.objectContaining({ id: 1, homeTeamId: 10, awayTeamId: 20, week: 1, status: 'scheduled' }));
+        expect(row).toEqual(expect.objectContaining({ id: 1, homeTeamId: 10, awayTeamId: 20, week: 1, status: 'scheduled', startDate: new Date('2026-11-04T00:00:00Z') }));
     });
 
     it('carries every team\'s rating and rank, and drops a row with no id', () => {

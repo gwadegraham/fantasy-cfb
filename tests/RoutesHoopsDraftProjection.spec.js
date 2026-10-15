@@ -119,7 +119,9 @@ function expected(teamIds) {
 }
 
 const grades = () => request(app).get(`/draft/grades/${LEAGUE}/${SEASON}`);
-const freeze = () => request(app).post(`/draft/grades/${LEAGUE}/${SEASON}/freeze`).set('X-Internal-Token', TOKEN).send({});
+const freeze = (body = {}) => request(app).post(`/draft/grades/${LEAGUE}/${SEASON}/freeze`).set('X-Internal-Token', TOKEN).send(body);
+const FORCE = { force: true, reason: 'spec override' };
+const AuditLog = require('../models/auditLog');
 // refresh=1 every time: the board caches projections per league+season in
 // the module, and each test seeds its own world.
 const board = () => request(app).get(`/draft/board/${LEAGUE}/${SEASON}?userId=${A}&refresh=1`).set('X-Internal-Token', TOKEN);
@@ -211,7 +213,7 @@ describe('POST /draft/grades/:league/:season/freeze — a basketball league', ()
         await freeze();
         const frozen = await grades();
         await Draft.updateOne({ league: LEAGUE, season: SEASON }, { $set: { poolSize: 8 } });
-        const live = await request(app).post(`/draft/grades/${LEAGUE}/${SEASON}/freeze`).set('X-Internal-Token', TOKEN);
+        const live = await freeze(FORCE);                   // a deliberate re-freeze on the wider pool
         const wider = await grades();                       // what an 8-team pool grades to
         // The fixture has to tell the two pools apart, or this proves nothing.
         expect(wider.body.managers.map(m => m.grade)).not.toEqual(frozen.body.managers.map(m => m.grade));
@@ -231,11 +233,81 @@ describe('POST /draft/grades/:league/:season/freeze — a basketball league', ()
         expect(snap.games.every(g => g.homeTeamId != null && g.awayTeamId != null)).toBe(true);
     });
 
-    it('404s with no draft, and 400s with nothing rated to freeze', async () => {
+    it('404s with no draft, and refuses with nothing rated to freeze', async () => {
         await seed();
         expect((await request(app).post(`/draft/grades/${LEAGUE}/2099/freeze`).set('X-Internal-Token', TOKEN)).status).toBe(404);
         await HoopsTeam.updateMany({}, { $unset: { 'preseason.rank': 1 } });
-        expect((await freeze()).status).toBe(400);
+        expect((await freeze()).status).toBe(409);
+    });
+
+    // poolFor refuses a half-finished ratings import (some teams ranked, not
+    // all). The freeze applies the same refusal — and no override lifts it.
+    it('refuses a half-finished ratings import, even with an override', async () => {
+        await seed();
+        await HoopsTeam.updateOne({ season: SEASON, id: 90 }, { $unset: { 'preseason.rank': 1 } });
+        for (const body of [{}, FORCE]) {
+            const res = await freeze(body);
+            expect(res.status).toBe(409);
+            expect(res.body.message).toMatch(/Only 7 of the 8 teams/);
+        }
+        expect(await HoopsGradeSnapshot.countDocuments({})).toBe(0);
+    });
+
+    // A short schedule frozen in stays short all season. The refusal names
+    // the teams and says how to override; nothing is pinned.
+    it('refuses while a pool team\'s schedule is flagged, naming it, unless overridden', async () => {
+        await seed();
+        const mine = hoopsGames().filter(g => g.homeTeamId === 333 || g.awayTeamId === 333).map(g => g.id);
+        await HoopsGame.deleteMany({ id: { $in: mine.slice(0, 8) } });           // 14 games -> 6
+        const refused = await freeze();
+        expect(refused.status).toBe(409);
+        expect(refused.body.message).toContain('Hoops 333 (6 games, short)');
+        expect(refused.body.message).toContain('"force": true');
+        expect(refused.body.scheduleFlags).toEqual([{ id: 333, school: 'Hoops 333', games: 6, kind: 'thin' }]);
+        expect((await Draft.findOne({ league: LEAGUE }).lean()).hoopsGradeSnapshot).toBeUndefined();
+
+        // force without a reason is not an override
+        expect((await freeze({ force: true })).status).toBe(409);
+
+        const forced = await freeze(FORCE);
+        expect(forced.status).toBe(200);
+        expect(forced.body.forced).toBe(true);
+        expect(forced.body.scheduleFlags).toHaveLength(1);
+        const g = await grades();
+        expect(g.body.scheduleFlags).toEqual([{ id: 333, school: 'Hoops 333', games: 6, kind: 'thin' }]);
+        expect(g.body.frozenOverride).toBe('spec override');
+        const row = await AuditLog.findOne({ action: 'draft.grades.freeze' }).lean();
+        expect(row.summary).toContain('override: spec override');
+        expect(row.meta.forced).toBe(true);
+    });
+
+    // Replacing a freeze moves every letter in the league: never silent.
+    it('refuses to replace a freeze without an override, and keeps the old snapshot when it does', async () => {
+        await seed();
+        const first = await freeze();
+        expect(first.status).toBe(200);
+        expect(first.body.forced).toBe(false);
+        const again = await freeze();
+        expect(again.status).toBe(409);
+        expect(again.body.message).toMatch(/already frozen/);
+        expect(String((await Draft.findOne({ league: LEAGUE }).lean()).hoopsGradeSnapshot)).toBe(first.body.snapshotId);
+
+        const replaced = await freeze(FORCE);
+        expect(replaced.status).toBe(200);
+        expect(replaced.body.replaced).toBe(first.body.snapshotId);
+        const snap = await HoopsGradeSnapshot.findById(replaced.body.snapshotId).lean();
+        expect(String(snap.replaces)).toBe(first.body.snapshotId);
+        expect(snap.forced).toBe(true);
+        expect(await HoopsGradeSnapshot.findById(first.body.snapshotId)).not.toBeNull();     // kept
+        expect(await AuditLog.countDocuments({ action: 'draft.grades.freeze' })).toBe(2);
+    });
+
+    it('a live grade reports its flags too', async () => {
+        await seed();
+        expect((await grades()).body.scheduleFlags).toEqual([]);
+        const mine = hoopsGames().filter(g => g.homeTeamId === 333 || g.awayTeamId === 333).map(g => g.id);
+        await HoopsGame.deleteMany({ id: { $in: mine.slice(0, 8) } });
+        expect((await grades()).body.scheduleFlags).toEqual([{ id: 333, school: 'Hoops 333', games: 6, kind: 'thin' }]);
     });
 });
 
@@ -302,29 +374,62 @@ describe('GET /draft/board — a basketball league', () => {
         expect(res.body.captain.anchorSchool).toBe('Hoops 150');
     });
 
-    it('has no numbers when no team carries a preseason rating', async () => {
+    it('refuses, with the import to run, when no team carries a preseason rating', async () => {
         await seed({ status: 'active', picks: [] });
         await HoopsTeam.updateMany({}, { $unset: { 'preseason.rank': 1 } });
         const res = await board();
-        expect(res.status).toBe(200);
-        expect(res.body.projections).toBeNull();
-        expect(res.body.advice).toBeNull();
+        expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/import-torvik-preseason/);
+    });
+
+    // The draft room's pool refuses a half-finished import; the board must
+    // not quietly project, or cache, the teams that did land.
+    it('refuses a half-finished ratings import, and caches nothing from it', async () => {
+        await seed({ status: 'active', picks: [] });
+        await HoopsTeam.updateOne({ season: SEASON, id: 90 }, { $unset: { 'preseason.rank': 1 } });
+        const res = await board();
+        expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/Only 7 of the 8 teams/);
+        await HoopsTeam.updateOne({ season: SEASON, id: 90 }, { $set: { 'preseason.rank': 8 } });   // the import finishes
+        const after = await request(app).get(`/draft/board/${LEAGUE}/${SEASON}?userId=${A}`).set('X-Internal-Token', TOKEN);
+        expect(after.status).toBe(200);
+        expect(after.body.projections).toHaveLength(6);
     });
 
     // A conference slate not yet published leaves a team with half a
-    // schedule, which projects like a weak team. The board and the freeze
-    // both name it.
-    it('names a pool team whose stored schedule is short, on the board and the freeze', async () => {
+    // schedule, which projects like a weak team; a duplicate listing pads
+    // one. The board names both.
+    it('names pool teams whose stored schedule is short or padded', async () => {
         await seed({ status: 'active', picks: [] });
         const full = await board();
-        expect(full.body.thinSchedules).toEqual([]);
+        expect(full.body.scheduleFlags).toEqual([]);
         const mine = hoopsGames().filter(g => g.homeTeamId === 333 || g.awayTeamId === 333).map(g => g.id);
         await HoopsGame.deleteMany({ id: { $in: mine.slice(0, 8) } });           // 14 games -> 6
+        // Six stale copies of 150's games, each 20 days from its twin — out
+        // of the deduplication window, so only the thick flag can catch them.
+        const copies = hoopsGames().filter(g => g.homeTeamId === 150).slice(0, 6)
+            .map((g, i) => Object.assign({}, g, { id: 9100 + i, startDate: new Date(g.startDate.getTime() + 20 * 864e5) }));
+        await HoopsGame.create(copies);
         const res = await board();
-        expect(res.body.thinSchedules).toEqual([{ id: 333, school: 'Hoops 333', games: 6 }]);
-        expect(res.body.projections.find(t => t.id === 333).games).toBe(6);
-        const frozen = await freeze();
-        expect(frozen.body.thinSchedules).toEqual([{ id: 333, school: 'Hoops 333', games: 6 }]);
+        // 333: 6 left + the copy of 150 v 333. 150: 14 - the two 150/333
+        // games deleted above + 6 copies.
+        expect(res.body.scheduleFlags).toEqual([
+            { id: 333, school: 'Hoops 333', games: 7, kind: 'thin' },
+            { id: 150, school: 'Hoops 150', games: 18, kind: 'thick' }
+        ]);
+        expect(res.body.projections.find(t => t.id === 333).games).toBe(7);
+    });
+
+    // The same copies inside the window are one game each, and project once.
+    it('projects a duplicate listing once', async () => {
+        await seed({ status: 'active', picks: [] });
+        const base = (await board()).body.projections.find(t => t.id === 150);
+        const copies = hoopsGames().filter(g => g.homeTeamId === 150).slice(0, 6)
+            .map((g, i) => Object.assign({}, g, { id: 9100 + i, startDate: new Date(g.startDate.getTime() + 2 * 864e5) }));
+        await HoopsGame.create(copies);
+        const res = await board();
+        expect(res.body.scheduleFlags).toEqual([]);
+        expect(res.body.projections.find(t => t.id === 150)).toEqual(base);
     });
 
     it('a pool cap changed during draft prep is not answered from the old pool\'s cache', async () => {
@@ -335,12 +440,11 @@ describe('GET /draft/board — a basketball league', () => {
         expect(res.body.projections).toHaveLength(8);
     });
 
-    // The page hides Recompute when there are no numbers, so a cached "none"
-    // would outlive the import that fixes it.
-    it('does not cache the no-numbers answer', async () => {
+    // A refusal must not outlive the import that fixes it.
+    it('does not cache the no-ratings refusal', async () => {
         await seed({ status: 'active', picks: [] });
         await HoopsTeam.updateMany({}, { $unset: { 'preseason.rank': 1 } });
-        expect((await board()).body.projections).toBeNull();
+        expect((await board()).status).toBe(409);
         await HoopsTeam.deleteMany({});
         await HoopsTeam.create(IDS.map(hoopsTeam));                 // the import runs
         const res = await request(app).get(`/draft/board/${LEAGUE}/${SEASON}?userId=${A}`).set('X-Internal-Token', TOKEN);

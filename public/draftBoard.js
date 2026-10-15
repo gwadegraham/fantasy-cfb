@@ -262,11 +262,11 @@
         });
     }
 
-    // A basketball season whose teams carry no preseason rating yet (the
-    // Torvik import has not run) has nothing to project, so the payload
-    // carries projections: null. Show the draft — picks and roster — and say
-    // plainly why there are no numbers, rather than rendering an empty board
-    // that looks like everyone has been drafted.
+    // Defensive: a payload with projections: null. The server now refuses a
+    // season with no (or half-imported) ratings with a 409 and a message,
+    // which renderError shows; should a null ever arrive, show the draft —
+    // picks and roster — and say why there are no numbers, rather than an
+    // empty board that looks like everyone has been drafted.
     function renderUnprojected() {
         $('[db-source]').textContent = 'No projections yet';
         var refresh = $('[db-refresh]');
@@ -291,13 +291,16 @@
                 ? 'Quadrants graded on the ' + data.rankedSource
                 : 'Ranked bonuses: ' + data.rankedSource;
             // A short stored schedule projects low and looks like a weak
-            // team; say which ones rather than let them read as values.
-            var thin = data.thinSchedules || [];
-            if (thin.length) {
-                $('[db-source]').textContent += ' · ' + thin.length
-                    + (thin.length === 1 ? ' team has' : ' teams have') + ' an incomplete schedule, projected low: '
-                    + thin.map(function (t) { return t.school + ' (' + t.games + ' games)'; }).join(', ');
-            }
+            // team; a padded one (duplicate listings) projects high. Say
+            // which ones rather than let them read as values.
+            var flags = data.scheduleFlags || [];
+            [['thin', 'an incomplete schedule, projected low'], ['thick', 'duplicate games listed, projected high']].forEach(function (k) {
+                var list = flags.filter(function (t) { return t.kind === k[0]; });
+                if (!list.length) return;
+                $('[db-source]').textContent += ' · ' + list.length
+                    + (list.length === 1 ? ' team has ' : ' teams have ') + k[1] + ': '
+                    + list.map(function (t) { return t.school + ' (' + t.games + ' games)'; }).join(', ');
+            });
             renderAdvice();
             renderBoard();
         }

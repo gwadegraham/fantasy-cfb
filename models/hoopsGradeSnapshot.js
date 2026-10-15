@@ -37,6 +37,7 @@ const gameSchema = new mongoose.Schema({
     seasonType: { type: String },
     week: { type: Number },
     status: { type: String },
+    startDate: { type: Date },
     neutralSite: { type: Boolean },
     conferenceGame: { type: Boolean },
     tournament: { type: String },
@@ -58,6 +59,20 @@ const hoopsGradeSnapshotSchema = new mongoose.Schema({
     // The draft's pool cap when frozen (null = uncapped). The grade bands
     // on THIS pool, since the games above are only this pool's.
     poolSize: { type: Number, default: null },
+    // Pool teams whose stored schedule was flagged when frozen (see
+    // hoops-draft-projection scheduleFlags). A freeze with any is refused
+    // unless overridden, so a non-empty list here means `forced`.
+    scheduleFlags: { type: [new mongoose.Schema({
+        id: Number, school: String, games: Number, kind: String
+    }, { _id: false })], default: [] },
+    // An override: frozen despite flagged schedules, or replacing an earlier
+    // freeze. The reason the commissioner gave is kept here and in the audit
+    // log.
+    forced: { type: Boolean, default: false },
+    forceReason: { type: String },
+    // The freeze this one replaced. That snapshot is kept, not deleted, so
+    // what the league used to be graded on stays recoverable.
+    replaces: { type: mongoose.Schema.Types.ObjectId, ref: 'HoopsGradeSnapshot' },
     teams: { type: [teamSchema] },
     games: { type: [gameSchema] }
 }, { collection: 'hoopsgradesnapshots' });

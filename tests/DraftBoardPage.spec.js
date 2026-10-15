@@ -352,8 +352,9 @@ describe('a basketball league with projections', () => {
 
     it('names the teams whose schedules are incomplete', async () => {
         await loadPage(payload({ sport: 'basketball', rankedSource: 'preseason Torvik T-Rank',
-            thinSchedules: [{ id: 9, school: 'Oregon State', games: 7 }, { id: 4, school: 'Saint Louis', games: 14 }] }));
-        expect(txt('[db-source]')).toBe('Quadrants graded on the preseason Torvik T-Rank · 2 teams have an incomplete schedule, projected low: Oregon State (7 games), Saint Louis (14 games)');
+            scheduleFlags: [{ id: 9, school: 'Oregon State', games: 7, kind: 'thin' }, { id: 4, school: 'Saint Louis', games: 14, kind: 'thin' },
+                            { id: 26, school: 'Boston College', games: 48, kind: 'thick' }] }));
+        expect(txt('[db-source]')).toBe('Quadrants graded on the preseason Torvik T-Rank · 2 teams have an incomplete schedule, projected low: Oregon State (7 games), Saint Louis (14 games) · 1 team has duplicate games listed, projected high: Boston College (48 games)');
     });
 
     it('a football league keeps its ranked-bonus line', async () => {

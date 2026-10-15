@@ -120,9 +120,19 @@ async function liveHoopsInputs(season, draft) {
     return { teams, games };
 }
 
+// The pool's schedule flags (hoops-draft-projection scheduleFlags): teams
+// whose stored slate is too short or too long to project honestly.
+function poolScheduleFlags(teams, games, config, poolSize) {
+    const proj = hoopsDraft.projectHoopsTeams(teams, games, {
+        cfg: config, projectIds: hoopsDraft.poolOf(teams, poolSize).map(t => t.id)
+    });
+    return hoopsDraft.scheduleFlags(proj, teams);
+}
+
 // Basketball draft grades. The same shape football's answer has, plus
-// `sport` (so the pages can label the counts) and `rankSource`. Frozen when
-// the draft pins a HoopsGradeSnapshot; live otherwise, exactly as football.
+// `sport` (so the pages can label the counts), `rankSource` and
+// `scheduleFlags`. Frozen when the draft pins a HoopsGradeSnapshot; live
+// otherwise, exactly as football.
 async function basketballGrades(league, season) {
     const base = { league, season, sport: 'basketball', rankSource: hoopsDraft.RANK_SOURCE };
     const draft = await Draft.findOne({ league, season }).lean();
@@ -160,42 +170,98 @@ async function basketballGrades(league, season) {
     const config = resolveConfig(league, overridesFromDoc(cfgDoc));
     const managers = computeGrades(graded, usersById, teamsById,
         { games: inputs.games, config, sport: 'basketball' });
-    return Object.assign(base, { managers, frozenAt });
+    // A frozen grade carries the flags it was frozen with (and whether the
+    // commissioner overrode them); a live one is checked now.
+    const scheduleFlags = snapshot
+        ? (snapshot.scheduleFlags || [])
+        : poolScheduleFlags(inputs.teams, inputs.games, config, graded.poolSize);
+    return Object.assign(base, { managers, frozenAt, scheduleFlags },
+        snapshot && snapshot.forced ? { frozenOverride: snapshot.forceReason || null } : {});
+}
+
+// How a flagged team reads in a refusal: "Gonzaga (11 games, short)".
+function flagList(flags) {
+    return flags.map(f => `${f.school || f.id} (${f.games} games, ${f.kind === 'thin' ? 'short' : 'padded'})`).join(', ');
 }
 
 // Freeze a basketball draft's grade input: every team's preseason rating and
 // rank, and the pool's schedule, into a HoopsGradeSnapshot pinned on the
 // draft. No spWeek: the preseason Torvik numbers are a single paste with no
 // weekly history to reconstruct from, so a freeze copies what is stored now —
-// which is why it belongs on draft night, before any re-import.
+// which is why it belongs on draft night, after the schedule ingest and before
+// any re-import.
+//
+// REFUSED, unless the commissioner overrides with
+// { force: true, reason: "..." }, when:
+//   - the ratings import is half-finished (no override: re-run the import);
+//   - any pool team's schedule is flagged thin or thick — a frozen grade
+//     would carry that error all season;
+//   - the draft is ALREADY frozen. Replacing a freeze moves every letter in
+//     the league, so it is never silent. The old snapshot is KEPT, not
+//     deleted: the new one names it in `replaces`, so what the league was
+//     graded on before stays recoverable.
+// Every freeze is written to the audit log, with the override reason.
 async function freezeBasketball(req, res, league, season) {
     const draft = await Draft.findOne({ league, season });
     if (!draft) return res.status(404).json({ message: 'No draft for that league and season' });
-    const { teams, games } = await liveHoopsInputs(season, draft);
-    if (!hoopsDraft.poolOf(teams, draft.poolSize).length) {
-        return res.status(400).json({ message: `No ${season} basketball team carries a preseason rank to snapshot` });
+    try {
+        await draftPool.assertRatedSeason(season, draft.poolSize);
+    } catch (err) {
+        return res.status(err.status || 409).json({ message: `Not frozen: ${err.message}` });
     }
+    const body = req.body || {};
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    const override = body.force === true && !!reason;
+    const how = 'POST again with {"force": true, "reason": "<why>"} to freeze anyway; the override is recorded in the audit log';
+
+    const previous = draft.hoopsGradeSnapshot
+        ? await HoopsGradeSnapshot.findById(draft.hoopsGradeSnapshot, { takenAt: 1 }).lean()
+        : null;
+    if (draft.hoopsGradeSnapshot && !override) {
+        return res.status(409).json({
+            message: `${league} ${season} grades are already frozen${previous ? ` (since ${new Date(previous.takenAt).toISOString()})` : ''}. Replacing the freeze moves every manager's grade — ${how}.`,
+            frozenAt: previous ? previous.takenAt : null, snapshotId: String(draft.hoopsGradeSnapshot)
+        });
+    }
+
+    const { teams, games } = await liveHoopsInputs(season, draft);
+    const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+    const flags = poolScheduleFlags(teams, games, resolveConfig(league, overridesFromDoc(cfgDoc)), draft.poolSize);
+    if (flags.length && !override) {
+        return res.status(409).json({
+            message: `Not frozen: ${flags.length} pool team${flags.length === 1 ? '' : 's'} ha${flags.length === 1 ? 's' : 've'} a schedule that cannot be projected honestly — ${flagList(flags)}. Re-ingest the basketball schedule and freeze again, or ${how}.`,
+            scheduleFlags: flags
+        });
+    }
+
+    const replacing = !!draft.hoopsGradeSnapshot;
     const snap = await HoopsGradeSnapshot.create({
         league, season, reason: 'draft-baseline', rankSource: hoopsDraft.RANK_SOURCE,
         poolSize: draft.poolSize || null,
-        note: (req.body && req.body.note) || `Draft-grade baseline for ${league}`,
+        note: body.note || `Draft-grade baseline for ${league}`,
+        scheduleFlags: flags,
+        forced: override && (replacing || flags.length > 0),
+        forceReason: override ? reason : undefined,
+        replaces: replacing ? draft.hoopsGradeSnapshot : undefined,
         teams: hoopsDraft.snapshotTeams(teams), games: hoopsDraft.snapshotGames(games)
     });
     draft.hoopsGradeSnapshot = snap._id;
     draft.updatedAt = new Date();
     await draft.save();
 
-    // A schedule frozen short stays short for the whole season, so the
-    // answer names any pool team whose stored slate looks incomplete. Read
-    // it before trusting the freeze; freeze again after a schedule ingest.
-    const cfgDoc = await ScoringConfig.findOne({ league }).lean();
-    const proj = hoopsDraft.projectHoopsTeams(teams, games, {
-        cfg: resolveConfig(league, overridesFromDoc(cfgDoc)),
-        projectIds: hoopsDraft.poolOf(teams, draft.poolSize).map(t => t.id)
+    await audit.record(req, {
+        action: 'draft.grades.freeze', league, season: String(season),
+        summary: `Draft grades ${replacing ? 're-frozen (replacing the earlier freeze)' : 'frozen'}`
+            + (flags.length ? ` with ${flags.length} flagged schedule${flags.length === 1 ? '' : 's'}` : '')
+            + (snap.forced ? ` — override: ${reason}` : ''),
+        meta: { snapshotId: String(snap._id), replaces: replacing ? String(snap.replaces) : null,
+                forced: snap.forced, reason: override ? reason : null, scheduleFlags: flags }
     });
+
     return res.json({ league, season, sport: 'basketball', snapshotId: String(snap._id), takenAt: snap.takenAt,
                       teamCount: snap.teams.length, gameCount: snap.games.length, rankSource: snap.rankSource,
-                      thinSchedules: hoopsDraft.thinSchedules(proj, teams) });
+                      scheduleFlags: flags, forced: snap.forced,
+                      replaced: replacing ? String(snap.replaces) : null });
 }
 
 // Freeze this league's draft grades: capture the team inputs as a MarketSnapshot
@@ -363,10 +429,10 @@ router.get('/board/:league/:season', async (req, res) => {
         if (req.query.refresh === '1') boardCache.delete(key);
         let cached = boardCache.get(key);
         if (!cached && hoops) {
+            // Throws (409) on a missing or half-finished ratings import, so
+            // a refusal is never cached and cannot outlive the import.
             cached = await hoopsBoardProjections(league, season, draft);
-            // Not an empty answer: the page hides Recompute when there are no
-            // numbers, so a cached null would outlive the Torvik import.
-            if (cached.projections != null) boardCache.set(key, cached);
+            boardCache.set(key, cached);
         }
         if (!cached) {
             const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, logos: 1, seasons: 1 }).lean();
@@ -395,20 +461,6 @@ router.get('/board/:league/:season', async (req, res) => {
         }
         const projections = cached.projections;
 
-        // No rated pool (the Torvik import has not run): the draft, and no
-        // numbers, rather than an empty board that reads as "everyone taken".
-        if (projections == null) {
-            const meta = (req.effUser && req.effUser.user_metadata) || {};
-            const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
-            return res.json({
-                league, season, sport: 'basketball',
-                projections: null, rankedSource: null, advice: null, captain: null,
-                draft: publicDraft(draft),
-                schedule: draftBoard.pickSchedule(draft, userId),
-                roster: draftBoard.rosterFor(draft, userId, [])
-            });
-        }
-
         // req.effUser is the OIDC profile, so the app user id is in its nested
         // metadata (see buildUserContext in server.js) — never a top-level _id.
         const meta = (req.effUser && req.effUser.user_metadata) || {};
@@ -436,7 +488,7 @@ router.get('/board/:league/:season', async (req, res) => {
             league, season,
             // Basketball also names pool teams whose stored schedule looks
             // incomplete, since their projections understate them.
-            ...(hoops ? { sport: 'basketball', thinSchedules: cached.thinSchedules || [] } : {}),
+            ...(hoops ? { sport: 'basketball', scheduleFlags: cached.scheduleFlags || [] } : {}),
             // Whether the ranked-win bonuses in these projections came from a real
             // poll or an SP+ stand-in — the numbers move if a preseason AP poll
             // lands mid-draft-prep, and the page says so rather than pretending.
@@ -446,7 +498,10 @@ router.get('/board/:league/:season', async (req, res) => {
             roster
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        // A basketball pool refusal (assertRatedSeason) carries its own 409
+        // and a message saying what to run; nothing on football's path sets
+        // a status, so football still answers 500.
+        res.status(err.status || 500).json({ message: err.message });
     }
 });
 
@@ -486,10 +541,13 @@ function projectPool(teamsById, games, config, apPoll, season) {
 // The basketball board's projections: the draft pool (draft-pool.js
 // basketballPool — the same teams the room offers) projected against every
 // team in the country. Cached like football's; nothing here moves during a
-// draft. projections: null when there is no rated pool to project.
+// draft.
 async function hoopsBoardProjections(league, season, draft) {
+    // The draft room's own refusals (draft-pool assertRatedSeason): a
+    // half-finished ratings import is an error, never a board — and never a
+    // cached one.
+    await draftPool.assertRatedSeason(season, draft.poolSize);
     const pool = await draftPool.basketballPool(season, draft.poolSize);
-    if (!pool.length) return { projections: null, rankedSource: null };
     const teams = await HoopsTeam.find({ season }, hoopsDraft.TEAM_FIELDS).lean();
     const ids = pool.map(t => t.id);
     const games = await HoopsGame.find({
@@ -506,9 +564,8 @@ async function hoopsBoardProjections(league, season, draft) {
         .filter(p => proj[String(p.id)] && byId[String(p.id)])
         .map(p => hoopsDraft.boardRow(byId[String(p.id)], proj[String(p.id)], pickLogo(p.logos)))
         .sort((a, b) => b.total - a.total);
-    if (!projections.length) return { projections: null, rankedSource: null };
     return { projections, rankedSource: hoopsDraft.RANK_SOURCE,
-             thinSchedules: hoopsDraft.thinSchedules(proj, teams) };
+             scheduleFlags: hoopsDraft.scheduleFlags(proj, teams) };
 }
 
 function apPollName(doc) {

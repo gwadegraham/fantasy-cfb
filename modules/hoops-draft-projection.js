@@ -30,7 +30,8 @@
 // weeks on too (hoops-ranks blendWeight is 1 through week 2), and it is the
 // only rank that exists at the draft. It is frozen with the snapshot.
 
-const { buildHoopsPoolContext, projectHoopsTeam } = require('./hoops-projection');
+const { buildHoopsPoolContext, projectHoopsTeam, isDead, isConfTournamentGame } = require('./hoops-projection');
+const { isFinal } = require('./hoops-scoring-pass');
 const { attachMarch } = require('./hoops-march');
 
 const RANK_SOURCE = 'preseason Torvik T-Rank';
@@ -47,10 +48,11 @@ const TEAM_FIELDS = {
 // What the projection and the scoring engine read from a HoopsGame row.
 // status: dead (cancelled/postponed) rows are skipped. tournament/gameNotes/
 // conferenceGame: a conference tournament game is left out of the regular
-// projection. Points, seeds and dates are not read — a preseason projection
+// projection. startDate: duplicate listings are told apart by date (see
+// dedupeListings). Points and seeds are not read — a preseason projection
 // synthesizes the result.
 const GAME_FIELDS = {
-    _id: 0, id: 1, season: 1, seasonType: 1, week: 1, status: 1,
+    _id: 0, id: 1, season: 1, seasonType: 1, week: 1, status: 1, startDate: 1,
     neutralSite: 1, conferenceGame: 1, tournament: 1, gameNotes: 1,
     homeTeamId: 1, homeConference: 1, awayTeamId: 1, awayConference: 1
 };
@@ -88,6 +90,75 @@ function groupHoopsGamesByTeam(games, ids) {
     return by;
 }
 
+// ---- duplicate listings ----
+//
+// CBBD keeps a game's OLD listing when it is rescheduled, under its own id
+// (#498). hoops-stale-duplicates drops the old one once its twin has gone
+// final — which never happens before the season, so at the draft every copy
+// is projected. On the 2027 schedule as stored in mid-October (the dev copy's
+// dates run 9 weeks early, which moves no gap between two listings) Boston
+// College held 56 regular-season rows against a median of ~31. The rule
+// below collapses 15 of 5,286 rows (23 teams, 11 of them in the pool; 7 of
+// Boston College's, which still leaves it 48 projectable games).
+//
+// The rule, from 2025-26 as CBBD served it (6,213 rows, PR #554's pulls):
+//   SAME HOST (not neutral): the same home team hosting the same visitor
+//     twice. Real ones exist — triple round robins (WAC), campus-site
+//     conference tournaments — and the closest pair of regular-season games
+//     both actually played was 13 days apart. The stale listings that were
+//     never played sat 0.8, 1, 7, 11.1 and 11.1 days from their twin (and
+//     nine more 16-48 days out, which no window can separate from a real
+//     rematch). So: under 12 days is one game. A real home-and-home swaps the
+//     host and is never touched.
+//   NEUTRAL: the same pair on a neutral floor within 3 days. 2025-26 had no
+//     neutral repeats at all; 2027 has one (Kansas State and Gonzaga, the
+//     Players Era Festival, listed on consecutive days). No event plays one
+//     pairing on back-to-back days, so that is one game too.
+// Conference tournament games are left alone — the projection excludes them
+// anyway, and their rematches are real.
+//
+// What the window cannot reach (a stale copy weeks from its twin) is left to
+// the THICK schedule flag below.
+const SAME_HOST_DAYS = 12;
+const NEUTRAL_DAYS = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function listingKey(g) {
+    if (g.neutralSite) return 'n:' + [Number(g.homeTeamId), Number(g.awayTeamId)].sort((a, b) => a - b).join('-');
+    return 'h:' + Number(g.homeTeamId) + '-' + Number(g.awayTeamId);
+}
+
+// One listing per real game. Returns { games, dropped } — dropped being the
+// ids collapsed away. Within a cluster the listing kept is a final one if
+// there is one (it was played), else the highest id (the newer listing).
+function dedupeListings(games) {
+    const groups = {};
+    const keep = [];
+    (games || []).forEach(g => {
+        if (isDead(g) || isConfTournamentGame(g)) { keep.push(g); return; }
+        (groups[listingKey(g)] = groups[listingKey(g)] || []).push(g);
+    });
+    const dropped = [];
+    Object.keys(groups).forEach(k => {
+        const window = (k[0] === 'n' ? NEUTRAL_DAYS : SAME_HOST_DAYS) * DAY_MS;
+        const rows = groups[k].slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate) || a.id - b.id);
+        let cluster = [];
+        const flush = () => {
+            const best = cluster.slice().sort((a, b) => (isFinal(b) - isFinal(a)) || (b.id - a.id))[0];
+            keep.push(best);
+            cluster.forEach(g => { if (g !== best) dropped.push(g.id); });
+            cluster = [];
+        };
+        rows.forEach(g => {
+            const gap = cluster.length ? new Date(g.startDate) - new Date(cluster[0].startDate) : NaN;
+            if (cluster.length && !(gap < window)) flush();
+            cluster.push(g);
+        });
+        flush();
+    });
+    return { games: keep, dropped };
+}
+
 // Project `projectIds` (strings) against the whole country.
 //
 // teams: every HoopsTeam row of the season (TEAM_FIELDS shape).
@@ -97,7 +168,7 @@ function groupHoopsGamesByTeam(games, ids) {
 function projectHoopsTeams(teams, games, { cfg, projectIds }) {
     const ctx = attachMarch(buildHoopsPoolContext(teams, { ranks: preseasonRanks(teams), cfg }), teams);
     const ids = new Set((projectIds || []).map(String));
-    const byTeam = groupHoopsGamesByTeam(games, ids);
+    const byTeam = groupHoopsGamesByTeam(dedupeListings(games).games, ids);
     const byId = {};
     (teams || []).forEach(t => { byId[String(t.id)] = t; });
     const out = {};
@@ -139,25 +210,33 @@ function boardRow(team, proj, logo) {
     };
 }
 
-// Teams whose stored schedule is too short to project honestly: fewer
-// projected games than THIN_SHARE of the projected set's median.
-//
-// Not hypothetical. On the 2027 schedule as stored in mid-October, the A-10,
-// American and Pac-12 conference slates were not published yet: 21 of the
-// 120 pool teams held 7-24 games against a median of ~31, and projected a
-// third to a half of what a full season would. A projection cannot tell a
-// short schedule from a weak team, so the board and the freeze say so.
+// Teams whose stored schedule cannot be projected honestly, measured on the
+// games actually projected (after dedupeListings) against the projected
+// set's median:
+//   thin   under THIN_SHARE of it. On the 2027 schedule as stored in
+//          mid-October, the A-10, American and Pac-12 conference slates were
+//          not published: 21 of the 120 pool teams held 7-24 games against a
+//          median of ~31 and projected a third to a half of a full season.
+//   thick  over THICK_SHARE of it — duplicate listings the date window could
+//          not separate from a real rematch (Boston College, 48 games after
+//          deduplication).
+// A projection cannot tell a short schedule from a weak team, or a padded
+// one from a strong team, so the board names them and the freeze refuses.
 const THIN_SHARE = 0.75;
-function thinSchedules(projByTeam, teams) {
+const THICK_SHARE = 1.3;
+function scheduleFlags(projByTeam, teams) {
     const ids = Object.keys(projByTeam || {});
-    const counts = ids.map(id => (projByTeam[id].perGame || []).length).sort((a, b) => a - b);
+    const count = (id) => (projByTeam[id].perGame || []).length;
+    const counts = ids.map(count).sort((a, b) => a - b);
     if (!counts.length) return [];
     const median = counts[Math.floor(counts.length / 2)];
     const school = {};
     (teams || []).forEach(t => { school[String(t.id)] = t.school; });
-    return ids.filter(id => (projByTeam[id].perGame || []).length < THIN_SHARE * median)
-        .map(id => ({ id: Number(id), school: school[id] || null, games: projByTeam[id].perGame.length }))
-        .sort((a, b) => a.games - b.games || a.id - b.id);
+    return ids.map(id => {
+        const n = count(id);
+        const kind = n < THIN_SHARE * median ? 'thin' : (n > THICK_SHARE * median ? 'thick' : null);
+        return kind && { id: Number(id), school: school[id] || null, games: n, kind };
+    }).filter(Boolean).sort((a, b) => a.games - b.games || a.id - b.id);
 }
 
 // ---- the frozen grade input ----
@@ -200,5 +279,6 @@ function fromSnapshot(snap) {
 module.exports = {
     RANK_SOURCE, TEAM_FIELDS, GAME_FIELDS,
     rankOf, poolOf, preseasonRanks, groupHoopsGamesByTeam, projectHoopsTeams,
-    perWeekOf, boardRow, thinSchedules, THIN_SHARE, snapshotTeams, snapshotGames, fromSnapshot
+    perWeekOf, boardRow, scheduleFlags, THIN_SHARE, THICK_SHARE,
+    dedupeListings, SAME_HOST_DAYS, NEUTRAL_DAYS, snapshotTeams, snapshotGames, fromSnapshot
 };
