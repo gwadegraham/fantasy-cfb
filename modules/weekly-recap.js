@@ -380,7 +380,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
         const milestone = (topMultiple >= 50 && topMultiple > prevTotal) ? topMultiple : null;
 
         const recap = {
-            week: entry.week, effWeek: W, label: weekLabel(entry, sport), sport: isHoops ? 'basketball' : 'football',
+            week: entry.week, effWeek: W, label: weekLabel(entry, sport),
             score, rank, rankDelta, rankTie, leagueAvg, vsLeagueAvg, weekHigh, weekLow,
             mvpTeam: mvp, mvpTeams, mvpShare, dudTeam, isUpset: !!upset, upset,
             weather,
@@ -388,6 +388,8 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
             cumTotal: round(runningTotal), milestone,
             narrative: narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset, weather })
         };
+        // Tagged on basketball only, so football's payload is unchanged.
+        if (isHoops) recap.sport = 'basketball';
         recap.slides = buildSlides(recap);
         return recap;
     });
@@ -519,6 +521,11 @@ function isRecapSeason(date, sport) {
 //
 // Basketball games (hoopsgames) carry no `completed` — `status: 'final'` is
 // their discriminator — and their weeks are never folded into a postseason.
+// A basketball TBD does NOT block its week: 75% of the schedule is stamped
+// TBD at midnight ET (modules/hoops-calendar.js) and the DATE is real, so it
+// counts as starting at the end of that day. Blocking until final would hold
+// a week back for good on a cancelled game or a rescheduled game's stale
+// listing (modules/hoops-stale-duplicates.js), neither of which ever finals.
 function completedWeeks(games, now, sport) {
     const isHoops = sport === 'basketball';
     const lastStart = {};
@@ -526,9 +533,11 @@ function completedWeeks(games, now, sport) {
     (games || []).forEach(g => {
         if (isHoops && g.week == null) return;
         const ew = isHoops ? g.week : ((g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week);
-        const played = isHoops ? String(g.status || '').toLowerCase() === 'final' : g.completed;
-        if (g.startTimeTbd && !played) { unknownStart.add(ew); return; }
-        const sd = g.startDate ? new Date(g.startDate) : null;
+        if (!isHoops && g.startTimeTbd && !g.completed) { unknownStart.add(ew); return; }
+        let sd = g.startDate ? new Date(g.startDate) : null;
+        if (isHoops && sd && g.startTimeTbd && String(g.status || '').toLowerCase() !== 'final') {
+            sd = new Date(sd.getTime() + 24 * 60 * 60 * 1000);
+        }
         if (sd && !isNaN(sd.getTime()) && (!lastStart[ew] || sd > lastStart[ew])) lastStart[ew] = sd;
     });
     const complete = new Set();

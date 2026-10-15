@@ -139,9 +139,17 @@ describe('completedWeeks on hoopsgames', () => {
         expect([...done].sort()).toEqual([17, 19]);
     });
 
-    test('a TBD tip blocks its week until the game is final', () => {
-        const tbd = g({ status: 'scheduled', startTimeTbd: true, startDate: '2027-03-14T04:00:00Z' });
+    // 75% of the schedule is TBD at midnight ET; the date is real.
+    test('a TBD tip counts from the end of its day, not from the placeholder', () => {
+        const tbd = g({ status: 'scheduled', startTimeTbd: true, startDate: '2027-03-15T04:00:00Z' });  // Mar 15 ET
         expect([...completedWeeks([g(), tbd], NOW, 'basketball')]).toEqual([]);
-        expect([...completedWeeks([g(), Object.assign({}, tbd, { status: 'final' })], NOW, 'basketball')]).toEqual([19]);
+        expect([...completedWeeks([g(), tbd], new Date('2027-03-16T05:00:00Z'), 'basketball')]).toEqual([19]);
+    });
+
+    // A cancelled game, or the stale listing CBBD keeps for a rescheduled one,
+    // never goes final. It must not hold the week back for good.
+    test('a TBD game that never goes final does not block its week forever', () => {
+        const stale = g({ status: 'scheduled', startTimeTbd: true, startDate: '2027-03-12T05:00:00Z' });
+        expect([...completedWeeks([g(), stale], NOW, 'basketball')]).toEqual([19]);
     });
 });
