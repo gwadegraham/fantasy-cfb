@@ -267,7 +267,17 @@
         const y = b.getFullYear(), m = String(b.getMonth() + 1).padStart(2, '0'), day = String(b.getDate()).padStart(2, '0');
         return `${y}-${m}-${day}`;
     }
-    function isRecapSeason(date) { const m = date.getMonth() + 1; return m >= 8 || m === 1; }
+    // Per sport: football Aug–Jan, basketball Nov–Apr.
+    function isRecapSeason(date, sport) {
+        const m = date.getMonth() + 1;
+        if (sport === 'basketball') return m >= 11 || m <= 4;
+        return m >= 8 || m === 1;
+    }
+    // The viewed league's sport, from the viewer's league seed (#558).
+    function sportOfLeague(league) {
+        try { return (window.ccLeague && window.ccLeague.sportOf && window.ccLeague.sportOf(league)) || 'football'; }
+        catch (e) { return 'football'; }
+    }
 
     // Per LEAGUE, since #319 let the popup follow the league being viewed.
     // One global key meant a two-league member got a single recap a week —
@@ -283,7 +293,7 @@
         const now = new Date();
         const here = (location.pathname || '').replace(/\/+$/, '');
         if (!opts.force) {
-            if (!isRecapSeason(now)) return;
+            if (!isRecapSeason(now, opts.sport || sportOfLeague(opts.league))) return;
             if (here === '/userHome') return;                 // already visible there
             if (localStorage.getItem(seenKeyFor(opts.league)) === recapWindowKey(now)) return;
         }

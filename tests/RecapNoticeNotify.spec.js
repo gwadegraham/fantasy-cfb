@@ -243,3 +243,71 @@ describe('notifyRecapReady — degrading', () => {
         await expect(push.notifyRecapReady(MONDAY)).resolves.toMatchObject({ sent: 0 });
     });
 });
+
+// A basketball league (#558): its own season number and its own window. The
+// 2026-27 basketball season is 2027 while football is 2026, and it runs
+// Nov–Apr — so the football season and the Aug–Jan gate asked a hoops league
+// about a year it has no entry for, and went silent through March.
+describe('notifyRecapReady — a basketball league', () => {
+    const League = require('../models/league');
+    const SportSeason = require('../models/sportSeason');
+    const seasons = require('../modules/active-season');
+    const HOOPS = 'hoops-league';
+    // A Monday in March, outside football's window and inside basketball's.
+    const MARCH_MONDAY = Date.parse('2027-03-15T12:05:00Z');
+
+    beforeEach(async () => {
+        await League.create([
+            { code: HOOPS, name: 'Hardwood Heroes', sport: 'basketball' },
+            { code: LEAGUE, name: 'Graham League', sport: 'football' }
+        ]);
+        await SportSeason.create([
+            { sport: 'football', season: 2026, status: 'complete' },
+            { sport: 'basketball', season: 2027, status: 'in-season' }
+        ]);
+        await seasons.prime();
+    });
+    afterEach(() => seasons._reset());
+
+    const hooper = (first) => manager(first, { league: HOOPS, seasons: [{ season: 2027, teams: [] }] });
+
+    it('asks about the league\'s OWN season and sends in March', async () => {
+        await hooper('Hal');
+
+        const res = await push.notifyRecapReady(MARCH_MONDAY);
+
+        expect(res).toMatchObject({ due: 1, sent: 1 });
+        expect(String(global.fetch.mock.calls[0][0])).toContain(`/standings/recap/${HOOPS}/2027/`);
+    });
+
+    it('logs the notice against the basketball season', async () => {
+        const hal = await hooper('Hal');
+        await push.notifyRecapReady(MARCH_MONDAY);
+
+        const saved = await Franchise.findOne({ accountId: hal._id, league: HOOPS }).lean();
+        expect(saved.recapNotices.map(n => n.season)).toEqual([2027]);
+    });
+
+    it('leaves a football league quiet in March', async () => {
+        await manager('Ann');                                   // football, 2026
+        await hooper('Hal');
+
+        await push.notifyRecapReady(MARCH_MONDAY);
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(String(global.fetch.mock.calls[0][0])).toContain(`/${HOOPS}/`);
+    });
+
+    // Last basketball season (2025-26) is numbered 2026 — the same number as
+    // this football season — so a hoops franchise still holding it matched the
+    // football query and was pushed a stale recap in September.
+    it('leaves a basketball league quiet in September', async () => {
+        await manager('Hal', { league: HOOPS, seasons: [{ season: 2026, teams: [] }, { season: 2027, teams: [] }] });
+        await manager('Ann');
+
+        await push.notifyRecapReady(MONDAY);
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(String(global.fetch.mock.calls[0][0])).toContain(`/${LEAGUE}/2026/`);
+    });
+});

@@ -27,35 +27,41 @@ const round = (v) => Math.round((v || 0) * 10) / 10;
 // Effective week number so a postseason entry always sorts after Week 16.
 // weeklyScore[].season is overloaded as a type tag ('postseason'); some data
 // also just uses week > 16.
-function effWeek(entry) {
+//
+// FOOTBALL ONLY. A basketball season runs ~22 Monday-to-Sunday weeks
+// (modules/hoops-calendar.js) and its weeks are just weeks — folding 17+ into
+// one "Postseason" would merge February and March into a single recap.
+function effWeek(entry, sport) {
     if (!entry) return 0;
+    if (sport === 'basketball') return entry.week;
     if (entry.season === 'postseason' || entry.week > 16) return 17;
     return entry.week;
 }
-function weekLabel(entry) {
+const effWeekOf = effWeek;
+function weekLabel(entry, sport) {
     if (!entry) return '';
-    return effWeek(entry) === 17 ? 'Postseason' : 'Week ' + entry.week;
+    return effWeek(entry, sport) === 17 && sport !== 'basketball' ? 'Postseason' : 'Week ' + entry.week;
 }
 function seasonOf(user, season) {
     return (user && user.seasons || []).find(s => String(s.season) === String(season)) || null;
 }
 // Cumulative points through effective-week W (inclusive) — matches how the
 // season total is summed, but bounded by week.
-function cumThrough(weekly, W) {
-    return (weekly || []).reduce((sum, e) => effWeek(e) <= W ? sum + (e.score || 0) : sum, 0);
+function cumThrough(weekly, W, sport) {
+    return (weekly || []).reduce((sum, e) => effWeek(e, sport) <= W ? sum + (e.score || 0) : sum, 0);
 }
 // Rank (1 = best) of userId among the league by cumulative-through-W. Null if
 // the user isn't in the set.
 // Standard competition ranking (1 + managers strictly ahead) so ties SHARE a
 // rank instead of getting arbitrary DB-order placements. Returns { rank, tie }
 // (tie = another manager holds the exact same total), or null if not found.
-function rankAt(leagueSeasons, W, userId) {
+function rankAt(leagueSeasons, W, userId, sport) {
     const mine = leagueSeasons.find(ls => String(ls.userId) === String(userId));
     if (!mine) return null;
-    const myCum = cumThrough(mine.weekly, W);
+    const myCum = cumThrough(mine.weekly, W, sport);
     let ahead = 0, shared = 0;
     leagueSeasons.forEach(ls => {
-        const c = cumThrough(ls.weekly, W);
+        const c = cumThrough(ls.weekly, W, sport);
         if (c > myCum) ahead += 1;
         else if (c === myCum && String(ls.userId) !== String(userId)) shared += 1;
     });
@@ -94,6 +100,62 @@ function indexUpsets(games, spreadByGameId, rankByWeek) {
     return out;
 }
 
+// Basketball's counterpart to indexUpsets. There are no betting lines, so the
+// story is told the sport's own way:
+//   - a SEED upset: a tournament game the worse seed won (CBBD carries
+//     homeSeed/awaySeed on conference and NCAA tournament games);
+//   - a Q1 WIN: the quadrant the win was banked at, which lives on the
+//     manager's scoreByTeam row (modules/hoops-scoring-pass.js), not here.
+// So this indexes EVERY final, keyed by gameId, with both team ids — a
+// basketball scoreByTeam row carries teamId and no school name, so the
+// builder matches on the id. Final means status 'final' with two real,
+// unequal scores: CBBD writes 0-0 on a scheduled game (see models/hoopsGame.js).
+function indexHoopsResults(games) {
+    const out = {};
+    const pts = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+    (games || []).forEach(g => {
+        if (String(g.status || '').toLowerCase() !== 'final') return;
+        const hp = pts(g.homePoints), ap = pts(g.awayPoints);
+        if (hp === null || ap === null || hp === ap) return;
+        const homeWon = hp > ap;
+        const seed = (v) => { const n = Number(v); return v != null && Number.isInteger(n) && n > 0 ? n : null; };
+        out[g.id] = {
+            winnerId: homeWon ? g.homeTeamId : g.awayTeamId,
+            winner: homeWon ? g.homeTeam : g.awayTeam,
+            loser: homeWon ? g.awayTeam : g.homeTeam,
+            winnerSeed: seed(homeWon ? g.homeSeed : g.awaySeed),
+            loserSeed: seed(homeWon ? g.awaySeed : g.homeSeed),
+            winScore: homeWon ? hp : ap,
+            loseScore: homeWon ? ap : hp
+        };
+    });
+    return out;
+}
+
+// The best basketball story among one week's roster rows, or null. A seed
+// upset beats a Q1 win (it is rarer), a bigger seed gap beats a smaller one,
+// and among Q1 wins the better-ranked opponent wins.
+function hoopsUpsetFor(rows, resultsByGameId, logoOf, nameOf) {
+    let best = null, bestKey = null;
+    (rows || []).forEach(st => {
+        const u = st.gameId != null ? resultsByGameId[st.gameId] : null;
+        if (!u || st.teamId == null || Number(u.winnerId) !== Number(st.teamId)) return;
+        const seedGap = (u.winnerSeed && u.loserSeed && u.winnerSeed > u.loserSeed) ? u.winnerSeed - u.loserSeed : 0;
+        const q1 = Number(st.quadrant) === 1;
+        if (!seedGap && !q1) return;
+        const oppRank = Number.isInteger(Number(st.oppRank)) && Number(st.oppRank) > 0 ? Number(st.oppRank) : null;
+        // Larger is better: seed upsets above every Q1, then gap / opp rank.
+        const key = seedGap ? 1000 + seedGap : 500 - (oppRank || 499);
+        if (best && key <= bestKey) return;
+        bestKey = key;
+        const team = nameOf(st.teamId, st.team) || u.winner;
+        best = seedGap
+            ? { kind: 'seed', team, loser: u.loser, loserRank: null, seed: u.winnerSeed, loserSeed: u.loserSeed, margin: null, fantasy: round(st.score || 0), logo: logoOf(st.teamId, team) }
+            : { kind: 'q1', team, loser: u.loser, loserRank: oppRank, margin: null, fantasy: round(st.score || 0), logo: logoOf(st.teamId, team) };
+    });
+    return best;
+}
+
 // The one-line story. Deterministic and rule-based (the reliable base); when a
 // rostered team won as a betting underdog that week, the upset flavor takes
 // over ("Oregon's upset over Georgia as a 10.5-pt underdog powered your week").
@@ -113,12 +175,21 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset, wea
 
     if (score <= 0 && (!mvp || mvp.score <= 0)) return 'Quiet week — no points banked.';
 
+    const tail = place ? (moved ? `, ${move} to ${place}` : `, good for ${place}`) : '';
+    // Basketball: a seed upset or a Q1 win (no lines, no weather indoors).
+    if (upset && upset.kind === 'seed') {
+        return `No. ${upset.seed} seed ${upset.team}'s upset of No. ${upset.loserSeed} ${upset.loser} powered your ${score}-pt week${tail}.`;
+    }
+    if (upset && upset.kind === 'q1') {
+        const foe = `${upset.loserRank ? '#' + upset.loserRank + ' ' : ''}${upset.loser}`;
+        return `${upset.team}'s Q1 win over ${foe} powered your ${score}-pt week${tail}.`;
+    }
+
     // Layered: an underdog win on your roster is the story worth telling.
     if (upset) {
         const foe = upset.loser ? `${upset.loserRank ? '#' + upset.loserRank + ' ' : ''}${upset.loser}` : '';
         const beat = foe ? ` over ${foe}` : '';
         const dog = upset.margin ? ` as a ${upset.margin}-pt underdog` : '';
-        const tail = place ? (moved ? `, ${move} to ${place}` : `, good for ${place}`) : '';
         return `${upset.team}'s upset${beat}${dog}${wxTag} powered your ${score}-pt week${tail}.`;
     }
 
@@ -137,8 +208,12 @@ function narrate({ score, rank, rankDelta, rankTie, vsLeagueAvg, mvp, upset, wea
 //   user         — the profile user's full doc (all seasons)
 //   leagueUsers  — every user in the league (full docs) for rank + average
 //   season       — the season to recap (number or string)
-//   upsetByGameId — optional output of indexUpsets(), for the upset narrative
-function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeWeeks, weatherByGameId }) {
+//   upsetByGameId — optional output of indexUpsets(), for the upset narrative;
+//                   on basketball, the output of indexHoopsResults() instead
+//   sport        — 'basketball' for a hoops league; anything else is football
+function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeWeeks, weatherByGameId, sport }) {
+    const isHoops = sport === 'basketball';
+    const effWeek = (e) => effWeekOf(e, sport);
     const mySeason = seasonOf(user, season);
     const result = { userId: String(user && user._id), season: Number(season), recaps: [] };
     // Cheap short-circuit only — a manager with no entries at all has no weeks.
@@ -155,6 +230,9 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
     (mySeason.teams || []).forEach(t => { metaById[t.id] = t; metaBySchool[t.school] = t; });
     const metaOf = (teamId, school) => (teamId != null && metaById[teamId]) || metaBySchool[school] || null;
     const logoOf = (teamId, school) => { const m = metaOf(teamId, school); return (m && pickLogo(m.logos)) || null; };
+    // A basketball scoreByTeam row carries teamId and no school name, so the
+    // name comes off the roster (hydrated from teamRefs by the route).
+    const nameOf = (teamId, school) => school || ((teamId != null && metaById[teamId]) || {}).school || null;
 
     // Distinct effective weeks the league has actually PLAYED, ascending — so
     // "the previous week" for rank movement is the real prior week, not W-1
@@ -220,10 +298,10 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
         const score = round(entry.score || 0);
         const stats = weekStats[W] || {};
 
-        const rankInfo = rankAt(leagueSeasons, W, user._id);
+        const rankInfo = rankAt(leagueSeasons, W, user._id, sport);
         const rank = rankInfo ? rankInfo.rank : null;
         const rankTie = rankInfo ? rankInfo.tie : false;
-        const prevInfo = prevW != null ? rankAt(leagueSeasons, prevW, user._id) : null;
+        const prevInfo = prevW != null ? rankAt(leagueSeasons, prevW, user._id, sport) : null;
         const prevRank = prevInfo ? prevInfo.rank : null;
         const rankDelta = (rank != null && prevRank != null) ? (prevRank - rank) : null; // + = climbed
 
@@ -239,7 +317,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
         const teamAgg = {};
         (entry.scoreByTeam || []).forEach(st => {
             const key = st.teamId != null ? 'id:' + st.teamId : 'nm:' + st.team;
-            const t = teamAgg[key] || (teamAgg[key] = { school: st.team, score: 0, logo: logoOf(st.teamId, st.team) });
+            const t = teamAgg[key] || (teamAgg[key] = { school: nameOf(st.teamId, st.team), score: 0, logo: logoOf(st.teamId, st.team) });
             t.score = round(t.score + (st.score || 0));
         });
         const teams = Object.values(teamAgg);
@@ -257,7 +335,9 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
 
         // Upset flavor: the biggest-underdog win among this week's roster games.
         let upset = null;
-        if (upsetByGameId) {
+        if (upsetByGameId && isHoops) {
+            upset = hoopsUpsetFor(entry.scoreByTeam, upsetByGameId, logoOf, nameOf);
+        } else if (upsetByGameId) {
             (entry.scoreByTeam || []).forEach(st => {
                 const u = st.gameId != null ? upsetByGameId[st.gameId] : null;
                 if (u && u.winner === st.team && (!upset || u.margin > upset.margin)) {
@@ -285,7 +365,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
         // several games), so calling it a new high isn't real news. The finale
         // gets its own season-wrap beat instead (see buildSlides).
         runningTotal += score;
-        const isRegularWeek = W <= 16;
+        const isRegularWeek = isHoops || W <= 16;
         // "New high" only when the manager has a PRIOR regular week of their own
         // to beat — gate on their own played-week count, not the league index wi
         // (a manager whose first scored week isn't the league's earliest would
@@ -300,7 +380,7 @@ function buildWeeklyRecaps({ user, leagueUsers, season, upsetByGameId, completeW
         const milestone = (topMultiple >= 50 && topMultiple > prevTotal) ? topMultiple : null;
 
         const recap = {
-            week: entry.week, effWeek: W, label: weekLabel(entry),
+            week: entry.week, effWeek: W, label: weekLabel(entry, sport), sport: isHoops ? 'basketball' : 'football',
             score, rank, rankDelta, rankTie, leagueAvg, vsLeagueAvg, weekHigh, weekLow,
             mvpTeam: mvp, mvpTeams, mvpShare, dudTeam, isUpset: !!upset, upset,
             weather,
@@ -364,8 +444,14 @@ function buildSlides(r) {
         slides.push({ id: 'dud', icon: 'snowflake', kicker: 'The dud', title: r.dudTeam.school, big: String(r.dudTeam.score), logo: r.dudTeam.logo, sub: 'quietest team on your roster', tone: 'bad' });
     }
 
+    // Basketball's version: a seed upset, or a Q1 win (see hoopsUpsetFor).
+    if (r.upset && r.upset.kind === 'seed') {
+        slides.push({ id: 'upset', icon: 'dice', kicker: 'Upset alert', title: r.upset.team, big: 'UPSET', logo: r.upset.logo, sub: `No. ${r.upset.seed} seed beat No. ${r.upset.loserSeed} ${r.upset.loser}`, tone: 'good' });
+    } else if (r.upset && r.upset.kind === 'q1') {
+        const foe = `${r.upset.loserRank ? '#' + r.upset.loserRank + ' ' : ''}${r.upset.loser}`;
+        slides.push({ id: 'upset', icon: 'dice', kicker: 'Quality win', title: r.upset.team, big: 'Q1', logo: r.upset.logo, sub: `beat ${foe}`, tone: 'good' });
     // The upset (with AP rank when the loser was ranked).
-    if (r.upset) {
+    } else if (r.upset) {
         const foe = `${r.upset.loserRank ? '#' + r.upset.loserRank + ' ' : ''}${r.upset.loser}`;
         slides.push({ id: 'upset', icon: 'dice', kicker: 'Upset alert', title: r.upset.team, big: 'UPSET', logo: r.upset.logo, sub: `beat ${foe} as a ${r.upset.margin}-pt underdog`, tone: 'good' });
     }
@@ -383,7 +469,7 @@ function buildSlides(r) {
     // Momentum — a single beat. On the finale, wrap the season (the postseason
     // being your biggest week is expected, not a "new high"). Otherwise:
     // season high › milestone › hot streak › cold streak.
-    if (r.effWeek === 17) slides.push({ id: 'seasonwrap', icon: 'star', kicker: 'Season in the books', title: 'Season total', big: String(r.cumTotal), sub: place ? `${place} place — that's a wrap` : "that's a wrap on the season", tone: 'good' });
+    if (r.effWeek === 17 && r.sport !== 'basketball') slides.push({ id: 'seasonwrap', icon: 'star', kicker: 'Season in the books', title: 'Season total', big: String(r.cumTotal), sub: place ? `${place} place — that's a wrap` : "that's a wrap on the season", tone: 'good' });
     else if (r.isSeasonHigh) slides.push({ id: 'seasonhigh', icon: 'burst', kicker: 'Personal best', title: 'New season high!', big: String(r.score), sub: 'your biggest week yet', tone: 'good' });
     else if (r.milestone) slides.push({ id: 'milestone', icon: 'star', kicker: 'Milestone', title: `${r.milestone} points`, big: String(r.cumTotal), sub: 'season total and climbing', tone: 'good' });
     else if (r.aboveAvgStreak >= 2) slides.push({ id: 'streak', icon: 'flame', kicker: 'On a heater', title: `${r.aboveAvgStreak} weeks hot`, big: '🔥', sub: `${r.aboveAvgStreak} straight weeks above the league average`, tone: 'good' });
@@ -408,10 +494,12 @@ function recapWindowKey(date) {
     const y = boundary.getFullYear(), m = String(boundary.getMonth() + 1).padStart(2, '0'), day = String(boundary.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 }
-// Only nudge during the CFB season window (Aug–Jan) so the popup doesn't nag
+// Only nudge during the sport's season window so the popup doesn't nag
 // through the offseason; the recap stays available on My Team year-round.
-function isRecapSeason(date) {
+// Football runs Aug–Jan; basketball Nov–Apr (March is the whole point).
+function isRecapSeason(date, sport) {
     const m = date.getMonth() + 1;
+    if (sport === 'basketball') return m >= 11 || m <= 4;
     return m >= 8 || m === 1;
 }
 
@@ -428,12 +516,18 @@ function isRecapSeason(date) {
 //
 // Lives here rather than inline in routes/standings.js so the rule is testable
 // on its own; the route passes the games it already fetched.
-function completedWeeks(games, now) {
+//
+// Basketball games (hoopsgames) carry no `completed` — `status: 'final'` is
+// their discriminator — and their weeks are never folded into a postseason.
+function completedWeeks(games, now, sport) {
+    const isHoops = sport === 'basketball';
     const lastStart = {};
     const unknownStart = new Set();
     (games || []).forEach(g => {
-        const ew = (g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week;
-        if (g.startTimeTbd && !g.completed) { unknownStart.add(ew); return; }
+        if (isHoops && g.week == null) return;
+        const ew = isHoops ? g.week : ((g.seasonType === 'postseason' || g.week > 16) ? 17 : g.week);
+        const played = isHoops ? String(g.status || '').toLowerCase() === 'final' : g.completed;
+        if (g.startTimeTbd && !played) { unknownStart.add(ew); return; }
         const sd = g.startDate ? new Date(g.startDate) : null;
         if (sd && !isNaN(sd.getTime()) && (!lastStart[ew] || sd > lastStart[ew])) lastStart[ew] = sd;
     });
@@ -445,4 +539,4 @@ function completedWeeks(games, now) {
     return complete;
 }
 
-module.exports = { buildWeeklyRecaps, buildSlides, indexUpsets, narrate, effWeek, weekLabel, cumThrough, rankAt, recapWindowKey, isRecapSeason, completedWeeks };
+module.exports = { buildWeeklyRecaps, buildSlides, indexUpsets, indexHoopsResults, narrate, effWeek, weekLabel, cumThrough, rankAt, recapWindowKey, isRecapSeason, completedWeeks };
