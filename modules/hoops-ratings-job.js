@@ -45,6 +45,7 @@
 
 const jobLogger = require('./job-logger');
 const jobMailer = require('./job-mailer');
+const { guardJob } = require('./job-guard');
 const cbbd = require('./cbbd-client');
 const { resolveCurrentWeek, seasonStartFrom } = require('./hoops-calendar');
 const { basketballLeagues } = require('./hoops-scores-job');
@@ -176,7 +177,13 @@ async function snapshotSeason(season, now) {
     return { written: `${season} wk${target.week}: ${ranked.length} team(s) ranked${droppedNote} (snapshot taken in wk${target.during})` };
 }
 
+// Wrapped so a failure BEFORE the per-season loop mails too (#574); the
+// silent skips below are returns, so they stay silent.
 async function run({ now = new Date() } = {}) {
+    return guardJob({ jobName: JOB_NAME, label: LABEL, now }, state => runOnce(now, state));
+}
+
+async function runOnce(now, state) {
     const leagues = await basketballLeagues();
     // No basketball at all: silent, no JobRun, like the other hoops jobs.
     if (!leagues.length) return { skippedReason: 'no basketball leagues' };
@@ -208,6 +215,7 @@ async function run({ now = new Date() } = {}) {
     // from, "did this week's snapshot land" has to be answerable from the
     // admin strip, and a silent skip looks the same as a job that never ran.
     const id = await jobLogger.startRun(JOB_NAME);
+    state.id = id;
     await jobLogger.finishRun(id, status, summary);
     (failures.length ? console.error : console.log)(`[${JOB_NAME}] ${summary}`);
 

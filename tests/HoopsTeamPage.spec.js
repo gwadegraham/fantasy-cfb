@@ -558,6 +558,29 @@ describe('hoops-stats job', () => {
         expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Stats', ok: false, error: out.summary });
     });
 
+    // #574: a throw BEFORE the per-season loop used to reach only the
+    // scheduler's console line — no mail, no JobRun.
+    test('a failure in the league lookup mails once, and still throws', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(League, 'find').mockImplementation(() => { throw new Error('mongo down'); });
+        await expect(statsJob.run({ now: NOW })).rejects.toThrow('mongo down');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Stats', ok: false });
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/mongo down/);
+        // And a red row, or /hoops/admin keeps showing the last green run.
+        expect(jobLogger.startRun).toHaveBeenCalledWith('hoops-stats');
+        expect(jobLogger.finishRun).toHaveBeenCalledTimes(1);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', 'mongo down');
+    });
+
+    test('so does the recent-results check, which sits outside the per-season try', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(HoopsGame, 'exists').mockRejectedValue(new Error('exists timed out'));
+        await expect(statsJob.run({ now: NOW })).rejects.toThrow('exists timed out');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/exists timed out/);
+    });
+
     test('a skipped import (no teams) is reported in the summary', async () => {
         jest.spyOn(hoopsStats, 'importSeason').mockResolvedValue({ season: SEASON, skippedReason: 'no hoops teams ingested' });
         await HoopsGame.create(game(10, 1, 1, 3, { startDate: new Date(Date.UTC(2026, 10, 11)) }));

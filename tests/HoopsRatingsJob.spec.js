@@ -202,6 +202,19 @@ describe('run', () => {
         expect(await HoopsRating.countDocuments()).toBe(0);
     });
 
+    // #574: a throw BEFORE the per-season loop used to reach only the
+    // scheduler's console line — no mail, no JobRun.
+    test('a failure in the league lookup mails once, and still throws', async () => {
+        jest.spyOn(League, 'find').mockImplementation(() => { throw new Error('mongo down'); });
+        await expect(job.run({ now: WEEK6_THURSDAY })).rejects.toThrow('mongo down');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Ratings', ok: false });
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/mongo down/);
+        expect(jobLogger.startRun).toHaveBeenCalledWith('hoops-ratings');
+        expect(jobLogger.finishRun).toHaveBeenCalledTimes(1);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', 'mongo down');
+    });
+
     test('a failed write is an error too, not a success', async () => {
         stubCbbd([row(1, 1)]);
         jest.spyOn(HoopsRating, 'bulkWrite').mockRejectedValue(new Error('write conflict'));

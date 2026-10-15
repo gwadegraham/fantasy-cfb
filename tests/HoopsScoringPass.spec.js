@@ -566,6 +566,29 @@ describe('the nightly basketball job', () => {
         expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Scores', ok: false });
         expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/mongo down/);
     });
+
+    // #574: a throw BEFORE the per-league loop used to reach only the
+    // scheduler's console line — no mail, no JobRun.
+    test('a failure in the league lookup mails once, and still throws', async () => {
+        const logged = watchLogger();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(League, 'find').mockImplementation(() => { throw new Error('league lookup down'); });
+        await expect(job.run({ now: new Date('2026-12-20') })).rejects.toThrow('league lookup down');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Scores', ok: false });
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/league lookup down/);
+        expect(jobLogger.startRun).toHaveBeenCalledWith('hoops-scores');
+        expect(logged).toEqual([{ status: 'error', msg: 'league lookup down' }]);
+    });
+
+    test('so does the refresh planning, which sits outside every try', async () => {
+        watchLogger();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(HoopsGame, 'exists').mockRejectedValue(new Error('exists timed out'));
+        await expect(job.run({ now: new Date('2026-12-20') })).rejects.toThrow('exists timed out');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/exists timed out/);
+    });
 });
 
 describe('the season total', () => {

@@ -21,6 +21,7 @@
 // useless earlier in this branch.
 const jobLogger = require('./job-logger');
 const jobMailer = require('./job-mailer');
+const { guardJob } = require('./job-guard');
 const { scoreHoopsWeek } = require('./hoops-scoring-pass');
 const { resolveCurrentWeek, seasonStartFrom } = require('./hoops-calendar');
 const HoopsGame = require('./../models/hoopsGame');
@@ -118,7 +119,13 @@ async function seasonTypesToRefresh(season, start, end) {
     return types;
 }
 
+// Wrapped so a failure BEFORE the per-season loop mails too (#574); the
+// silent skips below are returns, so they stay silent.
 async function run({ now = new Date() } = {}) {
+    return guardJob({ jobName: JOB_NAME, label: LABEL, now }, state => runOnce(now, state));
+}
+
+async function runOnce(now, state) {
     const startMs = Date.now();
     const leagues = await basketballLeagues();
 
@@ -192,6 +199,7 @@ async function run({ now = new Date() } = {}) {
     const secs = Math.round((Date.now() - startMs) / 1000);
     const summary = [...refreshed, ...done, ...skipped].join(' | ') + ` (${secs}s)`;
     const id = await jobLogger.startRun(JOB_NAME);
+    state.id = id;
     await jobLogger.finishRun(id, failed ? 'error' : 'success', summary);
     console.log(`[${JOB_NAME}] ${summary}`);
 

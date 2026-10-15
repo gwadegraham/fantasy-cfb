@@ -261,6 +261,33 @@ describe('hoops-media job (weekly)', () => {
         expect(pull).not.toHaveBeenCalled();
     });
 
+    // #574: a throw BEFORE the per-season loop used to reach only the
+    // scheduler's console line — no mail, no JobRun.
+    test('a failure in the league lookup mails once, and still throws', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(League, 'find').mockImplementation(() => { throw new Error('mongo down'); });
+        await expect(mediaJob.run({ now: new Date(NOW) })).rejects.toThrow('mongo down');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Media', ok: false });
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/mongo down/);
+        expect(jobLogger.startRun).toHaveBeenCalledWith('hoops-media');
+        expect(jobLogger.finishRun).toHaveBeenCalledTimes(1);
+        expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', 'mongo down');
+    });
+
+    // Defensive: the real finishRun swallows its errors, so this cannot
+    // happen today. It pins that a late throw reuses the job's row rather
+    // than opening a second one.
+    test('a throw after the run started finishes THAT run as an error, and mails once', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(hoopsMedia, 'ingestWindow').mockResolvedValue({ season: SEASON, games: 40, stored: 38, capped: false });
+        jobLogger.finishRun.mockRejectedValueOnce(new Error('job-runs 500'));
+        await expect(mediaJob.run({ now: new Date(NOW) })).rejects.toThrow('job-runs 500');
+        expect(jobLogger.startRun).toHaveBeenCalledTimes(1);
+        expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', 'job-runs 500');
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+    });
+
     test('a failed or capped pull is an ERROR, not a quiet success', async () => {
         const pull = jest.spyOn(hoopsMedia, 'ingestWindow').mockRejectedValueOnce(new Error('CBBD 429'));
         let out = await mediaJob.run({ now: new Date(NOW) });
