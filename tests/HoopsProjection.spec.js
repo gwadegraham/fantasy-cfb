@@ -43,6 +43,10 @@ describe('teamWinProb', () => {
 
     test('the multiplier is the fitted 1.55, and a caller can override it', () => {
         expect(P.HOME_ODDS).toBe(1.55);
+        // One constant, shared with the game preview.
+        expect(P.HOME_ODDS).toBe(require('../modules/hoops-win-prob').HOME_ODDS);
+        expect(require('../modules/hoops-win-prob').homeWinProb(0.7, 0.55, false))
+            .toBeCloseTo(P.teamWinProb(0.7, 0.55, 'home'), 12);
         expect(P.teamWinProb(0.5, 0.5, 'home', 2)).toBeCloseTo(2 / 3, 10);
     });
 
@@ -154,8 +158,10 @@ describe('pointsIfWin uses the real quadrants and the league config', () => {
 describe('projectHoopsTeam', () => {
     // Team 1 (strong) plays three D-I games at three venues, one non-D-I game,
     // one conference-tournament game and two postseason games.
-    const teams = [team(1, 0.9, '25-7', 5), team(2, 0.7, '18-14', 40), team(3, 0.4, '12-20', 150)];
-    const ranks = { 1: 5, 2: 40, 3: 150 };
+    const teams = [team(1, 0.9, '25-7', 5), team(2, 0.7, '18-14', 40), team(3, 0.4, '12-20', 210)];
+    // #210 is Q3 on the road but Q4 at home and on a neutral floor, so a
+    // venue graded wrong changes an answer.
+    const ranks = { 1: 5, 2: 40, 3: 210 };
     const sched = [
         game(101, 1, 2, { week: 1 }),
         game(102, 3, 1, { week: 2 }),
@@ -175,8 +181,9 @@ describe('projectHoopsTeam', () => {
         out.perGame.forEach(g => expect(Object.keys(g).sort()).toEqual(['gameId', 'pointsIfLoss', 'pointsIfWin', 'week', 'winProb']));
         out.perGame.forEach(g => expect(g.pointsIfLoss).toBe(0));
         expect(out.perGame.map(g => g.week)).toEqual([1, 2, 3]);
-        // vs #40 at home = Q2, at #150 away = Q3, vs #150 neutral = Q3
-        expect(out.perGame.map(g => g.pointsIfWin)).toEqual([c.values.q2Win, c.values.q3Win, c.values.q3Win]);
+        // vs #40 at home = Q2, at #210 away = Q3, vs #210 neutral = Q4
+        expect(out.perGame.map(g => g.pointsIfWin)).toEqual([c.values.q2Win, c.values.q3Win, c.values.q4Win]);
+        expect(c.values.q3Win).not.toBe(c.values.q4Win);
     });
 
     test('expected wins hit the D-I-adjusted record, and regular = sum of p * points', () => {

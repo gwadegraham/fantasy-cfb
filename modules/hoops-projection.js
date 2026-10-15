@@ -1,11 +1,28 @@
 // Expected fantasy points for a basketball team's regular season (#310, PR 1
 // of the projection engine). The basketball counterpart of
-// modules/draft-projection.js projectTeamPoints, and shaped like it so the
-// same consumers (draft grades, the draft board, H2H odds, standings
-// projections) can read either sport's answer:
+// modules/draft-projection.js projectTeamPoints, with the same field names
+// where the meaning is the same:
 //
-//   { regular, confChamp, ncaa, upset, postseason, total, projWins, makeProb,
-//     perGame: [{ week, gameId, winProb, pointsIfWin }] }
+//   { regular, confChamp, ncaa, upset, postseason, cfp: 0, bowl: 0, total,
+//     projWins, makeProb, perGame: [{ week, gameId, winProb, pointsIfWin,
+//     pointsIfLoss }] }
+//
+// ---- what the consumers must change to read it ----
+//
+// NOT drop-in. Only h2h.matchupWinProb takes perGame as it is. The rest
+// were written against football's call signature and fields:
+//
+//   draft grades (modules/draft-grades.js, PR 3) — its postseason column sums
+//     cfp + confChamp + bowl, which for basketball is confChamp alone: read
+//     proj.postseason instead. It also calls projectTeamPoints(team, games,
+//     poolCtx, rankings, cfg, season); basketball is
+//     projectHoopsTeam(team, games, ctx) with buildHoopsPoolContext +
+//     (PR 2) attachMarch.
+//   standings projection (modules/standings-projection.js buildProjections,
+//     PR 5) — it filters the remaining schedule on g.completed and
+//     g.homeId, neither of which a HoopsGame has, and sums cfp + confChamp
+//     + bowl. Basketball calls projectRemaining(team, games, ctx), which
+//     filters on status (isFinal) itself, and reads proj.postseason.
 //
 // Pure: no database, no network. The caller supplies teams, games, a rank map
 // and the league's resolved scoring config.
@@ -47,24 +64,14 @@
 // estimate is the place to add.
 
 const { evaluate } = require('./scoring');
-const { log5 } = require('./hoops-win-prob');
+const { log5, HOME_ODDS } = require('./hoops-win-prob');
 const { venueFor } = require('./hoops-quadrants');
 const { isFinal } = require('./hoops-scoring-pass');
 
-// Home court, as a multiplier on the home side's odds. Neutral sites get 1.
-//
-// Fitted by maximum likelihood on the 5,647 final D-I vs D-I games of
-// 2025-26, using the PRESEASON barthags: best 1.55, and 1.62 / 1.53 when the
-// season is split at New Year, so it is not one half carrying the fit. The
-// 1.4 the game preview and the draft simulation assume is ruled out: home
-// teams won 64.4% of 5,045 non-neutral games, 1.4 expected 62.4%, 1.55
-// expects 64.4% (log loss 0.5651 against 0.5642, about 5 nats over the
-// season). Anything from 1.5 to 1.6 is within 0.0001 of the best.
-//
-// modules/hoops-win-prob.js still says 1.4 for the preview. Not changed here,
-// because that number is shown to managers; aligning the two is a one-line
-// follow-up for whoever owns that page.
-const HOME_ODDS = 1.55;
+// Home court, as a multiplier on the home side's odds (neutral sites get 1):
+// HOME_ODDS from modules/hoops-win-prob.js, shared with the game preview so
+// the two can never disagree. 1.55, fitted on 2025-26 — the measurement is
+// documented there.
 
 // How many games of real results it takes to earn half the say in a team's
 // remaining-wins forecast against its preseason rate. Football settled on 10;

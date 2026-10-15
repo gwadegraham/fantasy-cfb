@@ -527,7 +527,8 @@ describe('homeWinProb', () => {
     test('log5 of equals is a coin flip; home court tilts it; neutral does not', () => {
         expect(log5(0.5, 0.5)).toBeCloseTo(0.5);
         expect(homeWinProb(0.5, 0.5, true)).toBeCloseTo(0.5);
-        expect(homeWinProb(0.5, 0.5, false)).toBeCloseTo(0.583, 3);
+        // 1.55 home odds: 1.55 / 2.55.
+        expect(homeWinProb(0.5, 0.5, false)).toBeCloseTo(0.608, 3);
         expect(homeWinProb(0.9629, 0.8793, true)).toBeCloseTo(0.782, 2);   // Duke vs Georgia
     });
     test('a missing or impossible rating gives no number rather than a wrong one', () => {
