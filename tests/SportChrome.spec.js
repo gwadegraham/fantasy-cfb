@@ -22,7 +22,6 @@ describe('the favicon partial', () => {
         expect(html).toContain('href="/images/favicon.svg"');
         expect(html).toContain('href="/images/favicon-32.png"');
         expect(html).toContain('href="/images/favicon-16.png"');
-        expect(html).toContain('href="/images/apple-touch-icon.png"');
         expect(html).not.toContain('hardwood');
     });
 
@@ -31,7 +30,20 @@ describe('the favicon partial', () => {
         expect(html).toContain('href="/images/favicon-hardwood.svg"');
         expect(html).toContain('href="/images/favicon-hardwood-32.png"');
         expect(html).toContain('href="/images/favicon-hardwood-16.png"');
-        expect(html).toContain('href="/images/apple-touch-icon-hardwood.png"');
+    });
+
+    // #571: the home-screen icon is one Campus Clash mark, whatever the sport.
+    test.each(['football', 'basketball', undefined])('the home-screen icon is the shared mark (%s)', (viewerSport) => {
+        const html = render({ viewerSport });
+        expect(html).toContain('rel="apple-touch-icon" sizes="180x180" href="/images/app-icon-180.png"');
+        expect(html).not.toContain('apple-touch-icon-hardwood');
+    });
+
+    test('the manifest installs the shared mark, and every icon it names exists', () => {
+        const manifest = require('../public/manifest.json');
+        const srcs = manifest.icons.map(i => i.src);
+        expect(srcs).toEqual(['/images/app-icon-192.png', '/images/app-icon-512.png', '/images/app-icon-512.png']);
+        srcs.forEach(src => expect(fs.existsSync(path.join(__dirname, '..', src))).toBe(true));
     });
 
     test('a signed-out page falls back to football, not to nothing', () => {
