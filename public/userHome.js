@@ -1285,7 +1285,7 @@ async function hydrateDraft(user, activeYear) {
         if (g) g.innerHTML = `<span class="uh-draft-g"><span class="uh-grade gg-tier-${tier}">${escapeHtml(mine.grade)}</span><span class="uh-draft-stats">`
             + `<span class="uh-ds"><b class="num">${mine.projPoints}</b>proj pts</span>`
             + `<span class="uh-ds"><b class="num">${mine.projWins}</b>proj wins</span>`
-            + `<span class="uh-ds"><b class="num">${mine.cfpCount}</b>CFP teams</span>`
+            + `<span class="uh-ds"><b class="num">${mine.ncaaCount != null ? mine.ncaaCount : mine.cfpCount}</b>${mine.ncaaCount != null ? 'NCAA teams' : 'CFP teams'}</span>`
             + `</span></span>`;
 
         uhDrawer.draft = (body) => {
@@ -1294,8 +1294,13 @@ async function hydrateDraft(user, activeYear) {
                 // hydrator also renders other managers' grades (not just your
                 // own), so the note stays league-neutral rather than "your".
                 const leagueRef = uhOwns(user) ? 'your league’s scoring' : 'this league’s scoring';
+                // What the projection reads differs by sport (SP+ and CFP odds
+                // are football's; basketball's are Torvik and the NCAA ladder).
+                const inputs = data.sport === 'basketball'
+                    ? 'schedule + Torvik preseason ratings + NCAA tournament odds'
+                    : 'schedule + SP+ win odds + market CFP odds';
                 renderDraftGradeCard(body, mine, {
-                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+                    note: season + ' preseason grade — projected fantasy points in ' + leagueRef + ' (' + inputs + '). Each draft graded on its own merit.'
                 });
             }
         };

@@ -266,14 +266,15 @@ describe('a pool that could not be built', () => {
     });
 });
 
-// #482: the grade is football's projection, so a basketball draft shows no
-// grades panel at all — not football numbers, and not "No draft grades".
+// The grades panel, for both sports. Basketball was hidden until it had a
+// projection of its own (#482); now it renders, and its note names
+// basketball's inputs — not SP+ and CFP odds.
 describe('the draft grades panel', () => {
     async function grades(payload) {
         const page = room({ draft: { status: 'complete', picks: [] } });
         page.run(`
             document.body.insertAdjacentHTML('beforeend', '<div id="draft-grades-panel"></div>');
-            renderDraftGrades = function (el) { el.innerHTML = 'GRADES'; };
+            renderDraftGrades = function (el, data, opts) { el.innerHTML = 'GRADES ' + opts.note; };
             fetch = function (url) {
                 var body = String(url).indexOf('/draft/grades/') !== -1 ? ${JSON.stringify(payload)} : [];
                 return Promise.resolve({ ok: true, json: function () { return Promise.resolve(body); } });
@@ -284,23 +285,16 @@ describe('the draft grades panel', () => {
         await new Promise(r => setTimeout(r, 0));
         return page.run(`(function () { var el = document.getElementById('draft-grades-panel'); return el.style.display + '|' + el.innerHTML; })()`);
     }
-    test('a basketball draft hides it', async () => {
-        expect(await grades({ managers: [], sport: 'basketball' })).toBe('none|');
+    test('a basketball draft renders it, naming basketball\'s inputs', async () => {
+        const out = await grades({ managers: [{ userId: 'x' }], sport: 'basketball' });
+        expect(out).toMatch(/^\|GRADES /);
+        expect(out).toContain('Torvik preseason ratings + NCAA tournament odds');
+        expect(out).not.toContain('SP+');
+        expect(out).not.toContain('CFP');
     });
-    test('and it stays hidden when the room re-renders (a socket update)', async () => {
-        const page = room({ draft: { status: 'complete', picks: [] } });
-        page.run(`
-            document.body.insertAdjacentHTML('beforeend', '<div id="draft-grades-panel"></div>');
-            fetch = function (url) {
-                var body = String(url).indexOf('/draft/grades/') !== -1 ? { managers: [], sport: 'basketball' } : [];
-                return Promise.resolve({ ok: true, json: function () { return Promise.resolve(body); } });
-            };
-            renderGrades();
-        `);
-        await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0));
-        expect(page.run(`renderGrades(); document.getElementById('draft-grades-panel').style.display`)).toBe('none');
-    });
-    test('a football draft renders it', async () => {
-        expect(await grades({ managers: [{ userId: 'x' }] })).toBe('|GRADES');
+    test('a football draft renders it, as before', async () => {
+        const out = await grades({ managers: [{ userId: 'x' }] });
+        expect(out).toMatch(/^\|GRADES /);
+        expect(out).toContain('schedule + SP+ win odds + market CFP odds');
     });
 });

@@ -192,3 +192,113 @@ describe('re-exported season helpers', () => {
         expect(spFor({ seasons: [] }, 2025)).toBeNull();
     });
 });
+
+// --- basketball ----------------------------------------------------------
+//
+// Same grade layer, basketball's projection under it. The three traps #554
+// named for this file: games keyed on homeTeamId (football's grouping drops
+// every one), the postseason column (football's cfp + confChamp + bowl is the
+// conference title alone for basketball), and the make-the-field count
+// (P(NCAA bracket) must not be reported under a CFP label).
+describe('computeGrades — a basketball draft', () => {
+    const hoopsDraft = require('../modules/hoops-draft-projection');
+    const { resolveConfig } = require('../modules/scoring-defaults');
+    const config = resolveConfig('hoops-league', { model: 'hoops' });
+    const CONFS = ['ACC', 'Big Ten', 'SEC'];
+
+    // `n` teams ranked 1..n, barthag falling with rank, ids NOT in rank order
+    // (id = idBase - 7·rank) so an id/rank mix-up shows.
+    function country(n, { idBase = 500, conf } = {}) {
+        const byId = {};
+        for (let r = 1; r <= n; r++) {
+            const id = idBase - 7 * r;
+            byId[String(id)] = {
+                id, school: `H${id}`, conference: conf || CONFS[r % 3],
+                preseason: { rank: r, barthag: 0.97 - r * 0.02, adjOE: 125 - r, adjDE: 90 + r,
+                             projectedRecord: `${Math.max(8, 28 - r)}-${Math.min(23, 3 + r)}` }
+            };
+        }
+        return byId;
+    }
+    // Every team plays the next four by rank, home and away alternating — a
+    // real schedule shape, with HoopsGame's field names.
+    function schedule(byId) {
+        const ids = Object.keys(byId).map(Number).sort((a, b) => byId[a].preseason.rank - byId[b].preseason.rank);
+        const games = [];
+        let gid = 1;
+        ids.forEach((id, i) => {
+            for (let k = 1; k <= 4 && i + k < ids.length; k++) {
+                const [home, away] = k % 2 ? [id, ids[i + k]] : [ids[i + k], id];
+                games.push({ id: gid++, season: 2027, seasonType: 'regular', week: k, status: 'scheduled',
+                    homeTeamId: home, awayTeamId: away, neutralSite: k === 4, conferenceGame: false });
+            }
+        });
+        return games;
+    }
+    const teamsById = country(20);
+    const games = schedule(teamsById);
+    const byRank = Object.keys(teamsById).sort((a, b) => teamsById[a].preseason.rank - teamsById[b].preseason.rank);
+    const usersById = { a: { firstName: 'Ann', lastName: 'A' }, b: { firstName: 'Bo', lastName: 'B' } };
+    const picks = [];
+    for (let r = 0; r < 4; r++) {                       // a: ranks 1,4,5,8  b: 2,3,6,7
+        const [first, second] = r % 2 ? ['b', 'a'] : ['a', 'b'];
+        picks.push(pick(first, { id: Number(byRank[r * 2]), school: 'x' }, r * 2 + 1, r + 1));
+        picks.push(pick(second, { id: Number(byRank[r * 2 + 1]), school: 'y' }, r * 2 + 2, r + 1));
+    }
+    const draft = { season: 2027, league: 'hoops-league', totalRounds: 4, poolSize: 12, draftOrder: ['a', 'b'], picks };
+    const grades = computeGrades(draft, usersById, teamsById, { games, config, sport: 'basketball' });
+    const proj = hoopsDraft.projectHoopsTeams(Object.values(teamsById), games, { cfg: config, projectIds: byRank });
+    const mine = (uid) => picks.filter(p => p.userId === uid).map(p => proj[String(p.team.id)]);
+    const sum = (xs, f) => xs.reduce((s, x) => s + f(x), 0);
+
+    test('the regular season is projected from the HoopsGame rows, not zeroed', () => {
+        ['a', 'b'].forEach(uid => {
+            const g = grades.find(m => m.userId === uid);
+            expect(g.regPoints).toBeGreaterThan(0);
+            expect(g.regPoints).toBe(Math.round(sum(mine(uid), p => p.regular)));
+        });
+    });
+
+    test('the postseason column is the whole basketball postseason', () => {
+        const a = grades.find(m => m.userId === 'a');
+        expect(a.postPoints).toBe(Math.round(sum(mine('a'), p => p.postseason)));
+        // Football's sum would be the conference title alone — far less.
+        expect(a.postPoints).toBeGreaterThan(Math.round(sum(mine('a'), p => p.confChamp)) + 5);
+        expect(a.projPoints).toBe(Math.round(sum(mine('a'), p => p.total)));
+    });
+
+    test('the make-the-field count is the NCAA bracket, never under a CFP label', () => {
+        grades.forEach(g => {
+            expect(g).not.toHaveProperty('cfpCount');
+            expect(g.ncaaCount).toBe(Math.round(sum(mine(g.userId), p => p.makeProb) * 10) / 10);
+            expect(g.ncaaCount).toBeGreaterThan(0);
+        });
+    });
+
+    // The bands are the POOL's (top poolSize by preseason rank) — what could
+    // be drafted. Teams below the pool exist only as opponents. Banded over
+    // the whole country, the replacement anchor would sit among teams nobody
+    // could draft. (It can only bite once the replacement rank, L·R, reaches
+    // the end of the pool — 60 of 120 in the real league — hence a tiny pool.)
+    test('the bands are the pool\'s, not the whole country\'s', () => {
+        const { computeLeagueBands } = require('../modules/draft-projection');
+        const deep = { ...draft, poolSize: 6 };            // L·R = 8 > the 6-team pool
+        const letterOver = (ids) => {
+            const totals = ids.map(id => proj[id].total).sort((x, y) => y - x);
+            const b = computeLeagueBands(totals, 2, 4);
+            const avg = sum(mine('b'), p => p.total) / 4;
+            return letterFor(Math.max(0, Math.min(1, (avg - b.replacementAvg) / (b.eliteAvg - b.replacementAvg))));
+        };
+        const poolLetter = letterOver(byRank.slice(0, 6));
+        // The fixture has to tell the two apart, or this proves nothing.
+        expect(poolLetter).not.toBe(letterOver(byRank));
+        const got = computeGrades(deep, usersById, teamsById, { games, config, sport: 'basketball' });
+        expect(got.find(m => m.userId === 'b').grade).toBe(poolLetter);
+    });
+
+    test('a drafted team is graded even if the pool cap no longer covers it', () => {
+        const capped = computeGrades({ ...draft, poolSize: 3 }, usersById, teamsById, { games, config, sport: 'basketball' });
+        const a = capped.find(m => m.userId === 'a');
+        expect(a.regPoints).toBe(Math.round(sum(mine('a'), p => p.regular)));
+    });
+});

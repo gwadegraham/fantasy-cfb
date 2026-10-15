@@ -161,11 +161,12 @@ describe('GET /draft/board/:league/:season', () => {
         expect(second.body.advice.take.id).not.toBe(ND);
     });
 
-    // The projection is football end to end (FBS teams, football games, SP+).
-    // On a basketball league it projected whichever FOOTBALL team shares
-    // each basketball id — the numbering collides — so every number on the
-    // board was somebody else's. Basketball gets the draft, no numbers.
-    it('a basketball league gets its picks and roster, and no football projection', async () => {
+    // Football's projection on a basketball league once projected whichever
+    // FOOTBALL team shares each basketball id — the numbering collides — so
+    // every number on the board was somebody else's. Basketball projects
+    // from its own collections now (tests/RoutesHoopsDraftProjection.spec.js);
+    // with none stored, it gets the draft and no numbers — never football's.
+    it('a basketball league with no basketball teams gets its picks and roster, and no football projection', async () => {
         const League = require('../models/league');
         const activeSeason = require('../modules/active-season');
         await seed();                                       // football Notre Dame is id 87

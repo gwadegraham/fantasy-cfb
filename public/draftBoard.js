@@ -262,12 +262,13 @@
         });
     }
 
-    // Basketball has no projection yet (the server's is football end to
-    // end), so the payload carries projections: null. Show the draft — picks
-    // and roster — and say plainly why there are no numbers, rather than
-    // rendering an empty board that looks like everyone has been drafted.
+    // A basketball season whose teams carry no preseason rating yet (the
+    // Torvik import has not run) has nothing to project, so the payload
+    // carries projections: null. Show the draft — picks and roster — and say
+    // plainly why there are no numbers, rather than rendering an empty board
+    // that looks like everyone has been drafted.
     function renderUnprojected() {
-        $('[db-source]').textContent = 'No projections for basketball yet';
+        $('[db-source]').textContent = 'No projections yet';
         var refresh = $('[db-refresh]');
         if (refresh) refresh.style.display = 'none';
         var panel = $('[db-board]') && $('[db-board]').closest('.db-panel-board');
@@ -275,7 +276,7 @@
         var wrap = $('[db-advice]');
         wrap.innerHTML = '';
         wrap.appendChild(el('div', 'db-done',
-            'Pick advice needs a projection, and basketball does not have one yet. The picks and your roster are below.'));
+            'Pick advice needs a projection, and no team this season has a preseason rating yet. The picks and your roster are below.'));
     }
 
     function render() {
@@ -284,7 +285,19 @@
         if (data.projections == null) {
             renderUnprojected();
         } else {
-            $('[db-source]').textContent = 'Ranked bonuses: ' + data.rankedSource;
+            // Basketball has no ranked-win bonus: its points come from
+            // quadrants, graded on a rank map, and that is the source to name.
+            $('[db-source]').textContent = data.sport === 'basketball'
+                ? 'Quadrants graded on the ' + data.rankedSource
+                : 'Ranked bonuses: ' + data.rankedSource;
+            // A short stored schedule projects low and looks like a weak
+            // team; say which ones rather than let them read as values.
+            var thin = data.thinSchedules || [];
+            if (thin.length) {
+                $('[db-source]').textContent += ' · ' + thin.length
+                    + (thin.length === 1 ? ' team has' : ' teams have') + ' an incomplete schedule, projected low: '
+                    + thin.map(function (t) { return t.school + ' (' + t.games + ' games)'; }).join(', ');
+            }
             renderAdvice();
             renderBoard();
         }

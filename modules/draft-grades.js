@@ -7,6 +7,20 @@
 // A manager's roster is graded on ABSOLUTE per-league bands (snake-draft
 // anchors from the team pool) so the letter never depends on how leaguemates
 // drafted.
+//
+// A basketball draft runs the same layer on the basketball projection
+// (modules/hoops-draft-projection.js); see computeGrades for what changes.
+//
+// Known bias, measured and NOT corrected (#310 PR 3): the basketball engine
+// reads preseason ranks 41-80 about +5.3 points rich, 1-40 +4.2 and 81-120
+// -0.3 (2025-26 backtest, #554). The bands sit inside those tiers (elite at
+// rank R, replacement at rank L·R), so the bias mostly cancels: on the 2027
+// pool, subtracting it moves a snake roster's 0..1 score by at most 0.005 at
+// 6 managers (enough to tip one roster sitting on a line from B- to B) and
+// lowers every roster about 0.025 at 8 — a quarter of one letter band, the
+// same for every roster. Correcting it would apply one
+// season's in-sample tier means (r = 0.25 within the 41-80 tier) as step
+// functions at ranks 40 and 80, which is a bigger claim than the data makes.
 
 const { resolveConfig } = require('./scoring-defaults');
 const { pickLogo } = require('../public/logo.js');
@@ -14,6 +28,7 @@ const {
     buildRankingProxy, buildPoolContext, projectTeamPoints, computeLeagueBands,
     spFor, winsFor
 } = require('./draft-projection');
+const hoopsDraft = require('./hoops-draft-projection');
 
 function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 
@@ -52,13 +67,9 @@ function groupGamesByTeam(games, teamsById) {
     return by;
 }
 
-// draft: a Draft doc. usersById: { userId: user }. teamsById: { teamId: team }.
-// opts: { games, config, apPoll } supplied by the route (kept out of here so the
-// projection stays pure/sync and unit-testable).
-function computeGrades(draft, usersById, teamsById, opts = {}) {
-    const season = Number(draft.season);
-    const league = draft.league;
-    const cfg = opts.config || resolveConfig(league, null);
+// Football: every FBS team in teamsById is projected, and every one of them is
+// in the band pool.
+function footballProjections(season, teamsById, opts, cfg) {
     const rankings = buildRankingProxy(season, teamsById, opts.apPoll);
     const poolCtx = buildPoolContext(teamsById, season);
     const gamesByTeam = groupGamesByTeam(opts.games, teamsById);
@@ -69,7 +80,46 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
     Object.keys(teamsById).forEach(id => {
         projByTeam[id] = projectTeamPoints(teamsById[id], gamesByTeam[id], poolCtx, rankings, cfg, season);
     });
-    const sortedTotals = Object.keys(projByTeam).map(id => projByTeam[id].total).sort((a, b) => b - a);
+    return { projByTeam, bandIds: Object.keys(projByTeam) };
+}
+
+// Basketball: teamsById is the whole country (every opponent's rating is
+// needed), but only the draft POOL is banded — the top draft.poolSize by
+// preseason rank, exactly what could be drafted. Drafted teams are projected
+// too, should one ever sit outside the pool (a cap changed after the draft).
+// Games are HoopsGame rows, keyed on homeTeamId/awayTeamId; see
+// modules/hoops-draft-projection.js.
+function basketballProjections(draft, teamsById, opts, cfg) {
+    const teams = Object.keys(teamsById).map(id => teamsById[id]);
+    const bandIds = hoopsDraft.poolOf(teams, draft.poolSize).map(t => String(t.id));
+    const picked = (draft.picks || []).map(p => p.team && p.team.id).filter(id => id != null).map(String);
+    const projByTeam = hoopsDraft.projectHoopsTeams(teams, opts.games, {
+        cfg, projectIds: Array.from(new Set(bandIds.concat(picked)))
+    });
+    return { projByTeam, bandIds: bandIds.filter(id => projByTeam[id]) };
+}
+
+// draft: a Draft doc. usersById: { userId: user }. teamsById: { teamId: team }.
+// opts: { games, config, apPoll, sport } supplied by the route (kept out of here
+// so the projection stays pure/sync and unit-testable).
+//
+// sport 'basketball': teamsById holds HoopsTeam rows and opts.games HoopsGame
+// rows, and three things change — the projection (hoops-projection +
+// hoops-march), the postseason column (proj.postseason: the NCAA ladder,
+// upsets and the conference tournament, where football sums cfp + confChamp
+// + bowl, which for basketball would be the conference title alone), and the
+// make-the-field count, which is reported as ncaaCount (expected teams in the
+// NCAA bracket) instead of under a CFP label. Football's output is unchanged
+// field for field.
+function computeGrades(draft, usersById, teamsById, opts = {}) {
+    const season = Number(draft.season);
+    const league = draft.league;
+    const cfg = opts.config || resolveConfig(league, null);
+    const hoops = opts.sport === 'basketball';
+    const { projByTeam, bandIds } = hoops
+        ? basketballProjections(draft, teamsById, opts, cfg)
+        : footballProjections(season, teamsById, opts, cfg);
+    const sortedTotals = bandIds.map(id => projByTeam[id].total).sort((a, b) => b - a);
     const L = (draft.draftOrder || []).length || Object.keys(usersById).length || 6;
     const bands = computeLeagueBands(sortedTotals, L, draft.totalRounds || 10);
     const denom = (bands.eliteAvg - bands.replacementAvg) || 1;
@@ -82,7 +132,9 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
             school: p.team.school, logo: pickLogo(p.team.logos),
             points: proj.total, wins: proj.projWins, makeProb: proj.makeProb || 0,
             reg: proj.regular || 0,                                   // regular-season floor
-            post: (proj.cfp || 0) + (proj.confChamp || 0) + (proj.bowl || 0)  // postseason upside
+            post: hoops
+                ? (proj.postseason || 0)                              // NCAA + conf tourney + upsets
+                : (proj.cfp || 0) + (proj.confChamp || 0) + (proj.bowl || 0)  // postseason upside
         };
     });
 
@@ -99,7 +151,9 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
         const totalPoints = ps.reduce((s, p) => s + p.points, 0);
         const avgPoints = totalPoints / ps.length;
         const projWins = ps.reduce((s, p) => s + p.wins, 0) / ps.length;
-        const cfpCount = Math.round(ps.reduce((s, p) => s + (p.makeProb || 0), 0) * 10) / 10;
+        // Expected teams in the CFP (football) or the NCAA bracket (basketball:
+        // makeProb is P(main bracket)). Same sum, honest label.
+        const makeCount = Math.round(ps.reduce((s, p) => s + (p.makeProb || 0), 0) * 10) / 10;
         const regPoints = Math.round(ps.reduce((s, p) => s + p.reg, 0));
         const postPoints = Math.round(ps.reduce((s, p) => s + p.post, 0));
         const best = ps.slice().sort((a, b) => b.value - a.value)[0];
@@ -114,7 +168,7 @@ function computeGrades(draft, usersById, teamsById, opts = {}) {
             projPoints: Math.round(totalPoints),
             regPoints, postPoints,
             projWins: Math.round(projWins * 10) / 10,
-            cfpCount,
+            [hoops ? 'ncaaCount' : 'cfpCount']: makeCount,
             grade: letterFor(score),
             bestPick: (best && best.value >= 5) ? pickView(best) : null,
             worstPick: (worst && worst.value <= -5) ? pickView(worst) : null

@@ -16,6 +16,10 @@ const draftBoard = require('../modules/draft-board');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { computeGrades } = require('../modules/draft-grades');
 const MarketSnapshot = require('../models/marketSnapshot');
+const HoopsTeam = require('../models/hoopsTeam');
+const HoopsGame = require('../models/hoopsGame');
+const HoopsGradeSnapshot = require('../models/hoopsGradeSnapshot');
+const hoopsDraft = require('../modules/hoops-draft-projection');
 const { buildSnapshotTeams, teamsByIdFromSnapshot } = require('../modules/market-snapshot');
 const { canManageLeague } = require('../modules/league-access');
 const { sanitizeCallUrl } = require('../modules/draft-call-link');
@@ -31,10 +35,9 @@ router.get('/grades/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
-        // The projection is football's through and through — SP+, expected
-        // wins, CFP odds — so a basketball draft gets no grade rather than a
-        // football one that looks authoritative (#482). `sport` lets the
-        // draft room hide the panel instead of saying "no grades".
+        // A basketball draft is graded by the basketball projection
+        // (hoops-projection + hoops-march), on basketball's own teams and
+        // games — never Team/Game, whose ids collide with basketball's.
         if (sportForLeague(league) === 'basketball') {
             // Only to someone who may know basketball exists. This route is
             // open to every signed-in member, so anyone else gets EXACTLY what
@@ -44,7 +47,7 @@ router.get('/grades/:league/:season', async (req, res) => {
             if (!(await hoopsVisibility.seesBasketball(req))) {
                 return res.json({ league, season, managers: [] });
             }
-            return res.json({ league, season, managers: [], sport: 'basketball' });
+            return res.json(await basketballGrades(league, season));
         }
         const draft = await Draft.findOne({ league, season }).lean();
         if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
@@ -101,6 +104,95 @@ router.get('/grades/:league/:season', async (req, res) => {
     }
 });
 
+// The season's teams and the regular-season games touching the pool (and any
+// drafted team), read live from the basketball collections. The fields are
+// the projection's own (hoops-draft-projection TEAM_FIELDS / GAME_FIELDS),
+// and only the pool's games are read: Atlas latency tracks bytes.
+async function liveHoopsInputs(season, draft) {
+    const teams = await HoopsTeam.find({ season }, hoopsDraft.TEAM_FIELDS).lean();
+    const ids = hoopsDraft.poolOf(teams, draft.poolSize).map(t => t.id)
+        .concat((draft.picks || []).map(p => p.team && Number(p.team.id)).filter(Number.isFinite));
+    const uniq = Array.from(new Set(ids));
+    const games = await HoopsGame.find({
+        season, seasonType: 'regular',
+        $or: [{ homeTeamId: { $in: uniq } }, { awayTeamId: { $in: uniq } }]
+    }, hoopsDraft.GAME_FIELDS).lean();
+    return { teams, games };
+}
+
+// Basketball draft grades. The same shape football's answer has, plus
+// `sport` (so the pages can label the counts) and `rankSource`. Frozen when
+// the draft pins a HoopsGradeSnapshot; live otherwise, exactly as football.
+async function basketballGrades(league, season) {
+    const base = { league, season, sport: 'basketball', rankSource: hoopsDraft.RANK_SOURCE };
+    const draft = await Draft.findOne({ league, season }).lean();
+    if (!draft || !Array.isArray(draft.picks) || draft.picks.length === 0) {
+        return Object.assign(base, { managers: [] });
+    }
+    const users = await franchiseRepo.byLeague(league,
+        { fields: ['firstName', 'lastName', 'league', 'avatarUrl', 'seasons'] });
+    const usersById = {};
+    users.forEach(u => { usersById[String(u._id)] = u; });
+
+    let inputs, frozenAt = null;
+    const snapshot = draft.hoopsGradeSnapshot
+        ? await HoopsGradeSnapshot.findById(draft.hoopsGradeSnapshot).lean()
+        : null;
+    if (snapshot) {
+        inputs = hoopsDraft.fromSnapshot(snapshot);
+        frozenAt = snapshot.takenAt;
+    } else {
+        inputs = await liveHoopsInputs(season, draft);
+    }
+    // No rated teams = nothing to grade against. Say so with no managers
+    // rather than a league of zero-point D grades.
+    if (!hoopsDraft.poolOf(inputs.teams, draft.poolSize).length) {
+        return Object.assign(base, { managers: [], frozenAt });
+    }
+    const teamsById = {};
+    inputs.teams.forEach(t => { teamsById[String(t.id)] = t; });
+
+    const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+    const config = resolveConfig(league, overridesFromDoc(cfgDoc));
+    const managers = computeGrades(draft, usersById, teamsById,
+        { games: inputs.games, config, sport: 'basketball' });
+    return Object.assign(base, { managers, frozenAt });
+}
+
+// Freeze a basketball draft's grade input: every team's preseason rating and
+// rank, and the pool's schedule, into a HoopsGradeSnapshot pinned on the
+// draft. No spWeek: the preseason Torvik numbers are a single paste with no
+// weekly history to reconstruct from, so a freeze copies what is stored now —
+// which is why it belongs on draft night, before any re-import.
+async function freezeBasketball(req, res, league, season) {
+    const draft = await Draft.findOne({ league, season });
+    if (!draft) return res.status(404).json({ message: 'No draft for that league and season' });
+    const { teams, games } = await liveHoopsInputs(season, draft);
+    if (!hoopsDraft.poolOf(teams, draft.poolSize).length) {
+        return res.status(400).json({ message: `No ${season} basketball team carries a preseason rank to snapshot` });
+    }
+    const snap = await HoopsGradeSnapshot.create({
+        league, season, reason: 'draft-baseline', rankSource: hoopsDraft.RANK_SOURCE,
+        note: (req.body && req.body.note) || `Draft-grade baseline for ${league}`,
+        teams: hoopsDraft.snapshotTeams(teams), games: hoopsDraft.snapshotGames(games)
+    });
+    draft.hoopsGradeSnapshot = snap._id;
+    draft.updatedAt = new Date();
+    await draft.save();
+
+    // A schedule frozen short stays short for the whole season, so the
+    // answer names any pool team whose stored slate looks incomplete. Read
+    // it before trusting the freeze; freeze again after a schedule ingest.
+    const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+    const proj = hoopsDraft.projectHoopsTeams(teams, games, {
+        cfg: resolveConfig(league, overridesFromDoc(cfgDoc)),
+        projectIds: hoopsDraft.poolOf(teams, draft.poolSize).map(t => t.id)
+    });
+    return res.json({ league, season, sport: 'basketball', snapshotId: String(snap._id), takenAt: snap.takenAt,
+                      teamCount: snap.teams.length, gameCount: snap.games.length, rankSource: snap.rankSource,
+                      thinSchedules: hoopsDraft.thinSchedules(proj, teams) });
+}
+
 // Freeze this league's draft grades: capture the team inputs as a MarketSnapshot
 // and pin it on the draft. Commissioner-gated — it changes a number the whole
 // league sees.
@@ -117,6 +209,7 @@ router.post('/grades/:league/:season/freeze', async (req, res) => {
         return res.status(403).json({ message: 'Forbidden: not your league' });
     }
     try {
+        if (sportForLeague(league) === 'basketball') return await freezeBasketball(req, res, league, season);
         const draft = await Draft.findOne({ league, season });
         if (!draft) return res.status(404).json({ message: 'No draft for that league and season' });
 
@@ -253,27 +346,21 @@ router.get('/board/:league/:season', async (req, res) => {
         const draft = await Draft.findOne({ league, season }).lean();
         if (!draft) return res.status(404).json({ message: 'No draft configured' });
 
-        // The projection below is FOOTBALL end to end — FBS teams, football
-        // games, the football engine, SP+/AP ranks. On a basketball league it
-        // projected whichever football team shares each basketball id (the
-        // numbering collides), so every number on the board was somebody
-        // else's. Until there is a hoops projection, basketball gets the
-        // draft itself — picks and roster — and no numbers at all.
-        if (sportForLeague(league) === 'basketball') {
-            const meta = (req.effUser && req.effUser.user_metadata) || {};
-            const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
-            return res.json({
-                league, season, sport: 'basketball',
-                projections: null, rankedSource: null, advice: null, captain: null,
-                draft: publicDraft(draft),
-                schedule: draftBoard.pickSchedule(draft, userId),
-                roster: draftBoard.rosterFor(draft, userId, [])
-            });
-        }
+        // Basketball projects from its OWN collections (hoopsteams /
+        // hoopsgames) through the basketball engine. Never the football path
+        // below: the ids collide for 130 teams, and it once projected
+        // whichever football team shared each basketball id.
+        const hoops = sportForLeague(league) === 'basketball';
 
         const key = `${league}:${season}`;
         if (req.query.refresh === '1') boardCache.delete(key);
         let cached = boardCache.get(key);
+        if (!cached && hoops) {
+            cached = await hoopsBoardProjections(league, season, draft);
+            // Not an empty answer: the page hides Recompute when there are no
+            // numbers, so a cached null would outlive the Torvik import.
+            if (cached.projections != null) boardCache.set(key, cached);
+        }
         if (!cached) {
             const teams = await Team.find(FBS_ONLY, { id: 1, school: 1, alternateNames: 1, logos: 1, seasons: 1 }).lean();
             const teamsById = {};
@@ -301,6 +388,20 @@ router.get('/board/:league/:season', async (req, res) => {
         }
         const projections = cached.projections;
 
+        // No rated pool (the Torvik import has not run): the draft, and no
+        // numbers, rather than an empty board that reads as "everyone taken".
+        if (projections == null) {
+            const meta = (req.effUser && req.effUser.user_metadata) || {};
+            const userId = String(req.query.userId || (meta.metadata && meta.metadata.userId) || '');
+            return res.json({
+                league, season, sport: 'basketball',
+                projections: null, rankedSource: null, advice: null, captain: null,
+                draft: publicDraft(draft),
+                schedule: draftBoard.pickSchedule(draft, userId),
+                roster: draftBoard.rosterFor(draft, userId, [])
+            });
+        }
+
         // req.effUser is the OIDC profile, so the app user id is in its nested
         // metadata (see buildUserContext in server.js) — never a top-level _id.
         const meta = (req.effUser && req.effUser.user_metadata) || {};
@@ -326,6 +427,9 @@ router.get('/board/:league/:season', async (req, res) => {
 
         res.json({
             league, season,
+            // Basketball also names pool teams whose stored schedule looks
+            // incomplete, since their projections understate them.
+            ...(hoops ? { sport: 'basketball', thinSchedules: cached.thinSchedules || [] } : {}),
             // Whether the ranked-win bonuses in these projections came from a real
             // poll or an SP+ stand-in — the numbers move if a preseason AP poll
             // lands mid-draft-prep, and the page says so rather than pretending.
@@ -370,6 +474,33 @@ function projectPool(teamsById, games, config, apPoll, season) {
             sp: s.spRating != null ? s.spRating : null
         };
     }).filter(Boolean).sort((a, b) => b.total - a.total);
+}
+
+// The basketball board's projections: the draft pool (draft-pool.js
+// basketballPool — the same teams the room offers) projected against every
+// team in the country. Cached like football's; nothing here moves during a
+// draft. projections: null when there is no rated pool to project.
+async function hoopsBoardProjections(league, season, draft) {
+    const pool = await draftPool.basketballPool(season, draft.poolSize);
+    if (!pool.length) return { projections: null, rankedSource: null };
+    const teams = await HoopsTeam.find({ season }, hoopsDraft.TEAM_FIELDS).lean();
+    const ids = pool.map(t => t.id);
+    const games = await HoopsGame.find({
+        season, seasonType: 'regular',
+        $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }]
+    }, hoopsDraft.GAME_FIELDS).lean();
+
+    const cfgDoc = await ScoringConfig.findOne({ league }).lean();
+    const config = resolveConfig(league, overridesFromDoc(cfgDoc));
+    const proj = hoopsDraft.projectHoopsTeams(teams, games, { cfg: config, projectIds: ids });
+    const byId = {};
+    teams.forEach(t => { byId[String(t.id)] = t; });
+    const projections = pool
+        .filter(p => proj[String(p.id)] && byId[String(p.id)])
+        .map(p => hoopsDraft.boardRow(byId[String(p.id)], proj[String(p.id)], pickLogo(p.logos)))
+        .sort((a, b) => b.total - a.total);
+    return { projections, rankedSource: hoopsDraft.RANK_SOURCE,
+             thinSchedules: hoopsDraft.thinSchedules(proj, teams) };
 }
 
 function apPollName(doc) {
