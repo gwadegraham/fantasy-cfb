@@ -14,8 +14,8 @@ module.exports = {
     // first thing to reach for — don't. It also stops Jest from ever seeing the
     // modules/ and routes/ files that no test imports, so instead of showing up
     // at 0% they drop out of the coverage report entirely. Measured: 64 files
-    // reported before, 47 after, with saturday-job.js and identity-guard.js
-    // among the ones that quietly vanished. Keep the default rootDir crawl so
+    // reported before, 47 after, with identity-guard.js among the ones that
+    // quietly vanished. Keep the default rootDir crawl so
     // collectCoverageFrom can still find them.
     //
     // Setting this REPLACES Jest's default of ["/node_modules/"], hence the
