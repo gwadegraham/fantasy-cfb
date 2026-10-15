@@ -313,8 +313,10 @@ function projectableGames(teamId, games, ctx) {
 // `cfp` and `bowl` are always 0: they are football's postseason terms, kept so
 // a consumer that sums proj.cfp + proj.confChamp + proj.bowl (the standings
 // projection does) gets a number instead of NaN. The basketball postseason
-// is `postseason` (= confChamp + ncaa + upset); it is 0 here and the March
-// estimate fills it.
+// is `postseason` (= confChamp + confTourney + ncaa + upset), filled by the
+// March estimate when ctx carries one (modules/hoops-march.js attachMarch)
+// and 0 otherwise. Note for a consumer that sums football's three terms:
+// confChamp alone is not the basketball postseason — read `postseason`.
 function projectHoopsTeam(team, teamGames, ctx, opts = {}) {
     const teamId = Number(team.id);
     const key = String(teamId);
@@ -347,12 +349,19 @@ function projectHoopsTeam(team, teamGames, ctx, opts = {}) {
         if (opts.perGame) perGame.push({ week: g.week, gameId: g.id, winProb: probs[i], pointsIfWin: pts, pointsIfLoss: lossPts });
     });
 
-    const confChamp = 0, ncaa = 0, upset = 0;
-    const postseason = confChamp + ncaa + upset;
+    // The March estimate, when the context carries one (hoops-march
+    // attachMarch). Without it the postseason is 0, as it was in PR 1.
+    let post = { confChamp: 0, confTourney: 0, ncaa: 0, upset: 0, makeProb: null };
+    const march = ctx.march;
+    if (march && march.rankById[key] !== undefined) {
+        post = march.model.expectedPostseason({ id: teamId, rank: march.rankById[key] }, march.confCtx, ctx.cfg, march.basis);
+    }
+    const { confChamp, confTourney, ncaa, upset } = post;
+    const postseason = confChamp + confTourney + ncaa + upset;
     return {
-        regular, confChamp, ncaa, upset, postseason, cfp: 0, bowl: 0,
+        regular, confChamp, confTourney, ncaa, upset, postseason, cfp: 0, bowl: 0,
         total: regular + postseason,
-        projWins, makeProb: null, perGame
+        projWins, makeProb: post.makeProb, perGame
     };
 }
 
