@@ -205,7 +205,16 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
 // Validate and apply a pick. Returns { status, body } for a refusal, or
 // { status: 200, body, audit } after saving — the route records the audit
 // row (its recordCaptain owns the wording).
-async function captainWrite({ userId, league, season, week, teamId, nowMs = Date.now() }) {
+//
+// `via: 'admin'` is the commissioner's Captain Override (PATCH
+// /users/:id/captain). It skips the tip-off lock — fixing a pick after a
+// disputed lock is what the override is for, and football's skips its
+// kickoff lock the same way — and nothing else: the week must still be a
+// mode week, the team still on the roster, and the write is the same atomic
+// one, so a pick still replaces a frozen default and never a default frozen
+// for another week.
+async function captainWrite({ userId, league, season, week, teamId, via = 'self', nowMs = Date.now() }) {
+    const admin = via === 'admin';
     const weeks = await seasonModeWeeks(season);
     if (!Number.isInteger(week) || !weeks.includes(week)) {
         const span = weeks.length ? `weeks 1–${weeks[weeks.length - 1]}` : 'its scheduled weeks';
@@ -220,7 +229,7 @@ async function captainWrite({ userId, league, season, week, teamId, nowMs = Date
     if (!entry) return { status: 404, body: { message: 'No roster for that season.' } };
     const teamIds = scoringPass().rosterIds(entry);
     if (teamId != null && !teamIds.includes(teamId)) {
-        return { status: 400, body: { message: 'That team is not on your roster.' } };
+        return { status: 400, body: { message: admin ? 'That team is not on their roster.' : 'That team is not on your roster.' } };
     }
     // A frozen default is not the manager's pick: the audit says "was no one".
     const prevTeamId = pickParts(entry.captains, week).picked;
@@ -228,16 +237,18 @@ async function captainWrite({ userId, league, season, week, teamId, nowMs = Date
     // recordCaptain names teams off `season.teams`; a basketball roster is
     // refs, so it gets the two names it needs.
     const auditSeason = { teams: Object.values(names).map(t => ({ id: t.id, school: t.school })) };
-    const auditBase = { user, season: auditSeason, seasonYear: season, week, teamId, prevTeamId, via: 'self' };
+    const auditBase = { user, season: auditSeason, seasonYear: season, week, teamId, prevTeamId, via: admin ? 'admin' : 'self' };
 
-    const weekGames = await captainGames(season, teamIds, [week]);
-    const lockMs = captainLockMs(weekGames, teamIds);
-    if (lockMs != null && nowMs >= lockMs) {
-        return {
-            status: 409,
-            body: { message: "That week's captain is locked — your first team has tipped off." },
-            audit: Object.assign({ action: 'captain.locked', note: `locked at ${new Date(lockMs).toISOString()}` }, auditBase)
-        };
+    if (!admin) {
+        const weekGames = await captainGames(season, teamIds, [week]);
+        const lockMs = captainLockMs(weekGames, teamIds);
+        if (lockMs != null && nowMs >= lockMs) {
+            return {
+                status: 409,
+                body: { message: "That week's captain is locked — your first team has tipped off." },
+                audit: Object.assign({ action: 'captain.locked', note: `locked at ${new Date(lockMs).toISOString()}` }, auditBase)
+            };
+        }
     }
     // No backstop like football's "no kickoff time but a game is already
     // final": a basketball game always carries a startDate (the model

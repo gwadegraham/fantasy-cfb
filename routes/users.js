@@ -28,6 +28,7 @@ const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../m
 const { DEFAULT_LEAD_MINUTES: CAPTAIN_DEFAULT_LEAD_MINUTES } = require('../modules/captain-reminder');
 const pushNotify = require('../modules/push-notify');
 const hoopsCaptain = require('../modules/hoops-captain');
+const { seasonModeWeeks } = require('../modules/hoops-modes');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
 // tile keeps that week in focus for this long after its last kickoff before
@@ -518,37 +519,89 @@ router.patch('/me/captain', async (req, res) => {
     }
 });
 
+// Which of a manager's franchises a commissioner write is about.
+//
+// A person can hold a football and a basketball franchise, and an unscoped
+// load changes whichever Mongo finds first. So: `league` in the body if sent;
+// else the league the caller is viewing, when the manager has a franchise
+// there; else the manager's only franchise. An Admin views their own league,
+// not necessarily the manager's, so the viewed league alone 404'd every
+// cross-league write. Two franchises and neither named: refuse.
+//
+// This only picks the DOCUMENT. Whether the caller may manage that league is
+// still canManageLeague's answer (or the Admin role) — viewing a league is not
+// authority over it.
+//
+// Returns { league } or { status, message }.
+async function managerLeague(req, accountId) {
+    const leagues = await franchiseRepo.leaguesFor(accountId);
+    let viewing;
+    try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+    const sent = req.body && req.body.league;
+    // A league named but not theirs is an error, not a hint to fall back on:
+    // falling through would write to a league nobody asked for.
+    if (sent && !leagues.includes(sent)) {
+        return { status: 404, message: 'That manager has no team in that league.' };
+    }
+    const league = sent ? sent
+        : (viewing && leagues.includes(viewing)) ? viewing
+        : leagues.length === 1 ? leagues[0] : null;
+    if (league) return { league };
+    return leagues.length
+        ? { status: 400, message: 'This manager plays in more than one league — say which.' }
+        : { status: 404, message: 'User not found.' };
+}
+
+// The weeks the Captain Override offers, for the league's own season:
+// football's regular season, or basketball's mode weeks (modules/hoops-modes.js)
+// — which run to the end of February and are not football's 1–16.
+router.get('/league/:league/captain-weeks', async (req, res) => {
+    const league = req.params.league;
+    if (!canManageLeague(req, league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+    try {
+        const sport = sportForLeague(league);
+        const season = Number(req.query.season) || seasonFor(league);
+        const weeks = sport === 'basketball'
+            ? await seasonModeWeeks(season)
+            : Array.from({ length: 16 }, (_, i) => i + 1);
+        res.json({ league, sport, season, weeks });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Admin override: set any user's captain for any week (no kickoff lock).
-// body: { season?, week, teamId } — teamId null clears the pick.
+// body: { league?, season?, week, teamId } — teamId null clears the pick.
 router.patch('/:id/captain', async (req, res) => {
     if (!effectiveRoles(req).includes('Admin')) {
         return res.status(403).json({ message: 'Admin only.' });
     }
     const week = parseInt(req.body.week, 10);
     const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
-    const seasonYear = Number(req.body.season) || activeSeason('football');
-    if (!Number.isInteger(week) || week < 1 || week > 16) {
-        return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
-    }
     try {
         // Franchise-side, same as the self-serve route above — and scoped to ONE
-        // league: a person can hold a football and a basketball franchise, and
-        // an unscoped load changes or clears whichever Mongo finds first.
-        //
-        // Which league: `league` in the body if sent; else the league the
-        // Admin is viewing, when the manager has a franchise there; else the
-        // manager's only franchise. An Admin views their own league, not
-        // necessarily the manager's, so the viewed league alone 404'd every
-        // cross-league override. Two franchises and neither named: refuse.
-        const leagues = await franchiseRepo.leaguesFor(req.params.id);
-        let viewing;
-        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
-        const league = (req.body.league && leagues.includes(req.body.league)) ? req.body.league
-            : (viewing && leagues.includes(viewing)) ? viewing
-            : leagues.length === 1 ? leagues[0] : null;
-        if (!league) {
-            return res.status(leagues.length ? 400 : 404).json({ message: leagues.length
-                ? 'This manager plays in more than one league — say which.' : 'User not found.' });
+        // league (see managerLeague).
+        const scope = await managerLeague(req, req.params.id);
+        if (!scope.league) return res.status(scope.status).json({ message: scope.message });
+        const league = scope.league;
+
+        // A basketball league takes hoopsCaptain's path, as PATCH /me/captain
+        // does: its own season, its mode weeks, its atomic write (which keeps a
+        // default frozen for another week, and lets a pick replace this
+        // week's). The tip-off lock is skipped, as football's kickoff lock is.
+        if (sportForLeague(league) === 'basketball') {
+            const season = Number(req.body.season) || seasonFor(league);
+            const out = await hoopsCaptain.captainWrite({ userId: req.params.id, league, season, week, teamId, via: 'admin' });
+            if (out.audit) await recordCaptain(req, out.audit);
+            if (out.status !== 200) return res.status(out.status).json(out.body);
+            return res.json(Object.assign({ userId: req.params.id }, out.body));
+        }
+
+        const seasonYear = Number(req.body.season) || seasonFor(league);
+        if (!Number.isInteger(week) || week < 1 || week > 16) {
+            return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
         }
         const ctx = await franchiseRepo.loadForWrite(req.params.id, { league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });

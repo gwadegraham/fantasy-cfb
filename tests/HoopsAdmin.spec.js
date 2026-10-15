@@ -103,11 +103,11 @@ describe('the page manages a basketball league', () => {
         ['displayLeagueNameContainer', 'displayDraftConfigContainer', 'displayScoringConfigContainer',
          'displayCreateUserContainer', 'displaySeasonRosterContainer', 'displayManagerLoginsContainer',
          'displayAuditLogContainer',
-         // Captain and H2H run on basketball too (modules/hoops-modes.js).
-         'displayEngagementContainer'].forEach(fn => expect(html).toContain(fn + '()'));
-        // The captain OVERRIDE is football's admin route; always quadrants;
-        // the roster fix offers football teams only.
-        ['displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         // Captain and H2H run on basketball too (modules/hoops-modes.js),
+         // and the override branches to hoops-captain (#569).
+         'displayEngagementContainer', 'displayCaptainOverrideContainer'].forEach(fn => expect(html).toContain(fn + '()'));
+        // Always quadrants; the roster fix offers football teams only.
+        ['displayRosterCorrectionContainer',
          'name="rule-shape"'].forEach(bit => expect(html).not.toContain(bit));
         expect(html).toContain('user-table-body');
         // Nothing football-only in the words either. "Captain" is no longer

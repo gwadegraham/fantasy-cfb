@@ -390,8 +390,6 @@ function auditLeagueTag(entry, multiLeague) {
 var auditKind = 'commissioner';
 
 function auditTabs() {
-    // Basketball has no Captain, so its admin page has no Captain picks tab.
-    if (window.ADMIN_SPORT === 'basketball') return '';
     return '<div class="al-tabs">'
         + ['commissioner', 'captain'].map(function (k) {
             return '<button type="button" class="al-tab' + (auditKind === k ? ' is-on' : '')
@@ -1753,42 +1751,65 @@ function displayCaptainOverrideContainer() {
 
 function loadCaptainOverride() {
     var userSel = document.getElementById('captain-override-user');
+    var weekSel = document.getElementById('captain-override-week');
     var teamSel = document.getElementById('captain-override-team');
     var infoDiv = document.getElementById('captain-override-current');
     if (!userSel) return;
 
     var str = '<option value="" disabled selected>Select A Manager</option>';
     userListSelect.forEach(function (u) {
-        str += '<option value="' + u._id + '">' + u.firstName + ' ' + u.lastName + '</option>';
+        str += '<option value="' + u._id + '">' + escapeHtml(u.firstName + ' ' + u.lastName) + '</option>';
     });
     userSel.innerHTML = str;
     teamSel.innerHTML = '<option value="" disabled selected>Select A Team</option>';
     if (infoDiv) infoDiv.textContent = '';
+    loadCaptainOverrideWeeks(weekSel);
 
     userSel.onchange = function () {
         var user = userListSelect.find(function (u) { return u._id === userSel.value; });
         if (!user) return;
         var season = ccSeasonOf.payloadSeasonEntry(user);
         var teams = (season && season.teams) || [];
+        // The roster carries its own names — a basketball roster is hydrated
+        // from HoopsTeam, and football's team list is never loaded there.
+        var nameOf = function (id) {
+            var t = teams.find(function (x) { return Number(x.id) === Number(id); })
+                || teamList.find(function (tl) { return tl.id === id; });
+            return (t && t.school) || ('Team ' + id);
+        };
         var s = '<option value="" disabled selected>Select A Team</option>';
         teams.forEach(function (t) {
-            var team = teamList.find(function (tl) { return tl.id === t.id; });
-            var name = (team && team.school) || t.school || ('Team ' + t.id);
-            s += '<option value="' + t.id + '">' + name + '</option>';
+            s += '<option value="' + t.id + '">' + escapeHtml(nameOf(t.id)) + '</option>';
         });
         teamSel.innerHTML = s;
 
         var captains = (season && season.captains) || [];
         if (captains.length && infoDiv) {
-            var picks = captains.map(function (c) {
-                var team = teamList.find(function (tl) { return tl.id === c.teamId; });
-                return 'W' + c.week + ': ' + ((team && team.school) || c.teamId);
+            var picks = captains.slice().sort(function (a, b) { return a.week - b.week; }).map(function (c) {
+                // A basketball default frozen at the lock is not a pick.
+                return 'W' + c.week + ': ' + nameOf(c.teamId) + (c.auto ? ' (default)' : '');
             }).join(', ');
             infoDiv.textContent = 'Current picks: ' + picks;
         } else if (infoDiv) {
             infoDiv.textContent = 'No captain picks set.';
         }
     };
+}
+
+// The weeks Captain covers in this league's season — football's 1–16, or
+// basketball's mode weeks, which the server works out from the schedule.
+async function loadCaptainOverrideWeeks(weekSel) {
+    if (!weekSel) return;
+    weekSel.innerHTML = '<option value="" disabled selected>Week</option>';
+    try {
+        var res = await fetch('/users/league/' + encodeURIComponent(getDraftLeagueCode()) + '/captain-weeks',
+            { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        if (!res.ok) return;
+        weekSel.innerHTML = '<option value="" disabled selected>Week</option>' + (data.weeks || []).map(function (w) {
+            return '<option value="' + w + '">' + w + '</option>';
+        }).join('');
+    } catch (err) { /* the server still validates the week */ }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1807,7 +1828,9 @@ document.addEventListener('DOMContentLoaded', function () {
             var res = await fetch('/users/' + userId + '/captain', {
                 method: 'PATCH',
                 headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-                body: JSON.stringify({ week: Number(week), teamId: Number(teamId) })
+                // The league this page manages: a manager in both sports has
+                // two franchises, and the server must know which one.
+                body: JSON.stringify({ league: getDraftLeagueCode(), week: Number(week), teamId: Number(teamId) })
             });
             var data = await res.json();
             if (res.ok) {
