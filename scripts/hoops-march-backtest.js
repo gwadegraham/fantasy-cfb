@@ -26,7 +26,20 @@ const { blendRanks, blendWeight } = require('../modules/hoops-ranks');
 
 const cfg = resolveConfig('backtest', { model: 'hoops' });
 const fmt = (x, d = 3) => (x === null || x === undefined || !Number.isFinite(x)) ? '—' : x.toFixed(d);
-const SEASONS = [2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026];
+const ALL_SEASONS = [2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026];
+
+// CBBD's stored ratings for some past seasons are BROKEN, not just noisy.
+// 2018 ranks Old Dominion #1 and UC Davis #3, with only 13 of the top 25 in
+// the NCAA field; 2023 ranks Pittsburgh #1; 2014 has North Carolina Central
+// #2. Each of those seasons, and 2017, also has a collapsed scale: the 37th
+// best team sits at a net of ~2.5, where every healthy season has 10 to 20.
+// A season whose 37th-best net is under 5 is dropped whole, because nothing
+// says which of its orderings survived.
+function healthySeason(rows) {
+    const nets = rows.map(r => r.netRating).sort((a, b) => b - a);
+    return nets.length > 40 && nets[36] >= 5;
+}
+let SEASONS = ALL_SEASONS;
 const ROUNDS = M.ROUNDS;   // ['r64','r32','s16','e8','f4','title','champ']
 
 // ------------------------------------------------------------ tournaments --
@@ -44,15 +57,18 @@ function roundOf(g) {
 const ORDER = ['ff', 'r64', 'r32', 's16', 'e8', 'f4', 'title'];
 
 function tournaments() {
-    const games = BT.load('ncaa-all.json').filter(g => g.season === 2014).concat(BT.load('ncaa-2015on.json'));
-    const out = {};   // season -> teamId -> { seed, deepest, champ, upset, games: [] }
+    const games = BT.load('ncaa-all.json').filter(g => g.season === 2014).concat(BT.load('ncaa-2015on.json'))
+        .sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+    const out = {};   // season -> teamId -> { seed, elo, deepest, champ, upset, games: [] }
     for (const g of games) {
         const r = roundOf(g);
         if (!r) continue;   // 2021's uncontested VCU-Oregon game
         const s = (out[g.season] = out[g.season] || {});
         for (const side of ['home', 'away']) {
             const id = g[`${side}TeamId`], other = side === 'home' ? 'away' : 'home';
-            const t = (s[id] = s[id] || { seed: g[`${side}Seed`], deepest: -1, ff: false, champ: false, upset: 0, games: [] });
+            // elo: CBBD's Elo at the team's FIRST tournament tip-off — a
+            // pre-tournament number by construction.
+            const t = (s[id] = s[id] || { seed: g[`${side}Seed`], elo: g[`${side}TeamEloStart`], deepest: -1, ff: false, champ: false, upset: 0, games: [] });
             const idx = ORDER.indexOf(r);
             if (r === 'ff') t.ff = true;
             if (idx > t.deepest) t.deepest = idx;
@@ -118,15 +134,17 @@ function deHindsight(rows, tourney) {
 // ordering of the field there is. Every non-tournament team keeps its
 // end-of-season rank (it played no NCAA games for hindsight to come from);
 // the tournament teams are re-dealt into the rank slots they jointly hold,
-// best seed first, ties within a seed line broken by the de-hindsighted
-// rating. The result is a full 1..N ranking whose top is pre-tournament.
+// best seed first, ties within a seed line broken by Elo at first tip-off.
+// The result is a full 1..N ranking whose top is pre-tournament.
+//
+// The tiebreak must be pre-tournament too. An earlier version broke ties on
+// the rating with the tournament SUBTRACTED, which pushes the eventual
+// champion DOWN its seed line: the S-curve #1 then won 0 of 12 titles.
 function scurveRank(rows, tourney) {
     const end = rankBy(rows, 'netRating');
-    const pre = {};
-    deHindsight(rows, tourney).forEach(r => { pre[r.teamId] = r.preNet; });
     const field = rows.filter(r => tourney[r.teamId]).map(r => r.teamId);
     const slots = field.map(id => end[id]).sort((a, b) => a - b);
-    field.sort((a, b) => (tourney[a].seed - tourney[b].seed) || (pre[b] - pre[a]));
+    field.sort((a, b) => (tourney[a].seed - tourney[b].seed) || ((tourney[b].elo || 0) - (tourney[a].elo || 0)));
     const out = Object.assign({}, end);
     field.forEach((id, i) => { out[id] = slots[i]; });
     return out;
@@ -213,6 +231,9 @@ function evalModel(name, reachOf, test) {
 function main() {
     const write = process.argv.includes('--write');
     const T = tournaments(), R = seasonRatings();
+    const dropped = ALL_SEASONS.filter(s => !healthySeason(R[s]));
+    SEASONS = ALL_SEASONS.filter(s => healthySeason(R[s]));
+    console.log(`dropped as corrupt (collapsed rating scale): ${dropped.join(', ') || 'none'}`);
     const all = datasetFor(SEASONS, 'end', T, R);
 
     console.log(`seasons: ${SEASONS.join(', ')} (no 2020 tournament); ${all.length} team-seasons, `
@@ -282,6 +303,8 @@ function main() {
     console.log(`- tournament removed:        ${conc((s, f) => f.sort((a, b) => preRankOf[s][a] - preRankOf[s][b]))}`);
     console.log(`- by Elo at first tip-off:    ${conc((s, f) => f.sort((a, b) => (firstElo[`${s}:${b}`] || 0) - (firstElo[`${s}:${a}`] || 0)))}`);
     console.log(`- by S-curve rank (shipped):   ${conc((s, f) => f.sort((a, b) => scRankOf[s][a] - scRankOf[s][b]))}`);
+    const s1 = SEASONS.filter(s => Object.keys(T[s]).some(id => scRankOf[s][id] === Math.min(...Object.keys(T[s]).map(i => scRankOf[s][i])) && T[s][id].champ)).length;
+    console.log(`- the S-curve #1 won ${s1} of ${SEASONS.length} titles`);
 
     // ---- 3. upset bonus ----
     console.log('\n## Upset bonus (seeds of difference per team-season), kernel-smoothed on log rank');
@@ -289,7 +312,7 @@ function main() {
     console.log('| bandwidth | LOSO mean sq. error |');
     console.log('|---|---|');
     let bestBw = null;
-    [0.15, 0.25, 0.35, 0.5, 0.75].forEach(bw => {
+    [0.05, 0.1, 0.15, 0.25, 0.35, 0.5, 0.75].forEach(bw => {
         let se = 0, n = 0;
         SEASONS.forEach(s => {
             const train = upsetRows(preAll.filter(d => d.season !== s));
@@ -405,7 +428,7 @@ function main() {
             built: 'node scripts/hoops-march-backtest.js --write',
             sources: [
                 'CBBD /games?tournament=NCAA&seasonType=postseason (2014-2026, no 2020): seeds, rounds, results',
-                'CBBD /ratings/adjusted (2014-2026, end of season): netRating, re-ordered within the NCAA field by seed (scurveRank)',
+                'CBBD /ratings/adjusted (2014-2026, end of season): netRating, re-ordered within the NCAA field by seed then first-game Elo (scurveRank); 2014/2017/2018/2023 dropped as corrupt (healthySeason)',
                 'barttorvik.com/timemachine/team_results/20251102_team_results.json.gz: 2025-26 preseason T-Rank',
                 'CBBD /games season=2026 seasonType=regular: 2025-26 conference tournaments'
             ],
@@ -426,7 +449,7 @@ function main() {
     const coefNo26 = fitChain(datasetFor(SEASONS.filter(s => s !== 2026), 'scurve', T, R), degree);
     const calNo26 = Object.assign({}, calibration, { march: coefNo26 });
     const model = M.buildMarchModel(calNo26);
-    console.log('\n## Expected NCAA ladder points from PRESEASON rank vs 2025-26 actual (ladder fit excludes 2026)');
+    console.log('\n## Expected NCAA ladder points from PRESEASON rank vs 2025-26 actual (ladder fit excludes 2026; the DRIFT is fitted on 2025-26, so the drift comparison is in-sample)');
     console.log('| preseason rank | teams | with drift: expected | naive (no drift) | actual |');
     console.log('|---|---|---|---|---|');
     const groups = [[1, 10], [11, 25], [26, 50], [51, 80], [81, 120], [121, 365], [1, 120]];

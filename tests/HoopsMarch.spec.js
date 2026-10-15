@@ -142,11 +142,27 @@ describe('buildMarchModel', () => {
 
     test('drift weights are a distribution centred where the drift says', () => {
         const w = model.driftWeights(20);
-        expect(w.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 10);
+        expect(w.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 6);
         const median = Math.exp(0.4 + 0.9 * Math.log(20));
         let cum = 0, k = 0;
         while (cum < 0.5) cum += w[k++];
         expect(Math.abs(k - median)).toBeLessThanOrEqual(1.5);
+    });
+
+    test('the drift is a reshuffle: every March rank is filled exactly once', () => {
+        let col1 = 0, col200 = 0;
+        for (let r = 1; r <= M.RANKS; r++) { col1 += model.driftWeights(r)[0]; col200 += model.driftWeights(r)[199]; }
+        expect(col1).toBeCloseTo(1, 6);
+        expect(col200).toBeCloseTo(1, 6);
+        // So the league as a whole expects exactly the March ladder's total.
+        let pre = 0, mar = 0;
+        for (let r = 1; r <= M.RANKS; r++) { pre += model.reach(r, 'preseason').champ; mar += model.reach(r, 'march').champ; }
+        expect(pre).toBeCloseTo(mar, 5);
+    });
+
+    test('reach objects are frozen, so no caller can poison the cache', () => {
+        expect(Object.isFrozen(model.reach(5, 'march'))).toBe(true);
+        expect(Object.isFrozen(model.reach(5, 'preseason'))).toBe(true);
     });
 
     test('the preseason basis is the ladder averaged over where a rank drifts', () => {
@@ -181,11 +197,24 @@ describe('buildMarchModel', () => {
         expect(off.confChamp).toBe(0);
     });
 
-    test('on the march basis the conference tournaments are already banked', () => {
-        const out = model.expectedPostseason({ id: 9, rank: 30 }, null, cfg(), 'march');
+    test('on the march basis the conference tournament GAMES are banked, the title odds stay', () => {
+        const ctx = model.contextFor([{ id: 9, conference: 'A', rating: 3 }, { id: 10, conference: 'A', rating: 1 }]);
+        const out = model.expectedPostseason({ id: 9, rank: 30 }, ctx, cfg(), 'march');
         expect(out.confTourney).toBe(0);
-        expect(out.confChamp).toBe(0);
+        expect(out.confChamp).toBeGreaterThan(0);
         expect(out.ncaa).toBeGreaterThan(0);
+    });
+
+    test('a missing rank is the bottom of the country on every term', () => {
+        const c = cfg();
+        const bottom = model.expectedPostseason({ id: 1, rank: M.RANKS }, null, c);
+        [null, 0, undefined, '', 'abc'].forEach(rank => {
+            const out = model.expectedPostseason({ id: 1, rank }, null, c);
+            expect(out.ncaa).toBeCloseTo(bottom.ncaa, 12);
+            expect(out.confTourney).toBeCloseTo(bottom.confTourney, 12);
+            expect(Number.isFinite(out.postseason)).toBe(true);
+        });
+        expect(model.expectedPostseason({ id: 1, rank: 9999 }, null, c).ncaa).toBeCloseTo(bottom.ncaa, 12);
     });
 });
 
@@ -251,12 +280,16 @@ describe('the shipped calibration', () => {
         });
     });
 
-    test('the field adds up: about 64 main-bracket teams and one champion a season', () => {
-        let r64 = 0, champ = 0;
-        for (let r = 1; r <= M.RANKS; r++) { const p = model.reach(r, 'march'); r64 += p.r64; champ += p.champ; }
-        expect(r64).toBeGreaterThan(58);
-        expect(r64).toBeLessThan(70);
-        expect(champ).toBeGreaterThan(0.8);
-        expect(champ).toBeLessThan(1.2);
+    test('the field adds up on both bases: about 64 main-bracket teams and one champion a season', () => {
+        ['march', 'preseason'].forEach(basis => {
+            let r64 = 0, f4 = 0, champ = 0;
+            for (let r = 1; r <= M.RANKS; r++) { const p = model.reach(r, basis); r64 += p.r64; f4 += p.f4; champ += p.champ; }
+            expect(r64).toBeGreaterThan(60);
+            expect(r64).toBeLessThan(68);
+            expect(f4).toBeGreaterThan(3.8);
+            expect(f4).toBeLessThan(4.2);
+            expect(champ).toBeGreaterThan(0.95);
+            expect(champ).toBeLessThan(1.05);
+        });
     });
 });

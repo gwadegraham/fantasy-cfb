@@ -18,19 +18,22 @@
 // ---- two bases ----
 //
 // 'march'      the rank is a pre-Selection-Sunday rank. The ladder is fit on
-//              12 tournaments (2014-2026, no 2020) against an "S-curve" rank:
+//              8 tournaments (2015-16, 2019, 2021-22, 2024-26; CBBD's stored
+//              ratings for 2014, 2017, 2018 and 2023 are corrupt and are
+//              dropped — see the backtest) against an "S-curve" rank:
 //              CBBD's end-of-season net rank, with the NCAA field re-dealt
 //              into its own rank slots in SEED order. CBBD's season rating
 //              includes the tournament, so ranking on it raw hands the
 //              champion the #1 slot after the fact — fitted that way, a #1
-//              wins the title 36% of the time; on the S-curve, 24%. Seeds
-//              are announced before tip-off, so the S-curve top is honest.
+//              wins the title 42% of the time; on the S-curve, 38%. Seeds
+//              (and the Elo that breaks ties within a seed line) are known
+//              before tip-off, so the S-curve top is honest. 38% still
+//              rests on 8 champions, all of whom were top-8 on the S-curve.
 // 'preseason'  the rank is a preseason Torvik rank — what the draft has. A
 //              preseason #5 is not a March #5: the March ladder is averaged
 //              over where a preseason rank ends up by March, a lognormal
-//              drift measured on 2025-26. Plugging a preseason rank straight
-//              into the March ladder over-concentrates the top (measured in
-//              the backtest), which is the mistake this basis exists to avoid.
+//              drift measured on 2025-26 (the only season with an archived
+//              preseason file, so the drift is in-sample by necessity).
 //
 // ---- smoothing ----
 //
@@ -39,10 +42,10 @@
 // P(reach round k | reached k-1) — so the cumulative ladder can never rise
 // from one round to the next. Quadratic in log(rank) for the rungs with
 // hundreds of events (to the Elite Eight), linear for the Final Four, title
-// game and title (48, 24 and 12 events), where a quadratic let a #2 out-win a
-// #1. Leave-one-season-out it ties the full quadratic on log loss and beats
-// raw buckets and an all-linear fit, which over-predicted the top 16 by 5%
-// (see the PR for the table).
+// game and title (32, 16 and 8 events), where a quadratic can let a #2
+// out-win a #1. Leave-one-season-out it has the best log loss of the four
+// candidates (0.0815, against 0.0818 quadratic, 0.0819 linear and 0.0850
+// for raw rank buckets) — see the PR for the table.
 
 const { ruleEnabled, STRUCTURES } = require('./scoring-defaults');
 
@@ -189,8 +192,8 @@ function confTitleProbs(teams, T) {
 function buildMarchModel(cal) {
     const cache = { march: new Map(), preseason: new Map() };
 
-    // P(March rank = k | preseason rank r), k = 1..RANKS, discretised lognormal.
-    function driftWeights(rank) {
+    // The raw lognormal row: where preseason rank r lands in March.
+    function lognormalRow(rank) {
         const mu = cal.drift.a + cal.drift.b * Math.log(Math.max(1, rank));
         const w = [];
         let total = 0;
@@ -203,6 +206,40 @@ function buildMarchModel(cal) {
         }
         return w.map(m => m / total);
     }
+
+    // P(March rank = k | preseason rank r) as a DOUBLY stochastic matrix.
+    //
+    // Raw lognormal rows each sum to 1, but nothing makes every March rank
+    // land on exactly one team: the top ranks are under-filled (a preseason
+    // #1 can only drift down, a #300 rarely drifts to #1), and summed over
+    // D-I the preseason basis paid out 0.83 champions a season instead of 1.
+    // Sinkhorn balancing — alternately scaling rows and columns to 1 — keeps
+    // the measured shape while making it a proper reshuffle of the 365 ranks,
+    // so the whole league's expected tournament is exactly one tournament.
+    let matrix = null;
+    function driftMatrix() {
+        if (matrix) return matrix;
+        const W = [];
+        for (let r = 1; r <= RANKS; r++) W.push(lognormalRow(r));
+        for (let it = 0; it < 500; it++) {
+            let worst = 0;
+            for (let k = 0; k < RANKS; k++) {
+                let col = 0;
+                for (let r = 0; r < RANKS; r++) col += W[r][k];
+                for (let r = 0; r < RANKS; r++) W[r][k] /= col;
+            }
+            for (let r = 0; r < RANKS; r++) {
+                let row = 0;
+                for (let k = 0; k < RANKS; k++) row += W[r][k];
+                worst = Math.max(worst, Math.abs(row - 1));
+                for (let k = 0; k < RANKS; k++) W[r][k] /= row;
+            }
+            if (worst < 1e-9) break;
+        }
+        matrix = W;
+        return W;
+    }
+    const driftWeights = (rank) => driftMatrix()[Math.round(Math.max(1, Math.min(RANKS, rank))) - 1];
 
     function reach(rank, basis = 'preseason') {
         const r = Math.round(Math.max(1, Math.min(RANKS, Number(rank) || RANKS)));
@@ -219,6 +256,8 @@ function buildMarchModel(cal) {
                 out.upsetSeeds += w * interp(cal.upsetSeeds.grid, i + 1);
             });
         }
+        // Frozen: the object is shared by every caller through the cache.
+        Object.freeze(out);
         c.set(r, out);
         return out;
     }
@@ -233,7 +272,13 @@ function buildMarchModel(cal) {
     // tournaments are taken to be in the past (banked), so confTourney is 0;
     // confChamp stays, for the caller to drop once titles are decided.
     function expectedPostseason(team, ctx, cfg, basis = 'preseason') {
-        const p = reach(team.rank, basis);
+        // One clamped rank for every term. A missing rank reads as the bottom
+        // of the country — NOT Number(null) = 0, which interp would clamp to
+        // #1 and pay a top team's conference tournament.
+        const n = Number(team.rank);
+        const rank = (team.rank === null || team.rank === undefined || team.rank === '' || !Number.isFinite(n) || n < 1)
+            ? RANKS : Math.min(RANKS, Math.round(n));
+        const p = reach(rank, basis);
         const ncaa = expectedNcaaPoints(p, cfg);
         const upset = p.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
         const pTitle = (ctx && ctx.titleProb && ctx.titleProb[String(team.id)]) || 0;
@@ -241,7 +286,7 @@ function buildMarchModel(cal) {
         let confTourney = 0;
         if (basis !== 'march') {
             [1, 2, 3, 4].forEach(q => {
-                confTourney += interp(cal.confTourneyWins[`q${q}`], team.rank) * valueOf(cfg, `q${q}Win`);
+                confTourney += interp(cal.confTourneyWins[`q${q}`], rank) * valueOf(cfg, `q${q}Win`);
             });
         }
         return {
