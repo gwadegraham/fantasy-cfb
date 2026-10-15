@@ -4,6 +4,16 @@
 // Before #505 nothing called POST /hoops/games/refresh, so in production no
 // basketball game would ever have gone final. Every CBBD call here is stubbed.
 
+// The poller dispatches push alerts (#557). Stubbed: the real VAPID keys are
+// in .env, and these tests are about the poller, not who hears what
+// (tests/HoopsPushAlerts.spec.js). web-push is mocked as well, belt and braces.
+jest.mock('web-push', () => ({ setVapidDetails: jest.fn(), sendNotification: jest.fn() }));
+jest.mock('../modules/push-notify', () => ({
+    notifyHoopsEvents: jest.fn(),
+    notifyHoopsFinals: jest.fn()
+}));
+
+const pushNotify = require('../modules/push-notify');
 const { useMongo } = require('./helpers/mongo');
 const scoreboard = require('../modules/hoops-scoreboard');
 const livePoll = require('../modules/hoops-live-poll');
@@ -48,6 +58,8 @@ beforeEach(async () => {
     jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
     jest.spyOn(jobLogger, 'finishRun').mockImplementation(async (id, status, msg) => logged.push({ status, msg }));
     jest.spyOn(console, 'log').mockImplementation(() => {});
+    pushNotify.notifyHoopsEvents.mockReset().mockResolvedValue({ sent: 0 });
+    pushNotify.notifyHoopsFinals.mockReset().mockResolvedValue({ sent: 0 });
 });
 afterEach(() => { seasons._reset(); jest.restoreAllMocks(); delete process.env.LIVE_POLL_ENABLED; });
 
@@ -109,7 +121,7 @@ describe('applyScoreboard', () => {
     });
 
     test('nothing to apply', async () => {
-        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [] });
+        expect(await scoreboard.applyScoreboard([])).toEqual({ rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [], events: {} });
         expect(await scoreboard.applyScoreboard(null)).toMatchObject({ rows: 0 });
     });
 });
@@ -262,6 +274,53 @@ describe('the live poller', () => {
         jest.spyOn(cbbd, 'cbbdGet').mockRejectedValue(new Error('Could not reach CBBD'));
         expect(await livePoll.run({ now: DURING })).toEqual({ error: 'Could not reach CBBD' });
         expect(logged[0]).toEqual({ status: 'error', msg: 'scoreboard: Could not reach CBBD' });
+    });
+});
+
+describe('push alerts from the poller (#557)', () => {
+    const stubBoard = (rows) => jest.spyOn(cbbd, 'cbbdGet').mockResolvedValue({ data: rows });
+    const flushMicrotasks = () => new Promise(r => setImmediate(r));
+
+    test('a tick hands its events and its new finals to the notifier', async () => {
+        await HoopsGame.create([game(10), game(11, { status: 'in_progress', homePoints: 60, awayPoints: 50, period: 2, clock: '5:00' })]);
+        stubBoard([row(10, 'final', 75, 60), row(11, 'in_progress', 62, 60, { clock: '3:30' })]);
+        await livePoll.run({ now: DURING });
+        expect(pushNotify.notifyHoopsEvents).toHaveBeenCalledWith({ 11: [expect.objectContaining({ type: 'closeGame' })] });
+        expect(pushNotify.notifyHoopsFinals).toHaveBeenCalledWith([10]);
+    });
+
+    test('a quiet tick sends nothing', async () => {
+        await HoopsGame.create(game(11, { status: 'in_progress', homePoints: 40, awayPoints: 41, period: 2, clock: '8:43',
+            homePeriodPoints: [30, 10], awayPeriodPoints: [28, 13] }));
+        stubBoard([row(11, 'in_progress', 40, 41)]);
+        await livePoll.run({ now: DURING });
+        expect(pushNotify.notifyHoopsEvents).not.toHaveBeenCalled();
+        expect(pushNotify.notifyHoopsFinals).not.toHaveBeenCalled();
+    });
+
+    // An alert is a nicety; the scoreboard is not.
+    test('a notifier that THROWS, or rejects, cannot take the tick down', async () => {
+        pushNotify.notifyHoopsEvents.mockImplementation(() => { throw new Error('push exploded'); });
+        pushNotify.notifyHoopsFinals.mockRejectedValue(new Error('push rejected'));
+        await HoopsGame.create([game(10), game(11, { status: 'scheduled' })]);
+        stubBoard([row(10, 'final', 75, 60), row(11, 'in_progress', 2, 0, { period: 1, clock: '19:40' })]);
+        const out = await livePoll.run({ now: DURING });
+        await flushMicrotasks();
+        expect(out.polled).toBe(true);
+        expect(out.failed).toBeNull();
+        // The finals were still dispatched after the events notifier threw.
+        expect(pushNotify.notifyHoopsFinals).toHaveBeenCalledWith([10]);
+        expect((await HoopsGame.findOne({ id: 10 }).lean()).status).toBe('final');
+        const lines = console.log.mock.calls.map(c => c[0]).join('\n');
+        expect(lines).toContain('push exploded');
+        expect(lines).toContain('push rejected');
+    });
+
+    test('the tick does not wait for the alerts', async () => {
+        pushNotify.notifyHoopsFinals.mockReturnValue(new Promise(() => {}));          // never settles
+        await HoopsGame.create(game(10));
+        stubBoard([row(10, 'final', 75, 60)]);
+        expect((await livePoll.run({ now: DURING })).polled).toBe(true);
     });
 });
 

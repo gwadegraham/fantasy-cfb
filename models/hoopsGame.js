@@ -123,7 +123,14 @@ const hoopsGameSchema = new mongoose.Schema({
     // Where it is on, from CBBD /games/media (modules/hoops-media.js), e.g.
     // [{ name: 'ESPN2', type: 'TV' }, { name: 'ESPN+', type: 'Streaming' }].
     // Absent until the nightly window first reaches the game.
-    broadcasts: { type: [new mongoose.Schema({ name: String, type: { type: String } }, { _id: false })], default: undefined }
+    broadcasts: { type: [new mongoose.Schema({ name: String, type: { type: String } }, { _id: false })], default: undefined },
+
+    // The push alerts already sent for this game: 'tipoff', 'closeGame',
+    // 'final' (#557). modules/push-notify.js claims a type here with one
+    // conditional update before sending it, which is what makes each alert
+    // fire once per game — across ticks, dyno restarts and a margin that
+    // crosses the crunch-time line more than once. Absent until the first.
+    pushAlerts: { type: [String], default: undefined }
 }, { collection: 'hoopsgames' });
 
 // The two reads the ingest and every surface will do: a night's slate, and one

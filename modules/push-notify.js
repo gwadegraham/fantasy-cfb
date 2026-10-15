@@ -444,6 +444,181 @@ async function notifyFinals(gameIds) {
     return { sent };
 }
 
+// ---- Basketball game alerts (#557) ------------------------------------------
+//
+// Three alerts, each its own pref so a two-sport manager can mute basketball
+// without muting football: hoopsTipoff, hoopsCloseGame, hoopsFinal. Events
+// come from modules/hoops-score-events.js via the hoops live poller.
+//
+// Basketball and football team ids COLLIDE (130 of them), so recipients are
+// read from basketball leagues' franchises only, each in its own league's
+// season — never from football's `recipientsFor`.
+
+// "H2 · 3:41", "OT1", or '' when the half is unknown. CBBD's period is the
+// half, and 3+ is overtime.
+function hoopsClockLabel(period, clock) {
+    if (typeof period !== 'number') return '';
+    const p = period > 2 ? `OT${period - 2}` : `H${period}`;
+    return clock ? `${p} · ${clock}` : p;
+}
+
+// Live-event text. Tags carry a `hoops-` prefix: a CBBD game id can equal a
+// CFBD one, and a shared tag would let a basketball banner replace a football
+// one on the device.
+function buildHoopsPayload(event, game) {
+    const when = hoopsClockLabel(event.period, event.clock);
+    const suffix = when ? ` · ${when}` : '';
+    const url = `/hoops/game/${game.id}`;
+    if (event.type === 'tipoff') {
+        return { type: 'hoopsTipoff', title: '🏀 Tip-off', body: `${game.awayTeam} at ${game.homeTeam}${suffix}`, url, tag: `hoops-game-${game.id}` };
+    }
+    if (event.type === 'closeGame') {
+        return { type: 'hoopsCloseGame', title: '⏰ Crunch time',
+            body: `${scoreline(game, event.homePoints, event.awayPoints)}${suffix}`, url, tag: `hoops-game-${game.id}` };
+    }
+    return null;
+}
+
+// Final text for ONE manager's rostered team. Unlike football a basketball
+// result can bank NEGATIVE points (the bad-loss penalty), so a loss is not
+// always "No points".
+function buildHoopsFinalPayload(game, teamName, explain) {
+    const isHome = teamName === game.homeTeam;
+    const won = isHome ? game.homePoints > game.awayPoints : game.awayPoints > game.homePoints;
+    const total = (explain && explain.total) || 0;
+    const labels = ((explain && explain.matched) || []).map(m => m.label).join(' + ');
+    const line = scoreline(game, game.homePoints, game.awayPoints);
+    const pts = total > 0 ? `+${total} pts` : `−${Math.abs(total)} pts`;
+    const body = total === 0 ? `No points · ${line}` : `${pts}${labels ? ` — ${labels}` : ''} · ${line}`;
+    return { type: 'hoopsFinal', title: won ? `✅ ${teamName} won` : `❌ ${teamName} lost`,
+        body, url: `/hoops/game/${game.id}`, tag: `hoops-final-${game.id}` };
+}
+
+// Managers in every basketball league who roster a team in this game, in that
+// league's own season, with a device registered. One row per FRANCHISE: the
+// points in a final are per league.
+async function hoopsRecipientsFor(game) {
+    const teamIds = [game.homeTeamId, game.awayTeamId].map(Number).filter(Number.isFinite);
+    if (!teamIds.length) return [];
+    const League = require('../models/league');
+    const { rosterIds } = require('./hoops-scoring-pass');
+
+    const leagues = (await League.find({}, { code: 1, status: 1, _id: 0 }).lean())
+        .filter(l => l.status !== 'archived' && seasons.sportForLeague(l.code) === 'basketball');
+    const out = [];
+    for (const { code: league } of leagues) {
+        const season = seasons.seasonForLeague(league);
+        if (!Number.isFinite(season) || Number(game.season) !== Number(season)) continue;
+        const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+        if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
+        const users = await franchiseRepo.findManagers({
+            accountFilter,
+            franchiseFilter: { league, seasons: { $elemMatch: { season, $or: [
+                { 'teamRefs.id': { $in: teamIds } }, { 'teams.id': { $in: teamIds } }] } } },
+            fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs',
+                'seasons.season', 'seasons.teamRefs', 'seasons.teams.id']
+        });
+        for (const user of users) {
+            const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
+            const rostered = rosterIds(entry).filter(id => teamIds.includes(id));
+            if (rostered.length) out.push({ user, teamIds: rostered, league, season });
+        }
+    }
+    return out;
+}
+
+// Claim one alert type on one game, atomically: true for the caller that set
+// it, false for every caller after. This is the once-per-game guarantee.
+async function claimHoopsAlert(gameId, type) {
+    const HoopsGame = require('../models/hoopsGame');
+    const res = await HoopsGame.updateOne(
+        { id: Number(gameId), pushAlerts: { $ne: type } },
+        { $addToSet: { pushAlerts: type } }
+    );
+    return res.modifiedCount === 1;
+}
+
+// Tip-off and crunch time. Called from modules/hoops-live-poll.js with the
+// events a tick produced, keyed by game id. Never throws.
+async function notifyHoopsEvents(eventsByGameId) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0 };
+    const gameIds = Object.keys(eventsByGameId || {}).map(Number).filter(n => !Number.isNaN(n));
+    if (!gameIds.length) return { sent: 0 };
+    let sent = 0;
+    try {
+        const HoopsGame = require('../models/hoopsGame');
+        const games = await HoopsGame.find({ id: { $in: gameIds } },
+            { id: 1, season: 1, homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, _id: 0 }).lean();
+        for (const game of games) {
+            const events = eventsByGameId[game.id] || eventsByGameId[String(game.id)] || [];
+            if (!events.length) continue;
+            const recipients = await hoopsRecipientsFor(game);
+            if (!recipients.length) continue;
+            for (const event of events) {
+                const payload = buildHoopsPayload(event, game);
+                if (!payload) continue;
+                if (!(await claimHoopsAlert(game.id, event.type))) continue;
+                // Live text is the same in every league, so a manager in two
+                // basketball leagues hears it once.
+                const told = new Set();
+                for (const { user } of recipients) {
+                    if (told.has(String(user._id))) continue;
+                    told.add(String(user._id));
+                    if (!wantsType(user, payload.type)) continue;
+                    sent += (await sendToUser(user, payload)).sent;
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyHoopsEvents failed: ${err && err.message}`);
+    }
+    return { sent };
+}
+
+// Basketball games that just went final, with what each manager banked in
+// their own league. Never throws.
+async function notifyHoopsFinals(gameIds) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0 };
+    const ids = (gameIds || []).map(Number).filter(n => !Number.isNaN(n));
+    if (!ids.length) return { sent: 0 };
+    let sent = 0;
+    try {
+        const HoopsGame = require('../models/hoopsGame');
+        const { configFor, isFinal } = require('./hoops-scoring-pass');
+        const { ranksFor } = require('./hoops-ranks');
+        const games = await HoopsGame.find({ id: { $in: ids } }).lean();
+        const cfgCache = new Map();
+        for (const game of games) {
+            if (!isFinal(game)) continue;
+            const recipients = await hoopsRecipientsFor(game);
+            if (!recipients.length) continue;
+            if (!(await claimHoopsAlert(game.id, 'final'))) continue;
+            // The ranks the scoring pass grades this game against.
+            const ranks = (await ranksFor(game.season, game.week)).ranks;
+            for (const { user, teamIds, league } of recipients) {
+                if (!wantsType(user, 'hoopsFinal')) continue;
+                if (!cfgCache.has(league)) cfgCache.set(league, (await configFor(league)).cfg);
+                const cfg = cfgCache.get(league);
+                for (const teamId of teamIds) {
+                    const teamName = teamId === Number(game.homeTeamId) ? game.homeTeam : game.awayTeam;
+                    let explain = null;
+                    try {
+                        explain = scoringModule.explainGame('hoops', teamId, game, ranks, cfg);
+                    } catch (e) {
+                        console.log(`Push: could not explain hoops game ${game.id} for team ${teamId}: ${e && e.message}`);
+                    }
+                    sent += (await sendToUser(user, buildHoopsFinalPayload(game, teamName, explain))).sent;
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyHoopsFinals failed: ${err && err.message}`);
+    }
+    return { sent };
+}
+
 // ---- Captain lock reminder --------------------------------------------------
 
 // Matches routes/users.js: a week stays in focus this long past its last kickoff
@@ -864,6 +1039,7 @@ async function sendTest(userId) {
 module.exports = {
     notifyEvents,
     notifyFinals,
+    notifyHoopsEvents, notifyHoopsFinals,
     notifyCaptainLocks, notifyHoopsCaptainLocks,
     notifyRecapReady,
     sendTest,
@@ -872,5 +1048,6 @@ module.exports = {
     isAllowedRecipient,
     isRestricted,
     // exported for reuse/tests:
-    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, rawRecipientIds, recipientsFor, explainForTeam
+    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, rawRecipientIds, recipientsFor, explainForTeam,
+    hoopsClockLabel, buildHoopsPayload, buildHoopsFinalPayload, hoopsRecipientsFor, claimHoopsAlert
 };

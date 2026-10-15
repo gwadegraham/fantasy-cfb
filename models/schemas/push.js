@@ -61,7 +61,12 @@ const pushPrefsSchema = new mongoose.Schema({
     // so a write from anywhere else still can't store a lead that never fires.
     captainLockLeadMinutes: { type: Number, default: CAPTAIN_DEFAULT_LEAD_MINUTES, enum: CAPTAIN_LEAD_MINUTES },
     // "Your weekly recap is ready" — a pointer to the My Team recap, once a week.
-    recapReady: { type: Boolean, default: true }
+    recapReady: { type: Boolean, default: true },
+    // Basketball game alerts (#557). Separate keys from football's `final` and
+    // `closeGame`, so a manager in both sports can mute one without the other.
+    hoopsTipoff: { type: Boolean, default: true },
+    hoopsCloseGame: { type: Boolean, default: true },
+    hoopsFinal: { type: Boolean, default: true }
 }, { _id: false });
 
 // One row per Captain reminder actually delivered, so the job never sends the

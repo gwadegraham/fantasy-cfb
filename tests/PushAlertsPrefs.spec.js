@@ -176,3 +176,33 @@ describe('the status line when alerts would not reach this manager', () => {
         expect(status()).toMatch(/limited to a few managers/);
     });
 });
+
+// #557: basketball's three switches, only for a manager who plays basketball.
+describe('the basketball switches', () => {
+    const labels = () => [...document.querySelectorAll('.push-pref strong')].map(e => e.textContent);
+    const HOOPS = ['Basketball finals', 'Basketball crunch time', 'Basketball tip-off'];
+
+    it('are hidden from a football-only account', async () => {
+        await mountPanel({}, { basketball: false });
+        expect(labels().filter(l => HOOPS.includes(l))).toEqual([]);
+    });
+
+    it('show, after football\'s, for an account with a basketball franchise', async () => {
+        await mountPanel({}, { basketball: true });
+        expect(labels().slice(-3)).toEqual(HOOPS);
+        expect(labels()).toContain('Final results');
+    });
+
+    it('reflect the stored pref and save their own key', async () => {
+        await mountPanel({ hoopsCloseGame: false }, { basketball: true });
+        const row = (label) => [...document.querySelectorAll('.push-pref')].find(r => r.querySelector('strong').textContent === label);
+        expect(row('Basketball crunch time').querySelector('input').checked).toBe(false);
+        expect(row('Basketball tip-off').querySelector('input').checked).toBe(true);
+
+        const cb = row('Basketball finals').querySelector('input');
+        cb.checked = false;
+        cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 0));
+        expect(patched).toEqual([{ hoopsFinal: false }]);
+    });
+});

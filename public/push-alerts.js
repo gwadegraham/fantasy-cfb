@@ -45,6 +45,16 @@
         { key: 'score', label: 'Every score', hint: 'Loudest by far — roughly 40 a Saturday.' }
     ];
 
+    // Basketball's own three (#557), shown only to a manager with a basketball
+    // franchise (the server says so as `basketball`). Separate keys from the
+    // football rows above, so muting one sport leaves the other alone. The
+    // crunch-time hint mirrors modules/hoops-score-events.js.
+    var HOOPS_TYPES = [
+        { key: 'hoopsFinal', label: 'Basketball finals', hint: 'Your team finished — and what it banked.' },
+        { key: 'hoopsCloseGame', label: 'Basketball crunch time', hint: 'Second half, 4:00 or less, within 5.' },
+        { key: 'hoopsTipoff', label: 'Basketball tip-off', hint: 'When one of your teams starts a game.' }
+    ];
+
     // iOS only exposes the Push API to an installed PWA. Both checks matter:
     // `standalone` is the old Safari flag, the media query is the standard one.
     function isStandalone() {
@@ -209,9 +219,9 @@
             return '2 hours';
         }
 
-        function renderPrefs(prefs) {
+        function renderPrefs(prefs, basketball) {
             prefsWrap.innerHTML = '';
-            ALERT_TYPES.forEach(function (t) {
+            ALERT_TYPES.concat(basketball ? HOOPS_TYPES : []).forEach(function (t) {
                 var row = document.createElement('label');
                 row.className = 'push-pref';
                 var cb = document.createElement('input');
@@ -274,7 +284,7 @@
                         ? ' This device is registered, but you have no roster this season — alerts start once your league drafts.'
                         : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
                 say('Alerts are on for ' + state.deviceCount + (state.deviceCount === 1 ? ' device.' : ' devices.') + quiet, state.allowed ? 'ok' : 'info');
-                renderPrefs(state.prefs || {});
+                renderPrefs(state.prefs || {}, !!state.basketball);
                 if (state.allowed) {
                     button('Send a test', 'btn-secondary', async function (b) {
                         b.disabled = true;

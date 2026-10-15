@@ -97,6 +97,14 @@ describe('sanitizePrefs', () => {
         expect(sanitizePrefs({ captainLock: false })).toEqual({ captainLock: false });
     });
 
+    // Basketball's three are their own keys (#557), so muting one sport
+    // leaves the other alone.
+    it('accepts the basketball prefs, as booleans only', () => {
+        expect(sanitizePrefs({ hoopsTipoff: false, hoopsCloseGame: true, hoopsFinal: false }))
+            .toEqual({ hoopsTipoff: false, hoopsCloseGame: true, hoopsFinal: false });
+        expect(() => sanitizePrefs({ hoopsTipoff: 'off' })).toThrow(/must be true or false/);
+    });
+
     // The lead is the one pref that carries a value rather than an on/off, so it
     // gets its own validator — the boolean loop's "must be true or false" would
     // be a lie for it.

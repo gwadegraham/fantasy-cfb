@@ -123,3 +123,40 @@ describe('GET /users/me/push counts a roster in ANY league’s own season (#568)
         expect(res.body).toMatchObject({ allowed: false, reason: 'restricted' });
     });
 });
+
+describe('basketball alert prefs (#557)', () => {
+    const solo = async (league, season) => {
+        const a = await Account.create({ firstName: 'Solo', lastName: 'One', email: 'solo@example.invalid' });
+        await Franchise.create({ accountId: a._id, league, seasons: [{ season, teams: [] }] });
+        return a;
+    };
+
+    test('GET /users/me/push says whether the account plays basketball', async () => {
+        expect((await request(app).get('/users/me/push')).body.basketball).toBe(true);
+        expect((await request(appFor(await solo(FOOTBALL, FB_SEASON))).get('/users/me/push')).body.basketball).toBe(false);
+    });
+
+    // A basketball franchise with no roster this season still sees the
+    // toggles: setting them up before the draft is the point.
+    test('a basketball franchise from a PAST season still counts', async () => {
+        expect((await request(appFor(await solo(HOOPS, BB_SEASON - 1))).get('/users/me/push')).body.basketball).toBe(true);
+    });
+
+    test('PATCH stores each basketball key, leaving football’s alone', async () => {
+        const res = await request(app).patch('/users/me/push/prefs').send({ hoopsCloseGame: false });
+        expect(res.status).toBe(200);
+        expect(res.body.prefs).toMatchObject({ hoopsCloseGame: false, hoopsTipoff: true, hoopsFinal: true, closeGame: true, final: true });
+        await request(app).patch('/users/me/push/prefs').send({ hoopsTipoff: false, hoopsFinal: false });
+        const stored = (await Account.findById(account._id).lean()).pushPrefs;
+        expect(stored).toMatchObject({ hoopsTipoff: false, hoopsCloseGame: false, hoopsFinal: false, closeGame: true, final: true });
+    });
+
+    test('the defaults are on', async () => {
+        const res = await request(app).patch('/users/me/push/prefs').send({ score: false });
+        expect(res.body.prefs).toMatchObject({ hoopsTipoff: true, hoopsCloseGame: true, hoopsFinal: true });
+    });
+
+    test('a non-boolean is refused', async () => {
+        expect((await request(app).patch('/users/me/push/prefs').send({ hoopsFinal: 'no' })).status).toBe(400);
+    });
+});

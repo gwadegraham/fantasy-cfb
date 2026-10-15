@@ -168,6 +168,9 @@ router.get('/me/push', async (req, res) => {
         const playsThisSeason = franchises.some(f => (f.seasons || [])
             .some(s => Number(s.season) === Number(seasonFor(f.league))));
         const recipientOk = pushNotify.isAllowedRecipient(userId);
+        // Any basketball franchise, any season: the basketball toggles are
+        // shown to a manager who plays the sport, drafted yet or not (#557).
+        const playsBasketball = franchises.some(f => sportForLeague(f.league) === 'basketball');
         res.json({
             configured: pushNotify.isConfigured(),
             allowed: recipientOk && playsThisSeason,
@@ -175,6 +178,7 @@ router.get('/me/push', async (req, res) => {
             // allowlist for a manager who simply has no roster this season.
             reason: !recipientOk ? 'restricted' : (!playsThisSeason ? 'no-roster' : null),
             deviceCount: subs.length,
+            basketball: playsBasketball,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },
             vapidPublicKey: pushNotify.vapidConfig().publicKey
@@ -265,7 +269,8 @@ router.patch('/me/push/prefs', async (req, res) => {
         if (!ctx) return res.status(404).json({ message: 'User not found.' });
         const { account } = ctx;
         const prefs = Object.assign(
-            { score: true, leadChange: true, closeGame: true, final: true, captainLock: true, captainLockLeadMinutes: CAPTAIN_DEFAULT_LEAD_MINUTES, recapReady: true },
+            { score: true, leadChange: true, closeGame: true, final: true, captainLock: true, captainLockLeadMinutes: CAPTAIN_DEFAULT_LEAD_MINUTES, recapReady: true,
+                hoopsTipoff: true, hoopsCloseGame: true, hoopsFinal: true },
             account.pushPrefs ? account.pushPrefs.toObject ? account.pushPrefs.toObject() : account.pushPrefs : {},
             clean
         );
