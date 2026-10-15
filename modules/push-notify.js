@@ -35,7 +35,7 @@ const { activeSeason } = require('./active-season');
 const seasons = require('./active-season');
 const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
-const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
+const { captainFocusWeek, autoCaptainTeamId, captainForWeek, captainWeeklyBonus } = require('./captain');
 const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
 const { alreadyNoticed, latestRecap, buildRecapNoticePayload } = require('./recap-notice');
 const { isRecapSeason } = require('./weekly-recap');
@@ -479,19 +479,32 @@ function buildHoopsPayload(event, game) {
     return null;
 }
 
+// Signed points for a lock screen: "+6", "−2".
+function signedPts(n) { return n > 0 ? `+${n}` : `−${Math.abs(n)}`; }
+
 // Final text for ONE manager's rostered team. Unlike football a basketball
 // result can bank NEGATIVE points (the bad-loss penalty), so a loss is not
 // always "No points".
-function buildHoopsFinalPayload(game, teamName, explain) {
+//
+// `captainBonus`: what Captain adds on top when this team is the manager's
+// Captain for the week — base × (multiplier − 1), the scorer's own formula
+// (modules/captain.js captainWeeklyBonus). The headline points include it,
+// and the bonus is named separately so the manager can see what the pick was
+// worth. It doubles a penalty too, so it can be negative.
+function buildHoopsFinalPayload(game, teamName, explain, captainBonus) {
     const isHome = teamName === game.homeTeam;
     const won = isHome ? game.homePoints > game.awayPoints : game.awayPoints > game.homePoints;
-    const total = (explain && explain.total) || 0;
+    const base = (explain && explain.total) || 0;
+    const bonus = captainBonus || 0;
+    const total = Math.round((base + bonus) * 10) / 10;
     const labels = ((explain && explain.matched) || []).map(m => m.label).join(' + ');
     const line = scoreline(game, game.homePoints, game.awayPoints);
-    const pts = total > 0 ? `+${total} pts` : `−${Math.abs(total)} pts`;
-    const body = total === 0 ? `No points · ${line}` : `${pts}${labels ? ` — ${labels}` : ''} · ${line}`;
+    const captain = bonus ? ` · 👑 Captain bonus ${signedPts(bonus)}` : '';
+    const body = total === 0 ? `No points · ${line}` : `${signedPts(total)} pts${labels ? ` — ${labels}` : ''}${captain} · ${line}`;
     return { type: 'hoopsFinal', title: won ? `✅ ${teamName} won` : `❌ ${teamName} lost`,
-        body, url: `/hoops/game/${game.id}`, tag: `hoops-final-${game.id}` };
+        // Per team: a manager rostering BOTH sides gets two finals, and one
+        // tag would let the second replace the first on the device.
+        body, url: `/hoops/game/${game.id}`, tag: `hoops-final-${game.id}-${isHome ? game.homeTeamId : game.awayTeamId}` };
 }
 
 // Managers in every basketball league who roster a team in this game, in that
@@ -515,13 +528,15 @@ async function hoopsRecipientsFor(game) {
             accountFilter,
             franchiseFilter: { league, seasons: { $elemMatch: { season, $or: [
                 { 'teamRefs.id': { $in: teamIds } }, { 'teams.id': { $in: teamIds } }] } } },
+            // captains + weeklyScore: the final resolves this week's Captain.
             fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs',
-                'seasons.season', 'seasons.teamRefs', 'seasons.teams.id']
+                'seasons.season', 'seasons.teamRefs', 'seasons.teams.id', 'seasons.captains', 'seasons.weeklyScore']
         });
         for (const user of users) {
             const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
-            const rostered = rosterIds(entry).filter(id => teamIds.includes(id));
-            if (rostered.length) out.push({ user, teamIds: rostered, league, season });
+            const roster = rosterIds(entry);
+            const rostered = roster.filter(id => teamIds.includes(id));
+            if (rostered.length) out.push({ user, teamIds: rostered, league, season, entry, roster });
         }
     }
     return out;
@@ -588,19 +603,45 @@ async function notifyHoopsFinals(gameIds) {
         const HoopsGame = require('../models/hoopsGame');
         const { configFor, isFinal } = require('./hoops-scoring-pass');
         const { ranksFor } = require('./hoops-ranks');
+        const { seasonModeWeeks, isModeGame } = require('./hoops-modes');
+        const hoopsCaptain = require('./hoops-captain');
         const games = await HoopsGame.find({ id: { $in: ids } }).lean();
         const cfgCache = new Map();
+        const modeWeeks = new Map();
         for (const game of games) {
             if (!isFinal(game)) continue;
             const recipients = await hoopsRecipientsFor(game);
             if (!recipients.length) continue;
-            if (!(await claimHoopsAlert(game.id, 'final'))) continue;
-            // The ranks the scoring pass grades this game against.
+            // Every lookup that can fail runs BEFORE the claim: a claim
+            // followed by a failed read would use up the final for everyone.
+            // The ranks are the ones the scoring pass grades this game against.
             const ranks = (await ranksFor(game.season, game.week)).ranks;
-            for (const { user, teamIds, league } of recipients) {
+            for (const { league } of recipients) {
+                if (cfgCache.has(league)) continue;
+                const { cfg, doc } = await configFor(league);
+                const eng = engagementForSeason(doc && doc.engagementBySeason, game.season);
+                // Captain counts only in a mode week, on a mode game — the
+                // scorer's rule (modules/hoops-scoring-pass.js).
+                let captainOn = false;
+                if (eng.captainEnabled && isModeGame(game)) {
+                    if (!modeWeeks.has(game.season)) modeWeeks.set(game.season, await seasonModeWeeks(game.season));
+                    captainOn = modeWeeks.get(game.season).includes(Number(game.week));
+                }
+                cfgCache.set(league, { cfg, captainOn, multiplier: eng.captainMultiplier });
+            }
+            if (!(await claimHoopsAlert(game.id, 'final'))) continue;
+            for (const { user, teamIds, league, entry, roster } of recipients) {
                 if (!wantsType(user, 'hoopsFinal')) continue;
-                if (!cfgCache.has(league)) cfgCache.set(league, (await configFor(league)).cfg);
-                const cfg = cfgCache.get(league);
+                const { cfg, captainOn, multiplier } = cfgCache.get(league);
+                // This week's Captain as the scorer resolves it: the pick, else
+                // the frozen default, else the default from earlier weeks.
+                let captainId = null;
+                if (captainOn) {
+                    const parts = hoopsCaptain.pickParts(entry && entry.captains, game.week);
+                    captainId = parts.picked != null ? parts.picked
+                        : parts.frozenAuto != null ? parts.frozenAuto
+                        : hoopsCaptain.autoNow(entry, roster, game.week);
+                }
                 for (const teamId of teamIds) {
                     const teamName = teamId === Number(game.homeTeamId) ? game.homeTeam : game.awayTeam;
                     let explain = null;
@@ -609,7 +650,9 @@ async function notifyHoopsFinals(gameIds) {
                     } catch (e) {
                         console.log(`Push: could not explain hoops game ${game.id} for team ${teamId}: ${e && e.message}`);
                     }
-                    sent += (await sendToUser(user, buildHoopsFinalPayload(game, teamName, explain))).sent;
+                    const bonus = (captainId != null && Number(captainId) === teamId && explain)
+                        ? captainWeeklyBonus([{ teamId, score: explain.total }], teamId, multiplier) : 0;
+                    sent += (await sendToUser(user, buildHoopsFinalPayload(game, teamName, explain, bonus))).sent;
                 }
             }
         }

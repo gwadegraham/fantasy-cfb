@@ -20,6 +20,7 @@ const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
+const ScoringConfig = require('../models/scoringConfig');
 const seasons = require('../modules/active-season');
 const scoreboard = require('../modules/hoops-scoreboard');
 const scoringPass = require('../modules/hoops-scoring-pass');
@@ -204,9 +205,27 @@ describe('finals', () => {
 
         await push.notifyHoopsFinals([GAME_ID]);
         const byTo = Object.fromEntries(sends().map(s => [s.to, s]));
-        expect(byTo[to('Ann')]).toMatchObject({ type: 'hoopsFinal', title: '✅ Duke won', url: `/hoops/game/${GAME_ID}`, tag: `hoops-final-${GAME_ID}` });
+        expect(byTo[to('Ann')]).toMatchObject({ type: 'hoopsFinal', title: '✅ Duke won', url: `/hoops/game/${GAME_ID}`, tag: `hoops-final-${GAME_ID}-${DUKE}` });
         expect(byTo[to('Ann')].body).toMatch(new RegExp(`^\\+${annPaid} pts .* · Texas 70 – Duke 80$`));
         expect(byTo[to('Bo')].title).toBe('❌ Texas lost');
+    });
+
+    // A read failing after the claim would use the final up for good.
+    test('a failed ranks read leaves the final unclaimed, so it can still be sent', async () => {
+        await HoopsGame.updateOne({ id: GAME_ID }, { $set: { status: 'final', homePoints: 80, awayPoints: 70 } });
+        await hoopsFranchise(await account('Ann'), [DUKE]);
+        const ranks = require('../modules/hoops-ranks');
+        jest.spyOn(ranks, 'ranksFor').mockRejectedValueOnce(new Error('cluster blip'));
+        expect((await push.notifyHoopsFinals([GAME_ID])).sent).toBe(0);
+        expect((await HoopsGame.findOne({ id: GAME_ID }).lean()).pushAlerts).toBeUndefined();
+        expect((await push.notifyHoopsFinals([GAME_ID])).sent).toBe(1);
+    });
+
+    test('a manager rostering both sides gets two finals that do not replace each other', async () => {
+        await HoopsGame.updateOne({ id: GAME_ID }, { $set: { status: 'final', homePoints: 80, awayPoints: 70 } });
+        await hoopsFranchise(await account('Ann'), [DUKE, TEXAS]);
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends().map(s => s.tag).sort()).toEqual([`hoops-final-${GAME_ID}-${DUKE}`, `hoops-final-${GAME_ID}-${TEXAS}`]);
     });
 
     test('a game that is not final is not announced as one', async () => {
@@ -221,6 +240,79 @@ describe('finals', () => {
             .toBe('−2 pts — Bad loss · Texas 70 – Duke 60');
         expect(push.buildHoopsFinalPayload(g, 'Duke', { total: 0, matched: [] }).body).toBe('No points · Texas 70 – Duke 60');
         expect(push.buildHoopsFinalPayload(g, 'Texas', null).title).toBe('✅ Texas won');
+    });
+});
+
+// Graham asked for it (#557): a captained team's final names the bonus.
+describe('a final for the manager\'s Captain', () => {
+    const captainMode = (on = true) => ScoringConfig.updateOne({ league: HOOPS }, { $set: { league: HOOPS,
+        [`engagementBySeason.${SEASON}`]: { captainEnabled: on, captainMultiplier: 2 } } }, { upsert: true });
+    const finalGame = (o = {}) => HoopsGame.updateOne({ id: GAME_ID }, { $set: Object.assign({ status: 'final', homePoints: 80, awayPoints: 70 }, o) });
+    const withCaptain = async (name, teamId) => {
+        const a = await account(name);
+        await Franchise.create({ accountId: a._id, league: HOOPS, seasons: [{ season: SEASON,
+            teamRefs: [{ id: DUKE, sport: 'basketball' }, { id: 77, sport: 'basketball' }],
+            captains: teamId == null ? [] : [{ week: 3, teamId }] }] });
+        return a;
+    };
+    const scorerFor = async (acct) => (await scoringPass.scoreHoopsWeek(HOOPS, { season: SEASON, week: 3, apply: false }))
+        .results.find(r => String(r.accountId) === String(acct._id));
+
+    test('names the bonus, and the headline is base + bonus — the scorer\'s numbers', async () => {
+        await captainMode();
+        await finalGame();
+        const ann = await withCaptain('Ann', DUKE);
+        const scored = await scorerFor(ann);
+        const base = scored.scoreByTeam[0].score;
+        expect(scored.captainBonus).toBe(base);                       // ×2: the bonus is one more base
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends()[0].body).toMatch(new RegExp(`^\\+${base * 2} pts .* · 👑 Captain bonus \\+${base} · Texas 70 – Duke 80$`));
+    });
+
+    test('the default Captain counts when the manager never picked', async () => {
+        await captainMode();
+        await finalGame();
+        const ann = await withCaptain('Ann', null);
+        const scored = await scorerFor(ann);
+        expect(scored.captainTeamId).toBe(DUKE);                      // the scorer's default here
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends()[0].body).toContain(`👑 Captain bonus +${scored.captainBonus}`);
+    });
+
+    test('a different Captain: no bonus note', async () => {
+        await captainMode();
+        await finalGame();
+        await withCaptain('Ann', 77);
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends()[0].body).not.toContain('Captain');
+    });
+
+    test('Captain off in the league: no bonus note', async () => {
+        await captainMode(false);
+        await finalGame();
+        await withCaptain('Ann', DUKE);
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends()[0].body).not.toContain('Captain');
+    });
+
+    test('a conference tournament game is not doubled', async () => {
+        await captainMode();
+        await finalGame({ conferenceGame: true, gameNotes: 'Big 12 Tournament - Quarterfinal' });
+        // Week 3 stays a mode week on its regular games; only the game's own
+        // type keeps it out.
+        await HoopsGame.create({ id: 501, season: SEASON, week: 3, seasonType: 'regular', status: 'scheduled',
+            startDate: new Date('2026-11-19T00:00:00Z'), homeTeamId: 50, awayTeamId: 51 });
+        const ann = await withCaptain('Ann', DUKE);
+        // It scores, so a doubled game WOULD show a bonus.
+        expect((await scorerFor(ann)).scoreByTeam[0].score).toBeGreaterThan(0);
+        await push.notifyHoopsFinals([GAME_ID]);
+        expect(sends()[0].body).not.toContain('Captain');
+    });
+
+    test('a doubled penalty reads as negative', () => {
+        const g = { id: 9, homeTeamId: DUKE, awayTeamId: TEXAS, homeTeam: 'Duke', awayTeam: 'Texas', homePoints: 60, awayPoints: 70 };
+        expect(push.buildHoopsFinalPayload(g, 'Duke', { total: -2, matched: [{ label: 'Bad loss' }] }, -2).body)
+            .toBe('−4 pts — Bad loss · 👑 Captain bonus −2 · Texas 70 – Duke 60');
     });
 });
 
