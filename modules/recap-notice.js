@@ -49,7 +49,7 @@ function latestRecap(payload) {
         (!best || Number(r.effWeek || r.week) > Number(best.effWeek || best.week)) ? r : best, null);
 }
 
-function buildRecapNoticePayload({ userId, recap }) {
+function buildRecapNoticePayload({ userId, recap, league }) {
     const label = recap.label || `Week ${recap.week}`;
 
     return {
@@ -61,9 +61,17 @@ function buildRecapNoticePayload({ userId, recap }) {
         // Same path the Captain reminder learned the hard way: `/` is Standings,
         // and /userHome without `?user=` renders blank because the client reads
         // the query param to decide whose profile to draw.
-        url: userId ? `/userHome?user=${userId}#recap` : '/userHome',
-        // One tag per week, so a retry replaces rather than stacks.
-        tag: `recap-w${recap.week}`,
+        //
+        // `league` too (#558): one login can hold a football and a basketball
+        // franchise, and /userHome shows the SELECTED one — so without it the
+        // basketball push opened the football recap. public/userHome.js
+        // switches to the named league, as it does for the hoops Captain push.
+        url: (userId ? `/userHome?user=${userId}` : '/userHome')
+            + (league ? `${userId ? '&' : '?'}league=${encodeURIComponent(league)}` : '')
+            + '#recap',
+        // One tag per week (and league), so a retry replaces rather than
+        // stacks — and two leagues' recaps for the same week number don't.
+        tag: league ? `recap-${league}-w${recap.week}` : `recap-w${recap.week}`,
         week: recap.week
     };
 }

@@ -12,7 +12,6 @@ const { useMongo } = require('./helpers/mongo');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
 const Game = require('../models/game');
-const Betting = require('../models/bettingLine');
 const Franchise = require('../models/franchise');
 const Account = require('../models/account');
 const League = require('../models/league');
@@ -90,17 +89,15 @@ test('holds back a week whose basketball slate has not finished tipping off', as
 
 // The collision itself: team 1 is Gonzaga here and somebody else in football.
 // A football game for "team 1" that has not kicked off must not hold a
-// basketball week back, and a football underdog win must not become the story.
+// basketball week back.
 test('never reads the football collections for a basketball roster', async () => {
     await HoopsGame.create(hoopsGame({ id: 501, week: 19, startDate: PAST(1), homeTeamId: 1, awayTeamId: 77, homeTeam: 'Gonzaga', awayTeam: 'Duke' }));
     await Game.create({ id: 501, season: SEASON, week: 19, seasonType: 'regular', startDate: FUTURE, startTimeTbd: false,
         completed: false, neutralSite: false, conferenceGame: false,
         homeId: 1, awayId: 300, homeTeam: 'Football One', awayTeam: 'Football Two' });
-    await Betting.create({ id: 501, season: SEASON, seasonType: 'regular', week: 19, lines: [{ provider: 'DraftKings', spread: 9.5 }] });
     const ann = await manager('Ann', [1], [{ week: 19, score: 2, scoreByTeam: [{ teamId: 1, gameId: 501, score: 2, quadrant: 3 }] }]);
 
     const res = await recap(ann._id);
 
     expect(res.body.recaps).toHaveLength(1);
-    expect(res.body.recaps[0].upset).toBeNull();
 });

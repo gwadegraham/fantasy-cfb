@@ -127,7 +127,7 @@ describe('notifyRecapReady — who gets one', () => {
         await push.notifyRecapReady(MONDAY);
 
         expect(payloads().map(p => p.url).sort())
-            .toEqual([`/userHome?user=${ann._id}#recap`, `/userHome?user=${bob._id}#recap`].sort());
+            .toEqual([`/userHome?user=${ann._id}&league=${LEAGUE}#recap`, `/userHome?user=${bob._id}&league=${LEAGUE}#recap`].sort());
         // Two very different weeks, and neither notification says so.
         expect(new Set(payloads().map(p => p.body)).size).toBe(1);
     });
@@ -278,6 +278,16 @@ describe('notifyRecapReady — a basketball league', () => {
 
         expect(res).toMatchObject({ due: 1, sent: 1 });
         expect(String(global.fetch.mock.calls[0][0])).toContain(`/standings/recap/${HOOPS}/2027/`);
+    });
+
+    // One login can hold both franchises; /userHome shows the SELECTED league,
+    // so the link has to name this one or the hoops push opens football's recap.
+    it('links to the basketball league\'s recap, tagged apart from football\'s', async () => {
+        const hal = await hooper('Hal');
+        await push.notifyRecapReady(MARCH_MONDAY);
+
+        expect(payloads()[0].url).toBe(`/userHome?user=${hal._id}&league=${HOOPS}#recap`);
+        expect(payloads()[0].tag).toBe(`recap-${HOOPS}-w4`);
     });
 
     it('logs the notice against the basketball season', async () => {

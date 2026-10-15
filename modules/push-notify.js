@@ -798,7 +798,7 @@ async function notifyRecapReady(nowMs) {
 
             due++;
 
-            const res = await sendToUser(user, buildRecapNoticePayload({ userId: user._id, recap }));
+            const res = await sendToUser(user, buildRecapNoticePayload({ userId: user._id, recap, league: user.league }));
             sent += res.sent;
 
             // Logged only on delivery, for the same reason as the Captain
