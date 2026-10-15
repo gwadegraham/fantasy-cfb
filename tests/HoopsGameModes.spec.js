@@ -181,6 +181,53 @@ describe('Captain on a basketball league', () => {
     });
 });
 
+describe('the default Captain is frozen at the lock (basketball)', () => {
+    const { freezeLockedWeeks } = require('../modules/hoops-captain');
+    // Every lock below is in the past at this instant.
+    const LATER = Date.parse('2027-06-01T00:00:00Z');
+
+    test('a late game that shifts the averages after the freeze does not move the doubled team', async () => {
+        await modes({ captain: true });
+        const bo = await manager('Bo', [1, 2]);
+        // Week 1: team 1 averages 2.5 (a win and a loss), team 2 has not played.
+        await HoopsGame.create([q1Win(1, 1), loss(1, 1), q1Win(2, 1), q1Win(2, 2)]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+
+        // Week 2 locks: the default — team 1, the only team with history — is frozen.
+        expect(await freezeLockedWeeks(LATER)).toBeGreaterThan(0);
+        const frozen = (await entry(bo._id)).captains.find(c => c.week === 2);
+        expect(frozen).toMatchObject({ teamId: 1, auto: true });
+
+        // Then week 1's late game lands: team 2 wins, averaging 5 — it would
+        // now be the default if the default were still computed at scoring.
+        await HoopsGame.create(q1Win(1, 2));
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 2 });
+        const wk2 = await weekOf(bo._id, 2);
+        expect(wk2.captainTeamId).toBe(1);
+        expect(wk2.score).toBe(15);
+    });
+
+    test('a manual pick is never replaced, and a second sweep writes nothing', async () => {
+        await modes({ captain: true });
+        const ann = await manager('Ann', [1, 2], { captains: [{ week: 1, teamId: 2 }] });
+        await HoopsGame.create([q1Win(1, 1), q1Win(1, 2)]);
+        await freezeLockedWeeks(LATER);
+        expect(await freezeLockedWeeks(LATER)).toBe(0);
+        expect((await entry(ann._id)).captains.map(c => [c.week, c.teamId, !!c.auto])).toEqual([[1, 2, false]]);
+    });
+
+    test('nothing is frozen before the lock, or with Captain off', async () => {
+        await modes({ captain: true });
+        const ann = await manager('Ann', [1]);
+        await HoopsGame.create([q1Win(1, 1, { startDate: new Date('2099-01-05T00:00:00Z') })]);
+        expect(await freezeLockedWeeks(Date.parse('2099-01-01'))).toBe(0);
+        await modes({ captain: false });
+        expect(await freezeLockedWeeks(LATER * 2)).toBe(0);
+        expect((await entry(ann._id)).captains).toBeUndefined();
+    });
+});
+
 describe('head-to-head on a basketball league', () => {
     async function twoManagers() {
         const ann = await manager('Ann', [1]);

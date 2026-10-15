@@ -169,6 +169,20 @@ describe('PATCH /users/me/captain on a basketball league', () => {
         expect(res.body.message).toMatch(/weeks 1–2/);
     });
 
+    test('a frozen default shows as a default, and a pick before the lock replaces it', async () => {
+        await Franchise.updateOne({ accountId: account._id, league: HOOPS },
+            { $set: { 'seasons.0.captains': [{ week: 1, teamId: 1, auto: true }] } });
+        const shown = await request(app).get('/users/me/captain').set('Cookie', cookie(HOOPS));
+        expect(shown.body).toMatchObject({ week: 1, teamId: null, autoTeamId: 1 });
+
+        expect((await patch({ week: 1, teamId: 2 })).status).toBe(200);
+        const hoops = await Franchise.findOne({ accountId: account._id, league: HOOPS }).lean();
+        expect(hoops.seasons[0].captains.map(c => [c.week, c.teamId, !!c.auto])).toEqual([[1, 2, false]]);
+        // The audit names no previous pick: a default was not their choice.
+        const row = await AuditLog.findOne({ action: 'captain.set' }).lean();
+        expect(row.summary).not.toContain('(was');
+    });
+
     test('clearing a pick', async () => {
         await patch({ week: 1, teamId: 2 });
         expect((await patch({ week: 1, teamId: null })).status).toBe(200);

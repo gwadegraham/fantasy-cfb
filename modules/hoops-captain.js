@@ -11,11 +11,95 @@
 const franchiseRepo = require('./franchise-repo');
 const HoopsTeam = require('../models/hoopsTeam');
 const { entryFor } = require('./roster-teams');
-const { captainForWeek, captainLockMs, autoCaptainTeamId } = require('./captain');
+const { captainLockMs, autoCaptainTeamId } = require('./captain');
 const { seasonModeWeeks, captainGames, captainFocus, lockedWeek } = require('./hoops-modes');
 const { ranksFor } = require('./hoops-ranks');
 
+const Franchise = require('../models/franchise');
+const League = require('../models/league');
+const seasons = require('./active-season');
+const { engagementForSeason } = require('./scoring-defaults');
+const ScoringConfig = require('../models/scoringConfig');
+
 const scoringPass = () => require('./hoops-scoring-pass');
+
+// ---- the frozen default ------------------------------------------------------
+//
+// A manager who never picks is doubled on the auto-captain: their best team
+// over the weeks BEFORE this one (modules/captain.js). Football resolves that
+// at scoring time and it never moves, because its weeks have gaps. Basketball
+// weeks run back to back: last week's late Sunday game can finish — and move
+// the averages — after this week has locked, so the default named in the lock
+// reminder could differ from the team actually doubled.
+//
+// So on basketball the default is FROZEN, as a captains entry marked
+// `auto: true`, at the earlier of: the lock reminder that names it
+// (modules/push-notify.js), or the lock itself (freezeLockedWeeks, swept by
+// the 30-minute captain-reminder job, for managers with no push device).
+// Scoring then reads it like any pick (captainForWeek). A manual pick before
+// the lock replaces it — PATCH drops the week's entry, auto or not — and
+// after the lock nothing does.
+
+// The pick for a week split into what the manager chose and the frozen
+// default, so the picker can show a default as a default.
+function pickParts(captains, week) {
+    const c = (captains || []).find(x => Number(x.week) === Number(week) && x.teamId != null);
+    if (!c) return { picked: null, frozenAuto: null };
+    return c.auto ? { picked: null, frozenAuto: Number(c.teamId) } : { picked: Number(c.teamId), frozenAuto: null };
+}
+
+// The default as it stands now, from the weeks before `week`.
+function autoNow(entry, teamIds, week) {
+    const prior = ((entry && entry.weeklyScore) || []).filter(w => Number(w.week) < Number(week));
+    return autoCaptainTeamId(teamIds.map(id => ({ id })), prior);
+}
+
+// Persist the default for one week — ONLY if the week has no entry at all.
+// Atomic: the condition is in the filter, so a manual pick written a moment
+// earlier, or a second freeze, is never overwritten. Returns true if written.
+async function freezeAutoCaptain({ accountId, league, season, week, teamId }) {
+    if (teamId == null) return false;
+    const res = await Franchise.updateOne(
+        { accountId, league, seasons: { $elemMatch: { season: Number(season), 'captains.week': { $ne: Number(week) } } } },
+        { $push: { 'seasons.$.captains': { week: Number(week), teamId: Number(teamId), auto: true } } }
+    );
+    return !!res.modifiedCount;
+}
+
+// The lock sweep: every basketball league playing Captain, every manager,
+// every mode week whose lock has passed with no entry — freeze the default.
+// Runs from the captain-reminder job whether or not push is configured.
+// Returns the number of defaults written.
+async function freezeLockedWeeks(nowMs = Date.now()) {
+    let frozen = 0;
+    // Which leagues play basketball is the season cache's answer; with it
+    // unprimed every league reads as football, so there is nothing to do
+    // (and no query worth making).
+    if (!seasons.primed()) return 0;
+    const leagues = (await League.find({}, { code: 1, status: 1, _id: 0 }).lean())
+        .filter(l => l.status !== 'archived' && seasons.sportForLeague(l.code) === 'basketball');
+    for (const { code: league } of leagues) {
+        const season = seasons.seasonForLeague(league);
+        if (!Number.isFinite(season)) continue;
+        const cfg = await ScoringConfig.findOne({ league }, { engagementBySeason: 1 }).lean();
+        if (!engagementForSeason(cfg && cfg.engagementBySeason, season).captainEnabled) continue;
+        const weeks = await seasonModeWeeks(season);
+        const managers = await franchiseRepo.byLeagueAndSeason(league, season, { fields: ['league', 'seasons'] });
+        for (const m of managers) {
+            const entry = entryFor(m, season);
+            const teamIds = scoringPass().rosterIds(entry);
+            if (!teamIds.length) continue;
+            const games = await captainGames(season, teamIds, weeks);
+            for (const w of [...new Set(games.map(g => g.week))]) {
+                const lock = captainLockMs(games.filter(g => g.week === w), teamIds);
+                if (lock == null || nowMs < lock) continue;
+                if ((entry.captains || []).some(c => Number(c.week) === Number(w))) continue;
+                if (await freezeAutoCaptain({ accountId: m._id, league, season, week: w, teamId: autoNow(entry, teamIds, w) })) frozen++;
+            }
+        }
+    }
+    return frozen;
+}
 
 // Opponent ranks shown on the picker are capped where football's are: a
 // "#40" tag beside every other opponent stops meaning anything.
@@ -88,24 +172,27 @@ async function captainState({ userId, league, season, nowMs = Date.now() }) {
     const lockTeamIds = teamIds.filter(tid => weekGames.some(g =>
         (Number(g.homeId) === tid || Number(g.awayId) === tid) && Date.parse(g.startDate) === target.first));
 
-    const pick = captainForWeek(entry.captains, target.week);
+    const parts = pickParts(entry.captains, target.week);
+    const pick = parts.picked;
     const body = {
         season, sport: 'basketball',
         week: target.week,
         lockAt: new Date(target.first).toISOString(),
         teamId: pick,
         locked: nowMs >= target.first,
-        slate, lockTeamIds
+        slate, lockTeamIds,
+        // The default that will be doubled if nothing is picked: frozen if
+        // it has been (reminder sent, or locked), else as it stands now.
+        autoTeamId: pick == null ? (parts.frozenAuto != null ? parts.frozenAuto : autoNow(entry, teamIds, target.week)) : null
     };
     // The week already being played, when the picker has moved on to the
     // next one: what is riding on it, pick or default.
     if (focus && current) {
-        const curPick = captainForWeek(entry.captains, current.week);
-        const prior = (entry.weeklyScore || []).filter(w => Number(w.week) < current.week);
+        const cur = pickParts(entry.captains, current.week);
         body.current = {
             week: current.week,
-            teamId: curPick,
-            autoTeamId: curPick == null ? autoCaptainTeamId(teamIds.map(id => ({ id })), prior) : null
+            teamId: cur.picked,
+            autoTeamId: cur.picked == null ? (cur.frozenAuto != null ? cur.frozenAuto : autoNow(entry, teamIds, current.week)) : null
         };
     }
     return { status: 200, body };
@@ -131,7 +218,8 @@ async function captainWrite({ userId, league, season, week, teamId, nowMs = Date
     if (teamId != null && !teamIds.includes(teamId)) {
         return { status: 400, body: { message: 'That team is not on your roster.' } };
     }
-    const prevTeamId = captainForWeek(entry.captains, week);
+    // A frozen default is not the manager's pick: the audit says "was no one".
+    const prevTeamId = pickParts(entry.captains, week).picked;
     const names = await teamNames(season, [teamId, prevTeamId]);
     // recordCaptain names teams off `season.teams`; a basketball roster is
     // refs, so it gets the two names it needs.
@@ -162,4 +250,4 @@ async function captainWrite({ userId, league, season, week, teamId, nowMs = Date
     };
 }
 
-module.exports = { captainState, captainWrite, RANK_SHOWN };
+module.exports = { captainState, captainWrite, freezeAutoCaptain, freezeLockedWeeks, pickParts, autoNow, RANK_SHOWN };

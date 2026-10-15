@@ -89,10 +89,20 @@ test('once only per week', async () => {
     expect(again.sent).toBe(0);
 });
 
-test('no pick names the default team', async () => {
-    await manager('Ann', [1, 2]);
+test('no pick names the default team, and freezes it', async () => {
+    const ann = await manager('Ann', [1, 2]);
     await push.notifyCaptainLocks(LOCK - 1 * H);
     expect(payloads()[0].body).toContain('Hoops One goes in by default');
+    // The team the reminder NAMED is the team that will be doubled.
+    const f = await Franchise.findOne({ accountId: ann._id, league: LEAGUE }).lean();
+    expect(f.seasons[0].captains.map(c => [c.week, c.teamId, c.auto])).toEqual([[1, 1, true]]);
+});
+
+test('a manager who picked has nothing frozen over their pick', async () => {
+    const ann = await manager('Ann', [1, 2], { captains: [{ week: 1, teamId: 2 }] });
+    await push.notifyCaptainLocks(LOCK - 1 * H);
+    const f = await Franchise.findOne({ accountId: ann._id, league: LEAGUE }).lean();
+    expect(f.seasons[0].captains.map(c => [c.week, c.teamId, !!c.auto])).toEqual([[1, 2, false]]);
 });
 
 test('a league with Captain off is never reminded', async () => {

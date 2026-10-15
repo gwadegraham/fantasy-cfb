@@ -631,6 +631,7 @@ async function notifyHoopsCaptainLocks(now) {
         const HoopsTeam = require('../models/hoopsTeam');
         const { seasonModeWeeks, captainGames, captainFocus } = require('./hoops-modes');
         const { rosterIds } = require('./hoops-scoring-pass');
+        const hoopsCaptain = require('./hoops-captain');
 
         const leagues = (await League.find({}, { code: 1, status: 1, _id: 0 }).lean())
             .filter(l => l.status !== 'archived' && seasons.sportForLeague(l.code) === 'basketball');
@@ -672,9 +673,12 @@ async function notifyHoopsCaptainLocks(now) {
                 if (alreadySent(user.captainReminders, season, focus.week)) continue;
 
                 due++;
-                const pickedId = captainForWeek(entry.captains, focus.week);
-                const prior = (entry.weeklyScore || []).filter(w => Number(w.week) < focus.week);
-                const autoId = pickedId != null ? null : autoCaptainTeamId(teamIds.map(id => ({ id })), prior);
+                // A default already frozen (an earlier reminder) is named as
+                // the default, not as their pick.
+                const parts = hoopsCaptain.pickParts(entry.captains, focus.week);
+                const pickedId = parts.picked;
+                const autoId = pickedId != null ? null
+                    : (parts.frozenAuto != null ? parts.frozenAuto : hoopsCaptain.autoNow(entry, teamIds, focus.week));
                 const wanted = [pickedId, autoId].filter(id => id != null);
                 const names = {};
                 if (wanted.length) {
@@ -692,6 +696,12 @@ async function notifyHoopsCaptainLocks(now) {
                 sent += res.sent;
                 if (res.sent) {
                     try {
+                        // The team this reminder just NAMED is the team that
+                        // gets doubled if they never pick: freeze it now, so
+                        // a late game in last week's averages cannot swap it.
+                        if (autoId != null && parts.frozenAuto == null) {
+                            await hoopsCaptain.freezeAutoCaptain({ accountId: user._id, league, season, week: focus.week, teamId: autoId });
+                        }
                         await franchiseRepo.updateFranchise(user._id,
                             { $push: { captainReminders: { season, week: focus.week, sentAt: new Date() } } },
                             { league });
