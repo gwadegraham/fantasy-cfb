@@ -20,6 +20,7 @@
 // reference cannot be spied on. The same trap made a seasonForLeague spy
 // useless earlier in this branch.
 const jobLogger = require('./job-logger');
+const jobMailer = require('./job-mailer');
 const { scoreHoopsWeek } = require('./hoops-scoring-pass');
 const { resolveCurrentWeek, seasonStartFrom } = require('./hoops-calendar');
 const HoopsGame = require('./../models/hoopsGame');
@@ -29,6 +30,7 @@ const seasons = require('./active-season');
 const hoopsGames = require('../routes/hoopsGames');
 
 const JOB_NAME = 'hoops-scores';
+const LABEL = 'Hoops Scores';
 
 // RETURN SHAPE, which bit once already: `skippedReason` is a string and
 // means the whole run did nothing; `skipped` is always an array of
@@ -192,7 +194,17 @@ async function run({ now = new Date() } = {}) {
     const id = await jobLogger.startRun(JOB_NAME);
     await jobLogger.finishRun(id, failed ? 'error' : 'success', summary);
     console.log(`[${JOB_NAME}] ${summary}`);
+
+    // A red JobRun alone is the seam that froze football scoring for two
+    // days (#430): nobody reads the admin strip until standings stop moving.
+    if (failed) {
+        await jobMailer.sendJobEmail({
+            label: LABEL, when: now.toLocaleString('en-US', { timeZone: 'America/Chicago' }), ok: false,
+            rows: [['Leagues', leagues.map(l => l.league).join(', ')], ['Failed after', `${secs}s`]],
+            error: summary
+        });
+    }
     return { done, skipped, failed, summary };
 }
 
-module.exports = { run, JOB_NAME, basketballLeagues, weeksToScore, seasonTypesToRefresh, LOOKBACK_MS, POSTSEASON_DISCOVERY_MS };
+module.exports = { run, JOB_NAME, LABEL, basketballLeagues, weeksToScore, seasonTypesToRefresh, LOOKBACK_MS, POSTSEASON_DISCOVERY_MS };

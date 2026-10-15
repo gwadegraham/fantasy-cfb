@@ -7,12 +7,14 @@
 // cost nothing. Same shape and the same JobRun habits as hoops-scores-job.
 
 const jobLogger = require('./job-logger');
+const jobMailer = require('./job-mailer');
 const hoopsStats = require('./hoops-stats');
 const boxScore = require('./hoops-box-score');
 const { basketballLeagues, LOOKBACK_MS } = require('./hoops-scores-job');
 const HoopsGame = require('./../models/hoopsGame');
 
 const JOB_NAME = 'hoops-stats';
+const LABEL = 'Hoops Stats';
 
 async function run({ now = new Date() } = {}) {
     const leagues = await basketballLeagues();
@@ -60,7 +62,16 @@ async function run({ now = new Date() } = {}) {
     const id = await jobLogger.startRun(JOB_NAME);
     await jobLogger.finishRun(id, failed ? 'error' : 'success', summary);
     console.log(`[${JOB_NAME}] ${summary}`);
+
+    // A failure mails, like every other scheduled data job (#566).
+    if (failed) {
+        await jobMailer.sendJobEmail({
+            label: LABEL, when: now.toLocaleString('en-US', { timeZone: 'America/Chicago' }), ok: false,
+            rows: [['Seasons', years.map(String).join(', ')]],
+            error: summary
+        });
+    }
     return { done, failed, summary };
 }
 
-module.exports = { run, JOB_NAME };
+module.exports = { run, JOB_NAME, LABEL };
