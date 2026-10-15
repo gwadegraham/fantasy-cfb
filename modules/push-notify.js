@@ -35,7 +35,7 @@ const { activeSeason } = require('./active-season');
 const seasons = require('./active-season');
 const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
-const { captainFocusWeek, autoCaptainTeamId, captainForWeek, captainWeeklyBonus } = require('./captain');
+const { captainFocusWeek, autoCaptainTeamId, captainForWeek, captainWeeklyBonus, resolveCaptain } = require('./captain');
 const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
 const { alreadyNoticed, latestRecap, buildRecapNoticePayload } = require('./recap-notice');
 const { isRecapSeason } = require('./weekly-recap');
@@ -131,6 +131,9 @@ function clockLabel(period, clock) {
     return clock ? `${q} · ${clock}` : q;
 }
 
+// Signed points for a lock screen: "+6", "−2".
+function signedPts(n) { return n > 0 ? `+${n}` : `−${Math.abs(n)}`; }
+
 function teamNameFor(game, side) {
     return side === 'home' ? game.homeTeam : game.awayTeam;
 }
@@ -206,12 +209,18 @@ function buildPayload(event, game) {
 // actually banked for them. `explain` is modules/scoring.js explainGame output:
 // { matched: [{label, points}], total }. Both leagues score on wins, so a loss
 // legitimately reads as zero — saying so out loud is the point of the alert.
-function buildFinalPayload(game, teamName, explain) {
+//
+// `captainBonus`: what Captain adds when this team is the manager's Captain
+// for the week — base × (multiplier − 1), the scorer's own formula
+// (modules/captain.js captainWeeklyBonus). The headline points include it and
+// the bonus is named separately, the same line basketball's final carries.
+function buildFinalPayload(game, teamName, explain, captainBonus) {
     const homeWon = game.homePoints > game.awayPoints;
     const tied = game.homePoints === game.awayPoints;
     const isHome = teamName === game.homeTeam;
     const won = !tied && (isHome ? homeWon : !homeWon);
-    const total = (explain && explain.total) || 0;
+    const bonus = captainBonus || 0;
+    const total = Math.round((((explain && explain.total) || 0) + bonus) * 10) / 10;
     const labels = (explain && explain.matched || []).map(m => m.label).join(' + ');
 
     // ✅ / ❌ carry the only thing that matters at a final in these leagues —
@@ -220,8 +229,9 @@ function buildFinalPayload(game, teamName, explain) {
     if (tied) title = `🤝 ${game.awayTeam} ${game.awayPoints} – ${game.homeTeam} ${game.homePoints}`;
     else title = won ? `✅ ${teamName} won` : `❌ ${teamName} lost`;
 
+    const captain = bonus ? ` · 👑 Captain bonus ${signedPts(bonus)}` : '';
     const body = total > 0
-        ? `+${total} pts${labels ? ` — ${labels}` : ''} · ${scoreline(game, game.homePoints, game.awayPoints)}`
+        ? `+${total} pts${labels ? ` — ${labels}` : ''}${captain} · ${scoreline(game, game.homePoints, game.awayPoints)}`
         : `No points · ${scoreline(game, game.homePoints, game.awayPoints)}`;
 
     return { type: 'final', title, body, url: `/game/${game.id}`, tag: `final-${game.id}` };
@@ -235,7 +245,9 @@ function buildFinalPayload(game, teamName, explain) {
 //
 // Returns [{ user, teamIds }] where teamIds are the rostered teams involved —
 // a manager can roster BOTH sides of a game, which is why this is a list.
-async function recipientsFor(game, season) {
+// `captain: true` also reads the two fields a final needs to resolve this
+// week's Captain. Off for live events, which run every tick and need neither.
+async function recipientsFor(game, season, { captain = false } = {}) {
     const teamIds = [game.homeId, game.awayId].filter(id => id != null);
     if (!teamIds.length) return [];
 
@@ -252,14 +264,15 @@ async function recipientsFor(game, season) {
     // lookup while the allowlist was the gate; it is now an unindexed match run
     // once per game, per tick, against a cluster capped around 85 KB/s.
     const users = await franchiseRepo.findManagers({ accountFilter, franchiseFilter,
-        fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'seasons.season', 'seasons.teams.id'] });
+        fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'seasons.season', 'seasons.teams.id']
+            .concat(captain ? ['seasons.captains', 'seasons.weeklyScore'] : []) });
 
     return users.map(user => {
         const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
         const rostered = ((entry && entry.teams) || [])
             .map(t => t.id)
             .filter(id => teamIds.includes(id));
-        return { user, teamIds: rostered };
+        return { user, teamIds: rostered, entry };
     }).filter(r => r.teamIds.length);
 }
 
@@ -408,10 +421,10 @@ async function notifyFinals(gameIds) {
         const scoringCache = new Map();
 
         for (const game of games) {
-            const recipients = await recipientsFor(game, season);
+            const recipients = await recipientsFor(game, season, { captain: true });
             if (!recipients.length) continue;
 
-            for (const { user, teamIds } of recipients) {
+            for (const { user, teamIds, entry } of recipients) {
                 if (!wantsType(user, 'final')) continue;
 
                 // Per-league config: the two leagues score the same game
@@ -428,10 +441,24 @@ async function notifyFinals(gameIds) {
                 // HTTP once per game per manager.
                 const bracket = await scoringModule.getBracketForGame(game, season, scoringCache);
 
+                // This week's Captain as modules/scoring.js resolves it: the
+                // pick, else the auto-captain from earlier regular-season
+                // weeks. Regular season only, and only where the league plays
+                // Captain that season.
+                const eng = engagementForSeason(cfg.engagementBySeason, season);
+                let captainId = null;
+                if (eng.captainEnabled && game.seasonType !== 'postseason') {
+                    const prior = ((entry && entry.weeklyScore) || [])
+                        .filter(w => w.season !== 'postseason' && Number(w.week) < Number(game.week));
+                    captainId = resolveCaptain(entry && entry.captains, game.week, (entry && entry.teams) || [], prior);
+                }
+
                 for (const teamId of teamIds) {
                     const teamName = teamId === game.homeId ? game.homeTeam : game.awayTeam;
                     const explain = explainForTeam(cfg, teamId, game, rankings, bracket);
-                    const payload = buildFinalPayload(game, teamName, explain);
+                    const bonus = (captainId != null && Number(captainId) === Number(teamId) && explain)
+                        ? captainWeeklyBonus([{ teamId, score: explain.total }], teamId, eng.captainMultiplier) : 0;
+                    const payload = buildFinalPayload(game, teamName, explain, bonus);
                     const res = await sendToUser(user, payload);
                     sent += res.sent;
                 }
@@ -478,9 +505,6 @@ function buildHoopsPayload(event, game) {
     }
     return null;
 }
-
-// Signed points for a lock screen: "+6", "−2".
-function signedPts(n) { return n > 0 ? `+${n}` : `−${Math.abs(n)}`; }
 
 // Final text for ONE manager's rostered team. Unlike football a basketball
 // result can bank NEGATIVE points (the bad-loss penalty), so a loss is not
