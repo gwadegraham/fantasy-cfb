@@ -15,6 +15,16 @@
 //
 // Pure and DB-free so it's unit-testable; routes/users.js loads the documents
 // and applies the results.
+//
+// ---- basketball ----
+//
+// A basketball roster is stored as references (seasons[].teamRefs, see
+// modules/roster-teams.js), not copies, so a correction swaps the REF and the
+// route never writes a team document onto the roster. The draft pick still
+// holds a full copy — of a HoopsTeam row, as modules/draft-pool.js
+// draftableTeam hands the draft room. Team ids collide across sports for 130
+// programs, so which collection the replacement comes from is the route's
+// sport decision; nothing here may look a team up by id alone.
 
 // CFBD's team.location uses `id`; the user schema's location requires
 // `venue_id`. modules/draft-socket.js does this same remap when it persists a
@@ -36,6 +46,14 @@ const ROSTER_TEAM_FIELDS = [
     'alt_name1', 'alt_name2', 'alt_name3', 'alternateNames',
     'conference', 'division', 'color', 'alt_color', 'logos', 'twitter'
 ];
+
+// A basketball team as a draft pick stores it: the HoopsTeam row minus the
+// mongo bookkeeping, like the copy a live draft writes.
+function hoopsPickTeam(teamDoc) {
+    if (!teamDoc) return null;
+    const { _id, __v, ...rest } = teamDoc;
+    return rest;
+}
 
 // Build a roster-shaped team from a Team document.
 function rosterTeamFrom(teamDoc) {
@@ -67,7 +85,8 @@ function missingLocationFields(team) {
 //   takenBy       { name } if another manager in the league already has it
 //   seasonUnderway  whether the season has scored games
 //   isAdmin       Admins may still correct a season that's underway
-function validateCorrection({ roster, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin }) {
+//   sport         'basketball' skips the venue check: a ref carries no location
+function validateCorrection({ roster, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin, sport }) {
     if (fromTeamId == null || toTeamId == null) {
         return { ok: false, status: 400, message: 'Both the current team and the replacement are required.' };
     }
@@ -99,7 +118,7 @@ function validateCorrection({ roster, fromTeamId, toTeamId, targetTeam, takenBy,
     if (takenBy) {
         return { ok: false, status: 409, message: `${targetTeam.school} is already on ${takenBy.name}'s roster.` };
     }
-    const missing = missingLocationFields(rosterTeamFrom(targetTeam));
+    const missing = sport === 'basketball' ? [] : missingLocationFields(rosterTeamFrom(targetTeam));
     if (missing.length) {
         return {
             ok: false, status: 422,
@@ -118,6 +137,21 @@ function replaceRosterTeam(teams, fromTeamId, nextTeam) {
         return t;
     });
     return { teams: out, changed };
+}
+
+// Swap the team on a basketball roster's references, in place in the order.
+// Only a basketball ref matches: a football ref with the same id is a
+// different program.
+function replaceRosterRef(refs, fromTeamId, toTeamId) {
+    let changed = false;
+    const out = (refs || []).map(r => {
+        if (!changed && r && r.sport === 'basketball' && Number(r.id) === Number(fromTeamId)) {
+            changed = true;
+            return { id: Number(toTeamId), sport: 'basketball' };
+        }
+        return r;
+    });
+    return { teamRefs: out, changed };
 }
 
 // Swap the team on the matching draft pick — the manager's pick of that team in
@@ -141,6 +175,6 @@ function replaceDraftPick(picks, userId, fromTeamId, nextTeam) {
 
 module.exports = {
     normalizeLocation, rosterTeamFrom, missingLocationFields,
-    validateCorrection, replaceRosterTeam, replaceDraftPick,
+    validateCorrection, replaceRosterTeam, replaceRosterRef, replaceDraftPick, hoopsPickTeam,
     ROSTER_TEAM_FIELDS, REQUIRED_LOCATION_FIELDS
 };

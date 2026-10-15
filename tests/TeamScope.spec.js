@@ -68,6 +68,11 @@ describe('FCS teams stay out of the league surfaces', () => {
         await seed();
         const app = express();
         app.use(express.json());
+        // Commissioners only: an Admin session.
+        app.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: { user_metadata: { roles: ['Admin'] } } };
+            next();
+        });
         app.use('/users', require('../routes/users'));
 
         const res = await request(app).get('/users/league/graham-league/roster-teams?season=' + SEASON);

@@ -4,15 +4,17 @@ const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
 const franchiseRepo = require('../modules/franchise-repo');
-const { rosterSize, hydrateRosters } = require('../modules/roster-teams');
+const { rosterSize, rosterTeams, hydrateRosters } = require('../modules/roster-teams');
 const router = express.Router();
 const Game = require('../models/game');
 const Team = require('../models/team');
+const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const scoring = require('../modules/scoring');
 const rosterCorrection = require('../modules/roster-correction');
+const draftPool = require('../modules/draft-pool');
 const audit = require('../modules/audit-log');
 const { pickLogo } = require('../public/logo.js');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
@@ -28,6 +30,7 @@ const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../m
 const { DEFAULT_LEAD_MINUTES: CAPTAIN_DEFAULT_LEAD_MINUTES } = require('../modules/captain-reminder');
 const pushNotify = require('../modules/push-notify');
 const hoopsCaptain = require('../modules/hoops-captain');
+const { seasonModeWeeks } = require('../modules/hoops-modes');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
 // tile keeps that week in focus for this long after its last kickoff before
@@ -518,37 +521,89 @@ router.patch('/me/captain', async (req, res) => {
     }
 });
 
+// Which of a manager's franchises a commissioner write is about.
+//
+// A person can hold a football and a basketball franchise, and an unscoped
+// load changes whichever Mongo finds first. So: `league` in the body if sent;
+// else the league the caller is viewing, when the manager has a franchise
+// there; else the manager's only franchise. An Admin views their own league,
+// not necessarily the manager's, so the viewed league alone 404'd every
+// cross-league write. Two franchises and neither named: refuse.
+//
+// This only picks the DOCUMENT. Whether the caller may manage that league is
+// still canManageLeague's answer (or the Admin role) — viewing a league is not
+// authority over it.
+//
+// Returns { league } or { status, message }.
+async function managerLeague(req, accountId) {
+    const leagues = await franchiseRepo.leaguesFor(accountId);
+    let viewing;
+    try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+    const sent = req.body && req.body.league;
+    // A league named but not theirs is an error, not a hint to fall back on:
+    // falling through would write to a league nobody asked for.
+    if (sent && !leagues.includes(sent)) {
+        return { status: 404, message: 'That manager has no team in that league.' };
+    }
+    const league = sent ? sent
+        : (viewing && leagues.includes(viewing)) ? viewing
+        : leagues.length === 1 ? leagues[0] : null;
+    if (league) return { league };
+    return leagues.length
+        ? { status: 400, message: 'This manager plays in more than one league — say which.' }
+        : { status: 404, message: 'User not found.' };
+}
+
+// The weeks the Captain Override offers, for the league's own season:
+// football's regular season, or basketball's mode weeks (modules/hoops-modes.js)
+// — which run to the end of February and are not football's 1–16.
+router.get('/league/:league/captain-weeks', async (req, res) => {
+    const league = req.params.league;
+    if (!canManageLeague(req, league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
+    try {
+        const sport = sportForLeague(league);
+        const season = Number(req.query.season) || seasonFor(league);
+        const weeks = sport === 'basketball'
+            ? await seasonModeWeeks(season)
+            : Array.from({ length: 16 }, (_, i) => i + 1);
+        res.json({ league, sport, season, weeks });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Admin override: set any user's captain for any week (no kickoff lock).
-// body: { season?, week, teamId } — teamId null clears the pick.
+// body: { league?, season?, week, teamId } — teamId null clears the pick.
 router.patch('/:id/captain', async (req, res) => {
     if (!effectiveRoles(req).includes('Admin')) {
         return res.status(403).json({ message: 'Admin only.' });
     }
     const week = parseInt(req.body.week, 10);
     const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
-    const seasonYear = Number(req.body.season) || activeSeason('football');
-    if (!Number.isInteger(week) || week < 1 || week > 16) {
-        return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
-    }
     try {
         // Franchise-side, same as the self-serve route above — and scoped to ONE
-        // league: a person can hold a football and a basketball franchise, and
-        // an unscoped load changes or clears whichever Mongo finds first.
-        //
-        // Which league: `league` in the body if sent; else the league the
-        // Admin is viewing, when the manager has a franchise there; else the
-        // manager's only franchise. An Admin views their own league, not
-        // necessarily the manager's, so the viewed league alone 404'd every
-        // cross-league override. Two franchises and neither named: refuse.
-        const leagues = await franchiseRepo.leaguesFor(req.params.id);
-        let viewing;
-        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
-        const league = (req.body.league && leagues.includes(req.body.league)) ? req.body.league
-            : (viewing && leagues.includes(viewing)) ? viewing
-            : leagues.length === 1 ? leagues[0] : null;
-        if (!league) {
-            return res.status(leagues.length ? 400 : 404).json({ message: leagues.length
-                ? 'This manager plays in more than one league — say which.' : 'User not found.' });
+        // league (see managerLeague).
+        const scope = await managerLeague(req, req.params.id);
+        if (!scope.league) return res.status(scope.status).json({ message: scope.message });
+        const league = scope.league;
+
+        // A basketball league takes hoopsCaptain's path, as PATCH /me/captain
+        // does: its own season, its mode weeks, its atomic write (which keeps a
+        // default frozen for another week, and lets a pick replace this
+        // week's). The tip-off lock is skipped, as football's kickoff lock is.
+        if (sportForLeague(league) === 'basketball') {
+            const season = Number(req.body.season) || seasonFor(league);
+            const out = await hoopsCaptain.captainWrite({ userId: req.params.id, league, season, week, teamId, via: 'admin' });
+            if (out.audit) await recordCaptain(req, out.audit);
+            if (out.status !== 200) return res.status(out.status).json(out.body);
+            return res.json(Object.assign({ userId: req.params.id }, out.body));
+        }
+
+        const seasonYear = Number(req.body.season) || seasonFor(league);
+        if (!Number.isInteger(week) || week < 1 || week > 16) {
+            return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
         }
         const ctx = await franchiseRepo.loadForWrite(req.params.id, { league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
@@ -1105,16 +1160,29 @@ router.post('/:id/season-membership', async (req, res) => {
 });
 
 // Everything the Correct a Roster tool needs in one read: each manager's teams
-// for the season, plus the FBS teams nobody in the league has. Also reports
+// for the season, plus the teams nobody in the league has. Also reports
 // whether the season is underway, so the UI can show the lock before a
 // commissioner picks a team and gets refused.
+//
+// The league's own sport and season decide both lists. A basketball roster is
+// refs, resolved against `hoopsteams`; its replacements are the league's DRAFT
+// POOL (the top N by preseason rank, modules/draft-pool.js) — what a
+// commissioner could have picked on draft night — never football's `teams`,
+// whose ids collide with basketball's for 130 programs.
+//
+// Commissioners only: it is every manager's roster, for a tool that writes.
 router.get('/league/:league/roster-teams', async (req, res) => {
+    const league = req.params.league;
+    if (!canManageLeague(req, league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
     try {
-        const league = req.params.league;
-        const season = Number(req.query.season || activeSeason('football'));
+        const sport = sportForLeague(league);
+        const season = Number(req.query.season || seasonFor(league));
 
         const users = await franchiseRepo.byLeagueAndSeason(league, season,
             { fields: ['firstName', 'lastName', 'color', 'seasons'] });
+        await hydrateRosters(users, season);
 
         const taken = new Set();
         const managers = users.map(u => {
@@ -1131,7 +1199,9 @@ router.get('/league/:league/roster-teams', async (req, res) => {
             };
         }).sort((a, b) => a.name.localeCompare(b.name));
 
-        const allTeams = await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
+        const allTeams = sport === 'basketball'
+            ? (await draftPool.poolFor(league, { season, poolSize: await leaguePoolSize(league, season) })).teams
+            : await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
         const available = allTeams
             .filter(t => !taken.has(Number(t.id)))
             .map(t => ({ id: t.id, school: t.school, conference: t.conference || '', logo: pickLogo(t.logos) || null }))
@@ -1140,14 +1210,22 @@ router.get('/league/:league/roster-teams', async (req, res) => {
         const isAdmin = effectiveRoles(req).includes('Admin');
         const seasonUnderway = await hasScoredGames(league, season);
         res.json({
-            league, season: String(season), managers, available,
+            league, sport, season: String(season), managers, available,
             isAdmin, seasonUnderway,
             locked: seasonUnderway && !isAdmin
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        // poolFor's refusals (a half-finished ranking import, say) carry
+        // their own status and a message naming the fix.
+        res.status(err.status || 500).json({ message: err.message });
     }
 });
+
+// The draft's pool cap for a league's season, or null (uncapped / no draft).
+async function leaguePoolSize(league, season) {
+    const d = await Draft.findOne({ league, season }, { poolSize: 1 }).lean();
+    return (d && d.poolSize) || null;
+}
 
 // Correct one team on a manager's season roster.
 //
@@ -1166,21 +1244,42 @@ router.patch('/:id/roster-team', async (req, res) => {
         // aliased `user = ctx.franchise`, which put the FRANCHISE's own _id
         // everywhere the ACCOUNT's was meant — the same value with the flag off,
         // a different one with it on. Here that meant no draft pick matched.
-        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        //
+        // Scoped to ONE league (managerLeague): unscoped, a manager in both
+        // sports had whichever franchise Mongo found first loaded, so a
+        // football correction could load their basketball franchise and 404.
+        const scope = await managerLeague(req, req.params.id);
+        if (!scope.league) return res.status(scope.status).json({ message: scope.message });
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, { league: scope.league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
         const { account: identity, franchise: user } = ctx;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
 
-        const season = Number((req.body && req.body.season) || activeSeason('football'));
+        // The league's sport picks the team collection, its season the year.
+        const basketball = sportForLeague(user.league) === 'basketball';
+        const season = Number((req.body && req.body.season) || seasonFor(user.league));
         const fromTeamId = req.body && req.body.fromTeamId;
         const toTeamId = req.body && req.body.toTeamId;
 
         const seasonDoc = (user.seasons || []).find(s => Number(s.season) === season);
         if (!seasonDoc) return res.status(404).json({ message: `No ${season} roster for that manager.` });
 
-        const targetTeam = toTeamId == null ? null : await Team.findOne({ id: Number(toTeamId) }).lean();
+        // Basketball: only a team in the league's draft pool — the same test
+        // the draft room applies to a pick (draftableTeam), so a correction
+        // cannot roster a team nobody could have drafted.
+        let targetTeam = null;
+        if (toTeamId != null && basketball) {
+            targetTeam = await draftPool.draftableTeam(user.league,
+                { teamId: Number(toTeamId), season, poolSize: await leaguePoolSize(user.league, season) });
+            if (!targetTeam) {
+                const known = await HoopsTeam.findOne({ season, id: Number(toTeamId) }, { school: 1 }).lean();
+                if (known) return res.status(422).json({ message: `${known.school} isn't in this league's draft pool.` });
+            }
+        } else if (toTeamId != null) {
+            targetTeam = await Team.findOne({ id: Number(toTeamId) }).lean();
+        }
 
         // Is the replacement already spoken for anywhere in this league?
         let takenBy = null;
@@ -1194,9 +1293,12 @@ router.patch('/:id/roster-team', async (req, res) => {
             // and `users` and `franchises` need not agree on that. So the two
             // flag positions could name a DIFFERENT manager in `takenBy`. The
             // count is unaffected; the name is not.
+            const held = basketball
+                ? { teamRefs: { $elemMatch: { id: Number(toTeamId), sport: 'basketball' } } }
+                : { 'teams.id': Number(toTeamId) };
             const holders = await franchiseRepo.findManagers({
                 accountFilter: { _id: { $ne: identity._id } },
-                franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
+                franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, ...held } } },
                 fields: ['firstName', 'lastName']
             });
             const holder = holders[0];
@@ -1205,15 +1307,27 @@ router.patch('/:id/roster-team', async (req, res) => {
 
         const isAdmin = effectiveRoles(req).includes('Admin');
         const seasonUnderway = await hasScoredGames(user.league, season);
+        // Basketball validates against the refs resolved to names — read, not
+        // hydrated onto the document, which would save copies over the refs.
+        const roster = basketball ? await rosterTeams(user, season) : seasonDoc.teams;
         const check = rosterCorrection.validateCorrection({
-            roster: seasonDoc.teams, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin
+            roster, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin,
+            sport: basketball ? 'basketball' : 'football'
         });
         if (!check.ok) return res.status(check.status).json({ message: check.message });
 
-        const nextTeam = rosterCorrection.rosterTeamFrom(targetTeam);
-        const applied = rosterCorrection.replaceRosterTeam(seasonDoc.teams, fromTeamId, nextTeam);
-        if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
-        seasonDoc.teams = applied.teams;
+        // What the draft pick holds: a roster-shaped copy for football, the
+        // HoopsTeam row for basketball (as the draft room stored it).
+        const nextTeam = basketball ? rosterCorrection.hoopsPickTeam(targetTeam) : rosterCorrection.rosterTeamFrom(targetTeam);
+        if (basketball) {
+            const applied = rosterCorrection.replaceRosterRef(seasonDoc.teamRefs, fromTeamId, toTeamId);
+            if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
+            seasonDoc.teamRefs = applied.teamRefs;
+        } else {
+            const applied = rosterCorrection.replaceRosterTeam(seasonDoc.teams, fromTeamId, nextTeam);
+            if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
+            seasonDoc.teams = applied.teams;
+        }
         user.markModified('seasons');
         user.lastUpdated = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
         try {
@@ -1255,8 +1369,13 @@ router.patch('/:id/roster-team', async (req, res) => {
             from: { id: check.current.id, school: check.current.school },
             to: { id: nextTeam.id, school: nextTeam.school, logo: pickLogo(nextTeam.logos) || null },
             draftUpdated,
+            sport: basketball ? 'basketball' : 'football',
             // Every scored week was computed against the old roster, so the
-            // numbers are stale until a full-season re-score runs.
+            // numbers are stale until they are re-scored. Football: a manual
+            // full-season re-score. Basketball has no manual one: the nightly
+            // hoops-scores pass re-reads the roster and re-scores every week
+            // with a final in its 3-day lookback (modules/hoops-scores-job.js
+            // weeksToScore) — older weeks keep the old roster's points.
             rescoreNeeded: seasonUnderway
         });
     } catch (err) {

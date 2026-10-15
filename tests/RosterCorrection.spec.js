@@ -408,14 +408,16 @@ describe('GET /users/league/:league/roster-teams', () => {
             seasons: [{ season: SEASON, teams: [fullTeam(1, 'Iowa')],
                 weeklyScore: [{ week: 1, score: 5, scoreByTeam: [{ team: 'Iowa', teamId: 1, gameId: 1, score: 5 }] }] }]
         });
-        // No token and no session -> not an Admin, so the lock applies.
-        const res = await request(app).get(`/users/league/${LEAGUE}/roster-teams?season=${SEASON}`);
+        // The token clears the commissioner gate but is not an Admin, so the lock applies.
+        const res = await request(app).get(`/users/league/${LEAGUE}/roster-teams?season=${SEASON}`)
+            .set('X-Internal-Token', 'test-internal-token');
         expect(res.body).toMatchObject({ seasonUnderway: true, locked: true });
     });
 
     test('a league with nobody in the season still returns the full pool', async () => {
         await Team.create([fullTeam(1, 'Iowa')]);
-        const res = await request(app).get(`/users/league/${LEAGUE}/roster-teams?season=${SEASON}`);
+        const res = await request(app).get(`/users/league/${LEAGUE}/roster-teams?season=${SEASON}`)
+            .set('X-Internal-Token', 'test-internal-token');
         expect(res.body.managers).toEqual([]);
         expect(res.body.available).toHaveLength(1);
     });
