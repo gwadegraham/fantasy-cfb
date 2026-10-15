@@ -14,7 +14,7 @@ const { resolveConfig, engagementForSeason, overridesFromDoc } = require('../mod
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
 const { buildProjections, simulateTitleOdds, applyEngagement } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
-const { buildWeeklyRecaps, indexUpsets, completedWeeks } = require('../modules/weekly-recap');
+const { buildWeeklyRecaps, indexUpsets, indexHoopsResults, completedWeeks } = require('../modules/weekly-recap');
 // Shared with the classic standings table and My Team, so a tied placement reads
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
@@ -27,6 +27,7 @@ const { sportForLeague } = require('../modules/active-season');
 const { hydrateRosters } = require('../modules/roster-teams');
 const HoopsTeam = require('../models/hoopsTeam');
 const hoopsH2H = require('../modules/hoops-h2h');
+const HoopsGame = require('../models/hoopsGame');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
 // most recent regular-season poll on file.
@@ -347,6 +348,35 @@ router.get('/projections/:league/:season', async (req, res) => {
     }
 });
 
+// The recap's game inputs for a BASKETBALL league (#558). Its own read, never
+// the football one below: 130 basketball team ids are also football ids
+// (#489), so looking a hoops roster up in `games` hands it someone else's
+// schedule. hoopsgames has no `completed` (status is the discriminator), no
+// betting lines and no weather, and the upset story is a seed upset or a Q1
+// win rather than a beaten spread — see indexHoopsResults.
+async function hoopsRecapInputs(users, seasonNum) {
+    // Rosters are stored as teamRefs; resolve them so the recap can name and
+    // badge a team (its scoreByTeam rows carry an id and no school).
+    await hydrateRosters(users, seasonNum);
+    const ids = new Set();
+    users.forEach(u => {
+        const s = (u.seasons || []).find(x => Number(x.season) === seasonNum);
+        ((s && s.teams) || []).forEach(t => ids.add(Number(t.id)));
+    });
+    const idList = [...ids];
+    if (!idList.length) return { upsetByGameId: {}, weatherByGameId: {}, completeWeeks: null };
+    const games = await HoopsGame.find(
+        { season: seasonNum, $or: [{ homeTeamId: { $in: idList } }, { awayTeamId: { $in: idList } }] },
+        { id: 1, week: 1, startDate: 1, startTimeTbd: 1, status: 1, homeTeamId: 1, awayTeamId: 1,
+          homeTeam: 1, awayTeam: 1, homePoints: 1, awayPoints: 1, homeSeed: 1, awaySeed: 1, _id: 0 }
+    ).lean();
+    return {
+        upsetByGameId: indexHoopsResults(games),
+        weatherByGameId: {},
+        completeWeeks: completedWeeks(games, new Date(), 'basketball')
+    };
+}
+
 // Per-manager Weekly Recap: one "here's your week" card per played week for a
 // single manager — score, rank + movement, vs league average, MVP team, and a
 // one-line narrative. Same math as League Highlights, scoped to one user, plus
@@ -380,6 +410,13 @@ router.get('/recap/:league/:season/:userId', async (req, res) => {
             { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
         const user = users.find(u => String(u._id) === String(userId));
         if (!user) return res.json({ league, season: seasonNum, userId, recaps: [] });
+
+        if (sportForLeague(league) === 'basketball') {
+            const inputs = await hoopsRecapInputs(users, seasonNum);
+            const recap = buildWeeklyRecaps(Object.assign({ user, leagueUsers: users, season, sport: 'basketball' }, inputs));
+            const name = `${user.firstName || ''} ${user.lastName ? user.lastName[0] + '.' : ''}`.trim();
+            return res.json({ league, ...recap, name });
+        }
 
         // Upset index: drafted teams' completed regular-season games + spreads,
         // so a rostered underdog win can flavor that week's narrative.

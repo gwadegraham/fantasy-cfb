@@ -729,9 +729,15 @@ async function notifyHoopsCaptainLocks(now) {
 // once per manager, a dozen times a week. modules/scoring.js already talks to
 // our own API this way.
 //
-// Unlike the Captain reminder there is no per-league gate: both leagues get
+// Unlike the Captain reminder there is no per-league gate: every league gets
 // recaps, and buildWeeklyRecaps answers with an empty list for a season that
 // hasn't been played rather than needing to be asked whether it has.
+//
+// Each manager is asked about THEIR league's season, in their sport's window
+// (#558): a basketball season is numbered by its ending year (2027 is
+// 2026-27) and runs Nov–Apr, so the football season and the Aug–Jan gate
+// would ask a hoops league about a year it has no entry for, and go quiet
+// through March.
 //
 // Returns { sent, due, skipped }. Never throws.
 async function notifyRecapReady(nowMs) {
@@ -740,10 +746,13 @@ async function notifyRecapReady(nowMs) {
 
     const now = nowMs == null ? Date.now() : nowMs;
     // Matches the in-app popup's own gate, so the offseason is quiet on both.
-    if (!isRecapSeason(new Date(now))) return { sent: 0, due: 0, skipped: 'offseason' };
+    const openSports = ['football', 'basketball'].filter(sp => isRecapSeason(new Date(now), sp));
+    if (!openSports.length) return { sent: 0, due: 0, skipped: 'offseason' };
 
-    const season = activeSeason('football');
-    if (season == null) return { sent: 0, due: 0, skipped: 'no active season' };
+    // The pre-filter below: any franchise holding an open sport's season. The
+    // per-manager season is resolved from their league inside the loop.
+    const candidates = openSports.map(sp => activeSeason(sp)).filter(s => s != null);
+    if (!candidates.length) return { sent: 0, due: 0, skipped: 'no active season' };
 
     let sent = 0, due = 0;
 
@@ -751,7 +760,7 @@ async function notifyRecapReady(nowMs) {
         // Split across the two documents since #313: the subscription belongs to
         // the person, the season entry to their league franchise.
         const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
-        const franchiseFilter = { seasons: { $elemMatch: { season } } };
+        const franchiseFilter = { seasons: { $elemMatch: { season: { $in: candidates } } } };
         if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
 
         // No roster fields here — unlike the Captain reminder this needs nothing
@@ -762,6 +771,9 @@ async function notifyRecapReady(nowMs) {
 
         for (const user of users) {
             if (!wantsType(user, 'recapReady')) continue;
+            if (!isRecapSeason(new Date(now), seasons.sportForLeague(user.league))) continue;
+            const season = seasons.seasonForLeague(user.league);
+            if (season == null) continue;
 
             let payload;
             try {
@@ -786,7 +798,7 @@ async function notifyRecapReady(nowMs) {
 
             due++;
 
-            const res = await sendToUser(user, buildRecapNoticePayload({ userId: user._id, recap }));
+            const res = await sendToUser(user, buildRecapNoticePayload({ userId: user._id, recap, league: user.league }));
             sent += res.sent;
 
             // Logged only on delivery, for the same reason as the Captain
