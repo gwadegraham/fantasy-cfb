@@ -356,4 +356,6 @@ function main() {
     }
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { loadSeason, load, brier, logLoss, reliability, calibrationSlope, corr, DIR };

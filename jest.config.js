@@ -157,6 +157,13 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The March estimate: same reasoning as the projection it feeds.
+        "./modules/hoops-march.js": {
+            statements: 100,
+            branches: 85,
+            functions: 100,
+            lines: 100
+        },
         // TV listings for the game page (#506) and their weekly job. ONE
         // billable call a week; the branches that matter are the ones that
         // decline to call.
