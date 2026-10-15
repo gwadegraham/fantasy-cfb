@@ -494,7 +494,10 @@ function renderRosterCorrection() {
             + 'Rosters lock once the season is underway. Ask an admin &mdash; the change needs a full re-score.</div>'
         : (d.seasonUnderway
             ? '<div class="rc-warn"><span data-icon="lock" data-icon-size="16"></span>'
-                + 'The season is underway. A correction now needs a full-season re-score to take effect.</div>'
+                + (d.sport === 'basketball'
+                    ? 'The season is underway. The nightly scoring pass re-scores only weeks with a result in the last 3 days &mdash; earlier weeks keep their old points.'
+                    : 'The season is underway. A correction now needs a full-season re-score to take effect.')
+                + '</div>'
             : '');
 
     var mgr = d.managers.filter(function (m) { return m.userId === rosterFix.managerId; })[0] || d.managers[0];
@@ -523,7 +526,8 @@ function renderRosterCorrection() {
 }
 
 function rosterFixRow(t, d) {
-    var logo = t.logo ? '<img src="' + escapeHtml(t.logo) + '" alt="">' : '<i class="fa-solid fa-helmet-un"></i>';
+    var logo = t.logo ? '<img src="' + escapeHtml(t.logo) + '" alt="">'
+        : '<i class="fa-solid ' + (d.sport === 'basketball' ? 'fa-basketball' : 'fa-helmet-un') + '"></i>';
     if (rosterFix.editing !== t.id) {
         return '<div class="rc-row">'
             + '<span class="rc-team">' + logo + escapeHtml(t.school) + '</span>'
@@ -578,7 +582,9 @@ async function applyRosterCorrection(btn, userId, fromTeamId, toTeamId) {
         var res = await fetch('/users/' + encodeURIComponent(userId) + '/roster-team', {
             method: 'PATCH',
             headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ season: rosterFix.data.season, fromTeamId: fromTeamId, toTeamId: toTeamId })
+            // The league this page manages: a manager in both sports has two
+            // franchises, and the server must know which one.
+            body: JSON.stringify({ league: getDraftLeagueCode(), season: rosterFix.data.season, fromTeamId: fromTeamId, toTeamId: toTeamId })
         });
         var data = await res.json();
         if (!res.ok) {
@@ -591,7 +597,11 @@ async function applyRosterCorrection(btn, userId, fromTeamId, toTeamId) {
             + (data.draftUpdated ? ' (draft record updated)' : '');
         successToast.showToast();
         if (data.rescoreNeeded) {
-            failToast.options.text = 'Scores are now stale — run Score All Weeks to apply this.';
+            // Basketball has no Score All Weeks: the nightly pass re-scores
+            // whole weeks with a result in its 3-day lookback, and only those.
+            failToast.options.text = data.sport === 'basketball'
+                ? 'Scores are now stale — tonight\'s scoring pass re-scores any week with a result in the last 3 days; earlier weeks keep their old points.'
+                : 'Scores are now stale — run Score All Weeks to apply this.';
             failToast.showToast();
         }
         // Re-read: the available pool and the draft record both moved.

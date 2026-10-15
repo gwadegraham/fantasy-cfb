@@ -4,10 +4,11 @@ const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
 const franchiseRepo = require('../modules/franchise-repo');
-const { rosterSize, hydrateRosters } = require('../modules/roster-teams');
+const { rosterSize, rosterTeams, hydrateRosters } = require('../modules/roster-teams');
 const router = express.Router();
 const Game = require('../models/game');
 const Team = require('../models/team');
+const HoopsTeam = require('../models/hoopsTeam');
 const { FBS_ONLY } = require('../modules/team-scope');
 const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
@@ -1158,16 +1159,23 @@ router.post('/:id/season-membership', async (req, res) => {
 });
 
 // Everything the Correct a Roster tool needs in one read: each manager's teams
-// for the season, plus the FBS teams nobody in the league has. Also reports
+// for the season, plus the teams nobody in the league has. Also reports
 // whether the season is underway, so the UI can show the lock before a
 // commissioner picks a team and gets refused.
+//
+// The league's own sport and season decide both lists. A basketball roster is
+// refs, resolved against `hoopsteams`; its replacements are that season's D-I
+// teams — never football's `teams`, whose ids collide with basketball's for
+// 130 programs.
 router.get('/league/:league/roster-teams', async (req, res) => {
     try {
         const league = req.params.league;
-        const season = Number(req.query.season || activeSeason('football'));
+        const sport = sportForLeague(league);
+        const season = Number(req.query.season || seasonFor(league));
 
         const users = await franchiseRepo.byLeagueAndSeason(league, season,
             { fields: ['firstName', 'lastName', 'color', 'seasons'] });
+        await hydrateRosters(users, season);
 
         const taken = new Set();
         const managers = users.map(u => {
@@ -1184,7 +1192,9 @@ router.get('/league/:league/roster-teams', async (req, res) => {
             };
         }).sort((a, b) => a.name.localeCompare(b.name));
 
-        const allTeams = await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
+        const allTeams = sport === 'basketball'
+            ? await HoopsTeam.find({ season }, { id: 1, school: 1, conference: 1, logos: 1 }).lean()
+            : await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
         const available = allTeams
             .filter(t => !taken.has(Number(t.id)))
             .map(t => ({ id: t.id, school: t.school, conference: t.conference || '', logo: pickLogo(t.logos) || null }))
@@ -1193,7 +1203,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
         const isAdmin = effectiveRoles(req).includes('Admin');
         const seasonUnderway = await hasScoredGames(league, season);
         res.json({
-            league, season: String(season), managers, available,
+            league, sport, season: String(season), managers, available,
             isAdmin, seasonUnderway,
             locked: seasonUnderway && !isAdmin
         });
@@ -1219,21 +1229,31 @@ router.patch('/:id/roster-team', async (req, res) => {
         // aliased `user = ctx.franchise`, which put the FRANCHISE's own _id
         // everywhere the ACCOUNT's was meant — the same value with the flag off,
         // a different one with it on. Here that meant no draft pick matched.
-        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        //
+        // Scoped to ONE league (managerLeague): unscoped, a manager in both
+        // sports had whichever franchise Mongo found first loaded, so a
+        // football correction could load their basketball franchise and 404.
+        const scope = await managerLeague(req, req.params.id);
+        if (!scope.league) return res.status(scope.status).json({ message: scope.message });
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, { league: scope.league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'Cannot find user' });
         const { account: identity, franchise: user } = ctx;
         if (!canManageLeague(req, user.league)) {
             return res.status(403).json({ message: 'Forbidden: not your league' });
         }
 
-        const season = Number((req.body && req.body.season) || activeSeason('football'));
+        // The league's sport picks the team collection, its season the year.
+        const basketball = sportForLeague(user.league) === 'basketball';
+        const season = Number((req.body && req.body.season) || seasonFor(user.league));
         const fromTeamId = req.body && req.body.fromTeamId;
         const toTeamId = req.body && req.body.toTeamId;
 
         const seasonDoc = (user.seasons || []).find(s => Number(s.season) === season);
         if (!seasonDoc) return res.status(404).json({ message: `No ${season} roster for that manager.` });
 
-        const targetTeam = toTeamId == null ? null : await Team.findOne({ id: Number(toTeamId) }).lean();
+        const targetTeam = toTeamId == null ? null : basketball
+            ? await HoopsTeam.findOne({ season, id: Number(toTeamId) }).lean()
+            : await Team.findOne({ id: Number(toTeamId) }).lean();
 
         // Is the replacement already spoken for anywhere in this league?
         let takenBy = null;
@@ -1247,9 +1267,12 @@ router.patch('/:id/roster-team', async (req, res) => {
             // and `users` and `franchises` need not agree on that. So the two
             // flag positions could name a DIFFERENT manager in `takenBy`. The
             // count is unaffected; the name is not.
+            const held = basketball
+                ? { teamRefs: { $elemMatch: { id: Number(toTeamId), sport: 'basketball' } } }
+                : { 'teams.id': Number(toTeamId) };
             const holders = await franchiseRepo.findManagers({
                 accountFilter: { _id: { $ne: identity._id } },
-                franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, 'teams.id': Number(toTeamId) } } },
+                franchiseFilter: { league: user.league, seasons: { $elemMatch: { season, ...held } } },
                 fields: ['firstName', 'lastName']
             });
             const holder = holders[0];
@@ -1258,15 +1281,27 @@ router.patch('/:id/roster-team', async (req, res) => {
 
         const isAdmin = effectiveRoles(req).includes('Admin');
         const seasonUnderway = await hasScoredGames(user.league, season);
+        // Basketball validates against the refs resolved to names — read, not
+        // hydrated onto the document, which would save copies over the refs.
+        const roster = basketball ? await rosterTeams(user, season) : seasonDoc.teams;
         const check = rosterCorrection.validateCorrection({
-            roster: seasonDoc.teams, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin
+            roster, fromTeamId, toTeamId, targetTeam, takenBy, seasonUnderway, isAdmin,
+            sport: basketball ? 'basketball' : 'football'
         });
         if (!check.ok) return res.status(check.status).json({ message: check.message });
 
-        const nextTeam = rosterCorrection.rosterTeamFrom(targetTeam);
-        const applied = rosterCorrection.replaceRosterTeam(seasonDoc.teams, fromTeamId, nextTeam);
-        if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
-        seasonDoc.teams = applied.teams;
+        // What the draft pick holds: a roster-shaped copy for football, the
+        // HoopsTeam row for basketball (as the draft room stored it).
+        const nextTeam = basketball ? rosterCorrection.hoopsPickTeam(targetTeam) : rosterCorrection.rosterTeamFrom(targetTeam);
+        if (basketball) {
+            const applied = rosterCorrection.replaceRosterRef(seasonDoc.teamRefs, fromTeamId, toTeamId);
+            if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
+            seasonDoc.teamRefs = applied.teamRefs;
+        } else {
+            const applied = rosterCorrection.replaceRosterTeam(seasonDoc.teams, fromTeamId, nextTeam);
+            if (!applied.changed) return res.status(404).json({ message: 'That team is not on this manager\'s roster.' });
+            seasonDoc.teams = applied.teams;
+        }
         user.markModified('seasons');
         user.lastUpdated = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
         try {
@@ -1308,8 +1343,13 @@ router.patch('/:id/roster-team', async (req, res) => {
             from: { id: check.current.id, school: check.current.school },
             to: { id: nextTeam.id, school: nextTeam.school, logo: pickLogo(nextTeam.logos) || null },
             draftUpdated,
+            sport: basketball ? 'basketball' : 'football',
             // Every scored week was computed against the old roster, so the
-            // numbers are stale until a full-season re-score runs.
+            // numbers are stale until they are re-scored. Football: a manual
+            // full-season re-score. Basketball has no manual one: the nightly
+            // hoops-scores pass re-reads the roster and re-scores every week
+            // with a final in its 3-day lookback (modules/hoops-scores-job.js
+            // weeksToScore) — older weeks keep the old roster's points.
             rescoreNeeded: seasonUnderway
         });
     } catch (err) {

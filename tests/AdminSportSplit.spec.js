@@ -131,3 +131,23 @@ test('football Activity: its own league, with the Captain tab', async () => {
     expect(urls().find(u => u.indexOf('/audit-log') === 0)).toContain('league=graham-league');
     expect(document.querySelector('[data-audit-kind="captain"]')).not.toBeNull();
 });
+
+// Correct a Roster (#561): the write names the league this page manages, and
+// basketball's stale-scores note describes ITS rescore — the nightly pass,
+// not football's Score All Weeks, which the basketball page does not have.
+test('basketball Correct a Roster: the league in the write, and the nightly-rescore note', async () => {
+    loadAdmin({ sport: 'basketball', routes: {
+        '/users/a1/roster-team': { from: { school: 'Hoops One' }, to: { school: 'Hoops Four' }, sport: 'basketball', rescoreNeeded: true },
+        '/users/league/hoops-league/roster-teams': { managers: [], available: [], season: '2027', sport: 'basketball' }
+    } });
+    window.ccManageLeagueCode = () => 'hoops-league';
+    global.successToast = { options: {}, showToast: jest.fn() };
+    global.failToast = { options: {}, showToast: jest.fn() };
+    rosterFix.data = { season: '2027', sport: 'basketball', managers: [], available: [] };
+    await applyRosterCorrection(document.createElement('button'), 'a1', 1, 4);
+    const call = global.fetch.mock.calls.find(c => String(c[0]) === '/users/a1/roster-team');
+    expect(JSON.parse(call[1].body)).toEqual({ league: 'hoops-league', season: '2027', fromTeamId: 1, toTeamId: 4 });
+    expect(global.failToast.options.text).toMatch(/any week with a result in the last 3 days/);
+    expect(global.failToast.options.text).not.toMatch(/Score All Weeks/);
+    delete global.successToast; delete global.failToast;
+});

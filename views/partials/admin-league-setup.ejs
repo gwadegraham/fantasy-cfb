@@ -1,14 +1,15 @@
 <%# League setup — the commissioner tools for ONE league, shared by football's
     /admin and basketball's /hoops/admin (#518: separate pages per sport).
     `sport` is the page's sport. Basketball leaves out what it does not have:
-    the Fixed/Stacking cards (a basketball league always scores on quadrants)
-    and Correct a Roster (its replacement list is football teams only). Game
-    Modes and Captain Override are shared: Captain and H2H run on basketball
-    too (modules/hoops-modes.js), keyed by the league's own season, and the
-    override route branches to modules/hoops-captain.js. %>
+    the Fixed/Stacking cards (a basketball league always scores on quadrants).
+    Game Modes and Captain Override are shared: Captain and H2H run on
+    basketball too (modules/hoops-modes.js), keyed by the league's own season,
+    and the override route branches to modules/hoops-captain.js. So is Correct
+    a Roster: its routes read the league's sport and season, and a basketball
+    replacement comes from `hoopsteams`. %>
 <% var football = sport !== 'basketball'; %>
     <section class="admin-group">
-        <div class="group-head"><h2>League setup</h2><span class="group-count"><%= football ? 10 : 9 %></span></div>
+        <div class="group-head"><h2>League setup</h2><span class="group-count">10</span></div>
         <div class="admin-functions">
             <div class="function-container">
                 <div class="button-container">
@@ -198,7 +199,6 @@
                     <div manager-logins-list class="season-roster-list"></div>
                 </div>
             </div>
-            <% if (football) { %>
             <div class="function-container">
                 <div class="button-container">
                     <button onclick="displayRosterCorrectionContainer()">
@@ -211,7 +211,6 @@
                     <div roster-correction-body class="roster-correction"></div>
                 </div>
             </div>
-            <% } %>
             <div class="function-container">
                 <div class="button-container">
                     <button onclick="displayCaptainOverrideContainer()">
@@ -241,7 +240,7 @@
                     <% if (football) { %>
                     <p class="function-description">Recent changes. <b>Commissioner</b> &mdash; roster corrections, season roster edits, scoring and game-mode changes, draft settings. <b>Captain picks</b> &mdash; every weekly pick a manager makes, plus the ones the kickoff lock refused. Scheduled jobs are logged separately in the status strip above.</p>
                     <% } else { %>
-                    <p class="function-description">Recent changes. <b>Commissioner</b> &mdash; season roster edits, scoring and game-mode changes, draft settings. <b>Captain picks</b> &mdash; every weekly pick a manager makes, plus the ones the tip-off lock refused.</p>
+                    <p class="function-description">Recent changes. <b>Commissioner</b> &mdash; roster corrections, season roster edits, scoring and game-mode changes, draft settings. <b>Captain picks</b> &mdash; every weekly pick a manager makes, plus the ones the tip-off lock refused.</p>
                     <% } %>
                     <div audit-log-body class="audit-log"></div>
                 </div>
