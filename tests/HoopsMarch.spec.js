@@ -191,8 +191,16 @@ describe('buildMarchModel', () => {
         // reading one for the other, changes the answer.
         const q34 = cfg({ values: { q3Win: 4, q4Win: 2 } });
         expect(model.expectedPostseason({ id: 7, rank: M.RANKS }, ctx, q34, 'preseason').confTourney).toBeCloseTo(0.5 * 4 + 0.25 * 2, 8);
-        // Tied ranks get identical answers.
-        expect(model.expectedPostseason({ id: 7, rank: 12 }, ctx, c).ncaa).toBe(model.expectedPostseason({ id: 8, rank: 12 }, ctx, c).ncaa);
+        // A tie: two teams level on rating split the title odds evenly, and
+        // the same rank however it arrives (number, string, unrounded) is
+        // the same answer.
+        const tied = model.contextFor([{ id: 1, conference: 'T', rating: 7 }, { id: 2, conference: 'T', rating: 7 }, { id: 3, conference: 'T', rating: 1 }]);
+        expect(tied.titleProb[1]).toBeCloseTo(tied.titleProb[2], 15);
+        expect(tied.titleProb[1]).toBeGreaterThan(tied.titleProb[3]);
+        const a = model.expectedPostseason({ id: 1, rank: 12 }, tied, c), b = model.expectedPostseason({ id: 2, rank: '12' }, tied, c);
+        const d = model.expectedPostseason({ id: 2, rank: 12.3 }, tied, c);
+        expect(b.postseason).toBeCloseTo(a.postseason, 12);
+        expect(d.postseason).toBeCloseTo(a.postseason, 12);
         expect(out.postseason).toBeCloseTo(out.ncaa + out.upset + out.confChamp + out.confTourney, 10);
         expect(out.makeProb).toBe(p.r64);
 
@@ -245,7 +253,53 @@ describe('decided terms drop out, so nothing banked is counted twice', () => {
         expect(out.ncaa).toBe(0);
         expect(out.upset).toBe(0);
         expect(out.makeProb).toBe(0);
-        expect(out.confChamp).toBe(open.confChamp);
+        // Selection Sunday has passed, so the conference tournament is over.
+        expect(open.confChamp).toBeGreaterThan(0);
+        expect(out.confChamp).toBe(0);
+    });
+
+    test('any NCAA state ends the conference tournament, even without confTourney', () => {
+        const pre = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'preseason');
+        expect(pre.confTourney).toBeGreaterThan(0);
+        expect(pre.confChamp).toBeGreaterThan(0);
+        ['out', 'done', { next: 'r64' }].forEach(ncaa => {
+            const x = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'preseason', { ncaa });
+            expect(x.confTourney).toBe(0);
+            expect(x.confChamp).toBe(0);
+        });
+    });
+
+    test('the champion (or any finished team) expects nothing more', () => {
+        const done = model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'march', { ncaa: 'done' });
+        expect(done.ncaa).toBe(0);
+        expect(done.upset).toBe(0);
+        expect(done.postseason).toBe(0);
+        expect(done.makeProb).toBe(1);
+    });
+
+    test('an unknown NCAA or conference state throws instead of re-counting the whole ladder', () => {
+        const bad = [{ next: 'champ' }, 'in', { next: 'R64' }, { round: 's16' }, 42];
+        bad.forEach(ncaa => expect(() => model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'march', { ncaa })).toThrow(TypeError));
+        [{ wins: 1 }, 'done', { wins: -1, alive: true }, { wins: 1.5, alive: true }]
+            .forEach(confTourney => expect(() => model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'preseason', { confTourney })).toThrow(TypeError));
+        // null / undefined are "not decided", not errors.
+        expect(model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'march', { ncaa: null }).ncaa).toBeGreaterThan(0);
+        expect(model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'march', null).ncaa).toBeGreaterThan(0);
+    });
+
+    test('conference tournament under way: played rounds drop out, only the wins left are expected', () => {
+        // CAL at rank 1: 2 Q1 + 0.5 Q2 expected wins, 2.5 in all.
+        const v = c.values;
+        const full = 2 * v.q1Win + 0.5 * v.q2Win;
+        const at = (confTourney) => model.expectedPostseason({ id: 1, rank: 1 }, ctx, c, 'preseason', { confTourney });
+        expect(at({ wins: 0, alive: true }).confTourney).toBeCloseTo(full, 10);
+        expect(at({ wins: 1, alive: true }).confTourney).toBeCloseTo(full * 1.5 / 2.5, 10);
+        expect(at({ wins: 2, alive: true }).confTourney).toBeCloseTo(full * 0.5 / 2.5, 10);
+        expect(at({ wins: 3, alive: true }).confTourney).toBe(0);
+        // Still alive keeps the title odds; knocked out drops everything.
+        expect(at({ wins: 2, alive: true }).confChamp).toBeCloseTo(at(undefined).confChamp, 12);
+        expect(at({ wins: 1, alive: false }).confTourney).toBe(0);
+        expect(at({ wins: 1, alive: false }).confChamp).toBe(0);
     });
 
     test('in the Sweet 16: only the Sweet 16 and later rungs, conditional on being there', () => {
@@ -285,6 +339,35 @@ describe('decided terms drop out, so nothing banked is counted twice', () => {
         expect(full.postseason).toBeGreaterThan(0);
         expect(done.postseason).toBe(0);
         expect(P.projectRemaining(teams[0], [], pctx, { decided: { confTourney: 'over', ncaa: 'out' } }).postseason).toBe(0);
+    });
+});
+
+describe('upset bonus is bounded by the wins that can earn it', () => {
+    const model = M.defaultModel();
+    const c = cfg();
+
+    test('never more than 15 seeds a win, and non-decreasing in rank', () => {
+        ['march', 'preseason'].forEach(basis => {
+            let last = 0;
+            for (let r = 1; r <= M.RANKS; r++) {
+                const spw = model.seedsPerWin(r, basis);
+                expect(spw).toBeLessThanOrEqual(model.MAX_SEED_GAP);
+                expect(spw).toBeGreaterThanOrEqual(last);
+                last = spw;
+            }
+        });
+    });
+
+    test('a bottom team in the field expects no more upset than its wins can carry', () => {
+        [300, 365].forEach(rank => {
+            const x = model.expectedPostseason({ id: 1, rank }, null, c, 'preseason', { ncaa: { next: 'r64' } });
+            const p = model.reach(rank, 'preseason');
+            const wins = ['r32', 's16', 'e8', 'f4', 'title', 'champ'].reduce((s, k) => s + p[k] / p.r64, 0);
+            expect(x.upset).toBeLessThanOrEqual(wins * 15 * c.values.seedUpsetBonus + 1e-9);
+            const open = model.expectedPostseason({ id: 1, rank }, null, c, 'preseason');
+            const w0 = ['r32', 's16', 'e8', 'f4', 'title', 'champ'].reduce((s, k) => s + p[k], 0);
+            expect(open.upset).toBeLessThanOrEqual(w0 * 15 * c.values.seedUpsetBonus + 1e-9);
+        });
     });
 });
 

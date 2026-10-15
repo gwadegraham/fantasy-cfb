@@ -270,44 +270,102 @@ function buildMarchModel(cal) {
     // team. team: { id, rank }. On the 'march' basis the conference
     // tournaments are taken to be in the past (banked), so confTourney is 0;
     // confChamp stays, for the caller to drop once titles are decided.
-    // Expected NCAA points and upset seeds still to come for a team whose
-    // tournament is under way. `next` is the round it is certain to play and
-    // has not yet been paid for; every rung before it is banked. Later rungs
-    // are conditional on that one: P(reach r | in round next) = P(r) / P(next).
-    // A First Four team wins its way into the round of 64 half the time.
-    const LADDER = ['ff', ...ROUNDS];
+    // Upset seeds per expected tournament WIN, by rank: bounded and monotone.
+    //
+    // The smoothed curve is seeds per team-season. Dividing it by a low
+    // rank's tiny expected win count blows up (#365: 0.9 seeds on ~0.03
+    // wins, ~30 a win, where no win can be worth more than 15 seeds — a 16
+    // over a 1). So it is capped at MAX_SEED_GAP and made non-decreasing in
+    // rank (a worse team's wins are the bigger upsets), then multiplied by
+    // the wins still ahead.
+    const MAX_SEED_GAP = 15;
+    const spwCache = { march: null, preseason: null };
+    function seedsPerWin(rank, basis) {
+        const key = basis === 'march' ? 'march' : 'preseason';
+        if (!spwCache[key]) {
+            const out = [0];
+            let run = 0;
+            for (let r = 1; r <= RANKS; r++) {
+                const p = reach(r, key);
+                const wins = ROUNDS.slice(1).reduce((s, x) => s + p[x], 0);
+                const raw = wins > 0 ? p.upsetSeeds / wins : MAX_SEED_GAP;
+                run = Math.max(run, Math.min(MAX_SEED_GAP, raw));
+                out.push(run);
+            }
+            spwCache[key] = out;
+        }
+        return spwCache[key][rank];
+    }
+
+    // Expected NCAA points and tournament wins still to come for a team
+    // whose tournament is under way. `next` is the round it is certain to
+    // play and has not yet been paid for; every rung before it is banked.
+    // Later rungs are conditional on that one: P(reach r | in round next) =
+    // P(r) / P(next). A First Four team wins its way into the round of 64
+    // half the time.
+    const NEXT = ['ff', 'r64', 'r32', 's16', 'e8', 'f4', 'title'];
     const COND = { ff: 'ncaaFirstFour', r64: 'ncaaR64', r32: 'ncaaR32', s16: 'ncaaS16', e8: 'ncaaE8', f4: 'ncaaF4', title: 'ncaaTitleGame', champ: 'ncaaChampion' };
     function remainingNcaa(p, next, cfg) {
         const from = next === 'ff' ? 'r64' : next;
         const k = ROUNDS.indexOf(from);
         const scale = next === 'ff' ? 0.5 : 1;
         let pts = next === 'ff' ? valueOf(cfg, COND.ff) : 0;
-        let wins = 0;
+        let wins = next === 'ff' ? 0.5 : 0;   // the First Four game itself
         ROUNDS.slice(k).forEach((r, i) => {
             const q = p[from] > 0 ? p[r] / p[from] : 0;
             pts += scale * q * valueOf(cfg, COND[r]);
             if (i > 0) wins += scale * q;   // each later rung is one more win
         });
-        // Upset seeds come with wins: what is left is the per-appearance
-        // expectation scaled by the share of a field team's wins still ahead.
-        let fieldWins = 0;
-        ROUNDS.slice(1).forEach(r => { fieldWins += p.r64 > 0 ? p[r] / p.r64 : 0; });
-        const perAppearance = p.r64 > 0 ? p.upsetSeeds / p.r64 : 0;
-        const upsetSeeds = fieldWins > 0 ? perAppearance * Math.min(1, wins / fieldWins) : 0;
-        return { pts, upsetSeeds };
+        return { pts, wins };
+    }
+
+    // The NCAA state, validated. Unknown values THROW: the alternative is
+    // falling back to the whole ladder, which silently pays a champion the
+    // tournament a second time (+69 for a #1 on top of the 126 banked).
+    function ncaaState(v) {
+        if (v === undefined || v === null) return { kind: 'open' };
+        if (v === 'out' || v === 'done') return { kind: v };
+        if (v && typeof v === 'object' && NEXT.includes(v.next)) return { kind: 'next', next: v.next };
+        throw new TypeError(`decided.ncaa must be 'out', 'done' or { next: ${NEXT.join('|')} }, got ${JSON.stringify(v)}`);
+    }
+
+    // The conference-tournament state, validated the same way.
+    function confState(v) {
+        if (v === undefined || v === null) return { kind: 'open' };
+        if (v === 'over') return { kind: 'over' };
+        if (v && typeof v === 'object' && Number.isInteger(v.wins) && v.wins >= 0 && typeof v.alive === 'boolean') {
+            return v.alive ? { kind: 'alive', wins: v.wins } : { kind: 'over' };
+        }
+        throw new TypeError(`decided.confTourney must be 'over' or { wins: n, alive: bool }, got ${JSON.stringify(v)}`);
     }
 
     // decided (optional): what has already happened, so it is not expected
     // again — its points are banked on the franchise at time of play.
-    //   confTourney: 'over'  the conference tournament is done (won or lost):
-    //                        confTourney and confChamp are 0
-    //   ncaa: 'out'          not selected, or eliminated: ncaa and upset are 0
-    //   ncaa: { next: r }    in the field and certain to play round r ('ff',
-    //                        'r64', 'r32', 's16', 'e8', 'f4', 'title'), every
-    //                        earlier rung banked: only r and later count
-    // Anything absent is treated as not yet decided.
+    //
+    //   confTourney: 'over'          done, won or lost: no confTourney and no
+    //                                confChamp
+    //   confTourney: { wins, alive } under way. Out (alive false) is 'over'.
+    //                                Still alive after `wins` wins: only the
+    //                                wins the curve expects BEYOND those are
+    //                                left (its quadrant mix kept), and the
+    //                                title odds stay at the preseason number
+    //                                — surviving makes a title likelier, but
+    //                                the bracket that would say how much is
+    //                                not modelled, so this errs low
+    //   ncaa: 'out'                  not selected, or eliminated
+    //   ncaa: 'done'                 played its last game — the champion, or
+    //                                any finished team: nothing left
+    //   ncaa: { next: r }            in the field and certain to play round r
+    //                                ('ff', 'r64', 'r32', 's16', 'e8', 'f4',
+    //                                'title'); every earlier rung banked
+    //
+    // Any NCAA state means Selection Sunday has passed, so the conference
+    // tournament is over whatever confTourney says. Anything else throws.
     function expectedPostseason(team, ctx, cfg, basis = 'preseason', decided = {}) {
         decided = decided || {};
+        const nState = ncaaState(decided.ncaa);
+        let cState = confState(decided.confTourney);
+        if (nState.kind !== 'open') cState = { kind: 'over' };
         // One clamped rank for every term. A missing rank reads as the bottom
         // of the country — NOT Number(null) = 0, which interp would clamp to
         // #1 and pay a top team's conference tournament.
@@ -315,27 +373,30 @@ function buildMarchModel(cal) {
         const rank = (team.rank === null || team.rank === undefined || team.rank === '' || !Number.isFinite(n) || n < 1)
             ? RANKS : Math.min(RANKS, Math.round(n));
         const p = reach(rank, basis);
+        const upsetValue = valueOf(cfg, 'seedUpsetBonus');
         let ncaa, upset, makeProb;
-        if (decided.ncaa === 'out') {
-            ncaa = 0; upset = 0; makeProb = 0;
-        } else if (decided.ncaa && LADDER.includes(decided.ncaa.next) && decided.ncaa.next !== 'champ') {
-            const left = remainingNcaa(p, decided.ncaa.next, cfg);
+        if (nState.kind === 'out' || nState.kind === 'done') {
+            ncaa = 0; upset = 0; makeProb = nState.kind === 'done' ? 1 : 0;
+        } else if (nState.kind === 'next') {
+            const left = remainingNcaa(p, nState.next, cfg);
             ncaa = left.pts;
-            upset = left.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
+            upset = left.wins * seedsPerWin(rank, basis) * upsetValue;
             makeProb = 1;
         } else {
             ncaa = expectedNcaaPoints(p, cfg);
-            upset = p.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
+            const wins = ROUNDS.slice(1).reduce((s, x) => s + p[x], 0);
+            upset = Math.min(p.upsetSeeds, wins * MAX_SEED_GAP) * upsetValue;
             makeProb = p.r64;
         }
-        const confOver = decided.confTourney === 'over';
         const pTitle = (ctx && ctx.titleProb && ctx.titleProb[String(team.id)]) || 0;
-        const confChamp = confOver ? 0 : pTitle * valueOf(cfg, 'confTournamentTitle');
+        const confChamp = cState.kind === 'over' ? 0 : pTitle * valueOf(cfg, 'confTournamentTitle');
         let confTourney = 0;
-        if (basis !== 'march' && !confOver) {
-            [1, 2, 3, 4].forEach(q => {
-                confTourney += interp(cal.confTourneyWins[`q${q}`], rank) * valueOf(cfg, `q${q}Win`);
-            });
+        if (basis !== 'march' && cState.kind !== 'over') {
+            const byQ = [1, 2, 3, 4].map(q => interp(cal.confTourneyWins[`q${q}`], rank));
+            const expected = byQ.reduce((a, b) => a + b, 0);
+            const share = cState.kind === 'alive'
+                ? (expected > 0 ? Math.max(0, expected - cState.wins) / expected : 0) : 1;
+            byQ.forEach((w, i) => { confTourney += share * w * valueOf(cfg, `q${i + 1}Win`); });
         }
         return {
             confChamp, confTourney, ncaa, upset,
@@ -345,7 +406,7 @@ function buildMarchModel(cal) {
         };
     }
 
-    return { reach, contextFor, expectedPostseason, driftWeights };
+    return { reach, contextFor, expectedPostseason, driftWeights, seedsPerWin, MAX_SEED_GAP };
 }
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26, as win-probability.js).

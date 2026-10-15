@@ -221,7 +221,8 @@ function chainRows(dataset, round) {
 }
 
 // degree: a number, or 'mixed' — quadratic for the rungs with hundreds of
-// events (First Four to Elite Eight), linear for the three with 48, 24 and 12.
+// events (First Four to Elite Eight), linear for the three with 60, 30 and 15
+// (on the 15 Torvik seasons).
 const LATE = ['f4', 'title', 'champ'];
 function fitChain(dataset, degree) {
     const deg = (r) => degree === 'mixed' ? (LATE.includes(r) ? 1 : 2) : degree;
