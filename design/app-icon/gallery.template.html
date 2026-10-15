@@ -1,0 +1,181 @@
+<title>Campus Clash App Icon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:wght@400;500;600&display=swap">
+<style>
+/* Layout: one stacked board per option; each board reads left→right from the
+   master down to the smallest real size, then the two places it will live. */
+:root {
+  color-scheme: dark;
+  --bg: #101322;          /* --cc-bg */
+  --surface: #1A1F33;     /* --cc-surface */
+  --line: #2A2E42;        /* --cc-border */
+  --text: #F4F6FB;        /* --cc-text */
+  --muted: #A4A9C2;       /* --cc-muted */
+  --dim: #8A90A8;         /* --cc-muted-2 */
+  --accent: #ED5858;      /* --cc-accent */
+  --interactive: #8E8CF0; /* --cc-interactive */
+  --wall-light-a: #F3E3D3; --wall-light-b: #C9D6EE; --label-light: #1B1E2B;
+  --wall-dark-a: #1D2333;  --wall-dark-b: #050608;  --label-dark: #F4F6FB;
+  --checker: #2A2E42;
+  --f-varsity: Graduate, Georgia, serif;
+  --f-script: Pacifico, "Brush Script MT", cursive;
+  --f-body: Poppins, system-ui, sans-serif;
+  --f-ios: -apple-system, "SF Pro Text", system-ui, sans-serif;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; }
+header.top { display: grid; gap: 8px; margin-bottom: 28px; }
+.brand { line-height: 1; display: inline-grid; justify-items: start; }
+.brand .campus { font-family: var(--f-varsity); letter-spacing: .1em; font-size: 1.15rem; }
+.brand .clash { font-family: var(--f-script); color: var(--accent); font-size: 2.2rem; margin-top: -.2em;
+  text-shadow: .05em 0 var(--bg), -.05em 0 var(--bg), 0 .05em var(--bg), 0 -.05em var(--bg); }
+h1 { font-family: var(--f-varsity); font-weight: 400; font-size: clamp(1.5rem, 4vw, 2.2rem); letter-spacing: .04em; margin: 6px 0 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 68ch; line-height: 1.6; margin: 0; }
+.lede b { color: var(--text); font-weight: 500; }
+
+.opt { border-top: 1px solid var(--line); padding-block: 30px; display: grid; gap: 18px; }
+.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.opt-head h2 { font-family: var(--f-varsity); font-weight: 400; font-size: 1.5rem; letter-spacing: .05em; margin: 0; }
+.opt-head .tag { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--interactive); }
+.opt-head p { flex-basis: 100%; margin: 0; color: var(--muted); max-width: 72ch; line-height: 1.55; }
+
+.board { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+.master canvas { display: block; width: 220px; height: 220px; border-radius: 22.4%; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel h3 { margin: 0; font-size: .7rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.sizes { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.sizes figure, .mag figure, .droid figure { margin: 0; display: grid; justify-items: center; gap: 6px; }
+figcaption { font-size: .7rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mag { overflow-x: auto; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.mag canvas { image-rendering: pixelated; display: block; }
+.home { border-radius: 14px; padding: 16px 10px 10px; display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; gap: 4px; }
+.home.light { background: linear-gradient(160deg, var(--wall-light-a), var(--wall-light-b)); color: var(--label-light); }
+.home.dark { background: linear-gradient(160deg, var(--wall-dark-a), var(--wall-dark-b)); color: var(--label-dark); }
+.app { display: grid; justify-items: center; gap: 5px; width: 70px; }
+.app .ic { width: 60px; height: 60px; border-radius: 13.4px; display: block; overflow: hidden; }
+.app span { font: 500 11px/1.1 var(--f-ios); max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home.dark .app span { text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.droid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.legend { font-size: .72rem; color: var(--dim); margin: 0; line-height: 1.5; }
+.legend i { display: inline-block; width: 16px; border-top: 2px dashed var(--interactive); vertical-align: middle; margin-right: 4px; }
+@media (max-width: 640px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .master canvas { width: 160px; height: 160px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand" aria-hidden="true"><span class="campus">CAMPUS</span><span class="clash">Clash</span></div>
+    <h1>Home-screen icon, five directions</h1>
+    <p class="lede">One icon for everyone, whichever league they play in (issue #571). Every tile below is the vector master
+      rasterised by your browser at the exact pixel size, never shrunk from a big image. The <b>8&times; view</b> shows the true
+      1&times; bitmap a phone would draw at 48&nbsp;px (Android) and 29&nbsp;px (Spotlight and Settings). The dashed circle is
+      the inner 80% that Android always keeps.</p>
+  </header>
+  <main id="opts"></main>
+</div>
+
+<script>
+const OPTIONS = /*OPTIONS*/[];
+const DPR = Math.min(window.devicePixelRatio || 1, 3);
+const toImg = svg => new Promise((ok, no) => {
+  const i = new Image(); i.onload = () => ok(i); i.onerror = no;
+  i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+});
+// Masks. iOS: continuous-corner rounded square (radius ~22.37%). Android: circle,
+// and a squircle (|x|^4 + |y|^4 = 1) for launchers that use one.
+function maskPath(ctx, kind, s) {
+  ctx.beginPath();
+  if (kind === 'ios') { ctx.roundRect(0, 0, s, s, s * 0.2237); }
+  else if (kind === 'circle') { ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); }
+  else if (kind === 'squircle') {
+    for (let k = 0; k <= 360; k++) {
+      const t = k * Math.PI / 180, c = Math.cos(t), n = Math.sin(t);
+      const x = s / 2 + s / 2 * Math.sign(c) * Math.sqrt(Math.abs(c));
+      const y = s / 2 + s / 2 * Math.sign(n) * Math.sqrt(Math.abs(n));
+      k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  } else { ctx.rect(0, 0, s, s); }
+}
+// Draw at `px` device pixels; show at `css` CSS pixels.
+function draw(img, px, css, mask, safe) {
+  const c = document.createElement('canvas'); c.width = c.height = px;
+  c.style.width = c.style.height = css + 'px';
+  const ctx = c.getContext('2d');
+  ctx.save(); maskPath(ctx, mask, px); ctx.clip(); ctx.drawImage(img, 0, 0, px, px); ctx.restore();
+  if (safe) {
+    ctx.setLineDash([px * .03, px * .025]); ctx.lineWidth = Math.max(1, px * .012);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--interactive');
+    ctx.beginPath(); ctx.arc(px / 2, px / 2, px * .4, 0, Math.PI * 2); ctx.stroke();
+  }
+  return c;
+}
+function magnify(img, px, mask, by) {
+  const one = draw(img, px, px, mask);            // the real 1x bitmap
+  const big = document.createElement('canvas'); big.width = big.height = px * by;
+  const ctx = big.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(one, 0, 0, px * by, px * by);
+  big.style.width = big.style.height = (px * by) + 'px';
+  return big;
+}
+const fig = (node, cap) => { const f = document.createElement('figure'); f.append(node);
+  const c = document.createElement('figcaption'); c.textContent = cap; f.append(c); return f; };
+// Neutral stand-ins for the apps beside ours, drawn as plain shapes.
+const STANDINS = [
+  ['Weather', 'linear-gradient(180deg,#4A90E2,#7EC3F5)', '<circle cx="30" cy="27" r="11" fill="#FFD54A"/><rect x="18" y="33" width="28" height="11" rx="5.5" fill="#fff"/>'],
+  ['Notes', 'linear-gradient(180deg,#FFFFFF,#F2F2F2)', '<rect x="0" y="0" width="60" height="14" fill="#F5C443"/><g stroke="#C8C8C8" stroke-width="2"><line x1="10" y1="26" x2="50" y2="26"/><line x1="10" y1="35" x2="50" y2="35"/><line x1="10" y1="44" x2="38" y2="44"/></g>'],
+  ['Fitness', 'linear-gradient(180deg,#1C1C1E,#000)', '<g fill="none" stroke-width="5" stroke-linecap="round"><circle cx="30" cy="30" r="19" stroke="#FA114F"/><circle cx="30" cy="30" r="12" stroke="#92E82A"/><circle cx="30" cy="30" r="5" stroke="#1EEAEF"/></g>'],
+];
+function standin([name, bg, art]) {
+  const a = document.createElement('div'); a.className = 'app';
+  a.innerHTML = `<svg class="ic" viewBox="0 0 60 60" style="background:${bg}">${art}</svg><span>${name}</span>`;
+  return a;
+}
+function homeRow(img, tone) {
+  const row = document.createElement('div'); row.className = 'home ' + tone;
+  STANDINS.slice(0, 2).forEach(s => row.append(standin(s)));
+  const ours = document.createElement('div'); ours.className = 'app';
+  const ic = draw(img, Math.round(60 * DPR), 60, 'ios'); ic.className = 'ic';
+  const lab = document.createElement('span'); lab.textContent = 'Campus Clash';
+  ours.append(ic, lab); row.append(ours, standin(STANDINS[2]));
+  return row;
+}
+function panel(title, ...kids) {
+  const p = document.createElement('section'); p.className = 'panel';
+  const h = document.createElement('h3'); h.textContent = title; p.append(h, ...kids); return p;
+}
+(async () => {
+  const host = document.getElementById('opts');
+  for (const [n, o] of OPTIONS.entries()) {
+    const img = await toImg(o.svg);
+    const sec = document.createElement('article'); sec.className = 'opt'; sec.id = o.key;
+    sec.innerHTML = `<div class="opt-head"><span class="tag">Option ${String.fromCharCode(65 + n)}</span><h2>${o.name}</h2><p>${o.why}</p></div>`;
+    const board = document.createElement('div'); board.className = 'board';
+    const m = document.createElement('div'); m.className = 'master';
+    m.append(draw(img, Math.round(220 * DPR), 220, 'none'));
+    const sizes = document.createElement('div'); sizes.className = 'sizes';
+    [180, 60, 48, 29].forEach(s => sizes.append(fig(draw(img, Math.round(s * DPR), s, 'ios'), s + ' px')));
+    const mag = document.createElement('div'); mag.className = 'mag';
+    mag.append(fig(magnify(img, 48, 'squircle', 8), '48 px at 1\u00d7, shown 8\u00d7'), fig(magnify(img, 29, 'ios', 8), '29 px at 1\u00d7, shown 8\u00d7'));
+    const droid = document.createElement('div'); droid.className = 'droid';
+    droid.append(
+      fig(draw(img, Math.round(96 * DPR), 96, 'none', true), 'full bleed'),
+      fig(draw(img, Math.round(96 * DPR), 96, 'circle', true), 'circle'),
+      fig(draw(img, Math.round(96 * DPR), 96, 'squircle', true), 'squircle'));
+    const legend = document.createElement('p'); legend.className = 'legend';
+    legend.innerHTML = '<i></i>safe zone: everything that matters sits inside';
+    const homes = document.createElement('div'); homes.style.cssText = 'display:grid;gap:10px';
+    homes.append(homeRow(img, 'light'), homeRow(img, 'dark'));
+    const panels = document.createElement('div'); panels.className = 'panels';
+    panels.append(
+      panel('True size (iOS mask)', sizes),
+      panel('1\u00d7 bitmaps, magnified', mag),
+      panel('iOS home screen, light and dark', homes),
+      panel('Android maskable crops', droid, legend));
+    board.append(m, panels); sec.append(board); host.append(sec);
+  }
+})();
+</script>
