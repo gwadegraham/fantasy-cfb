@@ -88,6 +88,13 @@ const weeklyTeamScoreSchema = new mongoose.Schema({
     },
     oppRank: {
         type: Number
+    },
+    // Basketball only: a conference-tournament or postseason game, which
+    // scores but sits outside the weekly game modes — Captain does not
+    // double it, H2H does not count it (modules/hoops-modes.js). Absent on
+    // every other row.
+    noModes: {
+        type: Boolean
     }
 });
 
@@ -261,8 +268,11 @@ const seasonSchema = new mongoose.Schema({
     },
     // Optional weekly-engagement layer (#230): the manager's Captain pick per
     // week (teamId doubled in scoring for opted-in leagues). Empty otherwise.
+    // `auto: true` marks a basketball DEFAULT frozen at the lock reminder or
+    // the lock (modules/hoops-captain.js freezeAutoCaptain) — scored like a
+    // pick, shown as a default. Football never writes it.
     captains: {
-        type: [{ week: Number, teamId: Number }],
+        type: [{ week: Number, teamId: Number, auto: Boolean }],
         default: undefined
     }
 });

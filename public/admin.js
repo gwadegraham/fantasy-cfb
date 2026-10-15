@@ -1845,15 +1845,25 @@ function displayEngagementContainer() { if (toggleSub('engagement-container')) {
 // Populate the engagement season selector once (next season down a few years),
 // defaulting to the current year. Reloads the toggles when the season changes,
 // since each season has its own settings.
+//
+// The default is the page's season (window.APP_YEAR) — the LEAGUE's season,
+// which on /hoops/admin is the basketball year (2027 for 2026-27). The
+// calendar year was the default before, and in the autumn it pointed a
+// basketball commissioner at a season their league does not play.
 function setEngagementSeasonOptions() {
     var sel = document.querySelector('[eng-season]');
     if (!sel || sel.dataset.ready) return;
-    var y = new Date().getFullYear();
+    var y = engagementDefaultSeason();
     var str = '';
     for (var yr = y + 1; yr >= y - 3; yr--) str += '<option value="' + yr + '"' + (yr === y ? ' selected' : '') + '>' + yr + '</option>';
     sel.innerHTML = str;
     sel.dataset.ready = '1';
     sel.addEventListener('change', loadEngagement);
+}
+
+function engagementDefaultSeason() {
+    var page = Number(window.APP_YEAR);
+    return Number.isInteger(page) && page > 2000 ? page : new Date().getFullYear();
 }
 
 // Prefill the engagement toggles from the active league's saved config for the
@@ -1862,7 +1872,7 @@ async function loadEngagement() {
     try {
         var code = getDraftLeagueCode();
         var seasonSel = document.querySelector('[eng-season]');
-        var season = (seasonSel && seasonSel.value) || new Date().getFullYear();
+        var season = (seasonSel && seasonSel.value) || engagementDefaultSeason();
         var cfg = await fetch('/scoring-config/' + encodeURIComponent(code) + '?season=' + encodeURIComponent(season), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); });
         var e = (cfg && cfg.engagement) || {};
         var h2h = document.querySelector('[eng-h2h-enabled]');
@@ -1885,7 +1895,7 @@ if (engagementForm) {
         const code = getDraftLeagueCode();
         const seasonSel = document.querySelector('[eng-season]');
         const body = {
-            season: (seasonSel && seasonSel.value) || String(new Date().getFullYear()),
+            season: (seasonSel && seasonSel.value) || String(engagementDefaultSeason()),
             h2hEnabled: document.querySelector('[eng-h2h-enabled]').checked,
             h2hWinBonus: Number(document.querySelector('[eng-h2h-bonus]').value),
             h2hTieBonus: Number(document.querySelector('[eng-h2h-tie-bonus]').value),

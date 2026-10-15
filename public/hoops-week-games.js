@@ -61,6 +61,21 @@
 
     // Points this team banked in this game, off the manager's own
     // weeklyScore — null when nothing is banked (yet).
+    //
+    // INCLUDING the Captain bonus, which scoring stores on the week row, not
+    // the game's: each of the captained team's doubled games gets a share in
+    // proportion to its own points — modules/league-scoreboard.js
+    // captainShare, the rule the scoreboard already shows. A `noModes` row
+    // (a conference-tournament game) was not doubled and takes none.
+    function captainShare(w, row) {
+        if (!w.captainBonus || row.noModes || String(row.teamId) !== String(w.captainTeamId)) return 0;
+        var base = 0;
+        (w.scoreByTeam || []).forEach(function (x) {
+            if (!x.noModes && String(x.teamId) === String(w.captainTeamId)) base += Number(x.score) || 0;
+        });
+        return base ? w.captainBonus * (Number(row.score) || 0) / base : 0;
+    }
+
     function pointsFor(seasonEntry, week, teamId, gameId) {
         var weeks = (seasonEntry && seasonEntry.weeklyScore) || [];
         for (var i = 0; i < weeks.length; i++) {
@@ -68,7 +83,8 @@
             var by = weeks[i].scoreByTeam || [];
             for (var j = 0; j < by.length; j++) {
                 if (String(by[j].teamId) === String(teamId) && String(by[j].gameId) === String(gameId)) {
-                    return by[j].score != null ? Number(by[j].score) : 0;
+                    if (by[j].score == null) return 0;
+                    return Math.round((Number(by[j].score) + captainShare(weeks[i], by[j])) * 10) / 10;
                 }
             }
         }

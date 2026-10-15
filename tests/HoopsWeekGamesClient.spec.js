@@ -58,6 +58,20 @@ describe('byTeam / pointsFor / result', () => {
         expect(hg().pointsFor(SEASON_ENTRY, 1, 3, 100)).toBeNull();
     });
 
+    test('a captained team\'s games carry their share of the Captain bonus', () => {
+        // The bonus is banked on the week row; each doubled game gets its
+        // share, and a conference-tournament row (noModes) none.
+        const entry = { season: 2027, weeklyScore: [{ week: 1, captainTeamId: 1, captainBonus: 7, scoreByTeam: [
+            { teamId: 1, gameId: 100, score: 4 }, { teamId: 1, gameId: 101, score: 3 },
+            { teamId: 1, gameId: 102, score: 5, noModes: true }, { teamId: 3, gameId: 103, score: 2 }
+        ] }] };
+        expect(hg().pointsFor(entry, 1, 1, 100)).toBe(8);
+        expect(hg().pointsFor(entry, 1, 1, 101)).toBe(6);
+        expect(hg().pointsFor(entry, 1, 1, 102)).toBe(5);
+        expect(hg().pointsFor(entry, 1, 3, 103)).toBe(2);
+        expect(hg().pointsFor({ weeklyScore: [{ week: 1, scoreByTeam: [{ teamId: 1, gameId: 100 }] }] }, 1, 1, 100)).toBe(0);
+    });
+
     test('final reads W/L and the score from our side; live the half and clock; to come the tip', () => {
         const by = hg().byTeam(ROSTER, [G.final, G.live, G.pre]);
         expect(hg().result(by['1'][0])).toEqual({ tone: 'w', text: 'W 80–70' });

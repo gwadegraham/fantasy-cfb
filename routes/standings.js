@@ -23,6 +23,10 @@ const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
 const { resolveCaptain } = require('../modules/captain');
+const { sportForLeague } = require('../modules/active-season');
+const { hydrateRosters } = require('../modules/roster-teams');
+const HoopsTeam = require('../models/hoopsTeam');
+const hoopsH2H = require('../modules/hoops-h2h');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
 // most recent regular-season poll on file.
@@ -474,7 +478,23 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // were pure transfer cost against a tier that meters bytes.
         const users = await franchiseRepo.byLeagueAndSeason(league, seasonNum,
             { fields: ['firstName', 'lastName', 'avatarUrl', 'color', 'seasons'] });
-        const isRegular = w => w.season !== 'postseason' && w.week <= 16;
+
+        // A BASKETBALL league plays the same H2H off different inputs
+        // (modules/hoops-h2h.js): its games from `hoopsgames`, its weeks the
+        // whole regular season (no 16-week cap, Christmas included), and a
+        // matchup total that leaves out conference-tournament points. Read
+        // through the same helper the banking pass uses, so this table and
+        // the banked bonus cannot disagree. The rosters are refs, resolved
+        // into `teams` here because everything below reads that.
+        const isHoops = sportForLeague(league) === 'basketball';
+        let hoopsIn = null;
+        if (isHoops) {
+            await hydrateRosters(users, seasonNum);
+            hoopsIn = await hoopsH2H.h2hInputs({ users, season: seasonNum });
+        }
+        const maxWeek = isHoops ? hoopsIn.maxWeek : H2H_MAX_WEEK;
+        const weekBase = isHoops ? hoopsH2H.modeWeekBase : baseWeekScore;
+        const isRegular = w => w.season !== 'postseason' && w.week <= maxWeek;
         const round = v => Math.round(v * 10) / 10;
         // Deterministic manager ordering — the pairing schedule is positional, so
         // this must match what the scoring-time pass used (modules/h2h.js). Once
@@ -546,11 +566,11 @@ router.get('/h2h/:league/:season', async (req, res) => {
             };
             const tw = {}, twTeams = {};
             (s.weeklyScore || []).forEach(e => {
-                if (!isRegular(e) || e.week > H2H_MAX_WEEK) return;
+                if (!isRegular(e)) return;
                 const w = e.week;
                 // BASE total (score minus any bonus already banked into it), so a
                 // week's own bonus never feeds back into deciding that week.
-                tw[w] = (tw[w] || 0) + baseWeekScore(e);
+                tw[w] = (tw[w] || 0) + weekBase(e);
                 // Keyed per GAME, because a team can play twice in one API
                 // week — CFBD has no week 0, it folds the opening weekend into
                 // week 1 (12 draftable teams in 2026, 8 in 2025). Summing those
@@ -559,6 +579,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // gameId still aggregate per team, the way they always have.
                 const byGame = twTeams[w] || (twTeams[w] = {});
                 (e.scoreByTeam || []).forEach(st => {
+                    // Not part of the matchup (basketball's conference
+                    // tournament games) — out of the total, so off the card.
+                    if (st.noModes) return;
                     const k = detailKey(st.teamId, st.gameId);
                     if (!byGame[k]) byGame[k] = { teamId: st.teamId, gameId: st.gameId == null ? null : st.gameId, school: st.team, abbr: abbrBy[st.teamId] || null, logo: logoBy[st.teamId] || null, score: 0 };
                     byGame[k].score += (st.score || 0);
@@ -595,13 +618,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
             notes: 1, homeConference: 1, awayConference: 1, pregameWinProb: 1 };
         const gameFilter = { season: seasonNum, seasonType: 'regular',
             $or: [{ homeId: { $in: draftedIds } }, { awayId: { $in: draftedIds } }] };
-        const allGames = draftedIds.length ? await Game.find(
+        const allGames = isHoops ? hoopsIn.games : (draftedIds.length ? await Game.find(
             standingsOnly ? { ...gameFilter, week: { $lte: H2H_MAX_WEEK } } : gameFilter,
             standingsOnly ? CARD_FIELDS : { ...CARD_FIELDS, ...PROJECTION_FIELDS }
-        ).lean() : [];
+        ).lean() : []);
         // Cards only ever show H2H weeks; the projections want the whole season
         // (see the calibration note at the projection block below).
-        const games = allGames.filter(g => g.week != null && g.week <= H2H_MAX_WEEK);
+        const games = allGames.filter(g => g.week != null && g.week <= maxWeek);
         // Opponent rankings, read from the SAME poll the scorer reads (the
         // Playoff Committee's, else AP — see scoring-detectors findPoll). So a
         // rank on a card means that win pays the ranked bonus, and a week with
@@ -612,7 +635,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // without them a fast-path card would label an opponent 'Oklahoma' and
         // then swap it to 'OU' when the full payload arrived — a worse flicker
         // than the skeleton bar this staging is designed around.
-        const pollDoc = await projectionPoll(seasonNum);
+        // Football's polls only: a basketball rank is a NET/Torvik number keyed
+        // by id, and the card's opponent rank is a football-poll idea.
+        const pollDoc = isHoops ? null : await projectionPoll(seasonNum);
         const rankByName = {};
         ((pollDoc && pollDoc.ranks) || []).forEach(r => { if (r && r.school) rankByName[r.school] = r.rank; });
         // Opponent abbreviations (opponents aren't always rostered, so look them
@@ -620,7 +645,11 @@ router.get('/h2h/:league/:season', async (req, res) => {
         const oppAbbrById = {};
         const gameTeamIds = [...new Set(games.flatMap(g => [g.homeId, g.awayId]).filter(x => x != null))];
         if (gameTeamIds.length) {
-            const tdocs = await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
+            // The sport's own team table: 130 basketball ids are also football
+            // ids, and a football abbreviation on a basketball opponent is wrong.
+            const tdocs = isHoops
+                ? await HoopsTeam.find({ season: seasonNum, id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean()
+                : await Team.find({ id: { $in: gameTeamIds } }, { id: 1, abbreviation: 1, _id: 0 }).lean();
             tdocs.forEach(td => { oppAbbrById[td.id] = td.abbreviation || null; });
         }
         // Projected pre-game win probability per matchup, from the same SP+ model
@@ -629,7 +658,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // the live win-probability bar. Only drafted teams are projected, but all
         // teams load so opponents' SP+ is available for the pool context.
         const projByWeek = {};
-        if (!standingsOnly && draftedIds.length) {
+        // Football only: basketball projections are unbuilt, so its cards carry
+        // no win-probability bar (winP null, which the card already handles).
+        if (!standingsOnly && draftedIds.length && !isHoops) {
             // Same projection as /projections, and for the same reason: this feeds
             // the same projectTeamPoints / buildPoolContext, whose seasonVal()
             // falls back to `season - 1` — so keep every season element, stripped
@@ -758,9 +789,9 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Which weeks have settled, the pairings, and each manager's result —
         // from the SAME function the scoring job uses to bank the bonus, so the
         // table and cumulativeScore can never tell different stories.
-        const { awards, weeks: h2hWeeks, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards({
-            users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK, pinnedIds
-        });
+        const { awards, weeks: h2hWeeks, weekFinal, finalWeeks, currentWeek, schedule: scheduleAll } = computeH2HAwards(isHoops
+            ? { users, games, season, winBonus, tieBonus, maxWeek, pinnedIds, weeks: hoopsIn.weeks, weekBase }
+            : { users, games, season, winBonus, tieBonus, maxWeek: H2H_MAX_WEEK, pinnedIds });
 
         // Records + win bonus count FINAL weeks only (an in-progress week has no
         // decided winner yet).
@@ -904,7 +935,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // WRONG bar (100% / 0%) and then flip to the true number seconds
                 // later. A wrong bar is worse than no bar, which is the whole
                 // premise of the skeleton.
-                winP: standingsOnly ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
+                //
+                // Basketball answers NO odds either: it has no projection, so
+                // liveEntriesFor would be built from final games alone — a
+                // side with one finished game against a side yet to play read
+                // 100% / 0% mid-week. A finished week's bar comes from
+                // `winner` on the card, not from this, so it is unaffected.
+                winP: (standingsOnly || isHoops) ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
                 final: !unplayed,
                 upcoming: !!upcoming
             };
@@ -972,7 +1009,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
                 const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
                 g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
-                g.winP = mode === 'pregame' ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
+                g.winP = (mode === 'pregame' || isHoops) ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
             });
             featuredWeek = w.week; currentWeekOut = w.week;
         }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { activeSeason, seasonForLeague } = require('../modules/active-season');
+const { activeSeason, seasonForLeague, sportForLeague } = require('../modules/active-season');
 const { seasonOf, seasonOrEmpty } = require('../public/season-of.js');
 // Reads and writes both go through the repo, which owns the account/franchise
 // split (#313) — no handler here touches either collection directly.
@@ -27,6 +27,7 @@ const { findPoll } = require('../modules/scoring-detectors');
 const { sanitizeSubscription, sanitizePrefs, MAX_SUBSCRIPTIONS } = require('../modules/push-subscription');
 const { DEFAULT_LEAD_MINUTES: CAPTAIN_DEFAULT_LEAD_MINUTES } = require('../modules/captain-reminder');
 const pushNotify = require('../modules/push-notify');
+const hoopsCaptain = require('../modules/hoops-captain');
 
 // A week's Captain edits close when the manager's earliest game finishes; the
 // tile keeps that week in focus for this long after its last kickoff before
@@ -281,6 +282,22 @@ router.get('/me/captain', async (req, res) => {
     const userId = meta && meta.userId;
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
+    // The league being VIEWED, as GET /users/:id reads it. One login can hold
+    // a football and a basketball franchise, and an unscoped read hands back
+    // whichever Mongo finds first — the picker would show one league's week
+    // over the other's roster.
+    let viewing;
+    try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+    if (viewing && sportForLeague(viewing) === 'basketball') {
+        try {
+            const season = Number(req.query.season) || seasonFor(viewing);
+            const out = await hoopsCaptain.captainState({ userId, league: viewing, season });
+            return res.status(out.status).json(out.body);
+        } catch (err) {
+            return res.status(500).json({ message: err.message });
+        }
+    }
+
     const seasonYear = Number(req.query.season) || activeSeason('football');
     const none = { season: seasonYear, week: null, lockAt: null, teamId: null, locked: true };
     try {
@@ -291,7 +308,7 @@ router.get('/me/captain', async (req, res) => {
         //
         // Unprojected on purpose, as findById was: it reads the whole season
         // entry (teams, captains) and the projection would have to list them all.
-        const user = await franchiseRepo.byAccountId(userId);
+        const user = await franchiseRepo.byAccountId(userId, { league: viewing || undefined });
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const season = (user.seasons || []).find(s => Number(s.season) === seasonYear);
         if (!season || !(season.teams || []).length) return res.json(none);
@@ -410,6 +427,23 @@ router.patch('/me/captain', async (req, res) => {
 
     const week = parseInt(req.body.week, 10);
     const teamId = req.body.teamId == null ? null : Number(req.body.teamId);
+
+    // Scoped to the league being viewed, like the GET — see the note there.
+    let viewing;
+    try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+    if (viewing && sportForLeague(viewing) === 'basketball') {
+        try {
+            const season = Number(req.body.season) || seasonFor(viewing);
+            const out = await hoopsCaptain.captainWrite({ userId, league: viewing, season, week, teamId });
+            // After the save (or the refusal): an audit row for a write
+            // that never landed is worse than a missing one.
+            if (out.audit) await recordCaptain(req, out.audit);
+            return res.status(out.status).json(out.body);
+        } catch (err) {
+            return res.status(500).json({ message: err.message });
+        }
+    }
+
     const seasonYear = Number(req.body.season) || activeSeason('football');
     if (!Number.isInteger(week) || week < 1 || week > 16) {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
@@ -417,7 +451,7 @@ router.patch('/me/captain', async (req, res) => {
     try {
         // Franchise-side: captains live on the season entry, which belongs to
         // the manager's entry in ONE league.
-        const ctx = await franchiseRepo.loadForWrite(userId);
+        const ctx = await franchiseRepo.loadForWrite(userId, { league: viewing || undefined });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
         const franchise = ctx.franchise;
         // The audit row is about the PERSON; their league comes off the entry.
@@ -481,8 +515,26 @@ router.patch('/:id/captain', async (req, res) => {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
     try {
-        // Franchise-side, same as the self-serve route above.
-        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        // Franchise-side, same as the self-serve route above — and scoped to ONE
+        // league: a person can hold a football and a basketball franchise, and
+        // an unscoped load changes or clears whichever Mongo finds first.
+        //
+        // Which league: `league` in the body if sent; else the league the
+        // Admin is viewing, when the manager has a franchise there; else the
+        // manager's only franchise. An Admin views their own league, not
+        // necessarily the manager's, so the viewed league alone 404'd every
+        // cross-league override. Two franchises and neither named: refuse.
+        const leagues = await franchiseRepo.leaguesFor(req.params.id);
+        let viewing;
+        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+        const league = (req.body.league && leagues.includes(req.body.league)) ? req.body.league
+            : (viewing && leagues.includes(viewing)) ? viewing
+            : leagues.length === 1 ? leagues[0] : null;
+        if (!league) {
+            return res.status(leagues.length ? 400 : 404).json({ message: leagues.length
+                ? 'This manager plays in more than one league — say which.' : 'User not found.' });
+        }
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, { league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
         const franchise = ctx.franchise;
         const user = { _id: ctx.account._id, firstName: ctx.account.firstName,

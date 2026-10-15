@@ -524,6 +524,10 @@ async function h2hManagers(league, season) {
             season: '$$s.season',
             // Only the id is read, to build the drafted-team set.
             teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't', in: { id: '$$t.id' } } },
+            // A basketball roster is stored as refs (modules/roster-teams.js),
+            // so its drafted set comes from here — read by modules/hoops-h2h.js
+            // through hoops-scoring-pass rosterIds, the scorer's own reader.
+            teamRefs: { $ifNull: ['$$s.teamRefs', []] },
             weeklyScore: { $ifNull: ['$$s.weeklyScore', []] }
         }
     });

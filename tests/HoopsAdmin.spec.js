@@ -102,14 +102,17 @@ describe('the page manages a basketball league', () => {
         const html = await page('hoops-league');
         ['displayLeagueNameContainer', 'displayDraftConfigContainer', 'displayScoringConfigContainer',
          'displayCreateUserContainer', 'displaySeasonRosterContainer', 'displayManagerLoginsContainer',
-         'displayAuditLogContainer'].forEach(fn => expect(html).toContain(fn + '()'));
-        // No Captain or H2H in basketball scoring; always quadrants; the roster
-        // fix offers football teams only.
-        ['displayEngagementContainer', 'displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
+         'displayAuditLogContainer',
+         // Captain and H2H run on basketball too (modules/hoops-modes.js).
+         'displayEngagementContainer'].forEach(fn => expect(html).toContain(fn + '()'));
+        // The captain OVERRIDE is football's admin route; always quadrants;
+        // the roster fix offers football teams only.
+        ['displayCaptainOverrideContainer', 'displayRosterCorrectionContainer',
          'name="rule-shape"'].forEach(bit => expect(html).not.toContain(bit));
         expect(html).toContain('user-table-body');
-        // Nothing football-only in the words either.
-        expect(html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')).not.toMatch(/football|captain|kickoff|FBS/i);
+        // Nothing football-only in the words either. "Captain" is no longer
+        // football-only — it is a basketball game mode.
+        expect(html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')).not.toMatch(/football|kickoff|FBS/i);
     });
 
     // The badge counts the tools actually shown, on both pages.

@@ -31,6 +31,12 @@ async function run() {
 
     try {
         result = await pushNotify.notifyCaptainLocks();
+        // Basketball: freeze the default Captain for every week whose lock
+        // has passed with no pick (modules/hoops-captain.js). After the
+        // reminders, which freeze what they name first; and regardless of
+        // push, since a manager with no device still needs it frozen.
+        const frozen = await require('./hoops-captain').freezeLockedWeeks();
+        if (frozen) result = Object.assign({}, result, { frozen });
     } catch (err) {
         // notifyCaptainLocks catches its own errors, so reaching here means
         // something outside it broke (a bad require, a connection drop).
@@ -41,12 +47,13 @@ async function run() {
         throw err;
     }
 
-    if (!result || !result.due) {
+    if (!result || (!result.due && !result.frozen)) {
         return { skipped: (result && result.skipped) || 'nobody due' };
     }
 
     const secs = Math.round((Date.now() - startMs) / 1000);
-    const summary = `${result.due} manager(s) reminded — ${result.sent} notification(s) delivered (${secs}s)`;
+    const summary = `${result.due || 0} manager(s) reminded — ${result.sent || 0} notification(s) delivered`
+        + (result.frozen ? ` · ${result.frozen} basketball default Captain(s) frozen` : '') + ` (${secs}s)`;
     console.log(`[${JOB_NAME}] ${summary}`);
 
     // Logged after the fact rather than around the work: the run is short, and

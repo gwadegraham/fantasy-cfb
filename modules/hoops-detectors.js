@@ -119,6 +119,20 @@ function isConfTournamentFinal(game) {
     return /^(final|championship)$/i.test(roundLabel(game));
 }
 
+// A conference TOURNAMENT game — any round, not just the final.
+//
+// CBBD files these as regular-season conference games (trap 3 above), so
+// conferenceGame alone would count a team's tournament run as league play.
+// Same test as isConfTournamentFinal minus the round: no named tournament,
+// and notes that say tournament/championship/playoffs. The basketball team
+// page's conference record and the weekly game modes (Captain, H2H — "the
+// conference tournaments are scored without them") both read this.
+function isConfTournament(g) {
+    if (!g || !g.conferenceGame) return false;
+    if (String(g.tournament || '').trim()) return false;
+    return /\b(championship|tournament|playoffs?)\b/i.test(String(g.gameNotes || ''));
+}
+
 // A seed, or null.
 //
 // NOT Number(x): Number(null) is 0 and 0 is finite, so a
@@ -250,6 +264,6 @@ const HOOPS_CONDITIONS = {
 
 module.exports = {
     buildHoopsContext, HOOPS_CONDITIONS,
-    ncaaRoundFor, isConfTournamentFinal, seedUpsetFor, seedOf,
+    ncaaRoundFor, isConfTournamentFinal, isConfTournament, seedUpsetFor, seedOf,
     NCAA_ROUNDS
 };

@@ -1,6 +1,6 @@
 const express = require('express');
 const franchiseRepo = require('../modules/franchise-repo');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, sportForLeague } = require('../modules/active-season');
 const router = express.Router();
 const scoringModule = require('../modules/scoring.js');
 const Game = require('../models/game');
@@ -14,7 +14,8 @@ const { computeSeasonReadiness } = require('../modules/season-readiness');
 const { engagementForSeason } = require('../modules/scoring-defaults');
 const leagueCatalog = require('../modules/league-catalog');
 const { canManageLeague } = require('../modules/league-access');
-const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, applyAwards, pinnedH2HIds } = require('../modules/h2h');
+const { H2H_MAX_WEEK, seasonEntry, computeH2HAwards, pinnedH2HIds } = require('../modules/h2h');
+const { bankLeague } = require('../modules/h2h-settle');
 
 // Read-only status summary for the admin console: how far scoring/games have
 // progressed and whether any completed results are still unscored. Derived from
@@ -238,6 +239,14 @@ async function applyH2HBonuses(season) {
     // leagues out itself, and says so, because a guard in both places reads like
     // neither is load-bearing.
     for (const league of leagues) {
+        // FOOTBALL leagues only. Every league with a manager in this season
+        // comes back from leaguesWithSeason, and a basketball league's season
+        // is a different year only until football rolls over to it — 2027
+        // football and 2026-27 basketball are both "2027". Its matchups are
+        // decided from basketball games by modules/hoops-h2h.js; reading
+        // them from football's `games` here would re-decide every settled
+        // basketball week against the wrong sport (130 team ids collide).
+        if (sportForLeague(league) === 'basketball') continue;
         const users = await franchiseRepo.h2hManagers(league, seasonNum);
         if (!users.length) continue;
 
@@ -250,7 +259,7 @@ async function applyH2HBonuses(season) {
 
         // Only load games when there's a chance of awarding. With H2H off the
         // award map stays empty, which still strips any previously-stored bonus.
-        let awards = {}, computed = null;
+        let computed = null;
         if (eng.h2hEnabled) {
             const drafted = new Set();
             users.forEach(u => {
@@ -267,72 +276,10 @@ async function applyH2HBonuses(season) {
                 users, games, season: seasonStr, pinnedIds,
                 winBonus: eng.h2hWinBonus, tieBonus: eng.h2hTieBonus
             });
-            awards = computed.awards;
         }
 
-        let updated = 0, awarded = 0;
-        for (const user of users) {
-            const s = seasonEntry(user, seasonStr);
-            if (!s) continue;
-            const plain = (s.weeklyScore || []).map(e => (e.toObject ? e.toObject() : e));
-            const next = applyAwards(plain, awards[String(user._id)], H2H_MAX_WEEK);
-            if (!next.changed) continue;
-            // Write the ONE array that changed, not the whole manager.
-            //
-            // user.save() rewrote the entire document — 105KB, of which
-            // seasons[].teams is nearly all — to persist a 3KB weeklyScore, and
-            // measured 1239ms against 95ms for this. The positional $ resolves
-            // against the season matched in the filter, so it can only ever touch
-            // the season being scored.
-            //
-            // applyAwards returns the FULL entries (it copies each one and edits
-            // four fields), so this is lossless: scoreByTeam, the Captain fields
-            // and anything else on an entry are written back as they were read.
-            // That is exactly why the read below keeps weeklyScore whole instead
-            // of trimming it to the six fields the computation needs — a trimmed
-            // read would make this write silently destroy the rest.
-            //
-            // One real difference from the save() this replaces: updateOne does
-            // NOT run schema validators (update validators are off by default),
-            // and weeklyScoreSchema marks week and score required. Nothing
-            // reachable regresses — applyAwards always writes a numeric score
-            // (round1 of baseWeekScore, which floors a missing one to 0) and
-            // copies week through untouched — but an entry that was already
-            // malformed now persists instead of being rejected here.
-            // The season condition stays in the FILTER, not the update: the
-            // positional $ resolves against the array element the filter
-            // matched. Without it the operator matches nothing, the bonus is
-            // silently not stored, and the only sign is the matchedCount check
-            // below.
-            const res = await franchiseRepo.updateFranchise(
-                user._id,
-                { $set: { 'seasons.$.weeklyScore': next.weeklyScore } },
-                { league, filter: { 'seasons.season': seasonNum } }
-            );
-            if (!res.matchedCount) {
-                // Loud: a manager whose bonus could not be written is a standings
-                // row that silently disagrees with every other surface.
-                console.error(`H2H bonus not written for ${user._id} (${league} ${seasonStr}): no matching season`);
-                continue;
-            }
-            updated++;
-            awarded += next.weeklyScore.reduce((sum, e) => sum + (e.h2hBonus || 0), 0);
-        }
-        // Freeze the manager list the moment the first week settles. Everything
-        // before that is unbanked, so the list stays live and preseason roster
-        // churn costs nothing; from here on, no membership change can re-decide a
-        // week that has already paid out.
-        let pinned = false;
-        if (eng.h2hEnabled && !pinnedIds && computed && computed.finalWeeks.length && computed.ids.length) {
-            await ScoringConfig.updateOne(
-                { league },
-                { $set: { ['h2hScheduleBySeason.' + seasonStr]: { ids: computed.ids, pinnedAt: new Date() } } },
-                { upsert: true }
-            );
-            pinned = true;
-            console.log(`H2H roster pinned · ${league} ${seasonStr}: ${computed.ids.length} manager(s)`);
-        }
-
+        const banked = await bankLeague({ league, seasonNum, seasonStr, users, eng, pinnedIds, computed, maxWeek: H2H_MAX_WEEK });
+        const updated = banked.managersUpdated, awarded = banked.bonusAwarded, pinned = banked.rosterPinned;
         summary.push({ league, enabled: !!eng.h2hEnabled, managersUpdated: updated, bonusAwarded: awarded, rosterPinned: pinned });
         console.log(`H2H bonus · ${league}: ${eng.h2hEnabled ? 'on' : 'off'}, ${updated} manager(s) updated`);
     }
