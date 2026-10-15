@@ -261,13 +261,17 @@ describe('POST /draft/grades/:league/:season/freeze — a basketball league', ()
         await HoopsGame.deleteMany({ id: { $in: mine.slice(0, 8) } });           // 14 games -> 6
         const refused = await freeze();
         expect(refused.status).toBe(409);
-        expect(refused.body.message).toContain('Hoops 333 (6 games, short)');
+        expect(refused.body.message).toContain('short schedule — Hoops 333 (6 games)');
+        expect(refused.body.message).toMatch(/re-ingest the basketball schedule/);
+        expect(refused.body.message).not.toMatch(/duplicate listings/);
         expect(refused.body.message).toContain('"force": true');
         expect(refused.body.scheduleFlags).toEqual([{ id: 333, school: 'Hoops 333', games: 6, kind: 'thin' }]);
         expect((await Draft.findOne({ league: LEAGUE }).lean()).hoopsGradeSnapshot).toBeUndefined();
 
-        // force without a reason is not an override
+        // force without a reason is not an override, and neither is a reason without force
         expect((await freeze({ force: true })).status).toBe(409);
+        expect((await freeze({ reason: 'spec override' })).status).toBe(409);
+        expect((await freeze({ force: 'true', reason: 'spec override' })).status).toBe(409);
 
         const forced = await freeze(FORCE);
         expect(forced.status).toBe(200);
@@ -300,6 +304,46 @@ describe('POST /draft/grades/:league/:season/freeze — a basketball league', ()
         expect(snap.forced).toBe(true);
         expect(await HoopsGradeSnapshot.findById(first.body.snapshotId)).not.toBeNull();     // kept
         expect(await AuditLog.countDocuments({ action: 'draft.grades.freeze' })).toBe(2);
+    });
+
+    it('a padded schedule is refused with the duplicate-listing advice', async () => {
+        await seed();
+        const copies = hoopsGames().filter(g => g.homeTeamId === 150).slice(0, 6)
+            .map((g, i) => Object.assign({}, g, { id: 9100 + i, startDate: new Date(g.startDate.getTime() + 20 * 864e5) }));
+        await HoopsGame.create(copies);
+        const res = await freeze();
+        expect(res.status).toBe(409);
+        expect(res.body.message).toContain('padded schedule — Hoops 150 (20 games)');
+        expect(res.body.message).toMatch(/duplicate listings/);
+        expect(res.body.message).not.toMatch(/re-ingest/);
+    });
+
+    it('records no override reason when nothing was overridden', async () => {
+        await seed();
+        const res = await freeze(FORCE);                     // nothing flagged, nothing to replace
+        expect(res.status).toBe(200);
+        expect(res.body.forced).toBe(false);
+        const snap = await HoopsGradeSnapshot.findById(res.body.snapshotId).lean();
+        expect(snap.forceReason).toBeUndefined();
+        expect((await AuditLog.findOne({ action: 'draft.grades.freeze' }).lean()).meta.reason).toBeNull();
+    });
+
+    // Two freezes racing past the checks: the second to pin must not
+    // overwrite the first, orphaning it.
+    it('a freeze that loses a race to another freeze is refused and leaves nothing behind', async () => {
+        await seed();
+        const other = new mongoose.Types.ObjectId();
+        const real = HoopsGradeSnapshot.create.bind(HoopsGradeSnapshot);
+        jest.spyOn(HoopsGradeSnapshot, 'create').mockImplementationOnce(async (doc) => {
+            await Draft.updateOne({ league: LEAGUE, season: SEASON }, { $set: { hoopsGradeSnapshot: other } });   // the other request pins first
+            return real(doc);
+        });
+        const res = await freeze();
+        expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/another request/);
+        expect(String((await Draft.findOne({ league: LEAGUE }).lean()).hoopsGradeSnapshot)).toBe(String(other));
+        expect(await HoopsGradeSnapshot.countDocuments({})).toBe(0);
+        expect(await AuditLog.countDocuments({ action: 'draft.grades.freeze' })).toBe(0);
     });
 
     it('a live grade reports its flags too', async () => {

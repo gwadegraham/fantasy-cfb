@@ -178,8 +178,54 @@ describe('dedupeListings', () => {
         expect(kept([game(1, 10, 20, 1), game(2, 10, 20, 1)])).toEqual([1, 2]);
     });
 
-    it('chains from the first listing, so a third 13+ days out is its own game', () => {
-        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 6), at(3, 10, 20, 13)])).toEqual([2, 3]);
+    it('chains: a third listing within the window of the second is the same game', () => {
+        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 6), at(3, 10, 20, 13)])).toEqual([3]);
+        expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 6), at(3, 10, 20, 19)])).toEqual([2, 3]);
+    });
+
+    it('keeps every played listing in a game — two finals are two games — and drops only unplayed copies', () => {
+        const fin = { status: 'final', homePoints: 70, awayPoints: 60 };
+        expect(kept([at(1, 10, 20, 0, fin), at(2, 10, 20, 3, fin), at(3, 10, 20, 5)])).toEqual([1, 2]);
+    });
+
+    // ---- the conference rule ----
+    // A conference of 10+ plays a team at home at most once; only small
+    // conferences run triple round robins (the 7-member UAC, in 2025-26).
+    const conf = (name, n) => Array.from({ length: n }, (_, i) => ({ id: 500 + i, conference: name }));
+    const big = conf('ACC', 9).concat([{ id: 10, conference: 'ACC' }, { id: 20, conference: 'ACC' }]);   // 11
+    const small = conf('UAC', 5).concat([{ id: 10, conference: 'UAC' }, { id: 20, conference: 'UAC' }]); // 7
+    const cg = (id, home, away, day, name) => at(id, home, away, day,
+        { conferenceGame: true, homeConference: name, awayConference: name });
+
+    it('in a 10+ member conference, the same host and visitor is one game however far apart', () => {
+        const out = HD.dedupeListings([cg(1, 10, 20, 0, 'ACC'), cg(2, 10, 20, 70, 'ACC'), cg(3, 10, 20, 35, 'ACC')], big);
+        expect(out.games.map(g => g.id)).toEqual([3]);
+        expect(out.dropped.sort()).toEqual([1, 2]);
+    });
+
+    it('never merges the conference home-and-home, which swaps the host', () => {
+        expect(HD.dedupeListings([cg(1, 10, 20, 0, 'ACC'), cg(2, 20, 10, 40, 'ACC')], big).games.map(g => g.id).sort()).toEqual([1, 2]);
+    });
+
+    it('a small conference keeps its triple round robin, and needs the teams to size it', () => {
+        expect(HD.dedupeListings([cg(1, 10, 20, 0, 'UAC'), cg(2, 10, 20, 30, 'UAC')], small).games).toHaveLength(2);
+        expect(HD.dedupeListings([cg(1, 10, 20, 0, 'ACC'), cg(2, 10, 20, 30, 'ACC')]).games).toHaveLength(2);
+        // a non-conference game between two ACC teams is not a conference game
+        const nonConf = { conferenceGame: false, homeConference: 'ACC', awayConference: 'ACC' };
+        expect(HD.dedupeListings([at(1, 10, 20, 0, nonConf), at(2, 10, 20, 30, nonConf)], big).games).toHaveLength(2);
+    });
+
+    it('applies inside the projection, sized from the teams it is given', () => {
+        // 11 ACC teams; 10 hosts 20 three times, weeks apart.
+        const teams = big.map(t => team(t.id, 50, 0.6, '15-15', 'ACC'));
+        const games = [cg(1, 10, 20, 0, 'ACC'), cg(2, 10, 20, 40, 'ACC'), cg(3, 10, 20, 80, 'ACC'), cg(4, 20, 10, 20, 'ACC')];
+        expect(HD.projectHoopsTeams(teams, games, { cfg, projectIds: [10] })['10'].perGame).toHaveLength(2);
+    });
+
+    it('keeps both played conference games — two finals are two games', () => {
+        const fin = { status: 'final', homePoints: 70, awayPoints: 60 };
+        const a = Object.assign(cg(1, 10, 20, 0, 'ACC'), fin), b = Object.assign(cg(2, 10, 20, 40, 'ACC'), fin);
+        expect(HD.dedupeListings([a, b, cg(3, 10, 20, 60, 'ACC')], big).games.map(g => g.id).sort()).toEqual([1, 2]);
     });
 
     it('is applied before projecting, so a duplicate is not projected twice', () => {

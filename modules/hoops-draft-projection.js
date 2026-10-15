@@ -97,61 +97,88 @@ function groupHoopsGamesByTeam(games, ids) {
 // final — which never happens before the season, so at the draft every copy
 // is projected. On the 2027 schedule as stored in mid-October (the dev copy's
 // dates run 9 weeks early, which moves no gap between two listings) Boston
-// College held 56 regular-season rows against a median of ~31. The rule
-// below collapses 15 of 5,286 rows (23 teams, 11 of them in the pool; 7 of
-// Boston College's, which still leaves it 48 projectable games).
+// College held 56 regular-season rows against a median of ~31 — 35 of them
+// ACC games, for a 20-game ACC schedule.
 //
-// The rule, from 2025-26 as CBBD served it (6,213 rows, PR #554's pulls):
-//   SAME HOST (not neutral): the same home team hosting the same visitor
-//     twice. Real ones exist — triple round robins (WAC), campus-site
-//     conference tournaments — and the closest pair of regular-season games
-//     both actually played was 13 days apart. The stale listings that were
-//     never played sat 0.8, 1, 7, 11.1 and 11.1 days from their twin (and
-//     nine more 16-48 days out, which no window can separate from a real
-//     rematch). So: under 12 days is one game. A real home-and-home swaps the
-//     host and is never touched.
+// Three rules, each from 2025-26 as CBBD served it (6,213 rows, PR #554's
+// pulls). A real home-and-home swaps the host, so none of them can merge one.
+//
+//   CONFERENCE REGULAR SEASON, conference of 10+ members: the same host and
+//     the same visitor is ONE game, however far apart the listings are. A
+//     conference plays a team at home at most once unless it runs a triple
+//     round robin, and only small conferences do: every same-host conference
+//     repeat in 2025-26 (21 pairs, all 21 played) was in the 7-member UAC;
+//     no conference of 10 or more had one. Membership is counted from the
+//     season's teams, not a list. (On 2027, all 20 such repeats — ACC 15,
+//     SWAC 4, Sun Belt 1 — have at most one final.)
+//   OTHER SAME HOST (not neutral): under 12 days apart is one game. The
+//     closest pair of same-host games both actually played was 13 days
+//     apart; the stale listings never played sat 0.8, 1, 7, 11.1 and 11.1
+//     days from their twins. Nine more sat 16-48 days out, which no window
+//     can separate from a real rematch — left to the THICK flag below.
 //   NEUTRAL: the same pair on a neutral floor within 3 days. 2025-26 had no
 //     neutral repeats at all; 2027 has one (Kansas State and Gonzaga, the
-//     Players Era Festival, listed on consecutive days). No event plays one
-//     pairing on back-to-back days, so that is one game too.
-// Conference tournament games are left alone — the projection excludes them
-// anyway, and their rematches are real.
+//     Players Era Festival, listed on consecutive days).
+// Listings chain: a third copy within the window of the second joins the
+// same game. Conference tournament games and dead rows are left alone.
 //
-// What the window cannot reach (a stale copy weeks from its twin) is left to
-// the THICK schedule flag below.
+// Within one game, every FINAL listing is kept — two finals are two played
+// games, whatever the dates say — and the unplayed copies dropped. With no
+// final, the highest id (the newer listing) is kept.
+//
+// Measured on that 2027 copy: 25 of 5,286 rows collapse, touching 34 teams
+// (19 in the pool). Boston College's ACC games come to exactly 20; it keeps
+// 41 rows (40 projectable) because it also lists 21 non-conference games
+// against 19 opponents — a padded non-conference slate no evidence-backed
+// rule separates, so it stays flagged THICK (40 > 1.3 × the median of 30).
 const SAME_HOST_DAYS = 12;
 const NEUTRAL_DAYS = 3;
+const CONF_MIN_MEMBERS = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function listingKey(g) {
-    if (g.neutralSite) return 'n:' + [Number(g.homeTeamId), Number(g.awayTeamId)].sort((a, b) => a - b).join('-');
-    return 'h:' + Number(g.homeTeamId) + '-' + Number(g.awayTeamId);
+function conferenceSizes(teams) {
+    const n = {};
+    (teams || []).forEach(t => { if (t && t.conference) n[t.conference] = (n[t.conference] || 0) + 1; });
+    return n;
 }
 
-// One listing per real game. Returns { games, dropped } — dropped being the
-// ids collapsed away. Within a cluster the listing kept is a final one if
-// there is one (it was played), else the highest id (the newer listing).
-function dedupeListings(games) {
+function listingKey(g, sizes) {
+    if (g.neutralSite) return 'n:' + [Number(g.homeTeamId), Number(g.awayTeamId)].sort((a, b) => a - b).join('-');
+    const pair = Number(g.homeTeamId) + '-' + Number(g.awayTeamId);
+    const conf = g.homeConference;
+    if (g.conferenceGame && conf && conf === g.awayConference && (sizes[conf] || 0) >= CONF_MIN_MEMBERS) return 'c:' + pair;
+    return 'h:' + pair;
+}
+
+const WINDOW_MS = { n: NEUTRAL_DAYS * DAY_MS, h: SAME_HOST_DAYS * DAY_MS, c: Infinity };
+
+// One listing per real game. `teams` (the season's HoopsTeam rows) sizes the
+// conferences; without it the conference rule never applies. Returns
+// { games, dropped } — dropped being the ids collapsed away.
+function dedupeListings(games, teams) {
+    const sizes = conferenceSizes(teams);
     const groups = {};
     const keep = [];
     (games || []).forEach(g => {
         if (isDead(g) || isConfTournamentGame(g)) { keep.push(g); return; }
-        (groups[listingKey(g)] = groups[listingKey(g)] || []).push(g);
+        const k = listingKey(g, sizes);
+        (groups[k] = groups[k] || []).push(g);
     });
     const dropped = [];
     Object.keys(groups).forEach(k => {
-        const window = (k[0] === 'n' ? NEUTRAL_DAYS : SAME_HOST_DAYS) * DAY_MS;
+        const window = WINDOW_MS[k[0]];
         const rows = groups[k].slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate) || a.id - b.id);
         let cluster = [];
         const flush = () => {
-            const best = cluster.slice().sort((a, b) => (isFinal(b) - isFinal(a)) || (b.id - a.id))[0];
-            keep.push(best);
-            cluster.forEach(g => { if (g !== best) dropped.push(g.id); });
+            const finals = cluster.filter(isFinal);
+            const kept = finals.length ? finals : [cluster.slice().sort((a, b) => b.id - a.id)[0]];
+            cluster.forEach(g => { if (kept.includes(g)) keep.push(g); else dropped.push(g.id); });
             cluster = [];
         };
         rows.forEach(g => {
-            const gap = cluster.length ? new Date(g.startDate) - new Date(cluster[0].startDate) : NaN;
-            if (cluster.length && !(gap < window)) flush();
+            const prev = cluster[cluster.length - 1];
+            const gap = prev ? new Date(g.startDate) - new Date(prev.startDate) : NaN;
+            if (prev && !(gap < window)) flush();
             cluster.push(g);
         });
         flush();
@@ -168,7 +195,7 @@ function dedupeListings(games) {
 function projectHoopsTeams(teams, games, { cfg, projectIds }) {
     const ctx = attachMarch(buildHoopsPoolContext(teams, { ranks: preseasonRanks(teams), cfg }), teams);
     const ids = new Set((projectIds || []).map(String));
-    const byTeam = groupHoopsGamesByTeam(dedupeListings(games).games, ids);
+    const byTeam = groupHoopsGamesByTeam(dedupeListings(games, teams).games, ids);
     const byId = {};
     (teams || []).forEach(t => { byId[String(t.id)] = t; });
     const out = {};
@@ -218,8 +245,8 @@ function boardRow(team, proj, logo) {
 //          not published: 21 of the 120 pool teams held 7-24 games against a
 //          median of ~31 and projected a third to a half of a full season.
 //   thick  over THICK_SHARE of it — duplicate listings the date window could
-//          not separate from a real rematch (Boston College, 48 games after
-//          deduplication).
+//          not separate from a real rematch (Boston College: 40 projectable
+//          games after deduplication on the mid-October 2027 schedule).
 // A projection cannot tell a short schedule from a weak team, or a padded
 // one from a strong team, so the board names them and the freeze refuses.
 const THIN_SHARE = 0.75;
@@ -280,5 +307,5 @@ module.exports = {
     RANK_SOURCE, TEAM_FIELDS, GAME_FIELDS,
     rankOf, poolOf, preseasonRanks, groupHoopsGamesByTeam, projectHoopsTeams,
     perWeekOf, boardRow, scheduleFlags, THIN_SHARE, THICK_SHARE,
-    dedupeListings, SAME_HOST_DAYS, NEUTRAL_DAYS, snapshotTeams, snapshotGames, fromSnapshot
+    dedupeListings, SAME_HOST_DAYS, NEUTRAL_DAYS, CONF_MIN_MEMBERS, snapshotTeams, snapshotGames, fromSnapshot
 };

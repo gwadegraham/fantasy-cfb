@@ -181,7 +181,18 @@ async function basketballGrades(league, season) {
 
 // How a flagged team reads in a refusal: "Gonzaga (11 games, short)".
 function flagList(flags) {
-    return flags.map(f => `${f.school || f.id} (${f.games} games, ${f.kind === 'thin' ? 'short' : 'padded'})`).join(', ');
+    return flags.map(f => `${f.school || f.id} (${f.games} games)`).join(', ');
+}
+
+// The flag refusal, with the advice each kind actually needs: a SHORT
+// schedule is a conference slate not published yet, a PADDED one is most
+// likely duplicate listings CBBD has not cleared.
+function refusalFor(flags, how) {
+    const thin = flags.filter(f => f.kind === 'thin'), thick = flags.filter(f => f.kind === 'thick');
+    const parts = [];
+    if (thin.length) parts.push(`${thin.length} with a short schedule — ${flagList(thin)}: a conference slate is probably not published yet, so wait for it and re-ingest the basketball schedule`);
+    if (thick.length) parts.push(`${thick.length} with a padded schedule — ${flagList(thick)}: most likely duplicate listings of rescheduled games, so check those teams' games for stale copies`);
+    return `Not frozen: pool teams whose schedules cannot be projected honestly. ${parts.join('. ')}. Then freeze again, or ${how}.`;
 }
 
 // Freeze a basketball draft's grade input: every team's preseason rating and
@@ -229,25 +240,35 @@ async function freezeBasketball(req, res, league, season) {
     const flags = poolScheduleFlags(teams, games, resolveConfig(league, overridesFromDoc(cfgDoc)), draft.poolSize);
     if (flags.length && !override) {
         return res.status(409).json({
-            message: `Not frozen: ${flags.length} pool team${flags.length === 1 ? '' : 's'} ha${flags.length === 1 ? 's' : 've'} a schedule that cannot be projected honestly — ${flagList(flags)}. Re-ingest the basketball schedule and freeze again, or ${how}.`,
+            message: refusalFor(flags, how),
             scheduleFlags: flags
         });
     }
 
-    const replacing = !!draft.hoopsGradeSnapshot;
+    const previousId = draft.hoopsGradeSnapshot || null;
+    const replacing = !!previousId;
+    const forced = override && (replacing || flags.length > 0);
     const snap = await HoopsGradeSnapshot.create({
         league, season, reason: 'draft-baseline', rankSource: hoopsDraft.RANK_SOURCE,
         poolSize: draft.poolSize || null,
         note: body.note || `Draft-grade baseline for ${league}`,
         scheduleFlags: flags,
-        forced: override && (replacing || flags.length > 0),
-        forceReason: override ? reason : undefined,
-        replaces: replacing ? draft.hoopsGradeSnapshot : undefined,
+        forced,
+        forceReason: forced ? reason : undefined,
+        replaces: replacing ? previousId : undefined,
         teams: hoopsDraft.snapshotTeams(teams), games: hoopsDraft.snapshotGames(games)
     });
-    draft.hoopsGradeSnapshot = snap._id;
-    draft.updatedAt = new Date();
-    await draft.save();
+    // Pinned only if the draft still holds the freeze this request read. Two
+    // freezes racing past the checks above would otherwise both save — the
+    // last one winning, the first orphaned, and the survivor's `replaces`
+    // naming the wrong snapshot. The loser takes its snapshot back out.
+    const pinned = await Draft.updateOne(
+        { _id: draft._id, hoopsGradeSnapshot: previousId ? previousId : { $in: [null] } },
+        { $set: { hoopsGradeSnapshot: snap._id, updatedAt: new Date() } });
+    if (!pinned.matchedCount) {
+        await HoopsGradeSnapshot.deleteOne({ _id: snap._id });
+        return res.status(409).json({ message: `${league} ${season} grades were frozen by another request while this one ran — reload and check the freeze before trying again.` });
+    }
 
     await audit.record(req, {
         action: 'draft.grades.freeze', league, season: String(season),
@@ -255,7 +276,7 @@ async function freezeBasketball(req, res, league, season) {
             + (flags.length ? ` with ${flags.length} flagged schedule${flags.length === 1 ? '' : 's'}` : '')
             + (snap.forced ? ` — override: ${reason}` : ''),
         meta: { snapshotId: String(snap._id), replaces: replacing ? String(snap.replaces) : null,
-                forced: snap.forced, reason: override ? reason : null, scheduleFlags: flags }
+                forced: snap.forced, reason: forced ? reason : null, scheduleFlags: flags }
     });
 
     return res.json({ league, season, sport: 'basketball', snapshotId: String(snap._id), takenAt: snap.takenAt,
