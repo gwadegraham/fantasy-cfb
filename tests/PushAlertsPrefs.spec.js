@@ -176,3 +176,57 @@ describe('the status line when alerts would not reach this manager', () => {
         expect(status()).toMatch(/limited to a few managers/);
     });
 });
+
+// #557: the panel in sections, so nobody sees a switch that can never fire.
+describe('the panel sections', () => {
+    const ALL = { football: true, basketball: true, captain: true };
+    const labelsIn = (id) => [...document.querySelectorAll(`[data-section="${id}"] .push-pref strong`)].map(e => e.textContent);
+    const headings = () => [...document.querySelectorAll('.push-pref-heading')].map(e => e.textContent);
+    const rowIn = (id, label) => [...document.querySelectorAll(`[data-section="${id}"] .push-pref`)]
+        .find(r => r.querySelector('strong').textContent === label);
+
+    it('a two-sport manager in a Captain league sees all three sections', async () => {
+        await mountPanel({}, { sections: ALL });
+        expect(labelsIn('shared')).toEqual(['Captain lock', 'Weekly recap']);
+        expect(labelsIn('football')).toEqual(['Final results', 'Lead changes', 'Crunch time', 'Every score']);
+        expect(labelsIn('basketball')).toEqual(['Final results', 'Crunch time', 'Tip-off']);
+        expect(headings()).toEqual(['🏈 Football', '🏀 Basketball']);
+    });
+
+    it('basketball only: no football rows', async () => {
+        await mountPanel({}, { sections: { football: false, basketball: true, captain: true } });
+        expect(document.querySelector('[data-section="football"]')).toBeNull();
+        expect(headings()).toEqual(['🏀 Basketball']);
+    });
+
+    it('football only: no basketball rows', async () => {
+        await mountPanel({}, { sections: { football: true, basketball: false, captain: true } });
+        expect(document.querySelector('[data-section="basketball"]')).toBeNull();
+    });
+
+    // A Claunts-only manager: the reminder is never sent where Captain is off.
+    it('no league playing Captain: no Captain lock row, and no lead picker', async () => {
+        await mountPanel({}, { sections: { football: true, basketball: false, captain: false } });
+        expect(labelsIn('shared')).toEqual(['Weekly recap']);
+        expect(document.querySelector('.push-pref-lead')).toBeNull();
+    });
+
+    it('a server without `sections` gets the panel it always had', async () => {
+        await mountPanel();
+        expect(labelsIn('shared')).toEqual(['Captain lock', 'Weekly recap']);
+        expect(labelsIn('football')).toHaveLength(4);
+        expect(document.querySelector('[data-section="basketball"]')).toBeNull();
+    });
+
+    it('basketball rows reflect the stored pref and save their OWN key, not football\'s', async () => {
+        await mountPanel({ hoopsCloseGame: false }, { sections: ALL });
+        expect(rowIn('basketball', 'Crunch time').querySelector('input').checked).toBe(false);
+        expect(rowIn('football', 'Crunch time').querySelector('input').checked).toBe(true);
+
+        const cb = rowIn('basketball', 'Final results').querySelector('input');
+        cb.checked = false;
+        cb.dispatchEvent(new window.Event('change', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 0));
+        expect(patched).toEqual([{ hoopsFinal: false }]);
+    });
+});

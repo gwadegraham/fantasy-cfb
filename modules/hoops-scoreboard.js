@@ -15,6 +15,7 @@
 // up as "0 of 140 matched" on the first night rather than as silence.
 
 const HoopsGame = require('../models/hoopsGame');
+const { detectHoopsEvents } = require('./hoops-score-events');
 
 const LIVE = new Set(['in_progress', 'final']);
 
@@ -66,12 +67,13 @@ function updateFor(row, stored) {
     return changedOnly(set, stored);
 }
 
-// Apply a scoreboard payload to the stored games. Returns what changed and
+// Apply a scoreboard payload to the stored games. Returns what changed,
 // which games went final on this pass (with the week they belong to, for the
-// completion batch).
+// completion batch), and the push-alert events this pass produced, keyed by
+// game id (modules/hoops-score-events.js).
 async function applyScoreboard(rows) {
     const list = (rows || []).filter(r => r && r.id != null);
-    if (!list.length) return { rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [] };
+    if (!list.length) return { rows: 0, matched: 0, mismatched: 0, updated: 0, newlyFinal: [], events: {} };
     const ids = list.map(r => Number(r.id));
     const stored = await HoopsGame.find({ id: { $in: ids } }, {
         id: 1, status: 1, week: 1, season: 1, seasonType: 1, homeTeamId: 1, awayTeamId: 1, homePoints: 1, awayPoints: 1,
@@ -81,6 +83,7 @@ async function applyScoreboard(rows) {
 
     const ops = [];
     const newlyFinal = [];
+    const events = {};
     let mismatched = 0;
     for (const row of list) {
         const prev = byId.get(Number(row.id));
@@ -95,6 +98,8 @@ async function applyScoreboard(rows) {
         const set = updateFor(row, prev);
         if (!set) continue;
         ops.push({ updateOne: { filter: { id: Number(row.id) }, update: { $set: set } } });
+        const detected = detectHoopsEvents(prev, Object.assign({}, prev, set));
+        if (detected.length) events[Number(row.id)] = detected;
         // Read the result off the row as it now stands — a final whose score
         // was already stored by an earlier in-progress poll carries no points
         // in its (changed-only) $set.
@@ -106,7 +111,7 @@ async function applyScoreboard(rows) {
         }
     }
     if (ops.length) await HoopsGame.bulkWrite(ops, { ordered: false });
-    return { rows: list.length, matched: byId.size - mismatched, mismatched, updated: ops.length, newlyFinal };
+    return { rows: list.length, matched: byId.size - mismatched, mismatched, updated: ops.length, newlyFinal, events };
 }
 
 module.exports = { applyScoreboard, updateFor };

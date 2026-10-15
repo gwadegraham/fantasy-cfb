@@ -35,7 +35,7 @@ const { activeSeason } = require('./active-season');
 const seasons = require('./active-season');
 const scoringModule = require('./scoring');
 const { engagementForSeason } = require('./scoring-defaults');
-const { captainFocusWeek, autoCaptainTeamId, captainForWeek } = require('./captain');
+const { captainFocusWeek, autoCaptainTeamId, captainForWeek, captainWeeklyBonus, resolveCaptain } = require('./captain');
 const { isDue, alreadySent, buildCaptainReminderPayload, leadMsFor } = require('./captain-reminder');
 const { alreadyNoticed, latestRecap, buildRecapNoticePayload } = require('./recap-notice');
 const { isRecapSeason } = require('./weekly-recap');
@@ -131,6 +131,9 @@ function clockLabel(period, clock) {
     return clock ? `${q} · ${clock}` : q;
 }
 
+// Signed points for a lock screen: "+6", "−2".
+function signedPts(n) { return n > 0 ? `+${n}` : `−${Math.abs(n)}`; }
+
 function teamNameFor(game, side) {
     return side === 'home' ? game.homeTeam : game.awayTeam;
 }
@@ -206,12 +209,18 @@ function buildPayload(event, game) {
 // actually banked for them. `explain` is modules/scoring.js explainGame output:
 // { matched: [{label, points}], total }. Both leagues score on wins, so a loss
 // legitimately reads as zero — saying so out loud is the point of the alert.
-function buildFinalPayload(game, teamName, explain) {
+//
+// `captainBonus`: what Captain adds when this team is the manager's Captain
+// for the week — base × (multiplier − 1), the scorer's own formula
+// (modules/captain.js captainWeeklyBonus). The headline points include it and
+// the bonus is named separately, the same line basketball's final carries.
+function buildFinalPayload(game, teamName, explain, captainBonus) {
     const homeWon = game.homePoints > game.awayPoints;
     const tied = game.homePoints === game.awayPoints;
     const isHome = teamName === game.homeTeam;
     const won = !tied && (isHome ? homeWon : !homeWon);
-    const total = (explain && explain.total) || 0;
+    const bonus = captainBonus || 0;
+    const total = Math.round((((explain && explain.total) || 0) + bonus) * 10) / 10;
     const labels = (explain && explain.matched || []).map(m => m.label).join(' + ');
 
     // ✅ / ❌ carry the only thing that matters at a final in these leagues —
@@ -220,8 +229,9 @@ function buildFinalPayload(game, teamName, explain) {
     if (tied) title = `🤝 ${game.awayTeam} ${game.awayPoints} – ${game.homeTeam} ${game.homePoints}`;
     else title = won ? `✅ ${teamName} won` : `❌ ${teamName} lost`;
 
+    const captain = bonus ? ` · 👑 Captain bonus ${signedPts(bonus)}` : '';
     const body = total > 0
-        ? `+${total} pts${labels ? ` — ${labels}` : ''} · ${scoreline(game, game.homePoints, game.awayPoints)}`
+        ? `+${total} pts${labels ? ` — ${labels}` : ''}${captain} · ${scoreline(game, game.homePoints, game.awayPoints)}`
         : `No points · ${scoreline(game, game.homePoints, game.awayPoints)}`;
 
     return { type: 'final', title, body, url: `/game/${game.id}`, tag: `final-${game.id}` };
@@ -235,7 +245,9 @@ function buildFinalPayload(game, teamName, explain) {
 //
 // Returns [{ user, teamIds }] where teamIds are the rostered teams involved —
 // a manager can roster BOTH sides of a game, which is why this is a list.
-async function recipientsFor(game, season) {
+// `captain: true` also reads the two fields a final needs to resolve this
+// week's Captain. Off for live events, which run every tick and need neither.
+async function recipientsFor(game, season, { captain = false } = {}) {
     const teamIds = [game.homeId, game.awayId].filter(id => id != null);
     if (!teamIds.length) return [];
 
@@ -252,14 +264,15 @@ async function recipientsFor(game, season) {
     // lookup while the allowlist was the gate; it is now an unindexed match run
     // once per game, per tick, against a cluster capped around 85 KB/s.
     const users = await franchiseRepo.findManagers({ accountFilter, franchiseFilter,
-        fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'seasons.season', 'seasons.teams.id'] });
+        fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs', 'seasons.season', 'seasons.teams.id']
+            .concat(captain ? ['seasons.captains', 'seasons.weeklyScore'] : []) });
 
     return users.map(user => {
         const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
         const rostered = ((entry && entry.teams) || [])
             .map(t => t.id)
             .filter(id => teamIds.includes(id));
-        return { user, teamIds: rostered };
+        return { user, teamIds: rostered, entry };
     }).filter(r => r.teamIds.length);
 }
 
@@ -408,10 +421,10 @@ async function notifyFinals(gameIds) {
         const scoringCache = new Map();
 
         for (const game of games) {
-            const recipients = await recipientsFor(game, season);
+            const recipients = await recipientsFor(game, season, { captain: true });
             if (!recipients.length) continue;
 
-            for (const { user, teamIds } of recipients) {
+            for (const { user, teamIds, entry } of recipients) {
                 if (!wantsType(user, 'final')) continue;
 
                 // Per-league config: the two leagues score the same game
@@ -428,10 +441,24 @@ async function notifyFinals(gameIds) {
                 // HTTP once per game per manager.
                 const bracket = await scoringModule.getBracketForGame(game, season, scoringCache);
 
+                // This week's Captain as modules/scoring.js resolves it: the
+                // pick, else the auto-captain from earlier regular-season
+                // weeks. Regular season only, and only where the league plays
+                // Captain that season.
+                const eng = engagementForSeason(cfg.engagementBySeason, season);
+                let captainId = null;
+                if (eng.captainEnabled && game.seasonType !== 'postseason') {
+                    const prior = ((entry && entry.weeklyScore) || [])
+                        .filter(w => w.season !== 'postseason' && Number(w.week) < Number(game.week));
+                    captainId = resolveCaptain(entry && entry.captains, game.week, (entry && entry.teams) || [], prior);
+                }
+
                 for (const teamId of teamIds) {
                     const teamName = teamId === game.homeId ? game.homeTeam : game.awayTeam;
                     const explain = explainForTeam(cfg, teamId, game, rankings, bracket);
-                    const payload = buildFinalPayload(game, teamName, explain);
+                    const bonus = (captainId != null && Number(captainId) === Number(teamId) && explain)
+                        ? captainWeeklyBonus([{ teamId, score: explain.total }], teamId, eng.captainMultiplier) : 0;
+                    const payload = buildFinalPayload(game, teamName, explain, bonus);
                     const res = await sendToUser(user, payload);
                     sent += res.sent;
                 }
@@ -441,6 +468,221 @@ async function notifyFinals(gameIds) {
         console.log(`Push: notifyFinals failed: ${err && err.message}`);
     }
 
+    return { sent };
+}
+
+// ---- Basketball game alerts (#557) ------------------------------------------
+//
+// Three alerts, each its own pref so a two-sport manager can mute basketball
+// without muting football: hoopsTipoff, hoopsCloseGame, hoopsFinal. Events
+// come from modules/hoops-score-events.js via the hoops live poller.
+//
+// Basketball and football team ids COLLIDE (130 of them), so recipients are
+// read from basketball leagues' franchises only, each in its own league's
+// season — never from football's `recipientsFor`.
+
+// "H2 · 3:41", "OT1", or '' when the half is unknown. CBBD's period is the
+// half, and 3+ is overtime.
+function hoopsClockLabel(period, clock) {
+    if (typeof period !== 'number') return '';
+    const p = period > 2 ? `OT${period - 2}` : `H${period}`;
+    return clock ? `${p} · ${clock}` : p;
+}
+
+// Live-event text. Tags carry a `hoops-` prefix: a CBBD game id can equal a
+// CFBD one, and a shared tag would let a basketball banner replace a football
+// one on the device.
+function buildHoopsPayload(event, game) {
+    const when = hoopsClockLabel(event.period, event.clock);
+    const suffix = when ? ` · ${when}` : '';
+    const url = `/hoops/game/${game.id}`;
+    if (event.type === 'tipoff') {
+        return { type: 'hoopsTipoff', title: '🏀 Tip-off', body: `${game.awayTeam} at ${game.homeTeam}${suffix}`, url, tag: `hoops-game-${game.id}` };
+    }
+    if (event.type === 'closeGame') {
+        return { type: 'hoopsCloseGame', title: '⏰ Crunch time',
+            body: `${scoreline(game, event.homePoints, event.awayPoints)}${suffix}`, url, tag: `hoops-game-${game.id}` };
+    }
+    return null;
+}
+
+// Final text for ONE manager's rostered team. Unlike football a basketball
+// result can bank NEGATIVE points (the bad-loss penalty), so a loss is not
+// always "No points".
+//
+// `captainBonus`: what Captain adds on top when this team is the manager's
+// Captain for the week — base × (multiplier − 1), the scorer's own formula
+// (modules/captain.js captainWeeklyBonus). The headline points include it,
+// and the bonus is named separately so the manager can see what the pick was
+// worth. It doubles a penalty too, so it can be negative.
+function buildHoopsFinalPayload(game, teamName, explain, captainBonus) {
+    const isHome = teamName === game.homeTeam;
+    const won = isHome ? game.homePoints > game.awayPoints : game.awayPoints > game.homePoints;
+    const base = (explain && explain.total) || 0;
+    const bonus = captainBonus || 0;
+    const total = Math.round((base + bonus) * 10) / 10;
+    const labels = ((explain && explain.matched) || []).map(m => m.label).join(' + ');
+    const line = scoreline(game, game.homePoints, game.awayPoints);
+    const captain = bonus ? ` · 👑 Captain bonus ${signedPts(bonus)}` : '';
+    const body = total === 0 ? `No points · ${line}` : `${signedPts(total)} pts${labels ? ` — ${labels}` : ''}${captain} · ${line}`;
+    return { type: 'hoopsFinal', title: won ? `✅ ${teamName} won` : `❌ ${teamName} lost`,
+        // Per team: a manager rostering BOTH sides gets two finals, and one
+        // tag would let the second replace the first on the device.
+        body, url: `/hoops/game/${game.id}`, tag: `hoops-final-${game.id}-${isHome ? game.homeTeamId : game.awayTeamId}` };
+}
+
+// Managers in every basketball league who roster a team in this game, in that
+// league's own season, with a device registered. One row per FRANCHISE: the
+// points in a final are per league.
+async function hoopsRecipientsFor(game) {
+    const teamIds = [game.homeTeamId, game.awayTeamId].map(Number).filter(Number.isFinite);
+    if (!teamIds.length) return [];
+    const League = require('../models/league');
+    const { rosterIds } = require('./hoops-scoring-pass');
+
+    const leagues = (await League.find({}, { code: 1, status: 1, _id: 0 }).lean())
+        .filter(l => l.status !== 'archived' && seasons.sportForLeague(l.code) === 'basketball');
+    const out = [];
+    for (const { code: league } of leagues) {
+        const season = seasons.seasonForLeague(league);
+        if (!Number.isFinite(season) || Number(game.season) !== Number(season)) continue;
+        const accountFilter = { pushSubscriptions: { $exists: true, $ne: [] } };
+        if (isRestricted()) accountFilter._id = { $in: [...allowlist()] };
+        const users = await franchiseRepo.findManagers({
+            accountFilter,
+            franchiseFilter: { league, seasons: { $elemMatch: { season, $or: [
+                { 'teamRefs.id': { $in: teamIds } }, { 'teams.id': { $in: teamIds } }] } } },
+            // captains + weeklyScore: the final resolves this week's Captain.
+            fields: ['firstName', 'league', 'pushSubscriptions', 'pushPrefs',
+                'seasons.season', 'seasons.teamRefs', 'seasons.teams.id', 'seasons.captains', 'seasons.weeklyScore']
+        });
+        for (const user of users) {
+            const entry = (user.seasons || []).find(s => Number(s.season) === Number(season));
+            const roster = rosterIds(entry);
+            const rostered = roster.filter(id => teamIds.includes(id));
+            if (rostered.length) out.push({ user, teamIds: rostered, league, season, entry, roster });
+        }
+    }
+    return out;
+}
+
+// Claim one alert type on one game, atomically: true for the caller that set
+// it, false for every caller after. This is the once-per-game guarantee.
+async function claimHoopsAlert(gameId, type) {
+    const HoopsGame = require('../models/hoopsGame');
+    const res = await HoopsGame.updateOne(
+        { id: Number(gameId), pushAlerts: { $ne: type } },
+        { $addToSet: { pushAlerts: type } }
+    );
+    return res.modifiedCount === 1;
+}
+
+// Tip-off and crunch time. Called from modules/hoops-live-poll.js with the
+// events a tick produced, keyed by game id. Never throws.
+async function notifyHoopsEvents(eventsByGameId) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0 };
+    const gameIds = Object.keys(eventsByGameId || {}).map(Number).filter(n => !Number.isNaN(n));
+    if (!gameIds.length) return { sent: 0 };
+    let sent = 0;
+    try {
+        const HoopsGame = require('../models/hoopsGame');
+        const games = await HoopsGame.find({ id: { $in: gameIds } },
+            { id: 1, season: 1, homeTeamId: 1, awayTeamId: 1, homeTeam: 1, awayTeam: 1, _id: 0 }).lean();
+        for (const game of games) {
+            const events = eventsByGameId[game.id] || eventsByGameId[String(game.id)] || [];
+            if (!events.length) continue;
+            const recipients = await hoopsRecipientsFor(game);
+            if (!recipients.length) continue;
+            for (const event of events) {
+                const payload = buildHoopsPayload(event, game);
+                if (!payload) continue;
+                if (!(await claimHoopsAlert(game.id, event.type))) continue;
+                // Live text is the same in every league, so a manager in two
+                // basketball leagues hears it once.
+                const told = new Set();
+                for (const { user } of recipients) {
+                    if (told.has(String(user._id))) continue;
+                    told.add(String(user._id));
+                    if (!wantsType(user, payload.type)) continue;
+                    sent += (await sendToUser(user, payload)).sent;
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyHoopsEvents failed: ${err && err.message}`);
+    }
+    return { sent };
+}
+
+// Basketball games that just went final, with what each manager banked in
+// their own league. Never throws.
+async function notifyHoopsFinals(gameIds) {
+    announceMode();
+    if (!isConfigured()) return { sent: 0 };
+    const ids = (gameIds || []).map(Number).filter(n => !Number.isNaN(n));
+    if (!ids.length) return { sent: 0 };
+    let sent = 0;
+    try {
+        const HoopsGame = require('../models/hoopsGame');
+        const { configFor, isFinal } = require('./hoops-scoring-pass');
+        const { ranksFor } = require('./hoops-ranks');
+        const { seasonModeWeeks, isModeGame } = require('./hoops-modes');
+        const hoopsCaptain = require('./hoops-captain');
+        const games = await HoopsGame.find({ id: { $in: ids } }).lean();
+        const cfgCache = new Map();
+        const modeWeeks = new Map();
+        for (const game of games) {
+            if (!isFinal(game)) continue;
+            const recipients = await hoopsRecipientsFor(game);
+            if (!recipients.length) continue;
+            // Every lookup that can fail runs BEFORE the claim: a claim
+            // followed by a failed read would use up the final for everyone.
+            // The ranks are the ones the scoring pass grades this game against.
+            const ranks = (await ranksFor(game.season, game.week)).ranks;
+            for (const { league } of recipients) {
+                if (cfgCache.has(league)) continue;
+                const { cfg, doc } = await configFor(league);
+                const eng = engagementForSeason(doc && doc.engagementBySeason, game.season);
+                // Captain counts only in a mode week, on a mode game — the
+                // scorer's rule (modules/hoops-scoring-pass.js).
+                let captainOn = false;
+                if (eng.captainEnabled && isModeGame(game)) {
+                    if (!modeWeeks.has(game.season)) modeWeeks.set(game.season, await seasonModeWeeks(game.season));
+                    captainOn = modeWeeks.get(game.season).includes(Number(game.week));
+                }
+                cfgCache.set(league, { cfg, captainOn, multiplier: eng.captainMultiplier });
+            }
+            if (!(await claimHoopsAlert(game.id, 'final'))) continue;
+            for (const { user, teamIds, league, entry, roster } of recipients) {
+                if (!wantsType(user, 'hoopsFinal')) continue;
+                const { cfg, captainOn, multiplier } = cfgCache.get(league);
+                // This week's Captain as the scorer resolves it: the pick, else
+                // the frozen default, else the default from earlier weeks.
+                let captainId = null;
+                if (captainOn) {
+                    const parts = hoopsCaptain.pickParts(entry && entry.captains, game.week);
+                    captainId = parts.picked != null ? parts.picked
+                        : parts.frozenAuto != null ? parts.frozenAuto
+                        : hoopsCaptain.autoNow(entry, roster, game.week);
+                }
+                for (const teamId of teamIds) {
+                    const teamName = teamId === Number(game.homeTeamId) ? game.homeTeam : game.awayTeam;
+                    let explain = null;
+                    try {
+                        explain = scoringModule.explainGame('hoops', teamId, game, ranks, cfg);
+                    } catch (e) {
+                        console.log(`Push: could not explain hoops game ${game.id} for team ${teamId}: ${e && e.message}`);
+                    }
+                    const bonus = (captainId != null && Number(captainId) === teamId && explain)
+                        ? captainWeeklyBonus([{ teamId, score: explain.total }], teamId, multiplier) : 0;
+                    sent += (await sendToUser(user, buildHoopsFinalPayload(game, teamName, explain, bonus))).sent;
+                }
+            }
+        }
+    } catch (err) {
+        console.log(`Push: notifyHoopsFinals failed: ${err && err.message}`);
+    }
     return { sent };
 }
 
@@ -824,6 +1066,35 @@ async function notifyRecapReady(nowMs) {
     return { sent, due };
 }
 
+// ---- which settings a manager sees ------------------------------------------
+
+// Which parts of the alert panel apply to this person, from their franchises
+// ({ league, seasons: [{ season }] }, franchiseRepo.seasonsByLeague):
+//
+//   football / basketball  holds a franchise in that sport, any season — the
+//                          switches are worth setting before a draft.
+//   captain                some league they play has Captain ON for that
+//                          league's own season. The reminder is only ever
+//                          sent there (notifyFootballCaptainLocks /
+//                          notifyHoopsCaptainLocks), so anywhere else the
+//                          switch could never fire.
+//
+// Archived leagues count for nothing: their alerts never fire either.
+async function alertSections(franchises) {
+    const League = require('../models/league');
+    const ScoringConfig = require('../models/scoringConfig');
+    const codes = [...new Set((franchises || []).map(f => f.league).filter(Boolean))];
+    const out = { football: false, basketball: false, captain: false };
+    if (!codes.length) return out;
+    const archived = new Set((await League.find({ code: { $in: codes }, status: 'archived' }, { code: 1, _id: 0 }).lean())
+        .map(l => l.code));
+    const live = codes.filter(c => !archived.has(c));
+    live.forEach(c => { out[seasons.sportForLeague(c) === 'basketball' ? 'basketball' : 'football'] = true; });
+    const docs = await ScoringConfig.find({ league: { $in: live } }, { league: 1, engagementBySeason: 1, _id: 0 }).lean();
+    out.captain = docs.some(d => engagementForSeason(d.engagementBySeason, seasons.seasonForLeague(d.league)).captainEnabled);
+    return out;
+}
+
 // One-off delivery used by the "send me a test" button, so a manager can prove
 // the whole chain works without waiting for a Saturday.
 // One-off delivery used by the "Send a test" button, so a manager can prove the
@@ -864,13 +1135,16 @@ async function sendTest(userId) {
 module.exports = {
     notifyEvents,
     notifyFinals,
+    notifyHoopsEvents, notifyHoopsFinals,
     notifyCaptainLocks, notifyHoopsCaptainLocks,
     notifyRecapReady,
+    alertSections,
     sendTest,
     isConfigured,
     vapidConfig,
     isAllowedRecipient,
     isRestricted,
     // exported for reuse/tests:
-    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, rawRecipientIds, recipientsFor, explainForTeam
+    buildPayload, buildFinalPayload, scoreline, clockLabel, scoreLabel, wantsType, allowlist, rawRecipientIds, recipientsFor, explainForTeam,
+    hoopsClockLabel, buildHoopsPayload, buildHoopsFinalPayload, hoopsRecipientsFor, claimHoopsAlert
 };

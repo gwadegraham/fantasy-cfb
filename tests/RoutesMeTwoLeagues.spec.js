@@ -16,6 +16,7 @@ const Account = require('../models/account');
 const Franchise = require('../models/franchise');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
+const ScoringConfig = require('../models/scoringConfig');
 const seasons = require('../modules/active-season');
 const usersRouter = require('../routes/users');
 
@@ -121,5 +122,82 @@ describe('GET /users/me/push counts a roster in ANY league’s own season (#568)
         process.env.PUSH_RECIPIENT_IDS = '64b1f00000000000000000aa';
         const res = await request(app).get('/users/me/push');
         expect(res.body).toMatchObject({ allowed: false, reason: 'restricted' });
+    });
+});
+
+describe('basketball alert prefs (#557)', () => {
+    const solo = async (league, season) => {
+        const a = await Account.create({ firstName: 'Solo', lastName: 'One', email: 'solo@example.invalid' });
+        await Franchise.create({ accountId: a._id, league, seasons: [{ season, teams: [] }] });
+        return a;
+    };
+
+    const sectionsOf = async (a) => (await request(a).get('/users/me/push')).body.sections;
+    const captainIn = (league, season, on = true) => ScoringConfig.updateOne({ league },
+        { $set: { league, [`engagementBySeason.${season}`]: { captainEnabled: on, captainMultiplier: 2 } } }, { upsert: true });
+
+    test('GET /users/me/push names the sports the account plays', async () => {
+        expect(await sectionsOf(app)).toMatchObject({ football: true, basketball: true });
+        expect(await sectionsOf(appFor(await solo(FOOTBALL, FB_SEASON)))).toMatchObject({ football: true, basketball: false });
+    });
+
+    // Setting the switches up before the draft is the point.
+    test('a basketball franchise from a PAST season still counts', async () => {
+        expect((await sectionsOf(appFor(await solo(HOOPS, BB_SEASON - 1)))).basketball).toBe(true);
+    });
+
+    test('an ARCHIVED league counts for nothing', async () => {
+        await League.updateOne({ code: HOOPS }, { $set: { status: 'archived' } });
+        expect(await sectionsOf(app)).toMatchObject({ football: true, basketball: false });
+    });
+
+    describe('captain: only where a league of theirs plays Captain, in that league\'s season', () => {
+        test('no league plays Captain: false', async () => {
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('the basketball league plays it in ITS season (2027): true', async () => {
+            await captainIn(HOOPS, BB_SEASON);
+            expect((await sectionsOf(app)).captain).toBe(true);
+        });
+
+        test('Captain on only for a season the league is not in: false', async () => {
+            await captainIn(FOOTBALL, BB_SEASON);                       // football is in 2026
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('Captain switched off: false', async () => {
+            await captainIn(FOOTBALL, FB_SEASON, false);
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('an archived Captain league does not count', async () => {
+            await captainIn(HOOPS, BB_SEASON);
+            await League.updateOne({ code: HOOPS }, { $set: { status: 'archived' } });
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('a league they are NOT in playing Captain does not count', async () => {
+            await captainIn('someone-elses', FB_SEASON);
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+    });
+
+    test('PATCH stores each basketball key, leaving football’s alone', async () => {
+        const res = await request(app).patch('/users/me/push/prefs').send({ hoopsCloseGame: false });
+        expect(res.status).toBe(200);
+        expect(res.body.prefs).toMatchObject({ hoopsCloseGame: false, hoopsTipoff: true, hoopsFinal: true, closeGame: true, final: true });
+        await request(app).patch('/users/me/push/prefs').send({ hoopsTipoff: false, hoopsFinal: false });
+        const stored = (await Account.findById(account._id).lean()).pushPrefs;
+        expect(stored).toMatchObject({ hoopsTipoff: false, hoopsCloseGame: false, hoopsFinal: false, closeGame: true, final: true });
+    });
+
+    test('the defaults are on', async () => {
+        const res = await request(app).patch('/users/me/push/prefs').send({ score: false });
+        expect(res.body.prefs).toMatchObject({ hoopsTipoff: true, hoopsCloseGame: true, hoopsFinal: true });
+    });
+
+    test('a non-boolean is refused', async () => {
+        expect((await request(app).patch('/users/me/push/prefs').send({ hoopsFinal: 'no' })).status).toBe(400);
     });
 });

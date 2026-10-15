@@ -316,4 +316,4 @@ async function writeCumulative(league, accountId, season) {
     );
 }
 
-module.exports = { scoreHoopsWeek, isFinal, rosterIds, writeWeek, writeCumulative, points };
+module.exports = { scoreHoopsWeek, isFinal, rosterIds, writeWeek, writeCumulative, points, configFor };

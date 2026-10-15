@@ -394,8 +394,15 @@
 .push-status-ok { color: var(--cc-success); }
 .push-status-info { color: var(--cc-muted-2); }
 .push-status-error { color: var(--cc-danger-text); }
-.push-prefs { display: flex; flex-direction: column; gap: 0.55em; margin-bottom: 0.9em; }
+.push-prefs { display: flex; flex-direction: column; gap: 0.9em; margin-bottom: 0.9em; }
 .push-prefs[hidden] { display: none; }
+/* One group per section (shared, football, basketball), each a checklist of
+   its own; the gap between groups is wider than between rows. */
+.push-pref-group { display: flex; flex-direction: column; gap: 0.55em; }
+.push-pref-heading {
+    margin: 0; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--cc-muted-2);
+}
 .push-pref { display: flex; align-items: flex-start; gap: 0.6em; cursor: pointer; }
 .push-pref input { margin-top: 2px; accent-color: var(--cc-interactive); flex: none; }
 .push-pref-text { display: flex; flex-direction: column; gap: 1px; }

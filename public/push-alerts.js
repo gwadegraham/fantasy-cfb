@@ -32,18 +32,40 @@
     ];
     var DEFAULT_LEAD_MINUTES = 120;
 
-    // Ordered loudest-last. captainLock leads because it is the only one that
-    // asks the manager to DO something before a deadline; the rest are results.
-    // Its hint is built from the manager's own lead, so the row never advertises
-    // a timing they have changed.
-    var ALERT_TYPES = [
-        { key: 'captainLock', label: 'Captain lock', lead: true, hint: 'Before your weekly pick locks.' },
-        { key: 'recapReady', label: 'Weekly recap', hint: 'Monday morning, when your week is written up.' },
-        { key: 'final', label: 'Final results', hint: 'Your team finished — and what it banked.' },
-        { key: 'leadChange', label: 'Lead changes', hint: 'When your team takes or loses the lead.' },
-        { key: 'closeGame', label: 'Crunch time', hint: 'Under 2:00, one score apart.' },
-        { key: 'score', label: 'Every score', hint: 'Loudest by far — roughly 40 a Saturday.' }
+    // The panel in sections (#557). The server says which apply to this
+    // manager (`sections` from GET /users/me/push), so nobody sees a switch for
+    // an alert that can never reach them:
+    //   shared      Captain lock — only when a league of theirs plays Captain —
+    //               and the weekly recap, which both sports send.
+    //   football    its four game alerts, for a football franchise.
+    //   basketball  its three, for a basketball franchise. Separate keys from
+    //               football's, so muting one sport leaves the other alone.
+    //
+    // Game alerts are ordered loudest-last. captainLock leads because it is the
+    // only one that asks the manager to DO something before a deadline. Its hint
+    // is built from the manager's own lead, so the row never advertises a timing
+    // they have changed. The basketball crunch-time hint mirrors
+    // modules/hoops-score-events.js.
+    var SECTIONS = [
+        { id: 'shared', types: [
+            { key: 'captainLock', label: 'Captain lock', lead: true, captain: true, hint: 'Before your weekly pick locks.' },
+            { key: 'recapReady', label: 'Weekly recap', hint: 'Monday morning, when your week is written up.' }
+        ] },
+        { id: 'football', title: '🏈 Football', types: [
+            { key: 'final', label: 'Final results', hint: 'Your team finished — and what it banked.' },
+            { key: 'leadChange', label: 'Lead changes', hint: 'When your team takes or loses the lead.' },
+            { key: 'closeGame', label: 'Crunch time', hint: 'Under 2:00, one score apart.' },
+            { key: 'score', label: 'Every score', hint: 'Loudest by far — roughly 40 a Saturday.' }
+        ] },
+        { id: 'basketball', title: '🏀 Basketball', types: [
+            { key: 'hoopsFinal', label: 'Final results', hint: 'Your team finished — and what it banked.' },
+            { key: 'hoopsCloseGame', label: 'Crunch time', hint: 'Second half, 4:00 or less, within 5.' },
+            { key: 'hoopsTipoff', label: 'Tip-off', hint: 'When one of your teams starts a game.' }
+        ] }
     ];
+
+    // A server that predates `sections` gets the panel it always had.
+    var LEGACY_SECTIONS = { football: true, basketball: false, captain: true };
 
     // iOS only exposes the Push API to an installed PWA. Both checks matter:
     // `standalone` is the old Safari flag, the media query is the standard one.
@@ -209,39 +231,56 @@
             return '2 hours';
         }
 
-        function renderPrefs(prefs) {
+        function renderPrefs(prefs, sections) {
             prefsWrap.innerHTML = '';
-            ALERT_TYPES.forEach(function (t) {
-                var row = document.createElement('label');
-                row.className = 'push-pref';
-                var cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.checked = prefs[t.key] !== false;
-                cb.addEventListener('change', function () {
-                    savePref(t.key, cb.checked).catch(function () {
-                        cb.checked = !cb.checked;
-                        say('Could not save that setting.', 'error');
-                    });
-                });
-                var text = document.createElement('span');
-                text.className = 'push-pref-text';
-                text.innerHTML = '<strong></strong><em></em>';
-                text.querySelector('strong').textContent = t.label;
-                var hint = text.querySelector('em');
-                hint.textContent = t.hint;
-                row.appendChild(cb);
-                row.appendChild(text);
-
-                if (t.lead) {
-                    var mins = prefs.captainLockLeadMinutes || DEFAULT_LEAD_MINUTES;
-                    var setHint = function (m) { hint.textContent = leadLabel(m) + ' before your weekly pick locks.'; };
-                    setHint(mins);
-                    row.appendChild(leadPicker(mins, setHint));
+            SECTIONS.forEach(function (sec) {
+                if (sec.id !== 'shared' && !sections[sec.id]) return;
+                var types = sec.types.filter(function (t) { return !t.captain || sections.captain; });
+                if (!types.length) return;
+                var group = document.createElement('div');
+                group.className = 'push-pref-group';
+                group.setAttribute('data-section', sec.id);
+                if (sec.title) {
+                    var h = document.createElement('p');
+                    h.className = 'push-pref-heading';
+                    h.textContent = sec.title;
+                    group.appendChild(h);
                 }
-
-                prefsWrap.appendChild(row);
+                types.forEach(function (t) { group.appendChild(prefRow(t, prefs)); });
+                prefsWrap.appendChild(group);
             });
             prefsWrap.hidden = false;
+        }
+
+        function prefRow(t, prefs) {
+            var row = document.createElement('label');
+            row.className = 'push-pref';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = prefs[t.key] !== false;
+            cb.addEventListener('change', function () {
+                savePref(t.key, cb.checked).catch(function () {
+                    cb.checked = !cb.checked;
+                    say('Could not save that setting.', 'error');
+                });
+            });
+            var text = document.createElement('span');
+            text.className = 'push-pref-text';
+            text.innerHTML = '<strong></strong><em></em>';
+            text.querySelector('strong').textContent = t.label;
+            var hint = text.querySelector('em');
+            hint.textContent = t.hint;
+            row.appendChild(cb);
+            row.appendChild(text);
+
+            if (t.lead) {
+                var mins = prefs.captainLockLeadMinutes || DEFAULT_LEAD_MINUTES;
+                var setHint = function (m) { hint.textContent = leadLabel(m) + ' before your weekly pick locks.'; };
+                setHint(mins);
+                row.appendChild(leadPicker(mins, setHint));
+            }
+
+            return row;
         }
 
         async function render() {
@@ -274,7 +313,7 @@
                         ? ' This device is registered, but you have no roster this season — alerts start once your league drafts.'
                         : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
                 say('Alerts are on for ' + state.deviceCount + (state.deviceCount === 1 ? ' device.' : ' devices.') + quiet, state.allowed ? 'ok' : 'info');
-                renderPrefs(state.prefs || {});
+                renderPrefs(state.prefs || {}, state.sections || LEGACY_SECTIONS);
                 if (state.allowed) {
                     button('Send a test', 'btn-secondary', async function (b) {
                         b.disabled = true;

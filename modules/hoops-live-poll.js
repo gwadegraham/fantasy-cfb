@@ -31,6 +31,7 @@ const boxScore = require('./hoops-box-score');
 const scoringPass = require('./hoops-scoring-pass');
 const hoopsScoresJob = require('./hoops-scores-job');
 const jobLogger = require('./job-logger');
+const pushNotify = require('./push-notify');
 const { createCompletionFlush } = require('./completion-flush');
 const { anyGameInProgress } = require('./live-poll');
 const { MAX_GAME_HOURS } = require('./game-window');
@@ -86,6 +87,27 @@ async function settle(season, nowMs) {
     const work = await completionWork(season, groups, nowMs);
     if (work.retry) groups.forEach(g => flush.addPending(g.gameIds, { week: g.week, seasonType: g.seasonType }, nowMs));
     return { groups, work };
+}
+
+// Push alerts for this tick (#557): tip-off and crunch time from the
+// scoreboard's events, and a final for each game that just finished.
+//
+// NOT awaited, for the reason football's doLiveUpdate gives
+// (modules/score-update.js): recipients, scoring lookups and a round-trip to
+// the push service per device would hold the `running` guard and skip the
+// next tick. And it can never take the poller down: both notifiers catch
+// their own errors, the .catch() covers a rejection anyway, and the try
+// covers a synchronous throw. An alert is a nicety; the scoreboard is not.
+function dispatchAlerts(applied) {
+    const alertFailed = (e) => console.log(`Push: hoops alert dispatch failed: ${e && e.message}`);
+    // Each in its own try, so one failing does not cost the other.
+    const fire = (fn) => {
+        try { Promise.resolve(fn()).catch(alertFailed); } catch (e) { alertFailed(e); }
+    };
+    const events = applied.events || {};
+    if (Object.keys(events).length) fire(() => pushNotify.notifyHoopsEvents(events));
+    const finals = applied.newlyFinal || [];
+    if (finals.length) fire(() => pushNotify.notifyHoopsFinals(finals.map(g => g.id)));
 }
 
 // The same error is recorded at most once per ERROR_EVERY_MS: an outage or
@@ -152,6 +174,7 @@ async function tick({ now = new Date() } = {}) {
         return { error: err.message };
     }
     const applied = await scoreboard.applyScoreboard(board.data);
+    dispatchAlerts(applied);
     // Group new finals by week so the batch rescores the right weeks.
     const byWeek = new Map();
     for (const g of applied.newlyFinal) {
@@ -190,4 +213,4 @@ async function tick({ now = new Date() } = {}) {
     return { polled: true, summary, failed };
 }
 
-module.exports = { run, JOB_NAME, completionWork, _flush: flush, ERROR_EVERY_MS, _resetErrors: () => { lastError = null; } };
+module.exports = { run, JOB_NAME, completionWork, dispatchAlerts, _flush: flush, ERROR_EVERY_MS, _resetErrors: () => { lastError = null; } };
