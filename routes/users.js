@@ -82,9 +82,19 @@ router.patch('/me/profile', async (req, res) => {
         // name belongs to their entry in one league. With the flag unset both
         // names point at the same User doc and this is the single write it
         // always was.
-        const ctx = await franchiseRepo.loadForWrite(userId);
+        //
+        // The franchise is the one in the league being VIEWED (#565). One
+        // login can hold a football and a basketball franchise, and an
+        // unscoped load names whichever Mongo finds first.
+        let viewing;
+        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+        const ctx = await franchiseRepo.loadForWrite(userId, { league: viewing || undefined });
         if (!ctx) return res.status(404).json({ message: 'User not found.' });
         const { account, franchise } = ctx;
+        // That league's own season — basketball's 2026–27 is 2027, not
+        // football's 2026. seasonFor is also what the page's APP_YEAR is
+        // rendered from, so the server and the field's lock agree.
+        const year = seasonFor(viewing);
 
         if (clean.avatarUrl !== undefined) account.avatarUrl = clean.avatarUrl;
         if (clean.prompted !== undefined) account.profilePrompted = clean.prompted;
@@ -93,14 +103,13 @@ router.patch('/me/profile', async (req, res) => {
             // Only name the active season — never fall back to a prior season.
             // Before the league drafts the active year there's no entry to name,
             // so the update is ignored (the client locks the field to match).
-            const year = activeSeason('football');
             const season = (franchise.seasons || []).find(s => Number(s.season) === year);
             if (season) season.franchiseName = clean.franchiseName;
         }
 
         await franchiseRepo.saveBoth(ctx);
         const seasons = (franchise && franchise.seasons) || [];
-        const current = seasons.find(s => Number(s.season) === activeSeason('football'))
+        const current = seasons.find(s => Number(s.season) === year)
             || seasons[seasons.length - 1];
         res.json({
             avatarUrl: account.avatarUrl || null,
