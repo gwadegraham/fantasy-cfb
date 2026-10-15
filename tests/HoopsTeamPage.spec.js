@@ -14,6 +14,7 @@ const hoopsStats = require('../modules/hoops-stats');
 const statsJob = require('../modules/hoops-stats-job');
 const cbbd = require('../modules/cbbd-client');
 const jobLogger = require('../modules/job-logger');
+const jobMailer = require('../modules/job-mailer');
 const leagueSelection = require('../modules/league-selection');
 const HoopsGame = require('../models/hoopsGame');
 const HoopsTeam = require('../models/hoopsTeam');
@@ -519,6 +520,7 @@ describe('hoops-stats job', () => {
         jest.spyOn(boxScore, 'ingestRecent').mockResolvedValue({ season: SEASON, games: 3, stored: 3 });
         jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
         jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
+        jest.spyOn(jobMailer, 'sendJobEmail').mockResolvedValue();
         jest.spyOn(console, 'log').mockImplementation(() => {});
     });
 
@@ -542,6 +544,7 @@ describe('hoops-stats job', () => {
         const out = await statsJob.run({ now: NOW });
         expect(out.summary).toBe(`${SEASON}: 365 team(s), 5000 player(s) | ${SEASON} boxes: 3/3 stored`);
         expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
     });
 
     test('a failed import is recorded as an error, not swallowed', async () => {
@@ -550,6 +553,9 @@ describe('hoops-stats job', () => {
         const out = await statsJob.run({ now: NOW });
         expect(out.failed).toBe('CBBD 503');
         expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'error', `${SEASON}: FAILED CBBD 503 | ${SEASON} boxes: 3/3 stored`);
+        // And mailed (#566).
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Stats', ok: false, error: out.summary });
     });
 
     test('a skipped import (no teams) is reported in the summary', async () => {

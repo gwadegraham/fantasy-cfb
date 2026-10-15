@@ -391,6 +391,13 @@ async function leaguesFor(accountId) {
     return franchises.map(f => f.league);
 }
 
+// Every franchise a person holds, as { league, seasons: [{ season }] } and
+// nothing else — enough to ask "do they play this year" in each league's own
+// season (#568) without pulling a roster.
+async function seasonsByLeague(accountId) {
+    return Franchise.find({ accountId }, { league: 1, 'seasons.season': 1, _id: 0 }).lean();
+}
+
 // Attach each franchise's account in one round trip rather than per document.
 async function hydrate(franchises, { list = true, fields } = {}) {
     if (!franchises.length) return [];
@@ -879,7 +886,7 @@ function keepOnly(doc, fields) {
 }
 
 module.exports = {
-    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, hydrate, findManagers, anyFranchise,
+    toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, seasonsByLeague, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
     loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, addFranchise, rosteredForWrite,

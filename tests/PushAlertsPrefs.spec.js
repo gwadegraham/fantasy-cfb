@@ -29,7 +29,7 @@ const PANEL = `
 
 let patched;
 
-async function mountPanel(prefs = {}) {
+async function mountPanel(prefs = {}, state = {}) {
     document.body.innerHTML = PANEL;
 
     // supported() needs all three, or the panel renders "this browser can't".
@@ -45,7 +45,7 @@ async function mountPanel(prefs = {}) {
         }
         return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve({ configured: true, deviceCount: 1, allowed: true, prefs })
+            json: () => Promise.resolve(Object.assign({ configured: true, deviceCount: 1, allowed: true, prefs }, state))
         });
     });
 
@@ -156,5 +156,23 @@ describe('the mute switches', () => {
         await new Promise(r => setTimeout(r, 0));
 
         expect(patched).toEqual([{ final: false }]);
+    });
+});
+
+// #568: `allowed` is false for two reasons, and only one of them is the
+// allowlist. A basketball manager was told alerts were "limited to a few
+// managers" when the server had simply looked in football's season.
+describe('the status line when alerts would not reach this manager', () => {
+    const status = () => document.querySelector('[push-status]').textContent;
+
+    it('says "no roster this season", not the allowlist, for reason no-roster', async () => {
+        await mountPanel({}, { allowed: false, reason: 'no-roster' });
+        expect(status()).toMatch(/no roster this season/);
+        expect(status()).not.toMatch(/limited to a few managers/);
+    });
+
+    it('still names the allowlist when that is the reason', async () => {
+        await mountPanel({}, { allowed: false, reason: 'restricted' });
+        expect(status()).toMatch(/limited to a few managers/);
     });
 });

@@ -394,8 +394,11 @@ describe('the nightly basketball job', () => {
     };
     // The refresh it runs first is a billable CBBD call: never real in a test.
     const hoopsGames = require('../routes/hoopsGames');
+    // Mocked, never the real mailer: Jest loads the real .env (#566).
+    const jobMailer = require('../modules/job-mailer');
     beforeEach(() => {
         jest.spyOn(hoopsGames, 'refreshResults').mockResolvedValue({ code: 200, body: { finals: 0, games: 0 } });
+        jest.spyOn(jobMailer, 'sendJobEmail').mockResolvedValue();
     });
     afterEach(() => jest.restoreAllMocks());
 
@@ -469,6 +472,7 @@ describe('the nightly basketball job', () => {
         expect((await weekOf2(SEASON, 7))).toBe(5);
         expect(logged).toHaveLength(1);
         expect(logged[0].status).toBe('success');
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
     });
 
     // THE BUG THIS DESIGN EXISTS FOR.
@@ -557,6 +561,10 @@ describe('the nightly basketball job', () => {
         expect(logged).toHaveLength(1);
         expect(logged[0].status).toBe('error');
         expect(logged[0].msg).toMatch(/mongo down/);
+        // And mailed: a red JobRun nobody reads froze football for two days (#566).
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Scores', ok: false });
+        expect(jobMailer.sendJobEmail.mock.calls[0][0].error).toMatch(/mongo down/);
     });
 });
 

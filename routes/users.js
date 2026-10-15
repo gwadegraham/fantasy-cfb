@@ -82,9 +82,19 @@ router.patch('/me/profile', async (req, res) => {
         // name belongs to their entry in one league. With the flag unset both
         // names point at the same User doc and this is the single write it
         // always was.
-        const ctx = await franchiseRepo.loadForWrite(userId);
+        //
+        // The franchise is the one in the league being VIEWED (#565). One
+        // login can hold a football and a basketball franchise, and an
+        // unscoped load names whichever Mongo finds first.
+        let viewing;
+        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+        const ctx = await franchiseRepo.loadForWrite(userId, { league: viewing || undefined });
         if (!ctx) return res.status(404).json({ message: 'User not found.' });
         const { account, franchise } = ctx;
+        // That league's own season — basketball's 2026–27 is 2027, not
+        // football's 2026. seasonFor is also what the page's APP_YEAR is
+        // rendered from, so the server and the field's lock agree.
+        const year = seasonFor(viewing);
 
         if (clean.avatarUrl !== undefined) account.avatarUrl = clean.avatarUrl;
         if (clean.prompted !== undefined) account.profilePrompted = clean.prompted;
@@ -93,14 +103,13 @@ router.patch('/me/profile', async (req, res) => {
             // Only name the active season — never fall back to a prior season.
             // Before the league drafts the active year there's no entry to name,
             // so the update is ignored (the client locks the field to match).
-            const year = activeSeason('football');
             const season = (franchise.seasons || []).find(s => Number(s.season) === year);
             if (season) season.franchiseName = clean.franchiseName;
         }
 
         await franchiseRepo.saveBoth(ctx);
         const seasons = (franchise && franchise.seasons) || [];
-        const current = seasons.find(s => Number(s.season) === activeSeason('football'))
+        const current = seasons.find(s => Number(s.season) === year)
             || seasons[seasons.length - 1];
         res.json({
             avatarUrl: account.avatarUrl || null,
@@ -139,11 +148,8 @@ router.get('/me/push', async (req, res) => {
     if (!userId) return res.status(401).json({ message: 'No profile in session.' });
 
     try {
-        // seasons.season only — enough to answer "do they play this year", and
-        // seasons[].teams holds full team objects, so asking for the subtree
-        // would pull ~100KB to decide one boolean.
-        const user = await franchiseRepo.byAccountId(userId,
-            { fields: ['pushSubscriptions', 'pushPrefs', 'seasons.season'] });
+        // Account-side fields only, so no franchise is read here.
+        const user = await franchiseRepo.byAccountId(userId, { fields: ['pushSubscriptions', 'pushPrefs'] });
         if (!user) return res.status(404).json({ message: 'User not found.' });
         const subs = user.pushSubscriptions || [];
         // `allowed` answers "would an alert actually reach me". Eligibility is
@@ -151,10 +157,20 @@ router.get('/me/push', async (req, res) => {
         // alert is triggered by a game one of your teams is playing. A manager
         // carried over from a prior season would otherwise be told alerts are on
         // and then never hear a thing.
-        const playsThisSeason = (user.seasons || []).some(s => Number(s.season) === activeSeason('football'));
+        //
+        // Pushes are per PERSON, so any league counts — each in its OWN season
+        // (#568): basketball's 2026–27 is 2027, not football's 2026. Only
+        // seasons.season is read; rosters are ~100KB a franchise.
+        const franchises = await franchiseRepo.seasonsByLeague(userId);
+        const playsThisSeason = franchises.some(f => (f.seasons || [])
+            .some(s => Number(s.season) === Number(seasonFor(f.league))));
+        const recipientOk = pushNotify.isAllowedRecipient(userId);
         res.json({
             configured: pushNotify.isConfigured(),
-            allowed: pushNotify.isAllowedRecipient(userId) && playsThisSeason,
+            allowed: recipientOk && playsThisSeason,
+            // Why `allowed` is false, so the client does not blame the
+            // allowlist for a manager who simply has no roster this season.
+            reason: !recipientOk ? 'restricted' : (!playsThisSeason ? 'no-roster' : null),
             deviceCount: subs.length,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },

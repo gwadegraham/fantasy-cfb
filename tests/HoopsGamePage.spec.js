@@ -13,6 +13,7 @@ const boxScore = require('../modules/hoops-box-score');
 const hoopsMedia = require('../modules/hoops-media');
 const mediaJob = require('../modules/hoops-media-job');
 const jobLogger = require('../modules/job-logger');
+const jobMailer = require('../modules/job-mailer');
 const gamePage = require('../modules/hoops-game-page');
 const teamPage = require('../modules/hoops-team-page');
 const cbbd = require('../modules/cbbd-client');
@@ -232,6 +233,7 @@ describe('hoops-media job (weekly)', () => {
     beforeEach(() => {
         jest.spyOn(jobLogger, 'startRun').mockResolvedValue('run-1');
         jest.spyOn(jobLogger, 'finishRun').mockResolvedValue();
+        jest.spyOn(jobMailer, 'sendJobEmail').mockResolvedValue();
         jest.spyOn(console, 'log').mockImplementation(() => {});
     });
 
@@ -242,6 +244,7 @@ describe('hoops-media job (weekly)', () => {
         expect(pull).toHaveBeenCalledWith(SEASON, { now: NOW });
         expect(out.summary).toBe(`${SEASON} tv: 38/40 stored`);
         expect(jobLogger.finishRun).toHaveBeenCalledWith('run-1', 'success', out.summary);
+        expect(jobMailer.sendJobEmail).not.toHaveBeenCalled();
     });
 
     test('nothing scheduled: silent, no JobRun', async () => {
@@ -263,6 +266,9 @@ describe('hoops-media job (weekly)', () => {
         let out = await mediaJob.run({ now: new Date(NOW) });
         expect(out.summary).toBe(`${SEASON} tv: FAILED CBBD 429`);
         expect(jobLogger.finishRun).toHaveBeenLastCalledWith('run-1', 'error', out.summary);
+        // And mailed (#566).
+        expect(jobMailer.sendJobEmail).toHaveBeenCalledTimes(1);
+        expect(jobMailer.sendJobEmail.mock.calls[0][0]).toMatchObject({ label: 'Hoops Media', ok: false, error: out.summary });
         pull.mockResolvedValueOnce({ season: SEASON, games: 3000, stored: 2900, capped: true });
         out = await mediaJob.run({ now: new Date(NOW) });
         expect(out.summary).toBe(`${SEASON} tv: 2900/3000 stored (HIT THE 3000-ROW CAP)`);

@@ -13,10 +13,12 @@
 // window — the off-season costs nothing and writes no JobRun.
 
 const jobLogger = require('./job-logger');
+const jobMailer = require('./job-mailer');
 const hoopsMedia = require('./hoops-media');
 const { basketballLeagues } = require('./hoops-scores-job');
 
 const JOB_NAME = 'hoops-media';
+const LABEL = 'Hoops Media';
 
 async function run({ now = new Date() } = {}) {
     const leagues = await basketballLeagues();
@@ -24,7 +26,8 @@ async function run({ now = new Date() } = {}) {
 
     const done = [];
     let failed = null;
-    for (const season of [...new Set(leagues.map(l => l.season))]) {
+    const years = [...new Set(leagues.map(l => l.season))];
+    for (const season of years) {
         try {
             const tv = await hoopsMedia.ingestWindow(season, { now: now.getTime() });
             if (tv.skippedReason) continue;
@@ -43,7 +46,16 @@ async function run({ now = new Date() } = {}) {
     const id = await jobLogger.startRun(JOB_NAME);
     await jobLogger.finishRun(id, failed ? 'error' : 'success', summary);
     console.log(`[${JOB_NAME}] ${summary}`);
+
+    // A failure mails, like every other scheduled data job (#566).
+    if (failed) {
+        await jobMailer.sendJobEmail({
+            label: LABEL, when: now.toLocaleString('en-US', { timeZone: 'America/Chicago' }), ok: false,
+            rows: [['Seasons', years.map(String).join(', ')]],
+            error: summary
+        });
+    }
     return { done, failed, summary };
 }
 
-module.exports = { run, JOB_NAME };
+module.exports = { run, JOB_NAME, LABEL };
