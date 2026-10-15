@@ -42,10 +42,14 @@ const scoringPass = () => require('./hoops-scoring-pass');
 
 // The pick for a week split into what the manager chose and the frozen
 // default, so the picker can show a default as a default.
+//
+// A manual entry wins over an auto one for the same week, should both ever
+// exist (a freeze racing a pick — see captainWrite).
 function pickParts(captains, week) {
-    const c = (captains || []).find(x => Number(x.week) === Number(week) && x.teamId != null);
-    if (!c) return { picked: null, frozenAuto: null };
-    return c.auto ? { picked: null, frozenAuto: Number(c.teamId) } : { picked: Number(c.teamId), frozenAuto: null };
+    const mine = (captains || []).filter(x => Number(x.week) === Number(week) && x.teamId != null);
+    const manual = mine.find(x => !x.auto);
+    if (manual) return { picked: Number(manual.teamId), frozenAuto: null };
+    return mine.length ? { picked: null, frozenAuto: Number(mine[0].teamId) } : { picked: null, frozenAuto: null };
 }
 
 // The default as it stands now, from the weeks before `week`.
@@ -239,13 +243,26 @@ async function captainWrite({ userId, league, season, week, teamId, nowMs = Date
     // final": a basketball game always carries a startDate (the model
     // requires it), so a null lock means the manager has no game that week —
     // and then there is no result to pick after.
-    const kept = (entry.captains || []).filter(c => Number(c.week) !== week);
-    if (teamId != null) kept.push({ week, teamId });
-    entry.captains = kept;
-    await franchiseRepo.saveBoth(ctx);
+    //
+    // ATOMIC, per week — not the loaded array saved back whole. The lock
+    // sweep and the reminder freeze other weeks' defaults concurrently
+    // (freezeAutoCaptain), and a whole-array save from this request's
+    // snapshot would drop one written in between; a later sweep would then
+    // freeze that week again, possibly on a different team.
+    //
+    // Pull this week, push the pick, then pull any AUTO entry for this week
+    // that a freeze slipped in between the two — pickParts prefers a manual
+    // entry anyway, so even that window cannot double the default.
+    const where = { accountId: ctx.account._id, league, 'seasons.season': Number(season) };
+    await Franchise.updateOne(where, { $pull: { 'seasons.$.captains': { week } } });
+    if (teamId != null) {
+        await Franchise.updateOne(where, { $push: { 'seasons.$.captains': { week, teamId } } });
+        await Franchise.updateOne(where, { $pull: { 'seasons.$.captains': { week, auto: true } } });
+    }
+    const after = await Franchise.findOne(where, { seasons: { $elemMatch: { season: Number(season) } } }).lean();
     return {
         status: 200,
-        body: { season, week, teamId, captains: entry.captains },
+        body: { season, week, teamId, captains: (after.seasons[0].captains || []).map(c => ({ week: c.week, teamId: c.teamId, auto: c.auto })) },
         audit: Object.assign({ action: 'captain.set' }, auditBase)
     };
 }

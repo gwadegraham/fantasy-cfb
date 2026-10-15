@@ -26,6 +26,7 @@ const STATE = {
     // Midnight Eastern on Mon 9 Nov 2026 — a TBD tip.
     lockAt: '2026-11-09T05:00:00.000Z',
     lockTeamIds: [1],
+    autoTeamId: 1,
     current: { week: 1, teamId: null, autoTeamId: 2 },
     slate: [
         { teamId: 1, games: [{ gameId: 10, opp: 'OPP', oppRank: 12, ha: 'vs', kickoff: null, day: '2026-11-09T05:00:00.000Z' }] },
@@ -73,6 +74,8 @@ test('the basketball picker names the tip-off, the TBD days and the locked week'
     expect(text).toContain('vs BBB · Sat · TBD');
     expect(text).toContain('Hoops Two play twice');
     expect(text).toContain('Week 1 is locked · Hoops Two is your 2× (default)');
+    // The default for the week being picked, worded as the reminder words it.
+    expect(text).toContain('No pick yet — Hoops One goes in by default');
     expect(fetch).toHaveBeenCalledWith('/users/me/captain?season=2027', expect.anything());
 });
 
@@ -87,6 +90,18 @@ test("football's state renders as before: no locked-week line, kicks off", async
     const text = body.textContent.replace(/\s+/g, ' ');
     expect(text).toContain('when Hoops One kicks off');
     expect(text).not.toContain('is locked ·');
+});
+
+test('a locked basketball week names its default instead of "your best team"', async () => {
+    const locked = Object.assign({}, STATE, { locked: true, current: undefined, autoTeamId: 2 });
+    global.fetch = jest.fn(url => Promise.resolve({ ok: true, json: () => Promise.resolve(String(url).startsWith('/scoring-config')
+        ? { engagement: { captainEnabled: true } } : locked) }));
+    await hydrateCaptain(USER, '2027');
+    const body = document.createElement('div');
+    uhDrawer.captain(body);
+    const text = body.textContent.replace(/\s+/g, ' ');
+    expect(text).toContain('No pick, so Hoops Two doubles by default.');
+    expect(text).not.toContain('your best team auto-doubles');
 });
 
 test('uhTbdDay falls back to a bare TBD', () => {

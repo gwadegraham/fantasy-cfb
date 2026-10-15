@@ -1074,8 +1074,13 @@ async function hydrateCaptain(user, activeYear) {
     const paint = (container) => {
         if (state.locked) {
             const t = state.teamId != null ? teamById[state.teamId] : null;
+            // Basketball names its default (frozen at the reminder or the
+            // lock); football's state carries none and reads as before.
+            const auto = state.autoTeamId != null ? teamById[state.autoTeamId] : null;
             container.innerHTML = `<p class="captain-note">Locked for Week ${state.week}. `
-                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2×.` : `No captain was set (your best team auto-doubles).`)
+                + (t ? `<b>${escapeHtml(t.school)}</b> is your 2×.`
+                    : auto ? `No pick, so <b>${escapeHtml(auto.school)}</b> doubles by default.`
+                    : `No captain was set (your best team auto-doubles).`)
                 + `</p>`
                 + `<div class="captain-grid">${(season.teams || []).map(tm => `
                     <div class="captain-team is-locked${Number(state.teamId) === Number(tm.id) ? ' is-captain' : ''}">${tileBody(tm)}</div>`).join('')}</div>`;
@@ -1088,7 +1093,10 @@ async function hydrateCaptain(user, activeYear) {
         const twoLine = twoGamers.length
             ? `<span class="cap-lock"><b>${twoGamers.map(t => escapeHtml(t.school)).join('</b>, <b>')}</b> play twice — captaining one doubles both games</span>`
             : '';
-        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${currentLine()}${lockLine}${twoLine}
+        // The default this week, worded as the lock reminder words it.
+        const autoT = state.teamId == null && state.autoTeamId != null ? teamById[state.autoTeamId] : null;
+        const autoLine = autoT ? `<span class="cap-lock">No pick yet — <b>${escapeHtml(autoT.school)}</b> goes in by default</span>` : '';
+        container.innerHTML = `<p class="captain-note">Pick your <b>2×</b> for Week ${state.week}.</p>${currentLine()}${autoLine}${lockLine}${twoLine}
             <div class="captain-grid">${(season.teams || []).map(t => `
                 <button type="button" class="captain-team${Number(state.teamId) === Number(t.id) ? ' is-captain' : ''}" data-team="${t.id}" aria-pressed="${Number(state.teamId) === Number(t.id)}">${tileBody(t)}</button>`).join('')}</div>`;
         container.querySelectorAll('.captain-team').forEach(btn => btn.addEventListener('click', async () => {
@@ -1109,6 +1117,9 @@ async function hydrateCaptain(user, activeYear) {
                 }
                 if (!res.ok) throw new Error(data.message || 'Could not set captain');
                 state.teamId = next;
+                // Clearing a pick before the lock: the default is whatever
+                // the server would now pick, which a reload shows.
+                if (next != null) state.autoTeamId = null;
                 setGlance(); paint(container);
                 if (window.ccToast) ccToast.success(next ? `Captain set: ${teamById[next].school}` : 'Captain cleared');
             } catch (e) { if (window.ccToast) ccToast.error(e.message); }

@@ -183,6 +183,22 @@ describe('PATCH /users/me/captain on a basketball league', () => {
         expect(row.summary).not.toContain('(was');
     });
 
+    test('a default frozen for another week between load and save survives the pick', async () => {
+        // The lock sweep freezes week 2's default while this request is
+        // between reading the franchise and writing week 1's pick.
+        const repo = require('../modules/franchise-repo');
+        const { freezeAutoCaptain } = require('../modules/hoops-captain');
+        const real = repo.loadForWrite;
+        jest.spyOn(repo, 'loadForWrite').mockImplementation(async (...a) => {
+            const ctx = await real(...a);
+            await freezeAutoCaptain({ accountId: account._id, league: HOOPS, season: SEASON, week: 2, teamId: 1 });
+            return ctx;
+        });
+        expect((await patch({ week: 1, teamId: 2 })).status).toBe(200);
+        const hoops = await Franchise.findOne({ accountId: account._id, league: HOOPS }).lean();
+        expect(hoops.seasons[0].captains.map(c => [c.week, c.teamId, !!c.auto]).sort()).toEqual([[1, 2, false], [2, 1, true]]);
+    });
+
     test('clearing a pick', async () => {
         await patch({ week: 1, teamId: 2 });
         expect((await patch({ week: 1, teamId: null })).status).toBe(200);
@@ -229,5 +245,37 @@ describe('the week being played, once the picker has moved on', () => {
         expect(none.body.week).toBeNull();
         const nobody = await captainState({ userId: '64f539d45cf0433f3b6a6a1e', league: HOOPS, season: SEASON });
         expect(nobody.status).toBe(404);
+    });
+});
+
+describe('Captain Override (admin) is scoped to one league', () => {
+    test('two franchises and no league named: refused, nothing written', async () => {
+        const admin = express();
+        admin.use(express.json());
+        admin.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: { user_metadata: { roles: ['Admin'], metadata: {} } } };
+            next();
+        });
+        admin.use('/users', usersRouter);
+        await League.create({ code: 'claunts-league', name: 'Claunts', sport: 'football' });
+        const res = await request(admin).patch(`/users/${account._id}/captain`).set('Cookie', cookie('claunts-league'))
+            .send({ season: 2026, week: 3, teamId: 7 });
+        expect(res.status).toBe(400);
+        expect(await Franchise.countDocuments({ 'seasons.captains.0': { $exists: true } })).toBe(0);
+    });
+
+    test('a dual-sport manager: the override lands on the football franchise', async () => {
+        const admin = express();
+        admin.use(express.json());
+        admin.use((req, res, next) => {
+            req.oidc = { isAuthenticated: () => true, user: { user_metadata: { roles: ['Admin'], metadata: { league: 'gg', userId: String(account._id) } } } };
+            next();
+        });
+        admin.use('/users', usersRouter);
+        const res = await request(admin).patch(`/users/${account._id}/captain`).set('Cookie', cookie(FOOTBALL))
+            .send({ season: 2026, week: 3, teamId: 7 });
+        expect(res.status).toBe(200);
+        const football = await Franchise.findOne({ accountId: account._id, league: FOOTBALL }).lean();
+        expect(football.seasons.find(s => s.season === 2026).captains.map(c => c.teamId)).toEqual([7]);
     });
 });

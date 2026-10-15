@@ -19,7 +19,7 @@ const { evaluate } = require('./scoring');
 const { buildHoopsContext } = require('./hoops-detectors');
 const { ranksFor } = require('./hoops-ranks');
 const { entryFor } = require('./roster-teams');
-const { resolveCaptain, captainWeeklyBonus } = require('./captain');
+const { autoCaptainTeamId, captainWeeklyBonus } = require('./captain');
 const { isModeGame, seasonModeWeeks } = require('./hoops-modes');
 
 // ONLY FINAL GAMES SCORE.
@@ -199,7 +199,13 @@ async function scoreHoopsWeekNow(league, { season, week, apply = true } = {}) {
             // exactly that document.
             const entry = entryFor(m, yr);
             const prior = (entry.weeklyScore || []).filter(e => Number(e.week) < wk);
-            captainTeamId = resolveCaptain(entry.captains, wk, ids.map(id => ({ id })), prior);
+            // The manager's pick, else the FROZEN default (modules/hoops-captain.js),
+            // else a fresh auto-captain — only for a week nothing was frozen for
+            // (one scored before freezing existed, or a missed sweep).
+            const parts = require('./hoops-captain').pickParts(entry.captains, wk);
+            captainTeamId = parts.picked != null ? parts.picked
+                : parts.frozenAuto != null ? parts.frozenAuto
+                : autoCaptainTeamId(ids.map(id => ({ id })), prior);
             captainBonus = captainWeeklyBonus(scoreByTeam.filter(r => !r.noModes), captainTeamId, eng.captainMultiplier);
             score += captainBonus;
         }

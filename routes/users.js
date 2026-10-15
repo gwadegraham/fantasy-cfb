@@ -515,8 +515,26 @@ router.patch('/:id/captain', async (req, res) => {
         return res.status(400).json({ message: 'Captain applies to regular-season weeks 1–16 only.' });
     }
     try {
-        // Franchise-side, same as the self-serve route above.
-        const ctx = await franchiseRepo.loadForWrite(req.params.id);
+        // Franchise-side, same as the self-serve route above — and scoped to ONE
+        // league: a person can hold a football and a basketball franchise, and
+        // an unscoped load changes or clears whichever Mongo finds first.
+        //
+        // Which league: `league` in the body if sent; else the league the
+        // Admin is viewing, when the manager has a franchise there; else the
+        // manager's only franchise. An Admin views their own league, not
+        // necessarily the manager's, so the viewed league alone 404'd every
+        // cross-league override. Two franchises and neither named: refuse.
+        const leagues = await franchiseRepo.leaguesFor(req.params.id);
+        let viewing;
+        try { viewing = await selectedLeague(req); } catch (e) { viewing = ''; }
+        const league = (req.body.league && leagues.includes(req.body.league)) ? req.body.league
+            : (viewing && leagues.includes(viewing)) ? viewing
+            : leagues.length === 1 ? leagues[0] : null;
+        if (!league) {
+            return res.status(leagues.length ? 400 : 404).json({ message: leagues.length
+                ? 'This manager plays in more than one league — say which.' : 'User not found.' });
+        }
+        const ctx = await franchiseRepo.loadForWrite(req.params.id, { league });
         if (!ctx || !ctx.franchise) return res.status(404).json({ message: 'User not found.' });
         const franchise = ctx.franchise;
         const user = { _id: ctx.account._id, firstName: ctx.account.firstName,

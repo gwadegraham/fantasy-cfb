@@ -115,3 +115,16 @@ test('outside the window, nothing', async () => {
     await manager('Ann', [1, 2]);
     expect((await push.notifyCaptainLocks(LOCK - 5 * H)).sent).toBe(0);
 });
+
+test('a dual-sport manager: the ledger lands on the BASKETBALL franchise, so it dedupes', async () => {
+    // The football franchise is created FIRST, so an unscoped write would
+    // land there — and the next tick would remind them again.
+    const a = await Account.create({ firstName: 'Dual', lastName: 'M', email: 'dual@example.invalid',
+        pushSubscriptions: [{ endpoint: 'https://web.push.apple.com/dual', keys: { p256dh: 'k', auth: 'a' }, createdAt: new Date() }] });
+    await Franchise.create({ accountId: a._id, league: 'graham-league', seasons: [{ season: 2026, teams: [] }] });
+    await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, teamRefs: [{ id: 1, sport: 'basketball' }] }] });
+    expect((await push.notifyCaptainLocks(LOCK - 1 * H)).sent).toBe(1);
+    expect((await push.notifyCaptainLocks(LOCK - 0.5 * H)).sent).toBe(0);
+    const hoops = await Franchise.findOne({ accountId: a._id, league: LEAGUE }).lean();
+    expect(hoops.captainReminders).toHaveLength(1);
+});
