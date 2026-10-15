@@ -65,3 +65,27 @@ describe('the admin link follows the sport being viewed', () => {
         expect(html).not.toContain('/hoops/admin');
     });
 });
+
+// #564: the bracket page is football-only, so an Admin viewing a basketball
+// league is not offered it.
+describe('the CFP bracket link follows the sport being viewed', () => {
+    const renderAs = (viewerSport) => ejs.render(template, {
+        user: { userId: 'u1', firstName: 'Garrett', role: 'Admin' }, viewerSport
+    }, { filename: NAVBAR });
+
+    test('hidden from an Admin viewing basketball', () => {
+        expect(renderAs('basketball')).not.toContain('/cfp-bracket');
+    });
+    test('still there for an Admin viewing football', () => {
+        expect(renderAs('football')).toContain('href="/cfp-bracket"');
+    });
+});
+
+// #564: a basketball-only manager who installs the app should not be told it
+// is a football app.
+describe('the PWA manifest', () => {
+    const manifest = require('../public/manifest.json');
+    test('does not name one sport', () => {
+        expect(manifest.description).not.toMatch(/football|basketball/i);
+    });
+});

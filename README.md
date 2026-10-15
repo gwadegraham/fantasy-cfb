@@ -119,7 +119,6 @@ scores during the season:
 
 - `update-daily-scores-job.js`, `update-saturday-scores-job.js`,
   `update-sunday-scores-job.js` — retrieve games and recompute scores
-- `saturday-job.js`, `sunday-job.js` — status emails
 - `update-expected-wins-job.js` — load expected wins from `json/expectedWins{year}.json`
 
 Jobs authenticate to the app with `INTERNAL_API_TOKEN` and run on Central time.

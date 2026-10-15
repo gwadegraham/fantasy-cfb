@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const HoopsTeam = require('../models/hoopsTeam');
 const cbbd = require('../modules/cbbd-client');
+const audit = require('../modules/audit-log');
 const { activeSeason } = require('../modules/active-season');
 // Namespaces, not destructures, so a test can stand in for them.
 const seasons = require('../modules/active-season');
@@ -200,6 +201,10 @@ router.post('/:season/ingest', async (req, res) => {
         });
     }
 
+    // From here on the request spends a CBBD call, so every answer is audited.
+    audit.onReply(req, res, (status, body) => audit.cbbdTaskEntry('hoops.teams', 'team ingest', season, 1, status, body,
+        `${body.teams} teams, ${body.withLogos} with logos (${body.created} created, ${body.updated} updated)`));
+
     let result;
     try {
         result = await cbbd.fetchTeams(season);
@@ -312,6 +317,9 @@ router.post('/:season/roster', async (req, res) => {
             requested: season, expected
         });
     }
+
+    audit.onReply(req, res, (status, body) => audit.cbbdTaskEntry('hoops.roster', 'roster import', season, 1, status, body,
+        body.skippedReason || `${body.players} numbered players`));
 
     let result;
     try {

@@ -164,8 +164,9 @@
                 its URL by any member; this just stops it being reachable only by
                 someone who already knows the URL, without putting a mostly-empty
                 bracket in front of the league for the nine months a year the
-                field is a projection. %>
-            <% if (_role === 'Admin') { %>
+                field is a projection. Not on a basketball league (#564): the
+                page is football-only and forces itself back to football. %>
+            <% if (_role === 'Admin' && !(typeof viewerSport !== 'undefined' && viewerSport === 'basketball')) { %>
             <li><a href="/cfp-bracket">CFP Bracket</a></li>
             <% } %>
             <% if (typeof isBettingGroupMember !== 'undefined' && isBettingGroupMember) { %>

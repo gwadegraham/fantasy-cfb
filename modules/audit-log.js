@@ -33,7 +33,11 @@ const ACTIONS = {
     'captain.set': 'Captain',
     'captain.locked': 'Captain',
     'parlay.backfill': 'Betting',
-    'hoops.preseason': 'Preseason ratings'
+    'hoops.preseason': 'Preseason ratings',
+    'hoops.teams': 'Basketball data',
+    'hoops.schedule': 'Basketball data',
+    'hoops.refresh': 'Basketball data',
+    'hoops.roster': 'Basketball data'
 };
 
 // Actions a MANAGER performs on their own team, as opposed to a commissioner
@@ -77,6 +81,40 @@ async function record(req, entry) {
     }
 }
 
+// Audit a route by its REPLY rather than at each exit. The basketball data
+// tasks (#563) have a dozen return paths — upstream failure, cap hit, partial
+// write, success — and every one of them may already have spent CBBD calls, so
+// every one is worth a row. Call this once the request has passed its input
+// checks (nothing billable has happened before that); `entryFor(status, body)`
+// shapes the row from what the route is about to send. The row is written
+// BEFORE the reply goes out, so a test that awaits the response can read it.
+function onReply(req, res, entryFor) {
+    const send = res.json.bind(res);
+    res.json = (body) => {
+        let entry = null;
+        try { entry = entryFor(res.statusCode, body || {}); } catch (err) {
+            console.log('audit-log entry failed:', err.message);
+        }
+        record(req, entry).then(() => send(body));
+        return res;
+    };
+}
+
+// The row for a basketball data task run over HTTP — the /hoops/admin buttons
+// (#563). `calls` is the CBBD cost the admin page quotes for the task; a failed
+// run still records it, since the calls may already be spent.
+function cbbdTaskEntry(action, task, season, calls, status, body, okLine) {
+    const ok = status < 400;
+    const cost = `${calls} CBBD call${calls === 1 ? '' : 's'}`;
+    return {
+        action, season: String(season),
+        summary: ok
+            ? `Basketball ${task} for ${season}: ${okLine} · ${cost}`
+            : `Basketball ${task} FAILED for ${season} (${status}): ${body.message || 'no message'} · ${cost}`,
+        meta: { calls, status, remainingCalls: body.remainingCalls == null ? null : body.remainingCalls }
+    };
+}
+
 // Shape an entry for the panel. `label` is derived here so the client stays a
 // dumb renderer and the vocabulary can grow without a client change.
 function toRow(doc) {
@@ -92,4 +130,4 @@ function toRow(doc) {
     };
 }
 
-module.exports = { ACTIONS, MANAGER_ACTIONS, labelFor, actorFrom, record, toRow };
+module.exports = { ACTIONS, MANAGER_ACTIONS, labelFor, actorFrom, record, onReply, cbbdTaskEntry, toRow };
