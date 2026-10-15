@@ -11,6 +11,11 @@
 //
 //   ncaa-all.json, ncaa-2015on.json   CBBD /games?tournament=NCAA (seeds, rounds)
 //   ratings-adjusted-all.json         CBBD /ratings/adjusted, 2014-2026, END of season
+//   torvik/<season>.json              barttorvik.com/timemachine/team_results/
+//                                     <Monday after Selection Sunday>_team_results.json.gz,
+//                                     2011-2019 and 2021-2026: Torvik's ratings the day
+//                                     before the First Four. THE SHIPPED LADDER'S INPUT —
+//                                     pre-tournament by construction, so no hindsight.
 //   reg2026.json, torvik-tm-20251102.json   see scripts/hoops-projection-backtest.js
 
 const fs = require('fs');
@@ -23,6 +28,7 @@ const { isFinal } = require('../modules/hoops-scoring-pass');
 const { quadrantFor } = require('../modules/hoops-quadrants');
 const { resolveConfig } = require('../modules/scoring-defaults');
 const { blendRanks, blendWeight } = require('../modules/hoops-ranks');
+const { matchTeams, normaliseSchool } = require('../modules/torvik-pool');
 
 const cfg = resolveConfig('backtest', { model: 'hoops' });
 const fmt = (x, d = 3) => (x === null || x === undefined || !Number.isFinite(x)) ? '—' : x.toFixed(d);
@@ -40,13 +46,27 @@ function healthySeason(rows) {
     return nets.length > 40 && nets[36] >= 5;
 }
 let SEASONS = ALL_SEASONS;
+// Seasons with an archived pre-tournament Torvik file (no 2020 tournament).
+const TORVIK_SEASONS = [2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026];
 const ROUNDS = M.ROUNDS;   // ['r64','r32','s16','e8','f4','title','champ']
 
 // ------------------------------------------------------------ tournaments --
 
-// 2014 and 2015 name the rounds the old way: the First Four was the "1st
-// Round", the round of 64 the "2nd", the round of 32 the "3rd".
+// 2011-2015 name the rounds the old way: the First Four was the "1st
+// Round", the round of 64 the "2nd", the round of 32 the "3rd". 2011-2013
+// notes are one string ("2012 3rd ROUND AT OMAHA NE"), with no " - ".
 function roundOf(g) {
+    if (g.season <= 2013) {
+        const n = String(g.gameNotes || '').toLowerCase();
+        if (/national championship/.test(n)) return 'title';
+        if (/final four/.test(n)) return 'f4';
+        if (/elite 8/.test(n)) return 'e8';
+        if (/sweet 16/.test(n)) return 's16';
+        if (/1st round/.test(n)) return 'ff';
+        if (/2nd round/.test(n)) return 'r64';
+        if (/3rd round/.test(n)) return 'r32';
+        return null;
+    }
     if (g.season <= 2015) {
         const label = String(g.gameNotes || '').split(' - ').pop().trim().toLowerCase();
         return { '1st round': 'ff', '2nd round': 'r64', '3rd round': 'r32' }[label] || ncaaRoundFor(g);
@@ -57,7 +77,7 @@ function roundOf(g) {
 const ORDER = ['ff', 'r64', 'r32', 's16', 'e8', 'f4', 'title'];
 
 function tournaments() {
-    const games = BT.load('ncaa-all.json').filter(g => g.season === 2014).concat(BT.load('ncaa-2015on.json'))
+    const games = BT.load('ncaa-all.json').filter(g => g.season >= 2011 && g.season <= 2014).concat(BT.load('ncaa-2015on.json'))
         .sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
     const out = {};   // season -> teamId -> { seed, elo, deepest, champ, upset, games: [] }
     for (const g of games) {
@@ -68,7 +88,7 @@ function tournaments() {
             const id = g[`${side}TeamId`], other = side === 'home' ? 'away' : 'home';
             // elo: CBBD's Elo at the team's FIRST tournament tip-off — a
             // pre-tournament number by construction.
-            const t = (s[id] = s[id] || { seed: g[`${side}Seed`], elo: g[`${side}TeamEloStart`], deepest: -1, ff: false, champ: false, upset: 0, games: [] });
+            const t = (s[id] = s[id] || { school: g[`${side}Team`], seed: g[`${side}Seed`], elo: g[`${side}TeamEloStart`], deepest: -1, ff: false, champ: false, upset: 0, games: [] });
             const idx = ORDER.indexOf(r);
             if (r === 'ff') t.ff = true;
             if (idx > t.deepest) t.deepest = idx;
@@ -92,6 +112,45 @@ function reached(t, round) {
 }
 
 // ------------------------------------------------------------ ratings -----
+
+// Torvik's ratings the day before the First Four, as a ranked dataset.
+//
+// Every tournament team must be matched to a Torvik row (CBBD and Torvik
+// spell schools differently; torvik-pool's normaliser and aliases do most of
+// it, OLD_ALIASES the rest). Unmatched Torvik rows are non-tournament
+// teams, which only need a rank.
+const OLD_ALIASES = {
+    'Arkansas Little Rock': 'Little Rock', 'LIU Brooklyn': 'Long Island University',
+    'Detroit': 'Detroit Mercy', 'North Carolina St.': 'NC State',
+    'College of Charleston': 'Charleston', 'Louisiana Lafayette': 'Louisiana',
+    'Saint Francis': 'St. Francis (PA)', 'St. Francis PA': 'St. Francis (PA)'
+};
+function torvikDataset(seasons, T) {
+    const rows = [];
+    const problems = [];
+    for (const s of seasons) {
+        const raw = BT.load(`torvik/${s}.json`);
+        const tv = raw.map(r => ({ rank: r[0], school: OLD_ALIASES[r[1]] || r[1], torvik: r[1] }));
+        const field = Object.entries(T[s] || {}).map(([id, t]) => ({ id: Number(id), school: t.school }));
+        const m = matchTeams(tv, field);
+        const idOf = new Map(m.matched.map(x => [x.rating.torvik, x.team.id]));
+        // CBBD's own name drifted too (2018 still says "LIU Brooklyn"): an
+        // unclaimed field team may match Torvik's raw, un-aliased name.
+        const still = [];
+        m.unclaimed.forEach(school => {
+            const hit = tv.find(r => !idOf.has(r.torvik) && normaliseSchool(r.torvik) === normaliseSchool(school));
+            if (hit) idOf.set(hit.torvik, field.find(f => f.school === school).id);
+            else still.push(school);
+        });
+        if (still.length || m.doubleClaimed.length) problems.push(`${s}: unmatched field ${JSON.stringify(still)} double ${JSON.stringify(m.doubleClaimed)}`);
+        tv.forEach(r => {
+            const id = idOf.get(r.torvik);
+            rows.push({ season: s, id: id === undefined ? `tv:${r.torvik}` : id, rank: r.rank, t: id === undefined ? null : T[s][id] });
+        });
+    }
+    if (problems.length) console.log('TORVIK MATCH PROBLEMS:\n' + problems.join('\n'));
+    return rows;
+}
 
 function seasonRatings() {
     const adj = BT.load('ratings-adjusted-all.json');
@@ -246,35 +305,49 @@ function main() {
         'logistic chain, quadratic log-rank': (train) => { const c = fitChain(train, 2); return (r) => M.reachFromCoef(c, r); },
         'logistic chain, quadratic to E8, linear after': (train) => { const c = fitChain(train, 'mixed'); return (r) => M.reachFromCoef(c, r); }
     };
-    const datasets = { end: all, scurve: datasetFor(SEASONS, 'scurve', T, R) };
+    const torvikAll = torvikDataset(TORVIK_SEASONS, T);
+    console.log(`Torvik pre-tournament: ${TORVIK_SEASONS.length} seasons, ${torvikAll.length} team-seasons, `
+        + `${torvikAll.filter(d => d.t).length} tournament appearances, ${torvikAll.filter(d => d.t && d.t.champ).length} champions`);
+    const datasets = { end: all, scurve: datasetFor(SEASONS, 'scurve', T, R), torvik: torvikAll };
+    const LABEL = { end: 'CBBD END-of-season rank, 8 healthy seasons', scurve: 'CBBD S-curve rank, 8 healthy seasons (the previous basis)', torvik: 'Torvik PRE-TOURNAMENT rank, 15 seasons (shipped basis)' };
+    const loso = {};
     for (const [basis, data] of Object.entries(datasets)) {
-        console.log(`\n## Round-reach model, leave-one-season-out (${basis === 'end' ? 'END-of-season rank' : 'S-curve rank (shipped basis)'})`);
+        console.log(`\n## Round-reach model, leave-one-season-out (${LABEL[basis]})`);
         console.log('| model | log loss / outcome | NCAA pts MAE / team | Σ expected | Σ actual | top-16 Σ exp | top-16 Σ act |');
         console.log('|---|---|---|---|---|---|---|');
         for (const [name, fit] of Object.entries(cands)) {
-            const agg = { ll: 0, mae: 0, sumE: 0, sumA: 0, te: 0, ta: 0, n: 0 };
-            SEASONS.forEach(s => {
+            const agg = { ll: 0, mae: 0, sumE: 0, sumA: 0, te: 0, ta: 0, n: 0, bySeason: {} };
+            [...new Set(data.map(d => d.season))].forEach(s => {
                 const train = data.filter(d => d.season !== s), test = data.filter(d => d.season === s);
                 const r = evalModel(name, fit(train), test);
+                agg.bySeason[s] = r.ll;
                 agg.ll += r.ll; agg.mae += r.mae; agg.sumE += r.sumE; agg.sumA += r.sumA; agg.te += r.top.e; agg.ta += r.top.a; agg.n++;
             });
+            loso[`${basis}:${name}`] = agg;
             console.log(`| ${name} | ${fmt(agg.ll / agg.n, 4)} | ${fmt(agg.mae / agg.n, 3)} | ${fmt(agg.sumE, 0)} | ${fmt(agg.sumA, 0)} | ${fmt(agg.te, 0)} | ${fmt(agg.ta, 0)} |`);
         }
     }
 
     const degree = process.env.DEGREE ? Number(process.env.DEGREE) : 'mixed';
     const coefEnd = fitChain(all, degree);
-    const preAll = datasets.scurve;
+    const preAll = torvikAll;
     const coefPre = fitChain(preAll, degree);
-    const coefDeh = fitChain(datasetFor(SEASONS, 'pre', T, R), degree);
+    const coefDeh = fitChain(datasets.scurve, degree);
+
+    // Before / after on the SAME held-out seasons (the 8 healthy CBBD ones).
+    const key = `logistic chain, quadratic to E8, linear after`;
+    const common = SEASONS;
+    const avg = (k) => common.reduce((s, x) => s + loso[k].bySeason[x], 0) / common.length;
+    console.log(`\nheld-out log loss on the 8 seasons both sources cover: before (CBBD S-curve) ${fmt(avg(`scurve:${key}`), 4)}, `
+        + `after (Torvik pre-tournament) ${fmt(avg(`torvik:${key}`), 4)}; over all 15 Torvik seasons ${fmt(loso[`torvik:${key}`].ll / loso[`torvik:${key}`].n, 4)}`);
 
     // ---- 2. hindsight ----
     console.log(`\n## Hindsight: the ladder fitted on three rank sources (degree ${degree})`);
-    console.log('end = CBBD end-of-season (knows the tournament); S-curve = seeds dealt into the field\'s slots (shipped); removed = tournament games subtracted from the rating');
-    console.log('| rank | P(S16) end / S-curve / removed | P(F4) | P(champ) | E[NCAA pts] |');
+    console.log('end = CBBD end-of-season (knows the tournament); S-curve = the previous basis; Torvik = pre-tournament ratings (shipped)');
+    console.log('| rank | P(S16) end / S-curve / Torvik | P(F4) | P(champ) | E[NCAA pts] |');
     console.log('|---|---|---|---|---|');
     [1, 2, 4, 8, 16, 25, 40, 60, 100].forEach(rank => {
-        const a = M.reachFromCoef(coefEnd, rank), b = M.reachFromCoef(coefPre, rank), c = M.reachFromCoef(coefDeh, rank);
+        const a = M.reachFromCoef(coefEnd, rank), b = M.reachFromCoef(coefDeh, rank), c = M.reachFromCoef(coefPre, rank);
         const tri = (k, d) => `${fmt(a[k], d)} / ${fmt(b[k], d)} / ${fmt(c[k], d)}`;
         console.log(`| ${rank} | ${tri('s16', 3)} | ${tri('f4', 3)} | ${tri('champ', 3)} | ${fmt(M.expectedNcaaPoints(a, cfg), 1)} / ${fmt(M.expectedNcaaPoints(b, cfg), 1)} / ${fmt(M.expectedNcaaPoints(c, cfg), 1)} |`);
     });
@@ -305,6 +378,13 @@ function main() {
     console.log(`- by S-curve rank (shipped):   ${conc((s, f) => f.sort((a, b) => scRankOf[s][a] - scRankOf[s][b]))}`);
     const s1 = SEASONS.filter(s => Object.keys(T[s]).some(id => scRankOf[s][id] === Math.min(...Object.keys(T[s]).map(i => scRankOf[s][i])) && T[s][id].champ)).length;
     console.log(`- the S-curve #1 won ${s1} of ${SEASONS.length} titles`);
+    let tvTop = 0, tvF4 = 0, tvChamp = 0;
+    TORVIK_SEASONS.forEach(s => {
+        const field = torvikAll.filter(d => d.season === s && d.t).sort((a, b) => a.rank - b.rank);
+        if (field[0].t.champ) tvTop++;
+        field.slice(0, 8).forEach(d => { if (reached(d.t, 'f4')) tvF4++; if (d.t.champ) tvChamp++; });
+    });
+    console.log(`- by Torvik pre-tournament rank (shipped, ${TORVIK_SEASONS.length} seasons): ${tvF4} of ${TORVIK_SEASONS.length * 4} Final Four spots, ${tvChamp} of ${TORVIK_SEASONS.length} titles; the Torvik #1 won ${tvTop}`);
 
     // ---- 3. upset bonus ----
     console.log('\n## Upset bonus (seeds of difference per team-season), kernel-smoothed on log rank');
@@ -314,7 +394,7 @@ function main() {
     let bestBw = null;
     [0.05, 0.1, 0.15, 0.25, 0.35, 0.5, 0.75].forEach(bw => {
         let se = 0, n = 0;
-        SEASONS.forEach(s => {
+        TORVIK_SEASONS.forEach(s => {
             const train = upsetRows(preAll.filter(d => d.season !== s));
             preAll.filter(d => d.season === s).forEach(d => {
                 const e = M.kernelAt(train, Math.log(d.rank), bw);
@@ -330,8 +410,10 @@ function main() {
     // ---- 4. preseason -> March drift (2026) ----
     const S = BT.loadSeason();
     const endRank26 = rankBy(R[2026], 'netRating');
-    const preRank26 = scurveRank(R[2026], T[2026]);
-    const pairs = S.hoopsTeams.map(t => ({ pre: t.preseason.rank, end: preRank26[t.id] })).filter(p => p.end);
+    // Same system at both ends: Torvik preseason -> Torvik the day before
+    // the First Four. Both files use Torvik's own names, so they pair by name.
+    const pre26 = new Map(BT.load('torvik-tm-20251102.json').map(r => [r[1], r[0]]));
+    const pairs = BT.load('torvik/2026.json').map(r => ({ pre: pre26.get(r[1]), end: r[0] })).filter(p => p.pre);
     const drift = M.fitDrift(pairs);
     console.log(`\n## Preseason Torvik rank -> March rank (2025-26, ${pairs.length} teams)`);
     console.log(`log(March rank) = ${fmt(drift.a, 3)} + ${fmt(drift.b, 3)} * log(preseason rank), residual sd ${fmt(drift.sd, 3)}`);
@@ -427,13 +509,13 @@ function main() {
         provenance: {
             built: 'node scripts/hoops-march-backtest.js --write',
             sources: [
-                'CBBD /games?tournament=NCAA&seasonType=postseason (2014-2026, no 2020): seeds, rounds, results',
-                'CBBD /ratings/adjusted (2014-2026, end of season): netRating, re-ordered within the NCAA field by seed then first-game Elo (scurveRank); 2014/2017/2018/2023 dropped as corrupt (healthySeason)',
+                'CBBD /games?tournament=NCAA&seasonType=postseason (2011-2026, no 2020): seeds, rounds, results',
+                'barttorvik.com/timemachine/team_results/<Monday after Selection Sunday>_team_results.json.gz, 2011-2019 and 2021-2026 (15 files): pre-tournament T-Rank; the ladder and the upset curve are fitted on these ranks',
                 'barttorvik.com/timemachine/team_results/20251102_team_results.json.gz: 2025-26 preseason T-Rank',
                 'CBBD /games season=2026 seasonType=regular: 2025-26 conference tournaments'
             ],
-            seasons: SEASONS,
-            note: 'March rank = the S-curve rank: CBBD end-of-season net rank, with the NCAA field re-dealt into its own slots in seed order (ties by rating with the tournament games removed). See scripts/hoops-march-backtest.js scurveRank.'
+            seasons: TORVIK_SEASONS,
+            note: 'March rank = Torvik T-Rank the day before the First Four (pre-tournament by construction). The drift maps 2025-26 preseason T-Rank to that rank. CBBD /ratings/adjusted (the previous basis, ties broken by first-tip Elo) is kept in the backtest for comparison only; its 2014/2017/2018/2023 rows are corrupt.'
         },
         degree,
         march: Object.fromEntries(Object.entries(coefPre).map(([k, v]) => [k, v.map(x => Number(x.toFixed(5)))])),
@@ -446,7 +528,7 @@ function main() {
 
     // ---- 7. the shipped estimate, preseason basis, against 2025-26 ----
     // March fit WITHOUT 2026 so the check is out of sample for the ladder.
-    const coefNo26 = fitChain(datasetFor(SEASONS.filter(s => s !== 2026), 'scurve', T, R), degree);
+    const coefNo26 = fitChain(torvikAll.filter(d => d.season !== 2026), degree);
     const calNo26 = Object.assign({}, calibration, { march: coefNo26 });
     const model = M.buildMarchModel(calNo26);
     console.log('\n## Expected NCAA ladder points from PRESEASON rank vs 2025-26 actual (ladder fit excludes 2026; the DRIFT is fitted on 2025-26, so the drift comparison is in-sample)');

@@ -17,18 +17,17 @@
 //
 // ---- two bases ----
 //
-// 'march'      the rank is a pre-Selection-Sunday rank. The ladder is fit on
-//              8 tournaments (2015-16, 2019, 2021-22, 2024-26; CBBD's stored
-//              ratings for 2014, 2017, 2018 and 2023 are corrupt and are
-//              dropped — see the backtest) against an "S-curve" rank:
-//              CBBD's end-of-season net rank, with the NCAA field re-dealt
-//              into its own rank slots in SEED order. CBBD's season rating
-//              includes the tournament, so ranking on it raw hands the
-//              champion the #1 slot after the fact — fitted that way, a #1
-//              wins the title 42% of the time; on the S-curve, 38%. Seeds
-//              (and the Elo that breaks ties within a seed line) are known
-//              before tip-off, so the S-curve top is honest. 38% still
-//              rests on 8 champions, all of whom were top-8 on the S-curve.
+// 'march'      the rank is Torvik's T-Rank the day before the First Four.
+//              The ladder is fit on 15 tournaments (2011-2019, 2021-2026) of
+//              barttorvik.com time-machine files from the Monday after
+//              Selection Sunday: pre-tournament by construction, so they
+//              cannot know who won. That is what brought a #1's title odds
+//              from 38% (the previous basis, CBBD end-of-season ratings
+//              re-ordered by seed, 8 usable seasons) to 27%, toward the
+//              ~20-25% a title market gives the favourite. On held-out log
+//              loss the old basis scored BETTER on the 8 seasons both cover
+//              (0.0815 vs 0.0833) — the hindsight it carried is exactly what
+//              makes a backtest look good, and is why it is not used.
 // 'preseason'  the rank is a preseason Torvik rank — what the draft has. A
 //              preseason #5 is not a March #5: the March ladder is averaged
 //              over where a preseason rank ends up by March, a lognormal
@@ -37,14 +36,14 @@
 //
 // ---- smoothing ----
 //
-// Per-rank raw rates would be noise: twelve tournaments give each rank twelve
-// draws. Each ladder rung is a logistic in log(rank), fitted CONDITIONALLY —
+// Per-rank raw rates would be noise: fifteen tournaments give each rank
+// fifteen draws. Each ladder rung is a logistic in log(rank), fitted CONDITIONALLY —
 // P(reach round k | reached k-1) — so the cumulative ladder can never rise
 // from one round to the next. Quadratic in log(rank) for the rungs with
 // hundreds of events (to the Elite Eight), linear for the Final Four, title
-// game and title (32, 16 and 8 events), where a quadratic can let a #2
+// game and title (60, 30 and 15 events), where a quadratic can let a #2
 // out-win a #1. Leave-one-season-out it has the best log loss of the four
-// candidates (0.0815, against 0.0818 quadratic, 0.0819 linear and 0.0850
+// candidates (0.0845, against 0.0846 quadratic, 0.0848 linear and 0.0872
 // for raw rank buckets) — see the PR for the table.
 
 const { ruleEnabled, STRUCTURES } = require('./scoring-defaults');
@@ -271,7 +270,44 @@ function buildMarchModel(cal) {
     // team. team: { id, rank }. On the 'march' basis the conference
     // tournaments are taken to be in the past (banked), so confTourney is 0;
     // confChamp stays, for the caller to drop once titles are decided.
-    function expectedPostseason(team, ctx, cfg, basis = 'preseason') {
+    // Expected NCAA points and upset seeds still to come for a team whose
+    // tournament is under way. `next` is the round it is certain to play and
+    // has not yet been paid for; every rung before it is banked. Later rungs
+    // are conditional on that one: P(reach r | in round next) = P(r) / P(next).
+    // A First Four team wins its way into the round of 64 half the time.
+    const LADDER = ['ff', ...ROUNDS];
+    const COND = { ff: 'ncaaFirstFour', r64: 'ncaaR64', r32: 'ncaaR32', s16: 'ncaaS16', e8: 'ncaaE8', f4: 'ncaaF4', title: 'ncaaTitleGame', champ: 'ncaaChampion' };
+    function remainingNcaa(p, next, cfg) {
+        const from = next === 'ff' ? 'r64' : next;
+        const k = ROUNDS.indexOf(from);
+        const scale = next === 'ff' ? 0.5 : 1;
+        let pts = next === 'ff' ? valueOf(cfg, COND.ff) : 0;
+        let wins = 0;
+        ROUNDS.slice(k).forEach((r, i) => {
+            const q = p[from] > 0 ? p[r] / p[from] : 0;
+            pts += scale * q * valueOf(cfg, COND[r]);
+            if (i > 0) wins += scale * q;   // each later rung is one more win
+        });
+        // Upset seeds come with wins: what is left is the per-appearance
+        // expectation scaled by the share of a field team's wins still ahead.
+        let fieldWins = 0;
+        ROUNDS.slice(1).forEach(r => { fieldWins += p.r64 > 0 ? p[r] / p.r64 : 0; });
+        const perAppearance = p.r64 > 0 ? p.upsetSeeds / p.r64 : 0;
+        const upsetSeeds = fieldWins > 0 ? perAppearance * Math.min(1, wins / fieldWins) : 0;
+        return { pts, upsetSeeds };
+    }
+
+    // decided (optional): what has already happened, so it is not expected
+    // again — its points are banked on the franchise at time of play.
+    //   confTourney: 'over'  the conference tournament is done (won or lost):
+    //                        confTourney and confChamp are 0
+    //   ncaa: 'out'          not selected, or eliminated: ncaa and upset are 0
+    //   ncaa: { next: r }    in the field and certain to play round r ('ff',
+    //                        'r64', 'r32', 's16', 'e8', 'f4', 'title'), every
+    //                        earlier rung banked: only r and later count
+    // Anything absent is treated as not yet decided.
+    function expectedPostseason(team, ctx, cfg, basis = 'preseason', decided = {}) {
+        decided = decided || {};
         // One clamped rank for every term. A missing rank reads as the bottom
         // of the country — NOT Number(null) = 0, which interp would clamp to
         // #1 and pay a top team's conference tournament.
@@ -279,12 +315,24 @@ function buildMarchModel(cal) {
         const rank = (team.rank === null || team.rank === undefined || team.rank === '' || !Number.isFinite(n) || n < 1)
             ? RANKS : Math.min(RANKS, Math.round(n));
         const p = reach(rank, basis);
-        const ncaa = expectedNcaaPoints(p, cfg);
-        const upset = p.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
+        let ncaa, upset, makeProb;
+        if (decided.ncaa === 'out') {
+            ncaa = 0; upset = 0; makeProb = 0;
+        } else if (decided.ncaa && LADDER.includes(decided.ncaa.next) && decided.ncaa.next !== 'champ') {
+            const left = remainingNcaa(p, decided.ncaa.next, cfg);
+            ncaa = left.pts;
+            upset = left.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
+            makeProb = 1;
+        } else {
+            ncaa = expectedNcaaPoints(p, cfg);
+            upset = p.upsetSeeds * valueOf(cfg, 'seedUpsetBonus');
+            makeProb = p.r64;
+        }
+        const confOver = decided.confTourney === 'over';
         const pTitle = (ctx && ctx.titleProb && ctx.titleProb[String(team.id)]) || 0;
-        const confChamp = pTitle * valueOf(cfg, 'confTournamentTitle');
+        const confChamp = confOver ? 0 : pTitle * valueOf(cfg, 'confTournamentTitle');
         let confTourney = 0;
-        if (basis !== 'march') {
+        if (basis !== 'march' && !confOver) {
             [1, 2, 3, 4].forEach(q => {
                 confTourney += interp(cal.confTourneyWins[`q${q}`], rank) * valueOf(cfg, `q${q}Win`);
             });
@@ -293,7 +341,7 @@ function buildMarchModel(cal) {
             confChamp, confTourney, ncaa, upset,
             postseason: confChamp + confTourney + ncaa + upset,
             // P(a main-bracket game), football's makeProb.
-            makeProb: p.r64, reach: p
+            makeProb, reach: p
         };
     }
 
@@ -329,8 +377,11 @@ function attachMarch(ctx, teams, { basis = 'preseason', model = defaultModel(), 
     const ranks = {}, pool = [];
     (teams || []).forEach(t => {
         const id = String(t.id), pre = t.preseason || {};
+        // A team with no usable rank is the bottom of the country — the same
+        // answer expectedPostseason gives — not a team with no postseason.
         const rank = rankById ? rankById[id] : pre.rank;
-        if (Number.isFinite(Number(rank)) && Number(rank) > 0) ranks[id] = Number(rank);
+        const ok = rank !== null && rank !== undefined && rank !== '' && Number.isFinite(Number(rank)) && Number(rank) > 0;
+        ranks[id] = ok ? Number(rank) : RANKS;
         const rating = ratingById ? ratingById[id]
             : (Number.isFinite(Number(pre.adjOE)) && Number.isFinite(Number(pre.adjDE)) && pre.adjOE !== null && pre.adjDE !== null
                 ? Number(pre.adjOE) - Number(pre.adjDE) : null);

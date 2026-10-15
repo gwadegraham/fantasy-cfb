@@ -303,6 +303,10 @@ function projectableGames(teamId, games, ctx) {
 //   number of projectable games — a full-season projection. Remaining-
 //   schedule callers pass their own (see projectRemaining). null disables
 //   calibration.
+// opts.decided: this team's postseason state (see hoops-march
+//   expectedPostseason) — a conference tournament that is over, or an NCAA
+//   run that is out or under way — so a term already banked is not expected
+//   again.
 // opts.perGame: also return perGame [{ week, gameId, winProb, pointsIfWin,
 //   pointsIfLoss }]. The first four are football's entry; pointsIfLoss is
 //   only non-zero in a league that has opted into the bad-loss penalty, and
@@ -354,7 +358,8 @@ function projectHoopsTeam(team, teamGames, ctx, opts = {}) {
     let post = { confChamp: 0, confTourney: 0, ncaa: 0, upset: 0, makeProb: null };
     const march = ctx.march;
     if (march && march.rankById[key] !== undefined) {
-        post = march.model.expectedPostseason({ id: teamId, rank: march.rankById[key] }, march.confCtx, ctx.cfg, march.basis);
+        post = march.model.expectedPostseason({ id: teamId, rank: march.rankById[key] }, march.confCtx, ctx.cfg, march.basis,
+            opts.decided);
     }
     const { confChamp, confTourney, ncaa, upset } = post;
     const postseason = confChamp + confTourney + ncaa + upset;

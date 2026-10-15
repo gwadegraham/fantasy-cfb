@@ -186,6 +186,13 @@ describe('buildMarchModel', () => {
         expect(out.upset).toBeCloseTo(p.upsetSeeds * c.values.seedUpsetBonus, 10);
         expect(out.confChamp).toBeCloseTo(c.values.confTournamentTitle / (1 + Math.exp(-10 / 4)), 8);
         expect(out.confTourney).toBeCloseTo(2 * c.values.q1Win + 0.5 * c.values.q2Win, 8);
+        // At the bottom of the country only Q3 (0.5) and Q4 (0.25) wins are
+        // left, and they are priced differently — swapping the two keys, or
+        // reading one for the other, changes the answer.
+        const q34 = cfg({ values: { q3Win: 4, q4Win: 2 } });
+        expect(model.expectedPostseason({ id: 7, rank: M.RANKS }, ctx, q34, 'preseason').confTourney).toBeCloseTo(0.5 * 4 + 0.25 * 2, 8);
+        // Tied ranks get identical answers.
+        expect(model.expectedPostseason({ id: 7, rank: 12 }, ctx, c).ncaa).toBe(model.expectedPostseason({ id: 8, rank: 12 }, ctx, c).ncaa);
         expect(out.postseason).toBeCloseTo(out.ncaa + out.upset + out.confChamp + out.confTourney, 10);
         expect(out.makeProb).toBe(p.r64);
 
@@ -218,6 +225,69 @@ describe('buildMarchModel', () => {
     });
 });
 
+describe('decided terms drop out, so nothing banked is counted twice', () => {
+    const model = M.buildMarchModel(CAL);
+    const c = cfg();
+    const ctx = model.contextFor([{ id: 1, conference: 'A', rating: 12 }, { id: 2, conference: 'A', rating: 2 }]);
+    const open = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'march');
+    const p = model.reach(6, 'march');
+
+    test('knocked out of the conference tournament: no confTourney or confChamp', () => {
+        const pre = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'preseason', { confTourney: 'over' });
+        expect(pre.confTourney).toBe(0);
+        expect(pre.confChamp).toBe(0);
+        expect(pre.ncaa).toBeCloseTo(model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'preseason').ncaa, 12);
+        expect(model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'preseason').confChamp).toBeGreaterThan(0);
+    });
+
+    test('out of the NCAA tournament: no ladder, no upset', () => {
+        const out = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'march', { ncaa: 'out' });
+        expect(out.ncaa).toBe(0);
+        expect(out.upset).toBe(0);
+        expect(out.makeProb).toBe(0);
+        expect(out.confChamp).toBe(open.confChamp);
+    });
+
+    test('in the Sweet 16: only the Sweet 16 and later rungs, conditional on being there', () => {
+        const out = model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'march', { ncaa: { next: 's16' } });
+        const v = c.values;
+        const want = v.ncaaS16 + (p.e8 / p.s16) * v.ncaaE8 + (p.f4 / p.s16) * v.ncaaF4
+            + (p.title / p.s16) * v.ncaaTitleGame + (p.champ / p.s16) * v.ncaaChampion;
+        expect(out.ncaa).toBeCloseTo(want, 10);
+        // Never the round of 64 or 32 again: those are banked.
+        expect(out.ncaa).toBeLessThan(want + v.ncaaR32);
+        expect(out.makeProb).toBe(1);
+        // Fewer wins left than a fresh field team has, so less upset to come.
+        expect(out.upset).toBeLessThan(open.upset / p.r64);
+        expect(out.upset).toBeGreaterThan(0);
+    });
+
+    test('the round of 64 is the whole ladder given the field; the title game is the last two rungs', () => {
+        const left = ['r64', 'r32', 's16', 'e8', 'f4', 'title']
+            .map(next => model.expectedPostseason({ id: 1, rank: 6 }, ctx, c, 'march', { ncaa: { next } }));
+        // In the round of 64 = the whole ladder, conditional on making the field.
+        expect(left[0].ncaa).toBeCloseTo(open.ncaa / p.r64 - (p.ff / p.r64) * c.values.ncaaFirstFour, 8);
+        expect(left[5].ncaa).toBeCloseTo(c.values.ncaaTitleGame + (p.champ / p.title) * c.values.ncaaChampion, 10);
+        expect(left[5].upset).toBeLessThan(left[0].upset);
+    });
+
+    test('a First Four team plays its way into the round of 64 half the time', () => {
+        const ff = model.expectedPostseason({ id: 1, rank: 6 }, ctx, cfg({ values: { ncaaFirstFour: 3 } }), 'march', { ncaa: { next: 'ff' } });
+        const r64 = model.expectedPostseason({ id: 1, rank: 6 }, ctx, cfg({ values: { ncaaFirstFour: 3 } }), 'march', { ncaa: { next: 'r64' } });
+        expect(ff.ncaa).toBeCloseTo(3 + 0.5 * r64.ncaa, 10);
+    });
+
+    test('projectHoopsTeam passes opts.decided through', () => {
+        const teams = [{ id: 1, conference: 'A', preseason: { rank: 6, barthag: 0.9, projectedRecord: '25-6', adjOE: 118, adjDE: 95 } }];
+        const pctx = M.attachMarch(P.buildHoopsPoolContext(teams, { cfg: c }), teams, { model });
+        const full = P.projectHoopsTeam(teams[0], [], pctx);
+        const done = P.projectHoopsTeam(teams[0], [], pctx, { decided: { confTourney: 'over', ncaa: 'out' } });
+        expect(full.postseason).toBeGreaterThan(0);
+        expect(done.postseason).toBe(0);
+        expect(P.projectRemaining(teams[0], [], pctx, { decided: { confTourney: 'over', ncaa: 'out' } }).postseason).toBe(0);
+    });
+});
+
 describe('attachMarch fills projectHoopsTeam’s postseason', () => {
     const teams = [
         { id: 1, conference: 'X', preseason: { rank: 3, barthag: 0.93, projectedRecord: '26-5', adjOE: 121, adjDE: 93 } },
@@ -240,10 +310,13 @@ describe('attachMarch fills projectHoopsTeam’s postseason', () => {
         expect(out.regular).toBeGreaterThan(0);
     });
 
-    test('a team with no rank gets no postseason, and no rating means no title odds', () => {
+    test('a team with no rank is the bottom of the country, as expectedPostseason says; no rating means no title odds', () => {
+        expect(ctx.march.rankById[3]).toBe(M.RANKS);
         const out = P.projectHoopsTeam(teams[2], sched, ctx);
-        expect(out.postseason).toBe(0);
-        expect(out.makeProb).toBeNull();
+        const bottom = model.expectedPostseason({ id: 3, rank: null }, ctx.march.confCtx, c, 'preseason');
+        expect(out.postseason).toBeCloseTo(bottom.postseason, 12);
+        expect(out.ncaa).toBeCloseTo(model.expectedPostseason({ id: 3, rank: M.RANKS }, null, c).ncaa, 12);
+        expect(out.makeProb).toBe(bottom.makeProb);
         expect(ctx.march.confCtx.titleProb[3]).toBeUndefined();
         // The two rated teams share the conference.
         expect(ctx.march.confCtx.titleProb[1] + ctx.march.confCtx.titleProb[2]).toBeCloseTo(1, 10);
@@ -252,7 +325,7 @@ describe('attachMarch fills projectHoopsTeam’s postseason', () => {
     test('a march-basis caller supplies its own ranks and ratings', () => {
         const c2 = M.attachMarch(P.buildHoopsPoolContext(teams, { cfg: c }), teams,
             { model, basis: 'march', rankById: { 1: 40 }, ratingById: { 1: 5, 2: 5 } });
-        expect(c2.march.rankById).toEqual({ 1: 40 });
+        expect(c2.march.rankById).toEqual({ 1: 40, 2: M.RANKS, 3: M.RANKS });
         expect(c2.march.confCtx.titleProb[1]).toBeCloseTo(0.5, 10);
         expect(P.projectHoopsTeam(teams[0], sched, c2).confTourney).toBe(0);
     });
