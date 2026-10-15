@@ -16,6 +16,7 @@ const Account = require('../models/account');
 const Franchise = require('../models/franchise');
 const League = require('../models/league');
 const SportSeason = require('../models/sportSeason');
+const ScoringConfig = require('../models/scoringConfig');
 const seasons = require('../modules/active-season');
 const usersRouter = require('../routes/users');
 
@@ -131,15 +132,55 @@ describe('basketball alert prefs (#557)', () => {
         return a;
     };
 
-    test('GET /users/me/push says whether the account plays basketball', async () => {
-        expect((await request(app).get('/users/me/push')).body.basketball).toBe(true);
-        expect((await request(appFor(await solo(FOOTBALL, FB_SEASON))).get('/users/me/push')).body.basketball).toBe(false);
+    const sectionsOf = async (a) => (await request(a).get('/users/me/push')).body.sections;
+    const captainIn = (league, season, on = true) => ScoringConfig.updateOne({ league },
+        { $set: { league, [`engagementBySeason.${season}`]: { captainEnabled: on, captainMultiplier: 2 } } }, { upsert: true });
+
+    test('GET /users/me/push names the sports the account plays', async () => {
+        expect(await sectionsOf(app)).toMatchObject({ football: true, basketball: true });
+        expect(await sectionsOf(appFor(await solo(FOOTBALL, FB_SEASON)))).toMatchObject({ football: true, basketball: false });
     });
 
-    // A basketball franchise with no roster this season still sees the
-    // toggles: setting them up before the draft is the point.
+    // Setting the switches up before the draft is the point.
     test('a basketball franchise from a PAST season still counts', async () => {
-        expect((await request(appFor(await solo(HOOPS, BB_SEASON - 1))).get('/users/me/push')).body.basketball).toBe(true);
+        expect((await sectionsOf(appFor(await solo(HOOPS, BB_SEASON - 1)))).basketball).toBe(true);
+    });
+
+    test('an ARCHIVED league counts for nothing', async () => {
+        await League.updateOne({ code: HOOPS }, { $set: { status: 'archived' } });
+        expect(await sectionsOf(app)).toMatchObject({ football: true, basketball: false });
+    });
+
+    describe('captain: only where a league of theirs plays Captain, in that league\'s season', () => {
+        test('no league plays Captain: false', async () => {
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('the basketball league plays it in ITS season (2027): true', async () => {
+            await captainIn(HOOPS, BB_SEASON);
+            expect((await sectionsOf(app)).captain).toBe(true);
+        });
+
+        test('Captain on only for a season the league is not in: false', async () => {
+            await captainIn(FOOTBALL, BB_SEASON);                       // football is in 2026
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('Captain switched off: false', async () => {
+            await captainIn(FOOTBALL, FB_SEASON, false);
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('an archived Captain league does not count', async () => {
+            await captainIn(HOOPS, BB_SEASON);
+            await League.updateOne({ code: HOOPS }, { $set: { status: 'archived' } });
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
+
+        test('a league they are NOT in playing Captain does not count', async () => {
+            await captainIn('someone-elses', FB_SEASON);
+            expect((await sectionsOf(app)).captain).toBe(false);
+        });
     });
 
     test('PATCH stores each basketball key, leaving football’s alone', async () => {

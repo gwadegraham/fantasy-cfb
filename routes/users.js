@@ -168,9 +168,9 @@ router.get('/me/push', async (req, res) => {
         const playsThisSeason = franchises.some(f => (f.seasons || [])
             .some(s => Number(s.season) === Number(seasonFor(f.league))));
         const recipientOk = pushNotify.isAllowedRecipient(userId);
-        // Any basketball franchise, any season: the basketball toggles are
-        // shown to a manager who plays the sport, drafted yet or not (#557).
-        const playsBasketball = franchises.some(f => sportForLeague(f.league) === 'basketball');
+        // Which sections of the panel apply: each sport they play, and
+        // Captain lock only where a league of theirs plays Captain (#557).
+        const sections = await pushNotify.alertSections(franchises);
         res.json({
             configured: pushNotify.isConfigured(),
             allowed: recipientOk && playsThisSeason,
@@ -178,7 +178,7 @@ router.get('/me/push', async (req, res) => {
             // allowlist for a manager who simply has no roster this season.
             reason: !recipientOk ? 'restricted' : (!playsThisSeason ? 'no-roster' : null),
             deviceCount: subs.length,
-            basketball: playsBasketball,
+            sections,
             endpoints: subs.map(s => s.endpoint),
             prefs: user.pushPrefs || { score: true, leadChange: true, closeGame: true, final: true },
             vapidPublicKey: pushNotify.vapidConfig().publicKey

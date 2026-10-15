@@ -1066,6 +1066,35 @@ async function notifyRecapReady(nowMs) {
     return { sent, due };
 }
 
+// ---- which settings a manager sees ------------------------------------------
+
+// Which parts of the alert panel apply to this person, from their franchises
+// ({ league, seasons: [{ season }] }, franchiseRepo.seasonsByLeague):
+//
+//   football / basketball  holds a franchise in that sport, any season — the
+//                          switches are worth setting before a draft.
+//   captain                some league they play has Captain ON for that
+//                          league's own season. The reminder is only ever
+//                          sent there (notifyFootballCaptainLocks /
+//                          notifyHoopsCaptainLocks), so anywhere else the
+//                          switch could never fire.
+//
+// Archived leagues count for nothing: their alerts never fire either.
+async function alertSections(franchises) {
+    const League = require('../models/league');
+    const ScoringConfig = require('../models/scoringConfig');
+    const codes = [...new Set((franchises || []).map(f => f.league).filter(Boolean))];
+    const out = { football: false, basketball: false, captain: false };
+    if (!codes.length) return out;
+    const archived = new Set((await League.find({ code: { $in: codes }, status: 'archived' }, { code: 1, _id: 0 }).lean())
+        .map(l => l.code));
+    const live = codes.filter(c => !archived.has(c));
+    live.forEach(c => { out[seasons.sportForLeague(c) === 'basketball' ? 'basketball' : 'football'] = true; });
+    const docs = await ScoringConfig.find({ league: { $in: live } }, { league: 1, engagementBySeason: 1, _id: 0 }).lean();
+    out.captain = docs.some(d => engagementForSeason(d.engagementBySeason, seasons.seasonForLeague(d.league)).captainEnabled);
+    return out;
+}
+
 // One-off delivery used by the "send me a test" button, so a manager can prove
 // the whole chain works without waiting for a Saturday.
 // One-off delivery used by the "Send a test" button, so a manager can prove the
@@ -1109,6 +1138,7 @@ module.exports = {
     notifyHoopsEvents, notifyHoopsFinals,
     notifyCaptainLocks, notifyHoopsCaptainLocks,
     notifyRecapReady,
+    alertSections,
     sendTest,
     isConfigured,
     vapidConfig,
