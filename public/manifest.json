@@ -1,7 +1,7 @@
 {
   "name": "Campus Clash",
   "short_name": "Campus Clash",
-  "description": "Fantasy college football",
+  "description": "Fantasy college sports with your league",
   "start_url": "/standings",
   "display": "standalone",
   "background_color": "#101322",
