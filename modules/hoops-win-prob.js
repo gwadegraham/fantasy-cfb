@@ -5,12 +5,20 @@
 // Bill James's formula for "A beats B" from each side's rate against the
 // average — and home court shifts the odds by a constant factor.
 //
-// HOME_ODDS 1.4 is the factor the dev season simulation has used since #320
-// (scripts/.dev-hoops-season.js): it turns a coin flip into ~58% for the home
-// side, in line with the ~3-point home edge efficiency systems assume. It is
-// a preview number, shown as such, and never scores anything.
+// HOME_ODDS is THE home-court multiplier for basketball: the game preview
+// here and the projection engine (modules/hoops-projection.js) both read
+// this one constant, so the two cannot drift apart.
+//
+// 1.55 turns a coin flip into ~61% for the home side. Fitted by maximum
+// likelihood on the 5,647 final D-I vs D-I games of 2025-26 with the
+// PRESEASON barthags (scripts/hoops-projection-backtest.js): best 1.55, and
+// 1.62 / 1.53 when the season is split at New Year. The 1.4 this replaced
+// (the dev season simulation's guess, #320) is ruled out: home teams won
+// 64.4% of 5,045 non-neutral games, 1.4 expected 62.4%, 1.55 expects 64.4%.
+// Anything from 1.5 to 1.6 is within 0.0001 of the best log loss. It is a
+// preview number here, shown as such, and never scores anything.
 
-const HOME_ODDS = 1.4;
+const HOME_ODDS = 1.55;
 
 function log5(a, b) {
     return (a - a * b) / (a + b - 2 * a * b);

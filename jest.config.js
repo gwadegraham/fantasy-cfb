@@ -147,6 +147,16 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball projection engine. Pure, and every consumer of it
+        // (draft grades, the draft board, H2H odds, standings) reads its
+        // numbers without a second check, so every line and function stays
+        // covered.
+        "./modules/hoops-projection.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
         // TV listings for the game page (#506) and their weekly job. ONE
         // billable call a week; the branches that matter are the ones that
         // decline to call.
