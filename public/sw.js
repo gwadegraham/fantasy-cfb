@@ -40,7 +40,7 @@ self.addEventListener('push', (event) => {
         //
         // Kept because both are correct on Android and desktop, and because
         // leaving them means a future change of Apple's mind needs no code.
-        icon: data.icon || '/images/icon-192.png',
+        icon: data.icon || '/images/app-icon-192.png',
         image: data.image || undefined,
         badge: '/images/icon-192.png',
         // Same tag = same game, so a busy game replaces its own banner instead

@@ -1,0 +1,181 @@
+<title>Campus Clash App Icon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Graduate&family=Pacifico&family=Poppins:wght@400;500;600&display=swap">
+<style>
+/* Layout: one stacked board per option; each board reads left→right from the
+   master down to the smallest real size, then the two places it will live. */
+:root {
+  color-scheme: dark;
+  --bg: #101322;          /* --cc-bg */
+  --surface: #1A1F33;     /* --cc-surface */
+  --line: #2A2E42;        /* --cc-border */
+  --text: #F4F6FB;        /* --cc-text */
+  --muted: #A4A9C2;       /* --cc-muted */
+  --dim: #8A90A8;         /* --cc-muted-2 */
+  --accent: #ED5858;      /* --cc-accent */
+  --interactive: #8E8CF0; /* --cc-interactive */
+  --wall-light-a: #F3E3D3; --wall-light-b: #C9D6EE; --label-light: #1B1E2B;
+  --wall-dark-a: #1D2333;  --wall-dark-b: #050608;  --label-dark: #F4F6FB;
+  --checker: #2A2E42;
+  --f-varsity: Graduate, Georgia, serif;
+  --f-script: Pacifico, "Brush Script MT", cursive;
+  --f-body: Poppins, system-ui, sans-serif;
+  --f-ios: -apple-system, "SF Pro Text", system-ui, sans-serif;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 36px 64px; }
+header.top { display: grid; gap: 8px; margin-bottom: 28px; }
+.brand { line-height: 1; display: inline-grid; justify-items: start; }
+.brand .campus { font-family: var(--f-varsity); letter-spacing: .1em; font-size: 1.15rem; }
+.brand .clash { font-family: var(--f-script); color: var(--accent); font-size: 2.2rem; margin-top: -.2em;
+  text-shadow: .05em 0 var(--bg), -.05em 0 var(--bg), 0 .05em var(--bg), 0 -.05em var(--bg); }
+h1 { font-family: var(--f-varsity); font-weight: 400; font-size: clamp(1.5rem, 4vw, 2.2rem); letter-spacing: .04em; margin: 6px 0 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 68ch; line-height: 1.6; margin: 0; }
+.lede b { color: var(--text); font-weight: 500; }
+
+.opt { border-top: 1px solid var(--line); padding-block: 30px; display: grid; gap: 18px; }
+.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.opt-head h2 { font-family: var(--f-varsity); font-weight: 400; font-size: 1.5rem; letter-spacing: .05em; margin: 0; }
+.opt-head .tag { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--interactive); }
+.opt-head p { flex-basis: 100%; margin: 0; color: var(--muted); max-width: 72ch; line-height: 1.55; }
+
+.board { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
+.master canvas { display: block; width: 220px; height: 220px; border-radius: 22.4%; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.panel h3 { margin: 0; font-size: .7rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.sizes { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.sizes figure, .mag figure, .droid figure { margin: 0; display: grid; justify-items: center; gap: 6px; }
+figcaption { font-size: .7rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mag { overflow-x: auto; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.mag canvas { image-rendering: pixelated; display: block; }
+.home { border-radius: 14px; padding: 16px 10px 10px; display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; gap: 4px; }
+.home.light { background: linear-gradient(160deg, var(--wall-light-a), var(--wall-light-b)); color: var(--label-light); }
+.home.dark { background: linear-gradient(160deg, var(--wall-dark-a), var(--wall-dark-b)); color: var(--label-dark); }
+.app { display: grid; justify-items: center; gap: 5px; width: 70px; }
+.app .ic { width: 60px; height: 60px; border-radius: 13.4px; display: block; overflow: hidden; }
+.app span { font: 500 11px/1.1 var(--f-ios); max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home.dark .app span { text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.droid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.legend { font-size: .72rem; color: var(--dim); margin: 0; line-height: 1.5; }
+.legend i { display: inline-block; width: 16px; border-top: 2px dashed var(--interactive); vertical-align: middle; margin-right: 4px; }
+@media (max-width: 640px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .master canvas { width: 160px; height: 160px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand" aria-hidden="true"><span class="campus">CAMPUS</span><span class="clash">Clash</span></div>
+    <h1>Home-screen icon, five directions</h1>
+    <p class="lede">One icon for everyone, whichever league they play in (issue #571). Every tile below is the vector master
+      rasterised by your browser at the exact pixel size, never shrunk from a big image. The <b>8&times; view</b> shows the true
+      1&times; bitmap a phone would draw at 48&nbsp;px (Android) and 29&nbsp;px (Spotlight and Settings). The dashed circle is
+      the inner 80% that Android always keeps.</p>
+  </header>
+  <main id="opts"></main>
+</div>
+
+<script>
+const OPTIONS = [{"key": "collision", "name": "Collision", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\" role=\"img\" aria-label=\"Campus Clash\"><rect width=\"1024\" height=\"1024\" fill=\"#101322\"/><path transform=\"translate(398.0 424.0) scale(0.66667) translate(-310.0 375.0)\" d=\"M172-139L223-86L396-86L460-151L460-236L540-236L540-110L436 0L184 0L80-110L80-640L184-750L436-750L540-640L540-514L460-514L460-599L397-664L224-664L172-611L172-139Z\" fill=\"#F4F6FB\" stroke=\"#F4F6FB\" stroke-width=\"54.0\" stroke-linejoin=\"round\" paint-order=\"stroke\"/><path transform=\"translate(612.0 612.0) scale(0.55100) translate(-438.0 421.5)\" d=\"M453 5Q334 5 246-38.5Q158-82 111-162Q64-242 64-348Q64-495 119.5-609Q175-723 270-785.5Q365-848 481-848Q589-848 645-792.5Q701-737 701-646Q701-585 679.5-548Q658-511 618-511Q590-511 574-524Q558-537 558-562Q558-571 562-595Q568-625 568-643Q568-734 471-734Q405-734 345-691Q285-648 248-564.5Q211-481 211-366Q211-246 278-180.5Q345-115 476-115Q541-115 607.5-131.5Q674-148 755-182Q770-188 780-188Q796-188 804-176Q812-164 812-145Q812-84 746-55Q675-24 598.5-9.5Q522 5 453 5Z\" fill=\"#101322\" stroke=\"#101322\" stroke-width=\"152.5\" stroke-linejoin=\"round\" paint-order=\"stroke\"/><path transform=\"translate(612.0 612.0) scale(0.55100) translate(-438.0 421.5)\" d=\"M453 5Q334 5 246-38.5Q158-82 111-162Q64-242 64-348Q64-495 119.5-609Q175-723 270-785.5Q365-848 481-848Q589-848 645-792.5Q701-737 701-646Q701-585 679.5-548Q658-511 618-511Q590-511 574-524Q558-537 558-562Q558-571 562-595Q568-625 568-643Q568-734 471-734Q405-734 345-691Q285-648 248-564.5Q211-481 211-366Q211-246 278-180.5Q345-115 476-115Q541-115 607.5-131.5Q674-148 755-182Q770-188 780-188Q796-188 804-176Q812-164 812-145Q812-84 746-55Q675-24 598.5-9.5Q522 5 453 5Z\" fill=\"#ED5858\" stroke=\"#ED5858\" stroke-width=\"32.7\" stroke-linejoin=\"round\" paint-order=\"stroke\"/></svg>", "why": "The navbar wordmark\u2019s whole idea in two letters: the varsity C behind, the red script C crashing through it on a navy keyline."}, {"key": "crest", "name": "Crest", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\" role=\"img\" aria-label=\"Campus Clash crest\"><rect width=\"1024\" height=\"1024\" fill=\"#101322\"/><g transform=\"translate(512 512) scale(1.08) translate(-512 -512)\"><path d=\"M402 330A110 118 0 0 1 622 330Z\" fill=\"#ED5858\" stroke=\"#101322\" stroke-width=\"14\"/><rect x=\"490\" y=\"176\" width=\"44\" height=\"42\" rx=\"4\" fill=\"#F4F6FB\" stroke=\"#101322\" stroke-width=\"10\"/><path d=\"M482 180A30 30 0 0 1 542 180Z\" fill=\"#ED5858\" stroke=\"#101322\" stroke-width=\"10\"/><rect x=\"505\" y=\"140\" width=\"14\" height=\"22\" rx=\"7\" fill=\"#ED5858\"/><path d=\"M268 318H756V560C756 702 642 790 512 850C382 790 268 702 268 560Z\" fill=\"#1A1F33\" stroke=\"#ED5858\" stroke-width=\"34\" stroke-linejoin=\"round\"/><path d=\"M268 318H756V560C756 702 642 790 512 850C382 790 268 702 268 560Z\" transform=\"translate(512 584) scale(.86) translate(-512 -584)\" fill=\"none\" stroke=\"#F4F6FB\" stroke-width=\"8\" stroke-linejoin=\"round\" opacity=\".9\"/><path transform=\"translate(512.0 548.0) scale(0.26133) translate(-610.0 375.0)\" d=\"M172-139L223-86L396-86L460-151L460-236L540-236L540-110L436 0L184 0L80-110L80-640L184-750L436-750L540-640L540-514L460-514L460-599L397-664L224-664L172-611L172-139ZM772-139L823-86L996-86L1060-151L1060-236L1140-236L1140-110L1036 0L784 0L680-110L680-640L784-750L1036-750L1140-640L1140-514L1060-514L1060-599L997-664L824-664L772-611L772-139Z\" fill=\"#F4F6FB\" stroke=\"#F4F6FB\" stroke-width=\"61.2\" stroke-linejoin=\"round\" paint-order=\"stroke\"/><path d=\"M472 672H552V706L512 728L472 706Z\" fill=\"#ED5858\"/></g></svg>", "why": "The parent crest at icon scale: shield, campus dome, block CC and the ESTD tag. Already sport-neutral, so it carries over intact."}, {"key": "pennant", "name": "Pennant", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\" role=\"img\" aria-label=\"Campus Clash pennant\"><rect width=\"1024\" height=\"1024\" fill=\"#101322\"/><defs><clipPath id=\"f\"><path d=\"M318 196C480 236 650 300 852 384C650 456 480 520 318 572Z\"/></clipPath></defs><g transform=\"rotate(-10 512 512)\"><line x1=\"300\" y1=\"196\" x2=\"300\" y2=\"822\" stroke=\"#101322\" stroke-width=\"54\" stroke-linecap=\"round\"/><line x1=\"300\" y1=\"196\" x2=\"300\" y2=\"822\" stroke=\"#E0B341\" stroke-width=\"26\" stroke-linecap=\"round\"/><circle cx=\"300\" cy=\"182\" r=\"26\" fill=\"#E0B341\" stroke=\"#101322\" stroke-width=\"12\"/><path d=\"M318 196C480 236 650 300 852 384C650 456 480 520 318 572Z\" fill=\"#ED5858\"/><rect x=\"318\" y=\"180\" width=\"46\" height=\"400\" fill=\"#F4F6FB\" clip-path=\"url(#f)\"/><path transform=\"translate(490.0 384.0) scale(0.19467) translate(-610.0 375.0)\" d=\"M172-139L223-86L396-86L460-151L460-236L540-236L540-110L436 0L184 0L80-110L80-640L184-750L436-750L540-640L540-514L460-514L460-599L397-664L224-664L172-611L172-139ZM772-139L823-86L996-86L1060-151L1060-236L1140-236L1140-110L1036 0L784 0L680-110L680-640L784-750L1036-750L1140-640L1140-514L1060-514L1060-599L997-664L824-664L772-611L772-139Z\" fill=\"#F4F6FB\" stroke=\"#F4F6FB\" stroke-width=\"82.2\" stroke-linejoin=\"round\" paint-order=\"stroke\"/></g></svg>", "why": "Laces\u2019 red CC pennant on its gold pole, flown on its own. The brand\u2019s rallying prop, with no ball in sight."}, {"key": "clash", "name": "Head-to-head", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\" role=\"img\" aria-label=\"Campus Clash\"><rect width=\"1024\" height=\"1024\" fill=\"#101322\"/><g transform=\"translate(382.4 174.4) scale(14.7260)\"><defs><clipPath id=\"b\"><circle cx=\"16\" cy=\"16\" r=\"14.6\"/></clipPath></defs><circle cx=\"16\" cy=\"16\" r=\"14.6\" fill=\"#F0833F\" stroke=\"#101322\" stroke-width=\"2\"/><g clip-path=\"url(#b)\" fill=\"none\" stroke=\"#101322\" stroke-width=\"1.6\"><path d=\"M16 1.4V30.6\"/><path d=\"M1.4 16H30.6\"/><path d=\"M5.49 5.85C8.41 10.74 8.41 21.26 5.49 26.15\"/><path d=\"M26.51 5.85C23.59 10.74 23.59 21.26 26.51 26.15\"/></g></g><g transform=\"translate(434 604) scale(16.7949) rotate(-35)\"><path d=\"M-15.6 0C-6.55-12.8 6.55-12.8 15.6 0C6.55 12.8-6.55 12.8-15.6 0Z\" fill=\"#ED5858\" stroke=\"#101322\" stroke-width=\"2.6\" stroke-linejoin=\"round\" paint-order=\"stroke\"/><g fill=\"#F4F6FB\"><rect x=\"-7.6\" y=\"-1.4\" width=\"15.2\" height=\"2.8\" rx=\"1.4\"/><rect x=\"-6.9\" y=\"-4\" width=\"1.8\" height=\"8\" rx=\".9\"/><rect x=\"-3.9\" y=\"-4\" width=\"1.8\" height=\"8\" rx=\".9\"/><rect x=\"-0.9\" y=\"-4\" width=\"1.8\" height=\"8\" rx=\".9\"/><rect x=\"2.1\" y=\"-4\" width=\"1.8\" height=\"8\" rx=\".9\"/><rect x=\"5.1\" y=\"-4\" width=\"1.8\" height=\"8\" rx=\".9\"/></g></g></svg>", "why": "The two tab favicons meeting mid-air: the red football crossing in front of the hardwood ball. Both leagues, one mark."}, {"key": "campus", "name": "Campus", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\" role=\"img\" aria-label=\"Campus Clash campus\"><rect width=\"1024\" height=\"1024\" fill=\"#101322\"/><rect x=\"214\" y=\"452\" width=\"96\" height=\"300\" fill=\"#ED5858\"/><path d=\"M202 460L262 350L322 460Z\" fill=\"#ED5858\"/><rect x=\"246\" y=\"500\" width=\"32\" height=\"56\" rx=\"16\" fill=\"#F4F6FB\"/><rect x=\"714\" y=\"420\" width=\"96\" height=\"332\" fill=\"#ED5858\"/><path d=\"M702 428L762 290L822 428Z\" fill=\"#ED5858\"/><rect x=\"746\" y=\"470\" width=\"32\" height=\"56\" rx=\"16\" fill=\"#F4F6FB\"/><rect x=\"300\" y=\"612\" width=\"424\" height=\"140\" fill=\"#F4F6FB\"/><rect x=\"334\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><rect x=\"392\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><rect x=\"450\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><rect x=\"548\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><rect x=\"606\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><rect x=\"664\" y=\"640\" width=\"26\" height=\"112\" fill=\"#101322\"/><path d=\"M282 620L512 540L742 620Z\" fill=\"#ED5858\" stroke=\"#101322\" stroke-width=\"12\" stroke-linejoin=\"round\"/><rect x=\"372\" y=\"470\" width=\"280\" height=\"72\" fill=\"#F4F6FB\"/><rect x=\"398\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><rect x=\"444\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><rect x=\"490\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><rect x=\"536\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><rect x=\"582\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><rect x=\"628\" y=\"486\" width=\"20\" height=\"44\" rx=\"10\" fill=\"#101322\"/><path d=\"M376 474A136 150 0 0 1 648 474Z\" fill=\"#ED5858\" stroke=\"#101322\" stroke-width=\"12\"/><rect x=\"492\" y=\"292\" width=\"40\" height=\"40\" fill=\"#F4F6FB\" stroke=\"#101322\" stroke-width=\"10\"/><line x1=\"512\" y1=\"296\" x2=\"512\" y2=\"168\" stroke=\"#E0B341\" stroke-width=\"12\" stroke-linecap=\"round\"/><path d=\"M518 172L626 204L518 236Z\" fill=\"#ED5858\"/><rect x=\"200\" y=\"752\" width=\"624\" height=\"16\" fill=\"#F4F6FB\"/></svg>", "why": "The badge\u2019s skyline: dome and two towers in brand red, with the CC pennant flying from the spire. Campus, literally."}];
+const DPR = Math.min(window.devicePixelRatio || 1, 3);
+const toImg = svg => new Promise((ok, no) => {
+  const i = new Image(); i.onload = () => ok(i); i.onerror = no;
+  i.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+});
+// Masks. iOS: continuous-corner rounded square (radius ~22.37%). Android: circle,
+// and a squircle (|x|^4 + |y|^4 = 1) for launchers that use one.
+function maskPath(ctx, kind, s) {
+  ctx.beginPath();
+  if (kind === 'ios') { ctx.roundRect(0, 0, s, s, s * 0.2237); }
+  else if (kind === 'circle') { ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2); }
+  else if (kind === 'squircle') {
+    for (let k = 0; k <= 360; k++) {
+      const t = k * Math.PI / 180, c = Math.cos(t), n = Math.sin(t);
+      const x = s / 2 + s / 2 * Math.sign(c) * Math.sqrt(Math.abs(c));
+      const y = s / 2 + s / 2 * Math.sign(n) * Math.sqrt(Math.abs(n));
+      k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  } else { ctx.rect(0, 0, s, s); }
+}
+// Draw at `px` device pixels; show at `css` CSS pixels.
+function draw(img, px, css, mask, safe) {
+  const c = document.createElement('canvas'); c.width = c.height = px;
+  c.style.width = c.style.height = css + 'px';
+  const ctx = c.getContext('2d');
+  ctx.save(); maskPath(ctx, mask, px); ctx.clip(); ctx.drawImage(img, 0, 0, px, px); ctx.restore();
+  if (safe) {
+    ctx.setLineDash([px * .03, px * .025]); ctx.lineWidth = Math.max(1, px * .012);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--interactive');
+    ctx.beginPath(); ctx.arc(px / 2, px / 2, px * .4, 0, Math.PI * 2); ctx.stroke();
+  }
+  return c;
+}
+function magnify(img, px, mask, by) {
+  const one = draw(img, px, px, mask);            // the real 1x bitmap
+  const big = document.createElement('canvas'); big.width = big.height = px * by;
+  const ctx = big.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(one, 0, 0, px * by, px * by);
+  big.style.width = big.style.height = (px * by) + 'px';
+  return big;
+}
+const fig = (node, cap) => { const f = document.createElement('figure'); f.append(node);
+  const c = document.createElement('figcaption'); c.textContent = cap; f.append(c); return f; };
+// Neutral stand-ins for the apps beside ours, drawn as plain shapes.
+const STANDINS = [
+  ['Weather', 'linear-gradient(180deg,#4A90E2,#7EC3F5)', '<circle cx="30" cy="27" r="11" fill="#FFD54A"/><rect x="18" y="33" width="28" height="11" rx="5.5" fill="#fff"/>'],
+  ['Notes', 'linear-gradient(180deg,#FFFFFF,#F2F2F2)', '<rect x="0" y="0" width="60" height="14" fill="#F5C443"/><g stroke="#C8C8C8" stroke-width="2"><line x1="10" y1="26" x2="50" y2="26"/><line x1="10" y1="35" x2="50" y2="35"/><line x1="10" y1="44" x2="38" y2="44"/></g>'],
+  ['Fitness', 'linear-gradient(180deg,#1C1C1E,#000)', '<g fill="none" stroke-width="5" stroke-linecap="round"><circle cx="30" cy="30" r="19" stroke="#FA114F"/><circle cx="30" cy="30" r="12" stroke="#92E82A"/><circle cx="30" cy="30" r="5" stroke="#1EEAEF"/></g>'],
+];
+function standin([name, bg, art]) {
+  const a = document.createElement('div'); a.className = 'app';
+  a.innerHTML = `<svg class="ic" viewBox="0 0 60 60" style="background:${bg}">${art}</svg><span>${name}</span>`;
+  return a;
+}
+function homeRow(img, tone) {
+  const row = document.createElement('div'); row.className = 'home ' + tone;
+  STANDINS.slice(0, 2).forEach(s => row.append(standin(s)));
+  const ours = document.createElement('div'); ours.className = 'app';
+  const ic = draw(img, Math.round(60 * DPR), 60, 'ios'); ic.className = 'ic';
+  const lab = document.createElement('span'); lab.textContent = 'Campus Clash';
+  ours.append(ic, lab); row.append(ours, standin(STANDINS[2]));
+  return row;
+}
+function panel(title, ...kids) {
+  const p = document.createElement('section'); p.className = 'panel';
+  const h = document.createElement('h3'); h.textContent = title; p.append(h, ...kids); return p;
+}
+(async () => {
+  const host = document.getElementById('opts');
+  for (const [n, o] of OPTIONS.entries()) {
+    const img = await toImg(o.svg);
+    const sec = document.createElement('article'); sec.className = 'opt'; sec.id = o.key;
+    sec.innerHTML = `<div class="opt-head"><span class="tag">Option ${String.fromCharCode(65 + n)}</span><h2>${o.name}</h2><p>${o.why}</p></div>`;
+    const board = document.createElement('div'); board.className = 'board';
+    const m = document.createElement('div'); m.className = 'master';
+    m.append(draw(img, Math.round(220 * DPR), 220, 'none'));
+    const sizes = document.createElement('div'); sizes.className = 'sizes';
+    [180, 60, 48, 29].forEach(s => sizes.append(fig(draw(img, Math.round(s * DPR), s, 'ios'), s + ' px')));
+    const mag = document.createElement('div'); mag.className = 'mag';
+    mag.append(fig(magnify(img, 48, 'squircle', 8), '48 px at 1\u00d7, shown 8\u00d7'), fig(magnify(img, 29, 'ios', 8), '29 px at 1\u00d7, shown 8\u00d7'));
+    const droid = document.createElement('div'); droid.className = 'droid';
+    droid.append(
+      fig(draw(img, Math.round(96 * DPR), 96, 'none', true), 'full bleed'),
+      fig(draw(img, Math.round(96 * DPR), 96, 'circle', true), 'circle'),
+      fig(draw(img, Math.round(96 * DPR), 96, 'squircle', true), 'squircle'));
+    const legend = document.createElement('p'); legend.className = 'legend';
+    legend.innerHTML = '<i></i>safe zone: everything that matters sits inside';
+    const homes = document.createElement('div'); homes.style.cssText = 'display:grid;gap:10px';
+    homes.append(homeRow(img, 'light'), homeRow(img, 'dark'));
+    const panels = document.createElement('div'); panels.className = 'panels';
+    panels.append(
+      panel('True size (iOS mask)', sizes),
+      panel('1\u00d7 bitmaps, magnified', mag),
+      panel('iOS home screen, light and dark', homes),
+      panel('Android maskable crops', droid, legend));
+    board.append(m, panels); sec.append(board); host.append(sec);
+  }
+})();
+</script>
