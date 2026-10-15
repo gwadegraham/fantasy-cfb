@@ -45,4 +45,13 @@ const rankingSchema = new mongoose.Schema({
     }
 });
 
+// One poll document per week. POST /rankings/retrieveRankings upserts on these
+// three fields, and an upsert is only race-safe with a unique index behind it:
+// without one, two concurrent upserts can both insert (the Saturday job and the
+// live poller collide on the :00 mark), and getRankingsForGame's findOne then
+// reads whichever duplicate comes back first. Checked before adding: neither
+// prod nor dev held a duplicate (15 Oct 2026), so the build cannot fail on
+// existing data.
+rankingSchema.index({ season: 1, seasonType: 1, week: 1 }, { unique: true });
+
 module.exports = mongoose.model('Ranking', rankingSchema);

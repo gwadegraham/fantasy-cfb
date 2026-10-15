@@ -31,6 +31,9 @@ app.use(express.json());
 app.use('/rankings', rankingsRouter);
 
 useMongo();
+// Build the unique index before the race test runs, rather than relying on
+// mongoose's background build finishing in time.
+beforeAll(() => Ranking.init());
 
 const POLLS = [{ poll: 'AP Top 25', ranks: [{ school: 'Oregon', rank: 1 }] }];
 const body = { season: '2026', seasonType: 'regular', week: '3' };
@@ -66,6 +69,28 @@ describe('POST /rankings/retrieveRankings', () => {
         const [a, b] = await Promise.all([send(), send()]);
         expect(a.status).toBe(201);
         expect(b.status).toBe(201);
+        expect(await Ranking.countDocuments()).toBe(1);
+    });
+
+    // The race, forced rather than hoped for (the concurrent test above passes
+    // most runs even with no index at all). The first upsert is replaced by:
+    // the OTHER caller's doc landing, then this caller's insert of the same
+    // week — which fails with E11000 only because the unique index exists.
+    // The handler must retry onto the winner's doc and answer 201: not a 400,
+    // and not a second doc.
+    test('losing the race updates the winner\'s doc', async () => {
+        getRankings.mockResolvedValue([{ polls: POLLS }]);
+        const real = Ranking.findOneAndUpdate.bind(Ranking);
+        let first = true;
+        jest.spyOn(Ranking, 'findOneAndUpdate').mockImplementation((...args) => {
+            if (!first) return real(...args);
+            first = false;
+            return Ranking.create({ season: 2026, seasonType: 'regular', week: 3, polls: [] })
+                .then(() => Ranking.collection.insertOne({ season: 2026, seasonType: 'regular', week: 3 }));
+        });
+        const res = await send();
+        expect(res.status).toBe(201);
+        expect(res.body.polls[0].poll).toBe('AP Top 25');
         expect(await Ranking.countDocuments()).toBe(1);
     });
 
@@ -134,5 +159,60 @@ describe('GET /rankings/:season/latest/:seasonType', () => {
     test('400s when the season has nothing on file', async () => {
         const res = await request(app).get('/rankings/2099/latest/regular');
         expect(res.status).toBe(400);
+    });
+});
+
+// POST /rankings/:season/refresh — the admin's whole-season pull. It writes
+// the same per-week docs as retrieveRankings, so it races it on the same
+// unique index.
+describe('POST /rankings/:season/refresh', () => {
+    const CFBD = [
+        { season: 2026, seasonType: 'regular', week: 3, polls: POLLS },
+        { season: 2026, seasonType: 'regular', week: 4, polls: POLLS }
+    ];
+    beforeEach(() => {
+        global.fetch = jest.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(CFBD) }));
+    });
+    afterEach(() => { delete global.fetch; });
+    const refresh = () => request(app).post('/rankings/2026/refresh');
+
+    test('inserts new weeks and updates existing ones', async () => {
+        await Ranking.create({ season: 2026, seasonType: 'regular', week: 3, polls: [] });
+        const res = await refresh();
+        expect(res.status).toBe(201);
+        expect(res.body).toMatchObject({ weeks: 2, created: 1, updated: 1 });
+        expect(await Ranking.countDocuments()).toBe(2);
+        const wk3 = await Ranking.findOne({ week: 3 }).lean();
+        expect(wk3.polls[0].poll).toBe('AP Top 25');
+    });
+
+    // retrieveRankings inserts week 3 between this pass's read and its write.
+    // That used to throw E11000 out of the loop: a 500, with week 4 never
+    // written.
+    test('a week inserted mid-pass is updated, and the pass carries on', async () => {
+        // The winner lands just before this pass's first write, whichever way
+        // the pass writes: an insert (save) collides outright; an upsert
+        // (updateOne) is made to collide by forcing the duplicate insert.
+        const winner = () => Ranking.collection.insertOne({ season: 2026, seasonType: 'regular', week: 3, polls: [] });
+        const realSave = Ranking.prototype.save;
+        let saved = false;
+        jest.spyOn(Ranking.prototype, 'save').mockImplementation(function (...args) {
+            if (saved) return realSave.apply(this, args);
+            saved = true;
+            return winner().then(() => realSave.apply(this, args));
+        });
+        const real = Ranking.updateOne.bind(Ranking);
+        let first = true;
+        jest.spyOn(Ranking, 'updateOne').mockImplementation((...args) => {
+            if (!first) return real(...args);
+            first = false;
+            return Ranking.create({ season: 2026, seasonType: 'regular', week: 3, polls: [] })
+                .then(() => Ranking.collection.insertOne({ season: 2026, seasonType: 'regular', week: 3 }));
+        });
+        const res = await refresh();
+        expect(res.status).toBe(201);
+        expect(await Ranking.countDocuments()).toBe(2);
+        expect((await Ranking.findOne({ week: 3 }).lean()).polls[0].poll).toBe('AP Top 25');
+        expect(await Ranking.exists({ week: 4 })).toBeTruthy();
     });
 });
