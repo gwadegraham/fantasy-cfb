@@ -55,6 +55,9 @@ const hoopsGradeSnapshotSchema = new mongoose.Schema({
     note: { type: String },
     // Which rank the quadrants were graded on, said out loud.
     rankSource: { type: String },
+    // The draft's pool cap when frozen (null = uncapped). The grade bands
+    // on THIS pool, since the games above are only this pool's.
+    poolSize: { type: Number, default: null },
     teams: { type: [teamSchema] },
     games: { type: [gameSchema] }
 }, { collection: 'hoopsgradesnapshots' });

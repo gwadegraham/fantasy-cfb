@@ -201,6 +201,28 @@ describe('POST /draft/grades/:league/:season/freeze — a basketball league', ()
         expect(frozen.body.managers).toEqual(live.body.managers);
     });
 
+    // The snapshot holds only the frozen pool's games. A cap raised later
+    // would band in teams it has no schedule for.
+    it('a frozen grade holds when the pool cap changes after the freeze', async () => {
+        await seed();
+        // A 3-team pool, so the replacement anchor (rank L·R = 4) sits at the
+        // pool's end and a wider pool would move it.
+        await Draft.updateOne({ league: LEAGUE, season: SEASON }, { $set: { poolSize: 3 } });
+        await freeze();
+        const frozen = await grades();
+        await Draft.updateOne({ league: LEAGUE, season: SEASON }, { $set: { poolSize: 8 } });
+        const live = await request(app).post(`/draft/grades/${LEAGUE}/${SEASON}/freeze`).set('X-Internal-Token', TOKEN);
+        const wider = await grades();                       // what an 8-team pool grades to
+        // The fixture has to tell the two pools apart, or this proves nothing.
+        expect(wider.body.managers.map(m => m.grade)).not.toEqual(frozen.body.managers.map(m => m.grade));
+        // Re-pin the 3-team snapshot and raise the cap again: the grade holds.
+        await Draft.updateOne({ league: LEAGUE, season: SEASON },
+            { $set: { hoopsGradeSnapshot: (await HoopsGradeSnapshot.findOne({ poolSize: 3 }).lean())._id } });
+        expect(live.body.snapshotId).toBeTruthy();
+        const after = await grades();
+        expect(after.body.managers).toEqual(frozen.body.managers);
+    });
+
     it('snapshots basketball rows only, whatever football holds under the same ids', async () => {
         await seed();
         const res = await freeze();
@@ -303,6 +325,14 @@ describe('GET /draft/board — a basketball league', () => {
         expect(res.body.projections.find(t => t.id === 333).games).toBe(6);
         const frozen = await freeze();
         expect(frozen.body.thinSchedules).toEqual([{ id: 333, school: 'Hoops 333', games: 6 }]);
+    });
+
+    it('a pool cap changed during draft prep is not answered from the old pool\'s cache', async () => {
+        await seed({ status: 'active', picks: [] });
+        expect((await board()).body.projections).toHaveLength(6);
+        await Draft.updateOne({ league: LEAGUE, season: SEASON }, { $set: { poolSize: 8 } });
+        const res = await request(app).get(`/draft/board/${LEAGUE}/${SEASON}?userId=${A}`).set('X-Internal-Token', TOKEN);
+        expect(res.body.projections).toHaveLength(8);
     });
 
     // The page hides Recompute when there are no numbers, so a cached "none"

@@ -134,19 +134,23 @@ async function basketballGrades(league, season) {
     const usersById = {};
     users.forEach(u => { usersById[String(u._id)] = u; });
 
-    let inputs, frozenAt = null;
+    let inputs, frozenAt = null, graded = draft;
     const snapshot = draft.hoopsGradeSnapshot
         ? await HoopsGradeSnapshot.findById(draft.hoopsGradeSnapshot).lean()
         : null;
     if (snapshot) {
         inputs = hoopsDraft.fromSnapshot(snapshot);
         frozenAt = snapshot.takenAt;
+        // The pool as it was frozen. The snapshot holds only that pool's
+        // games, so a cap raised later would band in teams it has no
+        // schedule for.
+        if (snapshot.poolSize !== undefined) graded = Object.assign({}, draft, { poolSize: snapshot.poolSize });
     } else {
         inputs = await liveHoopsInputs(season, draft);
     }
     // No rated teams = nothing to grade against. Say so with no managers
     // rather than a league of zero-point D grades.
-    if (!hoopsDraft.poolOf(inputs.teams, draft.poolSize).length) {
+    if (!hoopsDraft.poolOf(inputs.teams, graded.poolSize).length) {
         return Object.assign(base, { managers: [], frozenAt });
     }
     const teamsById = {};
@@ -154,7 +158,7 @@ async function basketballGrades(league, season) {
 
     const cfgDoc = await ScoringConfig.findOne({ league }).lean();
     const config = resolveConfig(league, overridesFromDoc(cfgDoc));
-    const managers = computeGrades(draft, usersById, teamsById,
+    const managers = computeGrades(graded, usersById, teamsById,
         { games: inputs.games, config, sport: 'basketball' });
     return Object.assign(base, { managers, frozenAt });
 }
@@ -173,6 +177,7 @@ async function freezeBasketball(req, res, league, season) {
     }
     const snap = await HoopsGradeSnapshot.create({
         league, season, reason: 'draft-baseline', rankSource: hoopsDraft.RANK_SOURCE,
+        poolSize: draft.poolSize || null,
         note: (req.body && req.body.note) || `Draft-grade baseline for ${league}`,
         teams: hoopsDraft.snapshotTeams(teams), games: hoopsDraft.snapshotGames(games)
     });
@@ -352,7 +357,9 @@ router.get('/board/:league/:season', async (req, res) => {
         // whichever football team shared each basketball id.
         const hoops = sportForLeague(league) === 'basketball';
 
-        const key = `${league}:${season}`;
+        // Basketball's pool is the top poolSize, so a cap changed during
+        // draft prep must not be answered from the old pool's cache.
+        const key = hoops ? `${league}:${season}:${draft.poolSize || 'all'}` : `${league}:${season}`;
         if (req.query.refresh === '1') boardCache.delete(key);
         let cached = boardCache.get(key);
         if (!cached && hoops) {
@@ -499,6 +506,7 @@ async function hoopsBoardProjections(league, season, draft) {
         .filter(p => proj[String(p.id)] && byId[String(p.id)])
         .map(p => hoopsDraft.boardRow(byId[String(p.id)], proj[String(p.id)], pickLogo(p.logos)))
         .sort((a, b) => b.total - a.total);
+    if (!projections.length) return { projections: null, rankedSource: null };
     return { projections, rankedSource: hoopsDraft.RANK_SOURCE,
              thinSchedules: hoopsDraft.thinSchedules(proj, teams) };
 }
