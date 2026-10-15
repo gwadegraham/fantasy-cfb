@@ -935,7 +935,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 // WRONG bar (100% / 0%) and then flip to the true number seconds
                 // later. A wrong bar is worse than no bar, which is the whole
                 // premise of the skeleton.
-                winP: standingsOnly ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
+                //
+                // Basketball answers NO odds either: it has no projection, so
+                // liveEntriesFor would be built from final games alone — a
+                // side with one finished game against a side yet to play read
+                // 100% / 0% mid-week. A finished week's bar comes from
+                // `winner` on the card, not from this, so it is unaffected.
+                winP: (standingsOnly || isHoops) ? null : (unplayed ? liveOddsFor(a, b, w) : oddsFor(a, b, w)),
                 final: !unplayed,
                 upcoming: !!upcoming
             };
@@ -1003,7 +1009,7 @@ router.get('/h2h/:league/:season', async (req, res) => {
                 g.aTeams = doctor(g.aTeams); g.bTeams = doctor(g.bTeams);
                 const sum = (teams) => round(teams.filter(t => t.status === 'final').reduce((s, t) => s + (t.score || 0), 0));
                 g.aScore = sum(g.aTeams); g.bScore = sum(g.bTeams);
-                g.winP = mode === 'pregame' ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
+                g.winP = (mode === 'pregame' || isHoops) ? g.winP : oddsFrom(liveEnt(g.aTeams), liveEnt(g.bTeams));
             });
             featuredWeek = w.week; currentWeekOut = w.week;
         }

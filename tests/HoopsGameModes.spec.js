@@ -419,6 +419,48 @@ describe('the standings read model agrees', () => {
     });
 });
 
+describe('no win-probability bar on a basketball week in progress', () => {
+    // Basketball has no projection, so odds built from FINAL games alone read
+    // 100% / 0% as soon as one side has a result. The basketball payload
+    // answers none; football keeps computing its odds.
+    const app = express();
+    app.use('/standings', require('../routes/standings'));
+    const midWeek = (body) => body.schedule.find(s => s.week === 1);
+
+    test('basketball: one side final, the other still to play — winP is null', async () => {
+        await modes({ h2h: true });
+        await manager('Ann', [1]);
+        await manager('Bo', [2]);
+        await HoopsGame.create([q1Win(1, 1), q1Win(1, 2, { status: 'scheduled', startDate: new Date('2099-01-01') })]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        const res = await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`);
+        const wk = midWeek(res.body);
+        expect(wk.final).toBe(false);
+        expect(wk.upcoming).toBe(false);
+        expect(wk.games[0].winP).toBeNull();
+    });
+
+    test('football, same shape of week: still answers odds', async () => {
+        const { mirrorUsers } = require('./helpers/mongo');
+        const User = require('../models/user');
+        const FOOT = 'graham-league';
+        const t = (id) => ({ id, school: `F${id}`, mascot: 'M', abbreviation: `F${id}`, conference: 'SEC', color: '#000', logos: ['x'],
+            location: { venue_id: id, name: 'S', city: 'C', state: 'ST', zip: '0', latitude: 1, longitude: 1, capacity: 1, grass: true, dome: false } });
+        await ScoringConfig.updateOne({ league: FOOT }, { $set: { league: FOOT, 'engagementBySeason.2026': { h2hEnabled: true, h2hWinBonus: 3 } } }, { upsert: true });
+        await User.create([
+            { firstName: 'Fa', lastName: 'X', league: FOOT, seasons: [{ season: 2026, teams: [t(11)], weeklyScore: [{ week: 1, score: 5, scoreByTeam: [{ teamId: 11, gameId: 1, score: 5 }] }] }] },
+            { firstName: 'Fb', lastName: 'X', league: FOOT, seasons: [{ season: 2026, teams: [t(12)], weeklyScore: [{ week: 1, score: 0 }] }] }
+        ]);
+        await mirrorUsers();
+        const fg = (id, homeId, completed, startDate) => ({ id, season: 2026, week: 1, seasonType: 'regular', startDate, startTimeTbd: false,
+            neutralSite: false, conferenceGame: false, homeId, homeTeam: `F${homeId}`, awayId: 99, awayTeam: 'Opp',
+            homePoints: completed ? 30 : null, awayPoints: completed ? 10 : null, completed });
+        await Game.create([fg(1, 11, true, '2026-09-05T19:00:00Z'), fg(2, 12, false, '2099-09-05T19:00:00Z')]);
+        const res = await request(app).get(`/standings/h2h/${FOOT}/2026`);
+        expect(midWeek(res.body).games[0].winP).not.toBeNull();
+    });
+});
+
 describe("football's H2H pass leaves a basketball league alone", () => {
     const app = express();
     app.use(express.json());
