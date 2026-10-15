@@ -91,7 +91,8 @@ beforeEach(async () => {
         conference: 'Big East', logos: [`hoops${id}.png`], preseason: { rank: id * 10 }
     })));
     // A basketball draft pick holds the HoopsTeam row, as the draft room stores it.
-    await Draft.create({ league: HOOPS, season: HOOPS_SEASON, draftOrder: [ann._id, bob._id], picks: [
+    // The pool is capped at 4: team 5 (ranked 50th) was never on the board.
+    await Draft.create({ league: HOOPS, season: HOOPS_SEASON, poolSize: 4, draftOrder: [ann._id, bob._id], picks: [
         { round: 1, overall: 1, userId: ann._id, team: { id: 1, season: HOOPS_SEASON, school: 'Hoops One' } },
         { round: 1, overall: 2, userId: bob._id, team: { id: 3, season: HOOPS_SEASON, school: 'Hoops Three' } },
         { round: 2, overall: 3, userId: ann._id, team: { id: 2, season: HOOPS_SEASON, school: 'Hoops Two' } }
@@ -135,6 +136,13 @@ describe('PATCH /users/:id/roster-team on a basketball league', () => {
         expect((await doc(annHoops)).seasons[0].teamRefs).toEqual(refs(1, 2));
     });
 
+    test("a team outside the league's draft pool is refused, by name", async () => {
+        const res = await correct({ league: HOOPS, fromTeamId: 1, toTeamId: 5 });
+        expect(res.status).toBe(422);
+        expect(res.body.message).toBe("Hoops Five isn't in this league's draft pool.");
+        expect((await doc(annHoops)).seasons[0].teamRefs).toEqual(refs(1, 2));
+    });
+
     test("another basketball manager's team is taken", async () => {
         const res = await correct({ league: HOOPS, fromTeamId: 1, toTeamId: 3 });
         expect(res.status).toBe(409);
@@ -149,9 +157,9 @@ describe('PATCH /users/:id/roster-team on a basketball league', () => {
     });
 
     test('with no league sent, the viewed basketball league decides', async () => {
-        const res = await correct({ fromTeamId: 1, toTeamId: 5 }, { viewing: HOOPS });
+        const res = await correct({ fromTeamId: 1, toTeamId: 4 }, { viewing: HOOPS });
         expect(res.status).toBe(200);
-        expect((await doc(annHoops)).seasons[0].teamRefs).toEqual(refs(5, 2));
+        expect((await doc(annHoops)).seasons[0].teamRefs).toEqual(refs(4, 2));
     });
 
     test("viewing a league is not authority over it: football's League Manager can't correct basketball", async () => {
@@ -214,8 +222,20 @@ describe('GET /users/league/:league/roster-teams on a basketball league', () => 
             { id: 1, school: 'Hoops One', logo: 'hoops1.png' },
             { id: 2, school: 'Hoops Two', logo: 'hoops2.png' }
         ]);
-        // Every D-I team nobody in the league holds — none of football's.
-        expect(res.body.available.map(t => t.school)).toEqual(['Hoops Five', 'Hoops Four']);
+        // The draft pool (capped at 4) minus what is held — none of football's,
+        // and not team 5, which was never on the board.
+        expect(res.body.available.map(t => t.school)).toEqual(['Hoops Four']);
+    });
+
+    test("commissioners only — and viewing basketball doesn't make football's League Manager one", async () => {
+        const lm = await request(appAs(['League Manager'])).get(`/users/league/${HOOPS}/roster-teams`)
+            .set('Cookie', `cc_league=${HOOPS}`);
+        expect(lm.status).toBe(403);
+        const member = await request(appAs([])).get(`/users/league/${FOOTBALL}/roster-teams`);
+        expect(member.status).toBe(403);
+        // Their own league, they may.
+        const own = await request(appAs(['League Manager'])).get(`/users/league/${FOOTBALL}/roster-teams`);
+        expect(own.status).toBe(200);
     });
 
     test('football is unchanged: its rosters and the FBS pool', async () => {

@@ -14,6 +14,7 @@ const Draft = require('../models/draft');
 const Ranking = require('../models/ranking');
 const scoring = require('../modules/scoring');
 const rosterCorrection = require('../modules/roster-correction');
+const draftPool = require('../modules/draft-pool');
 const audit = require('../modules/audit-log');
 const { pickLogo } = require('../public/logo.js');
 const { sanitizeProfileUpdate, cloudinaryConfig } = require('../modules/profile-update');
@@ -1164,12 +1165,18 @@ router.post('/:id/season-membership', async (req, res) => {
 // commissioner picks a team and gets refused.
 //
 // The league's own sport and season decide both lists. A basketball roster is
-// refs, resolved against `hoopsteams`; its replacements are that season's D-I
-// teams — never football's `teams`, whose ids collide with basketball's for
-// 130 programs.
+// refs, resolved against `hoopsteams`; its replacements are the league's DRAFT
+// POOL (the top N by preseason rank, modules/draft-pool.js) — what a
+// commissioner could have picked on draft night — never football's `teams`,
+// whose ids collide with basketball's for 130 programs.
+//
+// Commissioners only: it is every manager's roster, for a tool that writes.
 router.get('/league/:league/roster-teams', async (req, res) => {
+    const league = req.params.league;
+    if (!canManageLeague(req, league)) {
+        return res.status(403).json({ message: 'Forbidden: not your league' });
+    }
     try {
-        const league = req.params.league;
         const sport = sportForLeague(league);
         const season = Number(req.query.season || seasonFor(league));
 
@@ -1193,7 +1200,7 @@ router.get('/league/:league/roster-teams', async (req, res) => {
         }).sort((a, b) => a.name.localeCompare(b.name));
 
         const allTeams = sport === 'basketball'
-            ? await HoopsTeam.find({ season }, { id: 1, school: 1, conference: 1, logos: 1 }).lean()
+            ? (await draftPool.poolFor(league, { season, poolSize: await leaguePoolSize(league, season) })).teams
             : await Team.find(FBS_ONLY, { id: 1, school: 1, conference: 1, logos: 1 }).lean();
         const available = allTeams
             .filter(t => !taken.has(Number(t.id)))
@@ -1208,9 +1215,17 @@ router.get('/league/:league/roster-teams', async (req, res) => {
             locked: seasonUnderway && !isAdmin
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        // poolFor's refusals (a half-finished ranking import, say) carry
+        // their own status and a message naming the fix.
+        res.status(err.status || 500).json({ message: err.message });
     }
 });
+
+// The draft's pool cap for a league's season, or null (uncapped / no draft).
+async function leaguePoolSize(league, season) {
+    const d = await Draft.findOne({ league, season }, { poolSize: 1 }).lean();
+    return (d && d.poolSize) || null;
+}
 
 // Correct one team on a manager's season roster.
 //
@@ -1251,9 +1266,20 @@ router.patch('/:id/roster-team', async (req, res) => {
         const seasonDoc = (user.seasons || []).find(s => Number(s.season) === season);
         if (!seasonDoc) return res.status(404).json({ message: `No ${season} roster for that manager.` });
 
-        const targetTeam = toTeamId == null ? null : basketball
-            ? await HoopsTeam.findOne({ season, id: Number(toTeamId) }).lean()
-            : await Team.findOne({ id: Number(toTeamId) }).lean();
+        // Basketball: only a team in the league's draft pool — the same test
+        // the draft room applies to a pick (draftableTeam), so a correction
+        // cannot roster a team nobody could have drafted.
+        let targetTeam = null;
+        if (toTeamId != null && basketball) {
+            targetTeam = await draftPool.draftableTeam(user.league,
+                { teamId: Number(toTeamId), season, poolSize: await leaguePoolSize(user.league, season) });
+            if (!targetTeam) {
+                const known = await HoopsTeam.findOne({ season, id: Number(toTeamId) }, { school: 1 }).lean();
+                if (known) return res.status(422).json({ message: `${known.school} isn't in this league's draft pool.` });
+            }
+        } else if (toTeamId != null) {
+            targetTeam = await Team.findOne({ id: Number(toTeamId) }).lean();
+        }
 
         // Is the replacement already spoken for anywhere in this league?
         let takenBy = null;
