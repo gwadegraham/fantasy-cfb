@@ -488,7 +488,9 @@ async function displayLastUpdated(data) {
     let when = null;   // Date to display
     let run = null;    // JobRun record when available (drives the tooltip detail)
     try {
-        const res = await fetch('/standings/last-updated', { headers: { Accept: 'application/json' } });
+        // The viewed league, so the server reads that league's sport's jobs.
+        const league = (typeof ccLeagueCode === 'function') ? ccLeagueCode() : '';
+        const res = await fetch('/standings/last-updated' + (league ? '?league=' + encodeURIComponent(league) : ''), { headers: { Accept: 'application/json' } });
         run = res.ok ? await res.json() : null;
         if (run && (run.finishedAt || run.startedAt)) when = new Date(run.finishedAt || run.startedAt);
     } catch (e) { /* fall back to the legacy stamp below */ }
@@ -507,9 +509,13 @@ async function displayLastUpdated(data) {
         : `Last updated — ${abs}`;
     // The mascot head stands in for the dot and bounces while a scoring job is in
     // flight (run.running). Without mascots.js (the test harness) the dot stays.
-    // Only football leagues: every scoring job behind this route is football's, so
-    // Dribbles bouncing for it would claim his league was being scored.
-    const busy = !!(run && run.running) && (!window.ccMascot || window.ccMascot.sport() === 'football');
+    // Both sports: the route reads the viewed league's own scoring jobs (#575),
+    // so `running` is about this league's sport. It used to be football-only
+    // because the route read football's jobs for everyone. In practice Dribbles
+    // still rarely bounces: hoops-scores opens its JobRun only once its work is
+    // done and closes it straight away, so there is almost never a 'running'
+    // basketball row to see.
+    const busy = !!(run && run.running);
     const mark = window.ccMascot
         ? `<span class="lu-mascot" aria-hidden="true">${window.ccMascot.html({ size: 'head', busy })}</span>`
         : `<span class="lu-dot" aria-hidden="true"></span>`;

@@ -604,7 +604,7 @@ function scheduleRefresh() {
 }
 
 function loadLastUpdated() {
-    sbApi('/standings/last-updated').then(function (run) {
+    sbApi('/standings/last-updated?league=' + encodeURIComponent(LEAGUE_CODE)).then(function (run) {
         if (!run) return;
         var when = new Date(run.finishedAt || run.startedAt);
         if (isNaN(when)) return;

@@ -808,15 +808,24 @@ describe('last updated badge', () => {
         expect(page.lastUpdated().querySelector('.is-scoring')).toBeNull();
     });
 
-    // Every job behind the route is football's: Dribbles bouncing would claim
-    // his basketball league was being scored.
-    it('Dribbles never bounces for a football job', async () => {
+    // The route reads the viewed league's own sport's jobs (#575), so a
+    // `running` flag on a basketball league is a basketball job: Dribbles
+    // bounces for it. It was football-only while the route read football's
+    // jobs for everyone.
+    it('Dribbles bounces when his league is being scored', async () => {
         withMascot('basketball');
         const page = await loadStandingsPage({
             users: [scored('a', 'Alice', 'Adams', [10])],
             lastUpdated: { finishedAt: new Date().toISOString(), running: true }
         });
-        expect(page.lastUpdated().querySelector('[data-mascot]').getAttribute('data-busy')).toBe('false');
+        expect(page.lastUpdated().querySelector('[data-mascot]').getAttribute('data-busy')).toBe('true');
+    });
+
+    it('asks for the viewed league, so the server picks its sport', async () => {
+        await loadStandingsPage({ users: [scored('a', 'Alice', 'Adams', [10])], lastUpdated: { finishedAt: new Date().toISOString() } });
+        const urls = global.fetch.mock.calls.map(c => String(c[0])).filter(u => u.includes('/standings/last-updated'));
+        expect(urls.length).toBeGreaterThan(0);
+        urls.forEach(u => expect(u).toBe('/standings/last-updated?league=graham-league'));
     });
 
     it('without the mascot module the dot stays', async () => {

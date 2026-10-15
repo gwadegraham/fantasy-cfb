@@ -24,6 +24,7 @@ const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
 const { resolveCaptain } = require('../modules/captain');
 const { sportForLeague } = require('../modules/active-season');
+const { selectedLeague } = require('../modules/league-selection');
 const { hydrateRosters } = require('../modules/roster-teams');
 const HoopsTeam = require('../models/hoopsTeam');
 const hoopsH2H = require('../modules/hoops-h2h');
@@ -50,10 +51,20 @@ async function projectionPoll(season) {
     return findPoll(doc);
 }
 
-// The scoring jobs that actually refresh standings data (see modules/score-job.js
-// and modules/live-poll.js). 'live-scores' is the game-day live poller, so the
-// "data as of" time advances during live play too.
-const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores'];
+// The scoring jobs that actually refresh standings data, per sport (see
+// modules/score-job.js, modules/live-poll.js, modules/hoops-scores-job.js and
+// modules/hoops-live-poll.js). The live pollers are included so the "data as
+// of" time advances during live play too.
+//
+// Basketball has a gap football does not: hoops-scores writes NO JobRun on a
+// night with nothing to score, and hoops-live writes one only for a tick that
+// landed a new final. So on a quiet stretch the badge shows the last night
+// that actually did work. That is the honest "data as of" — nothing has
+// changed since — not a stale reading.
+const SCORING_JOBS = {
+    football: ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-scores'],
+    basketball: ['hoops-scores', 'hoops-live']
+};
 
 // The honest "data as of" time for the standings: the most recent SUCCESSFUL
 // scoring run. Unlike user.lastUpdated — which is bumped by unrelated writes
@@ -61,25 +72,32 @@ const SCORING_JOBS = ['daily-scores', 'saturday-scores', 'sunday-scores', 'live-
 // success — this only moves when a scoring job actually completed. Returns the
 // run record, or null if no scoring job has ever succeeded.
 //
+// Read for the VIEWED league's sport: `?league=`, else the selected league.
+// Before #575 it read football's jobs for everyone, so a basketball league's
+// badge moved when football scored and stood still when hoops-scores ran.
+//
 // `running` says whether a scoring job is in flight right now (the badge's mascot
 // bounces while it is). Only runs started in the last RUNNING_WINDOW_MS count: a
 // job that crashed mid-run never flips its row off 'running', and without the
 // window that stale row would keep the mascot busy until the TTL reaped it.
-// The live poller is left out: it writes a 'running' row every 10s tick of a
-// game day, so a page load that landed mid-tick would show "scoring in
-// progress" long after the tick ended (the badge reads this once, on load).
+// The live pollers are left out: football's writes a 'running' row every 10s
+// tick of a game day, so a page load that landed mid-tick would show "scoring
+// in progress" long after the tick ended (the badge reads this once, on load).
+// hoops-live is left out for the same reason, to keep the two sports alike.
 const RUNNING_WINDOW_MS = 15 * 60 * 1000;
-const BATCH_SCORING_JOBS = SCORING_JOBS.filter(j => j !== 'live-scores');
+const LIVE_JOBS = ['live-scores', 'hoops-live'];
 router.get('/last-updated', async (req, res) => {
     try {
+        const league = (typeof req.query.league === 'string' && req.query.league) || await selectedLeague(req);
+        const jobs = SCORING_JOBS[sportForLeague(league)] || SCORING_JOBS.football;
         const [run, inFlight] = await Promise.all([
             JobRun.findOne(
-                { jobName: { $in: SCORING_JOBS }, status: 'success' },
+                { jobName: { $in: jobs }, status: 'success' },
                 { finishedAt: 1, startedAt: 1, jobName: 1, week: 1, seasonType: 1, season: 1 },
                 { sort: { finishedAt: -1 } }
             ).lean(),
             JobRun.exists({
-                jobName: { $in: BATCH_SCORING_JOBS }, status: 'running',
+                jobName: { $in: jobs.filter(j => !LIVE_JOBS.includes(j)) }, status: 'running',
                 startedAt: { $gte: new Date(Date.now() - RUNNING_WINDOW_MS) }
             })
         ]);
