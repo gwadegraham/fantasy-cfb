@@ -315,7 +315,13 @@ async function hoopsProjections(league, season) {
     // cap) — engagementBySeason, the per-season entry, as football reads it.
     const last = modeWeeks.length ? modeWeeks[modeWeeks.length - 1] : -1;
     const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
-    const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: last, captainMaxWeek: last };
+    // scheduleWeeks: the round robin is numbered over the whole season, as
+    // the real basketball H2H (hoops-h2h, computeH2HAwards weeks) numbers it.
+    // pinnedIds: the stored pin, else the ids SORTED — the order the real
+    // pass derives before anything is pinned (h2h h2hManagerIds), so the
+    // projected round robin is the one that will be played.
+    const pinned = pinnedH2HIds(cfgDoc, season) || managers.map(m => m.userId).sort();
+    const engOpts = { pinnedIds: pinned, maxWeek: last, captainMaxWeek: last, scheduleWeeks: modeWeeks };
     applyEngagement(managers, engagement, engOpts);
     const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
     return { league, season, managers: projectionRows(managers, odds) };

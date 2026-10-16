@@ -42,6 +42,20 @@ describe('the mean is the March estimate', () => {
         });
     });
 
+    test('the sampler averages to it in every decided state (seeded)', () => {
+        const rich = resolveConfig('x', { model: 'hoops', values: { ncaaFirstFour: 4, seedUpsetBonus: 3 } });
+        [2, 60].forEach(rank => STATES.forEach(decided => {
+            const d = postseasonDistribution(model, { id: 1, rank }, ctx, rich, 'march', decided);
+            const rand = lcg(rank * 31 + 7);
+            let sum = 0;
+            const N = 40000;
+            for (let i = 0; i < N; i++) sum += samplePostseason(d, rand);
+            const sd = Math.sqrt(distributionVariance(d));
+            // within 4 standard errors (and exact when nothing is random)
+            expect(Math.abs(sum / N - distributionMean(d))).toBeLessThanOrEqual(4 * sd / Math.sqrt(N) + 1e-9);
+        }));
+    });
+
     test('the sampler averages to it (seeded)', () => {
         const d = postseasonDistribution(model, { id: 1, rank: 4 }, ctx, cfg, 'preseason', {});
         const rand = lcg(7);

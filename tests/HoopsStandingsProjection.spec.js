@@ -87,7 +87,7 @@ describe('buildHoopsProjections (pure)', () => {
     });
 
     test('out of the NCAA (the bracket is out without it): no postseason left', () => {
-        const field = postseasonState.ncaaField([{ tournament: 'NCAA', homeTeamId: 3, awayTeamId: 4 }]);
+        const field = postseasonState.ncaaField(Array.from({ length: 32 }, (_, i) => ({ tournament: 'NCAA', homeTeamId: 100 + 2 * i, awayTeamId: 101 + 2 * i })));
         const [a] = buildHoopsProjections({ users: [mgr('a', [1])], ratings, games: schedule(), field, ranks, cfg, season: SEASON, log: silent });
         expect(a.postRemaining).toBe(0);
         expect(a.postSample()).toBe(0);
@@ -158,6 +158,47 @@ describe('standings-projection, basketball inputs (pure)', () => {
         const a2 = { userId: 'a', projectedFinal: 0, byWeek: a.byWeek }, b2 = { userId: 'b', projectedFinal: 0, byWeek: {} };
         SP.applyEngagement([a2, b2], eng, {});
         expect(a2.expH2H).toBe(0);                             // football's default cap
+    });
+
+    test('a week whose every option expects a loss still has a Captain (the least-bad)', () => {
+        const week = [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -2 }] },
+            { teamId: 2, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -4 }] }];
+        expect(SP.expectedCaptainWeek(week, 2)).toBe(-2);
+        expect(SP.expectedCaptainWeek([], 2)).toBe(0);
+    });
+
+    describe('H2H pairings are numbered over the whole season (scheduleWeeks)', () => {
+        const { scheduleForWeeks } = require('../modules/h2h');
+        const ids = ['a', 'b', 'c', 'd'];
+        const full = [1, 2, 3, 4, 5, 6];
+        // Week 5 is the only one left (round 2 of 3 — week 4 would be round 1 again). A scores 10, B 1, C 2, D 3, certain.
+        const pts = { a: 10, b: 1, c: 2, d: 3 };
+        const make = () => ids.map(id => ({ userId: id, projectedFinal: 0, postExpected: id === 'a' ? -100 : 0, postRemaining: 0,
+            byWeek: { 5: [{ teamId: 1, games: [{ winProb: 1, pointsIfWin: pts[id] }] }] } }));
+        const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 };
+        const real = scheduleForWeeks(ids, full)[5];
+        const wrong = scheduleForWeeks(ids, [5])[5];
+        const winnersOf = (pairs) => pairs.map(([x, y]) => (pts[x] > pts[y] ? x : y));
+
+        test('the fixture distinguishes the two pairings', () => {
+            expect(winnersOf(real).sort()).not.toEqual(winnersOf(wrong).sort());
+        });
+
+        test('expectedH2H pays the real week-5 winners', () => {
+            const ms = make();
+            SP.applyEngagement(ms, eng, { pinnedIds: ids, maxWeek: 6, scheduleWeeks: full });
+            const paid = ms.filter(m => m.expH2H > 0).map(m => m.userId).sort();
+            expect(paid).toEqual(winnersOf(real).sort());
+        });
+
+        test('the simulation plays the real week-5 matchups', () => {
+            // A is out of the title race (-100); among B, C, D the one who
+            // wins a matchup gets +3 — which depends on who plays A.
+            const total = (id) => pts[id] + (winnersOf(real).includes(id) ? 3 : 0);
+            const champ = ['b', 'c', 'd'].sort((x, y) => total(y) - total(x))[0];
+            const odds = SP.simulateTitleOdds(make(), 50, { engagement: eng, pinnedIds: ids, maxWeek: 6, scheduleWeeks: full, postseasonSd: 0 });
+            expect(odds[champ]).toBe(1);
+        });
     });
 
     test('the simulation draws pointsIfLoss', () => {
@@ -249,10 +290,36 @@ describe('GET /standings/projections on a basketball league', () => {
         expect(Math.abs(t.projectedFinal - (30 + p.regular + p.postseason + t.expCaptain + t.expH2H))).toBeLessThan(1.6);
     });
 
+    test('H2H is projected on the real round robin: whole-season numbering, pinned order', async () => {
+        const accts = [await manager('Top', [1], 0), await manager('Mid', [2], 0), await manager('Low', [4], 0)];
+        // Pinned in an order that is NOT sorted, as a real pin can be.
+        const pin = accts.map(a => String(a._id)).reverse();
+        await ScoringConfig.updateOne({ league: LEAGUE }, { $set: { league: LEAGUE,
+            [`engagementBySeason.${SEASON}`]: { captainEnabled: false, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 },
+            [`h2hScheduleBySeason.${SEASON}`]: { ids: pin } } }, { upsert: true });
+        const res = await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`);
+        // The same managers, built here, under the real schedule and under
+        // the remaining-weeks-only numbering the football path uses.
+        const users = accts.map((a, i) => mgr(String(a._id), [[1], [2], [4]][i]));
+        const build = (opts) => {
+            const ms = buildHoopsProjections({ users, ratings, games: schedule(), field: null, ranks, cfg: resolveConfig(LEAGUE), season: SEASON, log: silent });
+            SP.applyEngagement(ms, { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 }, Object.assign({ pinnedIds: pin, maxWeek: 18 }, opts));
+            const by = {};
+            ms.forEach(m => { by[m.userId] = Math.round(m.expH2H * 10) / 10; });
+            return by;
+        };
+        const real = build({ scheduleWeeks: Array.from({ length: 18 }, (_, i) => i + 1) });
+        const shifted = build({});
+        expect(real).not.toEqual(shifted);                     // the fixture can tell them apart
+        res.body.managers.forEach(m => expect(m.expH2H).toBe(real[m.userId]));
+    });
+
     test('a league with nothing left to play answers no managers', async () => {
         await HoopsGame.updateMany({}, { $set: { status: 'final', homePoints: 80, awayPoints: 70 } });
-        await HoopsGame.create({ id: 5000, season: SEASON, week: 20, seasonType: 'postseason', tournament: 'NCAA', status: 'final', startDate: new Date('2027-04-05'),
-            gameNotes: "NCAA Men's Basketball Championship - National Championship", homeTeamId: 3, awayTeamId: 4, homePoints: 70, awayPoints: 60 });
+        // A whole NCAA field without team 1 (a 32-game round of 64), so it is out.
+        await HoopsGame.create(Array.from({ length: 32 }, (_, i) => ({ id: 5000 + i, season: SEASON, week: 20, seasonType: 'postseason',
+            tournament: 'NCAA', status: 'final', startDate: new Date('2027-03-20'), gameNotes: "NCAA Men's Basketball Championship - East - 1st Round",
+            homeTeamId: 100 + 2 * i, awayTeamId: 101 + 2 * i, homePoints: 70, awayPoints: 60 })));
         await manager('Top', [1], 30);
         const res = await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`);
         expect(res.body.managers).toEqual([]);

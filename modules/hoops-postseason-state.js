@@ -57,8 +57,17 @@ function wonBy(teamId, g) {
 const plays = (teamId, g) => Number(g.homeTeamId) === Number(teamId) || Number(g.awayTeamId) === Number(teamId);
 
 // The NCAA field: every team in an NCAA tournament game of the season, or
-// null before any is on file (the bracket is not out yet). `ncaaGames` may
-// be the whole season's NCAA rows — 67 at most.
+// null until the WHOLE field is on file. `ncaaGames` may be the whole
+// season's NCAA rows — 67 at most.
+//
+// Whole, not merely started: postseason rows reach hoopsgames through the
+// nightly results window (the last 3 days, hoops-scores-job LOOKBACK_MS),
+// so on First Four night only those 4-8 teams are stored. Reading that as
+// the field would mark every Thursday/Friday round-of-64 team 'out' — its
+// whole March gone from the projection for two or three days. A team
+// missing from a PARTIAL field is unknown, not out; teams IN it still get
+// their own state from their own rows.
+const FIELD_SIZE = 64;   // the round of 64; 68 with the First Four
 function ncaaField(ncaaGames) {
     const rows = (ncaaGames || []).filter(isNcaa);
     if (!rows.length) return null;
@@ -67,7 +76,7 @@ function ncaaField(ncaaGames) {
         if (g.homeTeamId != null) ids.add(Number(g.homeTeamId));
         if (g.awayTeamId != null) ids.add(Number(g.awayTeamId));
     });
-    return ids;
+    return ids.size >= FIELD_SIZE ? ids : null;
 }
 
 function ncaaState(teamId, games, field, anomalies) {
@@ -127,4 +136,4 @@ function decidedFor(teamId, games, field) {
     return { decided, anomalies };
 }
 
-module.exports = { decidedFor, ncaaField, ROUND_ORDER, NEXT_ROUND };
+module.exports = { decidedFor, ncaaField, ROUND_ORDER, NEXT_ROUND, FIELD_SIZE };

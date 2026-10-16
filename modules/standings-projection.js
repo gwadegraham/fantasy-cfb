@@ -230,13 +230,17 @@ const drawPoints = (g) => (Math.random() < g.winProb ? g.pointsIfWin : (g.points
 // A captained team that loses scores nothing, which falls out of the per-game
 // probabilities: every regular-season rule requires a win.
 function expectedCaptainWeek(teamsThisWeek, multiplier) {
-    let best = 0;
+    // -Infinity, not 0: with basketball's bad-loss penalty every option can
+    // expect less than 0, and the captain still doubles the least-bad one
+    // (captainWeeklyBonus doubles a negative score) — as the simulation does.
+    // Football never expects below 0, so its answer is unchanged.
+    let best = -Infinity;
     (teamsThisWeek || []).forEach(t => {
         let exp = 0;
         (t.games || []).forEach(g => { exp += expPoints(g); });
         if (exp > best) best = exp;
     });
-    return best * ((multiplier || 2) - 1);
+    return best === -Infinity ? 0 : best * ((multiplier || 2) - 1);
 }
 
 // Expected captain points across a manager's whole remaining schedule.
@@ -259,14 +263,21 @@ function expectedCaptain(byWeek, multiplier, maxWeek) {
 // week however well everyone plays. The pairing schedule is POSITIONAL, so the
 // id list and its order must match what the scoring job uses (pinnedH2HIds) or
 // the matchups are not the ones that will actually be played.
-function expectedH2H(managers, ids, weeks, winBonus, tieBonus) {
+//
+// `scheduleWeeks` (optional) is the season's WHOLE H2H week list, which the
+// round robin is numbered over. The real schedule (h2h computeH2HAwards)
+// pairs week w by its position in that full list; pairing only the weeks
+// still to play would shift every projected opponent by the weeks already
+// done. Basketball passes its mode weeks. Football passes none and keeps
+// its existing pairing (see the PR 5 notes: football has the same shift).
+function expectedH2H(managers, ids, weeks, winBonus, tieBonus, scheduleWeeks) {
     const out = {};
     (ids || []).forEach(id => { out[id] = 0; });
     if (!ids || ids.length < 2 || !weeks.length) return out;
 
     const byId = {};
     managers.forEach(m => { byId[m.userId] = m; });
-    const schedule = scheduleForWeeks(ids, weeks);
+    const schedule = scheduleForWeeks(ids, scheduleWeeks || weeks);
 
     weeks.forEach(w => {
         (schedule[w] || []).forEach(([a, b]) => {
@@ -304,7 +315,7 @@ function applyEngagement(managers, engagement, opts = {}) {
         const ids = (opts.pinnedIds && opts.pinnedIds.length)
             ? opts.pinnedIds.filter(id => managers.some(m => m.userId === id))
             : managers.map(m => m.userId);
-        const h = expectedH2H(managers, ids, weeks, eng.h2hWinBonus || 0, eng.h2hTieBonus || 0);
+        const h = expectedH2H(managers, ids, weeks, eng.h2hWinBonus || 0, eng.h2hTieBonus || 0, opts.scheduleWeeks);
         managers.forEach(m => {
             m.expH2H = h[m.userId] || 0;
             m.projectedFinal = Math.round(m.projectedFinal + m.expH2H);
@@ -346,7 +357,10 @@ function simulateTitleOdds(managers, N, opts = {}) {
                 ? opts.pinnedIds.filter(id => managers.some(m => m.userId === id))
                 : managers.map(m => m.userId);
             const h2hWeeks = weeks.filter(w => w <= (opts.maxWeek || H2H_MAX_WEEK));
-            schedule = scheduleForWeeks(ids, h2hWeeks);
+            // Numbered over the whole season when the caller says what it is
+            // (see expectedH2H), so these are the matchups actually played.
+            const full = opts.scheduleWeeks ? scheduleForWeeks(ids, opts.scheduleWeeks) : null;
+            schedule = full ? Object.fromEntries(h2hWeeks.map(w => [w, full[w] || []])) : scheduleForWeeks(ids, h2hWeeks);
         }
         // The captain is chosen before kickoff, so which team gets doubled is
         // fixed per week and does NOT vary between sims. Resolve it once.
