@@ -31,7 +31,7 @@ const hoopsH2H = require('../modules/hoops-h2h');
 const HoopsGame = require('../models/hoopsGame');
 const { hoopsProjByWeek, currentRankWeek } = require('../modules/hoops-h2h-odds');
 const { TEAM_FIELDS: HOOPS_TEAM_FIELDS } = require('../modules/hoops-draft-projection');
-const { ranksFor } = require('../modules/hoops-ranks');
+const hoopsRanks = require('../modules/hoops-ranks');
 const { pickParts } = require('../modules/hoops-captain');
 
 // The poll the PROJECTIONS should value a hypothetical ranked win against: the
@@ -733,7 +733,12 @@ router.get('/h2h/:league/:season', async (req, res) => {
             const rankWeek = currentRankWeek(hoopsIn.games);
             const [hoopsTeams, ranked] = await Promise.all([
                 HoopsTeam.find({ season: seasonNum }, HOOPS_TEAM_FIELDS).lean(),
-                rankWeek == null ? { ranks: {} } : ranksFor(seasonNum, rankWeek)
+                // Guarded like the Captain picker's read: a rank failure grades
+                // every game Q4 (a worse bar), never a 500 for the payload.
+                rankWeek == null ? { ranks: {} } : hoopsRanks.ranksFor(seasonNum, rankWeek).catch(err => {
+                    console.error(`[standings] hoops ranks for ${seasonNum} wk${rankWeek}: ${err.message}`);
+                    return { ranks: {} };
+                })
             ]);
             Object.assign(projByWeek, hoopsProjByWeek({
                 teams: hoopsTeams, games: hoopsIn.rows || [], draftedIds, cardGames: hoopsIn.games,
@@ -977,8 +982,13 @@ router.get('/h2h/:league/:season', async (req, res) => {
         // Projected pre-game odds for a matchup: each manager's teams that play
         // that week, run through the win-probability model. Integer percents that
         // sum to 100 (or null when neither side has a projectable game).
+        // Basketball's projection runs over every stored row (whole-season
+        // calibration), which includes an overdue listing the card hides — so
+        // its pre-game line keeps to the games the card actually shows.
         const entriesFor = (id, w) => (meta[id].teams || [])
-            .flatMap(t => Object.values((projByWeek[w] && projByWeek[w][t.id]) || {}).map(e => capped(id, w, t.id, e)));
+            .flatMap(t => Object.entries((projByWeek[w] && projByWeek[w][t.id]) || {})
+                .filter(([gid]) => !isHoops || gameById[gid])
+                .map(([, e]) => capped(id, w, t.id, e)));
         // Live odds recompute as the week plays out: a team whose game is already
         // FINAL contributes its actual scored points as a certainty; a LIVE game
         // with in-progress scores uses the current fantasy points (from the

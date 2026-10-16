@@ -104,6 +104,23 @@ describe('hoopsProjByWeek (pure)', () => {
         expect(out[1][1][5]).toEqual({ winProb: NON_D1_WIN_RATE, pointsIfWin: 0, pointsIfLoss: 0 });
     });
 
+    test('no fallback for a dead row or the stale half of a duplicate listing', () => {
+        // Two unplayed same-host listings 2 days apart (one game), and a
+        // postponed row: the engine skips the stale twin and the dead row on
+        // purpose, and the bar must not price them back in.
+        // Against a rated opponent (the engine projects the kept twin) and an
+        // unrated one (everything would be a fallback): both keep only the
+        // newer listing.
+        [3, 9].forEach(opp => {
+            const twinA = g(11, 1, 1, opp, { startDate: new Date(Date.UTC(2026, 10, 7)) });
+            const twinB = g(12, 1, 1, opp, { startDate: new Date(Date.UTC(2026, 10, 9)) });
+            const dead = g(13, 1, 1, opp, { status: 'postponed', startDate: new Date(Date.UTC(2026, 11, 20)) });
+            const card = [twinA, twinB, dead].map(x => ({ id: x.id, week: 1, homeId: 1, awayId: x.awayTeamId }));
+            const out = hoopsProjByWeek({ teams, games: [twinA, twinB, dead], draftedIds: [1], cardGames: card, ranks, cfg });
+            expect(Object.keys(out[1][1]).map(Number)).toEqual([12]);
+        });
+    });
+
     test('fallbackEntry: both rated uses log5; our own team unrated is a coin flip', () => {
         const ctx = buildHoopsPoolContext(teams, { ranks, cfg });
         expect(fallbackEntry(1, g(6, 1, 1, 2), ctx).winProb).toBeCloseTo(homeP(0.8, 0.9), 12);
@@ -301,16 +318,18 @@ describe('GET /standings/h2h on a basketball league', () => {
 
     test('bad-loss penalty with Captain: a captained negative final is doubled too', async () => {
         await modes({ captain: true, enabled: ['badLoss'] });
+        await HoopsTeam.create({ id: 4, season: SEASON, school: 'Team 4', abbreviation: 'T4', preseason: { rank: 104, barthag: 0.5 } });
         const ann = await manager('Ann', [1], { captains: [{ week: 1, teamId: 1 }] });
-        await manager('Bo', [2], { captains: [{ week: 1, teamId: 2 }] });
-        await HoopsGame.create([game(1, 1, NOBODY, { homeWon: false }), game(1, 2, NOBODY, later)]);
+        // Bo captains team 4 (a 0-point Q4 win), so his team 2 is undoubled.
+        await manager('Bo', [2, 4], { captains: [{ week: 1, teamId: 4 }] });
+        await HoopsGame.create([game(1, 1, NOBODY, { homeWon: false }), game(1, 2, NOBODY, later), game(1, 4, NOBODY)]);
         await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
         const { annP } = await annCard(ann._id, 1);
         const p = homeP(0.5, 0.5);
-        // Ann is certain at -4; Bo is 0 if he wins, -4 if he loses. Undoubled
-        // on Ann's side she would win whenever Bo loses (1 - p); undoubled
-        // on Bo's she could never catch him (0).
-        expect(annP).toBe(Math.round((1 - p) / 2 * 100));
+        // Ann is certain at -4; Bo is 0 if he wins, -2 if he loses: Ann can
+        // never catch him. Undoubled, Ann's -2 would tie Bo's loss.
+        expect(annP).toBe(0);
+        expect(Math.round((1 - p) / 2 * 100)).toBeGreaterThan(0);
     });
 
     test('Captain on an unplayed penalised game doubles its loss too', async () => {
@@ -352,6 +371,34 @@ describe('GET /standings/h2h on a basketball league', () => {
         const { annP } = await annCard(ann._id, 1);
         // Plain log5, 0.5 against 0.9: 0.1. Neutral is Q1 against #5 too.
         expect(annP).toBe(Math.round((1 - 0.1 / 2) * 100));
+    });
+
+    test('a rank read that fails grades Q4 instead of failing the payload', async () => {
+        await modes();
+        const ann = await manager('Ann', [1]);
+        await manager('Bo', [2]);
+        await HoopsGame.create([game(1, 1, ELITE), game(1, 2, ELITE, later)]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        const ranks = require('../modules/hoops-ranks');
+        jest.spyOn(ranks, 'ranksFor').mockRejectedValue(new Error('down'));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const { annP } = await annCard(ann._id, 1);
+        // Unranked opponents: Bo's win is a Q4 0, so Ann's 5 stands.
+        expect(annP).toBe(100);
+    });
+
+    test("a finished week's pre-game line keeps to the games on the card", async () => {
+        await modes();
+        const ann = await manager('Ann', [1]);
+        await manager('Bo', [2]);
+        // An unplayed listing a week overdue is off the card but still in the
+        // projection's rows; it must not count.
+        await HoopsGame.create([game(1, 1, NOBODY), game(1, 2, NOBODY),
+            game(1, 1, ELITE, { status: 'scheduled', startDate: new Date('2026-01-01T00:00:00Z') })]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        const { wk, annP } = await annCard(ann._id, 1);
+        expect(wk.final).toBe(true);
+        expect(annP).toBe(50);   // both hosted a nobody: 0 either way
     });
 
     test('the fast standings-only payload still answers no odds', async () => {

@@ -47,7 +47,7 @@
 
 const {
     buildHoopsPoolContext, projectHoopsTeam, projectRemaining,
-    pointsIfWin, pointsIfLoss, NON_D1_WIN_RATE, teamWinProb, venueOfGame
+    pointsIfWin, pointsIfLoss, NON_D1_WIN_RATE, teamWinProb, venueOfGame, isDead
 } = require('./hoops-projection');
 const { dedupeListings, groupHoopsGamesByTeam } = require('./hoops-draft-projection');
 
@@ -70,7 +70,8 @@ function hoopsProjByWeek({ teams, games, draftedIds, cardGames, ranks, cfg }) {
     const out = {};
     const ctx = buildHoopsPoolContext(teams, { ranks, cfg });
     const ids = new Set((draftedIds || []).map(String));
-    const byTeam = groupHoopsGamesByTeam(dedupeListings(games, teams).games, ids);
+    const deduped = dedupeListings(games, teams);
+    const byTeam = groupHoopsGamesByTeam(deduped.games, ids);
     const teamById = {};
     (teams || []).forEach(t => { teamById[String(t.id)] = t; });
 
@@ -88,16 +89,23 @@ function hoopsProjByWeek({ teams, games, draftedIds, cardGames, ranks, cfg }) {
         (live.perGame || []).forEach(pg => put(out, pg.week, Number(id), pg.gameId, entry(pg)));
     });
 
-    // Card games the engine skipped (see the header).
+    // Card games the engine skipped, EXCEPT the ones it skips on purpose: a
+    // dead row (cancelled/postponed) and the stale half of a duplicate
+    // listing — pricing those would hand a side a game it will never play.
+    // What is left is a game with a missing rating (see the header) and,
+    // until the standings-projection PR unifies the two definitions, a
+    // conference game carrying a tournament code: a mode game to the scorer,
+    // a conference-tournament game to the projection.
     const rawById = {};
     (games || []).forEach(g => { rawById[g.id] = g; });
+    const dropped = new Set(deduped.dropped);
     (cardGames || []).forEach(cg => {
         [cg.homeId, cg.awayId].forEach(tid => {
             if (tid == null || !ids.has(String(tid))) return;
             const have = out[cg.week] && out[cg.week][Number(tid)] && out[cg.week][Number(tid)][cg.id];
             if (have) return;
             const raw = rawById[cg.id];
-            if (!raw) return;
+            if (!raw || isDead(raw) || dropped.has(raw.id)) return;
             put(out, cg.week, Number(tid), cg.id, fallbackEntry(Number(tid), raw, ctx));
         });
     });
