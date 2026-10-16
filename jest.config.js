@@ -115,6 +115,14 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball H2H win bar's per-game entries (#310 PR 4). Pure.
+        // A dropped entry is a side read as 0 — the 100/0 bar this replaced.
+        "./modules/hoops-h2h-odds.js": {
+            statements: 95,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-captain.js": {
             statements: 92,
             branches: 78,

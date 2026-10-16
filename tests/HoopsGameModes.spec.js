@@ -419,17 +419,18 @@ describe('the standings read model agrees', () => {
     });
 });
 
-describe('no win-probability bar on a basketball week in progress', () => {
-    // Basketball has no projection, so odds built from FINAL games alone read
-    // 100% / 0% as soon as one side has a result. The basketball payload
-    // answers none; football keeps computing its odds.
+describe('the win-probability bar on a basketball week in progress', () => {
+    // Odds built from FINAL games alone read 100% / 0% as soon as one side has
+    // a result, which is why #553 switched the basketball bar off. It is back
+    // (#310 PR 4), priced by the basketball engine — tests/HoopsH2HOdds.spec.js
+    // pins the numbers. Football keeps computing its odds.
     const app = express();
     app.use('/standings', require('../routes/standings'));
     const midWeek = (body) => body.schedule.find(s => s.week === 1);
 
-    test('basketball: one side final, the other still to play — winP is null', async () => {
+    test('basketball: one side final, the other still to play — not 100/0', async () => {
         await modes({ h2h: true });
-        await manager('Ann', [1]);
+        const ann = await manager('Ann', [1]);
         await manager('Bo', [2]);
         await HoopsGame.create([q1Win(1, 1), q1Win(1, 2, { status: 'scheduled', startDate: new Date('2099-01-01') })]);
         await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
@@ -437,7 +438,10 @@ describe('no win-probability bar on a basketball week in progress', () => {
         const wk = midWeek(res.body);
         expect(wk.final).toBe(false);
         expect(wk.upcoming).toBe(false);
-        expect(wk.games[0].winP).toBeNull();
+        // These fixtures carry no barthag, so Bo's game is a coin flip for
+        // the Q1 win that would tie Ann at 5: Ann 1/2 + 1/2 × 1/2 = 75%.
+        const c = wk.games[0];
+        expect(c.aId === String(ann._id) ? c.winP.a : c.winP.b).toBe(75);
     });
 
     test('football, same shape of week: still answers odds', async () => {
