@@ -145,8 +145,9 @@ describe('GET /draft/grades — freezing', () => {
     });
 });
 
-// #482: the grade is a football projection (SP+, expected wins, CFP odds),
-// so a basketball draft gets none rather than a meaningless football one.
+// #482: a basketball draft must never get a football grade. It is graded by
+// its own projection now (tests/RoutesHoopsDraftProjection.spec.js); these
+// pin the edges — no basketball teams at all, and the visibility gate.
 describe('GET /draft/grades — a basketball league', () => {
     const League = require('../models/league');
     const SportSeason = require('../models/sportSeason');
@@ -161,12 +162,16 @@ describe('GET /draft/grades — a basketball league', () => {
     const visibility = require('../modules/hoops-visibility');
     afterEach(() => jest.restoreAllMocks());
 
-    it('returns no managers and says it is basketball, even with a finished draft', async () => {
+    // A finished draft, and football rows under the drafted id — but no
+    // basketball teams stored. Nothing to grade against: no managers, and
+    // never the football team that shares the id.
+    it('with no basketball teams stored, returns no managers and says it is basketball', async () => {
         jest.spyOn(visibility, 'seesBasketball').mockResolvedValue(true);
-        await Draft.create({ league: 'hoops-league', season: 2027, status: 'complete', picks: [{ round: 1, overall: 1, userId: new (require('mongoose').Types.ObjectId)(), team: { id: 150, school: 'Duke' } }] });
+        await Draft.create({ league: 'hoops-league', season: 2027, status: 'complete', picks: [{ round: 1, overall: 1, userId: new (require('mongoose').Types.ObjectId)(), team: { id: MINE, school: 'Duke' } }] });
         const res = await request(app).get('/draft/grades/hoops-league/2027');
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ league: 'hoops-league', season: 2027, managers: [], sport: 'basketball' });
+        expect(res.body).toEqual({ league: 'hoops-league', season: 2027, managers: [], sport: 'basketball',
+            rankSource: 'preseason Torvik T-Rank', frozenAt: null });
     });
 
     // The route is open to any signed-in member, so `sport: 'basketball'`

@@ -161,11 +161,13 @@ describe('GET /draft/board/:league/:season', () => {
         expect(second.body.advice.take.id).not.toBe(ND);
     });
 
-    // The projection is football end to end (FBS teams, football games, SP+).
-    // On a basketball league it projected whichever FOOTBALL team shares
-    // each basketball id — the numbering collides — so every number on the
-    // board was somebody else's. Basketball gets the draft, no numbers.
-    it('a basketball league gets its picks and roster, and no football projection', async () => {
+    // Football's projection on a basketball league once projected whichever
+    // FOOTBALL team shares each basketball id — the numbering collides — so
+    // every number on the board was somebody else's. Basketball projects
+    // from its own collections now (tests/RoutesHoopsDraftProjection.spec.js);
+    // with none stored, it is refused with the ingest to run — never
+    // answered with football's numbers.
+    it('a basketball league with no basketball teams is refused, never given a football projection', async () => {
         const League = require('../models/league');
         const activeSeason = require('../modules/active-season');
         await seed();                                       // football Notre Dame is id 87
@@ -177,12 +179,9 @@ describe('GET /draft/board/:league/:season', () => {
                 picks: [{ overall: 1, round: 1, userId: ME, team: { id: ND, school: 'Kentucky' } }] });
             const res = await request(app).get(`/draft/board/hoops-league/${SEASON}?userId=${ME}`)
                 .set('X-Internal-Token', TOKEN);
-            expect(res.status).toBe(200);
-            expect(res.body.projections).toBeNull();
-            expect(res.body.advice).toBeNull();
-            expect(res.body.rankedSource).toBeNull();
-            // Kentucky, and NOT Notre Dame's football points under its name.
-            expect(res.body.roster).toEqual([expect.objectContaining({ school: 'Kentucky', total: null })]);
+            expect(res.status).toBe(409);
+            expect(res.body.message).toMatch(/No basketball teams stored/);
+            expect(res.body).not.toHaveProperty('projections');
         } finally {
             await League.deleteMany({ code: 'hoops-league' });
             await activeSeason.prime();

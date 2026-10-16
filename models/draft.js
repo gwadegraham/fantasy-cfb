@@ -78,6 +78,13 @@ const draftSchema = new mongoose.Schema({
     // every draft had before this field existed.
     gradeSnapshot: { type: mongoose.Schema.Types.ObjectId, ref: 'MarketSnapshot', default: null },
 
+    // A BASKETBALL draft's frozen grade input (models/hoopsGradeSnapshot.js) —
+    // the same pin, a different collection, because the two sports' inputs
+    // share no fields. Its own key rather than gradeSnapshot so a football
+    // reader can never be handed a basketball document's id. No default: a
+    // football draft never carries the key at all.
+    hoopsGradeSnapshot: { type: mongoose.Schema.Types.ObjectId, ref: 'HoopsGradeSnapshot' },
+
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
 });

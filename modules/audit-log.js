@@ -25,6 +25,7 @@ const ACTIONS = {
     'scoring.engagement': 'Game modes',
     'draft.config': 'Draft',
     'draft.reset': 'Draft',
+    'draft.grades.freeze': 'Draft grades',
     'league.rename': 'League',
     'league.create': 'League',
     'league.members': 'League',

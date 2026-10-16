@@ -339,10 +339,34 @@ describe('roster, log and provenance', () => {
     });
 });
 
-// Basketball has no projection yet, so the server sends projections: null.
-// The page must show the draft and say why there are no numbers — not an
-// empty board that reads as "everyone has been drafted".
-describe('a basketball league', () => {
+// A basketball league projects now. Its points come from quadrants graded on
+// a rank map, so the source line names that rank, never a poll's ranked-win
+// bonus.
+describe('a basketball league with projections', () => {
+    it('names the rank the quadrants are graded on, and renders the board', async () => {
+        await loadPage(payload({ sport: 'basketball', rankedSource: 'preseason Torvik T-Rank' }));
+        expect(txt('[db-source]')).toBe('Quadrants graded on the preseason Torvik T-Rank');
+        expect(txt('[db-source]')).not.toContain('Ranked bonuses');
+        expect(document.querySelectorAll('[db-board] tr').length).toBeGreaterThan(0);
+    });
+
+    it('names the teams whose schedules are incomplete', async () => {
+        await loadPage(payload({ sport: 'basketball', rankedSource: 'preseason Torvik T-Rank',
+            scheduleFlags: [{ id: 9, school: 'Oregon State', games: 7, kind: 'thin' }, { id: 4, school: 'Saint Louis', games: 14, kind: 'thin' },
+                            { id: 26, school: 'Boston College', games: 48, kind: 'thick' }] }));
+        expect(txt('[db-source]')).toBe('Quadrants graded on the preseason Torvik T-Rank · 2 teams have an incomplete schedule, projected low: Oregon State (7 games), Saint Louis (14 games) · 1 team has duplicate games listed, projected high: Boston College (48 games)');
+    });
+
+    it('a football league keeps its ranked-bonus line', async () => {
+        await loadPage(payload());
+        expect(txt('[db-source]')).toMatch(/^Ranked bonuses: /);
+    });
+});
+
+// A basketball season with no preseason ratings yet: the server sends
+// projections: null. The page must show the draft and say why there are no
+// numbers — not an empty board that reads as "everyone has been drafted".
+describe('a basketball league with nothing rated yet', () => {
     const hoops = () => payload({
         sport: 'basketball', projections: null, advice: null, rankedSource: null, captain: null,
         roster: [{ overall: 2, round: 1, id: 96, school: 'Kentucky', total: null, regular: null }],
@@ -352,9 +376,9 @@ describe('a basketball league', () => {
 
     it('says there is no projection rather than showing football numbers', async () => {
         await loadPage(hoops());
-        expect(txt('[db-source]')).toBe('No projections for basketball yet');
+        expect(txt('[db-source]')).toBe('No projections yet');
         expect(txt('[db-source]')).not.toContain('SP+');
-        expect(txt('[db-advice]')).toContain('basketball does not have one yet');
+        expect(txt('[db-advice]')).toContain('no team this season has a preseason rating yet');
     });
 
     it('still lists the roster and the picks, without points', async () => {

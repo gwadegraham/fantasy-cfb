@@ -91,30 +91,13 @@ async function basketballPool(season, poolSize) {
     });
 }
 
-// The draftable teams for a league, in board order.
-//
-// Football comes back alphabetically, which is how the board has always shown
-// it. Basketball comes back in rating order, because that ordering IS the
-// pool — the cap is "the top N", so a board that re-sorted it would hide which
-// teams are in and which fell outside.
-//
-// Throws rather than returning a short list. A pool missing its best teams
-// still renders, still drafts, and is only discovered when someone asks why
-// Duke was never available — so the failure has to happen at the read.
-async function poolFor(league, { poolSize = null, season } = {}) {
-    const sport = sportForLeague(league);
-    const year = season != null ? Number(season) : seasonForLeague(league);
-
-    if (sport !== 'basketball') {
-        const teams = await footballPool();
-        if (!teams.length) throw Object.assign(new Error('No FBS teams to draft — the team ingest has not run'), { status: 503 });
-        return { sport, season: year, poolSize: null, count: teams.length, seasonTotal: teams.length, teams };
-    }
-
-    if (!Number.isFinite(year)) {
-        throw Object.assign(new Error(`League ${league} has no basketball season set`), { status: 409 });
-    }
-
+// The refusals a basketball pool is read behind: no teams, no ranks, a
+// HALF-FINISHED ratings import, or a cap larger than the season. poolFor
+// applies them before the draft room's pool; the draft board and the grade
+// freeze (routes/draft.js) apply the same ones, so a partial import can be
+// neither drafted from, nor cached on the board, nor frozen into a grade.
+// Throws an Error with status 409; resolves to { inSeason, ranked }.
+async function assertRatedSeason(year, poolSize = null) {
     const [inSeason, ranked] = await Promise.all([
         HoopsTeam.countDocuments({ season: year }),
         HoopsTeam.countDocuments({ season: year, 'preseason.rank': RANKED })
@@ -150,6 +133,35 @@ async function poolFor(league, { poolSize = null, season } = {}) {
             `The pool of ${poolSize} is larger than the ${inSeason} teams playing in ${year} — lower the cap`
         ), { status: 409 });
     }
+
+    return { inSeason, ranked };
+}
+
+// The draftable teams for a league, in board order.
+//
+// Football comes back alphabetically, which is how the board has always shown
+// it. Basketball comes back in rating order, because that ordering IS the
+// pool — the cap is "the top N", so a board that re-sorted it would hide which
+// teams are in and which fell outside.
+//
+// Throws rather than returning a short list. A pool missing its best teams
+// still renders, still drafts, and is only discovered when someone asks why
+// Duke was never available — so the failure has to happen at the read.
+async function poolFor(league, { poolSize = null, season } = {}) {
+    const sport = sportForLeague(league);
+    const year = season != null ? Number(season) : seasonForLeague(league);
+
+    if (sport !== 'basketball') {
+        const teams = await footballPool();
+        if (!teams.length) throw Object.assign(new Error('No FBS teams to draft — the team ingest has not run'), { status: 503 });
+        return { sport, season: year, poolSize: null, count: teams.length, seasonTotal: teams.length, teams };
+    }
+
+    if (!Number.isFinite(year)) {
+        throw Object.assign(new Error(`League ${league} has no basketball season set`), { status: 409 });
+    }
+
+    const { inSeason } = await assertRatedSeason(year, poolSize);
 
     const teams = await basketballPool(year, poolSize);
 
@@ -250,4 +262,4 @@ async function draftableTeam(league, { teamId, poolSize = null, season } = {}) {
 // a season with unranked teams is refused as a half-finished import before the
 // ordering is ever reached, so the one test that proves the filter does
 // anything cannot go through the front door.
-module.exports = { poolFor, draftableTeam, basketballPool, CARD };
+module.exports = { poolFor, draftableTeam, basketballPool, assertRatedSeason, CARD };

@@ -554,12 +554,10 @@ function renderAll() {
 // preseason grades and render the shared cards (highlighting the viewer). Fetch
 // once per completed draft to avoid re-hitting the endpoint on every re-render.
 var gradesRenderedFor = null;
-var gradesSport = null;      // 'basketball' once the server says there are no grades for it (#482)
 function renderGrades() {
     var el = document.getElementById('draft-grades-panel');
     if (!el) return;
-    // Remembered, not hidden once: every renderAll() comes back through here.
-    if (!draft || draft.status !== 'complete' || gradesSport === 'basketball') { el.style.display = 'none'; return; }
+    if (!draft || draft.status !== 'complete') { el.style.display = 'none'; return; }
     el.style.display = '';
     var key = leagueCode + ':' + season;
     if (gradesRenderedFor === key) return;
@@ -567,13 +565,15 @@ function renderGrades() {
     fetch('/draft/grades/' + encodeURIComponent(leagueCode) + '/' + encodeURIComponent(season), { headers: { 'Accept': 'application/json' } })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            // No grade model for basketball yet (#482): no panel at all.
-            if (data && data.sport === 'basketball') { gradesSport = 'basketball'; el.style.display = 'none'; return; }
             if (typeof renderDraftGrades === 'function') {
+                // The inputs differ by sport; the grade itself does not.
+                var inputs = data && data.sport === 'basketball'
+                    ? 'schedule + Torvik preseason ratings + NCAA tournament odds'
+                    : 'schedule + SP+ win odds + market CFP odds';
                 renderDraftGrades(el, data, {
                     currentUserId: myUserId,
                     title: 'Draft Grades',
-                    note: 'Instant, preseason grades — projected fantasy points in this league’s scoring (schedule + SP+ win odds + market CFP odds). Each draft graded on its own merit.'
+                    note: 'Instant, preseason grades — projected fantasy points in this league’s scoring (' + inputs + '). Each draft graded on its own merit.'
                 });
             }
         })

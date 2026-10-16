@@ -36,7 +36,8 @@
     }
 
     // Thin two-segment bar showing how projected points split between the
-    // regular-season floor and postseason (CFP + conf title + bowl) upside.
+    // regular-season floor and postseason upside (football: CFP + conf title +
+    // bowl; basketball: NCAA tournament + conference tournament + upsets).
     function splitBar(m) {
         var reg = m.regPoints || 0, post = m.postPoints || 0, tot = reg + post;
         if (tot <= 0) return '';
@@ -51,6 +52,15 @@
             +   '<span class="gg-split-lg"><i class="gg-dot-post"></i>' + post + ' postseason</span>'
             + '</div>'
             + '</div>';
+    }
+
+    // Expected teams that make the field: the CFP for football, the NCAA
+    // bracket for basketball (the server sends ncaaCount instead of
+    // cfpCount, so a basketball count can never sit under a CFP label).
+    function makeCount(m) {
+        return m.ncaaCount != null
+            ? { value: m.ncaaCount, label: 'NCAA teams' }
+            : { value: m.cfpCount, label: 'CFP teams' };
     }
 
     function card(m, currentUserId) {
@@ -72,7 +82,7 @@
             + '<div class="gg-stats">'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projPoints + '</span><span class="gg-stat-lbl">proj points</span></div>'
             +   '<div class="gg-stat"><span class="gg-stat-val">' + m.projWins + '</span><span class="gg-stat-lbl">proj wins</span></div>'
-            +   '<div class="gg-stat"><span class="gg-stat-val">' + m.cfpCount + '</span><span class="gg-stat-lbl">CFP teams</span></div>'
+            +   '<div class="gg-stat"><span class="gg-stat-val">' + makeCount(m).value + '</span><span class="gg-stat-lbl">' + makeCount(m).label + '</span></div>'
             + '</div>'
             + splitBar(m)
             + pickLine('best', m.bestPick)

@@ -164,6 +164,15 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The projection wired for the draft board and grades (#310 PR 3):
+        // which teams are the pool, which games are whose, and the frozen
+        // grade input. Pure; a dropped line here is a grade that drifts.
+        "./modules/hoops-draft-projection.js": {
+            statements: 100,
+            branches: 80,
+            functions: 100,
+            lines: 100
+        },
         // TV listings for the game page (#506) and their weekly job. ONE
         // billable call a week; the branches that matter are the ones that
         // decline to call.
