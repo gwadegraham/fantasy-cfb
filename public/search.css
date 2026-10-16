@@ -8,7 +8,9 @@
     inset: 0;
     z-index: 1200;              /* over the sticky navbar */
     background: rgba(6, 8, 16, 0.66);
-    padding: 10vh 1rem 1rem;
+    /* Offset by the status-bar inset: the viewport is viewport-fit=cover, so on
+       an installed iPhone a bare 6vh put the panel against the clock. */
+    padding: calc(env(safe-area-inset-top, 0px) + 10vh) 1rem 1rem;
     justify-content: center;
     align-items: flex-start;
 }
@@ -174,6 +176,8 @@ body.cc-search-lock {
 
 @media (max-width: 40em) {
     .cc-search-overlay {
-        padding-top: 6vh;
+        /* The larger of the old 6vh and the inset plus a gap: unchanged on a
+           phone with no notch, clear of the clock on one with. */
+        padding-top: max(6vh, calc(env(safe-area-inset-top, 0px) + 1rem));
     }
 }
