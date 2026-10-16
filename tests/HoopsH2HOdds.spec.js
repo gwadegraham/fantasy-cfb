@@ -302,6 +302,23 @@ describe('GET /standings/h2h on a basketball league', () => {
         expect(annP).toBeGreaterThan(0);
     });
 
+    test('Captain: with no manual pick, the FROZEN default beats a fresh auto-captain', async () => {
+        await modes({ captain: true });
+        await HoopsTeam.create({ id: 3, season: SEASON, school: 'Team 3', abbreviation: 'T3', preseason: { rank: 103, barthag: 0.5 } });
+        // Frozen at the lock: team 3. A fresh auto-captain (no prior weeks)
+        // would be the first rostered team, team 1.
+        const ann = await manager('Ann', [1, 3], { captains: [{ week: 1, teamId: 3, auto: true }] });
+        await manager('Bo', [2]);
+        await HoopsGame.create([game(1, 1, NOBODY), game(1, 3, ELITE, later), game(1, 2, ELITE)]);
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+        const { annP } = await annCard(ann._id, 1);
+        // Bo banked 5, doubled to 10. Ann: team 3 doubled is 10 w.p. p (a
+        // tie), else 0. With team 1 doubled instead she could never catch Bo.
+        const p = homeP(0.5, 0.9);
+        expect(annP).toBe(Math.round(p / 2 * 100));
+        expect(annP).toBeGreaterThan(0);
+    });
+
     test('bad-loss penalty on: a negative final and a penalised unplayed game both count', async () => {
         await modes({ enabled: ['badLoss'] });
         const ann = await manager('Ann', [1]);
