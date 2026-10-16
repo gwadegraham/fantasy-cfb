@@ -188,8 +188,13 @@ body > * { position: relative; z-index: 1; }
     z-index: 50;
     /* The viewport is viewport-fit=cover, so the page extends under the status
        bar / notch — without this the wordmark sits beneath the clock on an
-       installed iPhone. Zero on every device that reports no inset. */
-    padding-top: env(safe-area-inset-top, 0px);
+       installed iPhone. Zero on every device that reports no inset.
+
+       Plus a small gap on those devices only: iOS 26 draws a fixed blur/fade at
+       the top edge that reaches a little past the status bar, and with the
+       inset alone it caught the top of CAMPUS. min(inset, 12px) is 0 wherever
+       the inset is 0, so desktop and notch-less phones are unchanged. */
+    padding-top: calc(env(safe-area-inset-top, 0px) + min(env(safe-area-inset-top, 0px), 12px));
 }
 
 .brand-link {
