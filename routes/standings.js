@@ -12,7 +12,7 @@ const ScoringConfig = require('../models/scoringConfig');
 const JobRun = require('../models/jobRun');
 const { resolveConfig, engagementForSeason, overridesFromDoc } = require('../modules/scoring-defaults');
 const { buildRankingProxy, buildPoolContext, projectTeamPoints } = require('../modules/draft-projection');
-const { buildProjections, simulateTitleOdds, applyEngagement } = require('../modules/standings-projection');
+const { buildProjections, simulateTitleOdds, applyEngagement, attachBankedWeeks } = require('../modules/standings-projection');
 const { buildAdvancedHighlights } = require('../modules/standings-highlights');
 const { buildWeeklyRecaps, indexUpsets, indexHoopsResults, completedWeeks } = require('../modules/weekly-recap');
 // Shared with the classic standings table and My Team, so a tied placement reads
@@ -277,8 +277,9 @@ function projectionRows(managers, odds) {
 // schedule.
 async function hoopsProjections(league, season) {
     const empty = { league, season, managers: [] };
-    // Slimmed to ids, as football's is: a roster ref is { id, sport }.
-    const users = await franchiseRepo.projectionManagers(league, season, { refs: true });
+    // Slimmed to ids, as football's is: a roster ref is { id, sport }. Plus
+    // the weekly rows + captains for the week under way (attachBankedWeeks).
+    const users = await franchiseRepo.projectionManagers(league, season, { refs: true, weekly: true });
     const { rosterIds, isFinal } = require('../modules/hoops-scoring-pass');
     users.forEach(u => (u.seasons || []).forEach(s => { s.rosterIds = rosterIds(s); }));
     const ids = [...new Set(users.flatMap(u => ((u.seasons || [])[0] || {}).rosterIds || []))];
@@ -321,11 +322,48 @@ async function hoopsProjections(league, season) {
     // pass derives before anything is pinned (h2h h2hManagerIds), so the
     // projected round robin is the one that will be played.
     const pinned = pinnedH2HIds(cfgDoc, season) || managers.map(m => m.userId).sort();
-    const engOpts = { pinnedIds: pinned, maxWeek: last, captainMaxWeek: last, scheduleWeeks: modeWeeks };
+    // h2hExact: the week under way counts its banked points and its chosen
+    // captain, and a tie pays h2hTieBonus — the matchup as the scorer
+    // settles it and the card shows it (standings-projection expectedH2H).
+    // The banked total is the H2H one: modeWeekBase leaves the conference
+    // tournament out, and the captain is resolved as basketball scores it.
+    attachBankedWeeks(managers, users, season, {
+        weekBase: hoopsH2H.modeWeekBase,
+        captainOf: engagement.captainEnabled ? (s, w) => {
+            const parts = pickParts(s.captains, w);
+            if (parts.picked != null) return parts.picked;
+            if (parts.frozenAuto != null) return parts.frozenAuto;
+            const prior = (s.weeklyScore || []).filter(e => e.season !== 'postseason' && Number(e.week) < Number(w));
+            return autoCaptainTeamId((s.rosterIds || []).map(id => ({ id })), prior);
+        } : null
+    });
+    const engOpts = { pinnedIds: pinned, maxWeek: last, captainMaxWeek: last, scheduleWeeks: modeWeeks, h2hExact: true };
     applyEngagement(managers, engagement, engOpts);
     const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
     return { league, season, managers: projectionRows(managers, odds) };
 }
+
+// A short cache for /projections. The basketball answer costs ~0.5 s of
+// event-loop CPU (a 20,000-sim Monte Carlo over ~2,000 games a sim), so a
+// handful of members opening Standings together would queue seconds of
+// work. Keyed by league + season — the whole answer is a function of those
+// and the database — and held 60 s, so a scoring write shows within a
+// minute. An in-flight computation is shared too (the promise is cached).
+// Off under Jest, where specs change data between requests; the cache's own
+// spec switches it on.
+const PROJECTION_TTL_MS = 60 * 1000;
+const projectionCache = { enabled: process.env.NODE_ENV !== 'test', entries: new Map() };
+function cachedProjection(key, compute) {
+    if (!projectionCache.enabled) return compute();
+    const hit = projectionCache.entries.get(key);
+    if (hit && Date.now() - hit.at < PROJECTION_TTL_MS) return hit.promise;
+    const promise = compute();
+    projectionCache.entries.set(key, { at: Date.now(), promise });
+    // A failure is not cached.
+    promise.catch(() => { if (projectionCache.entries.get(key) && projectionCache.entries.get(key).promise === promise) projectionCache.entries.delete(key); });
+    return promise;
+}
+router.projectionCache = projectionCache;
 
 // per manager for a league + season. Reuses the draft-grade projection engine
 // on each rostered team's REMAINING schedule. Read-only.
@@ -333,7 +371,9 @@ router.get('/projections/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
-        if (sportForLeague(league) === 'basketball') return res.json(await hoopsProjections(league, season));
+        if (sportForLeague(league) === 'basketball') {
+            return res.json(await cachedProjection(`${league}:${season}`, () => hoopsProjections(league, season)));
+        }
 
         // Aggregated rather than $elemMatch'd, to reshape the roster on the
         // server. seasons.teams stores the FULL team object per pick (that is

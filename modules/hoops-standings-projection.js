@@ -45,6 +45,7 @@ const { attachMarch } = require('./hoops-march');
 const { postseasonDistribution, samplePostseason } = require('./hoops-march-sim');
 const { dedupeListings, groupHoopsGamesByTeam } = require('./hoops-draft-projection');
 const postseasonState = require('./hoops-postseason-state');
+const { overdue } = require('./hoops-stale-duplicates');
 
 const nameOf = (u) => `${u.firstName || ''} ${u.lastName ? u.lastName[0] + '.' : ''}`.trim();
 const initialsOf = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
@@ -60,7 +61,8 @@ const initialsOf = (u) => (((u.firstName || '')[0] || '') + ((u.lastName || '')[
 // cfg        the league's resolved scoring config.
 // marchRanks optional { teamId: rank } the March estimate prices at.
 // log        where anomalies and per-team failures are reported.
-function buildHoopsProjections({ users, ratings, games, field, ranks, cfg, season, marchRanks, log = console }) {
+// nowMs      "now", for dropping overdue unplayed listings.
+function buildHoopsProjections({ users, ratings, games, field, ranks, cfg, season, marchRanks, log = console, nowMs = Date.now() }) {
     const ctx = attachMarch(buildHoopsPoolContext(ratings, { ranks, cfg }), ratings,
         marchRanks ? { rankById: marchRanks } : {});
     const teamById = {};
@@ -71,7 +73,12 @@ function buildHoopsProjections({ users, ratings, games, field, ranks, cfg, seaso
     // Regular-season rows de-duplicated the way the draft board does
     // (rescheduled games keep a stale listing); every row, any seasonType,
     // for the decided state.
-    const regular = (games || []).filter(g => String(g.seasonType || '').toLowerCase() === 'regular');
+    // An unplayed game a week past its tip is not going to be played as
+    // listed (a postponement, or the stale half of a rescheduled pair): the
+    // H2H gate and the matchup card already drop it (hoops-h2h gateGames),
+    // so the projection does too — otherwise it projects games the card,
+    // and the scorer, never count.
+    const regular = (games || []).filter(g => String(g.seasonType || '').toLowerCase() === 'regular' && !overdue(g, nowMs));
     const regByTeam = groupHoopsGamesByTeam(dedupeListings(regular, ratings).games, rostered);
     const allByTeam = groupHoopsGamesByTeam(games || [], rostered);
 

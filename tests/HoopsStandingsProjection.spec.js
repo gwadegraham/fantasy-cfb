@@ -41,7 +41,7 @@ function g(week, home, away, o = {}) {
     const homeWon = o.homeWon !== false;
     return Object.assign({
         id: gid, season: SEASON, week, seasonType: 'regular', status,
-        startDate: new Date(Date.UTC(2026, 10, 3 + week * 7 + (gid % 5))),
+        startDate: new Date(Date.UTC(2099, 10, 3 + week * 7 + (gid % 5))),   // far future: never "overdue"
         homeTeamId: home, awayTeamId: away, neutralSite: false, conferenceGame: false,
         homePoints: status === 'final' ? (homeWon ? 80 : 70) : null,
         awayPoints: status === 'final' ? (homeWon ? 70 : 80) : null
@@ -121,6 +121,15 @@ describe('buildHoopsProjections (pure)', () => {
         expect(a.remainingCount).toBe(16);
     });
 
+    test('an unplayed listing a week past its tip is not projected (the card and the scorer drop it too)', () => {
+        const games = schedule();
+        const wk3 = games.find(x => x.week === 3 && x.homeTeamId === 1);
+        const now = wk3.startDate.getTime() + 8 * 864e5;           // 8 days after week 3's tip
+        const [a] = buildHoopsProjections({ users: [mgr('a', [1])], ratings, games, field: null, ranks, cfg, season: SEASON, log: silent, nowMs: now });
+        expect(a.remainingCount).toBe(15);
+        expect(a.byWeek[3]).toBeUndefined();
+    });
+
     test('the regular season over, March still to come: still a forecast', () => {
         expect(hasForecast([{ remainingCount: 0, postRemaining: 30 }])).toBe(true);
         expect(hasForecast([{ remainingCount: 0, postRemaining: 0 }])).toBe(false);
@@ -165,6 +174,89 @@ describe('standings-projection, basketball inputs (pure)', () => {
             { teamId: 2, games: [{ winProb: 0, pointsIfWin: 0, pointsIfLoss: -4 }] }];
         expect(SP.expectedCaptainWeek(week, 2)).toBe(-2);
         expect(SP.expectedCaptainWeek([], 2)).toBe(0);
+    });
+
+    describe('h2hExact: the week under way, and the tie bonus', () => {
+        const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1 };
+        test('a tie pays the configured tie bonus, not half a win', () => {
+            const ms = ['a', 'b'].map(id => ({ userId: id, projectedFinal: 0, byWeek: { 1: [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 5 }] }] } }));
+            SP.applyEngagement(ms, eng, { h2hExact: true });
+            expect(ms.map(m => m.expH2H)).toEqual([1, 1]);           // a certain 0-0 tie
+            const old = ['a', 'b'].map(id => ({ userId: id, projectedFinal: 0, byWeek: ms[0].byWeek }));
+            SP.applyEngagement(old, eng, {});
+            expect(old.map(m => m.expH2H)).toEqual([1.5, 1.5]);       // the estimate football still uses
+        });
+
+        test('banked points in the week under way decide the expectation', () => {
+            // A banked 10 and has nothing left; B can only reach 5.
+            const a = { userId: 'a', projectedFinal: 0, byWeek: { 1: [] }, bankedWeek: { 1: 10 } };
+            const b = { userId: 'b', projectedFinal: 0, byWeek: { 1: [{ teamId: 2, games: [{ winProb: 1, pointsIfWin: 5 }] }] } };
+            SP.applyEngagement([a, b], eng, { h2hExact: true });
+            expect(a.expH2H).toBe(3);
+            expect(b.expH2H).toBe(0);
+        });
+
+        test('the simulation counts them too, in the matchup but not the season total', () => {
+            // A: 4 banked in the season, 10 of it this week, nothing left.
+            // B: 0 banked, a certain 5 to come. Banked-aware, A wins the week
+            // (+3, total 7 > 5); blind to it, B does (+3, 8 > 4).
+            const mk = () => [
+                { userId: 'a', postExpected: 4, byWeek: { 1: [] }, bankedWeek: { 1: 10 } },
+                { userId: 'b', postExpected: 0, byWeek: { 1: [{ teamId: 2, games: [{ winProb: 1, pointsIfWin: 5 }] }] } }
+            ];
+            const o = { engagement: eng, postseasonSd: 0 };
+            expect(SP.simulateTitleOdds(mk(), 100, Object.assign({ h2hExact: true }, o)).a).toBe(1);
+            expect(SP.simulateTitleOdds(mk(), 100, o).b).toBe(1);
+        });
+
+        test('the chosen captain of the week under way is the one doubled', () => {
+            const capEng = Object.assign({ captainEnabled: true, captainMultiplier: 2 }, eng);
+            // A's best remaining team is 1, but A captained team 2 (worth 1).
+            const a = { userId: 'a', projectedFinal: 0, captainWeek: { 1: 2 }, bankedWeek: { 1: 3 },
+                byWeek: { 1: [{ teamId: 1, games: [{ winProb: 1, pointsIfWin: 4 }] }, { teamId: 2, games: [{ winProb: 1, pointsIfWin: 1 }] }] } };
+            const b = { userId: 'b', projectedFinal: 0, byWeek: { 1: [{ teamId: 3, games: [{ winProb: 1, pointsIfWin: 9 }] }] }, captainWeek: { 1: 99 } };
+            SP.applyEngagement([a, b], capEng, { h2hExact: true });
+            // A: 3 banked + 4 + 1×2 = 9; B: 9, its captain (99) has no game
+            // left. A tie: 1 each. Doubling A's best (4) instead would win.
+            expect(a.expH2H).toBe(1);
+            expect(a.expCaptain).toBe(1);
+        });
+
+        test('the simulation doubles the chosen captain of the week under way', () => {
+            const capEng = Object.assign({ captainEnabled: true, captainMultiplier: 2 }, eng);
+            // A's chosen captain is team 2 (1 point): 4 + 1×2 = 6 < B's 7.
+            // Doubling the best team (4) would give A 9 and the title.
+            const mk = () => [
+                { userId: 'a', postExpected: 0, captainWeek: { 1: 2 },
+                    byWeek: { 1: [{ teamId: 1, games: [{ winProb: 1, pointsIfWin: 4 }] }, { teamId: 2, games: [{ winProb: 1, pointsIfWin: 1 }] }] } },
+                { userId: 'b', postExpected: 7, byWeek: {} }
+            ];
+            expect(SP.simulateTitleOdds(mk(), 50, { engagement: capEng, h2hExact: true, pinnedIds: ['a'], postseasonSd: 0 }).b).toBe(1);
+        });
+
+        test('attachBankedWeeks: only the current week, through weekBase and captainOf', () => {
+            const ms = [{ userId: 'u1', byWeek: { 6: [], 7: [] } }, { userId: 'u2', byWeek: { 7: [] } }];
+            const users = [{ _id: 'u1', seasons: [{ season: SEASON, captains: [], weeklyScore: [
+                { week: 6, score: 13, h2hBonus: 3 }, { week: 7, score: 5 }, { week: 6, season: 'postseason', score: 50 }] }] },
+            { _id: 'u2', seasons: [{ season: SEASON, weeklyScore: [] }] }];
+            SP.attachBankedWeeks(ms, users, SEASON, { weekBase: (e) => e.score - (e.h2hBonus || 0), captainOf: () => 4 });
+            expect(ms[0].bankedWeek).toEqual({ 6: 10 });
+            expect(ms[0].captainWeek).toEqual({ 6: 4 });
+            expect(ms[1].bankedWeek).toBeUndefined();
+            SP.attachBankedWeeks([{ userId: 'x', byWeek: {} }], users, SEASON, {});   // nothing to do
+        });
+    });
+
+    test('the simulation pays the tie bonus', () => {
+        // A and B tie 0-0 every sim; C (not in the H2H) has 0.5. With the tie
+        // bonus A and B finish on 1 and share the title; without it C wins.
+        const eng = { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1 };
+        const wk = { 1: [{ teamId: 1, games: [{ winProb: 0, pointsIfWin: 5 }] }] };
+        const ms = [{ userId: 'a', postExpected: 0, byWeek: wk }, { userId: 'b', postExpected: 0, byWeek: wk },
+            { userId: 'c', postExpected: 0.5, byWeek: {} }];
+        const odds = SP.simulateTitleOdds(ms, 100, { engagement: eng, pinnedIds: ['a', 'b'], postseasonSd: 0 });
+        expect(odds.a).toBeCloseTo(0.5, 9);
+        expect(odds.c).toBe(0);
     });
 
     describe('H2H pairings are numbered over the whole season (scheduleWeeks)', () => {
@@ -238,6 +330,7 @@ describe('GET /standings/projections on a basketball league', () => {
     const League = require('../models/league');
     const SportSeason = require('../models/sportSeason');
     const ScoringConfig = require('../models/scoringConfig');
+    const { scoreHoopsWeek } = require('../modules/hoops-scoring-pass');
     const seasons = require('../modules/active-season');
     const LEAGUE = 'hoops-league';
     const app = express();
@@ -267,7 +360,9 @@ describe('GET /standings/projections on a basketball league', () => {
 
     test('answers projected finish and title odds, with Captain and H2H on 18 weeks', async () => {
         await ScoringConfig.updateOne({ league: LEAGUE }, { $set: { league: LEAGUE,
-            [`engagementBySeason.${SEASON}`]: { captainEnabled: true, captainMultiplier: 2, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 } } }, { upsert: true });
+            // A tie bonus of half the win bonus keeps every week worth exactly
+            // 3 in total, whoever wins or ties.
+            [`engagementBySeason.${SEASON}`]: { captainEnabled: true, captainMultiplier: 2, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1.5 } } }, { upsert: true });
         const top = await manager('Top', [1], 30);
         await manager('Mid', [2], 120);
         const res = await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`);
@@ -279,8 +374,8 @@ describe('GET /standings/projections on a basketball league', () => {
         expect(t.titleOdds).toBeGreaterThan(60);
         expect(t.titleOdds).toBeLessThan(90);                   // March keeps it open (78 when written)
         expect(t.expCaptain).toBeGreaterThan(0);
-        // 16 remaining H2H weeks (3..18) at +3: Top is favoured in most, and
-        // weeks 17-18 are in range. Zero-sum across the two.
+        // 16 remaining H2H weeks (3..18), 3 points each: weeks 17-18 are in
+        // range.
         const sum = res.body.managers.reduce((s, m) => s + m.expH2H, 0);
         expect(sum).toBeCloseTo(16 * 3, 0);
         // Only basketball's schedule: its own projection of team 1.
@@ -303,7 +398,7 @@ describe('GET /standings/projections on a basketball league', () => {
         const users = accts.map((a, i) => mgr(String(a._id), [[1], [2], [4]][i]));
         const build = (opts) => {
             const ms = buildHoopsProjections({ users, ratings, games: schedule(), field: null, ranks, cfg: resolveConfig(LEAGUE), season: SEASON, log: silent });
-            SP.applyEngagement(ms, { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 }, Object.assign({ pinnedIds: pin, maxWeek: 18 }, opts));
+            SP.applyEngagement(ms, { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 }, Object.assign({ pinnedIds: pin, maxWeek: 18, h2hExact: true }, opts));
             const by = {};
             ms.forEach(m => { by[m.userId] = Math.round(m.expH2H * 10) / 10; });
             return by;
@@ -312,6 +407,86 @@ describe('GET /standings/projections on a basketball league', () => {
         const shifted = build({});
         expect(real).not.toEqual(shifted);                     // the fixture can tell them apart
         res.body.managers.forEach(m => expect(m.expH2H).toBe(real[m.userId]));
+    });
+
+    test('the week under way: the projection agrees with the matchup card', async () => {
+        // Dev's week 6 shape, cut to one week: Ann has banked a captained Q1
+        // win (5, doubled to 10); Bo has one game left, captained. With the
+        // tie bonus at half the win bonus, expH2H / 3 is exactly the card's
+        // win probability (which splits ties evenly).
+        await HoopsGame.deleteMany({});
+        await HoopsGame.create([
+            g(1, 1, 3, { status: 'final', startDate: new Date('2026-11-03T00:00:00Z') }),
+            // A conference-tournament win the same week: scored, but not part
+            // of the matchup (modeWeekBase) — on the card or in the projection.
+            g(1, 1, 3, { status: 'final', conferenceGame: true, gameNotes: 'Big East Tournament - Quarterfinal', startDate: new Date('2026-11-04T00:00:00Z') }),
+            g(1, 2, 3, { startDate: new Date('2099-01-01T00:00:00Z') }),
+            g(1, 4, 3, { startDate: new Date('2099-01-01T00:00:00Z') })
+        ]);
+        await ScoringConfig.updateOne({ league: LEAGUE }, { $set: { league: LEAGUE,
+            [`engagementBySeason.${SEASON}`]: { captainEnabled: true, captainMultiplier: 2, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 1.5 } } }, { upsert: true });
+        const ann = await manager('Ann', [1], 0);
+        // Bo captains team 4, his WORSE remaining team — so only the chosen
+        // captain, not the best-expected one, reproduces the card.
+        const bo = await manager('Bo', [2, 4], 0);
+        await Franchise.updateOne({ accountId: ann._id }, { $set: { 'seasons.0.captains': [{ week: 1, teamId: 1 }] } });
+        await Franchise.updateOne({ accountId: bo._id }, { $set: { 'seasons.0.captains': [{ week: 1, teamId: 4 }] } });
+        await scoreHoopsWeek(LEAGUE, { season: SEASON, week: 1 });
+
+        const card = (await request(app).get(`/standings/h2h/${LEAGUE}/${SEASON}`)).body.schedule.find(w => w.week === 1).games[0];
+        const cardAnn = card.aId === String(ann._id) ? card.winP.a : card.winP.b;
+        const proj = (await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`)).body.managers;
+        const projAnn = proj.find(m => m.userId === String(ann._id)).expH2H / 3 * 100;
+        expect(cardAnn).toBeGreaterThan(55);                       // Ann leads: not a coin flip
+        expect(cardAnn).toBeLessThan(100);
+        expect(Math.abs(projAnn - cardAnn)).toBeLessThan(2);       // rounding only
+    });
+
+    test('no pin yet: the round robin runs on the SORTED ids, as the real pass derives them', async () => {
+        // Accounts first (ascending ids), franchises in REVERSE, so the
+        // managers come back in an order that is not the sorted one.
+        const accts = [];
+        for (const n of ['A1', 'A2', 'A3']) accts.push(await Account.create({ firstName: n, lastName: 'M', email: `${n}@example.invalid` }));
+        const rosters = { A1: [1], A2: [2], A3: [4] };
+        for (const a of accts.slice().reverse()) {
+            await Franchise.create({ accountId: a._id, league: LEAGUE, seasons: [{ season: SEASON, franchiseName: a.firstName, cumulativeScore: 0,
+                teamRefs: rosters[a.firstName].map(id => ({ id, sport: 'basketball' })) }] });
+        }
+        await ScoringConfig.updateOne({ league: LEAGUE }, { $set: { league: LEAGUE,
+            [`engagementBySeason.${SEASON}`]: { captainEnabled: false, h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 } } }, { upsert: true });
+        const res = await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`);
+        const users = accts.map(a => mgr(String(a._id), rosters[a.firstName]));
+        const build = (order) => {
+            const ms = buildHoopsProjections({ users, ratings, games: schedule(), field: null, ranks, cfg: resolveConfig(LEAGUE), season: SEASON, log: silent });
+            SP.applyEngagement(ms, { h2hEnabled: true, h2hWinBonus: 3, h2hTieBonus: 0 },
+                { pinnedIds: order, maxWeek: 18, h2hExact: true, scheduleWeeks: Array.from({ length: 18 }, (_, i) => i + 1) });
+            const by = {};
+            ms.forEach(m => { by[m.userId] = Math.round(m.expH2H * 10) / 10; });
+            return by;
+        };
+        const ids = accts.map(a => String(a._id));
+        const sorted = build(ids.slice().sort());
+        expect(build(ids.slice().reverse())).not.toEqual(sorted);   // the fixture can tell them apart
+        res.body.managers.forEach(m => expect(m.expH2H).toBe(sorted[m.userId]));
+    });
+
+    test('the projection is cached for 60 s per league + season', async () => {
+        const router = require('../routes/standings');
+        router.projectionCache.enabled = true;
+        router.projectionCache.entries.clear();
+        try {
+            await manager('Top', [1], 30);
+            const first = (await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`)).body.managers[0].banked;
+            await Franchise.updateMany({}, { $set: { 'seasons.0.cumulativeScore': 99 } });
+            expect((await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`)).body.managers[0].banked).toBe(first);
+            // 61 s later it is recomputed.
+            const now = Date.now();
+            jest.spyOn(Date, 'now').mockReturnValue(now + 61 * 1000);
+            expect((await request(app).get(`/standings/projections/${LEAGUE}/${SEASON}`)).body.managers[0].banked).toBe(99);
+        } finally {
+            router.projectionCache.enabled = false;
+            router.projectionCache.entries.clear();
+        }
     });
 
     test('a league with nothing left to play answers no managers', async () => {

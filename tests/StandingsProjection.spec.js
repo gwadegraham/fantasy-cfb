@@ -51,6 +51,22 @@ describe('simulateTitleOdds', () => {
 // varied was the regular season — about 8 points of spread against a ~70-point
 // chunk treated as already decided. A 16-point projected gap in week 3 came out
 // as 93% title odds because of it.
+describe('simulateTitleOdds: a football loss adds nothing', () => {
+    // Football entries carry no pointsIfLoss; the simulation must treat that
+    // as 0, not as some default. A loses all three games (0 points), B has 2
+    // banked — B must take the title every time.
+    test('flat path', () => {
+        const a = { userId: 'a', postExpected: 0, perGame: [0, 0, 0].map(() => ({ winProb: 0, pointsIfWin: 9 })) };
+        const b = { userId: 'b', postExpected: 2, perGame: [] };
+        expect(simulateTitleOdds([a, b], 200, { postseasonSd: 0 }).b).toBe(1);
+    });
+    test('weekly path', () => {
+        const a = { userId: 'a', postExpected: 0, byWeek: { 1: [{ teamId: 1, games: [0, 0, 0].map(() => ({ winProb: 0, pointsIfWin: 9 })) }] } };
+        const b = { userId: 'b', postExpected: 2, byWeek: { 1: [] } };
+        expect(simulateTitleOdds([a, b], 200, { engagement: { captainEnabled: true }, postseasonSd: 0 }).b).toBe(1);
+    });
+});
+
 describe('simulateTitleOdds postseason variance', () => {
     // Two managers, no games left, separated only by a 16-point postseason
     // forecast gap — the shape of the week-3 Claunts board that prompted this.

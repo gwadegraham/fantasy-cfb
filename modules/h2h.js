@@ -415,9 +415,25 @@ function matchupWinProb(aEntries, bEntries) {
     return { a, b: 1 - a };
 }
 
+// The same two distributions, split three ways: P(A wins), P(tie), P(B
+// wins). matchupWinProb folds the tie into each side at half weight, which
+// is right for a bar and wrong for a bonus — a tie pays h2hTieBonus to both,
+// not half a win each. null when neither side has a game.
+function matchupOutcome(aEntries, bEntries) {
+    if (!(aEntries || []).length && !(bEntries || []).length) return null;
+    const da = scoreDistribution(aEntries), db = scoreDistribution(bEntries);
+    let win = 0, tie = 0, loss = 0;
+    da.forEach((pa, sa) => db.forEach((pb, sb) => {
+        if (sa > sb) win += pa * pb;
+        else if (sa === sb) tie += pa * pb;
+        else loss += pa * pb;
+    }));
+    return { win, tie, loss };
+}
+
 module.exports = {
     buildRoundRobin, scheduleForWeeks, resolveWeek, seasonH2H,
-    gameStatus, isWeekFinal, matchupWinProb,
+    gameStatus, isWeekFinal, matchupWinProb, matchupOutcome,
     H2H_MAX_WEEK, h2hWeekRange, seasonEntry, baseWeekScore, persistedBonus,
     h2hManagerIds, h2hRoster, pinnedH2HIds, computeH2HAwards, applyAwards
 };

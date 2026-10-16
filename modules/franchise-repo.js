@@ -476,7 +476,13 @@ function slimSeasons(season, inner) {
 // roster is stored as seasons[].teamRefs ({ id, sport }), not as team copies
 // (modules/roster-teams.js), so without them every basketball manager reads
 // as having no roster. Off by default, so football's query is unchanged.
-async function projectionManagers(league, season, { refs = false } = {}) {
+//
+// `weekly: true` also returns the season's captains and its weekly rows,
+// slimmed to what the H2H projection reads of the week under way (standings-
+// projection attachBankedWeeks): week, season, score, the H2H bonus, and
+// each per-team row's teamId, score and noModes flag (basketball's
+// conference-tournament exemption, and the auto-captain's history).
+async function projectionManagers(league, season, { refs = false, weekly = false } = {}) {
     // Both branches project the same four account-side fields and the same
     // slimmed seasons. Fields absent on the stored document stay absent — Mongo
     // omits a projected field that does not exist — which is the same presence
@@ -492,7 +498,15 @@ async function projectionManagers(league, season, { refs = false } = {}) {
             teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
                              in: { id: '$$t.id', school: '$$t.school' } } },
             ...(refs ? { teamRefs: { $map: { input: { $ifNull: ['$$s.teamRefs', []] }, as: 'r',
-                                             in: { id: '$$r.id', sport: '$$r.sport' } } } } : {})
+                                             in: { id: '$$r.id', sport: '$$r.sport' } } } } : {}),
+            ...(weekly ? {
+                captains: { $ifNull: ['$$s.captains', []] },
+                weeklyScore: { $map: { input: { $ifNull: ['$$s.weeklyScore', []] }, as: 'w', in: {
+                    week: '$$w.week', season: '$$w.season', score: '$$w.score', h2hBonus: '$$w.h2hBonus',
+                    scoreByTeam: { $map: { input: { $ifNull: ['$$w.scoreByTeam', []] }, as: 't',
+                        in: { teamId: '$$t.teamId', score: '$$t.score', noModes: '$$t.noModes' } } }
+                } } }
+            } : {})
         }
     });
 
