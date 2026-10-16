@@ -30,7 +30,10 @@ const HoopsTeam = require('../models/hoopsTeam');
 const hoopsH2H = require('../modules/hoops-h2h');
 const HoopsGame = require('../models/hoopsGame');
 const { hoopsProjByWeek, currentRankWeek } = require('../modules/hoops-h2h-odds');
-const { TEAM_FIELDS: HOOPS_TEAM_FIELDS } = require('../modules/hoops-draft-projection');
+const { TEAM_FIELDS: HOOPS_TEAM_FIELDS, GAME_FIELDS: HOOPS_GAME_FIELDS } = require('../modules/hoops-draft-projection');
+const { buildHoopsProjections, hasForecast } = require('../modules/hoops-standings-projection');
+const { ncaaField } = require('../modules/hoops-postseason-state');
+const { seasonModeWeeks } = require('../modules/hoops-modes');
 const hoopsRanks = require('../modules/hoops-ranks');
 const { pickParts } = require('../modules/hoops-captain');
 
@@ -250,12 +253,81 @@ function displayOdds(p) {
     return pct >= 1 ? Math.round(pct) : Math.round(pct * 10) / 10;
 }
 
+// The /projections payload rows, shared by both sports so a basketball
+// league answers exactly football's shape.
+function projectionRows(managers, odds) {
+    const ranked = managers.slice().sort((a, b) => b.projectedFinal - a.projectedFinal);
+    return ranked.map((m, i) => ({
+        userId: m.userId, name: m.name, franchise: m.franchise,
+        avatarUrl: m.avatarUrl, initials: m.initials, color: m.color,
+        banked: m.banked, projectedFinal: m.projectedFinal,
+        titleOdds: displayOdds(odds[m.userId]),
+        projectedRank: i + 1,
+        // Surfaced so the tile can explain where a projection comes from —
+        // and so a league without these modes on reads a plain 0.
+        expCaptain: Math.round((m.expCaptain || 0) * 10) / 10,
+        expH2H: Math.round((m.expH2H || 0) * 10) / 10
+    }));
+}
+
+// A BASKETBALL league's projected finish and title odds (#310 PR 5). The
+// model is modules/hoops-standings-projection.js; this owns the reads, which
+// come from hoopsteams / hoopsgames ONLY — 130 basketball team ids are also
+// football ids, so a football read here would hand a roster someone else's
+// schedule.
+async function hoopsProjections(league, season) {
+    const empty = { league, season, managers: [] };
+    // Slimmed to ids, as football's is: a roster ref is { id, sport }.
+    const users = await franchiseRepo.projectionManagers(league, season, { refs: true });
+    const { rosterIds, isFinal } = require('../modules/hoops-scoring-pass');
+    users.forEach(u => (u.seasons || []).forEach(s => { s.rosterIds = rosterIds(s); }));
+    const ids = [...new Set(users.flatMap(u => ((u.seasons || [])[0] || {}).rosterIds || []))];
+    if (!ids.length) return empty;
+
+    // One round of reads. The games are every seasonType: the regular
+    // season for the remaining schedule, the conference tournament and the
+    // NCAA rows for what is already decided. The NCAA field is the whole
+    // tournament's teams (67 rows at most) — a rostered team missing from it
+    // is out.
+    const [ratings, cfgDoc, games, ncaaRows, modeWeeks] = await Promise.all([
+        HoopsTeam.find({ season }, HOOPS_TEAM_FIELDS).lean(),
+        ScoringConfig.findOne({ league }).lean(),
+        HoopsGame.find({ season, $or: [{ homeTeamId: { $in: ids } }, { awayTeamId: { $in: ids } }] },
+            Object.assign({}, HOOPS_GAME_FIELDS, { homePoints: 1, awayPoints: 1 })).lean(),
+        HoopsGame.find({ season, tournament: /^\s*ncaa\s*$/i }, { homeTeamId: 1, awayTeamId: 1, tournament: 1, _id: 0 }).lean(),
+        seasonModeWeeks(season)
+    ]);
+    // Points-if-win grade on the CURRENT ranks: the week being played.
+    const rankWeek = currentRankWeek(games
+        .filter(g => String(g.seasonType || '').toLowerCase() === 'regular')
+        .map(g => ({ week: g.week, completed: isFinal(g) })));
+    const ranked = rankWeek == null ? { ranks: {} } : await hoopsRanks.ranksFor(season, rankWeek).catch(err => {
+        console.error(`[standings] hoops ranks for ${season} wk${rankWeek}: ${err.message}`);
+        return { ranks: {} };
+    });
+
+    const cfg = resolveConfig(league, overridesFromDoc(cfgDoc));
+    const managers = buildHoopsProjections({ users, ratings, games, field: ncaaField(ncaaRows),
+        ranks: ranked.ranks, cfg, season });
+    if (!managers.length || !hasForecast(managers)) return empty;
+
+    // Captain and H2H forward, on basketball's mode weeks (1..L, no 16-week
+    // cap) — engagementBySeason, the per-season entry, as football reads it.
+    const last = modeWeeks.length ? modeWeeks[modeWeeks.length - 1] : -1;
+    const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
+    const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: last, captainMaxWeek: last };
+    applyEngagement(managers, engagement, engOpts);
+    const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
+    return { league, season, managers: projectionRows(managers, odds) };
+}
+
 // per manager for a league + season. Reuses the draft-grade projection engine
 // on each rostered team's REMAINING schedule. Read-only.
 router.get('/projections/:league/:season', async (req, res) => {
     try {
         const league = req.params.league;
         const season = Number(req.params.season);
+        if (sportForLeague(league) === 'basketball') return res.json(await hoopsProjections(league, season));
 
         // Aggregated rather than $elemMatch'd, to reshape the roster on the
         // server. seasons.teams stores the FULL team object per pick (that is
@@ -351,20 +423,7 @@ router.get('/projections/:league/:season', async (req, res) => {
         // quarters the variance for ~170ms, against a route that already spends
         // seconds in Mongo.
         const odds = simulateTitleOdds(managers, 20000, Object.assign({ engagement }, engOpts));
-        const ranked = managers.slice().sort((a, b) => b.projectedFinal - a.projectedFinal);
-        const payload = ranked.map((m, i) => ({
-            userId: m.userId, name: m.name, franchise: m.franchise,
-            avatarUrl: m.avatarUrl, initials: m.initials, color: m.color,
-            banked: m.banked, projectedFinal: m.projectedFinal,
-            titleOdds: displayOdds(odds[m.userId]),
-            projectedRank: i + 1,
-            // Surfaced so the tile can explain where a projection comes from —
-            // and so a league without these modes on reads a plain 0.
-            expCaptain: Math.round((m.expCaptain || 0) * 10) / 10,
-            expH2H: Math.round((m.expH2H || 0) * 10) / 10
-        }));
-
-        res.json({ league, season, managers: payload });
+        res.json({ league, season, managers: projectionRows(managers, odds) });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

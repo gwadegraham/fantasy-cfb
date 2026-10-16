@@ -281,8 +281,11 @@ describe('remaining-schedule projection', () => {
 });
 
 describe('isConfTournamentGame', () => {
-    test('named tournaments and conference-tournament notes, not ordinary conference games', () => {
-        expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'X', conferenceGame: true }))).toBe(true);
+    test('conference-tournament notes, not ordinary conference games — the scoring definition', () => {
+        // A named tournament is somebody else's (hoops-detectors
+        // isConfTournament): scored as a mode game, so projected as one.
+        expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'X', conferenceGame: true }))).toBe(false);
+        expect(P.isConfTournamentGame(game(1, 1, 2, { conferenceGame: true, gameNotes: 'Big East Tournament - Quarterfinal' }))).toBe(true);
         // A coded early-season event is not a conference game and stays in.
         expect(P.isConfTournamentGame(game(1, 1, 2, { tournament: 'Maui' }))).toBe(false);
         expect(P.isConfTournamentGame(game(1, 1, 2, { conferenceGame: true, gameNotes: 'America East Playoffs - Final' }))).toBe(true);

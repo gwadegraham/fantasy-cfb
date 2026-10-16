@@ -471,7 +471,12 @@ function slimSeasons(season, inner) {
 // names and colours the projection never reads. It needs the team id; the rest
 // it looks up in teamsById. On an M0 tier that one query cost 1.67 SECONDS for
 // six documents; slimmed here it is ~3KB and ~100ms.
-async function projectionManagers(league, season) {
+//
+// `refs: true` (basketball) also returns the roster REFS — a basketball
+// roster is stored as seasons[].teamRefs ({ id, sport }), not as team copies
+// (modules/roster-teams.js), so without them every basketball manager reads
+// as having no roster. Off by default, so football's query is unchanged.
+async function projectionManagers(league, season, { refs = false } = {}) {
     // Both branches project the same four account-side fields and the same
     // slimmed seasons. Fields absent on the stored document stay absent — Mongo
     // omits a projected field that does not exist — which is the same presence
@@ -485,7 +490,9 @@ async function projectionManagers(league, season) {
             // school is kept only for the teamsById miss path in
             // buildProjections, which falls back to this object.
             teams: { $map: { input: { $ifNull: ['$$s.teams', []] }, as: 't',
-                             in: { id: '$$t.id', school: '$$t.school' } } }
+                             in: { id: '$$t.id', school: '$$t.school' } } },
+            ...(refs ? { teamRefs: { $map: { input: { $ifNull: ['$$s.teamRefs', []] }, as: 'r',
+                                             in: { id: '$$r.id', sport: '$$r.sport' } } } } : {})
         }
     });
 

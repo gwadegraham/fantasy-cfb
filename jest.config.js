@@ -123,6 +123,29 @@ module.exports = {
             functions: 100,
             lines: 100
         },
+        // The basketball standings projection (#310 PR 5): per-team decided
+        // state, March as a distribution, and the per-manager build. Pure.
+        // A dropped line here pays a banked title twice or holds a 126-point
+        // lottery ticket as cashed.
+        "./modules/hoops-postseason-state.js": {
+            statements: 95,
+            branches: 90,
+            functions: 90,
+            lines: 95
+        },
+        "./modules/hoops-march-sim.js": {
+            statements: 100,
+            branches: 90,
+            functions: 100,
+            lines: 100
+        },
+        // Branches: `|| []` / `|| {}` fallbacks on lean reads.
+        "./modules/hoops-standings-projection.js": {
+            statements: 100,
+            branches: 65,
+            functions: 100,
+            lines: 100
+        },
         "./modules/hoops-captain.js": {
             statements: 92,
             branches: 78,

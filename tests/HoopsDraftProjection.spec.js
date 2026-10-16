@@ -172,7 +172,7 @@ describe('dedupeListings', () => {
     });
 
     it('leaves conference tournament rematches, dead rows and undated rows alone', () => {
-        const tourney = { conferenceGame: true, tournament: 'ACC' };
+        const tourney = { conferenceGame: true, gameNotes: 'ACC Tournament - Quarterfinal' };
         expect(kept([at(1, 10, 20, 0, tourney), at(2, 10, 20, 2, tourney)])).toEqual([1, 2]);
         expect(kept([at(1, 10, 20, 0), at(2, 10, 20, 2, { status: 'postponed' })])).toEqual([1, 2]);
         expect(kept([game(1, 10, 20, 1), game(2, 10, 20, 1)])).toEqual([1, 2]);

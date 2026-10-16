@@ -92,10 +92,7 @@ function hoopsProjByWeek({ teams, games, draftedIds, cardGames, ranks, cfg }) {
     // Card games the engine skipped, EXCEPT the ones it skips on purpose: a
     // dead row (cancelled/postponed) and the stale half of a duplicate
     // listing — pricing those would hand a side a game it will never play.
-    // What is left is a game with a missing rating (see the header) and,
-    // until the standings-projection PR unifies the two definitions, a
-    // conference game carrying a tournament code: a mode game to the scorer,
-    // a conference-tournament game to the projection.
+    // What is left is a game with a missing rating (see the header).
     const rawById = {};
     (games || []).forEach(g => { rawById[g.id] = g; });
     const dropped = new Set(deduped.dropped);

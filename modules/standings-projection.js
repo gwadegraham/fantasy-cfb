@@ -211,6 +211,15 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
 // explicitly skipped in the postseason, and the H2H schedule stops at
 // H2H_MAX_WEEK.
 
+// A game's expected points. pointsIfLoss is basketball's opt-in bad-loss
+// penalty (modules/hoops-projection.js); football entries carry none, so
+// this is exactly winProb × pointsIfWin for them (x + 0 is x).
+const expPoints = (g) => (g.winProb || 0) * (g.pointsIfWin || 0) + (1 - (g.winProb || 0)) * (g.pointsIfLoss || 0);
+// One simulated result for a game: pointsIfWin on a win, pointsIfLoss (0
+// unless penalised) on a loss. One Math.random() per game either way, so
+// football's draw sequence is unchanged.
+const drawPoints = (g) => (Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0));
+
 // Expected points a manager's captain adds in one week.
 //
 // A manager picks BEFORE kickoff, so the choice is the team with the highest
@@ -224,16 +233,22 @@ function expectedCaptainWeek(teamsThisWeek, multiplier) {
     let best = 0;
     (teamsThisWeek || []).forEach(t => {
         let exp = 0;
-        (t.games || []).forEach(g => { exp += (g.winProb || 0) * (g.pointsIfWin || 0); });
+        (t.games || []).forEach(g => { exp += expPoints(g); });
         if (exp > best) best = exp;
     });
     return best * ((multiplier || 2) - 1);
 }
 
 // Expected captain points across a manager's whole remaining schedule.
-function expectedCaptain(byWeek, multiplier) {
+// `maxWeek` (optional) stops it at the last week the Captain covers —
+// basketball's mode weeks end before its trailing stragglers. Football
+// passes none and covers every week, as before.
+function expectedCaptain(byWeek, multiplier, maxWeek) {
     let total = 0;
-    Object.keys(byWeek || {}).forEach(w => { total += expectedCaptainWeek(byWeek[w], multiplier); });
+    Object.keys(byWeek || {}).forEach(w => {
+        if (maxWeek && Number(w) > maxWeek) return;
+        total += expectedCaptainWeek(byWeek[w], multiplier);
+    });
     return total;
 }
 
@@ -278,7 +293,7 @@ function applyEngagement(managers, engagement, opts = {}) {
     const eng = engagement || {};
     if (eng.captainEnabled) {
         managers.forEach(m => {
-            m.expCaptain = expectedCaptain(m.byWeek, eng.captainMultiplier);
+            m.expCaptain = expectedCaptain(m.byWeek, eng.captainMultiplier, opts.captainMaxWeek);
             m.projectedFinal = Math.round(m.projectedFinal + m.expCaptain);
         });
     }
@@ -339,13 +354,14 @@ function simulateTitleOdds(managers, N, opts = {}) {
             const perWeek = {};
             weeks.forEach(w => {
                 const list = (m.byWeek || {})[w] || [];
-                let bestIdx = -1, bestExp = -1;
+                let bestIdx = -1, bestExp = -Infinity;   // -Infinity: a basketball week can expect less than 0
                 list.forEach((t, i) => {
                     let exp = 0;
-                    (t.games || []).forEach(g => { exp += (g.winProb || 0) * (g.pointsIfWin || 0); });
+                    (t.games || []).forEach(g => { exp += expPoints(g); });
                     if (exp > bestExp) { bestExp = exp; bestIdx = i; }
                 });
-                perWeek[w] = bestIdx;
+                // No Captain past the last week it covers (basketball).
+                perWeek[w] = (opts.captainMaxWeek && w > opts.captainMaxWeek) ? -1 : bestIdx;
             });
             captainPick[m.userId] = perWeek;
         });
@@ -360,15 +376,18 @@ function simulateTitleOdds(managers, N, opts = {}) {
         const total = {};
         managers.forEach(m => {
             const forecast = m.postRemaining || 0;
-            const drawn = (postSd && forecast)
-                ? Math.max(0, forecast + postSd * gaussian())
-                : forecast;
+            // Basketball samples March per team (modules/hoops-march-sim.js,
+            // mean = forecast); football draws its measured normal.
+            const drawn = m.postSample ? m.postSample()
+                : (postSd && forecast)
+                    ? Math.max(0, forecast + postSd * gaussian())
+                    : forecast;
             total[m.userId] = m.postExpected - forecast + drawn;
         });
 
         if (!weekly) {
             managers.forEach(m => {
-                for (const g of m.perGame) if (Math.random() < g.winProb) total[m.userId] += g.pointsIfWin;
+                for (const g of m.perGame) total[m.userId] += drawPoints(g);
             });
         } else {
             for (const w of weeks) {
@@ -377,12 +396,20 @@ function simulateTitleOdds(managers, N, opts = {}) {
                     const list = (m.byWeek || {})[w] || [];
                     let sum = 0, captained = 0;
                     const pick = captainPick[m.userId][w];
-                    list.forEach((t, i) => {
+                    // Plain loops, not forEach: a basketball season is ~2,000
+                    // games a sim across a league (football's ~100), and
+                    // this is the innermost loop of 20,000 sims. Same order,
+                    // same draws.
+                    for (let i = 0; i < list.length; i++) {
+                        const gs = list[i].games || [];
                         let ts = 0;
-                        (t.games || []).forEach(g => { if (Math.random() < g.winProb) ts += g.pointsIfWin; });
+                        for (let k = 0; k < gs.length; k++) {
+                            const g = gs[k];
+                            ts += Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0);
+                        }
                         sum += ts;
-                        if (i === pick) captained = ts;   // a captain that loses doubles nothing
-                    });
+                        if (i === pick) captained = ts;   // a captain that loses doubles nothing (or its penalty)
+                    }
                     if (eng.captainEnabled) sum += captained * ((eng.captainMultiplier || 2) - 1);
                     weekTotal[m.userId] = sum;
                     total[m.userId] += sum;
