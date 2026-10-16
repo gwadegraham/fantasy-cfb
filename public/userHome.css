@@ -374,7 +374,11 @@
 .avatar-zoom-img { max-width: min(92vw, 720px); max-height: 88vh; width: auto; height: auto; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); cursor: default; }
 .avatar-zoom-close { position: absolute; top: 18px; right: 22px; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,0.14); color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .avatar-zoom-close:hover { background: rgba(255,255,255,0.26); }
-.profile-modal-card { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: 14px; padding: 1.5em; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+/* Capped at the viewport and scrolls inside. The backdrop centres the card, so a
+   card taller than the screen overflows equally above and below — and the part
+   above the top edge (Team name) can never be scrolled to. The alerts list grew
+   long enough to do that on phones once basketball's alerts were added. */
+.profile-modal-card { background: var(--cc-surface); border: 1px solid var(--cc-border); border-radius: 14px; padding: 1.5em; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); max-height: calc(100vh - 2em); max-height: calc(100dvh - 2em); overflow-y: auto; overscroll-behavior: contain; }
 .profile-modal-card h2 { font-size: 1.3rem; margin: 0 0 1em; color: var(--cc-text); }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25em; }
 .field span { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cc-muted); }
