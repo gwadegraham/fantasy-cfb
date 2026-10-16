@@ -244,7 +244,10 @@
     function stats(d) {
         var s = d.stats;
         if (!s || !s.games) {
-            return '<div class="sp-card sp-empty">Box-score stats arrive once the season tips off, and refresh nightly.</div>';
+            // Under its own heading like every other card on this tab: the
+            // heading's margin is what spaces the cards, so without one this
+            // sat flush against the Efficiency card above it.
+            return '<h2 class="sp-h">Box scores</h2><div class="sp-card sp-empty">Box-score stats arrive once the season tips off, and refresh nightly.</div>';
         }
         return '<h2 class="sp-h">Style<small>' + esc(s.games) + ' games</small></h2>' + style(s)
             + '<h2 class="sp-h">Keys to the game<small>The four things that decide games</small></h2><div class="sp-card">' + fourFactors(s) + '</div>'
