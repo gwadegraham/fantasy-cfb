@@ -70,6 +70,14 @@
                     <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" profile-file-input class="visually-hidden">
                     <button type="button" class="btn-secondary" profile-upload-btn>Upload photo</button>
                     <span class="upload-status" profile-upload-status></span>
+                    <%# Pictures are per league. Said only to someone who plays
+                        in more than one, the only people it changes anything for. %>
+                    <% var _avLeagues = (typeof viewerLeagues !== 'undefined' && viewerLeagues) || []; %>
+                    <% var _avCode = (typeof viewerLeagueCode !== 'undefined' && viewerLeagueCode) || ''; %>
+                    <% var _avHere = _avLeagues.filter(function (lg) { return lg.code === _avCode; })[0]; %>
+                    <% if (_avLeagues.length > 1 && _avHere) { %>
+                    <span class="avatar-scope-note" profile-avatar-scope>For <%= _avHere.name %> only. Your other leagues keep their own.</span>
+                    <% } %>
                 </div>
             </div>
             <!-- Game-day push alerts. Lives in the profile modal rather than a

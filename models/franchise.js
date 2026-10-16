@@ -62,6 +62,14 @@ const franchiseSchema = new mongoose.Schema({
     captainReminders: { type: [captainReminderSchema], default: undefined },
     recapNotices: { type: [captainReminderSchema], default: undefined },
 
+    // This league's profile picture, overriding the Account's. ABSENT means
+    // "inherit the account's", which is every franchise until its manager
+    // changes their picture while viewing this league. NULL is a choice, not a
+    // gap: "no picture in this league", which must not fall back to the
+    // account's. modules/franchise-repo.js resolves the two (AVATAR_OVERRIDE);
+    // routes/users.js PATCH /me/profile is the only writer.
+    avatarUrl: { type: String, default: undefined },
+
     // Provenance: set only by modules/account-migration.js. Rollback scopes its
     // delete to documents carrying it, so anything created directly — a
     // basketball-only manager with no User behind them (#310) — survives. Those

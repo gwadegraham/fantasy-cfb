@@ -81,7 +81,7 @@ describe('PATCH /users/me/profile — the one handler that writes both documents
         expect(res.body).toEqual({ avatarUrl: AVATAR, profilePrompted: true, franchiseName: 'New Name' });
     });
 
-    test('the avatar goes on the ACCOUNT and the name on the FRANCHISE', async () => {
+    test('the avatar goes on BOTH halves, the name on the FRANCHISE', async () => {
         const user = await seed();
         await request(app).patch('/users/me/profile')
             .send({ franchiseName: 'New Name', prompted: true, avatarUrl: AVATAR });
@@ -95,7 +95,9 @@ describe('PATCH /users/me/profile — the one handler that writes both documents
         // routing it there was silent and caught by nothing.
         expect(account.seasons).toBeUndefined();
         expect(franchise.seasons.find(s => Number(s.season) === SEASON).franchiseName).toBe('New Name');
-        expect(franchise.avatarUrl).toBeUndefined();
+        // Per league: the franchise holds this league's picture, the account
+        // the latest choice (tests/PerLeagueAvatar.spec.js has the rest).
+        expect(franchise.avatarUrl).toBe(AVATAR);
 
         // And `users` is untouched, so the two really are separate collections.
         const stale = await User.findById(user._id).lean();
