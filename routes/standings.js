@@ -19,7 +19,7 @@ const { buildWeeklyRecaps, indexUpsets, indexHoopsResults, completedWeeks } = re
 // the same everywhere.
 const { competitionRanks } = require('../public/league-rank.js');
 const { gameStatus, matchupWinProb, H2H_MAX_WEEK, baseWeekScore,
-        h2hRoster, pinnedH2HIds, computeH2HAwards } = require('../modules/h2h');
+        h2hRoster, pinnedH2HIds, computeH2HAwards, h2hWeekRange } = require('../modules/h2h');
 const { findPoll } = require('../modules/scoring-detectors');
 const { pickLogo } = require('../public/logo.js');
 const { resolveCaptain, autoCaptainTeamId } = require('../modules/captain');
@@ -253,6 +253,20 @@ function displayOdds(p) {
     return pct >= 1 ? Math.round(pct) : Math.round(pct * 10) / 10;
 }
 
+// Football's H2H week range, derived exactly as the scoring pass derives it
+// (h2h computeH2HAwards): regular-season games involving a rostered team, up
+// to H2H_MAX_WEEK, cut by h2hWeekRange. `games` is the projection route's
+// read, which is that same set.
+function footballH2HWeeks(games) {
+    const byWeek = {};
+    (games || []).forEach(g => {
+        if (g.seasonType && g.seasonType !== 'regular') return;
+        if (g.week == null || g.week > H2H_MAX_WEEK) return;
+        (byWeek[g.week] = byWeek[g.week] || []).push(g);
+    });
+    return h2hWeekRange(byWeek, { maxWeek: H2H_MAX_WEEK });
+}
+
 // The /projections payload rows, shared by both sports so a basketball
 // league answers exactly football's shape.
 function projectionRows(managers, odds) {
@@ -456,8 +470,16 @@ router.get('/projections/:league/:season', async (req, res) => {
         // pinnedIds matters: the round robin is positional, so the projection has
         // to pair managers the same way the scoring job will. Passing the pinned
         // list keeps the projected matchups and the real ones in step.
+        //
+        // scheduleWeeks matters for the same reason: the round robin is
+        // numbered over the season's WHOLE H2H week range (computeH2HAwards
+        // derives it with h2hWeekRange), so week 8 is round 8 mod N. Pairing
+        // only the weeks still to play restarted the rotation at the current
+        // week and projected opponents nobody would actually face. Graham
+        // approved the fix for football mid-season (#310 follow-up).
         const engagement = engagementForSeason(cfgDoc && cfgDoc.engagementBySeason, season);
-        const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: H2H_MAX_WEEK };
+        const engOpts = { pinnedIds: pinnedH2HIds(cfgDoc, season), maxWeek: H2H_MAX_WEEK,
+            scheduleWeeks: footballH2HWeeks(games) };
         applyEngagement(managers, engagement, engOpts);
 
         // 20000, not 5000. The odds used to cluster at 0 and 90-100, where a
