@@ -29,11 +29,25 @@ describe('seasonStartFrom', () => {
         expect(thu.toISOString().slice(0, 10)).toBe('2026-11-02');
     });
 
-    test('a Sunday opener belongs to the week that is ENDING, not the next', () => {
-        // getUTCDay puts Sunday at 0, so a naive Monday-start calculation sends
-        // it forward instead of back six days.
-        const sun = cal.seasonStartFrom(new Date('2026-11-08T23:00:00Z'));
-        expect(sun.toISOString().slice(0, 10)).toBe('2026-11-02');
+    test('a weekend opener is a lead-in to the NEXT week, not a week of its own', () => {
+        // The real 2026-27 schedule: two neutral-site games on Sunday 1 Nov,
+        // then 135 on Monday the 2nd. Anchoring on the Monday before made week 1
+        // a two-game week and pushed the opening slate into week 2.
+        for (const [iso, label] of [
+            ['2026-10-30T23:00:00Z', 'Friday'],
+            ['2026-10-31T16:00:00Z', 'Saturday'],
+            ['2026-11-01T14:30:00Z', 'Sunday morning (Notre Dame v Villanova)'],
+            ['2026-11-02T04:59:00Z', 'Sunday 23:59 ET, already Monday in UTC']
+        ]) {
+            expect([label, cal.seasonStartFrom(new Date(iso)).toISOString().slice(0, 10)])
+                .toEqual([label, '2026-11-02']);
+        }
+    });
+
+    test('a Sunday that is NOT the opener still closes its own week', () => {
+        // The lead-in is only about where week 1 starts; with a Monday opener a
+        // later Sunday is the end of week 1, never the start of week 2.
+        expect(cal.weekOf(new Date('2026-11-08T23:00:00Z'), START)).toBe(1);
     });
 
     test('an unparseable date is null, not an Invalid Date', () => {
@@ -53,9 +67,15 @@ describe('weekOf — the boundaries', () => {
         expect(wk(iso)).toBe(expected);
     });
 
+    test('the Fri-Sun lead-in before the first Monday is week 1', () => {
+        expect(wk('2026-10-30T05:00:00Z')).toBe(1);   // Fri, first instant
+        expect(wk('2026-11-01T14:30:00Z')).toBe(1);   // Sun, Notre Dame v Villanova
+        expect(wk('2026-11-02T04:59:00Z')).toBe(1);   // Sun 23:59 ET
+    });
+
     test('a date before week 1 is null, never 0 or negative', () => {
         // 0 and -1 both read as a real week to a caller indexing an array.
-        expect(wk('2026-10-30T23:00:00Z')).toBeNull();
+        expect(wk('2026-10-30T03:59:00Z')).toBeNull();  // Thu 23:59 ET, just before the lead-in
         expect(wk('2020-01-01T00:00:00Z')).toBeNull();
     });
 
@@ -149,10 +169,24 @@ describe('weekOf — a week is 7 days across a DST change', () => {
 });
 
 describe('weekBounds', () => {
-    test('week 1 runs Monday to the following Monday, exclusive', () => {
+    test('week 1 runs from the Friday lead-in to the second Monday, exclusive', () => {
         const b = cal.weekBounds(1, START);
-        expect(b.start.toISOString().slice(0, 10)).toBe('2026-11-02');
+        expect(b.start.toISOString()).toBe('2026-10-30T04:00:00.000Z');   // Fri midnight EDT
         expect(b.end.toISOString().slice(0, 10)).toBe('2026-11-09');
+    });
+
+    test('later weeks are plain Monday to Monday', () => {
+        const b = cal.weekBounds(2, START);
+        expect(b.start.toISOString()).toBe('2026-11-09T05:00:00.000Z');
+        expect(b.end.toISOString()).toBe('2026-11-16T05:00:00.000Z');
+    });
+
+    test('week 1 bounds hold both Sunday openers AND the Monday slate', () => {
+        const b = cal.weekBounds(1, START);
+        for (const iso of ['2026-11-01T14:30:00Z', '2026-11-02T04:59:00Z', '2026-11-02T05:00:00Z', '2026-11-08T23:00:00Z']) {
+            const d = new Date(iso);
+            expect([iso, d >= b.start && d < b.end]).toEqual([iso, true]);
+        }
     });
 
     test('bounds and weekOf agree at both edges', () => {
@@ -178,6 +212,19 @@ describe('resolveCurrentWeek', () => {
         expect(cal.resolveCurrentWeek({
             seasonStart: START, lastGameDate: LAST, now: new Date('2026-11-11T18:00:00Z')
         })).toEqual({ week: 2, seasonType: 'regular' });
+    });
+
+    test('the weekend lead-in is week 1, not preseason', () => {
+        // Otherwise the Sunday openers would be skipped by the scores job.
+        expect(cal.resolveCurrentWeek({
+            seasonStart: START, lastGameDate: LAST, now: new Date('2026-11-01T20:00:00Z')
+        })).toEqual({ week: 1, seasonType: 'regular' });
+    });
+
+    test('the lead-in opens at Friday midnight ET, not a minute earlier', () => {
+        const at = (iso) => cal.resolveCurrentWeek({ seasonStart: START, lastGameDate: LAST, now: new Date(iso) });
+        expect(at('2026-10-30T03:59:00Z').skip).toMatch(/preseason/);   // Thu 23:59 ET
+        expect(at('2026-10-30T04:00:00Z')).toMatchObject({ week: 1 });  // Fri 00:00 ET
     });
 
     test('refuses before the season rather than answering week 1', () => {
