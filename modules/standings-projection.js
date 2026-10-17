@@ -5,7 +5,7 @@
 // postseason. Pure (no I/O) so it's unit-testable; the route feeds it data.
 
 const { projectTeamPoints, spFor, winsFor } = require('./draft-projection');
-const { scheduleForWeeks, matchupWinProb, H2H_MAX_WEEK } = require('./h2h');
+const { scheduleForWeeks, matchupWinProb, matchupOutcome, H2H_MAX_WEEK } = require('./h2h');
 
 // How many games it takes for a team's ACTUAL results to earn half the say in
 // its remaining-wins forecast, against its preseason win total.
@@ -211,6 +211,15 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
 // explicitly skipped in the postseason, and the H2H schedule stops at
 // H2H_MAX_WEEK.
 
+// A game's expected points. pointsIfLoss is basketball's opt-in bad-loss
+// penalty (modules/hoops-projection.js); football entries carry none, so
+// this is exactly winProb × pointsIfWin for them (x + 0 is x).
+const expPoints = (g) => (g.winProb || 0) * (g.pointsIfWin || 0) + (1 - (g.winProb || 0)) * (g.pointsIfLoss || 0);
+// One simulated result for a game: pointsIfWin on a win, pointsIfLoss (0
+// unless penalised) on a loss. One Math.random() per game either way, so
+// football's draw sequence is unchanged.
+const drawPoints = (g) => (Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0));
+
 // Expected points a manager's captain adds in one week.
 //
 // A manager picks BEFORE kickoff, so the choice is the team with the highest
@@ -221,20 +230,95 @@ function buildProjections(users, teamsById, gamesByTeam, cfg, rankings, poolCtx,
 // A captained team that loses scores nothing, which falls out of the per-game
 // probabilities: every regular-season rule requires a win.
 function expectedCaptainWeek(teamsThisWeek, multiplier) {
-    let best = 0;
+    // -Infinity, not 0: with basketball's bad-loss penalty every option can
+    // expect less than 0, and the captain still doubles the least-bad one
+    // (captainWeeklyBonus doubles a negative score) — as the simulation does.
+    // Football never expects below 0, so its answer is unchanged.
+    let best = -Infinity;
     (teamsThisWeek || []).forEach(t => {
         let exp = 0;
-        (t.games || []).forEach(g => { exp += (g.winProb || 0) * (g.pointsIfWin || 0); });
+        (t.games || []).forEach(g => { exp += expPoints(g); });
         if (exp > best) best = exp;
     });
-    return best * ((multiplier || 2) - 1);
+    return best === -Infinity ? 0 : best * ((multiplier || 2) - 1);
 }
 
 // Expected captain points across a manager's whole remaining schedule.
-function expectedCaptain(byWeek, multiplier) {
+// `maxWeek` (optional) stops it at the last week the Captain covers —
+// basketball's mode weeks end before its trailing stragglers. Football
+// passes none and covers every week, as before.
+//
+// `captainWeek` (optional, { [week]: teamId }) is the captain ALREADY
+// chosen for a week under way (attachBankedWeeks): that team's remaining
+// games are what gets doubled, not whichever team would be best now. A
+// week whose captain has no game left adds nothing more (its bonus so far
+// is banked).
+function expectedCaptain(byWeek, multiplier, maxWeek, captainWeek) {
     let total = 0;
-    Object.keys(byWeek || {}).forEach(w => { total += expectedCaptainWeek(byWeek[w], multiplier); });
+    Object.keys(byWeek || {}).forEach(w => {
+        if (maxWeek && Number(w) > maxWeek) return;
+        const fixed = captainWeek && captainWeek[w] !== undefined ? captainWeek[w] : undefined;
+        if (fixed !== undefined) {
+            const t = (byWeek[w] || []).find(x => Number(x.teamId) === Number(fixed));
+            total += t ? expectedCaptainWeek([t], multiplier) : 0;
+            return;
+        }
+        total += expectedCaptainWeek(byWeek[w], multiplier);
+    });
     return total;
+}
+
+// The week under way: what each manager has already banked in it, and the
+// captain already chosen, attached to the managers in place.
+//
+// byWeek holds only the games still to play, so without this a week half
+// played is decided on its remaining games alone — on the dev league, a
+// manager leading 13-0 mid-week projected as a 26% favourite while the
+// matchup card (which counts the finished games) said 99%. Only the
+// league's CURRENT week is attached: the first week anyone still has a game
+// in. A later week can carry a seeded zero row, and its captain is not set.
+//
+// users: the projection managers WITH their season's weeklyScore + captains
+//   (franchise-repo projectionManagers { weekly: true }).
+// weekBase(entry): the matchup total of a stored week row (h2h
+//   baseWeekScore for football, hoops-h2h modeWeekBase for basketball) —
+//   the captain's banked bonus included, the H2H bonus excluded.
+// captainOf(seasonEntry, week): the captain for that week as the scorer
+//   resolves it, or null when the Captain is off.
+function attachBankedWeeks(managers, users, season, { weekBase, captainOf } = {}) {
+    const weeks = managers.flatMap(m => Object.keys(m.byWeek || {}).map(Number));
+    if (!weeks.length) return managers;
+    const current = Math.min(...weeks);
+    const byId = {};
+    (users || []).forEach(u => { byId[String(u._id)] = u; });
+    managers.forEach(m => {
+        const u = byId[m.userId];
+        const s = u && (u.seasons || []).find(x => Number(x.season) === Number(season));
+        if (!s) return;
+        const rows = (s.weeklyScore || []).filter(e => e && e.season !== 'postseason' && Number(e.week) === current);
+        if (!rows.length) return;
+        m.bankedWeek = { [current]: rows.reduce((sum, e) => sum + (weekBase ? weekBase(e) : (e.score || 0)), 0) };
+        const cap = captainOf ? captainOf(s, current) : null;
+        if (cap != null) m.captainWeek = { [current]: Number(cap) };
+    });
+    return managers;
+}
+
+// A certain number of points as a matchupWinProb entry (pointsIfWin is
+// floored at 0, so a negative total rides as a certain loss).
+const certain = (v) => (v >= 0 ? { winProb: 1, pointsIfWin: v } : { winProb: 0, pointsIfWin: 0, pointsIfLoss: v });
+
+// The captain's team index in a week's list: the one already chosen when
+// the week is under way (-1 if it has no game left), else the best expected.
+function captainIndex(list, fixed) {
+    if (fixed !== undefined) return list.findIndex(t => Number(t.teamId) === Number(fixed));
+    let bestIdx = -1, bestExp = -Infinity;
+    list.forEach((t, i) => {
+        let exp = 0;
+        (t.games || []).forEach(g => { exp += expPoints(g); });
+        if (exp > bestExp) { bestExp = exp; bestIdx = i; }
+    });
+    return bestIdx;
 }
 
 // Expected H2H bonus per manager over the remaining weeks.
@@ -244,25 +328,67 @@ function expectedCaptain(byWeek, multiplier) {
 // week however well everyone plays. The pairing schedule is POSITIONAL, so the
 // id list and its order must match what the scoring job uses (pinnedH2HIds) or
 // the matchups are not the ones that will actually be played.
-function expectedH2H(managers, ids, weeks, winBonus, tieBonus) {
+//
+// `scheduleWeeks` (optional) is the season's WHOLE H2H week list, which the
+// round robin is numbered over. The real schedule (h2h computeH2HAwards)
+// pairs week w by its position in that full list; pairing only the weeks
+// still to play would shift every projected opponent by the weeks already
+// done. Basketball passes its mode weeks. Football passes none and keeps
+// its existing pairing (see the PR 5 notes: football has the same shift).
+//
+// `exact` (optional) is the matchup as the scorer settles it, and what the
+// matchup card shows:
+//   - the week under way counts what each side has already banked
+//     (m.bankedWeek) and doubles the captain already chosen (m.captainWeek);
+//     other weeks double the best-expected team, as the simulation does
+//   - a tie pays tieBonus to both (matchupOutcome), not half a win each
+// Off, it is the original estimate: remaining games only, no captain, and
+// ties split as half a win — which pays a tie as winBonus / 2 apiece.
+function expectedH2H(managers, ids, weeks, winBonus, tieBonus, scheduleWeeks, exact, captain) {
     const out = {};
     (ids || []).forEach(id => { out[id] = 0; });
     if (!ids || ids.length < 2 || !weeks.length) return out;
 
     const byId = {};
     managers.forEach(m => { byId[m.userId] = m; });
-    const schedule = scheduleForWeeks(ids, weeks);
+    const schedule = scheduleForWeeks(ids, scheduleWeeks || weeks);
+
+    // A manager's entries for week w, under `exact`: banked so far, plus the
+    // remaining games with the captain's doubled.
+    const exactEntries = (m, w) => {
+        const list = (m.byWeek || {})[w] || [];
+        const mult = captain && captain.enabled && !(captain.maxWeek && w > captain.maxWeek) ? (captain.multiplier || 2) : 1;
+        const fixed = m.captainWeek && m.captainWeek[w] !== undefined ? m.captainWeek[w] : undefined;
+        const pick = mult > 1 ? captainIndex(list, fixed) : -1;
+        const out2 = [];
+        list.forEach((t, i) => (t.games || []).forEach(g => {
+            if (i !== pick) { out2.push(g); return; }
+            const e = { winProb: g.winProb, pointsIfWin: (g.pointsIfWin || 0) * mult };
+            if (g.pointsIfLoss != null) e.pointsIfLoss = g.pointsIfLoss * mult;
+            out2.push(e);
+        }));
+        const banked = m.bankedWeek && m.bankedWeek[w];
+        if (banked) out2.push(certain(banked));
+        return out2;
+    };
 
     weeks.forEach(w => {
         (schedule[w] || []).forEach(([a, b]) => {
             const ma = byId[a], mb = byId[b];
             if (!ma || !mb) return;
+            if (exact) {
+                const o = matchupOutcome(exactEntries(ma, w), exactEntries(mb, w));
+                if (!o) return;
+                out[a] += winBonus * o.win + tieBonus * o.tie;
+                out[b] += winBonus * o.loss + tieBonus * o.tie;
+                return;
+            }
             const flat = (m) => ((m.byWeek || {})[w] || []).flatMap(t => t.games || []);
             const prob = matchupWinProb(flat(ma), flat(mb));
             if (!prob) return;
-            // matchupWinProb folds ties into `a` at half weight, which is the
-            // right call for a win-probability bar but loses the tie mass a
-            // bonus needs. Recover it from the raw distributions.
+            // matchupWinProb folds ties into each side at half weight, so a
+            // tie is paid here as half a win apiece, whatever tieBonus is.
+            // `exact` (above) pays the configured tie bonus instead.
             const pA = prob.a, pB = prob.b;
             out[a] += winBonus * pA;
             out[b] += winBonus * pB;
@@ -278,7 +404,7 @@ function applyEngagement(managers, engagement, opts = {}) {
     const eng = engagement || {};
     if (eng.captainEnabled) {
         managers.forEach(m => {
-            m.expCaptain = expectedCaptain(m.byWeek, eng.captainMultiplier);
+            m.expCaptain = expectedCaptain(m.byWeek, eng.captainMultiplier, opts.captainMaxWeek, opts.h2hExact ? m.captainWeek : undefined);
             m.projectedFinal = Math.round(m.projectedFinal + m.expCaptain);
         });
     }
@@ -289,7 +415,8 @@ function applyEngagement(managers, engagement, opts = {}) {
         const ids = (opts.pinnedIds && opts.pinnedIds.length)
             ? opts.pinnedIds.filter(id => managers.some(m => m.userId === id))
             : managers.map(m => m.userId);
-        const h = expectedH2H(managers, ids, weeks, eng.h2hWinBonus || 0, eng.h2hTieBonus || 0);
+        const h = expectedH2H(managers, ids, weeks, eng.h2hWinBonus || 0, eng.h2hTieBonus || 0, opts.scheduleWeeks, !!opts.h2hExact,
+            { enabled: !!eng.captainEnabled, multiplier: eng.captainMultiplier, maxWeek: opts.captainMaxWeek });
         managers.forEach(m => {
             m.expH2H = h[m.userId] || 0;
             m.projectedFinal = Math.round(m.projectedFinal + m.expH2H);
@@ -331,7 +458,10 @@ function simulateTitleOdds(managers, N, opts = {}) {
                 ? opts.pinnedIds.filter(id => managers.some(m => m.userId === id))
                 : managers.map(m => m.userId);
             const h2hWeeks = weeks.filter(w => w <= (opts.maxWeek || H2H_MAX_WEEK));
-            schedule = scheduleForWeeks(ids, h2hWeeks);
+            // Numbered over the whole season when the caller says what it is
+            // (see expectedH2H), so these are the matchups actually played.
+            const full = opts.scheduleWeeks ? scheduleForWeeks(ids, opts.scheduleWeeks) : null;
+            schedule = full ? Object.fromEntries(h2hWeeks.map(w => [w, full[w] || []])) : scheduleForWeeks(ids, h2hWeeks);
         }
         // The captain is chosen before kickoff, so which team gets doubled is
         // fixed per week and does NOT vary between sims. Resolve it once.
@@ -339,13 +469,19 @@ function simulateTitleOdds(managers, N, opts = {}) {
             const perWeek = {};
             weeks.forEach(w => {
                 const list = (m.byWeek || {})[w] || [];
-                let bestIdx = -1, bestExp = -1;
+                let bestIdx = -1, bestExp = -Infinity;   // -Infinity: a basketball week can expect less than 0
                 list.forEach((t, i) => {
                     let exp = 0;
-                    (t.games || []).forEach(g => { exp += (g.winProb || 0) * (g.pointsIfWin || 0); });
+                    (t.games || []).forEach(g => { exp += expPoints(g); });
                     if (exp > bestExp) { bestExp = exp; bestIdx = i; }
                 });
-                perWeek[w] = bestIdx;
+                // No Captain past the last week it covers (basketball).
+                perWeek[w] = (opts.captainMaxWeek && w > opts.captainMaxWeek) ? -1 : bestIdx;
+                // A week under way already has its captain (h2hExact; see
+                // attachBankedWeeks): that team, or none if it is done.
+                if (opts.h2hExact && perWeek[w] !== -1 && m.captainWeek && m.captainWeek[w] !== undefined) {
+                    perWeek[w] = captainIndex(list, m.captainWeek[w]);
+                }
             });
             captainPick[m.userId] = perWeek;
         });
@@ -360,15 +496,18 @@ function simulateTitleOdds(managers, N, opts = {}) {
         const total = {};
         managers.forEach(m => {
             const forecast = m.postRemaining || 0;
-            const drawn = (postSd && forecast)
-                ? Math.max(0, forecast + postSd * gaussian())
-                : forecast;
+            // Basketball samples March per team (modules/hoops-march-sim.js,
+            // mean = forecast); football draws its measured normal.
+            const drawn = m.postSample ? m.postSample()
+                : (postSd && forecast)
+                    ? Math.max(0, forecast + postSd * gaussian())
+                    : forecast;
             total[m.userId] = m.postExpected - forecast + drawn;
         });
 
         if (!weekly) {
             managers.forEach(m => {
-                for (const g of m.perGame) if (Math.random() < g.winProb) total[m.userId] += g.pointsIfWin;
+                for (const g of m.perGame) total[m.userId] += drawPoints(g);
             });
         } else {
             for (const w of weeks) {
@@ -377,14 +516,25 @@ function simulateTitleOdds(managers, N, opts = {}) {
                     const list = (m.byWeek || {})[w] || [];
                     let sum = 0, captained = 0;
                     const pick = captainPick[m.userId][w];
-                    list.forEach((t, i) => {
+                    // Plain loops, not forEach: a basketball season is ~2,000
+                    // games a sim across a league (football's ~100), and
+                    // this is the innermost loop of 20,000 sims. Same order,
+                    // same draws.
+                    for (let i = 0; i < list.length; i++) {
+                        const gs = list[i].games || [];
                         let ts = 0;
-                        (t.games || []).forEach(g => { if (Math.random() < g.winProb) ts += g.pointsIfWin; });
+                        for (let k = 0; k < gs.length; k++) {
+                            const g = gs[k];
+                            ts += Math.random() < g.winProb ? g.pointsIfWin : (g.pointsIfLoss || 0);
+                        }
                         sum += ts;
-                        if (i === pick) captained = ts;   // a captain that loses doubles nothing
-                    });
+                        if (i === pick) captained = ts;   // a captain that loses doubles nothing (or its penalty)
+                    }
                     if (eng.captainEnabled) sum += captained * ((eng.captainMultiplier || 2) - 1);
-                    weekTotal[m.userId] = sum;
+                    // The matchup counts what is already banked this week
+                    // (h2hExact); the season total does not — it is in
+                    // postExpected through the banked score already.
+                    weekTotal[m.userId] = (opts.h2hExact && m.bankedWeek && m.bankedWeek[w]) ? sum + m.bankedWeek[w] : sum;
                     total[m.userId] += sum;
                 }
                 (schedule[w] || []).forEach(([a, b]) => {
@@ -411,5 +561,5 @@ function simulateTitleOdds(managers, N, opts = {}) {
 }
 
 module.exports = { buildProjections, simulateTitleOdds, winsSoFar, gamesPlayed, remainingWinsTarget,
-                   expectedCaptainWeek, expectedCaptain, expectedH2H, applyEngagement, BLEND_GAMES,
+                   expectedCaptainWeek, expectedCaptain, expectedH2H, applyEngagement, attachBankedWeeks, BLEND_GAMES,
                    POSTSEASON_SD };

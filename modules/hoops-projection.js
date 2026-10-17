@@ -76,6 +76,7 @@ const { evaluate } = require('./scoring');
 const { log5, HOME_ODDS } = require('./hoops-win-prob');
 const { venueFor } = require('./hoops-quadrants');
 const { isFinal } = require('./hoops-scoring-pass');
+const { isConfTournament } = require('./hoops-detectors');
 
 // Home court, as a multiplier on the home side's odds (neutral sites get 1):
 // HOME_ODDS from modules/hoops-win-prob.js, shared with the game preview so
@@ -187,18 +188,21 @@ function winRateOf(projectedRecord) {
     return w + l > 0 ? w / (w + l) : null;
 }
 
-// A regular-season game that a conference tournament is NOT. CBBD files a
-// conference tournament as seasonType 'regular', and its title is a bonus
-// that the March estimate prices separately, so the regular projection
-// leaves those games out rather than counting them twice.
+// A conference-tournament game. CBBD files a conference tournament as
+// seasonType 'regular', and the March estimate prices it (confTourney +
+// confChamp), so the regular projection leaves those games out rather than
+// counting them twice.
 //
-// conferenceGame is required on both paths: an early-season event (Maui,
-// the Battle 4 Atlantis) is not a conference game, and if CBBD ever gives one
-// a tournament code it must stay in the projection.
+// It is hoops-detectors isConfTournament — the SCORING definition, the one
+// the Captain/H2H modes (hoops-modes isModeGame) and the team page read —
+// so the projection and the scorer agree on which games those are. Until
+// #310 PR 5 this file had its own test, which disagreed on one shape: a
+// conference game carrying a tournament code. The scorer reads a named
+// tournament as somebody else's (the NCAA, the NIT) and scores it as a mode
+// game; this file left it out. None exists on the 2026-27 schedule, and
+// CBBD's 31 conference finals of March 2026 all had the field empty.
 function isConfTournamentGame(game) {
-    if (!game.conferenceGame) return false;
-    if (String(game.tournament || '').trim()) return true;
-    return /\b(championship|tournament|playoffs?)\b/i.test(String(game.gameNotes || ''));
+    return isConfTournament(game);
 }
 
 // A row that will never be played as listed. 18 of the 6,213 2025-26
