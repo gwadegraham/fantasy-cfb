@@ -8,8 +8,9 @@
 //
 // ---- Monday to Sunday, on the EASTERN calendar ----
 //
-// Monday because the 2026-27 season opens on Monday 2 November, so the natural
-// week boundary and the season boundary coincide. And because basketball plays
+// Monday because the 2026-27 season's main slate opens on Monday 2 November (a
+// Sunday-1-November curtain-raiser is folded into it — see the lead-in below).
+// And because basketball plays
 // every night: a Saturday-anchored week like football's would cut the midweek
 // slate in half.
 //
@@ -49,15 +50,43 @@ function mondayOf(easternDayUtc) {
     return new Date(easternDayUtc.getTime() - back * DAY_MS);
 }
 
-// Week 1 starts on the Monday of the week containing the season's first game.
+// Week 1 starts on the Monday of the week containing the season's first game —
+// unless that game falls on a WEEKEND, in which case week 1 starts on the
+// Monday AFTER it and the weekend is folded in as a lead-in.
 //
 // Derived from the schedule rather than configured: the ingest already knows
 // every game, and a hardcoded date is a thing to forget every October. It also
 // means a season that opens on a Tuesday still gets a week 1 that starts Monday
 // rather than a bucket boundary mid-slate.
+//
+// ---- the weekend lead-in ----
+//
+// 2026-27 opens with two neutral-site games on Sunday 1 November (Notre Dame v
+// Villanova, Liberty v High Point) and then 135 on Monday the 2nd. A plain
+// Monday-on-or-before anchor made week 1 Mon 26 Oct to Sun 1 Nov: two games,
+// every manager on zero, a 0-0 H2H week and a wasted Captain pick, with the
+// real opening slate numbered week 2. A Fri/Sat/Sun opener is a curtain-raiser
+// for the week that follows, not a week of its own, so those days belong to
+// week 1.
+//
+// Applied uniformly — the three days before EVERY week 1 are week 1 — so
+// weekOf and weekBounds need only the anchor, not the first game. When the
+// season opens midweek those days are empty (the anchor is the earliest game)
+// and the lead-in changes nothing.
+const LEAD_IN_DAYS = 3;   // Fri, Sat, Sun
+
 function seasonStartFrom(firstGameDate) {
     const day = easternDay(firstGameDate);
-    return day && mondayOf(day);
+    if (!day) return null;
+    // getUTCDay: 5 = Friday, 6 = Saturday, 0 = Sunday.
+    const dow = day.getUTCDay();
+    const daysToMonday = dow === 0 ? 1 : dow === 6 ? 2 : dow === 5 ? 3 : 0;
+    return daysToMonday ? new Date(day.getTime() + daysToMonday * DAY_MS) : mondayOf(day);
+}
+
+// The first Eastern day of week 1, lead-in included.
+function weekOneFirstDay(seasonStart) {
+    return new Date(seasonStart.getTime() - LEAD_IN_DAYS * DAY_MS);
 }
 
 // Which week a game belongs to, 1-based. null for a date before week 1 or an
@@ -66,8 +95,11 @@ function seasonStartFrom(firstGameDate) {
 function weekOf(when, seasonStart) {
     const day = easternDay(when);
     if (!day || !seasonStart) return null;
+    if (day.getTime() < seasonStart.getTime()) {
+        return day.getTime() >= weekOneFirstDay(seasonStart).getTime() ? 1 : null;
+    }
     const weeks = Math.floor((day.getTime() - seasonStart.getTime()) / (7 * DAY_MS));
-    return weeks < 0 ? null : weeks + 1;
+    return weeks + 1;
 }
 
 // The real UTC instant at which an Eastern calendar day begins.
@@ -102,14 +134,17 @@ function easternMidnight(dayMarker) {
     throw new Error(`Could not resolve Eastern midnight for ${want}`);
 }
 
-// The [start, end) bounds of a week as real instants, so they can be compared
+// The [start, end) bounds of a week as real instants (week 1 includes the
+// weekend lead-in), so they can be compared
 // directly against a stored startDate:
 //
 //   HoopsGame.find({ startDate: { $gte: b.start, $lt: b.end } })
 function weekBounds(week, seasonStart) {
     if (!seasonStart || !Number.isInteger(week) || week < 1) return null;
-    const startDay = new Date(seasonStart.getTime() + (week - 1) * 7 * DAY_MS);
-    const endDay = new Date(startDay.getTime() + 7 * DAY_MS);
+    const monday = new Date(seasonStart.getTime() + (week - 1) * 7 * DAY_MS);
+    const endDay = new Date(monday.getTime() + 7 * DAY_MS);
+    // Week 1 is ten days long: it opens on the weekend lead-in.
+    const startDay = week === 1 ? weekOneFirstDay(seasonStart) : monday;
     return { start: easternMidnight(startDay), end: easternMidnight(endDay) };
 }
 
@@ -126,7 +161,7 @@ function resolveCurrentWeek({ seasonStart, lastGameDate, now = new Date(), seaso
     const today = easternDay(now);
     if (!today) return { skip: 'unparseable clock' };
 
-    if (today.getTime() < seasonStart.getTime()) {
+    if (today.getTime() < weekOneFirstDay(seasonStart).getTime()) {
         return { skip: 'preseason — the first week has not started' };
     }
 
@@ -150,4 +185,4 @@ function resolveCurrentWeek({ seasonStart, lastGameDate, now = new Date(), seaso
     return { week: weekOf(now, seasonStart), seasonType };
 }
 
-module.exports = { easternDay, easternMidnight, mondayOf, seasonStartFrom, weekOf, weekBounds, resolveCurrentWeek, ZONE };
+module.exports = { easternDay, easternMidnight, mondayOf, seasonStartFrom, weekOf, weekBounds, resolveCurrentWeek, ZONE, LEAD_IN_DAYS };

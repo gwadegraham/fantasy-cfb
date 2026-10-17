@@ -345,7 +345,8 @@ describe('the week stamped at ingest (#315)', () => {
         expect((await HoopsGame.findOne({ id: 1 }).lean()).week).toBe(1);
 
         // A game the week before turns up — an exhibition, or a late CBBD addition.
-        stubFetch({ games: [on('2026-10-30T23:00:00Z', { id: 9 })] });
+        // A THURSDAY: a Fri-Sun one would be absorbed by week 1's lead-in.
+        stubFetch({ games: [on('2026-10-29T23:00:00Z', { id: 9 })] });
         const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
 
         expect(res.body.restamped).toBeGreaterThan(0);
@@ -486,17 +487,53 @@ describe('the week stamped at ingest (#315)', () => {
         expect(res.body.message).toMatch(/season anchor/);
     });
 
+    test('a Sunday opener folds into the Monday slate as week 1', async () => {
+        // The real 2026-27 opening: Sunday 1 Nov, then Monday 2 Nov.
+        stubFetch({ games: [
+            on('2026-11-01T14:30:00Z', { id: 377909 }),   // Sun 09:30 ET
+            on('2026-11-02T04:59:00Z', { id: 377910 }),   // Sun 23:59 ET
+            on('2026-11-03T00:00:00Z', { id: 1 }),        // Mon evening
+            on('2026-11-09T05:00:00Z', { id: 2 })         // next Monday
+        ] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+        const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
+        expect(byId).toEqual({ 377909: 1, 377910: 1, 1: 1, 2: 2 });
+    });
+
+    test('rows numbered under an OLD rule are re-stamped though the anchor did not move', async () => {
+        // Prod's state when the lead-in shipped: anchor recomputes identically
+        // before and after the write, so only the drift probe can see that
+        // every stored week is one too high.
+        stubFetch({ games: [
+            on('2026-11-01T14:30:00Z', { id: 377909 }),
+            on('2026-11-03T00:00:00Z', { id: 1 }),
+            on('2026-11-09T05:00:00Z', { id: 2 })
+        ] });
+        await request(app).post('/hoops/games/2027/schedule').send({});
+        // Simulate the old numbering: Sunday alone in week 1, the rest +1.
+        await HoopsGame.updateOne({ id: 1 }, { $set: { week: 2 } });
+        await HoopsGame.updateOne({ id: 2 }, { $set: { week: 3 } });
+
+        stubFetch({ games: [on('2026-11-03T00:00:00Z', { id: 1 })] });
+        const res = await request(app).post('/hoops/games/refresh').send({ season: 2027 });
+
+        expect(res.body.restamped).toBeGreaterThan(0);
+        const byId = Object.fromEntries((await HoopsGame.find({}).lean()).map(g => [g.id, g.week]));
+        expect(byId).toEqual({ 377909: 1, 1: 1, 2: 2 });
+    });
+
     test('the stored week always matches a weekBounds query', async () => {
         // The invariant the two halves of hoops-calendar must share. A
         // midnight-ET game in an EDT week used to fall outside its own bounds.
         stubFetch({ games: [
+            on('2026-11-01T14:30:00Z', { id: 0 }),   // Sunday lead-in, EDT
             on('2026-11-02T05:00:00Z', { id: 1 }),
             on('2027-03-15T04:00:00Z', { id: 2 }),   // midnight ET, EDT
             on('2027-04-05T04:00:00Z', { id: 3 })
         ] });
         await request(app).post('/hoops/games/2027/schedule').send({});
 
-        const start = cal.seasonStartFrom(new Date('2026-11-02T05:00:00Z'));
+        const start = cal.seasonStartFrom(new Date('2026-11-01T14:30:00Z'));
         for (const g of await HoopsGame.find({}).lean()) {
             const b = cal.weekBounds(g.week, start);
             expect(g.startDate >= b.start && g.startDate < b.end).toBe(true);

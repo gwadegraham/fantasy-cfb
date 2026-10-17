@@ -106,7 +106,8 @@ async function writeGames(ops, label) {
 // the schema names 34 of them, so a blind $set would store whatever the API
 // adds next under a name nothing reads. Mapping explicitly means a NEW field
 // arrives as a schema change, deliberately, rather than as silent drift.
-// `seasonStart` is the Monday of the week containing the season's first game.
+// `seasonStart` is week 1's Monday (see seasonStartFrom: a weekend opener
+// anchors on the Monday AFTER it).
 // Passed in rather than derived per game, because deriving it from the row
 // being written would make every game its own week 1.
 function buildUpsertOp(g, seasonStart) {
@@ -185,7 +186,8 @@ function buildUpsertOp(g, seasonStart) {
     return { updateOne: { filter: { id: g.id }, update, upsert: true } };
 }
 
-// Week 1's Monday for a season, from the earliest game we know about — stored
+// Week 1's Monday for a season (hoops-calendar seasonStartFrom), from the
+// earliest game we know about — stored
 // or incoming, whichever is earlier.
 //
 // Reading the database matters for /refresh: its window is a day or two, so the
@@ -261,7 +263,18 @@ async function resolveSeasonStart(season, incoming) {
     // numbering only the handful of rows in its own window. A countDocuments
     // is cheap; a season half-numbered is not.
     const unnumbered = await HoopsGame.countDocuments({ season, week: { $in: [null, undefined] } });
-    return { seasonStart, moved: moved || unnumbered > 0, previous };
+
+    // And re-stamp when the NUMBERING RULE changed under stored rows. The anchor
+    // can stay put while the rule moves — the weekend lead-in (a Sunday opener
+    // folds into the following week) left prod's anchor computed the new way
+    // on both sides of `moved`, with every stored week still one too high. Any
+    // rule change shifts the season's last game, so one probe there catches it.
+    const last = await HoopsGame.findOne({ season, startDate: { $ne: null } }, { startDate: 1, week: 1, _id: 0 })
+        .sort({ startDate: -1 }).lean();
+    const drifted = !!(last && seasonStart && last.week != null
+        && last.week !== calendar.weekOf(last.startDate, seasonStart));
+
+    return { seasonStart, moved: moved || unnumbered > 0 || drifted, previous };
 }
 
 // The anchor AFTER the write, which is not always the one computed before it.
