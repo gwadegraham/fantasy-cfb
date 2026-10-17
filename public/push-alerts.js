@@ -109,7 +109,11 @@
         var reg = await registerWorker();
         await navigator.serviceWorker.ready;
 
-        var permission = await Notification.requestPermission();
+        // Already granted means no prompt to show — which is what lets render()
+        // re-register a device without a tap (see thisDeviceEndpoint).
+        var permission = Notification.permission === 'granted'
+            ? 'granted'
+            : await Notification.requestPermission();
         if (permission !== 'granted') throw new Error('Notifications were blocked. Turn them on in Settings to continue.');
 
         // Reuse an existing subscription when there is one; re-subscribing with a
@@ -132,6 +136,26 @@
             throw new Error(err.message || 'Could not register this device.');
         }
         return res.json();
+    }
+
+    // This browser's own push endpoint, or null. Never prompts and never
+    // registers the worker — a device that has not turned alerts on has nothing
+    // to find, and null is the right answer for it.
+    //
+    // Exists because the server's deviceCount is per PERSON. Deleting the
+    // home-screen app and adding it again (Oct 2026, to pick up the new icon)
+    // throws away that install's subscription, but the server keeps the old
+    // endpoint and Apple goes on accepting pushes to it — so the panel said
+    // "Alerts are on for 1 device" on a phone that would never ring again.
+    async function thisDeviceEndpoint() {
+        try {
+            var sw = navigator.serviceWorker;
+            var reg = sw && sw.getRegistration ? await sw.getRegistration() : null;
+            var sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+            return (sub && sub.endpoint) || null;
+        } catch (e) {
+            return null;
+        }
     }
 
     async function unsubscribe() {
@@ -283,6 +307,8 @@
             return row;
         }
 
+        var autoTried = false;
+
         async function render() {
             clearActions();
             prefsWrap.hidden = true;
@@ -307,12 +333,61 @@
                 return say('Alerts are not configured on the server yet.', 'info');
             }
 
+            var canAsk = !(isIOS() && !isStandalone());
+            var here = await thisDeviceEndpoint();
+            var onHere = !!here && (state.endpoints || []).indexOf(here) !== -1;
+
+            // On somewhere, but not on this device. A reinstalled iOS app lands
+            // here with its permission reset, so it gets the button below. The
+            // automatic path is for the narrower case of a browser that kept
+            // its permission but lost its subscription: subscribe() shows no
+            // prompt once permission is granted, so nothing is asked of anyone.
+            //
+            // Only when this browser holds NO subscription. One that holds an
+            // endpoint the server dropped was most likely cleared by "Turn off"
+            // on another device (it clears every device on the server, but can
+            // only unsubscribe the browser it runs in) — re-adding it silently
+            // would switch alerts back on where they were turned off.
+            // deviceCount > 0 keeps it from undoing "Turn off" on this device.
+            // Once per mount, so a failing POST falls through to the button.
+            if (state.deviceCount > 0 && !here && !autoTried && canAsk
+                && window.Notification && Notification.permission === 'granted') {
+                autoTried = true;
+                try {
+                    await subscribe(state.vapidPublicKey);
+                    return render();
+                } catch (e) { /* fall through: the manager gets the button */ }
+            }
+
             if (state.deviceCount > 0) {
                 var quiet = state.allowed ? ''
                     : state.reason === 'no-roster'
                         ? ' This device is registered, but you have no roster this season — alerts start once your league drafts.'
                         : ' This device is registered, but alerts are temporarily limited to a few managers — you will not get anything until that lifts.';
-                say('Alerts are on for ' + state.deviceCount + (state.deviceCount === 1 ? ' device.' : ' devices.') + quiet, state.allowed ? 'ok' : 'info');
+                if (onHere) {
+                    var others = state.deviceCount - 1;
+                    say('Alerts are on for this device'
+                        + (others ? ' and ' + others + (others === 1 ? ' other.' : ' others.') : '.')
+                        + quiet, state.allowed ? 'ok' : 'info');
+                } else {
+                    say('Alerts are on for ' + state.deviceCount
+                        + (state.deviceCount === 1 ? ' other device' : ' other devices')
+                        + ', but not this one.'
+                        + (canAsk ? ' Reinstalled the app? Turn them on again here.'
+                            : ' Open Campus Clash from your home screen to turn them on there.'), 'info');
+                    if (canAsk) {
+                        button('Turn on for this device', 'btn-primary', async function (b) {
+                            b.disabled = true;
+                            try {
+                                await subscribe(state.vapidPublicKey);
+                                await render();
+                            } catch (e) {
+                                say(e.message, 'error');
+                                b.disabled = false;
+                            }
+                        });
+                    }
+                }
                 renderPrefs(state.prefs || {}, state.sections || LEGACY_SECTIONS);
                 if (state.allowed) {
                     button('Send a test', 'btn-secondary', async function (b) {
