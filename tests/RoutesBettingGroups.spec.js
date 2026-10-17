@@ -105,4 +105,38 @@ describe('GET /betting-groups', () => {
         const res = await request(app).get('/betting-groups');
         expect(res.body.memberDetails[0].franchiseName).toBeNull();
     });
+
+    // Per-league pictures: a member who also plays basketball has two
+    // franchises, so byIds answers two rows under one _id and the client keeps
+    // the LAST. The hoops row is created later, so without the football filter
+    // the betting page — football only — showed the basketball logo.
+    it('answers ONE row per member, the football franchise, for a two-sport member', async () => {
+        const League = require('../models/league');
+        const SportSeason = require('../models/sportSeason');
+        const seasons = require('../modules/active-season');
+        await League.create([
+            { code: 'graham-league', name: 'Graham League', sport: 'football' },
+            { code: 'hoops-league', name: 'Hardwood Heroes', sport: 'basketball' }
+        ]);
+        await SportSeason.create([
+            { sport: 'football', season: SEASON, status: 'in-season' },
+            { sport: 'basketball', season: 2027, status: 'in-season' }
+        ]);
+        await seasons.prime();
+        try {
+            const ann = await manager('Ann', { 2026: 'Hogs Gone Wild' });
+            await Franchise.updateOne({ accountId: ann._id, league: 'graham-league' }, { $set: { avatarUrl: 'http://x/football.png' } });
+            await Franchise.create({ accountId: ann._id, league: 'hoops-league', avatarUrl: 'http://x/hoops.png',
+                seasons: [{ season: 2027, franchiseName: 'Hoop Dreams', teamRefs: [] }] });
+            await BettingGroup.create({ active: true, season: SEASON, members: [ann._id] });
+
+            const res = await request(app).get('/betting-groups');
+            expect(res.body.memberDetails).toHaveLength(1);
+            expect(res.body.memberDetails[0]).toMatchObject({
+                league: 'graham-league', avatarUrl: 'http://x/football.png', franchiseName: 'Hogs Gone Wild'
+            });
+        } finally {
+            seasons._reset();
+        }
+    });
 });

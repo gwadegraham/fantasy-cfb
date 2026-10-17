@@ -1,6 +1,6 @@
 const express = require('express');
 const franchiseRepo = require('../modules/franchise-repo');
-const { activeSeason } = require('../modules/active-season');
+const { activeSeason, sportForLeague } = require('../modules/active-season');
 const router = express.Router();
 const BettingGroup = require('../models/bettingGroup');
 const Parlay = require('../models/parlay');
@@ -25,7 +25,19 @@ router.get('/', async (req, res) => {
             { fields: ['firstName', 'league', 'avatarUrl', 'seasons.season', 'seasons.franchiseName'] }
         );
 
-        const memberDetails = members.map(m => {
+        // byIds answers one row per FRANCHISE, so a member who also plays
+        // basketball comes back twice under one _id — and the client keys on
+        // _id, last row wins. Betting is football-only (#491): keep the
+        // football rows, preferring the one with an entry this season. Without
+        // this, a per-league picture showed the basketball logo here.
+        const pick = new Map();
+        members.filter(m => sportForLeague(m.league) === 'football').forEach(m => {
+            const prev = pick.get(String(m._id));
+            const hasSeason = (m.seasons || []).some(s => s.season === season);
+            if (!prev || (hasSeason && !prev.hasSeason)) pick.set(String(m._id), { m, hasSeason });
+        });
+
+        const memberDetails = [...pick.values()].map(({ m }) => {
             const s = (m.seasons || []).find(s => s.season === season);
             return {
                 _id: m._id,

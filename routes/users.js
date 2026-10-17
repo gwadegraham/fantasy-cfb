@@ -99,7 +99,22 @@ router.patch('/me/profile', async (req, res) => {
         // rendered from, so the server and the field's lock agree.
         const year = seasonFor(viewing);
 
-        if (clean.avatarUrl !== undefined) account.avatarUrl = clean.avatarUrl;
+        if (clean.avatarUrl !== undefined) {
+            // Per league: the picture belongs to THIS franchise, and must not
+            // move in the person's other leagues. Those still inherit the
+            // account's, so freeze each at what it shows today BEFORE the
+            // account's changes underneath it — otherwise changing the
+            // basketball logo would change the football one too.
+            //
+            // Pinned even with NO franchise here: an Admin can view a league
+            // they do not play in, and without the pin their change would land
+            // in every league they do.
+            await franchiseRepo.pinInheritedAvatars(account._id, franchise ? franchise._id : null, account.avatarUrl || null);
+            if (franchise) franchise[franchiseRepo.AVATAR_OVERRIDE] = clean.avatarUrl;
+            // The account keeps the LATEST choice: what a league joined later
+            // starts with, and what shows where no league is in view.
+            account.avatarUrl = clean.avatarUrl;
+        }
         if (clean.prompted !== undefined) account.profilePrompted = clean.prompted;
 
         if (clean.franchiseName !== undefined && franchise) {
@@ -114,8 +129,10 @@ router.patch('/me/profile', async (req, res) => {
         const seasons = (franchise && franchise.seasons) || [];
         const current = seasons.find(s => Number(s.season) === year)
             || seasons[seasons.length - 1];
+        const shown = franchise && franchise[franchiseRepo.AVATAR_OVERRIDE] !== undefined
+            ? franchise[franchiseRepo.AVATAR_OVERRIDE] : account.avatarUrl;
         res.json({
-            avatarUrl: account.avatarUrl || null,
+            avatarUrl: shown || null,
             profilePrompted: account.profilePrompted,
             franchiseName: (current && current.franchiseName) || null
         });

@@ -220,8 +220,11 @@ app.use(async (req, res, next) => {
             && req.oidc && req.oidc.isAuthenticated()) {
             const innerMeta = (req.oidc.user.user_metadata && req.oidc.user.user_metadata.metadata) || {};
             if (innerMeta.userId) {
+                // The VIEWED league's picture — avatars are per franchise, and
+                // an unscoped read names whichever franchise Mongo finds first.
                 const u = await franchiseRepo.byAccountId(innerMeta.userId,
-                    { fields: ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub'] });
+                    { league: res.locals.viewerLeagueCode || undefined,
+                      fields: ['avatarUrl', 'color', 'firstName', 'lastName', 'authSub'] });
                 if (u) {
                     const initials = (((u.firstName || '')[0] || '') + ((u.lastName || '')[0] || '')).toUpperCase();
                     res.locals.navUser = {

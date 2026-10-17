@@ -65,6 +65,22 @@ const FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated', 'captainReminders', 'recap
 const LIST_ACCOUNT_FIELDS = ['firstName', 'lastName', 'email', 'avatarUrl', 'profilePrompted', 'color'];
 const LIST_FRANCHISE_FIELDS = ['isUpdated', 'lastUpdated'];
 
+// ---- a field that lives on BOTH halves ----
+//
+// The profile picture is the one field with an account-wide default AND a
+// per-league answer: one login can be a football franchise and a basketball
+// franchise, and most people who play both use a team logo, not a face. The
+// franchise's avatarUrl, when PRESENT (null included — "no picture here"),
+// replaces the account's; when absent the account's shows through.
+//
+// Kept out of FRANCHISE_FIELDS on purpose: those lists route old `users`
+// fields for the migration and must not overlap, and this field never existed
+// on a User. What it needs instead is to be FETCHED from the franchise every
+// time a read asks for avatarUrl — a projection that leaves it out silently
+// shows the account's picture, which looks right and is the wrong league's.
+// franchiseSideOf and the default projections below carry it for that reason.
+const AVATAR_OVERRIDE = 'avatarUrl';
+
 // One manager, in User shape.
 //
 // `_id` comes from the ACCOUNT, not the franchise — it is the id Auth0 points
@@ -87,6 +103,7 @@ function toUserShape(account, franchise, { list = false, explicit = false } = {}
         doc.league = franchise.league;
         doc.seasons = franchise.seasons || [];
         franchiseFields.forEach(f => { if (franchise[f] !== undefined) doc[f] = franchise[f]; });
+        if (franchise[AVATAR_OVERRIDE] !== undefined) doc[AVATAR_OVERRIDE] = franchise[AVATAR_OVERRIDE];
     }
     return doc;
 }
@@ -110,7 +127,7 @@ async function byLeagueAndSeason(league, season, { projectSeason = true, fields 
             ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
             : asProjection(franchiseSideOf(fields).concat('accountId')))
         : (projectSeason
-            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
+            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, [AVATAR_OVERRIDE]: 1, seasons: { $elemMatch: { season } } }
             : null);
     const franchises = await Franchise.find(query, projection).lean();
     return hydrate(franchises, { list: !!(fields || projectSeason), fields });
@@ -141,7 +158,7 @@ async function bySeason(season, { projectSeason = true, fields } = {}) {
             ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
             : asProjection(franchiseSideOf(fields).concat('accountId')))
         : (projectSeason
-            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, seasons: { $elemMatch: { season } } }
+            ? { accountId: 1, league: 1, isUpdated: 1, lastUpdated: 1, [AVATAR_OVERRIDE]: 1, seasons: { $elemMatch: { season } } }
             : null);
     // `projectSeason: false` replaces an UNPROJECTED User.find, so it has to
     // return whole documents — narrowing here would be the same parity break as
@@ -338,7 +355,7 @@ async function byLeagueAndSeasonForAccount(accountId, season, { fields, league }
         Object.assign({ accountId, 'seasons.season': season }, league ? { league } : {}),
         fields
             ? Object.assign(seasonScopedProjection(franchiseSideOf(fields), season), { accountId: 1 })
-            : { accountId: 1, league: 1, seasons: { $elemMatch: { season } } }
+            : { accountId: 1, league: 1, [AVATAR_OVERRIDE]: 1, seasons: { $elemMatch: { season } } }
     ).lean();
     if (!franchise) return [];
     return hydrate([franchise], { list: true, fields });
@@ -361,7 +378,8 @@ async function byIds(ids, { fields } = {}) {
 function franchiseSideOf(fields) {
     return fields.filter(f => {
         const root = f.split('.')[0];
-        return root === 'league' || root === 'seasons' || FRANCHISE_FIELDS.includes(root);
+        return root === 'league' || root === 'seasons' || root === AVATAR_OVERRIDE
+            || FRANCHISE_FIELDS.includes(root);
     });
 }
 
@@ -491,8 +509,8 @@ async function projectionManagers(league, season) {
 
     return Franchise.aggregate([
         { $match: { league, 'seasons.season': season } },
-        { $project: { accountId: 1, seasons } },
-        ...accountJoin(['firstName', 'lastName', 'avatarUrl', 'color'])
+        { $project: { accountId: 1, seasons, [AVATAR_OVERRIDE]: 1 } },
+        ...accountJoin(['firstName', 'lastName', 'avatarUrl', 'color'], { override: AVATAR_OVERRIDE })
     ]);
 }
 
@@ -557,7 +575,7 @@ async function h2hManagers(league, season) {
 // client holds, and what routes/scores.js keys its weeklyScore write on.
 //
 // Franchises with no account are dropped, matching toUserShape.
-function accountJoin(fields) {
+function accountJoin(fields, { override } = {}) {
     // AN EMPTY FIELD LIST MUST NOT BECOME AN EXCLUSION PROJECTION.
     //
     // `{ _id: 0 }` reads like "nothing", and it is the opposite: an
@@ -587,8 +605,13 @@ function accountJoin(fields) {
         { $match: { 'acct.0': { $exists: true } } },
         // _id and seasons go LAST so they win the merge outright, whatever the
         // account happens to carry.
+        // `override` is a franchise field that beats the account's — the
+        // per-league avatar. An expression object OMITS a key whose value is
+        // missing, so an absent override leaves the account's in place, while
+        // a stored null still wins: the same presence rule as toUserShape.
         { $replaceWith: { $mergeObjects: [
             { $arrayElemAt: ['$acct', 0] },
+            override ? { [override]: '$' + override } : {},
             { _id: '$accountId', seasons: '$seasons' }
         ] } }
     ];
@@ -697,6 +720,21 @@ async function saveBoth(ctx) {
     // Null for an account with no entry in the league — a normal state once one
     // login holds two sports, not an error.
     if (ctx.franchise) await ctx.franchise.save();
+}
+
+// Freeze every OTHER franchise of this account that still inherits the
+// account's avatar at `current` — the picture it shows right now — so the
+// account's can change without moving them. Called by PATCH /me/profile just
+// before it changes the account's picture.
+//
+// `$exists: false` is what makes it a one-time pin: a league that already made
+// its own choice (null included) keeps it. A plain $ne would overwrite a
+// deliberate "no picture here".
+async function pinInheritedAvatars(accountId, exceptFranchiseId, current) {
+    return Franchise.updateMany(
+        { accountId, _id: { $ne: exceptFranchiseId }, [AVATAR_OVERRIDE]: { $exists: false } },
+        { $set: { [AVATAR_OVERRIDE]: current } }
+    );
 }
 
 // A surgical update of ACCOUNT-side fields — the $set/$pull/$unset writes that
@@ -889,6 +927,6 @@ module.exports = {
     toUserShape, byLeagueAndSeason, bySeason, byAccountId, byLeagueAndSeasonForAccount, byLeague, byIds, all, leaguesFor, seasonsByLeague, hydrate, findManagers, anyFranchise,
     usedColors, asProjection, seasonScopedProjection, keepOnly, franchiseSideOf,
     projectionManagers, h2hManagers, leaguesWithSeason,
-    loadForWrite, saveBoth, updateAccount, updateFranchise, createManager, addFranchise, rosteredForWrite,
-    ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS
+    loadForWrite, saveBoth, pinInheritedAvatars, updateAccount, updateFranchise, createManager, addFranchise, rosteredForWrite,
+    ACCOUNT_FIELDS, FRANCHISE_FIELDS, LIST_ACCOUNT_FIELDS, LIST_FRANCHISE_FIELDS, AVATAR_OVERRIDE
 };

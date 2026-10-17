@@ -389,6 +389,7 @@
 .field input:focus { outline: none; border-color: var(--cc-interactive); }
 .field input:disabled { opacity: 0.5; cursor: not-allowed; }
 .field .field-note { text-transform: none; letter-spacing: 0; font-size: 0.72rem; color: var(--cc-muted-2); }
+.avatar-edit-controls .avatar-scope-note { font-size: 0.72rem; color: var(--cc-muted-2); }
 .avatar-edit { display: flex; align-items: center; gap: 1em; margin-bottom: 1em; }
 .avatar-edit-controls { display: flex; flex-direction: column; gap: 6px; }
 .upload-status { font-size: 0.75rem; color: var(--cc-muted-2); }
